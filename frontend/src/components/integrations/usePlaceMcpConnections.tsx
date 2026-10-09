@@ -179,7 +179,9 @@ export function usePlaceMcpConnections({ workspacePath, placeNoun, canEdit, onAs
     })) satisfies McpConnectionRow[],
     catalog: canEdit ? catalog.map(entry => ({
       id: entry.catalog, name: entry.catalog, description: entry.description || descriptionFor(entry.catalog), category: groupFor(entry.catalog),
-      connect: { label: 'Add connection', disabled: busy !== null, run: () => setNamingProvider(entry.catalog) },
+      // A provider stays listed once added: another account of it (a read-only one and a read-write one, say) can be added.
+      addedCount: servers.filter(server => server.catalog === entry.catalog).length,
+      connect: { label: servers.some(server => server.catalog === entry.catalog) ? 'Add another connection' : 'Add connection', disabled: busy !== null, run: () => setNamingProvider(entry.catalog) },
       details: namingProvider === entry.catalog ? <McpNamedConnectionForm provider={entry.catalog} busy={busy !== null} cancel={() => setNamingProvider(null)} submit={label => add(entry, label)} /> : undefined,
       ...(entry.group && groups.has(entry.group) ? { batch: { id: entry.group, name: providerGroupLabel(entry.group), connect: (picks: string[]) => addGroup(entry.group!, picks) } } : {}),
     })) satisfies McpCatalogRow[] : [],

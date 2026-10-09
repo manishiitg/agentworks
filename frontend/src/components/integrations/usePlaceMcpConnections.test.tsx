@@ -107,6 +107,19 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   expect(placeMock.connect).toHaveBeenCalledWith('Chats/Code/projects/p1', 'googledrive', undefined, undefined)
 })
 
+// A provider that is already added stays in Available (another account can be added) and says so (PLAT-794).
+it('marks an already added provider in Available and offers another connection', async () => {
+  catalogMock.entries = [{ name: 'gmail', catalog: 'GoogleGmail', sign_in: true, needs_client: false }, { name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }]
+  const host = await render(true)
+  const cards = [...host.querySelectorAll('[aria-label="Available servers"] section > div > div')]
+  const gmail = cards.find(card => card.textContent?.includes('GoogleGmail'))!
+  const drive = cards.find(card => card.textContent?.includes('GoogleDrive'))!
+  expect(gmail.textContent).toContain('1 added')
+  expect(gmail.textContent).toContain('Add another connection')
+  expect(drive.textContent).not.toContain('added')
+  expect(drive.textContent).toContain('Add connection')
+})
+
 it('asks for your own OAuth app when the provider has none registered', async () => {
   placeMock.list.mockResolvedValue([{ name: 'gmail', catalog: 'GoogleGmail', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: false, active: true }])
   placeMock.connect.mockResolvedValueOnce({ status: 'needs_client_id', redirect_uri: 'https://app.example.com/api/oauth/callback' } as never)
@@ -251,7 +264,8 @@ it.each(['Crew', 'Code', 'workflow', 'Relay'])('adds multiple named accounts thr
   placeMock.add.mockResolvedValueOnce({ name: 'notion_c', oauth: true })
   const host = await render(true, noun, 'Workflow/w', undefined, 'chat-1')
   expect(host.textContent).toContain('Notion') // provider stays available for another account
-  await act(async () => { button(host, 'Add connection').click() })
+  expect(host.textContent).toContain('2 added')
+  await act(async () => { button(host, 'Add another connection').click() })
   const input = host.querySelector<HTMLInputElement>('input[aria-label="Notion connection name"]')!
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Notion · Support')

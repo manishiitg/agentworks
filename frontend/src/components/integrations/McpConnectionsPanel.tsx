@@ -28,6 +28,8 @@ export interface McpConnectionRow {
 }
 export interface McpCatalogRow {
   id: string; name: string; description?: string; category?: string
+  /** Connections of this provider already added; shown so a provider that stays listed does not look like a duplicate. */
+  addedCount?: number
   connect?: McpAction; connectControl?: ReactNode; testId?: string; details?: ReactNode
   batch?: { id: string; name: string; connect: (ids: string[]) => void | Promise<unknown> }
 }
@@ -96,7 +98,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
             <div className="space-y-2">{items.map(item => <div key={item.id} className="rounded-md border border-border p-3"><div className="flex items-center gap-3">
               {batch && <input type="checkbox" aria-label={`Add ${item.name}`} disabled={item.connect?.disabled} checked={selected.includes(item.id)} onChange={() => setPicks(value => ({ ...value, [batch.id]: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }))} />}
               <ConnectionIcon icon={brandSlugFor(item.name)} name={item.name} size="xs" />
-              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{item.name}</p>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
+              <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-2"><p className="truncate text-sm font-medium">{item.name}</p>{!!item.addedCount && <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400">{item.addedCount} added</span>}</div>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
               {(item.connectControl || (item.connect && <Button variant="outline" size="sm" disabled={item.connect.disabled} aria-label={item.connect.ariaLabel} data-testid={item.testId} onClick={() => void item.connect!.run()}>{item.connect.icon || <Plus />}{item.connect.label}</Button>))}
             </div>{item.details && <div className="mt-3">{item.details}</div>}</div>)}</div>
             {batch && selected.length > 0 && <Button size="sm" disabled={items.some(item => item.connect?.disabled)} onClick={() => { void Promise.resolve(batch.connect(selected)).then(result => { if (result !== false) setPicks(value => ({ ...value, [batch.id]: [] })) }) }}>Connect {selected.length} {selected.length === 1 ? 'service' : 'services'}</Button>}
