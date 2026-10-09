@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -40,10 +41,13 @@ type EditIdentity struct {
 	DeviceID     string `json:"device_id,omitempty"`
 }
 type WriteRequest struct {
-	Identity         EditIdentity `json:"identity"`
-	Root             string       `json:"root"`
-	Path             string       `json:"path"`
-	Content          string       `json:"content"`
+	Identity EditIdentity `json:"identity"`
+	Root     string       `json:"root"`
+	Path     string       `json:"path"`
+	Content  string       `json:"content"`
+	// ContentBase64 writes a binary file (image, PDF, spreadsheet) instead of
+	// UTF-8 Content; the same path, grant, revision and receipt rules apply.
+	ContentBase64    string       `json:"content_base64,omitempty"`
 	ExpectedRevision string       `json:"expected_revision"`
 	RequestID        string       `json:"request_id"`
 	Actor            string       `json:"actor"`
@@ -366,11 +370,27 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	if r.RequestID == "" || len(r.RequestID) > 128 || r.Actor == "" || r.ExpectedRevision == "" {
 		return WriteReceipt{}, fileError(400, "request_id, actor and expected_revision are required")
 	}
-	if len(r.Content) > MaxFileBytes {
-		return WriteReceipt{}, fileError(413, "content exceeds 2 MiB")
-	}
-	if !utf8.ValidString(r.Content) || strings.ContainsRune(r.Content, 0) {
-		return WriteReceipt{}, fileError(400, "only UTF-8 text is writable")
+	content := []byte(r.Content)
+	binary := r.ContentBase64 != ""
+	if binary {
+		if r.Content != "" {
+			return WriteReceipt{}, fileError(400, "pass content or content_base64, not both")
+		}
+		decoded, decodeErr := base64.StdEncoding.DecodeString(r.ContentBase64)
+		if decodeErr != nil {
+			return WriteReceipt{}, fileError(400, "content_base64 is not valid base64")
+		}
+		if len(decoded) > MaxBinaryFileBytes {
+			return WriteReceipt{}, fileError(413, "binary content exceeds 11 MiB")
+		}
+		content = decoded
+	} else {
+		if len(r.Content) > MaxFileBytes {
+			return WriteReceipt{}, fileError(413, "content exceeds 2 MiB")
+		}
+		if !utf8.ValidString(r.Content) || strings.ContainsRune(r.Content, 0) {
+			return WriteReceipt{}, fileError(400, "only UTF-8 text is writable")
+		}
 	}
 	r.Path = p
 	r.Root = scope
@@ -428,7 +448,7 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 		return WriteReceipt{}, err
 	}
 	current := revision(before)
-	target := Revision([]byte(r.Content))
+	target := Revision(content)
 	if record.Status == "prepared" && current == target {
 		record.Status = "completed"
 		record.Receipt.Applied = true
@@ -442,11 +462,16 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	if current != r.ExpectedRevision {
 		return WriteReceipt{}, fileError(409, "revision conflict; read the current file before retrying")
 	}
-	if before != nil && (!utf8.Valid(before) || strings.ContainsRune(string(before), 0)) {
+	// A text write never replaces a binary file; a binary write may.
+	if !binary && before != nil && (!utf8.Valid(before) || strings.ContainsRune(string(before), 0)) {
 		return WriteReceipt{}, fileError(400, "only UTF-8 text is writable")
 	}
+	kept := ""
+	if !binary {
+		kept = string(before[:min(len(before), 128<<10)])
+	}
 	if record.Status == "" {
-		record = editRecord{Fingerprint: fingerprint, Actor: r.Actor, Root: scope, Before: string(before[:min(len(before), 128<<10)]), CreatedAt: time.Now().UTC(), Status: "prepared", Receipt: WriteReceipt{Identity: identity, RequestID: r.RequestID, Path: p, PreviousRevision: current, Revision: target}}
+		record = editRecord{Fingerprint: fingerprint, Actor: r.Actor, Root: scope, Before: kept, CreatedAt: time.Now().UTC(), Status: "prepared", Receipt: WriteReceipt{Identity: identity, RequestID: r.RequestID, Path: p, PreviousRevision: current, Revision: target}}
 		data, _ := json.Marshal(record)
 		if err = atomicRootWrite(e.state, key, data, 0600); err != nil {
 			return WriteReceipt{}, err
@@ -484,7 +509,7 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	if revision(now) != current {
 		return WriteReceipt{}, fileError(409, "revision conflict")
 	}
-	if err = atomicRootWrite(parent, path.Base(p), []byte(r.Content), mode); err != nil {
+	if err = atomicRootWrite(parent, path.Base(p), content, mode); err != nil {
 		return WriteReceipt{}, &FileError{Status: 409, Code: "write_outcome_unknown", Message: "write may have applied; retry the same request_id to reconcile"}
 	}
 	record.Status = "completed"
@@ -522,8 +547,10 @@ func (e *Editor) Read(scope, p string, g *FolderGuard) (File, error) {
 	if err != nil {
 		return File{}, err
 	}
+	// A binary file returns its revision and size, never its bytes as text, so
+	// it can be replaced with a content_base64 write.
 	if data != nil && (!utf8.Valid(data) || strings.ContainsRune(string(data), 0)) {
-		return File{}, fileError(400, "only UTF-8 text is supported")
+		return File{Path: p, Exists: true, Encoding: "binary", Revision: revision(data), Size: int64(len(data))}, nil
 	}
 	return File{Path: p, Exists: data != nil, Content: string(data), Encoding: "utf-8", Revision: revision(data), Size: int64(len(data))}, nil
 }

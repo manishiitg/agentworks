@@ -2,6 +2,7 @@ package workflowfiles
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -167,9 +168,21 @@ func TestEditorRejectsSymlinksAndBinaryAndBounds(t *testing.T) {
 	if _, err := editor.Write(context.Background(), WriteRequest{Root: ".", Path: "docs/alias/new.md", Content: "bypass", ExpectedRevision: MissingRevision, RequestID: "link", Actor: "owner"}); StatusCode(err) != 403 {
 		t.Fatalf("symlink write: %v", err)
 	}
+	// A binary file reads as a revision without content; only a content_base64
+	// write may replace it, under the same revision rule.
 	os.WriteFile(filepath.Join(root, "binary"), []byte{0, 1}, 0600)
-	if _, err := editor.Read(".", "binary", nil); StatusCode(err) != 400 {
-		t.Fatalf("binary: %v", err)
+	file, err := editor.Read(".", "binary", nil)
+	if err != nil || file.Encoding != "binary" || file.Content != "" || !file.Exists {
+		t.Fatalf("binary read: %+v %v", file, err)
+	}
+	if _, err := editor.Write(context.Background(), WriteRequest{Root: ".", Path: "binary", Content: "text", ExpectedRevision: file.Revision, RequestID: "text-over-binary", Actor: "owner"}); StatusCode(err) != 400 {
+		t.Fatalf("text over binary: %v", err)
+	}
+	if _, err := editor.Write(context.Background(), WriteRequest{Root: ".", Path: "binary", ContentBase64: base64.StdEncoding.EncodeToString([]byte{0, 2, 3}), ExpectedRevision: file.Revision, RequestID: "binary", Actor: "owner"}); err != nil {
+		t.Fatalf("binary write: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(root, "binary")); string(data) != string([]byte{0, 2, 3}) {
+		t.Fatalf("binary content: %v", data)
 	}
 	if _, err := editor.Write(context.Background(), WriteRequest{Root: ".", Path: "big", Content: string(make([]byte, MaxFileBytes+1)), ExpectedRevision: MissingRevision, RequestID: "big", Actor: "owner"}); StatusCode(err) != 413 {
 		t.Fatalf("size: %v", err)

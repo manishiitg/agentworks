@@ -10,6 +10,10 @@ import (
 )
 
 const MaxFileBytes = 2 << 20
+
+// MaxBinaryFileBytes bounds a base64 binary write so the encoded request stays
+// under the 16 MiB request limit of the write route and the MCP call.
+const MaxBinaryFileBytes = 11 << 20
 const MissingRevision = "missing"
 
 type Request struct {

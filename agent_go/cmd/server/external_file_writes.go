@@ -16,11 +16,17 @@ func (api *StreamingAPI) externalWriteFile(w http.ResponseWriter, r *http.Reques
 		externalError(w, 401, "unauthorized", "Sign in first.")
 		return
 	}
-	req := wf.WriteRequest{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Content: externalArg(args, "content"), ExpectedRevision: externalArg(args, "expected_revision"), RequestID: externalArg(args, "request_id"), Actor: claims.UserID, Identity: wf.EditIdentity{UserID: claims.UserID, Username: claims.Username, Source: "public_mcp"}}
+	req := wf.WriteRequest{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Content: externalArg(args, "content"), ContentBase64: externalArg(args, "content_base64"), ExpectedRevision: externalArg(args, "expected_revision"), RequestID: externalArg(args, "request_id"), Actor: claims.UserID, Identity: wf.EditIdentity{UserID: claims.UserID, Username: claims.Username, Source: "public_mcp"}}
 	if claims.AccessToken != nil {
 		req.Identity.ConnectionID = claims.AccessToken.ID
 		req.Guard = claims.AccessToken.FileGuard
 		req.Actor += "/" + claims.AccessToken.ID
+	}
+	_, hasText := args["content"]
+	_, hasBinary := args["content_base64"]
+	if hasText == hasBinary {
+		externalError(w, 400, "invalid_arguments", "Pass content (UTF-8 text) or content_base64 (a binary file), exactly one.")
+		return
 	}
 	p, err := wf.CleanRelative(req.Path)
 	if err != nil || wf.ProtectedWrite(p) || !req.Guard.Allows(p, true) {
