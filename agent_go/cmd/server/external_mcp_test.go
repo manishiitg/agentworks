@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -254,4 +255,44 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 	}
 	blocked := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "execute_step"})
 	requireRemoteError(t, blocked, "read-only run call", "insufficient_scope")
+}
+
+// A client keeps its tool menu until it starts a new session. The session ID
+// is the connection's tool fingerprint, so after a deploy or role change that
+// alters the tools, the old ID answers 404 and the client reconnects and
+// re-reads the menu, whose get_api_spec description names the current tools.
+func TestExternalMCPToolMenuNamesToolsAndExpiresWhenToolsChange(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	srv := serveExternalMCP(t, f.api, &UserClaims{UserID: "owner", Username: "owner"})
+	post := func(sessionID, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, srv.URL+externalMCPPath, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		if sessionID != "" {
+			req.Header.Set("Mcp-Session-Id", sessionID)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		return resp
+	}
+	opened := post("", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`)
+	session := opened.Header.Get("Mcp-Session-Id")
+	if opened.StatusCode != 200 || !strings.HasPrefix(session, "aw1-") {
+		t.Fatalf("initialize: status %d session %q", opened.StatusCode, session)
+	}
+	list := post(session, `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`)
+	body, _ := io.ReadAll(list.Body)
+	if list.StatusCode != 200 || !strings.Contains(string(body), "Tools you can use now") || !strings.Contains(string(body), "update_settings") {
+		t.Fatalf("tools/list: %d %s", list.StatusCode, body)
+	}
+	if stale := post("aw1-000000000000000000000000", `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`); stale.StatusCode != http.StatusNotFound {
+		t.Fatalf("stale session answered %d, want 404", stale.StatusCode)
+	}
 }

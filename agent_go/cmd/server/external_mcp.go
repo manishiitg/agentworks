@@ -3,11 +3,15 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -151,6 +155,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			break
 		}
 	}
+	index, fingerprint := externalMCPToolIndex(allowed)
 	mcpServer := server.NewMCPServer("AgentWorks", "1.0.0",
 		server.WithToolCapabilities(false),
 		server.WithElicitation(),
@@ -163,14 +168,17 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		mcpServer.AddTool(
-			mcp.NewToolWithRawSchema(name, externalMCPToolDescriptions[name], schema),
+			mcp.NewToolWithRawSchema(name, externalMCPToolDescriptionFor(name, index), schema),
 			func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return api.externalMCPCall(ctx, r, name, allowed, request), nil
 			},
 		)
 	}
 	httpServer := server.NewStreamableHTTPServer(mcpServer,
-		server.WithStateLess(true),
+		// No session state is kept: the session ID is this connection's tool
+		// fingerprint, so a client whose tools changed (a deploy, a role
+		// change) gets 404 and reconnects, which re-reads the tool menu.
+		server.WithSessionIdManager(externalMCPCatalogSession{fingerprint: fingerprint}),
 		// This is an authenticated deployment behind Caddy, not a local
 		// browser-driven server: the loopback listener plus public Host
 		// header would trip the DNS-rebinding guard on every proxied request.
@@ -357,3 +365,74 @@ func externalMCPErrorText(rec *externalMCPRecorder) string {
 	}
 	return fmt.Sprintf("http_%d: %s", status, raw)
 }
+
+// externalMCPToolIndex lists the tool names this connection may use, grouped
+// by product, for get_api_spec's description. Clients send tool descriptions
+// to the model with every message, so the model sees the current names from
+// the menu instead of an old get_api_spec answer in its history. The
+// fingerprint changes whenever the names do.
+func externalMCPToolIndex(allowed []externalTool) (string, string) {
+	order := []string{"Goals", "Builder", "Pulse", "Relays", "Crews", "Brain", "Vault", "Code review", "Account", "Help"}
+	groups := map[string][]string{}
+	names := make([]string, 0, len(allowed))
+	for _, tool := range allowed {
+		name := tool.Name
+		names = append(names, name)
+		group := "Goals"
+		switch {
+		case strings.HasPrefix(name, "builder_pulse"):
+			group = "Pulse"
+		case strings.HasPrefix(name, "builder_"):
+			group = "Builder"
+		case strings.Contains(name, "relay"):
+			group = "Relays"
+		case strings.Contains(name, "crew"):
+			group = "Crews"
+		case strings.HasPrefix(name, "brain_"):
+			group = "Brain"
+		case strings.Contains(name, "vault"):
+			group = "Vault"
+		case strings.Contains(name, "_code_"):
+			group = "Code review"
+		case name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
+			group = "Account"
+		case name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
+			group = "Help"
+		}
+		groups[group] = append(groups[group], name)
+	}
+	var b strings.Builder
+	for _, group := range order {
+		if len(groups[group]) > 0 {
+			b.WriteString("\n" + group + ": " + strings.Join(groups[group], ", "))
+		}
+	}
+	sort.Strings(names)
+	sum := sha256.Sum256([]byte(strings.Join(names, "\n")))
+	return b.String(), "aw1-" + hex.EncodeToString(sum[:12])
+}
+
+func externalMCPToolDescriptionFor(name, index string) string {
+	if name != externalMCPToolSpec || index == "" {
+		return externalMCPToolDescriptions[name]
+	}
+	return externalMCPToolDescriptions[name] + "\n\nTools you can use now (pass names to get_api_spec for their arguments, then run them with call_tool):" + index
+}
+
+// externalMCPCatalogSession is a stateless session ID check: the ID is the
+// connection's tool fingerprint. Clients on protocol versions with sessions
+// send it back; a different fingerprint answers 404, which the MCP standard
+// says means start a new session, and a new session re-reads tools/list. A
+// client that never received an ID (connected before this check) passes.
+type externalMCPCatalogSession struct{ fingerprint string }
+
+func (m externalMCPCatalogSession) Generate() string { return m.fingerprint }
+
+func (m externalMCPCatalogSession) Validate(sessionID string) (bool, error) {
+	if sessionID == "" || sessionID == m.fingerprint {
+		return false, nil
+	}
+	return false, errors.New("AgentWorks tools changed; start a new session")
+}
+
+func (m externalMCPCatalogSession) Terminate(string) (bool, error) { return false, nil }
