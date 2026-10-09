@@ -163,7 +163,7 @@ type startFlags struct {
 	foreground, background bool
 	askAgain               bool
 	workspace              string
-	open, noOpen           bool
+	noOpen                 bool
 }
 
 func startCommand(o *options) *cobra.Command {
@@ -185,8 +185,7 @@ func startCommand(o *options) *cobra.Command {
 	cmd.Flags().BoolVar(&f.background, "background", false, "Run in the background without asking")
 	cmd.Flags().StringVar(&f.workspace, "workspace", "", "The Code workspace (its name in Settings) that uses this folder; asked the first time, then remembered")
 	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask the background and open-website questions again instead of using the saved answers")
-	cmd.Flags().BoolVar(&f.open, "open", false, "Open the website when connected, without asking")
-	cmd.Flags().BoolVar(&f.noOpen, "no-open", false, "Do not open the website")
+	cmd.Flags().BoolVar(&f.noOpen, "no-open", false, "Do not open the website (for a machine with no browser)")
 	cmd.Flags().BoolVar(&f.debug, "debug", false, "Stay in this terminal, print diagnostics and log every file and command request the server sends")
 	return cmd
 }
@@ -278,15 +277,8 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 		bg := ask(in, os.Stderr, "Run in the background? (No keeps this terminal open and shows live activity; Ctrl-C stops.)", true)
 		foreground, prefs.Background = !bg, &bg
 	}
-	openWeb := f.open
-	switch {
-	case f.open || f.noOpen:
-	case prefs.Open != nil:
-		openWeb, usedSaved = *prefs.Open, true
-	case interactive:
-		yes := ask(in, os.Stderr, "Open the website in your browser once connected?", true)
-		openWeb, prefs.Open = yes, &yes
-	}
+	// The website link is what applies this folder to the named workspace, so it is always opened (--no-open for a headless machine).
+	openWeb := !f.noOpen
 	if interactive {
 		saveStartPrefs(prefsPath, prefs)
 	}
@@ -598,10 +590,9 @@ func printShared(o *options, folder, device, alias, workspace, server string, pi
 	}
 }
 
-// startPrefs are the answers to the first-run questions, so later runs do not ask.
+// startPrefs is the answer to the first-run question, so later runs do not ask.
 type startPrefs struct {
 	Background *bool `json:"background,omitempty"`
-	Open       *bool `json:"open,omitempty"`
 }
 
 func loadStartPrefs(path string) startPrefs {

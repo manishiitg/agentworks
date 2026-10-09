@@ -733,14 +733,17 @@ execution and typed tools retain their separately authorized scopes.
 Install the CLI, `cd` into your project folder and run:
 
 ```sh
-agentworks start --server https://your-agentworks.example   # first time; later just: agentworks start
+agentworks start --server https://your-agentworks.example --workspace "My project"   # first time; later just: agentworks start
 ```
 
-It signs you in the first time (a browser approval limited to sharing local folders), shares the current folder with
-read and write access and shell commands, and keeps the connection open. It asks whether to run in the background or keep
-the terminal open (`--background` / `--foreground` skip the question), and whether to open the website (`--open` /
-`--no-open`); the website then opens Code with the shared folder as the default for new Code chats (Local mode).
-The first run asks the two questions and remembers the answers (`agentworks start --ask` asks again). Once connected it prints a short summary (folder, computer, website link); a terminal that stays open shows each file and command request live, and `agentworks watch` shows the same for a background share. `agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
+`--workspace` is the name of the Code workspace (as shown in Settings) that uses this folder. It is required the first time
+(asked in a terminal) and remembered per folder. `start` signs you in the first time (a browser approval limited to sharing local
+folders), shares the current folder with read and write access and shell commands, and keeps the connection open. It asks once
+whether to run in the background or keep the terminal open (`--background` / `--foreground` skip the question; the answer is
+remembered, `--ask` asks again), then opens the website, whose link finds that workspace by name, opens it in Local mode and saves
+the folder in its `product.json` (`local_files`); `--no-open` skips the browser. Once connected it prints a short summary
+(folder, computer, workspace, website link); a terminal that stays open shows each file and command request live, and
+`agentworks watch` shows the same for a background share. `agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
 shared, and `agentworks start --debug` stays in the terminal, prints diagnostics (CLI version, server reachability, sign-in,
 sandbox) and logs every file and command request from the server. `--block <path>` hides a file or folder, `--downloads`
 also shares `~/Downloads`. In the website, **Verify connection** (Code settings) confirms the computer is connected.
