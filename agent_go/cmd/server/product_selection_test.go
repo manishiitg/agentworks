@@ -3,15 +3,17 @@ package server
 import "testing"
 
 func TestRegisteredProductIDsExcludeRetiredProduct(t *testing.T) {
-	t.Setenv("AGENT_PRODUCTS", "dominion,agentworks")
-	products := registeredProductIDs()
-	for _, product := range products {
-		if product == "dominion" {
-			t.Fatalf("retired product is advertised: %v", products)
+	for _, configured := range []string{"dominion", "dominion,agentworks"} {
+		t.Setenv("AGENT_PRODUCTS", configured)
+		products := registeredProductIDs()
+		for _, product := range products {
+			if product == "dominion" {
+				t.Fatalf("retired product is advertised: %v", products)
+			}
 		}
-	}
-	if !productEnabled("knowledgebase") || !productEnabled("mcp-gateway") {
-		t.Fatal("a stale retired product setting must not disable core products")
+		if !productEnabled("knowledgebase") || !productEnabled("mcp-gateway") {
+			t.Fatal("a stale retired product setting must not disable core products")
+		}
 	}
 }
 

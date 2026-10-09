@@ -148,6 +148,7 @@ it('shows Vault-specific icons only in Vault and opens its audit page', async ()
 it('lists every available product and opens its workspace from another product', async () => {
   const { host, onClose } = await renderNavigation('@products ')
   expect(host.querySelectorAll('[data-navigation-id^="product:"]')).toHaveLength(7)
+  expect(host.textContent).not.toContain('Dominion')
   expect(host.textContent).toContain('Vault')
   expect(host.textContent).toContain('SparkQuill')
   useAppStore.setState({ adminPage: 'users', showSchedulesOverview: true })
