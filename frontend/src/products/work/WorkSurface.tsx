@@ -1170,7 +1170,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   useLayoutEffect(() => {
     const savedView = readWorkWorkspaceView(selected?.id, product.profileId)
-    setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? product.defaultView)
+    setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? (product.profileId === 'code' && selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)

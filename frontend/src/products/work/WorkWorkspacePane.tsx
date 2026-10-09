@@ -28,7 +28,7 @@ import { WorkIdentityPanel } from './WorkIdentityPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { useCodeFilesPreference } from './codeLocalFiles'
+import { useCodeFilesPreference, useProjectMode } from './codeLocalFiles'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
@@ -89,12 +89,21 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const hasSuggestions = !isCode && !localCodeSession
   // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
   // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
-  const viewButtons = isCode
-    ? [...VIEW_BUTTONS.filter(item => item.id !== 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
-    : VIEW_BUTTONS
-  const opsButtons = isCode
-    ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
-    : OPS_BUTTONS
+  // A Cowork project (a private assistant for business work) reads: Dashboard, Browser, Automation, Memory, Costs | Files | Setup.
+  // Its work is dashboards, the browser and automations, so those lead; Files stays, quietly; there is no Terminal.
+  const projectMode = useProjectMode(sessionId)
+  const isCowork = isCode && projectMode === 'cowork'
+  const pick = (ids: string[], from: typeof VIEW_BUTTONS) => ids.map(id => from.find(item => item.id === id)).filter((item): item is typeof VIEW_BUTTONS[number] => !!item)
+  const viewButtons = isCowork
+    ? [...pick(['dashboard', 'browser', 'schedules', 'memory'], VIEW_BUTTONS), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+    : isCode
+      ? [...VIEW_BUTTONS.filter(item => item.id !== 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+      : VIEW_BUTTONS
+  const opsButtons = isCowork
+    ? OPS_BUTTONS.filter(item => item.id === 'files')
+    : isCode
+      ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
+      : OPS_BUTTONS
   const visibleViews = (readOnly
     ? viewButtons.filter(item => item.id === 'memory' && (!enabledPanels || enabledPanels.has('memory')))
     : enabledPanels ? viewButtons.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : viewButtons)
@@ -104,7 +113,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const visibleOps = (readOnly
     ? opsButtons.filter(item => item.id === 'files' || item.id === 'shell')
     : enabledPanels ? opsButtons.filter(item => item.id === 'shell' || enabledPanels.has(item.id)) : opsButtons)
-    .filter(item => item.id !== 'shell' || showShell)
+    .filter(item => item.id !== 'shell' || (showShell && !isCowork))
     .filter(item => !localCodeSession)
   const browserConnected = useBrowserToolbarConnection(workspacePath, product.profileId, [...visibleViews, ...visibleOps].some(item => item.id === 'browser'), !readOnly)
   // Setup (identity, integrations) edits owner state, so someone else's
@@ -147,13 +156,13 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
         {showActivityMonitor && <GlobalActivityMonitor />}
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <WorkspaceToolbarFrame>
-          {/* A Crew shows its views first; a Code shows them (Automation, Costs) after its working tools. */}
-          {!isCode && viewsGroup}
+          {/* A Crew and a Cowork project show their views first; a Dev Code shows them (Automation, Costs) after its working tools. */}
+          {(!isCode || isCowork) && viewsGroup}
           {/* Ops and Setup show their icons only: always open, no label. */}
           {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Files, terminal and browser' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
-          {isCode && viewsGroup}
+          {isCode && !isCowork && viewsGroup}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
             <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} label={isCode && item.id === 'identity' ? 'Settings' : item.label} icon={isCode && item.id === 'identity' ? Settings : item.icon} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}

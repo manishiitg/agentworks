@@ -6,7 +6,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('../../hooks/usePendingCrewSuggestions', () => ({ usePendingCrewSuggestions: () => 0 }))
 vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
-import { writeCodeFilesPreference } from './codeLocalFiles'
+import { setProjectMode, writeCodeFilesPreference } from './codeLocalFiles'
+import { useChatStore } from '../../stores/useChatStore'
 import { WorkWorkspaceToolbar } from './WorkWorkspacePane'
 import { CODE_PRODUCT, CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
@@ -58,4 +59,16 @@ it.each([false, true])('shows only connection, Costs and Models during local set
   expect(hasTerminal()).toBe(true)
   expect(host.querySelector('[aria-label="Local CLI connection"]')).toBeNull()
   vi.unstubAllGlobals()
+})
+
+it('a Cowork project leads with Dashboard, Browser and Automation, keeps Files, and has no Terminal', () => {
+  useChatStore.setState({ chatTabs: { cw: { tabId: 'cw', sessionId: 'cowork-chat', metadata: { agentProfileProjectId: 'proj-cowork' } } as never } })
+  render(CODE_PRODUCT, { sessionId: 'cowork-chat', showShell: true })
+  expect(hasTerminal()).toBe(true) // a Dev project, until its mode is Cowork
+  act(() => setProjectMode('proj-cowork', 'cowork'))
+  expect(hasTerminal()).toBe(false)
+  const labels = [...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label') || '')
+  for (const wanted of ['Dashboard', 'Browser', 'Automation', 'Files']) expect(labels.some(label => label.includes(wanted)), wanted).toBe(true)
+  expect(labels.findIndex(label => label.includes('Browser'))).toBeLessThan(labels.findIndex(label => label.includes('Files')))
+  useChatStore.setState({ chatTabs: {} })
 })
