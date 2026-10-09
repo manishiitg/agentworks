@@ -17,14 +17,16 @@ async function render(onCreate: (...args: unknown[]) => void, initialMode?: 'dev
   return host
 }
 
-it('asks for the mode (Dev, Cowork or Local), starts on Dev, and creates in the chosen one', async () => {
+it('asks for the mode (Cowork, Dev or Local, in that order), starts on Dev, and creates in the chosen one', async () => {
   const onCreate = vi.fn()
   const host = await render(onCreate)
   const radios = [...host.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
   expect(radios).toHaveLength(3)
   expect(host.textContent).toContain('Dev'); expect(host.textContent).toContain('Cowork'); expect(host.textContent).toContain('Local')
-  expect(radios[0].checked).toBe(true)
-  await act(async () => radios[1].click())
+  expect(radios.map(r => r.checked)).toEqual([false, true, false]) // Cowork, Dev (the default), Local
+  const labels = [...host.querySelectorAll('input[type="radio"]')].map(r => r.closest('label')?.textContent ?? '')
+  expect(labels[0]).toContain('Cowork'); expect(labels[1]).toContain('Dev'); expect(labels[2]).toContain('Local')
+  await act(async () => radios[0].click())
   const name = host.querySelector<HTMLInputElement>('#code-create-name')!
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Sales assistant')

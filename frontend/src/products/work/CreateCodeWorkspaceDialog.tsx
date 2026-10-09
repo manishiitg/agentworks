@@ -3,10 +3,10 @@ import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { AlertCircle, Briefcase, Code2, Laptop, Loader2, X } from 'lucide-react'
 import type { ProductMode } from '../../platform/chat/productProjects'
 
-// What each mode is for, in the words a person choosing it needs. Local cannot be changed to or from later.
+// What each mode is for, in the words a person choosing it needs (Cowork, Code, Local: the order the owner asked for). Local cannot be changed to or from later.
 export const CODE_MODE_CHOICES: Array<{ mode: ProductMode; title: string; text: string; icon: typeof Code2 }> = [
-  { mode: 'dev', title: 'Dev', text: 'Build and change code with an AI agent: files, terminal and chat on the server.', icon: Code2 },
   { mode: 'cowork', title: 'Cowork', text: 'A private assistant for your work: dashboards, the browser and automations. No code needed.', icon: Briefcase },
+  { mode: 'dev', title: 'Dev', text: 'Build and change code with an AI agent: files, terminal and chat on the server.', icon: Code2 },
   { mode: 'local', title: 'Local', text: 'Work on a project folder on your own computer, through the AgentWorks CLI.', icon: Laptop },
 ]
 
