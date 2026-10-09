@@ -302,6 +302,13 @@ func resolveProfileRuntimeModel(runtime agentprofiles.RuntimePolicy, requestedPr
 		if len(option.Models) == 0 && providerOffersModel(option.Provider, requestedModelID) {
 			return strings.TrimSpace(option.Provider), requestedModelID
 		}
+		// Pi runs any "<service>/<model>" its key's service offers, which is never in a curated list: the same rule
+		// as providerOptionOffersModel. Without it the turn fell back to the profile's default provider while still
+		// carrying the Pi account: "provider connection does not match selected provider" (Excellence 2026-10-08 and
+		// 2026-10-09, PLAT-770). The account's own allowed models are enforced when the turn runs.
+		if strings.EqualFold(strings.TrimSpace(option.Provider), "pi-cli") && piServiceModelID(requestedModelID) {
+			return strings.TrimSpace(option.Provider), requestedModelID
+		}
 	}
 	return provider, modelID
 }

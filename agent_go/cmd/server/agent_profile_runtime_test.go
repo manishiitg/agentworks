@@ -603,6 +603,25 @@ func TestResolveProfileRuntimeModelUsesOnlyYAMLProviderOptions(t *testing.T) {
 	}
 }
 
+// A model picked on the person's own key (nvidia/..., openrouter/...) stays on Pi; falling back to the profile default
+// paired the Pi account with another provider and the turn was refused (Excellence 2026-10-09, PLAT-770).
+func TestResolveProfileRuntimeModelKeepsPiOnAnOwnKeyModel(t *testing.T) {
+	runtime := agentprofiles.RuntimePolicy{
+		Provider: "codex-cli", ModelID: "gpt-6-luna",
+		ProviderOptions: []agentprofiles.ProviderOption{
+			{ID: "codex", Label: "Codex", Provider: "codex-cli", ModelID: "gpt-6-luna", Default: true},
+			{ID: "pi", Label: "Pi", Provider: "pi-cli", ModelID: "google/gemini-3.8-flash", Models: []string{"google/gemini-3.8-flash"}},
+		},
+	}
+	if provider, model := resolveProfileRuntimeModel(runtime, "pi-cli", "nvidia/z-ai/glm-5.3-flash"); provider != "pi-cli" || model != "nvidia/z-ai/glm-5.3-flash" {
+		t.Fatalf("an own-key Pi model fell back to the profile default: provider=%q model=%q", provider, model)
+	}
+	// Anything that is not a service/model id still falls back, as before.
+	if provider, _ := resolveProfileRuntimeModel(runtime, "pi-cli", "not-a-service-model"); provider != "codex-cli" {
+		t.Fatalf("a plain unknown Pi model must still fall back: provider=%q", provider)
+	}
+}
+
 func TestResolveProfileRuntimeModelAcceptsCatalogModelsWhenUncurated(t *testing.T) {
 	runtime := agentprofiles.RuntimePolicy{
 		Provider: "claude-code", ModelID: "claude-sonnet-5-5",
