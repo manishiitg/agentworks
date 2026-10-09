@@ -153,6 +153,8 @@ class UserSlotsDeploymentCheckTest(unittest.TestCase):
         missing = self.setup_server("AGENTWORKS_SLOTS=on\nAGENTWORKS_SLOTS_FILE=TABLE\n", users, {"slot01": "a"})
         with self.assertRaisesRegex(ValueError, "b@example.com"):
             self.checks.check_user_slots(*missing)
+        optin = self.setup_server("AGENTWORKS_SLOTS=optin\nAGENTWORKS_SLOTS_FILE=TABLE\n", users, {"slot01": "a"})
+        self.checks.check_user_slots(*optin)  # a rollout state: warns, does not fail
         off = self.setup_server("PUBLIC_URL=x\n", users, {"slot01": "a", "slot02": "b"})
         with self.assertRaisesRegex(ValueError, "AGENTWORKS_SLOTS is not on"):
             self.checks.check_user_slots(*off)
