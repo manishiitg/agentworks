@@ -172,11 +172,11 @@ it('opens Users via Enter from an unrelated product', async () => {
   expect(onClose).toHaveBeenCalled()
 })
 
-it('hides unavailable products and admin menus and opens Providers on an allowed surface', async () => {
+it('hides unavailable products and admin-only menus and opens Providers on an allowed surface', async () => {
   const { host } = await renderNavigation('@menus ', ['code'], false)
   expect(host.textContent).toContain('Providers')
   expect(host.textContent).not.toContain('Users and access')
-  expect(host.textContent).not.toContain('Connect an AI agent')
+  expect(host.textContent).toContain('Connect an AI agent') // MCP is for every signed-in person (owner, 2026-10-09)
   expect(host.textContent).not.toContain('Schedules and triggers')
   expect(quickNavigationItems(useAuthStore.getState().user, 'code').filter(item => item.type === 'product').map(item => item.surface)).toEqual(['code'])
   await act(async () => host.querySelector('[data-navigation-id="menu:providers"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))

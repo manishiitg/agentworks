@@ -70,7 +70,7 @@ export function quickNavigationItems(
   if (products.some(surface => GLOBAL_PAGE_SURFACES.includes(surface))) {
     menu('providers', 'Providers', 'AI accounts, models and costs')
     if (user?.is_admin) menu('users', 'Users and access', 'Manage users and permissions')
-    if (user?.is_admin || user?.is_code_reviewer) menu('mcp', 'Connect an AI agent (MCP)', 'Connect an agent to this server')
+    if (user) menu('mcp', 'Connect an AI agent (MCP)', 'Connect an agent to this server')
   }
   if (current === 'mcp-gateway' && products.includes(current) && gatewayAdminUrl() && user?.is_admin) {
     menu('vault-audit', 'Vault audit logs', 'Vault · audit and analysis')

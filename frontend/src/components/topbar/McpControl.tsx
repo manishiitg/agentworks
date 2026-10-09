@@ -8,15 +8,17 @@ import { useLLMStore } from '../../stores/useLLMStore'
 /**
  * McpControl - top-bar icon that opens the "Connect an AI agent (MCP)" full
  * page: how a local or hosted AI agent connects to this server, and (for
- * admins and Code reviewers) the code:review tools. Shown to admins and Code
- * reviewers only.
+ * admins and Code reviewers) the code:review tools. Shown to every signed-in
+ * person; the tools an agent gets follow the person's role.
  */
 export default function McpControl() {
   const sidebar = useProductNavigationSidebar()
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'mcp')
   const setAdminPage = useAppStore(state => state.setAdminPage)
-  if (!user || (user.is_admin !== true && user.is_code_reviewer !== true)) return null
+  // Every signed-in person may connect an AI agent; the tools it gets follow their role (owner, 2026-10-09). The page itself shows
+  // the Code-review section to admins and Code reviewers only.
+  if (!user) return null
   return (
     <Tooltip>
       <TooltipTrigger asChild>
