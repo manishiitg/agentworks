@@ -517,8 +517,11 @@ func (s *Service) authorizeRetry(p Principal, tool string, args map[string]any, 
 	case "create_knowledgebase", "create_knowledgebase_folder":
 		_, e := s.resolveFolder(p, args, roleEditor)
 		return e
-	case "update_knowledgebase":
-		_, _, e := s.resolveEntry(p, args, roleEditor)
+	case "update_knowledgebase", "move_knowledgebase", "restore_knowledgebase":
+		_, _, e := s.resolveEntry(p, map[string]any{"entry_id": stringArg(asMap(result), "entry_id")}, roleEditor)
+		if stringArg(asMap(result), "entry_id") == "" {
+			_, _, e = s.resolveEntry(p, args, roleEditor)
+		}
 		return e
 	case "delete_knowledgebase":
 		m := asMap(result)

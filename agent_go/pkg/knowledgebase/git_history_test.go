@@ -43,3 +43,37 @@ func TestBrainChangesSinceACommit(t *testing.T) {
 		t.Fatal("no diff of a folder the caller cannot read")
 	}
 }
+
+// Restore brings an earlier commit's content back as a new version; move keeps
+// the entry's ID and history and needs Editor on both folders, since moving
+// changes who may read it.
+func TestBrainRestoreAndMove(t *testing.T) {
+	s, admin, priya := fixture(t, false)
+	ctx := context.Background()
+	if _, err := s.EnsureGitRepository(ctx); err != nil {
+		t.Fatal(err)
+	}
+	folder(t, s, admin, "", "Company")
+	folder(t, s, admin, "", "Archive")
+	grant(t, s, admin, priya.IdentityID, "Company", "Editor", "priya-edits")
+	note := create(t, s, admin, "Company", "about.md", "first\n", "about")
+	head := call(t, s, admin, "list_knowledgebase_changes", nil)["head"].(string)
+	edited := call(t, s, admin, "update_knowledgebase", map[string]any{"entry_id": note["entry_id"], "expected_version": note["version"], "content": "second\n", "request_id": "edit"})
+	restored := call(t, s, admin, "restore_knowledgebase", map[string]any{"entry_id": note["entry_id"], "expected_version": edited["version"], "commit": head, "request_id": "restore"})
+	if read := call(t, s, admin, "read_knowledgebase", map[string]any{"entry_id": note["entry_id"]}); read["content"] != "first\n" {
+		t.Fatalf("restore: %v", read)
+	}
+	if _, err := s.Call(ctx, priya, "move_knowledgebase", map[string]any{"entry_id": note["entry_id"], "expected_version": restored["version"], "to_folder_path": "Archive", "request_id": "priya-move"}); err == nil {
+		t.Fatal("an editor of Company moved an entry into Archive, which they cannot edit")
+	}
+	moved := call(t, s, admin, "move_knowledgebase", map[string]any{"entry_id": note["entry_id"], "expected_version": restored["version"], "to_folder_path": "Archive", "new_filename": "about-old.md", "request_id": "move"})
+	if moved["entry_id"] != note["entry_id"] || moved["path"] != "Archive/about-old.md" {
+		t.Fatalf("move: %v", moved)
+	}
+	if _, err := s.Call(ctx, admin, "read_knowledgebase", map[string]any{"path": "Company/about.md"}); err == nil {
+		t.Fatal("the old path still reads")
+	}
+	if read := call(t, s, admin, "read_knowledgebase", map[string]any{"path": "Archive/about-old.md"}); read["content"] != "first\n" {
+		t.Fatalf("moved content: %v", read)
+	}
+}

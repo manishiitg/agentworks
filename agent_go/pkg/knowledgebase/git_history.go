@@ -78,7 +78,7 @@ func historyMessage(tool string, a map[string]any) string {
 	if what == "" {
 		what = stringArg(a, "entry_id")
 	}
-	verb := map[string]string{"create_knowledgebase": "Add", "update_knowledgebase": "Update", "delete_knowledgebase": "Delete", "create_knowledgebase_folder": "Add folder", "publish_knowledgebase_skill": "Publish skill"}[tool]
+	verb := map[string]string{"create_knowledgebase": "Add", "update_knowledgebase": "Update", "delete_knowledgebase": "Delete", "move_knowledgebase": "Move", "restore_knowledgebase": "Restore", "create_knowledgebase_folder": "Add folder", "publish_knowledgebase_skill": "Publish skill"}[tool]
 	if verb == "" {
 		return ""
 	}

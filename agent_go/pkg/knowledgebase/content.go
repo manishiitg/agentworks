@@ -39,6 +39,10 @@ func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[s
 		return s.updateEntry(p, a)
 	case "delete_knowledgebase":
 		return s.deleteEntry(p, a)
+	case "move_knowledgebase":
+		return s.moveEntry(p, a)
+	case "restore_knowledgebase":
+		return s.restoreEntry(ctx, p, a)
 	case "read_knowledgebase":
 		v, e := s.readEntry(p, a)
 		return v, nil, e
@@ -983,4 +987,109 @@ func searchLines(ctx context.Context, file string, content []byte, query string)
 		}
 	}
 	return out, nil
+}
+
+// moveEntry moves or renames an entry, keeping its ID and history. Moving
+// changes who may read it, so the caller needs Editor on both folders.
+func (s *Service) moveEntry(p Principal, a map[string]any) (any, []fileChange, error) {
+	e, src, err := s.resolveEntry(p, a, roleEditor)
+	if err != nil {
+		return nil, nil, err
+	}
+	if stringArg(a, "expected_version") != e.Version {
+		return nil, nil, versionConflict(e)
+	}
+	dst := src
+	if to, ok := a["to_folder_path"].(string); ok && !strings.EqualFold(strings.Trim(to, "/"), strings.Trim(src.Path, "/")) {
+		if dst, err = s.resolveFolder(p, map[string]any{"folder_path": to}, roleEditor); err != nil {
+			return nil, nil, err
+		}
+	}
+	name := e.Filename
+	if v := stringArg(a, "new_filename"); v != "" {
+		name = v
+	}
+	if !validName(name, true) {
+		return nil, nil, badArg("Invalid filename.")
+	}
+	samePlace := dst.ID == src.ID
+	if samePlace && name == e.Filename {
+		return nil, nil, badArg("Supply to_folder_path or new_filename.")
+	}
+	if (!samePlace || !strings.EqualFold(name, e.Filename)) && s.collision(dst, name) {
+		return nil, nil, kbErr("NAME_CONFLICT", "A sibling with this name already exists.")
+	}
+	newPath := childPath(dst.Path, name)
+	if err = validatePath(newPath, true); err != nil {
+		return nil, nil, err
+	}
+	data, err := s.entryContent(e)
+	if err != nil {
+		return nil, nil, err
+	}
+	oldPath := e.Path
+	e.FolderID, e.FolderPath, e.Path, e.Filename = dst.ID, dst.Path, newPath, name
+	e.Sequence++
+	e.Version = entryVersion(e)
+	e.UpdatedAt = stamp()
+	e.UpdatedBy = p.IdentityID
+	kept := make([]Entry, 0, len(src.Entries))
+	for _, v := range src.Entries {
+		if v.ID != e.ID {
+			kept = append(kept, v)
+		}
+	}
+	changes := []fileChange{{Path: filepath.Join(s.live, filepath.FromSlash(newPath)), Data: data}}
+	if !strings.EqualFold(oldPath, newPath) {
+		changes = append(changes, fileChange{Path: filepath.Join(s.live, filepath.FromSlash(oldPath)), Delete: true})
+	}
+	if samePlace {
+		src.Entries = append(kept, e)
+		changes = append(changes, jsonChange(s.registryPath(src.Path), src))
+	} else {
+		src.Entries = kept
+		dst.Entries = append(dst.Entries, e)
+		changes = append(changes, jsonChange(s.registryPath(src.Path), src), jsonChange(s.registryPath(dst.Path), dst))
+	}
+	result := entryResult(e, true)
+	result["moved_from"] = oldPath
+	return result, changes, nil
+}
+
+var restoreCommitPattern = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
+// restoreEntry saves an earlier commit's content of an entry as its next
+// version, through the normal update and its version check.
+func (s *Service) restoreEntry(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
+	e, _, err := s.resolveEntry(p, a, roleEditor)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !s.hasGitHistory() {
+		return nil, nil, kbErr("NO_HISTORY", "Brain has no version history to restore from.")
+	}
+	commit := strings.ToLower(stringArg(a, "commit"))
+	if !restoreCommitPattern.MatchString(commit) {
+		return nil, nil, badArg("commit must be a commit hash from changes.")
+	}
+	if _, err = s.gitInLive(ctx, nil, "merge-base", "--is-ancestor", commit, "HEAD"); err != nil {
+		return nil, nil, kbErr("NOT_FOUND", "That commit is not in Brain's history.")
+	}
+	old, err := s.gitInLive(ctx, nil, "show", commit+":"+e.Path)
+	if err != nil {
+		return nil, nil, kbErr("NOT_FOUND", "The entry had no content at that path in that commit.")
+	}
+	update := map[string]any{"entry_id": e.ID, "expected_version": stringArg(a, "expected_version")}
+	if isText([]byte(old)) {
+		update["content"] = old
+	} else {
+		update["content_base64"] = base64.StdEncoding.EncodeToString([]byte(old))
+	}
+	result, changes, err := s.updateEntry(p, update)
+	if err == nil {
+		if m, ok := result.(map[string]any); ok {
+			m["restored_from"] = commit
+		}
+	}
+	return result, changes, err
 }
