@@ -18,7 +18,7 @@ func TestBuilderSecretReferencesDescribeManagedVaultSharing(t *testing.T) {
 	for _, mode := range []string{"workshop", "multi-agent"} {
 		t.Run(mode, func(t *testing.T) {
 			text := materializedFileContent(t, MaterializeReferenceSkill(mode), "references/secret-management.md")
-			for _, want := range []string{"manage_global_secret", "list_groups", `action="share"`, "group_ids", "keeps the project copy", "environment-backed", "search_tools/get_api_spec"} {
+			for _, want := range []string{"Share to Vault", "manage_vault_secret_access", "project copy stays", "search_tools/get_api_spec"} {
 				if !strings.Contains(text, want) {
 					t.Errorf("attached secret reference omits %q", want)
 				}
@@ -31,7 +31,7 @@ func TestBuilderSecretReferencesDescribeManagedVaultSharing(t *testing.T) {
 		})
 	}
 	workflow := materializedFileContent(t, MaterializeReferenceSkill("workshop"), "references/workflow-tools.md")
-	if !strings.Contains(workflow, `action="share"`) || !strings.Contains(workflow, "keeps the source") {
+	if !strings.Contains(workflow, "Share to Vault") || !strings.Contains(workflow, "keeps the project copy") {
 		t.Fatal("workflow tools reference omits managed Vault copy semantics")
 	}
 }

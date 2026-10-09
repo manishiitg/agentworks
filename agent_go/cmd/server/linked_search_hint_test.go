@@ -23,7 +23,7 @@ func TestLinkedBuildersUseCurrentPlatformSkillsAndVaultCatalog(t *testing.T) {
 		"workflow": workflowCLIWorkspaceInstructions("Workflow/demo"),
 		"crew":     crewCLIWorkspaceInstructions("Chats/Work/projects/demo"),
 	} {
-		for _, want := range []string{"current attached builder-reference", "Never guess a provider's skill folder", "Do not search project/ for legacy", "search_tools/get_api_spec", "manage_global_secret(action=share)", "backend authorization remain authoritative"} {
+		for _, want := range []string{"current attached builder-reference", "Never guess a provider's skill folder", "Do not search project/ for legacy", "search_tools/get_api_spec", "Shared secrets live in Vault", "backend authorization remain authoritative"} {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s instructions omit %q", name, want)
 			}

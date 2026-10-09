@@ -115,31 +115,16 @@ func TestManagedGlobalConflictsDoNotRemoveSource(t *testing.T) {
 	}
 }
 
-func TestManagedGlobalToolGateAndNoValueOutput(t *testing.T) {
+// Shared secrets are Vault secrets, managed in Vault (owner, 2026-10-09:
+// "global = vault"); no Builder chat gets a shared-secret tool, admin or not.
+func TestBuilderChatsHaveNoSharedSecretTool(t *testing.T) {
 	api := managedGlobalTestAPI(t)
-	ordinary := &recordingRegistrar{}
-	if err := api.registerSecretManagementTools(ordinary, "a1", sharedSecretsTestWorkflow, "secrets", false, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := ordinary.tools["manage_global_secret"]; exists {
-		t.Fatal("non-admin sees global mutation tool")
-	}
 	admin := &recordingRegistrar{}
 	if err := api.registerSecretManagementTools(admin, "admin", sharedSecretsTestWorkflow, "secrets", false, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	tool, exists := admin.tools["manage_global_secret"]
-	if !exists {
-		t.Fatal("admin tool missing")
-	}
-	output, err := tool.exec(context.Background(), map[string]interface{}{"action": "set", "name": "TOOL_TOKEN", "value": "private-value"})
-	if err != nil || strings.Contains(output, "private-value") {
-		t.Fatalf("unsafe tool output: %v", err)
-	}
-	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","can_create":true,"products":[]}]}`)
-	_, err = tool.exec(context.Background(), map[string]interface{}{"action": "delete", "name": "TOOL_TOKEN"})
-	if !errors.Is(err, errGlobalAdmin) {
-		t.Fatal("demoted admin retained tool authority")
+	if _, exists := admin.tools["manage_global_secret"]; exists {
+		t.Fatal("Builder chat has a shared-secret tool; that belongs to Vault")
 	}
 }
 
@@ -153,7 +138,7 @@ func TestManagedGlobalRejectsUnreadableCiphertext(t *testing.T) {
 	}
 }
 
-func TestManagedGlobalToolPromotesFromAnotherWorkflow(t *testing.T) {
+func TestListSecretsFromAnotherWorkflowNeedsAdmin(t *testing.T) {
 	api := managedGlobalTestAPI(t)
 	ctx := context.Background()
 	const name = "CROSS_WORKFLOW_TOKEN"
@@ -166,41 +151,18 @@ func TestManagedGlobalToolPromotesFromAnotherWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := registrar.tools["list_secrets"]
-	promote := registrar.tools["manage_global_secret"]
 	output, err := list.exec(ctx, map[string]interface{}{"source_workflow_path": sharedSecretsTestWorkflow})
 	if err != nil || !strings.Contains(output, name) || strings.Contains(output, value) {
 		t.Fatalf("source listing failed or exposed value: %v", err)
 	}
 	for _, invalid := range []interface{}{"", "Workflow/missing", "Workflow/renewals/../destination", 123} {
-		args := map[string]interface{}{"action": "promote", "name": name, "source_workflow_path": invalid}
-		if _, err := promote.exec(ctx, args); err == nil {
-			t.Fatalf("accepted invalid source %v", invalid)
-		}
-		if _, err := list.exec(ctx, args); err == nil {
+		if _, err := list.exec(ctx, map[string]interface{}{"source_workflow_path": invalid}); err == nil {
 			t.Fatalf("listed invalid source %v", invalid)
 		}
-	}
-	if _, err := promote.exec(ctx, map[string]interface{}{"action": "promote", "name": name}); err == nil {
-		t.Fatal("omitted source unexpectedly found another workflow's secret")
-	}
-	output, err = promote.exec(ctx, map[string]interface{}{"action": "promote", "name": name, "source_workflow_path": sharedSecretsTestWorkflow})
-	if err != nil || strings.Contains(output, value) {
-		t.Fatalf("cross-workflow promotion failed or exposed value: %v", err)
-	}
-	selected := api.loadSelectedSecrets(ctx, "a1", sharedSecretsTestWorkflow, []string{name})
-	if len(selected) != 1 || selected[0].Value != value {
-		t.Fatal("source attachment broken")
-	}
-	names := []string{name}
-	if resolved := api.mergeGlobalSecretsFor(ctx, "admin", nil, &names); len(resolved) != 1 || resolved[0].Value != value {
-		t.Fatal("destination cannot use promoted global")
 	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","can_create":true,"products":[]}]}`)
 	if _, err := list.exec(ctx, map[string]interface{}{"source_workflow_path": sharedSecretsTestWorkflow}); !errors.Is(err, errGlobalAdmin) {
 		t.Fatal("demoted admin could list another source")
-	}
-	if _, err := promote.exec(ctx, map[string]interface{}{"action": "promote", "name": name, "source_workflow_path": sharedSecretsTestWorkflow}); !errors.Is(err, errGlobalAdmin) {
-		t.Fatal("demoted admin could promote from another source")
 	}
 }
 

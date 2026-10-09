@@ -24,17 +24,10 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
   Secret values remain encrypted outside the manifest. Shared Vault credentials also require the executing user's current group permission. Respect the user's
   selections in **Integrations > Secrets**; do not attach an unrelated credential.
 - A read-only workflow or Crew reference never grants its secrets. To reuse a
-  credential across projects, an administrator can copy the source project/workflow secret with
-  `manage_global_secret(action="share", name="SOURCE_NAME", group_ids=["GROUP_ID"], vault_name="VAULT_NAME")`.
-  First use `manage_global_secret(action="list_groups")` to discover actual group IDs.
-  Use `list_secrets(source_workflow_path="EXACT_PATH")` when copying from another
-  accessible project, then pass the same `source_workflow_path` to the share action.
-  Explain that new shared secrets inherit Platform access by default, which administrators can revoke.
-  Ask which additional groups should receive access when the user's intent is unclear. Sharing keeps the source and existing attachments
-  intact, never overwrites a Vault name, and never returns plaintext. The two
-  copies rotate independently. The legacy `action="promote"` removes the source
-  copy; prefer share for requests to share a credential.
-  Alternatively create it through Vault > Secrets and grant use to an existing
+  credential across projects, it goes into Vault: a Vault administrator shares
+  the project secret into Vault (the **Share to Vault** button, Vault's chat or
+  Vault's MCP tools; the value is copied on the server and the project copy
+  stays), or creates it in Vault > Secrets, and grants use to an existing
   group in Vault > Access > Secrets. Explicitly select that shared
   name in each destination {{product}} project with
   `update_project_global_secret_selection(action="select", name="NAME")`.

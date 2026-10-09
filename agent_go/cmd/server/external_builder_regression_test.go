@@ -60,7 +60,7 @@ func TestExternalMCPDispatchAcceptsSuccessfulStatuses(t *testing.T) {
 }
 func TestExternalBuilderDeniesIndirectRuntimeEscapes(t *testing.T) {
 	c := &UserClaims{ExternalBuilderOperationID: "trusted-op"}
-	for _, name := range []string{"read_image", "review_step_code", "get_workflow_config", "preview_report", "execute_shell_command", "diff_patch_workspace_file", "run_in_background", "manage_user_access", "manage_global_secret", "add_mcp_server", "arbitrary_connected_tool"} {
+	for _, name := range []string{"read_image", "review_step_code", "get_workflow_config", "preview_report", "execute_shell_command", "diff_patch_workspace_file", "run_in_background", "manage_user_access", "add_mcp_server", "arbitrary_connected_tool"} {
 		if !externalBuilderToolDenied(c, name) {
 			t.Fatalf("indirect authority escape admitted: %s", name)
 		}

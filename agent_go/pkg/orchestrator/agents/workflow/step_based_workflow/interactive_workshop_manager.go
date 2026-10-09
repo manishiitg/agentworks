@@ -1225,7 +1225,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		// Secret management tools. Managed globals require server admin; the
 		// workflow encrypted store is writable when the corresponding tools
 		// are registered.
-		"list_secrets", "set_workflow_secret", "delete_workflow_secret", "manage_global_secret", "manage_user_access", "manage_workflow_webhook",
+		"list_secrets", "set_workflow_secret", "delete_workflow_secret", "manage_user_access", "manage_workflow_webhook",
 		// Product chat tools, including human tools, are appended below from
 		// AgentWorks product.yaml so mode admission has one source of truth.
 		// Browser (if registered)

@@ -409,7 +409,6 @@ func crewReaderDeniedTools() []string {
 		// Secrets (already skipped when read-only; denied here too).
 		"set_workflow_secret",
 		"delete_workflow_secret",
-		"manage_global_secret",
 		// Crew identity and UI actions (reads stay).
 		"set_work_identity",
 		"create_crew",

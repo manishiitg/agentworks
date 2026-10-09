@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Shared secrets are Vault secrets, managed only in Vault
+
+"Global" secrets are Vault secrets. Builder and Crew chats no longer get
+`manage_global_secret`; sharing a project secret into Vault and deleting a
+Vault secret are operations of Vault's `manage_vault_secret_access` (Vault
+chat and MCP, Vault admins only), next to the app's Share to Vault button.
+No tool accepts a secret value for Vault: values are typed into Vault's Secrets
+panel, and share copies the value on the server. Projects still select the
+Vault names they use. Code: `external_vault.go`, `vault_management_tools.go`;
+ticket PLAT-738.
+
 ### 2026-10-09 — Navigation uses one hint per hide cycle
 
 Both idle hiding and the manual pin show the same compact shortcut hint. Opening

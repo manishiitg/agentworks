@@ -255,7 +255,7 @@ Use `get_workflow_config` to see the workflow's selected skills. Use `list_skill
 Secrets are credentials (API keys, tokens, passwords) injected into step agents as `$SECRET_<NAME>` environment variables at execution time. They exist in two buckets:
 
 - **Workflow secrets** — encrypted server-side, scoped only to this workflow. Use these by default for workflow-specific credentials.
-- **Vault secrets** — managed encrypted shared credentials with group permissions. Administrators can create, update and share them from builder chat through `manage_global_secret`. Only `GLOBAL_SECRET_*` environment entries are operator-managed and cannot be edited from chat. Check the current admitted tool schema before claiming an operation is unavailable.
+- **Vault secrets** — managed encrypted shared credentials with group permissions. They are added, rotated, shared and deleted in Vault, not from a Builder chat; a workflow selects the Vault names it uses. `GLOBAL_SECRET_*` environment entries are operator-managed.
 
 **Storing a new secret is one step.** `set_workflow_secret(name="BUFFER_API_KEY", value="<plaintext>")` stores, attaches, and injects the value into the active builder shell and future workflow steps.
 
@@ -263,7 +263,7 @@ Secrets are credentials (API keys, tokens, passwords) injected into step agents 
 
 Do **not** give boilerplate advice like `"rotate this secret"` after a normal user-requested save. Recommend rotation only when there is a concrete exposure reason: the value was printed into logs/output, committed to a file, sent to the wrong channel, or the user explicitly asks for security remediation.
 
-**Sharing a project secret to Vault**: discover `manage_global_secret` in the live tool catalog and inspect its schema. Use `action="list_groups"` to get recipient IDs, then `action="share", name="SOURCE_NAME", group_ids=["GROUP_ID"]` with optional `vault_name` and `source_workflow_path`. Ask which groups should receive access if unspecified. The backend copies and encrypts the value without exposing it to the model, keeps the source and its attachments unchanged, and rejects existing Vault names. Newly registered shared secrets also inherit Platform access by default; administrators can revoke it. Explain this default before sharing. Copies rotate independently. Destination projects explicitly select the Vault name and runtime checks their users' group permissions. This requires current administrator and Vault management access; a read-only session or group use grant cannot publish secrets. Never read legacy generated .pi/.claude skill files in the project to infer current platform capabilities. Load the attached canonical `builder-reference/references/secret-management.md` instead.
+**Sharing a project secret to Vault** is done in Vault by a Vault administrator (the **Share to Vault** button in the project's secrets, Vault's chat, or Vault's MCP tools). The backend copies the value without exposing it to any model and keeps the project copy. From a Builder chat, tell the user where to do it. Never read legacy generated .pi/.claude skill files in the project to infer current platform capabilities. Load the attached canonical `builder-reference/references/secret-management.md` instead.
 
 **Other secret ops**:
 

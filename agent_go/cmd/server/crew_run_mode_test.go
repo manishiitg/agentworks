@@ -156,7 +156,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		"create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule",
 		"create_project_trigger", "update_project_trigger", "delete_project_trigger",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",
-		"set_workflow_secret", "delete_workflow_secret", "manage_global_secret",
+		"set_workflow_secret", "delete_workflow_secret",
 		"set_work_identity", "create_crew", "perform_ui_action",
 	} {
 		if gate.Admit(denied) {

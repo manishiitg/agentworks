@@ -246,7 +246,6 @@ chat:
       - list_skills
       - list_ui_capabilities
       - manage_custom_commands
-      - manage_global_secret
       - manage_internet_share
       - manage_my_vaults
       - manage_user_access

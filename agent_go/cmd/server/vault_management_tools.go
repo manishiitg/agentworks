@@ -29,9 +29,13 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 			"description": map[string]any{"type": "string", "maxLength": 2000, "description": "Shown to every member of the group. Say what the group is for; never name people, emails or who is excluded (membership is the member list)."},
 			"user_id":     externalString("Exact active platform user ID returned by list_users."),
 		}, "operation")},
-		{Name: "manage_vault_secret_access", Category: "vault", Description: "List Vault secret names (optionally assigned to group_id), or set group access with operation=set, group_id, name and allowed. Values are never returned or accepted. Add/rotate values in Vault's secure Secrets panel.", Parameters: object(map[string]any{
-			"operation": map[string]any{"type": "string", "enum": []string{"list", "set"}},
-			"group_id":  externalString("Existing Vault group ID."), "name": externalString("Exact existing secret name."), "allowed": map[string]any{"type": "boolean"},
+		{Name: "manage_vault_secret_access", Category: "vault", Description: "Vault secrets. operation=list: secret names (optionally those assigned to group_id). operation=set with group_id, name and allowed: group access. operation=share with name, source_workflow_id or source_crew_id, group_ids and optional vault_name: copies that project's secret into Vault on the server and grants the groups (the project copy stays; copies rotate independently). operation=delete with name and confirm repeating it. Values are never returned or accepted; add or rotate values in Vault's Secrets panel.", Parameters: object(map[string]any{
+			"operation": map[string]any{"type": "string", "enum": []string{"list", "set", "share", "delete"}},
+			"group_id":  externalString("Existing Vault group ID."), "name": externalString("Exact existing secret name (for share: the project's secret name)."), "allowed": map[string]any{"type": "boolean"},
+			"source_workflow_id": externalString("For share: the source workflow or Relay ID."), "source_crew_id": externalString("For share: the source Crew ID."),
+			"vault_name": externalString("For share: name in Vault; defaults to name. Existing names are never overwritten."),
+			"group_ids":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1, "maxItems": 100, "description": "For share: Vault group IDs from manage_vault_groups list."},
+			"confirm":    externalString("For delete: repeat the secret name."),
 		}, "operation")},
 	}
 	for _, definition := range virtualtools.WorkflowDBSQLToolDefinitions() {

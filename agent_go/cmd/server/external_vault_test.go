@@ -122,6 +122,9 @@ func TestExternalVaultGroupsReuseIdentityBindingAndRejectPaths(t *testing.T) {
 	if w.Code != 400 || len(paths) != 2 {
 		t.Fatal("secret values accepted")
 	}
+	if w = call("manage_vault_secret_access", map[string]any{"operation": "delete", "name": "KEY", "confirm": "OTHER"}); w.Code != 400 {
+		t.Fatalf("delete without a matching confirm: %d %s", w.Code, w.Body)
+	}
 	// Re-approving a changed tool approves exactly the reviewed definition.
 	if w = call("manage_vault_tools", map[string]any{"operation": "approve", "public_name": "crm_search"}); w.Code != 400 || len(paths) != 2 {
 		t.Fatal("approve without the reviewed fingerprint reached the service")

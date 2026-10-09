@@ -23,7 +23,7 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 	add("conditional workspace browser tools", "agent_browser")
 	add("server secret management tools",
 		"list_secrets", "set_workflow_secret", "delete_workflow_secret",
-		"manage_global_secret", "manage_user_access", "manage_workflow_webhook",
+		"manage_user_access", "manage_workflow_webhook",
 	)
 	// Registered by registerLLMCapabilityDiscoveryTools in multiagent_llm_tools.go,
 	// which is outside the workflow tool pool. Granted to workshop mode by

@@ -119,7 +119,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Managed browser access is enabled. When browser work is needed, read the attached `agent-browser` skill before acting; live browser status is authoritative.",
 	},
 	"secrets": {
-		Tools:           []string{"list_secrets", "set_workflow_secret", "delete_workflow_secret", "manage_global_secret", "update_project_global_secret_selection"},
+		Tools:           []string{"list_secrets", "set_workflow_secret", "delete_workflow_secret", "update_project_global_secret_selection"},
 		Skills:          []string{"work-integrations"},
 		UIPanels:        []string{"secrets"},
 		Capabilities:    map[string]CapabilityRequirement{"secrets": CapabilityPreferred},

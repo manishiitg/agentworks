@@ -24,9 +24,8 @@ import (
 // delete_workflow_secret so callers can clean up workspace state (e.g.
 // detach from workflow.json + refresh workshop shell env). Errors returned
 // by afterDelete are surfaced to the agent.
-// readOnly (PLAT-262), when true, registers only list_secrets — the three
-// mutating tools (manage_global_secret, set_workflow_secret,
-// delete_workflow_secret) are skipped entirely so a read-only session never
+// readOnly (PLAT-262), when true, registers only list_secrets — the two
+// mutating tools (set_workflow_secret, delete_workflow_secret) are skipped entirely so a read-only session never
 // sees them in its tool catalog.
 func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegistrar, userID, workflowPath, toolCategory string, readOnly bool, afterUpsert func(ctx context.Context, name, value string) error, afterDelete func(ctx context.Context, name string) error) error {
 	if agent == nil {
@@ -107,102 +106,6 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 
 	if readOnly {
 		return nil
-	}
-
-	if canManageGlobalSecrets(userID) {
-		if err := registerTool("manage_global_secret", "Admin-only Vault secret management. For sharing, first use action=list_groups to discover recipient group IDs; ask the user to choose groups when unspecified. action=share copies a source project/workflow secret into Vault, keeps its source and attachments unchanged, and grants the explicit group_ids. Optional vault_name renames the copy; source_workflow_path defaults to the active workspace. Existing Vault names are never overwritten. Values transfer inside the backend: do not request plaintext. Copies rotate independently; destinations explicitly select the Vault name. Legacy action=promote MOVES the source and creates no grants; prefer share. action=set creates/updates a managed global value; delete removes it. Environment globals cannot be changed. Values are never returned", map[string]interface{}{
-			"type": "object", "properties": map[string]interface{}{
-				"action":               map[string]interface{}{"type": "string", "enum": []string{"share", "list_groups", "promote", "set", "delete"}},
-				"name":                 map[string]interface{}{"type": "string"},
-				"source_workflow_path": map[string]interface{}{"type": "string", "description": "For share or promote: source workspace path such as Workflow/rts-latency or the exact path returned for a Crew project. Omit to use the active project/workflow. Use list_secrets with this path to discover names first."},
-				"vault_name":           map[string]interface{}{"type": "string", "description": "For share: optional new name in Vault; defaults to name. Existing names are never overwritten."},
-				"group_ids":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "minItems": 1, "maxItems": 100, "description": "For share: explicit recipient group IDs from action=list_groups. Never infer access from admin status."},
-				"value":                map[string]interface{}{"type": "string", "description": "New value for action=set only; omit when promoting an existing workflow secret."},
-			}, "required": []string{"action"},
-		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if !canManageGlobalSecrets(userID) {
-				return "", errGlobalAdmin
-			}
-			name, _ := args["name"].(string)
-			name = strings.TrimSpace(name)
-			action, _ := args["action"].(string)
-			var err error
-			if action == "list_groups" {
-				groups, err := vaultSecretShareGroups(ctx, userID)
-				if err != nil {
-					return "", err
-				}
-				data, err := json.Marshal(map[string]any{"groups": groups})
-				return string(data), err
-			}
-			if name == "" {
-				return "", fmt.Errorf("name is required")
-			}
-			switch action {
-			case "share":
-				sourcePath := workflowPath
-				if raw, supplied := args["source_workflow_path"]; supplied {
-					path, ok := raw.(string)
-					if !ok || strings.TrimSpace(path) == "" {
-						return "", fmt.Errorf("source_workflow_path must be a non-empty workspace path")
-					}
-					sourcePath = path
-				}
-				vaultName := ""
-				if raw, supplied := args["vault_name"]; supplied {
-					var ok bool
-					vaultName, ok = raw.(string)
-					if !ok {
-						return "", fmt.Errorf("vault_name must be a string")
-					}
-				}
-				if vaultName == "" {
-					vaultName = name
-				}
-				ids := []string{}
-				switch raw := args["group_ids"].(type) {
-				case []string:
-					ids = raw
-				case []interface{}:
-					for _, value := range raw {
-						id, ok := value.(string)
-						if !ok {
-							return "", fmt.Errorf("group_ids must contain strings")
-						}
-						ids = append(ids, id)
-					}
-				default:
-					return "", fmt.Errorf("group_ids is required for sharing")
-				}
-				if err := api.shareWorkflowSecretToVault(ctx, userID, sourcePath, name, vaultName, ids); err != nil {
-					return "", err
-				}
-				return fmt.Sprintf("Secret %q copied to Vault as %q with access for the selected groups. The project copy and its attachments are unchanged. Copies rotate independently. Select %q in destination projects to use it. No value returned.", name, vaultName, vaultName), nil
-			case "promote":
-				sourcePath := workflowPath
-				if raw, supplied := args["source_workflow_path"]; supplied {
-					path, ok := raw.(string)
-					if !ok || strings.TrimSpace(path) == "" {
-						return "", fmt.Errorf("source_workflow_path must be a non-empty workflow workspace path")
-					}
-					sourcePath = path
-				}
-				err = api.promoteWorkflowSecret(ctx, userID, sourcePath, name)
-			case "set":
-				value, _ := args["value"].(string)
-				err = api.saveManagedGlobalSecret(ctx, userID, name, value, false)
-			case "delete":
-				err = api.deleteManagedGlobalSecret(ctx, userID, name)
-			default:
-				return "", fmt.Errorf("action must be share, list_groups, promote, set, or delete")
-			}
-			if err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("Global secret %q: %s completed. No value returned. Grant use permission to a group in Vault, then select this name in each destination project's or workflow's Global Secrets.", name, action), nil
-		}); err != nil {
-			return err
-		}
 	}
 
 	if strings.TrimSpace(workflowPath) != "" {

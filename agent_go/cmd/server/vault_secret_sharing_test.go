@@ -45,7 +45,7 @@ func sharingTestVault(t *testing.T, failGrants bool) *int {
 	return writes
 }
 
-func TestVaultSecretSharingKeepsSourceAndBuilderUsesSameAction(t *testing.T) {
+func TestVaultSecretSharingKeepsSource(t *testing.T) {
 	api := managedGlobalTestAPI(t)
 	grants := sharingTestVault(t, false)
 	ctx := context.Background()
@@ -53,18 +53,8 @@ func TestVaultSecretSharingKeepsSourceAndBuilderUsesSameAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
-	registrar := &recordingRegistrar{}
-	if err := api.registerSecretManagementTools(registrar, "admin", sharedSecretsTestWorkflow, "secrets", false, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	tool := registrar.tools["manage_global_secret"]
-	groups, err := tool.exec(ctx, map[string]interface{}{"action": "list_groups"})
-	if err != nil || !strings.Contains(groups, "finance") {
-		t.Fatalf("group discovery: %v", err)
-	}
-	output, err := tool.exec(ctx, map[string]interface{}{"action": "share", "name": "PROJECT_KEY", "vault_name": "TEAM_KEY", "group_ids": []interface{}{"platform", "finance"}})
-	if err != nil || strings.Contains(output, "private-sharing-value") || !strings.Contains(output, "unchanged") {
-		t.Fatalf("sharing: %s %v", output, err)
+	if err := api.shareWorkflowSecretToVault(ctx, "admin", sharedSecretsTestWorkflow, "PROJECT_KEY", "TEAM_KEY", []string{"platform", "finance"}); err != nil {
+		t.Fatalf("sharing: %v", err)
 	}
 	after, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
 	if len(after) != 1 || before[0].EncryptedValue != after[0].EncryptedValue {

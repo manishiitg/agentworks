@@ -1012,7 +1012,7 @@ plus `createWorkSession`): it writes `workflow.json`, `product.json`, and a
 `code/` folder through generic planner-file APIs, with no server validation,
 idempotency, or wiring. Reusable server pieces: `manage_crew_trigger`
 (internal + caller binding), `manage_crew_attachment`, `add_step(type="crew")`,
-`list_accessible_workflows`, `list_secrets` / `manage_global_secret`,
+`list_accessible_workflows`, `list_secrets`,
 `list_mcp_servers`, `list_skills` / `search_skills`, and the
 `updateProductSelected*` writers. Builder approval is conversational
 (blocking `human_feedback` is forbidden in Builder mode).

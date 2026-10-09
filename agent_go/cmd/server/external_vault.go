@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -218,6 +219,21 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 				return
 			}
 			path, method, payload = "/api/admin/groups/"+url.PathEscape(group)+"/secrets", http.MethodPost, map[string]any{"name": secret, "allowed": allow}
+		case "share":
+			api.vaultShareProjectSecret(w, r, claims, args)
+			return
+		case "delete":
+			secret := externalArg(args, "name")
+			if secret == "" || externalArg(args, "confirm") != secret {
+				fail("delete requires name and confirm repeating it; deleting removes the value from every project that uses it.")
+				return
+			}
+			if err := api.deleteManagedGlobalSecret(r.Context(), claims.UserID, secret); err != nil {
+				vaultSecretFail(w, err)
+				return
+			}
+			externalJSON(w, map[string]any{"deleted": secret})
+			return
 		default:
 			fail("Unknown secret access operation.")
 			return
@@ -240,4 +256,74 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		req.Body, req.ContentLength = io.NopCloser(bytes.NewReader(data)), int64(len(data))
 	}
 	api.handleCapLayerAdmin(w, req)
+}
+
+// vaultShareProjectSecret copies a workflow's or Crew's secret into Vault on
+// the server; the value never passes through the caller. The share itself
+// re-checks the admin's read access to the source folder.
+func (api *StreamingAPI) vaultShareProjectSecret(w http.ResponseWriter, r *http.Request, claims *UserClaims, args map[string]any) {
+	ctx := r.Context()
+	workflowID, crewID := externalArg(args, "source_workflow_id"), externalArg(args, "source_crew_id")
+	if (workflowID == "") == (crewID == "") {
+		externalError(w, 400, "invalid_arguments", "share requires exactly one of source_workflow_id or source_crew_id.")
+		return
+	}
+	root := ""
+	if crewID != "" {
+		if t := claims.AccessToken; t != nil && !t.AllowsCrew(crewID) {
+			externalError(w, 403, "insufficient_scope", "This connection does not allow this Crew.")
+			return
+		}
+		if crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID); ok {
+			root = crew.Binding.WorkspacePath
+		}
+	} else {
+		if t := claims.AccessToken; t != nil && !t.AllowsWorkflow(workflowID) {
+			externalError(w, 403, "insufficient_scope", "This connection does not allow this workflow.")
+			return
+		}
+		discovered, err := DiscoverWorkflowManifests(ctx)
+		if err == nil {
+			for _, wf := range discovered {
+				if wf.Manifest != nil && wf.Manifest.ID == workflowID {
+					root = wf.WorkspacePath
+					break
+				}
+			}
+		}
+	}
+	if root == "" {
+		externalError(w, 404, "not_found", "Source workflow or Crew not found.")
+		return
+	}
+	ids := []string{}
+	if raw, ok := args["group_ids"].([]any); ok {
+		for _, value := range raw {
+			if id, ok := value.(string); ok {
+				ids = append(ids, id)
+			}
+		}
+	}
+	name, vaultName := externalArg(args, "name"), externalArg(args, "vault_name")
+	if err := api.shareWorkflowSecretToVault(ctx, claims.UserID, root, name, vaultName, ids); err != nil {
+		vaultSecretFail(w, err)
+		return
+	}
+	if vaultName == "" {
+		vaultName = name
+	}
+	externalJSON(w, map[string]any{"shared": vaultName, "group_ids": ids, "note": "The project copy is unchanged; select the Vault secret in other projects' settings."})
+}
+
+func vaultSecretFail(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errGlobalAdmin):
+		externalError(w, 403, "forbidden", err.Error())
+	case errors.Is(err, errGlobalConflict):
+		externalError(w, 409, "conflict", err.Error())
+	case errors.Is(err, errGlobalNotFound):
+		externalError(w, 404, "not_found", err.Error())
+	default:
+		externalError(w, 400, "vault_secret_failed", err.Error())
+	}
 }
