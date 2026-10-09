@@ -774,7 +774,7 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
-			TargetOwnerID: target.CrewOwner, CallerPath: caller.Path,
+			CallerPath: caller.Path,
 		})
 	case triggerCallerWorkflow:
 		delivery, err = api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
@@ -1650,10 +1650,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 					canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
 					return nil, caller, fmt.Errorf("private Code access denied")
 				}
-			} else if call.TargetProfileID == codeproduct.ProfileID && call.CallerProfileID == codeproduct.ProfileID {
-				if err := authorizeCodePeerIDs(ctx, userID, ownerID, call.CallerID, call.TargetID); err != nil {
-					return nil, caller, err
-				}
+			} else if call.TargetProfileID == codeproduct.ProfileID {
+				// Only calls between chats of one Code exist; no call targets another Code.
+				return nil, caller, fmt.Errorf("private Code access denied")
 			}
 		}
 		return call, caller, nil

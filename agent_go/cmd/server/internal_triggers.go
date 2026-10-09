@@ -184,12 +184,11 @@ type internalTriggerDeliveryResult struct {
 // attribution alongside the caller workflow ID.
 type internalCrewTriggerCall struct {
 	UserID         string
-	TargetOwnerID  string // explicit owner for a private Code peer target
 	ProfileID      string
 	ProjectID      string
 	TriggerID      string
 	Caller         triggerCaller
-	CallerPath     string // verified source workspace for private Code calls
+	CallerPath     string // verified source workspace of a project caller
 	WorkflowRunID  string
 	WorkflowStepID string
 	DeliveryID     string

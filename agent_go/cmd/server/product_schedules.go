@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -97,8 +96,6 @@ type productScheduleJob struct {
 	State             productScheduleUserState
 	ProjectID         string
 	ProjectTitle      string
-	CodeCaller        *triggerCaller // private Code function source, rechecked before a queued turn
-	CodeCallerPath    string
 	ProjectCaller     *triggerCaller
 	ProjectCallerPath string
 	// ConversationKey narrows an isolated run's conversation to one calling
@@ -1161,9 +1158,6 @@ func (s *ProductScheduleService) failAutomationSetupRun(job productScheduleJob, 
 		return
 	}
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
-	if job.Profile.ID == codeproduct.ProfileID && job.CodeCaller != nil {
-		runsWorkspace = codePeerPrivateRunsWorkspace(job.UserID, job.WorkspacePath, job.ProjectID)
-	}
 	duration := int64(0)
 	completion := ScheduleRunCompletion{Status: "error", Error: setupErr.Error(), DurationMs: &duration}
 	if uerr := UpdateScheduleRunResult(context.Background(), runsWorkspace, runID, completion); uerr == nil {
@@ -1200,9 +1194,6 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	var bindErr error
 	if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {
 		bindErr = routeErr
-	} else if job.ProjectID != "" && job.Profile.ID == codeproduct.ProfileID && job.CodeCaller != nil && job.AutomationKind == "trigger" {
-		// Revalidate private Code ownership even for a main-chat delivery.
-		binding, bindErr = s.codeFunctionRunBinding(runCtx, job, job.ProjectTitle+" · "+job.Schedule.Name)
 	} else if job.ProjectID != "" && job.Schedule.Isolated {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
 		title := job.ProjectTitle + " · " + job.Schedule.Name
@@ -1242,9 +1233,6 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	}
 
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, conversation.WorkspacePath)
-	if job.Profile.ID == codeproduct.ProfileID && job.CodeCaller != nil {
-		runsWorkspace = codePeerPrivateRunsWorkspace(job.UserID, job.WorkspacePath, job.ProjectID)
-	}
 	startedAt := time.Now().UTC()
 	entry := &ScheduleRunEntry{
 		ID:            runID,
