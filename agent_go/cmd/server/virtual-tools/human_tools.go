@@ -176,16 +176,6 @@ func CreateHumanTools() []llmtypes.Tool {
 			"type":        "string",
 			"description": "Required non-empty plain-text subject whenever this notification sends Gmail, including general notifications. summary_title is not a substitute. Omit only when Gmail is excluded or not used. Do not supply MIME-encoded text or line breaks.",
 		}
-		notifyProps["email_to"] = map[string]interface{}{
-			"type":        "array",
-			"items":       map[string]interface{}{"type": "string"},
-			"description": "Optional one-off Gmail To recipients for THIS notification, replacing the recipients that would otherwise apply. Prefer the send_email tool for emailing specific people: its recipients are required and it sends by Gmail only. The DURABLE per-workflow recipient lists belong in workflow.json notifications.run_summary_recipients and pulse_summary_recipients — those are applied automatically by notification_kind, so use this arg only for a one-time send to someone else. Addresses in the account-wide or per-workflow blocked recipients list are rejected. Other channels ignore this.",
-		}
-		notifyProps["email_cc"] = map[string]interface{}{
-			"type":        "array",
-			"items":       map[string]interface{}{"type": "string"},
-			"description": "Optional Gmail CC recipients. Addresses in Gmail's blocked recipients list are rejected. Other channels ignore this.",
-		}
 		notifyProps["email_attachments"] = map[string]interface{}{
 			"type":        "array",
 			"items":       map[string]interface{}{"type": "string"},
@@ -290,7 +280,7 @@ func buildNotifyDescription() string {
 	}
 	desc := base + " Currently enabled delivery channels: " + strings.Join(labels, ", ") + ". The message is delivered to all enabled channels — you do not choose which."
 	if gmailOn {
-		desc += " Gmail is enabled, so email_subject, email_to, email_cc, email_html, email_html_file, and email_attachments are available for the email rendering (other channels ignore these). For workflow, Pulse, org pulse, and Goal Advisor notifications, treat email as the default rich rendering: set email_subject and one inline-styled email_html body on the same notify_user call unless the user's notification preference explicitly says not to email. Do not write a separate plain email body; message_for_user is the automatic fallback. Set email_to only when the user's preference asks to replace the configured default To recipient; set email_cc only when the preference asks for CC recipients."
+		desc += " Gmail is enabled, so email_subject, email_html, email_html_file, and email_attachments are available for the email rendering (other channels ignore these). For workflow, Pulse, org pulse, and Goal Advisor notifications, treat email as the default rich rendering: set email_subject and one inline-styled email_html body on the same notify_user call unless the user's notification preference explicitly says not to email. Do not write a separate plain email body; message_for_user is the automatic fallback. notify_user tells the owner through the configured channels and cannot name recipients: the workflow's saved recipients (notifications.run_summary_recipients / pulse_summary_recipients) apply by notification_kind. To email specific people, use the send_email tool."
 	}
 	return desc
 }
@@ -314,7 +304,6 @@ func gmailEnabled() bool {
 func gmailContentFromArgs(args map[string]interface{}) (*services.GmailContent, error) {
 	subject, _ := args["email_subject"].(string)
 	html, _ := args["email_html"].(string)
-	cc := emailListFromArg(args["email_cc"])
 
 	// email_html_file: absolute path to an .html file on the server host; its
 	// contents become the HTML body (an alternative to inline email_html).
@@ -334,12 +323,11 @@ func gmailContentFromArgs(args map[string]interface{}) (*services.GmailContent, 
 			}
 		}
 	}
-	if strings.TrimSpace(subject) == "" && strings.TrimSpace(html) == "" && len(attachments) == 0 && len(cc) == 0 {
+	if strings.TrimSpace(subject) == "" && strings.TrimSpace(html) == "" && len(attachments) == 0 {
 		return nil, nil
 	}
 	return &services.GmailContent{
 		Subject:     strings.TrimSpace(subject),
-		CC:          cc,
 		HTMLBody:    html,
 		Attachments: attachments,
 	}, nil
@@ -511,29 +499,14 @@ func handleNotifyUser(ctx context.Context, args map[string]interface{}) (string,
 		return "", fmt.Errorf("notification manager not available")
 	}
 
-	// With the Outward permission at ask (Pulse Goal Work), notify_user still
-	// reaches the user's configured channels, but not recipients the agent picks.
-	if common.OutwardHeld(ctx) && (len(emailListFromArg(args["email_to"])) > 0 || len(emailListFromArg(args["email_cc"])) > 0) {
-		return "", fmt.Errorf("notify_user with email_to or email_cc refused: the Outward permission is ask for this turn (pulse.autonomy.outward). Notify the user's configured channels without them, or create a decision request (create_human_input_request) for sending to anyone else")
+	// notify_user cannot name recipients any more (PLAT-736): fail loudly rather than ignore an old caller.
+	if _, ok := args["email_to"]; ok {
+		return "", fmt.Errorf("email_to was removed from notify_user: it tells the owner through the configured channels. To email specific people use send_email; to change the saved recipients set notifications.run_summary_recipients in workflow.json")
+	}
+	if _, ok := args["email_cc"]; ok {
+		return "", fmt.Errorf("email_cc was removed from notify_user: use send_email to email specific people with cc")
 	}
 	dest := NotificationDestinationFromContext(ctx)
-	explicitTo := emailListFromArg(args["email_to"])
-	if to := explicitTo; len(to) > 0 {
-		if dest == nil {
-			dest = &services.NotificationDestination{}
-		}
-		// Set the recipient WITHOUT replacing dest.Gmail. It already carries
-		// BlockedRecipients from workflow.json notifications.block_recipients,
-		// and assigning a fresh GmailDest here discarded that denylist — so the
-		// one argument an agent controls silently disabled the per-workflow block
-		// list, exactly when an agent is choosing its own recipients. Only the
-		// account-wide list survived, which is not what a workflow-scoped block
-		// is for.
-		if dest.Gmail == nil {
-			dest.Gmail = &services.GmailDest{}
-		}
-		dest.Gmail.Email = strings.Join(to, ", ")
-	}
 	// Optional one-off email denylist for this send, unioned with both the
 	// account-wide blocked list and the per-workflow workflow.json
 	// notifications.block_recipients already carried on dest.Gmail.
@@ -631,18 +604,14 @@ func handleNotifyUser(ctx context.Context, args map[string]interface{}) (string,
 	}
 	dest.Content.Text = summaryMessage
 	dest.Content.Summary = summary
-	// Durable per-workflow recipients for this summary kind. Applied only when
-	// the agent did not name its own, so an explicit email_to still wins for a
-	// one-off send. This must run after notification_kind is read, since the
-	// kind is what selects between the run and Pulse lists. The denylist on
-	// dest.Gmail is left untouched and is still enforced at send time.
-	if len(explicitTo) == 0 {
-		if routedTo := summaryRecipientsForKind(dest, notificationKind); len(routedTo) > 0 {
-			if dest.Gmail == nil {
-				dest.Gmail = &services.GmailDest{}
-			}
-			dest.Gmail.Email = strings.Join(routedTo, ", ")
+	// Durable per-workflow recipients for this summary kind. This must run after notification_kind is read, since the
+	// kind is what selects between the run and Pulse lists. The denylist on dest.Gmail is left untouched and is still
+	// enforced at send time.
+	if routedTo := summaryRecipientsForKind(dest, notificationKind); len(routedTo) > 0 {
+		if dest.Gmail == nil {
+			dest.Gmail = &services.GmailDest{}
 		}
+		dest.Gmail.Email = strings.Join(routedTo, ", ")
 	}
 	routedChannels := summaryChannelsForKind(dest, notificationKind)
 	if len(routedChannels) > 0 {

@@ -23,14 +23,4 @@ func TestGmailContentUsesExplicitHTMLOnly(t *testing.T) {
 	if err != nil || gc2 == nil || gc2.HTMLBody != "<h1>Designed</h1>" {
 		t.Fatalf("explicit HTML content wrong: gc=%+v err=%v", gc2, err)
 	}
-
-	gc4, _ := gmailContentFromArgs(map[string]interface{}{
-		"email_cc": []interface{}{" CC@Example.com ", "other@example.com,cc@example.com"},
-	})
-	if gc4 == nil {
-		t.Fatal("email_cc should create GmailContent")
-	}
-	if len(gc4.CC) != 2 || gc4.CC[0] != "cc@example.com" || gc4.CC[1] != "other@example.com" {
-		t.Fatalf("email_cc parsed as %#v, want cc@example.com and other@example.com", gc4.CC)
-	}
 }

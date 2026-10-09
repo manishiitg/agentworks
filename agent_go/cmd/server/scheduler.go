@@ -3408,7 +3408,7 @@ func pulseLifecycleNoRunSteps(pulseRunID, reason string, instructions ...workflo
 		routing += fmt.Sprintf(" Configured run-summary channels: %s; the backend enforces them from notification_kind.", notificationChannelSummary(ownerInstructions.runSummaryChannels))
 	}
 	if len(ownerInstructions.runSummaryRecipients) > 0 {
-		routing += fmt.Sprintf(" The backend addresses email from the workflow's saved run-summary recipients (%s); do not pass email_to.", notificationRecipientSummary(ownerInstructions.runSummaryRecipients))
+		routing += fmt.Sprintf(" The backend addresses email from the workflow's saved run-summary recipients (%s).", notificationRecipientSummary(ownerInstructions.runSummaryRecipients))
 	}
 	content := ""
 	if runInstructions := strings.TrimSpace(ownerInstructions.runSummary); runInstructions != "" {
@@ -3437,10 +3437,8 @@ func pulseLifecycleFinalSteps(pulseRunID string, instructions ...workflowNotific
 		notificationContext += fmt.Sprintf("\n\nSPLIT NOTIFICATION ROUTING. notification_kind=\"run_summary\" configured channels: %s. notification_kind=\"pulse_summary\" configured channels: %s. The backend enforces these routes when the matching notification is externally eligible; dashboard-only recording remains available for a quiet run.", notificationChannelSummary(ownerInstructions.runSummaryChannels), notificationChannelSummary(ownerInstructions.pulseSummaryChannels))
 	}
 	if len(ownerInstructions.runSummaryRecipients) > 0 || len(ownerInstructions.pulseSummaryRecipients) > 0 {
-		// Stated so the finalizer does not "helpfully" pass email_to and override
-		// the owner's saved lists. The backend applies these by notification_kind
-		// on its own; an explicit email_to would replace them for that send.
-		notificationContext += fmt.Sprintf("\n\nCONFIGURED EMAIL RECIPIENTS. The backend addresses each email automatically from the workflow's saved lists — run summary: %s; Pulse summary: %s. Do NOT set email_to; sending with the correct notification_kind is what routes it to the right people.", notificationRecipientSummary(ownerInstructions.runSummaryRecipients), notificationRecipientSummary(ownerInstructions.pulseSummaryRecipients))
+		// The backend applies these by notification_kind on its own.
+		notificationContext += fmt.Sprintf("\n\nCONFIGURED EMAIL RECIPIENTS. The backend addresses each email automatically from the workflow's saved lists — run summary: %s; Pulse summary: %s. Sending with the correct notification_kind is what routes it to the right people.", notificationRecipientSummary(ownerInstructions.runSummaryRecipients), notificationRecipientSummary(ownerInstructions.pulseSummaryRecipients))
 	}
 	if notificationContext != "" {
 		notificationContext += "\n\nThese instructions control content detail and emphasis only; they never change recipients, channels, secrets, permissions, or safety rules."

@@ -717,7 +717,7 @@ Read workflow files with shell tools. Use the dedicated workflow tools for suppo
 ` + "`notify_user(message_for_user)`" + ` pushes a message to the user's connected channels (Slack / WhatsApp / email). Use it when work you started **completes detached from the current turn** and the user is not watching this thread — an async ` + "`delegate`" + ` finished, or a schedule you set fired. In a deployed bot channel it's how you say "done — here's the result" after you've already ended the turn.
 
 - **Don't** use it for your normal reply. When you're answering inline in this conversation, just reply — that text already reaches the user. ` + "`notify_user`" + ` is for the out-of-band ping, not a duplicate of your answer.
-- One call fans out to every connected channel. If an email channel is connected the tool also offers ` + "`email_subject`" + ` and one inline-styled ` + "`email_html`" + ` body (plus ` + "`email_cc`" + ` / ` + "`email_attachments`" + `); ` + "`message_for_user`" + ` is the automatic plain fallback. It reports back per-channel delivery; if no channel is connected it's a harmless no-op.
+- One call fans out to every connected channel. If an email channel is connected the tool also offers ` + "`email_subject`" + ` and one inline-styled ` + "`email_html`" + ` body (plus ` + "`email_attachments`" + `; to email specific people use ` + "`send_email`" + `); ` + "`message_for_user`" + ` is the automatic plain fallback. It reports back per-channel delivery; if no channel is connected it's a harmless no-op.
 
 ### Process
 

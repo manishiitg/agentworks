@@ -24,7 +24,8 @@ Design references for the linked runtime decisions:
   `attachments`. The workflow's blocked-recipients list and the account's list still apply, and the workflow's sender is
   kept. It is held whole when the Outward permission is ask (the Pulse autonomy level below Publish), and it is refused
   when the workflow excludes email. `notify_user` stays "tell the owner through the configured channels"; its
-  `email_to` and `email_cc` still work but its description points to `send_email`, and they are to be removed later.
+  `email_to` and `email_cc` are removed, and a call that still passes either gets an error pointing to `send_email`
+  (never a silent send to the default recipient).
   `send_email` is admitted in Run mode (workflow runs and scripted steps) and is on the external run denylist, so an MCP
   token cannot email arbitrary addresses in a workflow's name.
 - **Why.** `notify_user` fans one message out to Gmail, Slack, WhatsApp and Activity, so it cannot make a recipient

@@ -939,96 +939,9 @@ func TestHandleNotifyUserPreservesWorkflowNameThroughSessionDestination(t *testi
 	}
 }
 
-func TestHandleNotifyUserEmailToOverridesDestination(t *testing.T) {
-	manager := services.GetNotificationManager()
-	ch := make(chan *services.NotificationDestination, 1)
-	connector := &testUserNotificationConnector{name: "gmail", ch: ch}
-	manager.RegisterConnector(connector)
-	t.Cleanup(func() {
-		manager.UnregisterConnector("gmail")
-	})
-
-	ctx := context.WithValue(context.Background(), common.UserIDKey, "user-1")
-	ctx = context.WithValue(ctx, BotNotificationDestinationKey, &services.NotificationDestination{
-		UserID: "user-1",
-		Gmail:  &services.GmailDest{Email: "default@example.com"},
-	})
-
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
-		"email_subject":    "Notification routing test",
-		"message_for_user": "FYI: done",
-		"email_to":         []interface{}{"Override@Example.com", "ops@example.com"},
-		"email_cc":         []interface{}{"cc@example.com"},
-	}); err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
-	}
-
-	select {
-	case dest := <-ch:
-		if dest == nil || dest.Gmail == nil || dest.Gmail.Email != "override@example.com, ops@example.com" {
-			t.Fatalf("gmail destination = %#v, want replacement To recipients", dest)
-		}
-		if dest.Content == nil || dest.Content.Gmail == nil {
-			t.Fatalf("gmail content = %#v, want Gmail content", dest.Content)
-		}
-		if got := strings.Join(dest.Content.Gmail.CC, ","); got != "cc@example.com" {
-			t.Fatalf("gmail cc = %q, want cc@example.com", got)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("expected Gmail notification")
-	}
-}
-
-// workflow.json notifications.block_recipients is a per-workflow denylist carried
-// on dest.Gmail. Supplying email_to used to assign a fresh GmailDest, discarding
-// it — so the one recipient argument an agent controls silently switched the
-// workflow's block list off, precisely when the agent was choosing its own
-// recipients. Only the account-wide list still applied.
-func TestEmailToKeepsWorkflowBlockedRecipients(t *testing.T) {
-	manager := services.GetNotificationManager()
-	ch := make(chan *services.NotificationDestination, 1)
-	connector := &testUserNotificationConnector{name: "gmail", ch: ch}
-	manager.RegisterConnector(connector)
-	t.Cleanup(func() {
-		manager.UnregisterConnector("gmail")
-	})
-
-	ctx := context.WithValue(context.Background(), common.UserIDKey, "user-1")
-	ctx = context.WithValue(ctx, BotNotificationDestinationKey, &services.NotificationDestination{
-		UserID: "user-1",
-		Gmail: &services.GmailDest{
-			BlockedRecipients: []string{"blocked@example.com"},
-		},
-	})
-
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
-		"email_subject":    "Notification routing test",
-		"message_for_user": "FYI: done",
-		"email_to":         []interface{}{"ops@example.com"},
-	}); err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
-	}
-
-	select {
-	case dest := <-ch:
-		if dest == nil || dest.Gmail == nil {
-			t.Fatalf("gmail destination = %#v, want a Gmail destination", dest)
-		}
-		if dest.Gmail.Email != "ops@example.com" {
-			t.Fatalf("gmail To = %q, want the explicit recipient", dest.Gmail.Email)
-		}
-		if len(dest.Gmail.BlockedRecipients) != 1 || dest.Gmail.BlockedRecipients[0] != "blocked@example.com" {
-			t.Fatalf("workflow denylist lost: %#v", dest.Gmail.BlockedRecipients)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("expected Gmail notification")
-	}
-}
-
 // The per-workflow recipient lists are the positive counterpart to
 // block_recipients: they say where a summary is emailed. The backend addresses
-// the mail from the list matching notification_kind, so the agent never has to
-// pass email_to to reach the configured people.
+// the mail from the list matching notification_kind; the agent cannot name recipients.
 func TestNotifyUserRoutesToConfiguredRecipientsByKind(t *testing.T) {
 	baseDest := func() *services.NotificationDestination {
 		return &services.NotificationDestination{
@@ -1076,40 +989,6 @@ func TestNotifyUserRoutesToConfiguredRecipientsByKind(t *testing.T) {
 				t.Fatal("expected Gmail notification")
 			}
 		})
-	}
-}
-
-// A one-off email_to is for a single send the user asked for. It must still beat
-// the saved list, otherwise the argument would be silently ignored whenever a
-// workflow had recipients configured.
-func TestExplicitEmailToBeatsConfiguredRecipients(t *testing.T) {
-	manager := services.GetNotificationManager()
-	ch := make(chan *services.NotificationDestination, 1)
-	manager.RegisterConnector(&testUserNotificationConnector{name: "gmail", ch: ch})
-	t.Cleanup(func() { manager.UnregisterConnector("gmail") })
-
-	ctx := context.WithValue(context.Background(), common.UserIDKey, "user-1")
-	ctx = context.WithValue(ctx, BotNotificationDestinationKey, &services.NotificationDestination{
-		UserID:               "user-1",
-		RunSummaryRecipients: []string{"run@example.com"},
-	})
-
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
-		"email_subject":     "Notification routing test",
-		"message_for_user":  "FYI: done",
-		"notification_kind": "run_summary",
-		"email_to":          []interface{}{"just-this-once@example.com"},
-	}); err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
-	}
-
-	select {
-	case dest := <-ch:
-		if dest == nil || dest.Gmail == nil || dest.Gmail.Email != "just-this-once@example.com" {
-			t.Fatalf("gmail To = %#v, want the explicit override", dest.Gmail)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("expected Gmail notification")
 	}
 }
 
@@ -1273,5 +1152,19 @@ func TestHandleNotifyUserEmitsInAppCopyRegardlessOfChannels(t *testing.T) {
 	}
 	if len(result.Delivered) != 1 || result.Delivered[0] != "in_app" {
 		t.Fatalf("delivered = %#v, want [in_app]", result.Delivered)
+	}
+}
+
+// notify_user cannot name recipients (PLAT-736): an old caller that still passes email_to or email_cc gets a clear
+// error that points to send_email, never a silent send to the default recipient.
+func TestNotifyUserRejectsRemovedRecipientArguments(t *testing.T) {
+	for _, argument := range []string{"email_to", "email_cc"} {
+		_, err := handleNotifyUser(context.Background(), map[string]interface{}{
+			"message_for_user": "FYI: done",
+			argument:           []interface{}{"someone@example.com"},
+		})
+		if err == nil || !strings.Contains(err.Error(), "send_email") {
+			t.Fatalf("%s must be rejected with a pointer to send_email, got %v", argument, err)
+		}
 	}
 }
