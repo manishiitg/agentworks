@@ -192,6 +192,11 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	if err != nil {
 		return nil, nil, fmt.Errorf("allocate sandbox scratch: %w", err)
 	}
+	if runtime.GOOS == "darwin" {
+		// /tmp is a link to /private/tmp on a Mac, and the sandbox refuses writes made through the link while it allows the real
+		// path. A TMPDIR spelled /tmp/... made every temp-file write by a command fail (npm, git, compilers, Next.js; PLAT-735).
+		tmp = canonicalPath(tmp)
+	}
 	local := *iso
 	// The service's private /tmp cannot be imported by a slot. Put the
 	// immutable output helper in its shared run area and serialize PYTHONPATH
@@ -568,9 +573,14 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 		// Local commands must not ask desktop or credential services to act
 		// outside their filesystem grants. Directory lookups support ordinary
 		// user/group resolution and DNS without granting arbitrary Mach IPC.
+		// FSEvents is how Node, Next.js, Vite and webpack watch a folder for
+		// changes on macOS; without it a recursive watch fails with
+		// "EMFILE: too many open files, watch" although the limit is huge
+		// (PLAT-735). It reports that paths changed, never file contents.
 		sb.WriteString("(allow mach-lookup\n")
 		sb.WriteString("  (global-name \"com.apple.system.opendirectoryd.libinfo\")\n")
-		sb.WriteString("  (global-name \"com.apple.system.opendirectoryd.membership\"))\n\n")
+		sb.WriteString("  (global-name \"com.apple.system.opendirectoryd.membership\")\n")
+		sb.WriteString("  (global-name \"com.apple.FSEvents\"))\n\n")
 	} else {
 		sb.WriteString("(allow mach-lookup)\n")
 		sb.WriteString("(allow iokit-open)\n\n")
