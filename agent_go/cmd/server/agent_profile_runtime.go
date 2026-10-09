@@ -514,6 +514,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		req.CodeChatMode = mode
 	}
+	if profile.ID == codeproduct.ProfileID && req.CodeChatMode != "local" && codeProjectMode(ctx, workspacePath) == "cowork" {
+		applyCoworkProfile(&profile)
+	}
 	if profile.ID == codeproduct.ProfileID && req.CodeChatMode == "local" {
 		_, blockedTools := restrictCodeLocalFeatures(&profile)
 		localDisabledTools = blockedTools

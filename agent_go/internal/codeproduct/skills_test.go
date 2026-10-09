@@ -58,3 +58,23 @@ func TestCodeFeatureSkillsAreRenderedForCode(t *testing.T) {
 		}
 	}
 }
+
+// Cowork's prompt keeps Code's platform mechanics but has its own introduction, and its skills are the ones registered for it.
+func TestCoworkPromptHasItsOwnIntroAndTheSamePlatformMechanics(t *testing.T) {
+	template := BuiltinAgentProfile().SystemPromptTemplate
+	prompt := CoworkPrompt(template)
+	if !strings.HasPrefix(prompt, "# Cowork assistant") || strings.Contains(prompt, "You are a helpful, capable assistant working in") {
+		t.Fatalf("Cowork must have its own introduction:\n%.300s", prompt)
+	}
+	for _, mechanics := range []string{"## The workspace", "## Platform actions", "## Other chats in this Code"} {
+		if !strings.Contains(prompt, mechanics) {
+			t.Fatalf("the platform mechanics %q must stay in the Cowork prompt", mechanics)
+		}
+	}
+	for _, skill := range CoworkSkills {
+		if !strings.Contains(prompt, skill) && skill != "cowork-assistant" {
+			// the intro names the skills the agent should read
+			t.Fatalf("the Cowork introduction should point at %q", skill)
+		}
+	}
+}

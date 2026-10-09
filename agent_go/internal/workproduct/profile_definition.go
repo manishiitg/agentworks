@@ -178,6 +178,10 @@ func RegisterProductSkills() error {
 			registerProductSkillsErr = agentprofiles.RegisterEmbeddedSkills(productConfigFiles, []agentprofiles.SkillFileBinding{
 				{Name: "crew-run", Description: "Use a Crew in Run mode: inspect, answer, run permitted workflow triggers and suggest changes to its owner.", Path: "skills/crew-run/SKILL.md"},
 				{Name: "crew-builder", Path: "skills/crew-builder/SKILL.md"},
+				// Cowork (a Code project in Cowork mode): the playbook for a private business assistant.
+				{Name: "cowork-assistant", Path: "skills/cowork-assistant/SKILL.md"},
+				{Name: "cowork-browser-tasks", Path: "skills/cowork-browser-tasks/SKILL.md"},
+				{Name: "cowork-automations", Path: "skills/cowork-automations/SKILL.md"},
 			})
 		}
 	})
