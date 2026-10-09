@@ -19,10 +19,12 @@ Design references for the linked runtime decisions:
 
 ### 2026-10-09 — Browser empty state explains automatic viewing before setup (PLAT-759)
 
-Show one primary Open browser action that starts the built-in browser directly,
+Show one Open browser action that starts the built-in browser directly,
 with opening feedback and no settings detour. Explain that helper activity and
-browser tests appear automatically; using signed-in Chrome or Edge is optional
-and explains the extension requirement. Keep direct browser connections in
+browser tests appear automatically. Recommend Chrome or Edge for signed-in
+websites, lead with its existing sign-ins and separate project tabs, and explain
+one-time extension setup. Keep the built-in browser as a secondary action when
+Chrome or Edge is available. Keep direct browser connections in
 advanced settings. Why: equal browser-choice cards and Idle hid the next step
 from users unfamiliar with browser automation.
 Ticket: [PLAT-759](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/browser/experience/plat-759.md).

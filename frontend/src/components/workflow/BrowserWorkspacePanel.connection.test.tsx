@@ -25,6 +25,9 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Chats/Work/projects/crew-one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
     const chrome = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Use my Chrome or Edge'))!
     expect(host.textContent).toContain('Your browser is connected to your account')
+    expect(host.textContent).toContain('Recommended for signed-in websites')
+    expect(host.textContent).toContain('Your helper can use your existing sign-ins and work in separate tabs for this project')
+    expect(host.textContent).not.toContain('one-time setup')
     expect(mocks.post).not.toHaveBeenCalled()
     await act(async () => chrome.click())
     expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect' }, expect.objectContaining({ params: { workspace_path: 'Chats/Work/projects/crew-one', profile_id: 'work' } }))

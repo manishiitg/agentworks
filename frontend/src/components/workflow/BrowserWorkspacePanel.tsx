@@ -75,14 +75,18 @@ export function BrowserWorkspacePanel({
     if (connection.status.selected && !await connection.disconnect()) return
     setExtensionSetup(false); onBrowserModeChange(next)
   }
-  const otherBrowsers = extensionAvailable || isBrowserCDPEnabled() ? <div className="space-y-3 border-t border-border pt-4">
-    {extensionAvailable && <div className="space-y-1">
-      <p className="text-xs leading-relaxed text-muted-foreground">Need a website where you’re already signed in?</p>
-      <Button type="button" variant="outline" disabled={connection.busy} onClick={() => { void changeChoice('extension').then(() => setSettingsOpen(true)) }} className="h-auto w-full justify-start gap-2 whitespace-normal py-2 text-left">
-        <PlugZap className="h-4 w-4 shrink-0" aria-hidden="true" />Use my Chrome or Edge
+  const otherBrowsers = extensionAvailable || isBrowserCDPEnabled() ? <div className="space-y-3">
+    {extensionAvailable && <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+      <div className="space-y-1">
+        <p className="text-[11px] font-medium text-primary">Recommended for signed-in websites</p>
+        <h4 className="text-sm font-semibold">Use your signed-in websites</h4>
+        <p className="text-xs leading-relaxed text-muted-foreground">Your helper can use your existing sign-ins and work in separate tabs for this {scopeNoun}.</p>
+      </div>
+      <Button type="button" disabled={connection.busy} onClick={() => { void changeChoice('extension').then(() => setSettingsOpen(true)) }} className="h-auto w-full justify-start gap-2 whitespace-normal py-2 text-left">
+        <PlugZap className="h-4 w-4 shrink-0" aria-hidden="true" />{connection.status.account_connected ? 'Use my Chrome or Edge' : 'Connect my Chrome or Edge'}
         <ArrowRight className="ml-auto h-4 w-4 shrink-0" aria-hidden="true" />
       </Button>
-      <p className="text-xs leading-relaxed text-muted-foreground">{connection.status.account_connected ? 'Your browser is connected to your account. Choose it to use it here.' : 'Requires the AgentWorks browser extension. We’ll help you connect it.'}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{connection.status.account_connected ? 'Your browser is connected to your account. Choose it to use it here.' : 'Requires the AgentWorks browser extension. We’ll guide you through the one-time setup.'}</p>
     </div>}
     {isBrowserCDPEnabled() && <Button type="button" variant="ghost" disabled={connection.busy} onClick={() => { void changeChoice('cdp').then(() => setSettingsOpen(true)) }} className="h-auto whitespace-normal text-xs">Advanced browser connection</Button>}
   </div> : null
@@ -96,14 +100,14 @@ export function BrowserWorkspacePanel({
       <p className="text-sm leading-relaxed text-muted-foreground">When your helper browses a website or runs a browser test, you can watch it here.</p>
       <p className="text-xs leading-relaxed text-muted-foreground">You can also open a browser yourself to visit a website or show your helper what to do.</p>
     </div>
+    {otherBrowsers}
     {canStart && <div className="space-y-2">
-      <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="w-full gap-2">
+      <Button type="button" variant={extensionAvailable ? 'outline' : 'default'} disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="w-full gap-2">
         {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Monitor className="h-4 w-4" aria-hidden="true" />}
         {startingBrowser ? 'Opening browser…' : 'Open browser'}
       </Button>
       <p className="text-xs leading-relaxed text-muted-foreground">Uses a separate browser for this {scopeNoun}. Sign in to websites here when needed.</p>
     </div>}
-    {otherBrowsers}
   </div> : undefined
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
   const guidedAssistantControl = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions
