@@ -555,6 +555,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		noGlobalSecrets := []string{}
 		req.SelectedGlobalSecrets = &noGlobalSecrets
 	} else if !isGlobalScope && api.chatStore != nil && userID != "" {
+		// Secret storage is keyed by the private runtime path, just like the
+		// Settings endpoints. The logical Chats/... alias is a different key.
+		secretWorkspace := agentProfileRuntimeWorkspace(userID, workspacePath)
 		// Product runtime manifests use the same selected_secrets contract.
 		// Values stay in encrypted storage; only explicitly attached names enter
 		// the coding-agent environment. For an older product manifest, preserve
@@ -571,7 +574,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if secretErr != nil {
 			log.Printf("[SECRETS] Failed to read product secret attachments for %s (%s): %v", userID, workspacePath, secretErr)
 		} else if !initialized {
-			stored, listErr := api.ensureSharedWorkflowSecrets(ctx, workspacePath, userID)
+			stored, listErr := api.ensureSharedWorkflowSecrets(ctx, secretWorkspace, userID)
 			if listErr != nil {
 				log.Printf("[SECRETS] Failed to migrate product secret attachments for %s (%s): %v", userID, workspacePath, listErr)
 			} else {
@@ -589,8 +592,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 		}
 		if len(selectedNames) > 0 {
-			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, userID, workspacePath, selectedNames)
-			req.secretsWorkspacePath = workspacePath
+			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, userID, secretWorkspace, selectedNames)
+			req.secretsWorkspacePath = secretWorkspace
 			if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, &selectedNames); err != nil {
 				return nil, err
 			}

@@ -332,7 +332,7 @@ func TestResolveAgentProfileInjectsProjectScopedSecretsIntoNativeEnvironment(t *
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
-	if err := store.UpsertWorkflowSecret(context.Background(), userID, workspacePath, "PEXELS_API_KEY", encryptProfileSecretForTest(t, userID, "test-key")); err != nil {
+	if err := store.UpsertWorkflowSecret(context.Background(), userID, agentProfileRuntimeWorkspace(userID, workspacePath), "PEXELS_API_KEY", encryptProfileSecretForTest(t, userID, "test-key")); err != nil {
 		t.Fatalf("store project secret: %v", err)
 	}
 
@@ -351,6 +351,66 @@ func TestResolveAgentProfileInjectsProjectScopedSecretsIntoNativeEnvironment(t *
 	}
 	if len(req.DecryptedSecrets) != 1 || req.DecryptedSecrets[0].Name != "PEXELS_API_KEY" || req.DecryptedSecrets[0].Value != "test-key" {
 		t.Fatalf("profile secret selection = %#v, want only the project-scoped secret", req.DecryptedSecrets)
+	}
+}
+
+// Settings saves fixed-product secrets under the user's physical workspace.
+// Profile admission must read that same store for both explicit attachments
+// and the first-turn migration that discovers already-saved names.
+func TestFixedProductProfileLoadsSecretsFromSettingsWorkspace(t *testing.T) {
+	for _, initialized := range []bool{true, false} {
+		name := "discover saved attachments"
+		if initialized {
+			name = "explicit attachments"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+			t.Setenv("CAPLAYER_SERVICE_URL", "")
+			t.Setenv("CAPLAYER_SERVICE_TOKEN", "")
+			t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+			const userID = "user-1"
+			const logical = "Chats/SparkQuill"
+			physical := agentProfileRuntimeWorkspace(userID, logical)
+			manifest := `{"capabilities":{}}`
+			if initialized {
+				manifest = `{"capabilities":{"selected_secrets":["PORTAL_PASSWORD"]}}`
+			}
+			workspace := &mockWorkspaceAPI{files: map[string]string{logical + "/product.json": manifest}}
+			host := httptest.NewServer(workspace)
+			defer host.Close()
+			t.Setenv("WORKSPACE_API_URL", host.URL)
+			store, err := chathistory.NewFilesystemStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			registry := agentprofiles.NewRegistry()
+			if err := registry.RegisterProfile(agentprofiles.Profile{
+				ID: "sparkquill", Name: "SparkQuill", Version: 1, BuiltIn: true,
+				SystemPromptTemplate: "{{.ProjectTitle}}",
+				Runtime:              agentprofiles.RuntimePolicy{Transport: "structured"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			api := &StreamingAPI{agentProfiles: registry, chatStore: store}
+			ctx := context.Background()
+			if err := api.upsertSharedWorkflowSecret(ctx, physical, "PORTAL_PASSWORD", "settings-value"); err != nil {
+				t.Fatal(err)
+			}
+			// A same-named value at the old unowned alias must not win.
+			if err := api.upsertSharedWorkflowSecret(ctx, logical, "PORTAL_PASSWORD", "wrong-store-value"); err != nil {
+				t.Fatal(err)
+			}
+			req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "sparkquill", SelectedFolder: logical, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "SparkQuill"}}
+			if _, err := api.resolveAgentProfileForQuery(ctx, &req, userID, "session-1"); err != nil {
+				t.Fatal(err)
+			}
+			if len(req.DecryptedSecrets) != 1 || req.DecryptedSecrets[0].Name != "PORTAL_PASSWORD" || req.DecryptedSecrets[0].Value != "settings-value" {
+				t.Fatal("profile did not load the credential saved by Settings")
+			}
+			if req.secretsWorkspacePath != physical {
+				t.Fatalf("secret source = %q, want %q", req.secretsWorkspacePath, physical)
+			}
+		})
 	}
 }
 
