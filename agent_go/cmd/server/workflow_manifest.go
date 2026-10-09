@@ -1900,6 +1900,13 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	if err != nil {
 		return fmt.Errorf("failed to marshal workflow.json: %w", err)
 	}
+	// A Crew's workflow.json carries top-level fields this struct does not model (its internal `triggers`, its `identity`).
+	// Rewriting it from the struct erased them: Confida's blueprint Crew lost the trigger a workflow step called it by, and every
+	// webhook run then died with "internal trigger not found" (2026-10-07). Keep what the file already had that the struct
+	// has no field for; fields the struct does model still follow the struct (clearing one still clears it).
+	if previousExists {
+		data = keepUnmodelledManifestFields([]byte(previous), data)
+	}
 
 	if err := writeFileToWorkspace(ctx, manifestPath(workspacePath), string(data)); err != nil {
 		return fmt.Errorf("failed to write workflow.json: %w", err)
@@ -2172,4 +2179,44 @@ func (m *WorkflowManifest) PaceThreshold() int {
 // PacingEnabled reports whether this workflow opted into quota pacing.
 func (m *WorkflowManifest) PacingEnabled() bool {
 	return m != nil && m.PaceOnLowQuota
+}
+
+// workflowManifestKnownKeys is every top-level JSON key WorkflowManifest models (its `json` tags).
+var workflowManifestKnownKeys = func() map[string]bool {
+	known := map[string]bool{}
+	t := reflect.TypeOf(WorkflowManifest{})
+	for i := 0; i < t.NumField(); i++ {
+		name := strings.Split(t.Field(i).Tag.Get("json"), ",")[0]
+		if name != "" && name != "-" {
+			known[name] = true
+		}
+	}
+	return known
+}()
+
+// keepUnmodelledManifestFields returns written with every top-level key of previous that WorkflowManifest has no field for.
+// Anything it cannot parse is left exactly as written.
+func keepUnmodelledManifestFields(previous, written []byte) []byte {
+	var before, after map[string]json.RawMessage
+	if json.Unmarshal(previous, &before) != nil || json.Unmarshal(written, &after) != nil {
+		return written
+	}
+	kept := false
+	for key, value := range before {
+		if workflowManifestKnownKeys[key] {
+			continue
+		}
+		if _, exists := after[key]; !exists {
+			after[key] = value
+			kept = true
+		}
+	}
+	if !kept {
+		return written
+	}
+	merged, err := json.MarshalIndent(after, "", "  ")
+	if err != nil {
+		return written
+	}
+	return merged
 }
