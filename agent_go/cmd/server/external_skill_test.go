@@ -117,10 +117,11 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 		"---\nname: agentworks\n",
 		"description: " + hostedSkillDescription,
 		"https://skills.test",
-		"get_agent_context",
+		"help", "action=context",
 		"brain_browse", "brain_read", "brain_update", "brain_access", "agentworks-local",
-		"list_workflows",
-		"run_status",
+		"`workflow` action=list",
+		"`runs` action=status",
+		"`dashboard`", "`settings`", "`needs_you`", "`manage_vault_tools`",
 		"If Builder is absent",
 	} {
 		if !strings.Contains(markdown, want) {

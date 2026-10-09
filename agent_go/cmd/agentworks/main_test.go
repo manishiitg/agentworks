@@ -169,7 +169,7 @@ func TestSkillsInstallWritesBundledSkill(t *testing.T) {
 		t.Fatalf("code=%d err=%s", code, &stderr)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "agentworks", "SKILL.md"))
-	if err != nil || !strings.Contains(string(data), "get_agent_context") {
+	if err != nil || !strings.Contains(string(data), "`help` action=context") {
 		t.Fatalf("installed skill missing guidance entrypoint: %v", err)
 	}
 	// A second install refuses to clobber; --force overwrites.
