@@ -390,7 +390,9 @@ cmd_userns() {
 # Make the host match its user directory: slots exist, every account has one, and the service sees its slot groups. Safe to run
 # on every deploy (nothing changes when it is already right). A new account gets its slot here, so no one is left without.
 cmd_ensure() {
-  [[ -f "$TABLE" ]] && getent group "$(slot_name 1)" >/dev/null || cmd_init
+  # init is idempotent and is what installs the sudo rule and the launcher config: run it every time, so a run that stopped half-way
+  # (the table and accounts exist, the sudo rule does not) is finished by the next one.
+  cmd_init
   local ids user_id
   ids="$(python3 - "$DOCS/config/users.json" <<'PY'
 import json, sys
