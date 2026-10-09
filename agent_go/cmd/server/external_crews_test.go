@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 )
 
 func externalCrewRequest(t *testing.T, env triggerLinkEnv, claims *UserClaims, name string, args map[string]any) (int, map[string]any) {
@@ -205,5 +206,45 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	bounded := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, CrewIDs: []string{"beta"}}}
 	if code, _ := chats(bounded, map[string]any{"crew_id": "alpha", "action": "list"}); code != 403 {
 		t.Fatalf("Crew-bounded connection listed another Crew's chats: %d", code)
+	}
+}
+
+// A Crew's owner reads its costs from the ledger (the app's Costs tab data);
+// nobody else does, and a token bound to other Crews does not see it either.
+func TestExternalCrewCostsAreOwnerOnly(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	server := costledger.NewTestServer(t)
+	previous := costledger.DefaultLedger()
+	ledger := costledger.NewLedger(server.URL)
+	costledger.SetDefaultLedger(ledger)
+	t.Cleanup(func() { costledger.SetDefaultLedger(previous) })
+	if err := ledger.Append(costledger.Entry{EventID: "e1", IdempotencyKey: "e1", Timestamp: time.Now().UTC(), UserID: "owner", WorkflowID: linkAlphaPath, Scope: "chat",
+		Provider: "claude-cli", ModelID: "sonnet", LLMCallCount: 2, PromptTokens: 1000, CompletionTokens: 200, TotalCostUSD: 1.5}); err != nil {
+		t.Fatal(err)
+	}
+
+	owner := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
+	code, out := externalCrewRequest(t, env, owner, "get_crew_costs", map[string]any{"crew_id": "alpha"})
+	total, _ := out["total"].(map[string]any)
+	if code != 200 || total["total_cost_usd"] != 1.5 || out["by_model"] == nil || out["window"] == nil {
+		t.Fatalf("owner's own Crew = %d %v", code, out)
+	}
+	code, out = externalCrewRequest(t, env, owner, "get_crew_costs", map[string]any{})
+	rows, _ := out["crews"].([]any)
+	if code != 200 || len(rows) == 0 || rows[0].(map[string]any)["crew_id"] != "alpha" || out["total_cost_usd"] != 1.5 {
+		t.Fatalf("one row per owned Crew, dearest first = %d %v", code, out)
+	}
+	for _, row := range rows {
+		if row.(map[string]any)["crew_id"] == "gamma" {
+			t.Fatalf("another person's Crew is in the owner's cost list: %v", out)
+		}
+	}
+	if code, _ := externalCrewRequest(t, env, owner, "get_crew_costs", map[string]any{"crew_id": "gamma"}); code != 403 {
+		t.Fatalf("a Crew someone else owns must be refused, got %d", code)
+	}
+	bounded := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
+	if code, _ := externalCrewRequest(t, env, bounded, "get_crew_costs", map[string]any{"crew_id": "alpha"}); code != 404 {
+		t.Fatalf("a Crew outside the token's bound must be not-found, got %d", code)
 	}
 }

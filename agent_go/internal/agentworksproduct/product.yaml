@@ -441,6 +441,7 @@ chat:
       # Crews (crews:read / crews:run, bounded by the token's Crew list).
       - list_crews
       - get_crew
+      - get_crew_costs
       - list_crew_files
       - search_crew_files
       - read_crew_file

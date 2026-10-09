@@ -43,7 +43,7 @@ var externalToolMerges = []externalToolMerge{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
 	}},
 	{"crew", "Crews you can use: list, read, create, edit, export and import. Ask a Crew with ask_crew.", [][2]string{
-		{"list", "list_crews"}, {"get", "get_crew"}, {"create", "create_crew"}, {"update", "update_crew"},
+		{"list", "list_crews"}, {"get", "get_crew"}, {"costs", "get_crew_costs"}, {"create", "create_crew"}, {"update", "update_crew"},
 		{"export", "export_crew"}, {"import", "import_crew"},
 	}},
 	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Relay (workflow_id) or a Crew (crew_id; read-only). action=code lists a step's saved code.", [][2]string{

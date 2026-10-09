@@ -173,6 +173,7 @@ func externalTools() ([]externalTool, error) {
 			return props
 		}
 		add("list_crews", "List the Crews this connection may use: ID, name, identity, owner. Requires crews:read.", false, false, map[string]any{"query": externalString("Filter by Crew name, identity, or ID.")})
+		externalCrewCostsDefinition(add)
 		add("get_crew", "Describe one Crew: identity, description, model, and its functions (typed entry points other Crews and connections can call). Requires crews:read.", false, false, crewID(nil), "crew_id")
 		crewFiles := func(search bool) map[string]any {
 			p := page()
