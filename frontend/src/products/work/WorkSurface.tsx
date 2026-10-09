@@ -703,7 +703,19 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   )
 }
 
-function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: ProjectProductConfig }) {
+function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; product: ProjectProductConfig; cowork?: boolean }) {
+  if (cowork) {
+    return <ProductChatLandingCard
+      title="What should we work on?"
+      description="This is your private assistant. No code needed. Ask it to:"
+      examples={[
+        'Build a dashboard from my data and keep it up to date',
+        'Open a website in the browser and do a task for me',
+        'Run a report on a schedule and send me the result',
+      ]}
+      shortcutHint={<NewTabHint />}
+    />
+  }
   if (!product.hasIdentity) {
     return <ProductChatLandingCard
       title="Start coding"
@@ -1461,7 +1473,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         <ChatArea
                           tabId={tabId}
                           compact
-                          landingContent={<WorkNewChatGuide product={product} sharedBy={selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
+                          landingContent={<WorkNewChatGuide product={product} cowork={product.profileId === 'code' && selectedMode === 'cowork'} sharedBy={selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
                           composerPlaceholder="Describe what you want to build… (@ files, # references)"
                           showProductSteerAction
                           showProductTerminalControl

@@ -45,7 +45,7 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("llm: 'identity'")
     expect(source).toContain("bots: 'mcp'")
     expect(source).toContain("email: 'mcp'")
-    expect(source).toContain('landingContent={<WorkNewChatGuide product={product} sharedBy={')
+    expect(source).toContain("landingContent={<WorkNewChatGuide product={product} cowork={product.profileId === 'code' && selectedMode === 'cowork'} sharedBy={")
     expect(source).toContain('This is the persistent conversation for this ${product.noun} project.')
   })
 
