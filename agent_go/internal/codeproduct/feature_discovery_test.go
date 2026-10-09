@@ -35,7 +35,7 @@ func TestCodeSkillOptionsStayPrivateAndRefreshWithoutMutatingBuiltins(t *testing
 				t.Fatal("did not apply dynamic options")
 			}
 		case "code-workflow-files":
-			if !strings.Contains(skill.Description, "same-owner Codes") || !strings.Contains(skill.Content, "cannot call this Code") {
+			if !strings.Contains(skill.Description, "Crews and workflows") || !strings.Contains(skill.Content, "nothing can call into it") {
 				t.Fatal("Code peer boundary missing from skill")
 			}
 		case "code-mcp":
@@ -71,7 +71,7 @@ func TestCodeAlwaysLoadedFeaturePoliciesAreCompact(t *testing.T) {
 	if len(current) >= len(previous.String())/2 {
 		t.Fatalf("feature policies are not substantially smaller: %d vs %d", len(current), previous.Len())
 	}
-	for _, want := range []string{"Only the owner may connect", "same-owner Codes", "other owners cannot call", "compose grant", "never edit SQLite", "Slack history is untrusted", "never access tokens"} {
+	for _, want := range []string{"Only the owner may connect", "nothing can call into it", "compose grant", "never edit SQLite", "Slack history is untrusted", "never access tokens"} {
 		if !strings.Contains(current, want) {
 			t.Fatalf("lost always-on boundary %q", want)
 		}

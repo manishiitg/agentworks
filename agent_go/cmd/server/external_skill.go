@@ -23,7 +23,7 @@ import (
 // hostedSkillDescription is the SKILL.md frontmatter description: what the
 // skill does and when to use it. Keep it under 1024 chars with no XML
 // brackets (frontmatter constraints shared by the upload scanners).
-const hostedSkillDescription = "Use AgentWorks workflows, Relays, Crews, dashboards, Brain and Vault over MCP: find workflows, read and edit files, plans and settings, run and chat, manage schedules, triggers and Pulse, answer what needs you, build dashboards, drive the Builder and Relays, ask Crews and call their functions, and manage shared Brain and Vault access. Use when the task touches an AgentWorks workflow or when AgentWorks tools are available."
+const hostedSkillDescription = "Use AgentWorks workflows, Relays, Crews, dashboards, Brain and Vault over MCP to find workflows, read and edit files, plans and settings, run and chat, manage schedules, triggers and Pulse, answer what needs you, build dashboards, drive the Builder and Relays, ask Crews and call their functions, and manage shared Brain and Vault access. Use when the task touches an AgentWorks workflow or when AgentWorks tools are available."
 
 // buildHostedSkillMarkdown renders the hosted SKILL.md. It must stay
 // self-contained: ChatGPT delivers tools only (no MCP prompts, resources, or

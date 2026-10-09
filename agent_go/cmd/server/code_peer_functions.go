@@ -9,38 +9,37 @@ import (
 	"path"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
-// Code targets are resolved privately, under the actual actor's own tree.
-// The public Crew/workflow resolver and catalog never enumerate Codes.
+// errCodeHasNoFunctions: Code is a private space, Crews and workflows are
+// shared, and nothing shared reaches into a private space (owner, 2026-10-09).
+var errCodeHasNoFunctions = fmt.Errorf("Code is private and has no functions: nothing outside a Code project can call it. To reach another chat of the same Code, use ask_project_chat")
+
+// resolveFunctionTarget resolves a Crew or workflow. A Code target resolves
+// only for a chat of that same Code (answering a call it made to a sibling
+// chat); every other call into a Code project is refused.
 func resolveFunctionTarget(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, raw string) (triggerTarget, error) {
 	query := strings.TrimPrefix(strings.TrimSpace(raw), "#")
-	explicitCode := strings.HasPrefix(strings.ToLower(query), "code:") || isCodeProjectPath(query)
-	if explicitCode {
+	if strings.HasPrefix(strings.ToLower(query), "code:") || isCodeProjectPath(query) {
+		if !strings.EqualFold(caller.Stamp.ProfileID, codeproduct.ProfileID) {
+			return triggerTarget{}, errCodeHasNoFunctions
+		}
 		if strings.HasPrefix(strings.ToLower(query), "code:") {
 			query = query[len("code:"):]
 		}
-		return resolveOwnedCodePeer(ctx, claims, caller, strings.TrimSpace(query))
+		target, err := resolveOwnedCodePeer(ctx, claims, caller, strings.TrimSpace(query))
+		if err != nil {
+			return triggerTarget{}, err
+		}
+		if target.CrewID != caller.Stamp.ID {
+			return triggerTarget{}, errCodeHasNoFunctions
+		}
+		return target, nil
 	}
-	regular, regularErr := resolveTriggerTarget(ctx, claims, raw)
-	if !strings.EqualFold(caller.Stamp.ProfileID, codeproduct.ProfileID) {
-		return regular, regularErr
-	}
-	peer, peerErr := resolveOwnedCodePeer(ctx, claims, caller, query)
-	if regularErr == nil && peerErr == nil {
-		return triggerTarget{}, fmt.Errorf("%q matches a Crew/workflow and a private Code; use #code:<id> to select the Code", raw)
-	}
-	if regularErr == nil {
-		return regular, nil
-	}
-	if peerErr == nil {
-		return peer, nil
-	}
-	return triggerTarget{}, regularErr
+	return resolveTriggerTarget(ctx, claims, raw)
 }
 
 func resolveOwnedCodePeer(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, query string) (triggerTarget, error) {
@@ -198,38 +197,10 @@ func authorizeOwnedCodeCaller(ctx context.Context, actorID, ownerID string, call
 	return nil
 }
 
-// connectCodePeerTarget writes a hidden internal binding for an owned source.
-// Code's public trigger API cannot create these bindings.
+// connectCodePeerTarget no longer connects: Code projects have no functions.
 func (api *StreamingAPI) connectCodePeerTarget(ctx context.Context, actorID string, caller triggerLinkCaller, target triggerTarget) (string, bool, error) {
-	ownerID := target.CrewOwner
-	if target.CrewProfile != codeproduct.ProfileID ||
-		(caller.Stamp.ProfileID == codeproduct.ProfileID && caller.Stamp.ID == target.CrewID) ||
-		authorizeOwnedCodeCaller(ctx, actorID, ownerID, caller) != nil {
-		return "", false, fmt.Errorf("private Code target is unavailable or access denied")
-	}
-	sourcePath := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, caller.Path))
-	productWebhookConfigMu.Lock()
-	defer productWebhookConfigMu.Unlock()
-	_, binding, manifest, err := api.productSchedules.codePeerProject(ctx, ownerID, target.CrewID)
-	if err != nil {
-		return "", false, err
-	}
-	for _, trigger := range manifest.Triggers {
-		if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) && (canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, trigger.PrivateCallerPath)) == sourcePath || (trigger.PrivateCallerPath == "" && caller.Stamp.ProfileID == codeproduct.ProfileID)) {
-			return trigger.ID, false, nil
-		}
-	}
-	stamp := caller.Stamp
-	trigger := productWebhookTrigger{ID: uuid.NewString(), Name: "Called by " + caller.Label, Enabled: true,
-		Message: crewTargetMessage(caller), Kind: triggerKindInternal, Caller: &stamp, PrivateCallerPath: sourcePath, RunDestination: runDestinationIsolated}
-	if err := validateProductWebhook(trigger); err != nil {
-		return "", false, err
-	}
-	manifest.Triggers = append(manifest.Triggers, trigger)
-	if err := api.productSchedules.writeProjectManifest(ctx, binding, manifest); err != nil {
-		return "", false, err
-	}
-	return trigger.ID, true, nil
+	// Nothing calls into a Code project (see errCodeHasNoFunctions).
+	return "", false, errCodeHasNoFunctions
 }
 
 // codePeerRunBinding runs a function in the owner's isolated target chat.

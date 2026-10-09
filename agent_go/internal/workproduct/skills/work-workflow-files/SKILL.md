@@ -130,12 +130,11 @@ never Slack channels. Call only targets accessible to the current user.
 Function-call authorization and folder access are separate: a callable target
 does not automatically grant access to its files.
 
-Code may call accessible Crews/workflows and explicitly declared functions
-on other Codes owned by the same account. Only same-owner Codes and the
-owner's authorized Crews/workflows can call a private Code; other owners,
-shared readers/editors and external connections cannot. Codes do not appear
-in the public Crew/MCP catalog. When tools allow it, Code may define its own
-functions and answer authorized incoming calls using the result contract below.
+Code may call accessible Crews/workflows. A Code project has no functions of its
+own and nothing can call into it: Code is private, Crews and workflows are
+shared, and nothing shared reaches into a private space. To reach another chat
+of the same Code, use `ask_project_chat`. Codes do not appear in the public
+Crew/MCP catalog.
 
 **Where calls run.** Each caller has one continuing conversation with each
 Crew it calls, created on the first call. Follow-up calls land in the same

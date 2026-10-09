@@ -30,7 +30,7 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 			t.Fatalf("Code enables forbidden tool %s", tool)
 		}
 	}
-	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "define_function", "report_function_progress", "return_function_result"} {
+	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "report_function_progress", "return_function_result"} {
 		found := false
 		for _, enabled := range profile.ToolPolicy.Enabled {
 			if enabled == tool {

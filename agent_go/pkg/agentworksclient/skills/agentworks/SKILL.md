@@ -1,6 +1,6 @@
 ---
 name: agentworks
-description: Use AgentWorks workflows, Relays, Crews, dashboards, Brain and Vault over MCP: find workflows, read and edit files, plans and settings, run and chat, manage schedules, triggers and Pulse, answer what needs you, build dashboards, drive the Builder and Relays, ask Crews and call their functions, and manage shared Brain and Vault access. Use when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
+description: Use AgentWorks workflows, Relays, Crews, dashboards, Brain and Vault over MCP to find workflows, read and edit files, plans and settings, run and chat, manage schedules, triggers and Pulse, answer what needs you, build dashboards, drive the Builder and Relays, ask Crews and call their functions, and manage shared Brain and Vault access. Use when the task touches an AgentWorks workflow or when AgentWorks MCP tools are available.
 ---
 
 # AgentWorks

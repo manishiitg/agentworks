@@ -17,6 +17,22 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Code has no functions: nothing shared reaches into a private space
+
+Code is private; Crews and workflows are shared. A Code project no longer
+declares functions and nothing calls into one: not a Crew or workflow (even
+its owner's), not another Code of the same owner, not an MCP or CLI
+connection. `#code:<id>` is a call target only for a chat of that same Code
+(answering a call it made to a sibling chat). A Code may still call Crews and
+workflows with `call_function`, and its chats ask each other with
+`ask_project_chat` (2026-10-07). `define_function` is not offered to Code and
+refuses a Code target; `delete_function` stays so old declarations can be
+removed. Supersedes the declared-function and Code-to-Code parts of the
+2026-10-01 entry "Code is always private". Existing stored internal bindings
+on Code projects are no longer reachable. Code: `code_peer_functions.go`
+(`resolveFunctionTarget`), `crew_functions.go`, `pkg/agentprofiles/features.go`;
+ticket PLAT-738 (follow-up: delete the unreachable peer-binding code).
+
 ### 2026-10-09 — Read-only server grants in Vault
 
 A group's whole-server grant can be read-only: the group may call only that

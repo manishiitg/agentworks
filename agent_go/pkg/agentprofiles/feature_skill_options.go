@@ -48,10 +48,10 @@ func FeatureSkillsForSession(profile Profile, attached []*llmtypes.Skill) []*llm
 		if copy.Name == FeatureSkillName(profile.ID, "work-workflow-files") {
 			switch FeatureOption(profile, "workflow-references", "direction") {
 			case "code_peers":
-				copy.Description += " Use before function calls to Crews, workflows, or same-owner Codes, and before answering incoming Code function calls."
-				copy.Content += "\n## Private Code peers\n\nA Code can call accessible Crews/workflows and same-owner Codes when the caller owns both. Use list_functions and call_function with the exact selected target. Code functions are private: the owner's Crews/workflows may call explicitly declared functions using #code:<id>; shared readers/editors, external connections and other owners cannot call this Code. Calls never attach or share Code files. For incoming peer calls, report_function_progress and return_function_result follow the function contract above. Never expose Codes through the public Crew/MCP catalog.\n"
+				copy.Description += " Use before function calls to Crews and workflows."
+				copy.Content += "\n## Calling Crews and workflows from Code\n\nA Code can call accessible Crews/workflows with list_functions and call_function and the exact selected target. A Code project has no functions of its own and nothing can call into it: Code is private and Crews and workflows are shared. To reach another chat of this same Code use ask_project_chat. Calls never attach or share Code files.\n"
 			case "":
-				copy.Content += "\n## Private Code functions\n\nUse #code:<id> with list_functions and call_function only when the actual caller owns this Crew/workflow and that Code. Code exposes only explicitly declared functions. Shared readers/editors and external connections cannot inherit its owner's Code access. These calls never attach or share Code files; define or remove its functions in the owner's Code chat.\n"
+				copy.Content += "\n## Code projects have no functions\n\nCode is private and Crews and workflows are shared, so nothing shared calls into a Code project and `#code:<id>` is not a call target. Calls never attach or share Code files.\n"
 			case "outbound":
 				if start := strings.Index(copy.Content, "- **Offer**"); start >= 0 {
 					if end := strings.Index(copy.Content[start:], "Calls that would loop"); end >= 0 {

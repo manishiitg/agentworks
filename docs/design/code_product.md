@@ -1,5 +1,7 @@
 # Code — a private coding workspace on the shared server
 
+> **Update 2026-10-09:** Code has no functions. Nothing calls into a Code project and a Code declares none (Code is private, Crews and workflows are shared); a Code may still call Crews and workflows, and its chats reach each other with `ask_project_chat`. This supersedes the declared-function and peer-call parts below.
+>
 > **Update 2026-10-01:** Code is always owner-only; human sharing is removed and existing grants are inert. The owner’s Crew/workflow may call explicitly declared Code functions through private internal bindings, without attaching its files. Shared readers/editors inherit no Code access. Audited admin/reviewer inspection remains read-only. See [decisions](../DECISIONS.md).
 
 > **Update 2026-09-30:** a Code project's own `AGENTS.md`, `.claude/`, `.cursor/`, `.pi/`, `.codex/` and `.agents/` are never overwritten or deleted by a chat; the session prompt is a marked, session-counted block in `AGENTS.md`, and projected skills carry an ownership marker. Verified with real Claude and Codex chats overlapping in one Code project. See [project instruction files](project_instruction_files.md), PLAT-371.

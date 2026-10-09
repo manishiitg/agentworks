@@ -210,7 +210,7 @@ func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	if err != nil {
 		return nil, err
 	}
-	// A private Code exposes only functions its owner deliberately declared.
+	// A Code project has no functions of its own (an older declaration may remain).
 	if target.CrewProfile == codeproduct.ProfileID {
 		return functions, nil
 	}
@@ -1393,7 +1393,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		}
 		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path, or #code:<id> for a private Code owned by the actual caller; only declared functions are callable."}
+	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path. A Code project has no functions."}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
@@ -1449,7 +1449,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	}
 	schemaSchema := map[string]interface{}{"type": "object", "description": "JSON Schema subset: type object|array|string|number|integer|boolean, properties, required, items, enum."}
 
-	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), another Crew, or (from Code) another private Code owned by the caller. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
+	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), or another Crew. Code projects have no functions. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
 		"type": "object", "required": []string{"name", "description", "instructions"}, "properties": map[string]interface{}{
 			"target":        targetSchema,
 			"name":          map[string]interface{}{"type": "string", "description": "snake_case name, e.g. run_login_flow."},
@@ -1482,8 +1482,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
 		}
-		if target.CrewProfile == codeproduct.ProfileID && caller.Stamp.ProfileID != codeproduct.ProfileID {
-			return "", fmt.Errorf("declare or remove Code functions in its owner's Code chat")
+		if target.CrewProfile == codeproduct.ProfileID || (caller.Stamp.ProfileID == codeproduct.ProfileID && args["target"] == nil) {
+			return "", errCodeHasNoFunctions
 		}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
@@ -1542,7 +1542,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("list_functions", "List the typed functions a Crew, workflow or private Code offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
+	if err := register("list_functions", "List the typed functions a Crew or workflow offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{"target": targetSchema},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1567,7 +1567,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew, workflow, or private Code owned by the caller. Arguments are validated against its input schema; the target works in its own chat and returns a result validated against its result schema. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target works in its own chat and returns a result validated against its result schema. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},

@@ -5,7 +5,7 @@ own.
 
 | You want to… | Use | Runs in |
 |---|---|---|
-| Have a workflow, Crew or Code project call a Crew or an authorized private Code project | **Functions** (`ask` or a declared function) | Any shared project owner: receiving project's main chat. No shared owner: separate continuing chat |
+| Have a workflow, Crew or Code project call a Crew | **Functions** (`ask` or a declared function) | Any shared project owner: receiving project's main chat. No shared owner: separate continuing chat |
 | Have an external MCP/CLI connection call a Crew | **Functions** | Existing external connection routing; a person's `ask` uses their own Crew chat |
 | Run something on a timer | **Schedule** | The Crew's main chat, or the schedule's own conversation |
 | Let an outside system (GitHub, CI) start work | **Webhook** | The Crew's main chat, or the webhook's own conversation |
@@ -108,11 +108,11 @@ assistant chats are separate for each calling project and executing user and
 are excluded from the main-chat restore lookup. Typed workflow functions still
 execute normal workflow runs with their own run records and step history.
 
-Private Code targets still require the actual caller and source project to
-pass Code authorization checks. Sharing an owner chooses a conversation; it
-does not grant access. Code calls revalidate source ownership at queued start,
-including main-chat calls. Other queued project calls reject a changed owner
-relationship instead of entering a chat using a stale routing decision.
+Code has no functions: nothing calls into a Code project, because Code is a
+private space and Crews and workflows are shared (owner, 2026-10-09). A Code
+may call Crews and workflows, and its own chats reach each other with
+`ask_project_chat`. Sharing an owner chooses a conversation for Crew and
+workflow calls; it does not grant access.
 
 Internal bindings keep their stored isolated fallback for old installations;
 the owner rule overrides it at dispatch. External MCP/CLI connections, public
