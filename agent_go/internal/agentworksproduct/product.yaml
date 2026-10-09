@@ -409,6 +409,7 @@ chat:
       - answer_needs_you
       - manage_pulse
       - manage_project
+      - manage_crew_chats
       - list_files
       - search_files
       - list_step_code

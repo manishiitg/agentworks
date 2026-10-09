@@ -180,3 +180,30 @@ func TestOAuthGrantCrewAccessFollowsApprovedScopes(t *testing.T) {
 		t.Fatal("an OAuth grant without Crew permissions must not reach Crews")
 	}
 }
+
+// manage_crew_chats lists only the caller's own chats, ask_crew's chat_id
+// must name one of them, and a Crew-bounded connection stays bounded.
+func TestExternalCrewChatsAreYourOwn(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	chats := func(claims *UserClaims, args map[string]any) (int, map[string]any) {
+		req := httptest.NewRequest("POST", "/api/external/call", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
+		rec := httptest.NewRecorder()
+		env.api.externalCrewChatsCall(rec, req, args)
+		out := map[string]any{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "list"}); code != 200 || out["chats"] == nil {
+		t.Fatalf("list own chats = %d %v", code, out)
+	}
+	if code, _ := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hi", "chat_id": "not-a-chat"}); code != 404 {
+		t.Fatalf("ask_crew into an unknown chat = %d", code)
+	}
+	bounded := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, CrewIDs: []string{"beta"}}}
+	if code, _ := chats(bounded, map[string]any{"crew_id": "alpha", "action": "list"}); code != 403 {
+		t.Fatalf("Crew-bounded connection listed another Crew's chats: %d", code)
+	}
+}

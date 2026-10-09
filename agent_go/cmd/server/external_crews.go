@@ -243,6 +243,14 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see list_crew_functions.", label, fnName))
 			return
 		}
+		// A side chat of this person's (manage_crew_chats) instead of the main one.
+		if chat, ok := api.crewAskChat(r, claims.UserID, manifest.ID, crew.Binding.WorkspacePath, str("chat_id")); !ok {
+			externalError(w, 404, "chat_not_found", "No chat with that chat_id; see manage_crew_chats list.")
+			return
+		} else if chat != nil {
+			target.Chat = chat
+			target.Label = label + " · " + chat.Name
+		}
 		// The call outlives this request; the Crew works in this user's own
 		// conversation with it.
 		callCtx := context.WithoutCancel(ctx)

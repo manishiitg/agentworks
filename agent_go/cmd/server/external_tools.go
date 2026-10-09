@@ -188,7 +188,7 @@ func externalTools() ([]externalTool, error) {
 		wait := map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the result before returning a call_id to poll (default 0: return at once; max 25, proxies cut requests near 30s)."}
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
 		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions) with arguments matching its input schema. The Crew does the work in your own continuing conversation with it (never its main chat); the result is validated against the function's result schema. Returns at once with status=running and a call_id for get_crew_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the result. Repeating the same call while it runs returns the same call_id. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait, "submission_id": submission}), "crew_id", "function")
-		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. It is your message in your own chat of that Crew (the chat your web chat, Slack DMs and WhatsApp continue; for your own Crew, its main chat), so you can chat with it and see the exchange in the app. Returns at once with status=running and a call_id for get_crew_function_call; pass wait_seconds to wait up to 25s for the answer. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait, "submission_id": submission}), "crew_id", "message")
+		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. It is your message in your own chat of that Crew (the chat your web chat, Slack DMs and WhatsApp continue; for your own Crew, its main chat), so you can chat with it and see the exchange in the app. Returns at once with status=running and a call_id for get_crew_function_call; pass wait_seconds to wait up to 25s for the answer. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait, "submission_id": submission, "chat_id": externalString("Optional: one of your side chats from manage_crew_chats (default: your main chat).")}), "crew_id", "message")
 		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its role, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
@@ -227,6 +227,7 @@ func externalTools() ([]externalTool, error) {
 		externalNeedsYouDefinitions(add)
 		externalPulseManageDefinitions(add)
 		externalProjectDefinitions(add)
+		externalCrewChatDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -436,6 +437,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCrewTool(tool.Name) {
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "manage_crew_chats" {
+		api.externalCrewChatsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "manage_project" {
