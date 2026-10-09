@@ -17,7 +17,7 @@ set -euo pipefail
 [[ $# -eq 4 ]] || { echo "Usage: fetch-build.sh <tag> <asset> <expected-manifest-sha256> <dest>" >&2; exit 2; }
 TAG="$1"; ASSET="$2"; WANT="$3"; DEST="$4"
 BASE="${BUILDS_DOWNLOAD_BASE:-https://github.com/manishiitg/agentworks-builds/releases/download}"
-[[ "$TAG" =~ ^build-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}$ ]] || { echo "fetch-build: invalid tag: $TAG" >&2; exit 2; }
+[[ "$TAG" =~ ^build-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}(-arm64)?$ ]] || { echo "fetch-build: invalid tag: $TAG" >&2; exit 2; }
 [[ "$ASSET" == build.tar.gz || "$ASSET" == build-rts.tar.gz ]] || { echo "fetch-build: asset must be build.tar.gz or build-rts.tar.gz" >&2; exit 2; }
 [[ "$WANT" =~ ^[0-9a-f]{64}$ ]] || { echo "fetch-build: the expected manifest sha256 must be 64 hex characters" >&2; exit 2; }
 [[ ! -e "$DEST" ]] || { echo "fetch-build: $DEST already exists" >&2; exit 2; }

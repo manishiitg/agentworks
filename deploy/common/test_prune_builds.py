@@ -10,7 +10,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("build-release.sh")
 
 
-@unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64", "build-release.sh runs on Linux x86_64 only")
+@unittest.skipUnless(platform.system() == "Linux" and platform.machine() in ("x86_64", "aarch64"), "build-release.sh runs on native Linux x86_64 or aarch64")
 class PruneBuildsTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -59,6 +59,13 @@ class PruneBuildsTest(unittest.TestCase):
         self.make("00000000-20260104000000", 2000)
         self.prune()
         self.assertEqual(self.remaining(), ["00000000-20260104000000"])
+
+    def test_keeps_the_newest_build_for_each_architecture(self):
+        self.make("aaaaaaaa-20260101000000", 7200)
+        self.make("bbbbbbbb-arm64-20260102000000", 7200)
+        self.make("cccccccc-arm64-20260103000000", 7200)
+        self.prune()
+        self.assertEqual(self.remaining(), ["aaaaaaaa-20260101000000", "cccccccc-arm64-20260103000000"])
 
     def test_keep_can_be_raised_and_other_folders_are_left_alone(self):
         self.make("aaaaaaaa-20260101000000", 7200)

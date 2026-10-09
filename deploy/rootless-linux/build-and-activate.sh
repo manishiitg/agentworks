@@ -19,7 +19,7 @@
 # --stage-only (prebuilt only) stops after the release is assembled, before preflight, `current` or any service is touched, and
 # may be combined with DEPLOY_APP_ROOT=<scratch dir> to rehearse the copy without the product's own folders.
 set -euo pipefail
-[[ "$(uname -sm)" == "Linux x86_64" ]] || { echo "Build must run on Linux x86_64" >&2; exit 1; }
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../common" && pwd)/linux-arch.sh"
 WORKSPACE_ROOT="$1"
 PRODUCT="$2"
 shift 2
@@ -164,21 +164,21 @@ for source_repo in mcp-agent-builder-go mcpagent multi-llm-provider-go; do
   tar -C "$source_dir" --exclude=.git --exclude=node_modules --exclude=dist -cf - . | tar -C "$BUILD_DIR/source/$source_repo" -xf -
 done
 
-echo "==> [$RELEASE_ID] Building binaries (native linux/amd64, on $(hostname))"
+echo "==> [$RELEASE_ID] Building binaries (native linux/$BUILD_ARCH, on $(hostname))"
 # Compile the agent with cgo enabled (it links sherpa-onnx for voice/STT) and
 # an $ORIGIN/lib rpath, staging the native libraries beside the binary. The
 # remaining Go services stay static CGO_ENABLED=0 builds.
 bash "$REPO_ROOT/deploy/aws-ec2/build/build-linux-agent.sh" "$BUILD_DIR" "$REPO_ROOT/agent_go" "$WORKSPACE_ROOT"
 mv "$BUILD_DIR/bin/video-studio-agent" "$BUILD_DIR/bin/$PRODUCT-agent"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-workspace" "$REPO_ROOT/workspace")
+(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-workspace" "$REPO_ROOT/workspace")
 # Literal filename required: workspace/security/landlock_policy.go resolves
 # its sandbox launcher by this exact name regardless of which product runs.
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner")
+(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner")
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the RTS build).
 source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$BUILD_DIR"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
-GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
+(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
+GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 
 vault_build "$REPO_ROOT" "$BUILD_DIR"
 

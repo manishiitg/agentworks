@@ -17,7 +17,12 @@ if [[ -f "$JOB/product-config.tgz" ]]; then
 fi
 REMOTE_APP="/srv/$PRODUCT"
 export PATH="$HOME/.local/go/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
-[[ "$(uname -sm)" == "Linux x86_64" ]] || { echo "$PRODUCT build must run on Linux x86_64" >&2; exit 1; }
+case "$(uname -sm)" in
+  'Linux x86_64') BUILD_ARCH=amd64 ;;
+  'Linux aarch64') BUILD_ARCH=arm64 ;;
+  *) echo 'Expected Linux x86_64 or aarch64.' >&2; exit 1 ;;
+esac
+export BUILD_ARCH
 [[ "$(whoami)" == "$PRODUCT" ]] || { echo "Must run as the $PRODUCT account, not $(whoami)" >&2; exit 1; }
 
 # Serialize complete deployments (clone + build + activate + prune). This box
@@ -32,7 +37,7 @@ trap 'rm -rf "$JOB"' EXIT
 if [[ -f "$JOB/prebuilt" ]]; then
   PREBUILT="$(cat "$JOB/prebuilt")"
   # The shared build folder, or this product's own downloaded copy (PREBUILT_DELIVERY=fetch, a host of its own).
-  [[ "$PREBUILT" =~ ^/srv/_builds/[0-9a-f]{8}-[0-9]{14}$ || "$PREBUILT" =~ ^/srv/$PRODUCT/prebuilt/[0-9a-f]{8}-[0-9]{14}$ ]] \
+  [[ "$PREBUILT" =~ ^/srv/_builds/[0-9a-f]{8}(-arm64)?-[0-9]{14}$ || "$PREBUILT" =~ ^/srv/$PRODUCT/prebuilt/[0-9a-f]{8}(-arm64)?-[0-9]{14}$ ]] \
     || { echo "Unexpected prebuilt path: $PREBUILT" >&2; exit 1; }
   bash "$PREBUILT/source/mcp-agent-builder-go/deploy/rootless-linux/build-and-activate.sh" "$PREBUILT/source" "$PRODUCT" --prebuilt "$PREBUILT"
   exit $?
@@ -40,12 +45,12 @@ fi
 
 if ! command -v go >/dev/null; then
   echo 'Installing the pinned Go toolchain on the server'
-  curl --fail --location --silent --show-error https://go.dev/dl/go1.27.1.linux-amd64.tar.gz -o "$JOB/go.tar.gz"
+  curl --fail --location --silent --show-error https://go.dev/dl/go1.27.1.linux-$BUILD_ARCH.tar.gz -o "$JOB/go.tar.gz"
   curl --fail --location --silent --show-error 'https://go.dev/dl/?mode=json&include=all' -o "$JOB/go-releases.json"
-  python3 - "$JOB" <<'PY'
+  python3 - "$JOB" "$BUILD_ARCH" <<'PY'
 import hashlib,json,pathlib,sys
 p=pathlib.Path(sys.argv[1])
-expected=next(f['sha256'] for v in json.loads((p/'go-releases.json').read_text()) for f in v['files'] if f['filename']=='go1.27.1.linux-amd64.tar.gz')
+expected=next(f['sha256'] for v in json.loads((p/'go-releases.json').read_text()) for f in v['files'] if f['filename']==f'go1.27.1.linux-{sys.argv[2]}.tar.gz')
 assert hashlib.sha256((p/'go.tar.gz').read_bytes()).hexdigest()==expected, 'Go checksum mismatch'
 PY
   mkdir -p "$HOME/.local"

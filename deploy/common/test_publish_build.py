@@ -18,7 +18,7 @@ REVS = {"mcp-agent-builder-go": "a" * 40, "mcpagent": "b" * 40, "multi-llm-provi
 TAG = "build-aaaaaaaa-bbbbbbbb-cccccccc"
 
 
-def make_build(parent, revs=REVS, payload="one"):
+def make_build(parent, revs=REVS, payload="one", arch="x86_64"):
     name = revs["mcp-agent-builder-go"][:8] + "-20261004000000"
     d = Path(parent) / name
     (d / "bin").mkdir(parents=True)
@@ -32,7 +32,7 @@ def make_build(parent, revs=REVS, payload="one"):
     (d / "source/mcp-agent-builder-go/main.go").write_text("package z")
     (d / "downloads/cli.tgz").write_text("cli")
     (d / "SOURCE_REVISIONS").write_text("".join(f"{k}={v}\n" for k, v in revs.items()))
-    (d / "manifest.json").write_text(json.dumps({"schema": 1, "name": name, "revisions": revs, "payload": payload}))
+    (d / "manifest.json").write_text(json.dumps({"schema": 1, "name": name, "revisions": revs, "arch": arch, "payload": payload}))
     return d
 
 
@@ -118,6 +118,23 @@ class PublishTest(Base):
         self.assertIn("already published", r.stdout)
         self.assertEqual([e for e in self.gh.log if e[0] == "POST" and "/upload/" in e[1]], uploads)
         self.assertEqual(len(self.gh.releases), 1)
+
+    def test_arm_release_does_not_replace_or_prune_the_x86_release(self):
+        self.env_file()
+        self.assertEqual(self.publish().returncode, 0)
+        x86_assets = {key: a["data"] for key, a in self.gh.assets.items()}
+        arm = make_build(self.root / "arm", arch="aarch64")
+        result = self.publish(arm, env={"BUILDS_KEEP_RELEASES": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"RELEASE_TAG={TAG}-arm64", result.stdout)
+        self.assertEqual({r["tag_name"] for r in self.gh.releases}, {TAG, TAG + "-arm64"})
+        self.assertTrue(all(self.gh.assets[key]["data"] == data for key, data in x86_assets.items()))
+        # Downloading an ARM tag must also pass the transport's tag validation.
+        fetched = self.root / "fetched-arm"
+        digest = hashlib.sha256((arm / "manifest.json").read_bytes()).hexdigest()
+        result = self.run_script(FETCH, TAG + "-arm64", "build.tar.gz", digest, str(fetched))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((fetched / "manifest.json").read_text())["arch"], "aarch64")
 
     def test_half_uploaded_release_is_repaired(self):
         self.env_file()

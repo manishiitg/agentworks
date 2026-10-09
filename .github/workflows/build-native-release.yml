@@ -1,0 +1,97 @@
+name: Build native release
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Native Linux architecture
+        type: choice
+        options: [arm64, amd64]
+        default: arm64
+  workflow_call:
+    inputs:
+      arch:
+        type: string
+        default: arm64
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: source/mcp-agent-builder-go
+      - uses: actions/checkout@v6
+        with:
+          repository: manishiitg/mcpagent
+          ref: main
+          path: source/mcpagent
+      - uses: actions/checkout@v6
+        with:
+          repository: manishiitg/llm-provider-mcp
+          ref: main
+          path: source/multi-llm-provider-go
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: source/mcp-agent-builder-go/agent_go/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.21.0'
+      - name: Deployment checks on native Linux
+        working-directory: source/mcp-agent-builder-go
+        run: |
+          for script in deploy/common/*.sh deploy/rootless-linux/*.sh deploy/aws-ec2/build/*.sh; do bash -n "$script"; done
+          python3 -m unittest discover -s deploy/common -p 'test_publish_build.py'
+          python3 -m unittest discover -s deploy/common -p 'test_prune_builds.py'
+          python3 -m unittest discover -s deploy/common -p 'test_release_manifest.py'
+          python3 -m unittest discover -s deploy/rootless-linux -p 'test_prebuilt.py'
+      - name: Build the complete release from pinned revisions
+        id: release
+        env:
+          RELEASE_ARCH: ${{ inputs.arch }}
+          BUILD_JOBS: '2'
+          BUILD_PUBLISH: '0'
+        run: |
+          source_root="$GITHUB_WORKSPACE/source"
+          builder_sha="$(git -C "$source_root/mcp-agent-builder-go" rev-parse HEAD)"
+          agent_sha="$(git -C "$source_root/mcpagent" rev-parse HEAD)"
+          provider_sha="$(git -C "$source_root/multi-llm-provider-go" rev-parse HEAD)"
+          builds="$RUNNER_TEMP/agentworks-builds"
+          bash "$source_root/mcp-agent-builder-go/deploy/common/build-release.sh" \
+            --arch "$RELEASE_ARCH" --builds-dir "$builds" \
+            --source mcp-agent-builder-go https://github.com/manishiitg/agentworks "$builder_sha" \
+            --source mcpagent https://github.com/manishiitg/mcpagent "$agent_sha" \
+            --source multi-llm-provider-go https://github.com/manishiitg/llm-provider-mcp "$provider_sha" \
+            | tee "$RUNNER_TEMP/build-release.log"
+          build_dir="$(sed -n 's/^BUILD_DIR=//p' "$RUNNER_TEMP/build-release.log" | tail -n 1)"
+          test -f "$build_dir/manifest.json"
+          echo "dir=$build_dir" >> "$GITHUB_OUTPUT"
+      - name: Verify binaries and stage a product from the actual release
+        env:
+          RELEASE_DIR: ${{ steps.release.outputs.dir }}
+        run: |
+          builder="$RELEASE_DIR/source/mcp-agent-builder-go"
+          python3 "$builder/deploy/common/release_manifest.py" verify "$RELEASE_DIR"
+          "$RELEASE_DIR/bin/agent" --help >/dev/null
+          "$RELEASE_DIR/bin/workspace" --help >/dev/null
+          DEPLOY_APP_ROOT="$RUNNER_TEMP/staged-product" bash "$builder/deploy/rootless-linux/build-and-activate.sh" \
+            "$RELEASE_DIR/source" example --prebuilt "$RELEASE_DIR" --stage-only
+          test ! -e "$RUNNER_TEMP/staged-product/current"
+          staged="$(find "$RUNNER_TEMP/staged-product/releases" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          "$staged/bin/example-agent" --help >/dev/null
+          test -s "$staged/frontend/index.html"
+          test -s "$staged/static/report-preview.js"
+          test -s "$staged/bin/lib/libsherpa-onnx-c-api.so"
+      - name: Archive the release with executable permissions
+        run: tar -C "$(dirname '${{ steps.release.outputs.dir }}')" -czf "$RUNNER_TEMP/agentworks-${{ inputs.arch }}.tar.gz" "$(basename '${{ steps.release.outputs.dir }}')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentworks-linux-${{ inputs.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/agentworks-${{ inputs.arch }}.tar.gz
+          compression-level: 0
+          retention-days: 14

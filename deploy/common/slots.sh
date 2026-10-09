@@ -13,7 +13,7 @@ slots_build() {
   # slotctl is the one program the service account may run as a slot; a root-run provision-slots.sh
   # installs it root-owned. slottmux is the tmux front-end. slotcheck is the deploy self-test (slotcheck.sh).
   for program in slotctl slottmux slotcheck; do
-    (cd "$workspace_root" && GOWORK="$gowork" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$build_dir/bin/$program" "$repo_root/workspace/cmd/$program")
+    (cd "$workspace_root" && GOWORK="$gowork" GOOS=linux GOARCH="${BUILD_ARCH:-amd64}" CGO_ENABLED=0 go build -o "$build_dir/bin/$program" "$repo_root/workspace/cmd/$program")
   done
 }
 

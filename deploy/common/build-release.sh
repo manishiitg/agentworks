@@ -3,11 +3,11 @@
 #
 #   build-release.sh --source mcp-agent-builder-go <url> <sha> \
 #                    --source mcpagent <url> <sha> --source multi-llm-provider-go <url> <sha> \
-#                    [--builds-dir /srv/_builds] [--keep 1] [--force]
+#                    [--arch amd64|arm64] [--builds-dir /srv/_builds] [--keep 1] [--force]
 #   build-release.sh --prune-only [--builds-dir /srv/_builds] [--keep 1]     (removes old builds, builds nothing)
 #
-# Runs on the build host (the Hetzner box, x86_64, as root by default: set BUILD_AS=<user> to drop to an unprivileged account that
-# owns the builds dir). It
+# Runs on a native Linux x86_64 or aarch64 build host, as root by default: set BUILD_AS=<user> to drop to an unprivileged account that
+# owns the builds dir. It
 #   1. takes a lock, and returns the existing build when one already holds exactly these three revisions (unless --force);
 #   2. fetches the three repositories at the given full commit ids into a scratch folder under <builds-dir>/.work;
 #   3. builds into <builds-dir>/<builder-sha8>-<utc timestamp>/ : bin/ (agent with cgo native STT and bin/lib, workspace, gateway,
@@ -21,7 +21,12 @@
 set -euo pipefail
 umask 022
 
-if [[ "$(uname -sm)" != "Linux x86_64" ]]; then echo "Builds run on Linux x86_64 only" >&2; exit 1; fi
+case "$(uname -sm)" in
+  'Linux x86_64') NATIVE_BUILD_ARCH=amd64 ;;
+  'Linux aarch64') NATIVE_BUILD_ARCH=arm64 ;;
+  *) echo 'Builds run on Linux x86_64 or aarch64 only.' >&2; exit 1 ;;
+esac
+BUILD_ARCH="${BUILD_ARCH:-$NATIVE_BUILD_ARCH}"
 
 BUILDS="${BUILDS_DIR:-/srv/_builds}"
 KEEP=1
@@ -35,6 +40,7 @@ declare -A URL REV
 ORDER=(mcp-agent-builder-go mcpagent multi-llm-provider-go)
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --arch) BUILD_ARCH="$2"; shift 2 ;;
     --inner) INNER=1; shift ;;
     --work) WORK="$2"; shift 2 ;;
     --name) NAME="$2"; shift 2 ;;
@@ -47,6 +53,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+[[ "$BUILD_ARCH" == "$NATIVE_BUILD_ARCH" ]] || {
+  echo "A $BUILD_ARCH release needs a native $BUILD_ARCH Linux host (this host is $NATIVE_BUILD_ARCH)." >&2
+  exit 1
+}
+export BUILD_ARCH
 # Keep the newest $KEEP builds; never remove a pinned one or one younger than 15 minutes (an activation or a shipment to RTS may still be reading it);
 # clear stale scratch folders.
 prune_builds() {
@@ -57,11 +68,13 @@ root, keep = Path(sys.argv[1]), int(sys.argv[2])
 # A pinned build (marker file in <builds>/.pinned/, `./deploy.sh pin <build>`) is a known-good one to deploy later: it is never
 # removed and does not count toward the newest $KEEP.
 pinned = {m.name for m in (root / ".pinned").glob("*")} if (root / ".pinned").is_dir() else set()
-builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name.rsplit("-", 1)[1], reverse=True)
-for old in builds[keep:]:
-    if time.time() - (old / "manifest.json").stat().st_mtime > 900:
-        print(f"pruning old build {old.name}")
-        shutil.rmtree(old)
+builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}(?:-arm64)?-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name.rsplit("-", 1)[1], reverse=True)
+for arm64 in (False, True):
+    architecture_builds = [d for d in builds if ("-arm64-" in d.name) == arm64]
+    for old in architecture_builds[keep:]:
+        if time.time() - (old / "manifest.json").stat().st_mtime > 900:
+            print(f"pruning old build {old.name}")
+            shutil.rmtree(old)
 for stale in list(root.glob("*.partial")) + list((root / ".work").glob("*")):
     if time.time() - stale.stat().st_mtime > 86400:
         shutil.rmtree(stale, ignore_errors=True)
@@ -75,7 +88,7 @@ for repo in "${ORDER[@]}"; do
   [[ -n "${URL[$repo]:-}" && "${REV[$repo]:-}" =~ ^[0-9a-f]{40}$ ]] || { echo "--source $repo <url> <40-hex sha> is required" >&2; exit 2; }
 done
 SELF="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-PASS=(--builds-dir "$BUILDS" --keep "$KEEP" --started "$STARTED")
+PASS=(--arch "$BUILD_ARCH" --builds-dir "$BUILDS" --keep "$KEEP" --started "$STARTED")
 [[ "$FORCE" == 1 ]] && PASS+=(--force)
 for repo in "${ORDER[@]}"; do PASS+=(--source "$repo" "${URL[$repo]}" "${REV[$repo]}"); done
 
@@ -91,14 +104,15 @@ if [[ "$INNER" == 0 ]]; then
 
   existing=""
   if [[ "$FORCE" == 0 ]]; then
-    existing="$(python3 - "$BUILDS" "${REV[mcp-agent-builder-go]}" "${REV[mcpagent]}" "${REV[multi-llm-provider-go]}" <<'PY'
+    existing="$(python3 - "$BUILDS" "${REV[mcp-agent-builder-go]}" "${REV[mcpagent]}" "${REV[multi-llm-provider-go]}" "$(uname -m)" <<'PY'
 import json, sys
 from pathlib import Path
-root, *shas = sys.argv[1:]
+root, *shas, arch = sys.argv[1:]
 want = dict(zip(["mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go"], shas))
 for manifest in sorted(Path(root).glob("*/manifest.json"), reverse=True):
     try:
-        if json.loads(manifest.read_text()).get("revisions") == want:
+        data = json.loads(manifest.read_text())
+        if data.get("revisions") == want and data.get("arch") == arch:
             print(manifest.parent.name)
             break
     except ValueError:
@@ -118,19 +132,20 @@ PY
     echo "Installing the pinned Go toolchain into $BUILDS/.toolchain"
     install -d -m 0755 "$BUILDS/.toolchain"
     tmp="$(mktemp -d "$BUILDS/.toolchain/dl.XXXXXX")"
-    curl --fail --location --silent --show-error https://go.dev/dl/go1.27.1.linux-amd64.tar.gz -o "$tmp/go.tar.gz"
+    curl --fail --location --silent --show-error https://go.dev/dl/go1.27.1.linux-$BUILD_ARCH.tar.gz -o "$tmp/go.tar.gz"
     curl --fail --location --silent --show-error 'https://go.dev/dl/?mode=json&include=all' -o "$tmp/go-releases.json"
-    python3 - "$tmp" <<'PY'
+    python3 - "$tmp" "$BUILD_ARCH" <<'PY'
 import hashlib, json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
-expected = next(f['sha256'] for v in json.loads((p/'go-releases.json').read_text()) for f in v['files'] if f['filename'] == 'go1.27.1.linux-amd64.tar.gz')
+expected = next(f['sha256'] for v in json.loads((p/'go-releases.json').read_text()) for f in v['files'] if f['filename'] == f'go1.27.1.linux-{sys.argv[2]}.tar.gz')
 assert hashlib.sha256((p/'go.tar.gz').read_bytes()).hexdigest() == expected, 'Go checksum mismatch'
 PY
     tar -xzf "$tmp/go.tar.gz" -C "$BUILDS/.toolchain"
     rm -rf "$tmp"
   fi
 
-  NAME="${REV[mcp-agent-builder-go]:0:8}-$(date -u +%Y%m%d%H%M%S)"
+  arch_suffix=""; [[ "$BUILD_ARCH" != arm64 ]] || arch_suffix=-arm64
+  NAME="${REV[mcp-agent-builder-go]:0:8}$arch_suffix-$(date -u +%Y%m%d%H%M%S)"
   WORK="$BUILDS/.work/$NAME"
   rm -rf "$WORK"; mkdir -p "$WORK/source"
   trap 'rm -rf "$WORK"' EXIT
@@ -179,10 +194,10 @@ for repo in "${ORDER[@]}"; do
 done
 
 gobuild() { # gobuild OUTPUT PACKAGE [GOOS GOARCH CGO]
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="${3:-linux}" GOARCH="${4:-amd64}" CGO_ENABLED="${5:-0}" go build -o "$1" "$2")
+  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="${3:-linux}" GOARCH="${4:-$BUILD_ARCH}" CGO_ENABLED="${5:-0}" go build -o "$1" "$2")
 }
 
-step "Building binaries (native linux/amd64, cgo agent with sherpa-onnx)"
+step "Building binaries (native linux/$BUILD_ARCH, cgo agent with sherpa-onnx)"
 # The agent links sherpa-onnx (voice/STT) with cgo and an $ORIGIN/lib rpath; the libraries are staged in bin/lib beside it.
 bash "$REPO_ROOT/deploy/aws-ec2/build/build-linux-agent.sh" "$OUT" "$REPO_ROOT/agent_go" "$WORKSPACE_ROOT"
 mv "$OUT/bin/video-studio-agent" "$OUT/bin/agent"
@@ -190,7 +205,7 @@ gobuild "$OUT/bin/workspace" "$REPO_ROOT/workspace"
 gobuild "$OUT/bin/browser" "$REPO_ROOT/workspace/cmd/shared-browser"
 # Literal filename: workspace/security/landlock_policy.go resolves its sandbox launcher by this exact name for every product.
 gobuild "$OUT/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c -o "$OUT/bin/workspace-security.test" "$REPO_ROOT/workspace/security")
+(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go test -c -o "$OUT/bin/workspace-security.test" "$REPO_ROOT/workspace/security")
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with both activation scripts).
 source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$OUT"

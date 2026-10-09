@@ -64,7 +64,7 @@ class PrebuiltActivationTest(unittest.TestCase):
         (self.build / "SOURCE_REVISIONS").write_text("".join(f"{k}={v}\n" for k, v in REVS.items()))
         release_manifest.create(self.build, self.build.name, REVS)
 
-    def activate(self, *extra, product="sparkquill", env=None, workspace=None):
+    def activate(self, *extra, product="example", env=None, workspace=None):
         full_env = {**os.environ, "DEPLOY_APP_ROOT": str(self.app), "HOME": str(self.tmp / "home"), **(env or {})}
         return subprocess.run(
             ["bash", str(self.build / "source/mcp-agent-builder-go/deploy/rootless-linux/build-and-activate.sh"),
@@ -81,8 +81,8 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.assertIn("no compile", result.stdout)
         self.assertIn("Stage only", result.stdout)
         (release,) = self.releases()
-        self.assertTrue(release.name.startswith("sparkquill-a1a1a1a1-"))
-        for name in ("sparkquill-agent", "sparkquill-workspace", "sparkquill-gateway", "slotctl", "slottmux", "mcpbridge",
+        self.assertTrue(release.name.startswith("example-a1a1a1a1-"))
+        for name in ("example-agent", "example-workspace", "example-gateway", "slotctl", "slottmux", "mcpbridge",
                      "video-studio-landlock-runner", "lib/libfake.so"):
             self.assertTrue((release / "bin" / name).exists(), name)
         for name in ("agent", "workspace", "gateway", "browser"):
@@ -92,7 +92,7 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.assertEqual((release / "SOURCE_REVISIONS").read_text(), (self.build / "SOURCE_REVISIONS").read_text())
         self.assertTrue((release / "source/mcpagent/go.mod").is_file())
         self.assertTrue((release / "static/report-preview.js").is_file())
-        self.assertTrue((release / "configs/mcp_servers_sparkquill.json").is_file())
+        self.assertTrue((release / "configs/mcp_servers_example.json").is_file())
         self.assertEqual((release / "frontend/runtime-config.js").read_text(),
                          (ROOT / "products/example/runtime-config.js").read_text())
         self.assertTrue((release / "check-release-assets.mjs").is_file())
@@ -104,7 +104,7 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.assertGreater((release / "frontend/assets/app.js").stat().st_mtime, time.time() - 3600)
 
     def test_playbook_validators_never_write_into_the_shared_build_source(self):
-        # Confida ships playbooks. Its first prebuilt deploy failed because the playbook tests create a temporary folder beside the playbooks, in the
+        # A playbook-enabled product's first prebuilt deploy failed because the playbook tests create a temporary folder beside the playbooks, in the
         # build's read-only source (2026-10-04). A product validates its own copy; the shared source must not be touched.
         playbooks = self.build / "source/mcp-agent-builder-go/playbooks"
         (playbooks / "scripts").mkdir(parents=True)
@@ -123,7 +123,11 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.addCleanup(lambda: [p.chmod(0o755) for p in [playbooks, *playbooks.rglob("*")] if p.is_dir()])
         # as root the permission bits do not apply, so only prove the shared source stays unchanged
         before = sorted(str(p) for p in playbooks.rglob("*"))
-        result = self.activate("--stage-only", product="confida")
+        config = self.tmp / "product-config"
+        shutil.copytree(ROOT / "products/example", config)
+        with (config / "product.env").open("a") as handle:
+            handle.write("\nCOPY_PLAYBOOKS=true\n")
+        result = self.activate("--stage-only", env={"PRODUCT_CONFIG_DIR": str(config)})
         self.assertEqual(sorted(str(p) for p in playbooks.rglob("*")), before, "the shared build source was written to")
         if os.geteuid() != 0:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -215,8 +219,8 @@ class RtsShipmentTest(unittest.TestCase):
             ("video-studio", "agent workspace gateway browser", "update-coding-clis",
              {"video-studio-agent", "video-studio-workspace", "video-studio-gateway", "video-studio-browser", "slotctl", "workspace-security.test", "lib"},
              {"agent", "update-coding-clis"}),
-            ("sparkquill", "agent workspace gateway", "browser workspace-security.test update-coding-clis",
-             {"sparkquill-agent", "sparkquill-workspace", "sparkquill-gateway", "slotctl", "lib"},
+            ("example", "agent workspace gateway", "browser workspace-security.test update-coding-clis",
+             {"example-agent", "example-workspace", "example-gateway", "slotctl", "lib"},
              {"agent", "browser", "workspace-security.test", "update-coding-clis"}),
         ):
             with self.subTest(prefix=prefix):

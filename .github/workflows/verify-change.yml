@@ -17,6 +17,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  arm-release:
+    if: >-
+      contains(github.event.head_commit.message, 'Verify-ARM-Release: true')
+    uses: ./.github/workflows/build-native-release.yml
+    with:
+      arch: arm64
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 40

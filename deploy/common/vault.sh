@@ -4,7 +4,7 @@
 
 vault_build() {
   local repo_root="$1" build_dir="$2"
-  (cd "$repo_root/mcp-gateway" && GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$build_dir/bin/agentworks-vault" ./cmd/server)
+  (cd "$repo_root/mcp-gateway" && GOWORK=off GOOS=linux GOARCH="${BUILD_ARCH:-amd64}" CGO_ENABLED=0 go build -o "$build_dir/bin/agentworks-vault" ./cmd/server)
   install -m 0755 "$repo_root/deploy/common/install-vault-service.py" "$build_dir/bin/install-vault-service.py"
 }
 

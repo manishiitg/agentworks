@@ -3,7 +3,7 @@
 #
 #   publish-build.sh <build-dir>     publish (idempotent): release build-<builder8>-<mcpagent8>-<provider8> with the assets
 #                                    build.tar.gz (the whole build folder), build-rts.tar.gz (the trimmed copy RTS needs),
-#                                    manifest.json, SHA256SUMS; then keep only the newest 8 build releases
+#                                    manifest.json, SHA256SUMS; then keep only the newest 8 build releases per architecture
 #   publish-build.sh --list          the build releases on GitHub (anonymous, read-only)
 #
 # Runs on the build host after a build (build-release.sh, best effort; `./deploy.sh publish`). Needs only python3, tar and gzip.
@@ -20,7 +20,7 @@ REPO = os.environ.get("GH_BUILDS_REPO", "manishiitg/agentworks-builds")
 API = os.environ.get("GH_API_URL", "https://api.github.com").rstrip("/")
 UPLOAD = os.environ.get("GH_UPLOAD_URL", "https://uploads.github.com").rstrip("/")
 KEEP = int(os.environ.get("BUILDS_KEEP_RELEASES", "8"))
-TAG_RE = re.compile(r"^build-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}$")
+TAG_RE = re.compile(r"^build-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}(-arm64)?$")
 ASSETS = ("build.tar.gz", "build-rts.tar.gz", "manifest.json", "SHA256SUMS")
 MAX_ASSET = 2 * 1024**3 - 1
 REPOS = ("mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go")
@@ -208,7 +208,11 @@ def publish(build):
         raise Fatal(f"{manifest} is missing: not a finished build")
     name = os.path.basename(build)
     revs = read_revisions(build)
-    tag = "build-" + "-".join(revs[r][:8] for r in REPOS)
+    with open(manifest, encoding="utf-8") as handle:
+        arch = json.load(handle).get("arch")
+    if arch not in ("x86_64", "aarch64"):
+        raise Fatal(f"unsupported build architecture: {arch}")
+    tag = "build-" + "-".join(revs[r][:8] for r in REPOS) + ("-arm64" if arch == "aarch64" else "")
     manifest_sha = sha256_file(manifest)
     token = load_token()
     gh = Github(token)
@@ -262,8 +266,8 @@ def publish(build):
 
 
 def prune(gh, current):
-    """Keep the newest KEEP build releases (never the one just published); delete older releases and their tags."""
-    builds = sorted((r for r in gh.releases() if TAG_RE.match(r["tag_name"])), key=lambda r: r["created_at"], reverse=True)
+    """Keep the newest KEEP releases for this architecture; delete older releases and their tags."""
+    builds = sorted((r for r in gh.releases() if TAG_RE.match(r["tag_name"]) and r["tag_name"].endswith("-arm64") == current.endswith("-arm64")), key=lambda r: r["created_at"], reverse=True)
     for old in builds[KEEP:]:
         if old["tag_name"] == current:
             continue
