@@ -262,6 +262,17 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 				t.Fatalf("%s skill is missing %q", name, text)
 			}
 		}
+		if name == "work-dashboard" {
+			found := false
+			for _, file := range attached[0].SupportingFiles {
+				if file.RelPath == "references/motion-guide.md" {
+					found = strings.Contains(string(file.Content), "window.report.ready") && strings.Contains(string(file.Content), "MP4")
+				}
+			}
+			if !found {
+				t.Fatal("dashboard motion reference was not packaged for read_skill")
+			}
+		}
 	}
 }
 

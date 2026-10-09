@@ -9,6 +9,9 @@ references they provide.{{if .Focus}}
 
 Requested focus: {{.Focus}}.{{end}}
 
+If motion is requested, also load
+`read_skill(skills=[{"name":"builder-reference","path":"references/motion-guide.md"}])`.
+
 ## Documents and runtime
 
 - Dashboard documents are complete HTML files under `db/reports/`.

@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Motion guidance is requested usage, not a prescribed visual style
+
+Expose an on-demand motion reference for workflow Builder and project Dashboards.
+It covers browser animation through the existing HTML runtime and MP4 explainers
+through available Video Studio/HyperFrames tools, preserving user design choices.
+Exports capture one data snapshot and remain distinct from live Dashboard refresh.
+The guide grants no new tools and adds no report-bridge rendering endpoint.
+Ticket: [PLAT-741](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-741.md).
+
 ### 2026-10-09 — Dashboard guidance documents usage; design belongs to the user
 
 Remove the bundled UI/UX Pro Max skill and its automatic attachment in workflow

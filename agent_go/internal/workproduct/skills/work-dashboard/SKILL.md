@@ -38,6 +38,14 @@ user's preferences and supplied references. This skill describes platform usage.
 - Chart.js, other browser libraries, SVG/canvas and HTML/CSS are supported.
   Verify the chosen dependency loads and handle load failures.
 
+## Requested motion
+
+When the user asks for Dashboard animation, an MP4 explainer, or both, read this
+skill's `references/motion-guide.md`. It documents playback, refresh and the
+available Video Studio export path, while leaving design to the user. A
+Dashboard project does not automatically acquire Video Studio's renderer or
+presentation tools; check the active capabilities before offering an export.
+
 ## Project data and actions
 
 - Use `window.report.query(sql, params)` for live structured data. Inspect the

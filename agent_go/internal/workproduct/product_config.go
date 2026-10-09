@@ -8,7 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-//go:embed product.yaml prompts/*.md skills/*/SKILL.md commands/*.md
+//go:embed product.yaml prompts/*.md skills/*/SKILL.md skills/*/references/*.md commands/*.md
 var productConfigFiles embed.FS
 
 // RunPromptTemplate is deliberately separate from the authoring feature

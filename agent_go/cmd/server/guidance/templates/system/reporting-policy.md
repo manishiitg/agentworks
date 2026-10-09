@@ -9,6 +9,10 @@ There is no Dashboard generation step or widget-layout registry.
 Layout, typography, colors, charts and navigation follow the user's preferences
 and supplied references. This policy describes platform usage and data contracts.
 
+For requested animations or MP4 explainers, load
+`read_skill(skills=[{"name":"builder-reference","path":"references/motion-guide.md"}])`.
+The reference covers both paths using available capabilities; it prescribes no visual style.
+
 ### Page contract
 
 - Write one or more complete `.html` documents under
