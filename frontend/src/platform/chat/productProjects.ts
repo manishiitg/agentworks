@@ -385,6 +385,8 @@ export async function createProductProject<P extends string>(options: {
     workspacePath,
     createdAt: now,
     updatedAt: now,
+    // The new project is shown right away from this object, so it carries its mode (Cowork's toolbar and welcome); a refresh reads it from product.json.
+    ...(options.mode ? { mode: options.mode } : {}),
     llmConfig: options.llmConfig,
     selectedServers: [],
     selectedSkills: [...new Set(options.selectedSkills || [])],

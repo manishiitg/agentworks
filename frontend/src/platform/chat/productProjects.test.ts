@@ -8,7 +8,7 @@ const listOwnSharedProjects = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects } }))
 
 import { agentApi } from '../../services/api'
-import { loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
+import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
 
 describe('parseProductProjectManifest', () => {
   it('loads the project bot identity and icon', () => {
@@ -45,6 +45,15 @@ describe('Code project mode in product.json', () => {
     expect(productMode(parse({}))).toBe('dev')
     expect(productMode(parse({ local_files: { device_id: 'laptop', resource_id: 'app' } }))).toBe('local')
     expect(productMode(parse({ mode: 'dev', local_files: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
+  })
+})
+
+describe('a new Code project', () => {
+  it('comes back with the mode it was created in, so Cowork shows at once and not only after a refresh', async () => {
+    const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create code project', title: 'Assistant', description: '', mode: 'cowork' })
+    expect(created.mode).toBe('cowork')
+    expect(JSON.parse(updatePlannerFile.mock.calls.find(call => String(call[0]).endsWith('/product.json'))![1]).mode).toBe('cowork')
+    updatePlannerFile.mockClear() // later tests read the first call
   })
 })
 
