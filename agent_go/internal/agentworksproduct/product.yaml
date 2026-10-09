@@ -412,6 +412,7 @@ chat:
       - manage_crew_chats
       - query_database
       - run_after_run
+      - manage_messaging
       - list_files
       - search_files
       - list_step_code

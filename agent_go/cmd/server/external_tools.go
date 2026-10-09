@@ -230,6 +230,7 @@ func externalTools() ([]externalTool, error) {
 		externalCrewChatDefinitions(add)
 		externalDatabaseDefinitions(add)
 		externalAfterRunDefinitions(add)
+		externalMessagingDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -460,6 +461,32 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalQueryDatabase(w, r, call.Arguments, crew.Binding.WorkspacePath)
 		return
 	}
+	if tool.Name == "manage_messaging" && externalArg(call.Arguments, "crew_id") != "" {
+		claims := GetUserFromContext(r.Context())
+		crewID, action := externalArg(call.Arguments, "crew_id"), externalArg(call.Arguments, "action")
+		if externalArg(call.Arguments, "workflow_id") != "" {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
+			return
+		}
+		if t := claims.AccessToken; t != nil {
+			scope := "crews:write"
+			if action == "status" || action == "whatsapp_link" {
+				scope = "crews:read"
+			}
+			if !t.Allows(scope) || !t.AllowsCrew(crewID) {
+				externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
+				return
+			}
+		}
+		crew, _, summary, ok := api.externalCrewResolve(r.Context(), claims, crewID)
+		if !ok {
+			externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+			return
+		}
+		label, _ := summary["name"].(string)
+		api.externalMessagingCall(w, r, call.Arguments, externalMessagingTarget{kind: "crew", id: crewID, label: label, path: crew.Binding.WorkspacePath, profile: "work"})
+		return
+	}
 	if tool.Name == "manage_crew_chats" {
 		api.externalCrewChatsCall(w, r, call.Arguments)
 		return
@@ -615,6 +642,18 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "manage_project" {
 		api.externalWorkflowProjectCall(w, r, args, *selected)
+		return
+	}
+	if tool.Name == "manage_messaging" {
+		if t := GetUserFromContext(r.Context()).AccessToken; t != nil && !t.Allows("workflows:read") && !t.Allows("runs:execute") {
+			externalError(w, 403, "insufficient_scope", "This connection was not granted workflow access.")
+			return
+		}
+		kind := "workflow"
+		if selected.Manifest.Kind == "relay" {
+			kind = "relay"
+		}
+		api.externalMessagingCall(w, r, args, externalMessagingTarget{kind: kind, id: selected.Manifest.ID, label: selected.Manifest.Label, path: selected.WorkspacePath, workflow: selected, manifest: selected.Manifest})
 		return
 	}
 	if tool.Name == "query_database" {

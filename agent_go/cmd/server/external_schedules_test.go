@@ -90,3 +90,18 @@ func TestExternalCrewOnlyConnectionCannotReachWorkflows(t *testing.T) {
 		t.Fatalf("Crew-only connection saw a workflow question: %s", w.Body)
 	}
 }
+
+// manage_messaging: routing a Slack channel is the owner's, as in the Slack
+// tab; WhatsApp pairing is only pointed to, never done over MCP.
+func TestExternalManageMessagingGuards(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	if w := f.call(t, "reader", "manage_messaging", map[string]any{"workflow_id": "invoices", "action": "add_channel", "channel_id": "C0123ABCD"}); w.Code < 400 {
+		t.Fatalf("reader routed a channel: %d %s", w.Code, w.Body)
+	}
+	if w := f.call(t, "owner", "manage_messaging", map[string]any{"workflow_id": "invoices", "action": "status"}); w.Code != 200 || !strings.Contains(w.Body.String(), `"slack_bot"`) {
+		t.Fatalf("owner status: %d %s", w.Code, w.Body)
+	}
+	if w := f.call(t, "owner", "manage_messaging", map[string]any{"workflow_id": "invoices", "action": "whatsapp_link"}); w.Code != 200 || !strings.Contains(w.Body.String(), "QR code") {
+		t.Fatalf("whatsapp_link: %d %s", w.Code, w.Body)
+	}
+}
