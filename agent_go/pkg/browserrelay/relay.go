@@ -520,19 +520,133 @@ type envelope struct {
 	Diagnostics bool            `json:"diagnostics,omitempty"`
 	Version     string          `json:"version,omitempty"`
 	DurationMS  int64           `json:"duration_ms,omitempty"`
+	// Diagnostic detail (PLAT-788). Every field is a number or a value from a fixed vocabulary, checked in
+	// logExtensionDiagnostic; none is ever a page address, title or message.
+	Attempt         int      `json:"attempt,omitempty"`
+	DelayMS         int64    `json:"delay_ms,omitempty"`
+	ElapsedMS       int64    `json:"elapsed_ms,omitempty"`
+	SinceAttachMS   int64    `json:"since_attach_ms,omitempty"`
+	SinceNavigateMS int64    `json:"since_navigate_ms,omitempty"`
+	AgeMS           int64    `json:"age_ms,omitempty"`
+	WSCode          int      `json:"ws_code,omitempty"`
+	TargetType      string   `json:"target_type,omitempty"`
+	Scheme          string   `json:"scheme,omitempty"`
+	TabStatus       string   `json:"tab_status,omitempty"`
+	TabFlags        string   `json:"tab_flags,omitempty"`
+	Chrome          string   `json:"chrome,omitempty"`
+	Online          *bool    `json:"online,omitempty"`
+	ExtIDs          []string `json:"ext_ids,omitempty"`
+}
+
+var (
+	diagnosticEvents = map[string]bool{"connection_paired": true, "connection_stopped": true, "debugger_attached": true, "debugger_detached": true, "session_detach_requested": true, "tab_unshared": true, "command_failed": true, "command_started": true, "command_succeeded": true, "child_attached": true, "child_detached": true, "tab_created": true, "tab_grouping_started": true, "tab_grouped": true, "tab_grouping_failed": true, "setup_waiting_for_page": true, "target_attach_failed": true, "target_setup_failed": true, "target_recovery_started": true, "target_recovered": true, "target_recovery_failed": true, "tab_shown_for_input": true, "window_restored_for_input": true,
+		"recovery_attempt": true, "tab_snapshot": true, "frame_attached": true, "frame_navigated": true, "connect_failed": true, "connection_closed": true, "reconnect_scheduled": true}
+	diagnosticReasons     = map[string]bool{"": true, "target_closed": true, "canceled_by_user": true, "replaced_with_devtools": true, "requested_unshare": true, "target_close": true, "debugger_detached": true, "tab_closed": true, "unsupported_url": true, "detached": true, "not_shared": true, "foreign_frame": true, "another_debugger": true, "cannot_attach": true, "no_tab": true, "not_allowed_url": true, "timeout": true, "ws_error": true, "ws_closed": true, "other": true}
+	diagnosticTargetTypes = map[string]bool{"": true, "iframe": true, "page": true, "worker": true, "service_worker": true, "shared_worker": true, "background_page": true, "other": true}
+	diagnosticSchemes     = map[string]bool{"": true, "https": true, "http": true, "chrome-extension": true, "about": true, "blob": true, "data": true, "chrome": true, "chrome-untrusted": true, "devtools": true, "file": true, "other": true}
+	diagnosticTabStatus   = map[string]bool{"": true, "loading": true, "complete": true, "unloaded": true}
+	diagnosticTabFlags    = map[string]bool{"active": true, "discarded": true, "incognito": true, "grouped": true, "audible": true, "pinned": true, "frozen": true}
+)
+
+const maxDiagnosticMS = 7 * 24 * 60 * 60 * 1000
+
+// validExtensionID is Chrome's own form of an extension ID: 32 letters a-p.
+func validExtensionID(id string) bool {
+	if len(id) != 32 {
+		return false
+	}
+	for _, c := range id {
+		if c < 'a' || c > 'p' {
+			return false
+		}
+	}
+	return true
+}
+
+// diagnosticDetail renders the optional fields, or "" plus false when one is invalid (the whole record is then dropped).
+func diagnosticDetail(e envelope) (string, bool) {
+	for _, ms := range []int64{e.DelayMS, e.ElapsedMS, e.SinceAttachMS, e.SinceNavigateMS, e.AgeMS} {
+		if ms < 0 || ms > maxDiagnosticMS {
+			return "", false
+		}
+	}
+	if e.Attempt < 0 || e.Attempt > 64 || e.WSCode < 0 || e.WSCode > 4999 || len(e.ExtIDs) > 8 {
+		return "", false
+	}
+	if !diagnosticTargetTypes[e.TargetType] || !diagnosticSchemes[e.Scheme] || !diagnosticTabStatus[e.TabStatus] {
+		return "", false
+	}
+	if len(e.Chrome) > 4 {
+		return "", false
+	}
+	for _, c := range e.Chrome {
+		if c < '0' || c > '9' {
+			return "", false
+		}
+	}
+	if e.TabFlags != "" {
+		for _, flag := range strings.Split(e.TabFlags, ",") {
+			if !diagnosticTabFlags[flag] {
+				return "", false
+			}
+		}
+	}
+	for _, id := range e.ExtIDs {
+		if !validExtensionID(id) {
+			return "", false
+		}
+	}
+	var b strings.Builder
+	add := func(name string, value interface{}) { fmt.Fprintf(&b, " %s=%v", name, value) }
+	if e.Attempt != 0 {
+		add("attempt", e.Attempt)
+	}
+	if e.DelayMS != 0 {
+		add("delay_ms", e.DelayMS)
+	}
+	if e.ElapsedMS != 0 {
+		add("elapsed_ms", e.ElapsedMS)
+	}
+	if e.SinceAttachMS != 0 {
+		add("since_attach_ms", e.SinceAttachMS)
+	}
+	if e.SinceNavigateMS != 0 {
+		add("since_navigate_ms", e.SinceNavigateMS)
+	}
+	if e.AgeMS != 0 {
+		add("age_ms", e.AgeMS)
+	}
+	if e.WSCode != 0 {
+		add("ws_code", e.WSCode)
+	}
+	if e.TargetType != "" {
+		add("target_type", e.TargetType)
+	}
+	if e.Scheme != "" {
+		add("scheme", e.Scheme)
+	}
+	if e.TabStatus != "" {
+		add("tab_status", e.TabStatus)
+	}
+	if e.TabFlags != "" {
+		add("tab_flags", e.TabFlags)
+	}
+	if e.Chrome != "" {
+		add("chrome", e.Chrome)
+	}
+	if e.Online != nil {
+		add("online", *e.Online)
+	}
+	if len(e.ExtIDs) > 0 {
+		add("ext_ids", strings.Join(e.ExtIDs, ","))
+	}
+	return b.String(), true
 }
 
 // Extension diagnostics are deliberately limited to protocol metadata. Never
 // log arbitrary message strings, CDP parameters, page URLs or credentials.
 func logExtensionDiagnostic(scope, connection string, e envelope) {
-	switch e.Event {
-	case "connection_paired", "connection_stopped", "debugger_attached", "debugger_detached", "session_detach_requested", "tab_unshared", "command_failed", "command_started", "command_succeeded", "child_attached", "child_detached", "tab_created", "tab_grouping_started", "tab_grouped", "tab_grouping_failed", "setup_waiting_for_page", "target_attach_failed", "target_setup_failed", "target_recovery_started", "target_recovered", "target_recovery_failed", "tab_shown_for_input", "window_restored_for_input":
-	default:
-		return
-	}
-	switch e.Reason {
-	case "", "target_closed", "canceled_by_user", "requested_unshare", "target_close", "debugger_detached", "tab_closed", "unsupported_url", "detached", "not_shared", "foreign_frame", "other":
-	default:
+	if !diagnosticEvents[e.Event] || !diagnosticReasons[e.Reason] {
 		return
 	}
 	if e.TabID < 0 || e.TabID > 1<<53 || len(e.Method) > 80 {
@@ -559,7 +673,11 @@ func logExtensionDiagnostic(scope, connection string, e envelope) {
 			return
 		}
 	}
-	log.Printf("[CHROME_EXTENSION] scope=%q connection=%q event=%s tab_id=%d reason=%s last_method=%s request_id=%s version=%s duration_ms=%d", scope, connection, e.Event, e.TabID, e.Reason, e.Method, e.RequestID, e.Version, e.DurationMS)
+	detail, ok := diagnosticDetail(e)
+	if !ok {
+		return
+	}
+	log.Printf("[CHROME_EXTENSION] scope=%q connection=%q event=%s tab_id=%d reason=%s last_method=%s request_id=%s version=%s duration_ms=%d%s", scope, connection, e.Event, e.TabID, e.Reason, e.Method, e.RequestID, e.Version, e.DurationMS, detail)
 }
 
 // ServeExtension authenticates in the first frame. No app JWT is given to the

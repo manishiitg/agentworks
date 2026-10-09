@@ -242,6 +242,44 @@ func TestExtensionDiagnosticsExcludePayloadsAndInvalidFields(t *testing.T) {
 	}
 }
 
+// PLAT-788: the richer diagnostics name what attached to a page (type, scheme, a foreign extension's ID), why and when
+// Chrome detached, and what each recovery attempt saw, from fixed vocabularies only. Anything outside them drops the
+// whole record, so a page address, title or message can never reach the log through these fields.
+func TestExtensionDiagnosticsDetailUsesFixedVocabularies(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	foreign := strings.Repeat("a", 16) + strings.Repeat("p", 16)
+	online := false
+	e := envelope{Type: "diagnostic", Event: "child_attached", TabID: 7, Version: "0.4.9", TargetType: "iframe", Scheme: "chrome-extension", ExtIDs: []string{foreign}, SinceNavigateMS: 3012, Attempt: 2, TabStatus: "loading", TabFlags: "active,grouped", Chrome: "154", Online: &online}
+	logExtensionDiagnostic("project-one", "ext-connection", e)
+	for _, want := range []string{"event=child_attached", "target_type=iframe", "scheme=chrome-extension", "ext_ids=" + foreign, "since_navigate_ms=3012", "tab_flags=active,grouped", "chrome=154", "online=false"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("missing %q in %s", want, output.String())
+		}
+	}
+	for name, bad := range map[string]envelope{
+		"a page address as an extension id": {Event: "child_attached", ExtIDs: []string{"https://private.example/page"}},
+		"an unknown scheme":                 {Event: "frame_navigated", Scheme: "javascript"},
+		"a free-form tab flag":              {Event: "tab_snapshot", TabFlags: "active,private-title"},
+		"an unknown reason":                 {Event: "recovery_attempt", Reason: "Cannot access https://private.example"},
+		"too many extension ids":            {Event: "frame_navigated", ExtIDs: []string{foreign, foreign, foreign, foreign, foreign, foreign, foreign, foreign, foreign}},
+		"a negative age":                    {Event: "connect_failed", AgeMS: -1},
+	} {
+		output.Reset()
+		logExtensionDiagnostic("project-one", "ext-connection", bad)
+		if output.Len() != 0 {
+			t.Fatalf("%s was logged: %s", name, output.String())
+		}
+	}
+	output.Reset()
+	logExtensionDiagnostic("project-one", "ext-connection", envelope{Event: "reconnect_scheduled", Reason: "ws_closed", WSCode: 1006, DelayMS: 4000, Attempt: 3})
+	if !strings.Contains(output.String(), "ws_code=1006") || !strings.Contains(output.String(), "delay_ms=4000") {
+		t.Fatalf("offline event not logged: %s", output.String())
+	}
+}
+
 // The account credential must never merge live project controllers or authorize
 // caller-invented scopes. Exercise the real WebSocket handshake and Reset.
 func TestAccountCodeKeepsConcurrentProjectsIsolated(t *testing.T) {

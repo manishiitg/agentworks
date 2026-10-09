@@ -2,6 +2,39 @@
 // Each project has its own socket, target/session maps, controller and tab groups.
 const connections = new Map();
 const tabOwners = new Map();
+// Events that happen while no server socket is open (a refused handshake, a closed socket, a scheduled retry) are kept
+// briefly and sent after the next pairing, with their age, so the server log shows them (PLAT-788).
+const offlineEvents = [];
+function offlineDiagnostic(event, scope, reason = '', extra = {}) {
+  const record = { event, tab_id: 0, reason, method: '', request_id: '', duration_ms: 0, version: chrome.runtime.getManifest().version, at: Date.now(), ...extra };
+  console.info('[CHROME_EXTENSION]', JSON.stringify({ scope, ...record }));
+  offlineEvents.push(record); if (offlineEvents.length > 48) offlineEvents.shift();
+}
+function chromeMajor() { return navigator.userAgent.match(/Chrome\/(\d{1,4})/)?.[1] || ''; }
+// Chrome's error text mapped to a fixed code. The raw text is never logged: it can carry page details.
+function errorCode(message) {
+  const text = String(message || '');
+  if (text === 'Cannot access a chrome-extension:// URL of different extension') return 'foreign_frame';
+  if (/Another debugger is already attached/i.test(text)) return 'another_debugger';
+  if (/Cannot attach to this target/i.test(text)) return 'cannot_attach';
+  if (/No tab with (given )?id|tab was closed/i.test(text)) return 'no_tab';
+  if (/Cannot access (a )?(chrome|devtools|about|file|edge)/i.test(text)) return 'not_allowed_url';
+  if (/Connection stopped|not shared/i.test(text)) return 'not_shared';
+  if (/time(d)? ?out/i.test(text)) return 'timeout';
+  return 'other';
+}
+// What a frame's address says about it, without the address: its scheme and, for an extension page, the extension ID.
+function frameFacts(rawUrl) {
+  let u; try { u = new URL(rawUrl); } catch { return { scheme: 'other', ext_ids: [] }; }
+  const scheme = u.protocol.replace(':', '');
+  const known = ['https', 'http', 'chrome-extension', 'about', 'blob', 'data', 'chrome', 'chrome-untrusted', 'devtools', 'file'];
+  const ext = scheme === 'chrome-extension' && /^[a-p]{32}$/.test(u.hostname) && u.hostname !== chrome.runtime.id ? [u.hostname] : [];
+  return { scheme: known.includes(scheme) ? scheme : 'other', ext_ids: ext, own_ext: scheme === 'chrome-extension' && u.hostname === chrome.runtime.id };
+}
+function tabFacts(tab) {
+  const flags = [tab.active && 'active', tab.discarded && 'discarded', tab.incognito && 'incognito', tab.groupId >= 0 && 'grouped', tab.audible && 'audible', tab.pinned && 'pinned', tab.frozen && 'frozen'].filter(Boolean).join(',');
+  return { tab_status: ['loading', 'complete', 'unloaded'].includes(tab.status) ? tab.status : '', tab_flags: flags };
+}
 let accountPairing = null;
 let availableProjects = [];
 let selectedScope = '';
@@ -58,7 +91,8 @@ async function forgetProject(scope,reason='') {
 function retryLater(scope) {
  if(!savedPairings.has(scope))return;
  const delay=Math.min((retries.get(scope)?.delay || 500)*2,30000);
- retries.set(scope,{delay,after:Date.now()+delay});
+ retries.set(scope,{delay,after:Date.now()+delay,attempt:(retries.get(scope)?.attempt || 0)+1});
+ offlineDiagnostic('reconnect_scheduled',scope,'',{delay_ms:delay,attempt:retries.get(scope).attempt,chrome:chromeMajor()});
  clearTimeout(retryTimer);
  retryTimer=setTimeout(queueResume,Math.max(100,[...retries.values()].reduce((n,r)=>Math.min(n,r.after-Date.now()),30000)));
 }
@@ -139,6 +173,9 @@ const recoveries = new Map();
 const sessionSettings = new Map();
 const setupMethods = new Set(['Page.enable', 'Runtime.enable', 'Network.enable', 'DOM.enable', 'Accessibility.enable', 'Log.enable', 'Console.enable', 'CSS.enable', 'Performance.enable', 'Target.setAutoAttach']);
 const diagnostics = [];
+const attachedAt = new Map();
+const navigatedAt = new Map();
+const childFrameLog = new Map();
 let lastMethod = '';
 let queue = Promise.resolve();
 
@@ -149,8 +186,8 @@ function safeURL(raw) {
   return u.href;
 }
 function send(message) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); }
-function diagnostic(event, tabId = 0, reason = '', requestId = '', method = lastMethod, durationMs = 0) {
-  const record = { event, tab_id: tabId, reason, method, request_id: requestId, duration_ms:durationMs, version:chrome.runtime.getManifest().version, at: Date.now() };
+function diagnostic(event, tabId = 0, reason = '', requestId = '', method = lastMethod, durationMs = 0, extra = {}) {
+  const record = { event, tab_id: tabId, reason, method, request_id: requestId, duration_ms:durationMs, version:chrome.runtime.getManifest().version, at: Date.now(), ...extra };
   diagnostics.push(record); if (diagnostics.length > 256) diagnostics.shift();
   // Fixed lifecycle metadata only: never send CDP arguments, page URLs or tokens.
   console.info('[CHROME_EXTENSION]', JSON.stringify(record));
@@ -200,7 +237,8 @@ async function attach(tab) {
     try { await chrome.debugger.attach({ tabId: tab.id }, '1.3'); } catch (e) { if (tabOwners.get(tab.id) === api) tabOwners.delete(tab.id); throw e; }
     if (socket !== connection || !workspace) { try { await chrome.debugger.detach({ tabId: tab.id }); } catch {} if (tabOwners.get(tab.id) === api) tabOwners.delete(tab.id); throw new Error('Chrome connection stopped'); }
     sessions.set(id, { tabId: tab.id, clientId:clientTabs.get(tab.id) || '' });
-    diagnostic('debugger_attached', tab.id);
+    attachedAt.set(tab.id, Date.now());
+    diagnostic('debugger_attached', tab.id, '', '', lastMethod, 0, { ...tabFacts(tab), chrome: chromeMajor() });
   }
   return id;
 }
@@ -299,13 +337,17 @@ async function stop(reason = '') {
 // Cancellation, closed tabs and stopped/project-replaced connections revoke it.
 async function restoreTarget(tabId, recovery) {
   const allowed = () => !recovery.cancelled && socket === recovery.connection && workspace && shared.has(tabId) && tabOwners.get(tabId) === api;
-  diagnostic('target_recovery_started', tabId);
+  const started = Date.now();
+  let lastCode = '', attempt = 0;
+  diagnostic('target_recovery_started', tabId, '', '', lastMethod, 0, { since_attach_ms: attachedAt.has(tabId) ? started - attachedAt.get(tabId) : 0, since_navigate_ms: navigatedAt.has(tabId) ? started - navigatedAt.get(tabId) : 0 });
   for (const delay of [0, 250, 500, 1000]) {
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
     if (!allowed()) return;
     let tab;
+    attempt++;
     try { tab = await chrome.tabs.get(tabId); safeURL(tab.pendingUrl || tab.url || 'about:blank'); }
-    catch { break; }
+    catch (e) { diagnostic('recovery_attempt', tabId, errorCode(e.message) === 'other' ? 'no_tab' : errorCode(e.message), '', lastMethod, 0, { attempt, delay_ms: delay, elapsed_ms: Date.now() - started }); break; }
+    diagnostic('recovery_attempt', tabId, '', '', lastMethod, 0, { attempt, delay_ms: delay, elapsed_ms: Date.now() - started, ...tabFacts(tab) });
     if (!allowed()) return;
     // Only child sessions are tied to the dead renderer. The platform's root
     // session/target IDs describe the authorized physical tab and remain stable.
@@ -323,18 +365,19 @@ async function restoreTarget(tabId, recovery) {
       if (!allowed()) throw new Error('Connection stopped');
       shared.set(tabId, tab);
       event('Target.targetInfoChanged', {targetInfo:target(tab)});
-      diagnostic('target_recovered', tabId);
+      diagnostic('target_recovered', tabId, '', '', lastMethod, 0, { attempt, elapsed_ms: Date.now() - started });
       await announceTabs();
       return;
     } catch (e) {
-      diagnostic(attached ? 'target_setup_failed' : 'target_attach_failed', tabId, e.message === 'Cannot access a chrome-extension:// URL of different extension' ? 'foreign_frame' : 'other');
+      lastCode = errorCode(e.message);
+      diagnostic(attached ? 'target_setup_failed' : 'target_attach_failed', tabId, lastCode, '', lastMethod, 0, { attempt, elapsed_ms: Date.now() - started, ...tabFacts(tab) });
       // Never detach a tab already claimed by a different project.
       if (attached && (!tabOwners.has(tabId) || tabOwners.get(tabId) === api)) {
         try { await chrome.debugger.detach({tabId}); } catch {}
       }
     }
   }
-  if (allowed()) { diagnostic('target_recovery_failed', tabId); await unshare(tabId, 'debugger_detached'); }
+  if (allowed()) { diagnostic('target_recovery_failed', tabId, lastCode, '', lastMethod, 0, { attempt, elapsed_ms: Date.now() - started }); await unshare(tabId, 'debugger_detached'); }
 }
 // A newly navigating tab can briefly fail Chrome's frame permission check even
 // though its main URL is HTTP(S). Retry subscriptions only, on the same grant;
@@ -349,7 +392,7 @@ async function sendSetupCommand(source, method, params) {
     try { return await chrome.debugger.sendCommand(source, method, params); }
     catch (e) {
       if (e.message !== 'Cannot access a chrome-extension:// URL of different extension' || index === delays.length - 1) throw e;
-      diagnostic('setup_waiting_for_page', source.tabId, '', '', method);
+      diagnostic('setup_waiting_for_page', source.tabId, 'foreign_frame', '', method, 0, { attempt: index + 1, delay_ms: delay, elapsed_ms: delays.slice(0, index + 1).reduce((a, b) => a + b, 0) });
     }
   }
 }
@@ -374,7 +417,9 @@ async function connect(raw) {
         clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; projectName = displayName(e.name); error = '';
         serverDiagnostics = e.diagnostics === true;
         heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
-        diagnostic('connection_paired', 0, '', '', '', 0);
+        diagnostic('connection_paired', 0, '', '', '', 0, { chrome: chromeMajor() });
+        // Send what happened while the socket was down, oldest first, each with its age.
+        if (serverDiagnostics) for (const old of offlineEvents.splice(0)) send({ type: 'diagnostic', ...old, age_ms: Math.max(0, Date.now() - old.at) });
         updateBadge(); resolve(state());
       } else if (e.type === 'connect-project') {
         const previousScope=selectedScope;
@@ -414,8 +459,8 @@ async function connect(raw) {
 
       }
     };
-    ws.onerror = () => { clearTimeout(timer); reject(new Error('Cannot connect to the platform')); };
-    ws.onclose = ({code}) => {clearTimeout(timer);reject(new Error('Connection closed'));if(socket!==ws)return;if(code===4001){revoke();void stop('Connection stopped. Connect again to enable access.');}else void transientLoss('Reconnecting to the platform…');};
+    ws.onerror = () => { offlineDiagnostic('connect_failed', pairing.scope, 'ws_error', {chrome: chromeMajor(), online: navigator.onLine}); clearTimeout(timer); reject(new Error('Cannot connect to the platform')); };
+    ws.onclose = ({code}) => {offlineDiagnostic('connection_closed', pairing.scope, 'ws_closed', {ws_code: Number.isInteger(code) ? code : 0, online: navigator.onLine});clearTimeout(timer);reject(new Error('Connection closed'));if(socket!==ws)return;if(code===4001){revoke();void stop('Connection stopped. Connect again to enable access.');}else void transientLoss('Reconnecting to the platform…');};
   });
 }
 
@@ -484,7 +529,7 @@ async function command(message, active = false, clientId = '') {
   const allowed = new Set(['Accessibility', 'DOM', 'DOMSnapshot', 'Runtime', 'Page', 'Input', 'CSS', 'Log', 'Console', 'Performance']);
   if (!allowed.has(domain) && !['Network.enable', 'Network.disable', 'Network.getResponseBody', 'Network.setCacheDisabled', 'Network.emulateNetworkConditions', 'Network.setUserAgentOverride', 'Target.setAutoAttach', 'Target.detachFromTarget'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
   if (['DOM.setFileInputFiles', 'Page.setDownloadBehavior', 'Page.addScriptToEvaluateOnNewDocument', 'Runtime.addBinding'].includes(method)) throw new Error(`Unsupported extension operation: ${method}`);
-  if (method === 'Page.navigate') safeURL(params.url);
+  if (method === 'Page.navigate') { safeURL(params.url); navigatedAt.set(source.tabId, Date.now()); childFrameLog.delete(source.tabId); }
   if (method === 'Page.captureScreenshot' && params.clip?.height > 16000) throw new Error('SCREENSHOT_TOO_TALL: full-page screenshots are limited to 16000 px; capture the viewport after scrolling');
   if (method === 'Page.startScreencast' && [...sessions.values()].some(s => s.tabId === source.tabId && s.capturing && s !== source)) throw new Error('This shared tab is already recording');
   const debuggee = {tabId:source.tabId,...(source.sessionId ? {sessionId:source.sessionId} : {})};
@@ -535,7 +580,7 @@ async function handleCDP(message, connection, active, clientId) {
   const started = Date.now(), method = lastMethod, epoch = client.epoch;
   diagnostic('command_started', tabId, '', requestId, method);
   try { const result = await command(message, active, clientId); diagnostic('command_succeeded', tabId, '', requestId, method, Date.now()-started); if (socket === connection && workspace && clients.get(clientId)===client && client.epoch === epoch && client.connected) send({ type: 'cdp', ...(clientId ? {client_id:clientId}:{}), message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), result } }); }
-  catch (e) { diagnostic('command_failed', tabId, /detached/i.test(e.message) ? 'detached' : /not shared/i.test(e.message) ? 'not_shared' : 'other', requestId, method, Date.now()-started); if (socket === connection && workspace && clients.get(clientId)===client && client.epoch === epoch && client.connected) send({ type: 'cdp', ...(clientId ? {client_id:clientId}:{}), message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
+  catch (e) { diagnostic('command_failed', tabId, /detached/i.test(e.message) ? 'detached' : errorCode(e.message), requestId, method, Date.now()-started); if (socket === connection && workspace && clients.get(clientId)===client && client.epoch === epoch && client.connected) send({ type: 'cdp', ...(clientId ? {client_id:clientId}:{}), message: { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: e.message } } }); }
 }
 
   const api = {
@@ -550,7 +595,10 @@ async function handleCDP(message, connection, active, clientId) {
     async newtab() { const result = await command({ method:'Target.createTarget', params:{url:'about:blank'} }); const tab = await tabForTarget(result.targetId); await chrome.tabs.update(tab.id,{active:true}); },
     async group() { for (const id of [...shared.keys()]) await groupSharedTab(id); },
     onDetach(tabId, reason) {
-      diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user'].includes(reason) ? reason : 'other');
+      const now = Date.now();
+      diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user','replaced_with_devtools'].includes(reason) ? reason : 'other', '', lastMethod, 0, {
+        since_attach_ms: attachedAt.has(tabId) ? now - attachedAt.get(tabId) : 0, since_navigate_ms: navigatedAt.has(tabId) ? now - navigatedAt.get(tabId) : 0 });
+      void chrome.tabs.get(tabId).then(tab => diagnostic('tab_snapshot', tabId, '', '', lastMethod, 0, tabFacts(tab)), () => diagnostic('tab_snapshot', tabId, 'no_tab'));
       // Recovery restores automation subscriptions, never a recording take.
       // Tell its private receiver to fail rather than repeat an old frame.
       for (const [id, source] of sessions) if (source.tabId === tabId && source.capturing) {
@@ -563,12 +611,26 @@ async function handleCDP(message, connection, active, clientId) {
       recoveries.set(tabId, recovery);
       recovery.promise = restoreTarget(tabId, recovery).finally(() => { if (recoveries.get(tabId) === recovery) recoveries.delete(tabId); });
     },
-    onRemoved(tabId) { void unshare(tabId, 'tab_closed'); },
+    onRemoved(tabId) { attachedAt.delete(tabId); navigatedAt.delete(tabId); childFrameLog.delete(tabId); void unshare(tabId, 'tab_closed'); },
     onEvent(source,method,params) {
       if (!shared.has(source.tabId)) return;
       const id = source.sessionId || `session-${source.tabId}`;
-      if (method === 'Target.attachedToTarget') { diagnostic('child_attached', source.tabId); sessions.set(params.sessionId,{tabId:source.tabId,sessionId:params.sessionId,clientId:clientTabs.get(source.tabId) || ''}); }
+      if (method === 'Target.attachedToTarget') {
+        const info = params?.targetInfo || {}, facts = frameFacts(info.url || '');
+        const types = ['iframe', 'page', 'worker', 'service_worker', 'shared_worker', 'background_page', 'other'];
+        diagnostic('child_attached', source.tabId, '', '', lastMethod, 0, { target_type: types.includes(info.type) ? info.type : 'other', scheme: facts.scheme, ext_ids: facts.ext_ids, since_navigate_ms: navigatedAt.has(source.tabId) ? Date.now() - navigatedAt.get(source.tabId) : 0 });
+        sessions.set(params.sessionId,{tabId:source.tabId,sessionId:params.sessionId,clientId:clientTabs.get(source.tabId) || ''});
+      }
       if (method === 'Target.detachedFromTarget') { diagnostic('child_detached', source.tabId); sessions.delete(params.sessionId); }
+      // Frames the page itself creates: type and scheme only, never the address. At most 24 per navigation per tab.
+      if ((method === 'Page.frameAttached' || method === 'Page.frameNavigated') && (method === 'Page.frameAttached' || params?.frame?.parentId)) {
+        const seen = childFrameLog.get(source.tabId) || 0;
+        if (seen < 24) {
+          childFrameLog.set(source.tabId, seen + 1);
+          const facts = method === 'Page.frameNavigated' ? frameFacts(params.frame.url || '') : { scheme: '', ext_ids: [] };
+          diagnostic(method === 'Page.frameAttached' ? 'frame_attached' : 'frame_navigated', source.tabId, '', '', lastMethod, 0, { scheme: facts.scheme, ext_ids: facts.ext_ids, since_navigate_ms: navigatedAt.has(source.tabId) ? Date.now() - navigatedAt.get(source.tabId) : 0 });
+        }
+      }
       if (!source.sessionId) {
         // Chrome supplies one physical debugger session per tab. Fan out page
         // lifecycle events to distinct logical clients, but send video frames
