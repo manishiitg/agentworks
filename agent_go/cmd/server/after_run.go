@@ -442,3 +442,35 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 		_ = s.sendAfterRunNotification(ctx, sctx, manifest, "", scheduleStatus, "", 0)
 	}
 }
+
+// runAfterRunNow starts the backup or publish pass now, outside a run: the
+// same Pulse basic pass, in-flight guard and "anything to do" check as after
+// a manual run. It reports why nothing started (not set up, nothing changed).
+func (s *SchedulerService) runAfterRunNow(workspacePath, option string) (bool, []string, error) {
+	if s == nil || s.api == nil {
+		return false, nil, fmt.Errorf("the scheduler is not running")
+	}
+	ctx := context.Background()
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found {
+		return false, nil, fmt.Errorf("workflow unavailable")
+	}
+	sched := WorkflowSchedule{ID: manualAfterRunScheduleID, Name: "After-run options", Description: "Backup or publish started now",
+		ScheduleType: "cron", Timezone: "UTC", Mode: "workshop", WorkshopMode: "workshop"}
+	sctx := buildScheduleContext(workspacePath, manifest, sched)
+	sctx.TriggerSource = "manual"
+	sctx.ProducedRunEvidence = true
+	work := s.afterRunWorkDue(ctx, sctx, manifest, ScheduleAfterRun{Backup: option == "backup", Publish: option == "publish"})
+	if !work.Backup && !work.Publish {
+		return false, work.Notes, nil
+	}
+	if _, busy := manualAfterRunInflight.LoadOrStore(workspacePath, true); busy {
+		return false, work.Notes, fmt.Errorf("a backup or publish pass is already running for this workflow")
+	}
+	sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
+	go func() {
+		defer manualAfterRunInflight.Delete(workspacePath)
+		s.runPulseLifecycle(context.Background(), sctx, schedulePulseModeBasic, "success", "", "", "", "")
+	}()
+	return true, work.Notes, nil
+}

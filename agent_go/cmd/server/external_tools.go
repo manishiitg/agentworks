@@ -229,6 +229,7 @@ func externalTools() ([]externalTool, error) {
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
 		externalDatabaseDefinitions(add)
+		externalAfterRunDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -638,6 +639,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.mutates && access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 		externalError(w, 403, "forbidden", "Workflow write access is required.")
+		return
+	}
+	if tool.Name == "run_after_run" {
+		api.externalRunAfterRun(w, r, args, *selected)
 		return
 	}
 	if isExternalSettingsTool(tool.Name) {

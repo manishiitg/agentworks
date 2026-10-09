@@ -47,12 +47,15 @@ func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	if w := f.call(t, "reader", "manage_pulse", map[string]any{"workflow_id": "invoices", "action": "run_now"}); w.Code != 403 {
 		t.Fatalf("reader ran Pulse: %d %s", w.Code, w.Body)
 	}
-	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "autonomy_level": 2, "pace": "calm"}})
+	if w := f.call(t, "reader", "run_after_run", map[string]any{"workflow_id": "invoices", "option": "backup"}); w.Code != 403 {
+		t.Fatalf("reader started a backup: %d %s", w.Code, w.Body)
+	}
+	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "autonomy_level": 2, "pace": "calm"}, "after_manual_run": map[string]any{"notify": true}})
 	if w.Code != 200 {
 		t.Fatalf("owner pulse settings: %d %s", w.Code, w.Body)
 	}
 	body := f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"}).Body.String()
-	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"autonomy_level":2`) || !strings.Contains(body, `"pace":"calm"`) {
+	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"autonomy_level":2`) || !strings.Contains(body, `"pace":"calm"`) || !strings.Contains(body, `"after_manual_run":{"backup":false,"publish":false,"notify":true}`) {
 		t.Fatalf("pulse settings not saved: %s", body)
 	}
 }

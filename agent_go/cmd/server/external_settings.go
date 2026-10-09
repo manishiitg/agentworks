@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
+			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},
+		}},
 		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Pulse owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). autonomy_level 0-5 is the standing permission ladder; pace sets how often Pulse checks and fixes.", "properties": map[string]any{
 			"enabled":        map[string]any{"type": "boolean"},
 			"autonomy_level": map[string]any{"type": "integer", "minimum": 0, "maximum": 5},
@@ -410,6 +414,13 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	if name == "get_settings" {
 		view := api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps))
 		view["pulse"] = pulseView(manifest)
+		view["after_manual_run"] = manifest.EffectiveManualAfterRun()
+		// Backup, publish and notify status, as the app's views show them.
+		for key, handler := range map[string]http.HandlerFunc{"backup": api.handleGetWorkflowBackup, "publish": api.handleGetWorkflowPublish, "notify": api.handleGetWorkflowNotifications} {
+			if status, body := scheduleHandler(r, handler, http.MethodGet, "/api/workflow/"+key, nil, url.Values{"workspace_path": {workflow.WorkspacePath}}, nil); status == http.StatusOK && json.Valid(body) {
+				view[key] = json.RawMessage(body)
+			}
+		}
 		externalJSON(w, view)
 		return
 	}
@@ -441,6 +452,16 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 			req.PulseNotificationChannels = &v
 		}
 		changed = append(changed, "notifications")
+	}
+	if after, ok := args["after_manual_run"].(map[string]any); ok {
+		current := manifest.EffectiveManualAfterRun()
+		for key, target := range map[string]*bool{"backup": &current.Backup, "publish": &current.Publish, "notify": &current.Notify} {
+			if v, ok := after[key].(bool); ok {
+				*target = v
+			}
+		}
+		req.AfterManualRun = &current
+		changed = append(changed, "after_manual_run")
 	}
 	if p, ok := args["pulse"].(map[string]any); ok {
 		if v, ok := p["enabled"].(bool); ok {
@@ -549,6 +570,10 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 	}
 	if _, ok := args["pulse"]; ok {
 		externalError(w, 400, "invalid_settings", "pulse applies to workflows only.")
+		return
+	}
+	if _, ok := args["after_manual_run"]; ok {
+		externalError(w, 400, "invalid_settings", "after_manual_run applies to workflows only.")
 		return
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {

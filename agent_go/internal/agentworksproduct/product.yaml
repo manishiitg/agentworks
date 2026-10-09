@@ -411,6 +411,7 @@ chat:
       - manage_project
       - manage_crew_chats
       - query_database
+      - run_after_run
       - list_files
       - search_files
       - list_step_code
