@@ -16,7 +16,9 @@ func claudeCodeQueryAuthenticationError(profile *resolvedAgentProfile, provider 
 		return nil
 	}
 	if admittedAccount == nil || admittedAccount.Provider != "claude-code" {
-		return fmt.Errorf("No Claude Code token configured for this deployment. Set CLAUDE_CODE_OAUTH_TOKEN before starting the service.")
+		// Shown to the person in the chat, who cannot set a service variable: say what they can do. (The operator's fix, a
+		// CLAUDE_CODE_OAUTH_TOKEN for the service, stays in the message for the one who runs it.)
+		return fmt.Errorf("Claude Code is not signed in for you. Open Providers, choose Claude Code and add your own account (Add my account, Browser login), or switch this chat to another model. An operator can instead set CLAUDE_CODE_OAUTH_TOKEN for the whole service.")
 	}
 	keys, err := providerConnectionRuntimeKeys(*admittedAccount)
 	if err != nil {
