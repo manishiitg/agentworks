@@ -386,6 +386,7 @@ chat:
       - get_settings
       - update_settings
       - manage_schedules
+      - manage_triggers
       - list_files
       - search_files
       - list_step_code

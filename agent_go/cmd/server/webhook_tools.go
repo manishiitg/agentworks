@@ -64,91 +64,98 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 		if userAccessForClaims(&UserClaims{UserID: userID}).Disabled {
 			return "", fmt.Errorf("Access denied: disabled account")
 		}
-		if _, err := authorizeWorkflowContextPaths(ctx, []string{workspace}); err != nil {
-			return "", fmt.Errorf("Workflow is unavailable or access denied")
+		return api.manageWorkflowWebhook(ctx, workspace, args)
+	}, "workflow_webhooks")
+}
+
+// manageWorkflowWebhook lists, saves, deletes or tests one workflow's or
+// Relay's triggers as the person in ctx. The Builder tool and the MCP
+// manage_triggers tool share it.
+func (api *StreamingAPI) manageWorkflowWebhook(ctx context.Context, workspace string, args map[string]interface{}) (string, error) {
+	if _, err := authorizeWorkflowContextPaths(ctx, []string{workspace}); err != nil {
+		return "", fmt.Errorf("Workflow is unavailable or access denied")
+	}
+	if api.scheduler == nil {
+		return "", fmt.Errorf("Workflow scheduler is unavailable")
+	}
+	action, _ := args["action"].(string)
+	if action == "test" || action == "status" {
+		return api.testWorkflowWebhook(ctx, workspace, args)
+	}
+	method, target := http.MethodGet, "/api/workflow-webhooks?workspace_path="+url.QueryEscape(workspace)
+	handler := api.scheduler.listWorkflowWebhooks
+	payload := map[string]interface{}{"workspace_path": workspace}
+	switch action {
+	case "list":
+	case "create", "update":
+		kind, _ := args["kind"].(string)
+		required := []string{"name", "enabled", "auth_mode", "route_selections", "group_names"}
+		if isInternalTriggerKind(kind) {
+			required = []string{"name", "enabled", "route_selections", "group_names", "caller"}
 		}
-		if api.scheduler == nil {
-			return "", fmt.Errorf("Workflow scheduler is unavailable")
+		if isFunctionTriggerKind(kind) {
+			required = []string{"name", "enabled", "route_selections", "group_names", "function"}
 		}
-		action, _ := args["action"].(string)
-		if action == "test" || action == "status" {
-			return api.testWorkflowWebhook(ctx, workspace, args)
+		manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+		if err != nil || !found {
+			return "", fmt.Errorf("Workflow manifest unavailable")
 		}
-		method, target := http.MethodGet, "/api/workflow-webhooks?workspace_path="+url.QueryEscape(workspace)
-		handler := api.scheduler.listWorkflowWebhooks
-		payload := map[string]interface{}{"workspace_path": workspace}
-		switch action {
-		case "list":
-		case "create", "update":
-			kind, _ := args["kind"].(string)
-			required := []string{"name", "enabled", "auth_mode", "route_selections", "group_names"}
-			if isInternalTriggerKind(kind) {
-				required = []string{"name", "enabled", "route_selections", "group_names", "caller"}
+		if manifest.Kind == "relay" {
+			required = []string{"name", "enabled", "route_selections", "function"}
+			if value, supplied := args["group_names"]; supplied {
+				payload["group_names"] = value
 			}
-			if isFunctionTriggerKind(kind) {
-				required = []string{"name", "enabled", "route_selections", "group_names", "function"}
+		}
+		for _, key := range required {
+			v, ok := args[key]
+			if !ok {
+				return "", fmt.Errorf("%s is required for %s", key, action)
 			}
-			manifest, found, err := ReadWorkflowManifest(ctx, workspace)
-			if err != nil || !found {
-				return "", fmt.Errorf("Workflow manifest unavailable")
-			}
-			if manifest.Kind == "relay" {
-				required = []string{"name", "enabled", "route_selections", "function"}
-				if value, supplied := args["group_names"]; supplied {
-					payload["group_names"] = value
-				}
-			}
-			for _, key := range required {
-				v, ok := args[key]
-				if !ok {
-					return "", fmt.Errorf("%s is required for %s", key, action)
-				}
+			payload[key] = v
+		}
+		for _, key := range []string{"input_mode", "allowed_variables", "step_id", "payload_mappings", "kind", "caller", "function"} {
+			if v, ok := args[key]; ok {
 				payload[key] = v
 			}
-			for _, key := range []string{"input_mode", "allowed_variables", "step_id", "payload_mappings", "kind", "caller", "function"} {
-				if v, ok := args[key]; ok {
-					payload[key] = v
-				}
-			}
-			if v, ok := args["rotate_secret"]; ok {
-				payload["rotate_secret"] = v
-			}
-			method = http.MethodPost
-			handler = api.scheduler.saveWorkflowWebhook
-			if action == "update" {
-				method = http.MethodPut
-			}
-		case "delete":
-			method = http.MethodDelete
-			handler = api.scheduler.deleteWorkflowWebhook
-		default:
-			return "", fmt.Errorf("Unknown webhook action")
 		}
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return "", fmt.Errorf("Invalid webhook arguments")
+		if v, ok := args["rotate_secret"]; ok {
+			payload["rotate_secret"] = v
 		}
-		req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(data))
-		if err != nil {
-			return "", err
+		method = http.MethodPost
+		handler = api.scheduler.saveWorkflowWebhook
+		if action == "update" {
+			method = http.MethodPut
 		}
-		if action == "update" || action == "delete" {
-			id, _ := args["id"].(string)
-			if strings.TrimSpace(id) == "" {
-				return "", fmt.Errorf("id is required")
-			}
-			req = mux.SetURLVars(req, map[string]string{"id": id})
+	case "delete":
+		method = http.MethodDelete
+		handler = api.scheduler.deleteWorkflowWebhook
+	default:
+		return "", fmt.Errorf("Unknown webhook action")
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("Invalid webhook arguments")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	if action == "update" || action == "delete" {
+		id, _ := args["id"].(string)
+		if strings.TrimSpace(id) == "" {
+			return "", fmt.Errorf("id is required")
 		}
-		rec := &accessToolResponse{header: make(http.Header)}
-		handler(rec, req)
-		if rec.status >= 400 {
-			return "", fmt.Errorf("Webhook operation failed (%d): %s", rec.status, strings.TrimSpace(rec.String()))
-		}
-		if rec.Len() == 0 {
-			return `{"success":true}`, nil
-		}
-		return rec.String(), nil
-	}, "workflow_webhooks")
+		req = mux.SetURLVars(req, map[string]string{"id": id})
+	}
+	rec := &accessToolResponse{header: make(http.Header)}
+	handler(rec, req)
+	if rec.status >= 400 {
+		return "", fmt.Errorf("Webhook operation failed (%d): %s", rec.status, strings.TrimSpace(rec.String()))
+	}
+	if rec.Len() == 0 {
+		return `{"success":true}`, nil
+	}
+	return rec.String(), nil
 }
 
 // A test uses the stored credential internally; it never echoes it into a shell.

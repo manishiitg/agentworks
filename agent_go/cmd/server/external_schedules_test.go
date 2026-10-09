@@ -19,3 +19,14 @@ func TestExternalManageSchedulesFollowsRoleAndTarget(t *testing.T) {
 		t.Fatalf("foreign schedule id: %d %s", w.Code, w.Body)
 	}
 }
+
+// manage_triggers follows the trigger pages: a reader can list a workflow's
+// triggers but not create one.
+func TestExternalManageTriggersNeedsWriteAccess(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	w := f.call(t, "reader", "manage_triggers", map[string]any{"workflow_id": "invoices", "action": "create",
+		"trigger": map[string]any{"name": "Inbound", "enabled": true, "auth_mode": "bearer", "route_selections": map[string]any{}, "group_names": []any{}}})
+	if w.Code != 403 {
+		t.Fatalf("reader created a trigger: %d %s", w.Code, w.Body)
+	}
+}
