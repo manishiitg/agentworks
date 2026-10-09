@@ -53,15 +53,18 @@ def crew_id(server, spec):
     return created
 
 
-def ask(server, crew, message, budget=150):
-    """Ask the Crew and wait for its final reply (up to `budget` seconds). Returns the reply's text."""
+def ask(server, crew, message, budget=150, chat_id=None):
+    """Ask the Crew (in its main chat, or the side chat `chat_id`) and wait for its final reply (up to `budget` seconds)."""
     submission = "qa-" + uuid.uuid4().hex[:12]
-    code, result, text = call(server, "ask_crew", {"crew_id": crew, "message": message, "wait_seconds": 25, "submission_id": submission})
+    arguments = {"crew_id": crew, "message": message, "wait_seconds": 25, "submission_id": submission}
+    if chat_id:
+        arguments["chat_id"] = chat_id
+    code, result, text = call(server, "ask_crew", arguments)
     call_id = result.get("call_id")
     deadline = time.time() + budget
     while call_id and re.search(r'"status"\s*:\s*"(running|pending|queued)"', find_text(result)) and time.time() < deadline:
         time.sleep(4)
-        code, result, text = call(server, "functions", {"action": "status", "crew_id": crew, "call_id": call_id, "wait_seconds": 20})
+        code, result, text = call(server, "functions", {"action": "status", "crew_id": crew, "call_id": call_id})
     return find_text(result) if result else text
 
 
@@ -88,8 +91,21 @@ def run_case(server, crew, case):
             return "FAIL", text[:240]
         return check(case, find_text(result) or text)
     if case.get("burst"):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=case["burst"]) as pool:
-            answers = list(pool.map(lambda _: ask(server, crew, case["message"]), range(case["burst"])))
+        # One chat answers one message at a time (a second message typed while it works joins that turn), so a burst goes to
+        # separate chats of the Crew: that is the load several people put on the model at once.
+        chats = []
+        for _ in range(min(case["burst"], 4)):
+            code, result, text = call(server, "manage_crew_chats", {"action": "side_open", "crew_id": crew})
+            chat = result.get("chat_id") or (result.get("chat") or {}).get("chat_id")
+            if not chat:
+                return "FAIL", "could not open a side chat: " + text[:200]
+            chats.append(chat)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(chats)) as pool:
+                answers = list(pool.map(lambda chat: ask(server, crew, case["message"], chat_id=chat), chats))
+        finally:
+            for chat in chats:
+                call(server, "manage_crew_chats", {"action": "side_close", "crew_id": crew, "chat_id": chat})
         failed = [(i, a) for i, a in enumerate(answers) if check(case, a)[0] != "PASS"]
         return ("PASS", "") if not failed else ("FAIL", f"{len(failed)} of {len(answers)} failed; first: {failed[0][1][:200]}")
     return check(case, ask(server, crew, case["message"]))
