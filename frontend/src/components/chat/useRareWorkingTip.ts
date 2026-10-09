@@ -18,7 +18,7 @@ function activeCodeProjectTabs(): number {
   }).length || 1
 }
 
-/** A very rare product hint beside "Working…": at most one a day, chosen for
+/** A very rare product hint beside "Working…": at most one every four hours, chosen for
  * this product and moment, never for a feature already used. */
 export function useRareWorkingTip(working: boolean): string | null {
   const surface = useProductSurfaceStore(state => state.productSurface)

@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Working tips may appear every four hours
+
+Reduce the per-browser cooldown from 24 hours to four hours at the owner's request.
+Keep the ten-second working delay, product/context conditions, used-feature exclusion,
+and first-unseen selection. Keep existing browser history, so previously seen tips do
+not repeat and an eligible tip is due once four hours have elapsed since the last one.
+Ticket: [PLAT-749](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/chat/rendering/plat-749.md).
+
 ### 2026-10-09 — One search shortcut for navigation and toolbar panels
 
 Cmd/Ctrl+K lists the current product's registered toolbar panels and nested tabs

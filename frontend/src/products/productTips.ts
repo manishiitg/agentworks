@@ -32,7 +32,7 @@ export const PRODUCT_TIPS: ProductTip[] = [
 ]
 
 const STATE_KEY = 'agentworks.working-tip'
-export const TIP_INTERVAL_MS = 24 * 60 * 60 * 1000
+export const TIP_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 interface TipState { lastShownAt?: number; seen?: string[] }
 
@@ -40,7 +40,7 @@ function readState(): TipState {
   try { return JSON.parse(localStorage.getItem(STATE_KEY) || '{}') as TipState } catch { return {} }
 }
 
-/** Picks at most one tip a day: relevant here, for a feature not yet used, not
+/** Picks at most one tip every four hours: relevant here, for a feature not yet used, not
  * shown before. Records the pick. Returns null when nothing is due. */
 export function claimWorkingTip(context: TipContext, now = Date.now(), tips = PRODUCT_TIPS): string | null {
   const state = readState()
