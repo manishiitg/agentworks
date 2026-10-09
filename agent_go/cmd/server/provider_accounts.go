@@ -609,6 +609,14 @@ func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope p
 	return run
 }
 
+// providerAccountMismatch is the refusal for a chat whose account belongs to another coding agent than the turn runs on.
+// Users saw only "provider connection does not match selected provider" (Excellence 2026-10-09, Pi key accounts) and the
+// server logged nothing, so the pairing could not be seen. It logs both providers and says what to do.
+func providerAccountMismatch(principal, id, turnProvider, accountProvider string, run providerAccountRun) error {
+	log.Printf("[PROVIDER_ACCOUNT] provider mismatch for %q (%s): account %s belongs to %s, the turn runs on %s", principal, run.Label, id, accountProvider, turnProvider)
+	return fmt.Errorf("this chat is set to a %s account but is running on %s. Pick the account again in this project's Models panel; your next message uses it", providerAccountProductName(accountProvider), providerAccountProductName(turnProvider))
+}
+
 // providerAccountUnavailable is the one error a denied account produces.
 func providerAccountUnavailable(run providerAccountRun) error {
 	return fmt.Errorf("the account this chat was set to run on no longer exists (it was removed or replaced) for %s. Pick an account again in this project's Models panel; your next message uses it", run.Label)
@@ -663,7 +671,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 	run := api.describeProviderAccountRun(ctx, scope)
 	if id == "" || strings.HasPrefix(id, "global:") || strings.HasPrefix(id, llmguard.ServerDefaultConnectionPrefix) {
 		if id != "" && id != "global:"+provider && id != llmguard.ServerDefaultConnectionPrefix+provider {
-			return nil, fmt.Errorf("provider connection does not match selected provider")
+			return nil, providerAccountMismatch(scope.Principal, id, provider, strings.TrimPrefix(strings.TrimPrefix(id, "global:"), llmguard.ServerDefaultConnectionPrefix), run)
 		}
 		availability, err := effectiveServerAccountAvailability(ctx, provider)
 		if err != nil {
@@ -704,7 +712,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 			continue
 		}
 		if record.Provider != provider {
-			return nil, fmt.Errorf("provider connection does not match selected provider")
+			return nil, providerAccountMismatch(principal, record.ID, provider, record.Provider, run)
 		}
 		if personalProviderConnectionsLocked(provider) {
 			return nil, fmt.Errorf("personal provider connections are locked by administrator")
