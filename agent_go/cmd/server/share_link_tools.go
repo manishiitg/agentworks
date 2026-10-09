@@ -45,11 +45,12 @@ func (api *StreamingAPI) registerShareLinkTools(reg definitionToolRegistrar, use
 		if err != nil || clean == "." || clean != relative || strings.HasPrefix(clean, "Workflow/") {
 			return "", fmt.Errorf("path must be a canonical path relative to the active workflow")
 		}
-		if wf.Private(clean) {
-			return "", fmt.Errorf("private workspace files are not shareable")
-		}
+		// A dashboard is under db/, which is private to files; say where its link comes from.
 		if strings.HasPrefix(clean, "db/reports/") && strings.HasSuffix(strings.ToLower(clean), ".html") {
 			return "", fmt.Errorf("%s is a live dashboard; use get_report_link so it opens in the dedicated report runtime", clean)
+		}
+		if wf.Private(clean) {
+			return "", fmt.Errorf("private workspace files are not shareable")
 		}
 
 		return createSecureShareLink(ctx, workspace, workspace, clean, "", "Recipient must sign in to AgentWorks and already have access to this workflow. The link contains no credential and grants no access.")
@@ -124,11 +125,12 @@ func registerProjectShareLinkTools(reg definitionToolRegistrar, userID, cleanWor
 		if err != nil || clean == "." || clean != relative {
 			return "", fmt.Errorf("path must be a canonical path relative to the active %s", noun)
 		}
-		if wf.Private(clean) {
-			return "", fmt.Errorf("private workspace files are not shareable")
-		}
+		// A dashboard is under db/, which is private to files; say where its link comes from.
 		if strings.HasPrefix(clean, "db/reports/") && strings.HasSuffix(strings.ToLower(clean), ".html") {
 			return "", fmt.Errorf("%s is a live dashboard; use get_report_link so it opens in the dedicated report runtime", clean)
+		}
+		if wf.Private(clean) {
+			return "", fmt.Errorf("private workspace files are not shareable")
 		}
 		return createSecureShareLink(ctx, physicalRoot, canonicalWorkspace, clean, userID, fileAccess+" The link contains no credential.")
 	}, "work_files"); err != nil {
@@ -163,20 +165,10 @@ func cleanReportLinkPath(value interface{}) (string, error) {
 }
 
 func createSecureReportLink(ctx context.Context, metadataRoot, linkRoot, reportPath, userID, authentication string) (string, error) {
-	metadataPath := reportPath
-	if strings.HasPrefix(reportPath, "db/reports/managed/") {
-		resolved, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: metadataRoot, Action: "resolve", DocumentPath: reportPath})
-		if err != nil {
-			return "", fmt.Errorf("project report is unavailable: %w", err)
-		}
-		metadataPath = resolved.ResolvedPath
-	}
-	metadata, err := sharedAssetMetadata(ctx, metadataRoot, metadataPath)
-	if err != nil {
+	// db/ is a private path for the asset service, so a report is checked
+	// through the dashboards service that owns it.
+	if err := reportDocumentExists(ctx, metadataRoot, reportPath); err != nil {
 		return "", fmt.Errorf("project report is unavailable: %w", err)
-	}
-	if kind, _ := metadata["type"].(string); kind != "file" {
-		return "", fmt.Errorf("project report is not a file")
 	}
 	publicURL := effectiveShareBaseURL()
 	if publicURL == "" {
@@ -206,6 +198,26 @@ func createSecureReportLink(ctx context.Context, metadataRoot, linkRoot, reportP
 		return "", fmt.Errorf("cannot encode report link metadata: %w", err)
 	}
 	return string(encoded), nil
+}
+
+// reportDocumentExists confirms a dashboard document under db/reports/: a
+// managed revision resolves through its state, a plain HTML dashboard must be
+// in the project's dashboard list.
+func reportDocumentExists(ctx context.Context, root, reportPath string) error {
+	if strings.HasPrefix(reportPath, dashboards.Prefix) {
+		_, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "resolve", DocumentPath: reportPath})
+		return err
+	}
+	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list"})
+	if err != nil {
+		return err
+	}
+	for _, dashboard := range listed.Dashboards {
+		if dashboard.DocumentPath == reportPath {
+			return nil
+		}
+	}
+	return fmt.Errorf("no dashboard at %s", reportPath)
 }
 
 func createSecureShareLink(ctx context.Context, metadataRoot, linkRoot, relative, userID, authentication string) (string, error) {

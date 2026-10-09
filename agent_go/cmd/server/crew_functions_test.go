@@ -253,8 +253,9 @@ func TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID(t *testing.T) {
 	if err := env.api.registerCrewFunctionTools(codeReg, "owner", "code-caller", QueryRequest{SelectedFolder: codePath}, crewTriggerLinkCaller(codePath), nil); err != nil {
 		t.Fatal(err)
 	}
-	if listed, err := codeReg.tools["list_functions"].exec(ctx, map[string]interface{}{}); err != nil || !strings.Contains(listed, `"ask"`) {
-		t.Fatalf("Code could not list its own callable functions: %s, %v", listed, err)
+	// A Code has no functions of its own and no implicit ask (owner, 2026-10-09).
+	if listed, err := codeReg.tools["list_functions"].exec(ctx, map[string]interface{}{}); err != nil || strings.Contains(listed, `"ask"`) {
+		t.Fatalf("a Code lists no functions of its own: %s, %v", listed, err)
 	}
 	store := virtualtools.GetHumanFeedbackStore()
 	for _, profileID := range []string{"work", "code"} {

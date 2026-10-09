@@ -164,7 +164,7 @@ func (api *StreamingAPI) handleAdminListCodeWorkspaces(w http.ResponseWriter, r 
 	owners := append([]string{sanitizeUserIDForPath(claims.UserID)}, crewProjectOwnerCandidates(claims.UserID)...)
 	rows := []codeAdminWorkspace{}
 	for _, ownerID := range owners {
-		for _, row := range listSharedProjectsForOwner(r.Context(), claims, profile, ownerID) {
+		for _, row := range listProjectsForOwner(r.Context(), claims, profile, ownerID, false) {
 			rows = append(rows, codeAdminWorkspace{
 				OwnerID: ownerID, OwnerUsername: crewOwnerDisplayName(ownerID), ID: row.ID, Title: row.Title,
 				WorkspacePath: row.WorkspacePath, UpdatedAt: row.UpdatedAt,

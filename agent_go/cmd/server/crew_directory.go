@@ -287,6 +287,14 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 }
 
 func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string) []sharedProjectSummary {
+	return listProjectsForOwner(ctx, claims, profile, ownerID, true)
+}
+
+// listProjectsForOwner lists an owner's projects of one product. sharedOnly
+// keeps only Crews the owner shares (the Crew directory and everything built
+// on it); the admin Code listing passes false, since Code is never shared and
+// a reviewer must see every Code (PLAT-725 filtered them all out).
+func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string, sharedOnly bool) []sharedProjectSummary {
 	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, ownerID)
 	if err != nil {
 		return nil
@@ -315,7 +323,7 @@ func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile
 		// root and as a top-level item, yielding the same manifest twice.
 		seenManifests[candidate] = true
 		projectRoot := strings.TrimSuffix(candidate, "/product.json")
-		if !crewSharedWithOthers(projectRoot) {
+		if sharedOnly && !crewSharedWithOthers(projectRoot) {
 			continue
 		}
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)

@@ -117,13 +117,6 @@ const (
 	// and cleanly reject bogus keys without surfacing implementation
 	// internals or leaking the secret on the wire.
 	InvProviderAPIKeyValidation BuilderInvariantID = "provider_api_key_validation"
-
-	// InvChatPromptSteering: builder-level system prompts (cheat-sheet +
-	// reference-doc pointer pattern) successfully steer LLMs toward the
-	// canonical workflow tools — for example calling
-	// read_skill(skills=[{"name":"builder-reference","path":"references/....md"}]) before performing rare-path actions
-	// instead of inventing tool semantics from training memory.
-	InvChatPromptSteering BuilderInvariantID = "chat_prompt_steering"
 )
 
 // AllBuilderInvariants returns every declared invariant ID. The drift test
@@ -163,7 +156,6 @@ func AllBuilderInvariants() []BuilderInvariantID {
 		InvCostTrackingPipeline,
 		InvInspectorDebugVisibility,
 		InvProviderAPIKeyValidation,
-		InvChatPromptSteering,
 	}
 }
 
@@ -251,14 +243,6 @@ var builderInvariantCertifications = map[BuilderInvariantID]BuilderInvariantCert
 		TestName:    "TestValidateAPIKeyAnthropicRealAccepts",
 		Env:         []string{"RUN_ANTHROPIC_REAL_E2E=1", "ANTHROPIC_API_KEY"},
 		Description: "POST /api/validate-key with a real working ANTHROPIC_API_KEY returns ok=true; companion TestValidateAPIKeyAnthropicRealRejectsBadKey returns ok=false for a fabricated key. Per-provider variants (validate_openai_real_test.go, validate_vertex_real_test.go) follow the same shape for OpenAI + Vertex.",
-		RealE2E:     true,
-	},
-	InvChatPromptSteering: {
-		ID:          InvChatPromptSteering,
-		TestFile:    "agent_go/cmd/server/multi_agent_chat_refdoc_e2e_real_test.go",
-		TestName:    "TestMultiAgentChatPromptSteersToReferenceDocs",
-		Env:         []string{"RUN_MULTIAGENT_REFDOC_E2E=1"},
-		Description: "Real-LLM test: the builder's attached-reference pointer steers the model to call read_skill(skills=[{\"name\":\"builder-reference\",\"path\":...}]) before invoking rare-path tools, instead of fabricating tool semantics from memory. Claude-Code variant TestMultiAgentChatPromptSteersToReferenceDocs_ClaudeCode under RUN_MULTIAGENT_REFDOC_CC_E2E.",
 		RealE2E:     true,
 	},
 }

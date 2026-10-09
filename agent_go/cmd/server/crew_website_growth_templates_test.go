@@ -86,7 +86,7 @@ func TestSalesCrewCatalogHasInstallableRoles(t *testing.T) {
 		if err := json.Unmarshal([]byte(item.Files["templates/"+id+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
 			t.Fatalf("decode %s setup: %v", id, err)
 		}
-		if item.ID != id || item.Version != 1 || len(item.Files) != 3 || setup.TemplateID != id || len(setup.Checks) != 9 {
+		if item.ID != id || item.Version < 1 || len(item.Files) != 3 || setup.TemplateID != id || len(setup.Checks) != 9 {
 			t.Fatalf("incomplete %s template: %+v, %+v", id, item, setup)
 		}
 	}

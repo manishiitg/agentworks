@@ -296,12 +296,14 @@ func TestGetReportLinkToolScopesWorkDashboardToProjectOwner(t *testing.T) {
 		if err := json.Unmarshal([]byte(out), &result); err != nil {
 			t.Fatal(err)
 		}
+		// A report link names the project's real path and carries no uid: recipients
+		// open it with their own access (PLAT-750/751).
 		preview, err := url.Parse(result["url"].(string))
-		if err != nil || preview.Path != "/report" || preview.Query().Get("uid") != userID {
+		if err != nil || preview.Path != "/report" || preview.Query().Get("uid") != "" {
 			t.Fatalf("Work report preview = %v err=%v", preview, err)
 		}
 		decoded, err := base64.StdEncoding.DecodeString(preview.Query().Get("path"))
-		if err != nil || string(decoded) != "Chats/Work/projects/demo" {
+		if err != nil || string(decoded) != "_users/"+userID+"/Chats/Work/projects/demo" {
 			t.Fatalf("Work report encoded path = %q err=%v", decoded, err)
 		}
 		if strings.Contains(preview.RawQuery, "token") {
