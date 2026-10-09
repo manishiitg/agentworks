@@ -29,6 +29,11 @@ type externalTool struct {
 	executes    bool
 	plan        bool
 	validator   *jsonschema.Schema
+	// hidden: an alias of a merged tool's action, callable but not listed.
+	hidden bool
+	// actions maps a merged tool's action to the member tool it runs.
+	actions     map[string]string
+	actionOrder []string
 }
 
 var externalCatalogOnce sync.Once
@@ -336,6 +341,10 @@ func externalTools() ([]externalTool, error) {
 				return
 			}
 		}
+		if externalCatalog, err = mergeExternalTools(externalCatalog); err != nil {
+			externalCatalogErr = err
+			return
+		}
 		for i := range externalCatalog {
 			tool := &externalCatalog[i]
 			compiler := jsonschema.NewCompiler()
@@ -379,7 +388,7 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 			allowed = append(allowed, knowledgebaseToolForClaims(GetUserFromContext(r.Context()), tool))
 		}
 	}
-	externalJSON(w, map[string]any{"tools": allowed})
+	externalJSON(w, map[string]any{"tools": externalListedTools(GetUserFromContext(r.Context()), allowed)})
 }
 func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Request) {
 	if GetUserFromContext(r.Context()) == nil {
@@ -421,6 +430,14 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if tool == nil {
 		externalError(w, 404, "unknown_tool", "Tool is not exposed by this API.")
 		return
+	}
+	if tool.actions != nil {
+		member, args, err := externalResolveMerged(*tool, call.Arguments)
+		if err != nil {
+			externalError(w, 400, "invalid_arguments", err.Error())
+			return
+		}
+		tool, call.Name, call.Arguments = &member, member.Name, args
 	}
 	if !externalTokenAllows(GetUserFromContext(r.Context()), *tool) {
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation.")

@@ -19,9 +19,9 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
-			"workflow_id": externalString("Workflow or Relay ID from list_workflows or list_dashboards. Pass one of workflow_id, crew_id or workspace."),
-			"crew_id":     externalString("Crew ID from list_crews or list_dashboards."),
-			"workspace":   externalString("Project root from list_dashboards; needed only for an owned Code project."),
+			"workflow_id": externalString("Workflow or Relay ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+			"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
+			"workspace":   externalString("Project root from the dashboard list; needed only for an owned Code project."),
 		}
 		required := []string{}
 		if action == "list" {
@@ -31,8 +31,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["workspace"] = externalString("Optional project root. Omit (and workflow_id/crew_id) to discover dashboards across accessible projects.")
 		}
 		if action != "list" {
-			props["document_path"] = externalString("Existing HTML dashboard path from list_dashboards, for get/validate/preview/link.")
-			props["dashboard_id"] = externalString("Dashboard slug returned by list_dashboards, or the new slug for create_dashboard.")
+			props["document_path"] = externalString("Existing HTML dashboard path from the dashboard list, for get/validate/preview/link.")
+			props["dashboard_id"] = externalString("Dashboard slug returned by the dashboard list, or the new slug when creating one.")
 			if action == "create" || action == "update" || action == "publish" || action == "restore" {
 				required = append(required, "dashboard_id")
 			}
@@ -47,7 +47,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			}
 		}
 		if dashboardMutation(action) && action != "create" {
-			props["expected_revision"] = externalString("Current draft revision from get_dashboard; stale edits/publications are refused.")
+			props["expected_revision"] = externalString("Current draft revision from reading the dashboard; stale edits/publications are refused.")
 			required = append(required, "expected_revision")
 		}
 		if action == "restore" || action == "get" || action == "validate" || action == "preview" {

@@ -42,7 +42,8 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if validation["valid"] != true {
 		t.Fatalf("validation: %v", validation)
 	}
-	call("publish_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1})
+	// The merged tool runs the same operation; the old names above stay callable.
+	call("dashboard", map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1})
 	link := call("get_dashboard_link", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview"})["url"].(string)
 	if strings.Contains(link, "token=") || !strings.Contains(link, "document=") {
 		t.Fatalf("bad live link: %s", link)
@@ -57,7 +58,18 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	initializeExternalMCP(t, ctx, rcli)
 	guide := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "get_guidance_topic", "arguments": map[string]any{"topic": "dashboard-authoring"}})
 	requireRemoteSuccess(t, guide, "dashboard-only connection usage guidance")
-	discovered := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "list_dashboards", "arguments": map[string]any{}})
+	// A read-only connection is shown one dashboard tool without write actions,
+	// and no old names.
+	menu := marshalStructured(t, callRemoteTool(t, ctx, rcli, externalMCPToolSpec, map[string]any{}))
+	if !strings.Contains(menu, `"name":"dashboard"`) || strings.Contains(menu, "list_dashboards") {
+		t.Fatalf("reader menu: %s", menu)
+	}
+	readerSpec := marshalStructured(t, callRemoteTool(t, ctx, rcli, externalMCPToolSpec, map[string]any{"names": []any{"dashboard"}}))
+	if !strings.Contains(readerSpec, `"link"`) || strings.Contains(readerSpec, `"publish"`) || strings.Contains(readerSpec, `"create"`) {
+		t.Fatalf("reader dashboard actions: %s", readerSpec)
+	}
+	requireRemoteError(t, callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2}}), "reader publish", "insufficient_scope")
+	discovered := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "list"}})
 	requireRemoteSuccess(t, discovered, "reader discovery")
 	text := marshalStructured(t, discovered)
 	if !strings.Contains(text, "overview") || strings.Contains(text, "secret") {

@@ -41,7 +41,7 @@ const (
 // all (ChatGPT delivers tools only).
 const externalMCPRelayInstructions = " Relays: discover IDs with list_workflows and kind=relay. When authorized, use builder_chat to edit, test_relay to test the draft, and publish_relay to freeze a version. Use run_relay for a published version and get_relay_run to poll durable results. Relays have Builder-only chat. Creation requires separate relays:write consent."
 
-const externalMCPInstructions = `You are connected to an AgentWorks server. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Tools read, and run-mode tools execute in pinned Run-mode sessions; source and documentation edits require files:write consent and revision checks; plans and workflow configuration require separately granted Builder tools. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With explicit dashboards:read/dashboards:write consent, discover with list_dashboards, build drafts with create_dashboard/update_dashboard, validate and preview exact revisions, then publish_dashboard and get_dashboard_link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Tools read, and run-mode tools execute in pinned Run-mode sessions; source and documentation edits require files:write consent and revision checks; plans and workflow configuration require separately granted Builder tools. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With explicit dashboards:read/dashboards:write consent, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog.`
 
 const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Answer from what you read; if the task needs a change, say so instead of attempting one.`
 
@@ -155,7 +155,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			break
 		}
 	}
-	index, fingerprint := externalMCPToolIndex(allowed)
+	index, fingerprint := externalMCPToolIndex(externalListedTools(claims, allowed))
 	mcpServer := server.NewMCPServer("AgentWorks", "1.0.0",
 		server.WithToolCapabilities(false),
 		server.WithElicitation(),
@@ -196,7 +196,7 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 		args = map[string]any{}
 	}
 	if name == externalMCPToolSpec {
-		return externalMCPAPISpec(args, allowed)
+		return externalMCPAPISpec(args, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed)
 	}
 	target, _ := args["name"].(string)
 	target = knowledgebase.CanonicalToolName(strings.TrimSpace(target))
@@ -273,15 +273,20 @@ func externalMCPDispatchResult(rec *externalMCPRecorder) *mcp.CallToolResult {
 
 // externalMCPAPISpec serves the scope-filtered catalog: no names returns the
 // name/description list, names returns full schemas for those tools.
-func externalMCPAPISpec(args map[string]any, allowed []externalTool) *mcp.CallToolResult {
+// listed is what the connection is shown; allowed adds hidden aliases, whose
+// schemas can still be read by name.
+func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool) *mcp.CallToolResult {
 	byName := make(map[string]externalTool, len(allowed))
 	for _, tool := range allowed {
 		byName[tool.Name] = tool
 	}
+	for _, tool := range listed {
+		byName[tool.Name] = tool
+	}
 	raw, hasNames := args["names"]
 	if !hasNames || raw == nil {
-		entries := make([]map[string]string, 0, len(allowed))
-		for _, tool := range allowed {
+		entries := make([]map[string]string, 0, len(listed))
+		for _, tool := range listed {
 			entries = append(entries, map[string]string{"name": tool.Name, "description": tool.Description})
 		}
 		result, err := mcp.NewToolResultJSON(map[string]any{"tools": entries, "count": len(entries)})

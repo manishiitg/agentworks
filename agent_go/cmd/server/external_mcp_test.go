@@ -183,12 +183,14 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The Code review tools are listed only for admins and Code reviewers.
-	want := 0
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	allowed := []externalTool{}
 	for _, tool := range catalog {
-		if externalTokenAllows(&UserClaims{UserID: "owner", Username: "owner"}, tool) {
-			want++
+		if externalTokenAllows(owner, tool) {
+			allowed = append(allowed, tool)
 		}
 	}
+	want := len(externalListedTools(owner, allowed))
 
 	if decoded.Count != want {
 		t.Fatalf("spec count %d, want %d", decoded.Count, want)

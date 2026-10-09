@@ -226,10 +226,25 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			}
 		}
 		delete(want, "write_file") // Direct writes require explicit connection consent.
+		// Merged tools replace their members in the list; aliases are hidden.
+		for name := range externalHiddenAliases {
+			delete(want, name)
+		}
+		for _, merge := range externalToolMerges {
+			for _, pair := range merge.actions {
+				if want[pair[1]] {
+					delete(want, pair[1])
+					want[merge.name] = true
+				}
+			}
+		}
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
 		native := map[string]bool{"get_report_link": true}
+		for _, merge := range externalToolMerges {
+			native[merge.name] = true
+		}
 		for _, name := range append(agentworksproduct.RunExternalTools(), caplayerproduct.ExternalTools()...) {
 			native[name] = true
 		}
@@ -327,6 +342,13 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 			wantCatalog = append(wantCatalog, name)
 		}
 	}
+	admittedOnly := catalog[:0:0]
+	for _, tool := range catalog {
+		if tool.actions == nil { // merged tools are derived, not admitted
+			admittedOnly = append(admittedOnly, tool)
+		}
+	}
+	catalog = admittedOnly
 	if len(catalog) != len(wantCatalog) {
 		t.Fatalf("catalog has %d tools, product.yaml admits %d", len(catalog), len(wantCatalog))
 	}

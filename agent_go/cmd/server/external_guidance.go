@@ -58,7 +58,7 @@ var externalGuidanceTopics = []externalGuidanceTopic{
 	{Name: "step-config", Description: "Per-step config reference: store-access modes, locks, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step.", ExternalNote: "External mapping: update_step_config, add_step, update_step, change_step_type, and update_validation_schema are not direct external tools. Delegate edits through builder_chat only when it is available. read_skill, query_workflow_db, mutate_workflow_db, and other config tools named here are not either; describe the needed change in your reply instead of attempting it."},
 	{Name: "skill-management", Description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills.", ExternalNote: "External mapping: install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config are not in your catalog. list_skills and search_skills ARE in your catalog when the token allows runs:execute; use list_workflow_knowledge to inspect wiring. Installs and changes are not exposed, so say so instead of attempting them."},
 	{Name: "file-layout", Description: "Workspace file layout reference and path discipline."},
-	{Name: "secure-share-links", Description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing.", ExternalNote: "External mapping: get_file_link IS in your catalog; get_report_link and get_dashboard_link require dashboards:read and return authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."},
+	{Name: "secure-share-links", Description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing.", ExternalNote: "External mapping: get_file_link IS in your catalog; the dashboard tool (action=link) requires dashboards:read and returns authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."},
 }
 
 // externalToolMutates reports whether a catalog tool performs mutations.
@@ -106,7 +106,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 	}
 	available := make([]string, 0, len(catalog))
 	for _, tool := range catalog {
-		if externalTokenAllows(claims, tool) {
+		if !tool.hidden && externalTokenAllows(claims, tool) {
 			available = append(available, tool.Name)
 		}
 	}
@@ -172,9 +172,9 @@ func externalPreparation(claims *UserClaims) []string {
 		"Use files download (not read_file) for a local copy; downloads refuse to overwrite existing files.",
 	}
 	if claims != nil && claims.AccessToken != nil && claims.AccessToken.Allows("dashboards:read") {
-		steps[0] = "Use only tools present in this connection’s catalog. Dashboards: list_dashboards discovers accessible projects and published documents; get_dashboard reads the selected source. Links require recipients to have current project access."
+		steps[0] = "Use only tools present in this connection’s catalog. Dashboards: dashboard action=list discovers accessible projects and published documents; action=get reads the selected source. Links require recipients to have current project access."
 		if claims.AccessToken.Allows("dashboards:write") {
-			steps = append(steps, "Create or update a dashboard draft, validate its revision, preview it when runs:execute is granted, then publish_dashboard using expected_revision. restore_dashboard republishes a previous published revision. Use {{dashboard_assets}} and {{dashboard_scripts}} for revision-scoped assets and scripts; styling follows the user’s preferences.")
+			steps = append(steps, "Create or update a dashboard draft, validate its revision, preview it when runs:execute is granted, then dashboard action=publish using expected_revision. action=restore republishes a previous published revision. Use {{dashboard_assets}} and {{dashboard_scripts}} for revision-scoped assets and scripts; styling follows the user’s preferences.")
 		}
 	}
 	canRun := claims == nil || claims.AccessToken == nil || claims.AccessToken.Allows("runs:execute")

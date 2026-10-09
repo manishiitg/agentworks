@@ -346,6 +346,14 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil {
 		return false
 	}
+	if tool.actions != nil {
+		for _, member := range tool.actions {
+			if m, ok := externalCatalogTool(member); ok && externalTokenAllows(c, m) {
+				return true
+			}
+		}
+		return false
+	}
 	if isDashboardTool(tool.Name) {
 		return dashboardScopeAllowed(c, dashboardActions[tool.Name])
 	}
