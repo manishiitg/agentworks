@@ -201,7 +201,8 @@ type providerSetupSession struct {
 
 // userInput forwards browser input, except to a read-only session. In a usage session typed slash commands go through
 // the same allowlist as the coding agents' live terminals (default: /usage only), so a manager reading the account's
-// limits cannot /logout the shared account or change its settings from there.
+// limits cannot /logout the shared account or change its settings from there, and free text is dropped (decideStrict), so it
+// cannot be used to chat with the model on the shared account.
 func (s *providerSetupSession) userInput(data string) error {
 	s.mu.Lock()
 	readOnly := s.readOnly
@@ -211,7 +212,7 @@ func (s *providerSetupSession) userInput(data string) error {
 		return nil
 	}
 	if usage {
-		switch decision, erase := terminalSlashGuard.decide("provider-setup:"+s.id, []byte(data)); decision {
+		switch decision, erase := terminalSlashGuard.decideStrict("provider-setup:"+s.id, []byte(data)); decision {
 		case slashDrop:
 			return nil
 		case slashCancel:

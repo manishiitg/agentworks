@@ -85,8 +85,20 @@ func isPrintableASCII(data []byte) bool {
 // decide classifies one chunk of raw terminal input. On slashCancel the second result is how many
 // characters to erase (backspaces to send).
 func (g *slashGuard) decide(session string, data []byte) (slashDecision, int) {
+	return g.decideWith(session, data, false)
+}
+
+// decideStrict is decide for a usage terminal, where the person only reads limits: besides the slash-command rules, every
+// line that does not start with "/" is dropped, typed or pasted, so nothing in it can be a prompt to the model (a prompt would
+// run on the shared account outside the person's model and token limits). Navigation keys, Enter and one-line slash commands
+// on the allowlist still go through.
+func (g *slashGuard) decideStrict(session string, data []byte) (slashDecision, int) {
+	return g.decideWith(session, data, true)
+}
+
+func (g *slashGuard) decideWith(session string, data []byte, strict bool) (slashDecision, int) {
 	allowAll, allowed := slashPolicy()
-	if allowAll || len(data) == 0 {
+	if (allowAll && !strict) || len(data) == 0 {
 		return slashForward, 0
 	}
 	g.mu.Lock()
@@ -107,7 +119,20 @@ func (g *slashGuard) decide(session string, data []byte) (slashDecision, int) {
 		text = data[6:]
 		text = []byte(strings.TrimSuffix(string(text), "\x1b[201~"))
 	}
+	if strict {
+		pasted := len(data) > 6 && string(data[:6]) == "\x1b[200~"
+		slashStart := line.command || (line.typed == 0 && len(text) > 0 && text[0] == '/')
+		switch {
+		case pasted && (!slashStart || !isPrintableASCII(text)):
+			return slashDrop, 0 // only a one-line slash command may be pasted
+		case !pasted && len(data) > 1 && data[0] != 0x1b && !isPrintableASCII(data):
+			return slashDrop, 0 // multi-byte or multi-line text that is not an escape sequence
+		}
+	}
 	if len(text) > 1 && isPrintableASCII(text) {
+		if strict && !line.command && !(line.typed == 0 && text[0] == '/') {
+			return slashDrop, 0 // free text
+		}
 		if line.command {
 			line.buf = append(line.buf, text...)
 		} else if line.typed == 0 && text[0] == '/' {
@@ -137,7 +162,7 @@ func (g *slashGuard) decide(session string, data []byte) (slashDecision, int) {
 		name := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(string(line.buf), "/")))
 		erase := len(line.buf)
 		reset()
-		if allowed[name] {
+		if allowAll || allowed[name] {
 			return slashForward, 0
 		}
 		return slashCancel, erase
@@ -155,6 +180,9 @@ func (g *slashGuard) decide(session string, data []byte) (slashDecision, int) {
 		}
 		return slashForward, 0
 	case b >= 0x20 && b <= 0x7e:
+		if strict && !line.command && !(line.typed == 0 && b == '/') {
+			return slashDrop, 0 // free text
+		}
 		if line.command {
 			line.buf = append(line.buf, b)
 		} else if line.typed == 0 && b == '/' {

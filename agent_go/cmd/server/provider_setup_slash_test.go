@@ -52,3 +52,39 @@ func TestProviderSetupConfinesOnlyPersonalAccounts(t *testing.T) {
 		}
 	}
 }
+
+// A manager's usage terminal reads limits only: free text, typed or pasted, never reaches the model on the shared account.
+func TestProviderUsageTerminalDropsFreeText(t *testing.T) {
+	t.Setenv(terminalSlashCommandsEnv, "")
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	session := &providerSetupSession{id: "strict-test", action: "usage", status: "running", terminal: write}
+	defer terminalSlashGuard.forget("provider-setup:strict-test")
+	for _, input := range []string{
+		"h", "i", "\r", // typed text, then Enter
+		"\x1b[200~write me a poem\x1b[201~", "\r", // pasted text
+		"\x1b[200~line one\nline two\x1b[201~", // pasted multi-line text
+		"héllo wörld",                          // multi-byte text
+		"\x1b[A",                               // an arrow key is navigation and goes through
+		"/", "u", "s", "a", "g", "e", "\r",     // an allowed slash command goes through
+	} {
+		if err := session.userInput(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write.Close()
+	raw := make([]byte, 4096)
+	n, _ := read.Read(raw)
+	got := string(raw[:n])
+	for _, leaked := range []string{"h", "poem", "line one", "héllo"} {
+		if strings.Contains(strings.ReplaceAll(got, "/usage", ""), leaked) {
+			t.Fatalf("free text %q reached the terminal: %q", leaked, got)
+		}
+	}
+	if !strings.Contains(got, "\x1b[A") || !strings.HasSuffix(got, "/usage\r") {
+		t.Fatalf("navigation keys and an allowed slash command must go through, got %q", got)
+	}
+}
