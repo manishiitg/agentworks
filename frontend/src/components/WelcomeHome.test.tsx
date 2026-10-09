@@ -29,4 +29,15 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('[role="dialog"]')).toBeNull()
     await act(async () => root.unmount())
   })
+
+  it('does not greet someone whose account opens a single product, but the menu can still open it', async () => {
+    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Citymall Agents', enabledProductSurfaces: ['agentworks', 'work', 'code'] }
+    useAuthStore.setState({ user: { allowed_products: ['code'] } } as never)
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<WelcomeHome />))
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    await act(async () => { window.dispatchEvent(new Event('open-welcome-home')) })
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull()
+    await act(async () => root.unmount())
+  })
 })
