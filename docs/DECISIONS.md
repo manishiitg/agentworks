@@ -77,6 +77,13 @@ hide cycle, including across product remounts. The left-edge reopen target stays
 available. Replace the manual hide toast to keep the behavior consistent.
 Ticket: [PLAT-779](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-779.md).
 
+### 2026-10-09 — A message sent while an agent is answering always steers the running turn (PLAT-790)
+
+When someone sends a message while a coding agent is still answering, it is delivered into the running turn (steering),
+as today, for every coding agent. With two quick requests the latest instruction can replace the first. Queueing the
+message as its own turn is not offered for now; letting each person choose is the pending PLAT-791. The owner decided
+this on 2026-10-09 after a tester read it as a bug (the platform delivered both messages).
+
 ### 2026-10-09 — A Slack DM runs in the Crew's main chat; a channel mention gets its own conversation (PLAT-786)
 
 A direct message to a Crew's Slack bot runs in the Crew's main chat, so its answers also show in the normal chat.
