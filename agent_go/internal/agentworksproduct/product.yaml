@@ -408,6 +408,7 @@ chat:
       - list_needs_you
       - answer_needs_you
       - manage_pulse
+      - manage_project
       - list_files
       - search_files
       - list_step_code

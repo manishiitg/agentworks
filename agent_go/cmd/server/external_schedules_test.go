@@ -30,3 +30,21 @@ func TestExternalManageTriggersNeedsWriteAccess(t *testing.T) {
 		t.Fatalf("reader created a trigger: %d %s", w.Code, w.Body)
 	}
 }
+
+// manage_project: delete is permanent, so it needs the ID repeated; access
+// changes follow the share dialog (owners only); an owner can rename.
+func TestExternalManageProjectGuards(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	if w := f.call(t, "owner", "manage_project", map[string]any{"workflow_id": "invoices", "action": "delete"}); w.Code != 400 || !strings.Contains(w.Body.String(), "confirm_required") {
+		t.Fatalf("delete without confirm: %d %s", w.Code, w.Body)
+	}
+	if w := f.call(t, "reader", "manage_project", map[string]any{"workflow_id": "invoices", "action": "set_access", "readers": []any{"outsider"}}); w.Code < 400 {
+		t.Fatalf("reader changed access: %d %s", w.Code, w.Body)
+	}
+	if w := f.call(t, "owner", "manage_project", map[string]any{"workflow_id": "invoices", "action": "rename", "label": "Invoices v2"}); w.Code != 200 {
+		t.Fatalf("owner rename: %d %s", w.Code, w.Body)
+	}
+	if manifest, _, _ := ReadWorkflowManifest(t.Context(), "Workflow/invoices"); manifest == nil || manifest.Label != "Invoices v2" {
+		t.Fatalf("label not saved: %+v", manifest)
+	}
+}

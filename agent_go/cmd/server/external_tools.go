@@ -222,6 +222,7 @@ func externalTools() ([]externalTool, error) {
 		dashboardToolDefinitions(add)
 		externalNeedsYouDefinitions(add)
 		externalPulseManageDefinitions(add)
+		externalProjectDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -433,6 +434,17 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_project" {
+		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""
+		if hasCrew == hasWorkflow {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
+			return
+		}
+		if hasCrew {
+			api.externalCrewProjectCall(w, r, call.Arguments, externalArg(call.Arguments, "crew_id"))
+			return
+		}
+	}
 	if tool.Name == "manage_triggers" && externalArg(call.Arguments, "crew_id") != "" {
 		if externalArg(call.Arguments, "workflow_id") != "" {
 			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
@@ -569,6 +581,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	access := workflowAccessForManifest(GetUserFromContext(r.Context()), selected.Manifest)
 	if tool.Name == "manage_triggers" {
 		api.externalWorkflowTriggerCall(w, r, args, *selected, access)
+		return
+	}
+	if tool.Name == "manage_project" {
+		api.externalWorkflowProjectCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "manage_pulse" {
