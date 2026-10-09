@@ -872,6 +872,17 @@ func (api *StreamingAPI) handleKillTerminal(w http.ResponseWriter, r *http.Reque
 
 // handleSendTerminalInput pastes text into the terminal's tmux pane.
 // POST /api/terminals/{terminal_id}/input
+// A Code chat that works on the user's own computer (Local mode) shows its live terminal view-only: the terminal is the
+// server's coding-agent session, and typing into it (a shell escape, a pasted command) would act on the server, not the laptop.
+// Enforced here, not only hidden in the page.
+func (api *StreamingAPI) refuseLocalTerminalInput(w http.ResponseWriter, sessionID string) bool {
+	if !api.codeLocalSession(sessionID) {
+		return false
+	}
+	http.Error(w, "This chat works on files on your computer; its live terminal is view-only", http.StatusForbidden)
+	return true
+}
+
 func (api *StreamingAPI) handleSendTerminalInput(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodOptions {
@@ -880,6 +891,9 @@ func (api *StreamingAPI) handleSendTerminalInput(w http.ResponseWriter, r *http.
 	}
 	snapshot, ok := api.requireAccessibleTerminal(w, r)
 	if !ok {
+		return
+	}
+	if api.refuseLocalTerminalInput(w, snapshot.SessionID) {
 		return
 	}
 
@@ -919,6 +933,9 @@ func (api *StreamingAPI) handleSendTerminalKey(w http.ResponseWriter, r *http.Re
 	}
 	snapshot, ok := api.requireAccessibleTerminal(w, r)
 	if !ok {
+		return
+	}
+	if api.refuseLocalTerminalInput(w, snapshot.SessionID) {
 		return
 	}
 

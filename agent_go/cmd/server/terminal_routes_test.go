@@ -2132,3 +2132,42 @@ func TestCompactTerminalStatusMetaForListDropsOversizedUsageList(t *testing.T) {
 		t.Fatalf("oversized status_extras should be dropped, got %#v", out)
 	}
 }
+
+// A Code chat working on the user's computer shows its live terminal view-only: the server refuses typed input and keys.
+func TestTerminalInputIsRefusedForALocalCodeChat(t *testing.T) {
+	store := terminals.NewStore()
+	api := &StreamingAPI{terminalStore: store, lastQueryRequests: map[string]QueryRequest{}}
+	sessionID := "session-local-code-terminal"
+	terminalID := sessionID + ":workflow-step:main"
+	store.HandleEvent(sessionID, terminalRouteChunkEvent(sessionID, "workflow-step:main", "mlp-codex-cli-int-local", "pane", 2))
+	var calls int
+	oldRun := runTerminalTmuxCommand
+	runTerminalTmuxCommand = func(ctx context.Context, stdin string, args ...string) error { calls++; return nil }
+	defer func() { runTerminalTmuxCommand = oldRun }()
+	send := func(handler http.HandlerFunc, path, body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/terminals/"+terminalID+path, strings.NewReader(body))
+		req = mux.SetURLVars(req, map[string]string{"terminal_id": terminalID})
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		return rec.Code
+	}
+	api.lastQueryMu.Lock()
+	api.lastQueryRequests[sessionID] = QueryRequest{AgentProfileID: "code", CodeChatMode: "local"}
+	api.lastQueryMu.Unlock()
+	if code := send(api.handleSendTerminalInput, "/input", `{"text":"!ls","submit":true}`); code != http.StatusForbidden {
+		t.Fatalf("input status = %d, want 403", code)
+	}
+	if code := send(api.handleSendTerminalKey, "/key", `{"key":"Enter"}`); code != http.StatusForbidden {
+		t.Fatalf("key status = %d, want 403", code)
+	}
+	if calls != 0 {
+		t.Fatalf("nothing may reach tmux for a Local chat, got %d calls", calls)
+	}
+	// A server chat is unchanged.
+	api.lastQueryMu.Lock()
+	api.lastQueryRequests[sessionID] = QueryRequest{AgentProfileID: "code", CodeChatMode: "server"}
+	api.lastQueryMu.Unlock()
+	if code := send(api.handleSendTerminalInput, "/input", `{"text":"hi","submit":true}`); code != http.StatusOK {
+		t.Fatalf("a server chat's terminal input status = %d, want 200", code)
+	}
+}

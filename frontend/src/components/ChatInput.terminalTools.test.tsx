@@ -100,7 +100,8 @@ describe('terminal toolbar shared tools', () => {
     })
     expect(host.querySelector('[aria-label="Code chat mode"]')).toBeNull()
     expect(host.querySelector('[aria-label="File connection: Local files · project"]')).not.toBeNull()
-    expect(host.querySelector('[aria-label="Open live view"]')).toBeNull()
+    // The live terminal is offered in Local Code too, view-only (the server refuses typed input).
+    expect(host.querySelector('[aria-label="Open live view"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Attach files"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Browse commands"]')).toBeNull()
     expect(host.querySelector('[data-testid="tour-chat-browser-tools"]')).toBeNull()

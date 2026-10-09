@@ -3721,7 +3721,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView || (activeTab.metadata?.agentProfileId === 'code' && codeChatModeForChat(activeTab.sessionId || '') === 'local')} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
@@ -3788,7 +3788,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView || (activeTab.metadata?.agentProfileId === 'code' && codeChatModeForChat(activeTab.sessionId || '') === 'local')} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}

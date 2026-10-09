@@ -1782,6 +1782,10 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 		if !terminalSnapshotIsMainAgent(snapshot) {
 			continue
 		}
+		// So does a Code chat in Local mode: its terminal is view-only (refuseLocalTerminalInput).
+		if api.codeLocalSession(snapshot.SessionID) {
+			continue
+		}
 		switch mt {
 		case websocket.BinaryMessage:
 			if viewer.wasSuperseded() {

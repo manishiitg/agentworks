@@ -855,7 +855,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // displaying a restored structured/background execution.
     providerUsesStructuredTransport: false,
   })
-  const liveTerminalOffered = !localCodeMode && mainTerminalAvailable && !currentChatUsesStructuredTransport
+  // Offered in Local Code too, view-only (the server refuses typed input there; MainAgentTerminal is read-only).
+  const liveTerminalOffered = mainTerminalAvailable && !currentChatUsesStructuredTransport
   useEffect(() => {
     if (!providerManifestLoaded) {
       void loadProviderManifest()
