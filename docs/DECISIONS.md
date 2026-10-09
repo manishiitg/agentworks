@@ -111,6 +111,17 @@ Ticket: [PLAT-739](https://github.com/runloop-workflows/deployments/blob/main/ti
   mandatory: a scripted step that named none emailed the workspace default (on RTS, the account owner), five times in 11
   minutes. Owner decision, 2026-10-09. Ticket: PLAT-736.
 
+### 2026-10-09 — Local Code on a Mac: a light sandbox, like using a coding CLI locally
+
+- **Decided.** Commands the CLI runs on a person's own Mac use a light Seatbelt profile (`workspace/security/light_local.go`,
+  used by `localfiles.shell` on macOS) instead of the server's strict allow-list: their real home folder and normal environment
+  (minus `AGENTWORKS_*`), the whole network and system services (file watchers work), reads everywhere except keys, cloud logins,
+  browser profiles and credential stores, and writes only in the shared folders, temp folders, `/dev` and the home folder, except shell
+  startup files, `LaunchAgents` and the CLI binary. `--block` and read-only paths still hold. The strict profile (private home and
+  `/tmp`, listed Mach services) stays for servers and Linux; Windows has none.
+- **Why.** The strict profile kept breaking ordinary tools (file watching, temp files) in Local mode, and a command on the person's
+  own computer should behave as in their terminal. Owner decision. Ticket: PLAT-735.
+
 ### 2026-10-09 — Local Code on Windows: no command sandbox
 
 - **Decided.** `agentworks start` and the local executor run on Windows (`windows/amd64` and `arm64` downloads, `install-agentworks.ps1`,

@@ -182,7 +182,13 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 			}
 		}
 		var isoErr error
-		cmd, cleanup, isoErr = iso.ExecuteIsolated(operationCtx, r.Command, nil)
+		if runtime.GOOS == "darwin" {
+			// On a person's own Mac commands run under the light sandbox: their normal environment and home folder, writes limited
+			// to the shared folders, temp and home, secrets unreadable, the folder rules enforced (owner decision, 2026-10-09).
+			cmd, cleanup, isoErr = security.ExecuteLightLocal(operationCtx, workDir, security.LightLocalPolicy{WritePaths: iso.WritePaths, BlockedPaths: iso.BlockedPaths, BlockedWritePaths: iso.BlockedWritePaths}, r.Command)
+		} else {
+			cmd, cleanup, isoErr = iso.ExecuteIsolated(operationCtx, r.Command, nil)
+		}
 		if isoErr != nil {
 			return nil, &wf.FileError{Status: 503, Message: isoErr.Error()}
 		}
@@ -190,7 +196,9 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	}
 	// Keep only local tool lookup, locale and sandbox cache paths. Login tokens,
 	// server/provider secrets and arbitrary CLI environment never reach commands.
-	cmd.Env = shellEnvironment(cmd.Env)
+	if runtime.GOOS != "darwin" {
+		cmd.Env = shellEnvironment(cmd.Env)
+	}
 	if downloads != nil {
 		cmd.Env = append(cmd.Env, "AGENTWORKS_DOWNLOADS="+downloads.Root)
 	}
