@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, Folder, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Folder, Loader2 } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { sharedCrewFileClient, sharedCrewRelativePath } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
@@ -25,6 +25,8 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
   const product = useProjectProduct()
   const [entries, setEntries] = useState<PlannerFile[]>([])
   const [truncated, setTruncated] = useState(false)
+  // Folders start collapsed; a folder shows its children only while it is in this set.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openPath, setOpenPath] = useState<string | null>(null)
@@ -45,7 +47,10 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
       .then(response => {
         if (cancelled) return
         if (!response?.success) throw new Error(response?.message || 'Could not list Crew files.')
-        setEntries(response.data || [])
+        // Each path once, in listing order (the server also dedupes; this keeps an old server's listing readable).
+        const seen = new Set<string>()
+        setEntries((response.data || []).filter(entry => !seen.has(entry.filepath) && seen.add(entry.filepath)))
+        setExpanded(new Set())
         setTruncated(response.truncated === true)
       })
       .catch((cause: unknown) => {
@@ -82,6 +87,16 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
   }, [entries, request])
 
   const rel = (filepath: string) => sharedCrewRelativePath(crewRoot, filepath) ?? filepath
+  const toggleFolder = (relative: string) => setExpanded(current => {
+    const next = new Set(current)
+    if (!next.delete(relative)) next.add(relative)
+    return next
+  })
+  // An entry shows when every folder above it is expanded.
+  const visibleEntries = entries.filter(entry => {
+    const parts = rel(entry.filepath).split('/')
+    return parts.slice(0, -1).every((_, index) => expanded.has(parts.slice(0, index + 1).join('/')))
+  })
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="shared-crew-files-panel">
@@ -131,21 +146,25 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
             {truncated && (
               <p className="px-2 py-1 text-xs text-muted-foreground">Showing the first 1,000 entries.</p>
             )}
-            {entries.map(entry => {
+            {visibleEntries.map(entry => {
               const relative = rel(entry.filepath)
               const depth = relative.split('/').length - 1
               const name = relative.split('/').pop() || relative
               const isFolder = entry.type === 'folder'
               return isFolder ? (
-                <div
+                <button
                   key={entry.filepath}
+                  type="button"
                   role="listitem"
-                  className="flex items-center gap-2 rounded px-2 py-1 text-sm text-muted-foreground"
+                  aria-expanded={expanded.has(relative)}
+                  onClick={() => toggleFolder(relative)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-muted-foreground hover:bg-muted"
                   style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
                 >
+                  {expanded.has(relative) ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
                   <Folder className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate font-medium">{name}</span>
-                </div>
+                </button>
               ) : (
                 <button
                   key={entry.filepath}

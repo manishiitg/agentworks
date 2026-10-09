@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { saveEditedFile } from './editRawFile'
+import { createNewFile, newFileNameProblem, saveEditedFile } from './editRawFile'
 
 const api = (stored: string) => ({
   getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: stored } })),
@@ -17,5 +17,21 @@ describe('saveEditedFile', () => {
     const files = api('changed by the agent')
     expect(await saveEditedFile(files, 'Code/p/a.ts', 'what I opened', 'my edit')).toBe('changed')
     expect(files.updatePlannerFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('createNewFile', () => {
+  it('creates an empty file, but never overwrites one that exists', async () => {
+    const missing = { ...api(''), getPlannerFileContent: vi.fn(async () => { throw { response: { status: 404 } } }) }
+    expect(await createNewFile(missing, 'Code/p/src', 'new.ts')).toBe('created')
+    expect(missing.updatePlannerFile).toHaveBeenCalledWith('Code/p/src/new.ts', '', 'Create new.ts')
+    const present = api('keep me')
+    expect(await createNewFile(present, 'Code/p/src', 'a.ts')).toBe('exists')
+    expect(present.updatePlannerFile).not.toHaveBeenCalled()
+  })
+
+  it('accepts one plain file name only', () => {
+    expect(newFileNameProblem('.env')).toBeNull()
+    for (const bad of ['', ' a', 'a/b', '..', 'a\\b']) expect(newFileNameProblem(bad)).not.toBeNull()
   })
 })

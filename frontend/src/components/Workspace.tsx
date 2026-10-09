@@ -1,12 +1,14 @@
 import { useEffect, useCallback, useRef, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Upload, FolderPlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw } from 'lucide-react'
+import { Upload, FolderPlus, FilePlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw } from 'lucide-react'
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
 import { SessionInstructions } from './workspace/SessionInstructions'
 import { openWorkspaceFile } from '../utils/openWorkspaceFile'
 import CreateFolderDialog from './workspace/CreateFolderDialog'
+import CreateFileDialog from './workspace/CreateFileDialog'
+import { createNewFile } from '../utils/editRawFile'
 import MoveFileDialog from './workspace/MoveFileDialog'
 import RenameFileDialog from './workspace/RenameFileDialog'
 import ConfirmationDialog from './ui/ConfirmationDialog'
@@ -47,6 +49,8 @@ interface WorkspaceProps {
   hideAddToChat?: boolean
   /** Hide actions for the scoped workspace root while retaining child actions. */
   hideRootActions?: boolean
+  /** Offers New file (the person's own project files; the server still refuses writes they may not make). */
+  editable?: boolean
   /** Opt in to opening direct child folders when the workspace is first shown. */
   expandFirstLevelFolders?: boolean
   /** Hide platform-owned root files/folders until the user reveals them. */
@@ -79,6 +83,7 @@ export default function Workspace({
   hiddenRootFolders = [],
   hideAddToChat = false,
   hideRootActions = false,
+  editable = false,
   expandFirstLevelFolders = EXPAND_FIRST_LEVEL_FOLDERS_BY_DEFAULT,
   hideManagedEntriesByDefault = false,
   title = 'Workspace',
@@ -1669,6 +1674,16 @@ export default function Workspace({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [uploadDialog.isOpen, uploadDialog.isLoading, cancelUpload])
 
+  // New file: an empty file in the workspace root, opened afterwards (Edit fills it).
+  const [newFileFolder, setNewFileFolder] = useState<string | null>(null)
+  const handleNewFileSubmit = async (name: string) => {
+    const folder = newFileFolder
+    if (!folder) return
+    if (await createNewFile(agentApi, folder, name) === 'exists') throw new Error('A file with that name already exists here')
+    await fetchFiles(activeFolder, { force: true })
+    void openWorkspaceFile(`${folder}/${name}`)
+  }
+
   // Folder creation handlers
   const handleCreateFolder = (parentFolder?: PlannerFile | string) => {
     // Use originalFilepath if parentFolder is a PlannerFile object, otherwise reconstruct from string
@@ -1747,6 +1762,14 @@ export default function Workspace({
                 </TooltipTrigger>
                 <TooltipContent><p>Upload file</p></TooltipContent>
               </Tooltip>
+              {editable && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={() => setNewFileFolder(resolveWorkspaceUploadPath('/', scopedWorkspacePath || effectiveWorkflowFolderPath))} disabled={loading} aria-label="New file" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><FilePlus className="h-4 w-4" /></button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>New file</p></TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button onClick={() => handleCreateFolder()} disabled={loading} aria-label="New folder" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><FolderPlus className="h-4 w-4" /></button>
@@ -2127,6 +2150,13 @@ export default function Workspace({
           </div>
         </div>
       )}
+
+      <CreateFileDialog
+        isOpen={newFileFolder !== null}
+        onClose={() => setNewFileFolder(null)}
+        onCreate={handleNewFileSubmit}
+        folderLabel={(newFileFolder || '').split('/').slice(-2).join('/') || 'the workspace'}
+      />
 
       {/* Create Folder Dialog */}
       <CreateFolderDialog

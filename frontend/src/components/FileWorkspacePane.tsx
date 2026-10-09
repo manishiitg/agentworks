@@ -158,6 +158,7 @@ function FileWorkspacePaneBody({
                 hiddenRootFolders={hiddenRootFolders}
                 hideAddToChat={hideAddToChat}
                 hideRootActions={hideRootActions}
+                editable={editable}
                 expandFirstLevelFolders={expandFirstLevelFolders}
                 hideManagedEntriesByDefault={hideManagedEntriesByDefault}
                 title={title}

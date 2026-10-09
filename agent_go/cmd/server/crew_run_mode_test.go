@@ -252,6 +252,15 @@ func TestFlattenSharedProjectFiles(t *testing.T) {
 	if entries[0].Path != "code" || entries[len(entries)-1].Path != "code/product.json" {
 		t.Fatalf("tree not sorted: %+v", entries)
 	}
+	// An entry the listing names twice (as a child and again beside its parent) is listed once.
+	doubled := virtualtools.WorkspaceFolderListing{{FilePath: root, Type: "folder", Children: []virtualtools.WorkspaceFolderItem{
+		{FilePath: root + "/skills", Type: "folder", Children: []virtualtools.WorkspaceFolderItem{{FilePath: root + "/skills/a.md", Type: "file"}}},
+		{FilePath: root + "/skills", Type: "folder"},
+		{FilePath: root + "/skills/a.md", Type: "file"},
+	}}}
+	if got, _ := flattenSharedProjectFiles(root, doubled); len(got) != 2 {
+		t.Fatalf("doubled listing = %+v, want skills and skills/a.md once each", got)
+	}
 	if isSharedProjectBinaryContent("plain text") || !isSharedProjectBinaryContent("ab\x00cd") {
 		t.Fatal("binary sniff mismatch")
 	}

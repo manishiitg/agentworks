@@ -568,6 +568,9 @@ func flattenSharedProjectFiles(root string, listing virtualtools.WorkspaceFolder
 	prefix := workflowtypes.CanonicalCrewAttachmentRoot(root) + "/"
 	entries := []sharedProjectFileEntry{}
 	truncated := false
+	// A path is listed once: the workspace listing can name an entry both as a child and again at the level above it
+	// (every file and folder showed twice in a shared Crew, Excellence 2026-10-09).
+	listed := map[string]bool{}
 	var walk func(items []virtualtools.WorkspaceFolderItem) bool
 	walk = func(items []virtualtools.WorkspaceFolderItem) bool {
 		for _, item := range items {
@@ -575,7 +578,8 @@ func flattenSharedProjectFiles(root string, listing virtualtools.WorkspaceFolder
 			// crew-relative form; still descend so children are visited.
 			clean := workflowtypes.CanonicalCrewAttachmentRoot(item.FilePath)
 			if rel := strings.TrimPrefix(clean, prefix); rel != clean && rel != "" {
-				if !sharedProjectHiddenPath(rel) {
+				if !sharedProjectHiddenPath(rel) && !listed[rel] {
+					listed[rel] = true
 					kind := "file"
 					if strings.EqualFold(strings.TrimSpace(item.Type), "folder") {
 						kind = "folder"
