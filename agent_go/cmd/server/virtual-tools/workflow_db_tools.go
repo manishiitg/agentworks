@@ -334,97 +334,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 		if err != nil {
 			return "", err
 		}
-		action, _ := args["action"].(string)
-		action = strings.TrimSpace(strings.ToLower(action))
-		querySQL, err := workflowDBReadSQLArgument(args)
-		if err != nil {
-			return "", err
-		}
-		var sqlText string
-		maxRows := 500
-		if raw, ok := args["max_rows"].(float64); ok && raw > 0 {
-			maxRows = int(raw)
-		} else if raw, ok := args["max_rows"].(int); ok && raw > 0 {
-			maxRows = raw
-		}
-		if maxRows > workflowDBMaxRows {
-			maxRows = workflowDBMaxRows
-		}
-		offset := 0
-		if raw, ok := args["offset"].(float64); ok && raw > 0 {
-			offset = int(raw)
-		} else if raw, ok := args["offset"].(int); ok && raw > 0 {
-			offset = raw
-		}
-		// Raw SQL is the contract, exactly as on mutate_workflow_db; the only
-		// difference between the two tools is that this one opens the database with
-		// query_only(true). `action` is an optional convenience, not a required
-		// preamble — requiring it produced "action must be describe or query" and
-		// "sql is required for action=query" failures from callers that had already
-		// supplied valid SQL.
-		if action == "" {
-			if querySQL != "" {
-				action = "query"
-			} else if _, hasTable := args["table"]; hasTable {
-				action = "describe"
-			}
-		}
-		switch action {
-		case "describe":
-			table, _ := args["table"].(string)
-			table = strings.TrimSpace(table)
-			if table == "" {
-				sqlText = workflowDBDescribeAllSQL
-			} else {
-				if !safeWorkflowDBTableName.MatchString(table) {
-					return "", fmt.Errorf("table must contain only letters, digits, underscore, dot, or hyphen")
-				}
-				sqlText = workflowDBDescribeTableSQL(table)
-			}
-		case "query":
-			sqlText = querySQL
-			if sqlText == "" {
-				return "", fmt.Errorf("sql (or its query alias) is required for action=query")
-			}
-		case "integrity_check":
-			if querySQL != "" {
-				return "", fmt.Errorf("action=integrity_check does not accept sql or query; it runs the fixed guarded statement %q", workflowDBIntegrityCheckSQL)
-			}
-			sqlText = workflowDBIntegrityCheckSQL
-		default:
-			return "", fmt.Errorf(
-				"pass sql to run a read-only statement, action=\"describe\" (with optional table) to list schemas, or action=\"integrity_check\". Received top-level keys %v",
-				sortedArgumentKeys(args),
-			)
-		}
-		if offset > 0 {
-			paged, pageErr := workflowDBPagedSQL(sqlText, offset)
-			if pageErr != nil {
-				return "", pageErr
-			}
-			sqlText = paged
-		}
-		result, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: sqlText, Params: workflowDBParams(args), MaxRows: maxRows})
-		if err == nil && result.Truncated {
-			result.NextOffset = offset + len(result.Rows)
-		}
-		if err != nil {
-			if workflowDBUnrecognizedSigilPattern.MatchString(err.Error()) {
-				return "", workflowDBUnquotedBindSigilHint(err)
-			}
-			// A bare "no such column: input_id" tells the caller only that its guess
-			// was wrong, so it guesses again — one overnight run spent 18 tool calls
-			// inventing column names and finished on `x`. Answer with the real
-			// schema, read back over this same query_only(true) path.
-			return "", workflowDBSchemaHintError(ctx, err, sqlText, func(hintCtx context.Context, hintSQL string) (workspace.QueryWorkflowDBResult, error) {
-				return client.QueryAuthorizedWorkflowDB(hintCtx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: hintSQL, MaxRows: workflowDBDescribeRows})
-			})
-		}
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			return "", fmt.Errorf("encode workflow DB query result: %w", err)
-		}
-		return string(encoded), nil
+		return RunWorkflowDBQuery(ctx, client, dbPath, args)
 	}
 
 	mutationExecutor := func(ctx context.Context, args map[string]any) (string, error) {
@@ -439,61 +349,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 		if err != nil {
 			return "", err
 		}
-		encodedArgs, err := json.Marshal(args)
-		if err != nil {
-			return "", fmt.Errorf("encode mutation arguments: %w", err)
-		}
-		var payload struct {
-			Statements []workspace.WorkflowDBMutationStatement `json:"statements"`
-		}
-		if err := json.Unmarshal(encodedArgs, &payload); err != nil {
-			return "", fmt.Errorf("invalid mutation arguments: %w", err)
-		}
-		// Single-statement form: sql at the top level, identical in shape to
-		// query_workflow_db. The two tools now differ only in how the database is
-		// opened — query_only(true) for reads, read-write here. Requiring a
-		// `statements` wrapper for one UPDATE made callers that had just used
-		// query_workflow_db reach for sql=, set=, and upsert= instead.
-		if len(payload.Statements) == 0 {
-			if raw, _ := args["sql"].(string); strings.TrimSpace(raw) != "" {
-				statement := workspace.WorkflowDBMutationStatement{SQL: raw}
-				if rawParams, ok := args["params"].([]interface{}); ok {
-					statement.Params = rawParams
-				}
-				if rawSets, ok := args["param_sets"].([]interface{}); ok {
-					for _, rawSet := range rawSets {
-						set, isList := rawSet.([]interface{})
-						if !isList {
-							return "", fmt.Errorf("param_sets must be a list of lists: one list of values per row")
-						}
-						statement.ParamSets = append(statement.ParamSets, set)
-					}
-				}
-				payload.Statements = []workspace.WorkflowDBMutationStatement{statement}
-			}
-		}
-		if len(payload.Statements) == 0 {
-			// A bare "statements must contain at least one mutation" told the caller
-			// nothing about the shape it wanted, so agents guessed: sql=, set=, and
-			// upsert= at top level produced 10 failures in a single run. Show the
-			// contract and what actually arrived.
-			return "", fmt.Errorf(
-				"no mutation supplied. Received top-level keys %v. "+
-					"Pass sql for one statement, exactly like query_workflow_db: "+
-					`{"sql":"UPDATE t SET c = ? WHERE id = ?","params":["value",1]}. `+
-					"For an all-or-nothing batch pass statements with 1-200 entries of the same shape, or param_sets for many rows of one statement. There is no `set` or `upsert` argument",
-				sortedArgumentKeys(args),
-			)
-		}
-		result, err := client.MutateAuthorizedWorkflowDB(ctx, workspace.MutateWorkflowDBParams{DBPath: dbPath, Statements: payload.Statements})
-		if err != nil {
-			return "", workflowDBUnquotedBindSigilHint(err)
-		}
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			return "", fmt.Errorf("encode workflow DB mutation result: %w", err)
-		}
-		return string(encoded), nil
+		return RunWorkflowDBMutation(ctx, client, dbPath, args)
 	}
 
 	migrationExecutor := func(ctx context.Context, args map[string]any) (string, error) {
@@ -519,31 +375,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 		if err != nil {
 			return "", err
 		}
-		file, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: migrationPath})
-		if err != nil {
-			return "", fmt.Errorf("read migration file %q: %w", migrationPath, err)
-		}
-		statements, err := parseManagedMigrationStatements(file.Content)
-		if err != nil {
-			return "", fmt.Errorf("migration file %q: %w", migrationPath, err)
-		}
-		result, err := client.InitializeWorkflowDB(ctx, workspace.InitializeWorkflowDBParams{DBPath: dbPath, Migrations: statements, MigrationFile: filename})
-		if err != nil {
-			return "", fmt.Errorf("apply migration %q: %w", migrationPath, err)
-		}
-		response := map[string]any{
-			"applied_file":       migrationPath,
-			"statements_applied": len(statements),
-		}
-		if result.BackupPath != "" {
-			response["backup_path"] = result.BackupPath
-			response["note"] = "a destructive statement (DROP/RENAME/DROP COLUMN) was applied; backup_path is a pre-migration snapshot to recover from if this turns out wrong"
-		}
-		encoded, err := json.Marshal(response)
-		if err != nil {
-			return "", fmt.Errorf("encode migration result: %w", err)
-		}
-		return string(encoded), nil
+		return RunWorkflowDBMigration(ctx, client, dbPath, migrationPath, filename)
 	}
 
 	backupSnapshotExecutor := func(ctx context.Context, _ map[string]any) (string, error) {
@@ -1102,4 +934,196 @@ func workflowDBPagedSQL(sqlText string, offset int) (string, error) {
 		return "", fmt.Errorf("offset applies to a SELECT or WITH statement")
 	}
 	return fmt.Sprintf("SELECT * FROM (%s) LIMIT -1 OFFSET %d", trimmed, offset), nil
+}
+
+// RunWorkflowDBQuery runs one read-only query, describe or integrity check on
+// the workflow database at dbPath. Callers have already authorized the caller
+// to read that database; the workspace service opens it query-only.
+func RunWorkflowDBQuery(ctx context.Context, client *workspace.Client, dbPath string, args map[string]any) (string, error) {
+	action, _ := args["action"].(string)
+	action = strings.TrimSpace(strings.ToLower(action))
+	querySQL, err := workflowDBReadSQLArgument(args)
+	if err != nil {
+		return "", err
+	}
+	var sqlText string
+	maxRows := 500
+	if raw, ok := args["max_rows"].(float64); ok && raw > 0 {
+		maxRows = int(raw)
+	} else if raw, ok := args["max_rows"].(int); ok && raw > 0 {
+		maxRows = raw
+	}
+	if maxRows > workflowDBMaxRows {
+		maxRows = workflowDBMaxRows
+	}
+	offset := 0
+	if raw, ok := args["offset"].(float64); ok && raw > 0 {
+		offset = int(raw)
+	} else if raw, ok := args["offset"].(int); ok && raw > 0 {
+		offset = raw
+	}
+	// Raw SQL is the contract, exactly as on mutate_workflow_db; the only
+	// difference between the two tools is that this one opens the database with
+	// query_only(true). `action` is an optional convenience, not a required
+	// preamble — requiring it produced "action must be describe or query" and
+	// "sql is required for action=query" failures from callers that had already
+	// supplied valid SQL.
+	if action == "" {
+		if querySQL != "" {
+			action = "query"
+		} else if _, hasTable := args["table"]; hasTable {
+			action = "describe"
+		}
+	}
+	switch action {
+	case "describe":
+		table, _ := args["table"].(string)
+		table = strings.TrimSpace(table)
+		if table == "" {
+			sqlText = workflowDBDescribeAllSQL
+		} else {
+			if !safeWorkflowDBTableName.MatchString(table) {
+				return "", fmt.Errorf("table must contain only letters, digits, underscore, dot, or hyphen")
+			}
+			sqlText = workflowDBDescribeTableSQL(table)
+		}
+	case "query":
+		sqlText = querySQL
+		if sqlText == "" {
+			return "", fmt.Errorf("sql (or its query alias) is required for action=query")
+		}
+	case "integrity_check":
+		if querySQL != "" {
+			return "", fmt.Errorf("action=integrity_check does not accept sql or query; it runs the fixed guarded statement %q", workflowDBIntegrityCheckSQL)
+		}
+		sqlText = workflowDBIntegrityCheckSQL
+	default:
+		return "", fmt.Errorf(
+			"pass sql to run a read-only statement, action=\"describe\" (with optional table) to list schemas, or action=\"integrity_check\". Received top-level keys %v",
+			sortedArgumentKeys(args),
+		)
+	}
+	if offset > 0 {
+		paged, pageErr := workflowDBPagedSQL(sqlText, offset)
+		if pageErr != nil {
+			return "", pageErr
+		}
+		sqlText = paged
+	}
+	result, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: sqlText, Params: workflowDBParams(args), MaxRows: maxRows})
+	if err == nil && result.Truncated {
+		result.NextOffset = offset + len(result.Rows)
+	}
+	if err != nil {
+		if workflowDBUnrecognizedSigilPattern.MatchString(err.Error()) {
+			return "", workflowDBUnquotedBindSigilHint(err)
+		}
+		// A bare "no such column: input_id" tells the caller only that its guess
+		// was wrong, so it guesses again — one overnight run spent 18 tool calls
+		// inventing column names and finished on `x`. Answer with the real
+		// schema, read back over this same query_only(true) path.
+		return "", workflowDBSchemaHintError(ctx, err, sqlText, func(hintCtx context.Context, hintSQL string) (workspace.QueryWorkflowDBResult, error) {
+			return client.QueryAuthorizedWorkflowDB(hintCtx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: hintSQL, MaxRows: workflowDBDescribeRows})
+		})
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return "", fmt.Errorf("encode workflow DB query result: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// RunWorkflowDBMutation applies one statement or an all-or-nothing batch to
+// the workflow database at dbPath. Callers have already checked write rights.
+func RunWorkflowDBMutation(ctx context.Context, client *workspace.Client, dbPath string, args map[string]any) (string, error) {
+	encodedArgs, err := json.Marshal(args)
+	if err != nil {
+		return "", fmt.Errorf("encode mutation arguments: %w", err)
+	}
+	var payload struct {
+		Statements []workspace.WorkflowDBMutationStatement `json:"statements"`
+	}
+	if err := json.Unmarshal(encodedArgs, &payload); err != nil {
+		return "", fmt.Errorf("invalid mutation arguments: %w", err)
+	}
+	// Single-statement form: sql at the top level, identical in shape to
+	// query_workflow_db. The two tools now differ only in how the database is
+	// opened — query_only(true) for reads, read-write here. Requiring a
+	// `statements` wrapper for one UPDATE made callers that had just used
+	// query_workflow_db reach for sql=, set=, and upsert= instead.
+	if len(payload.Statements) == 0 {
+		if raw, _ := args["sql"].(string); strings.TrimSpace(raw) != "" {
+			statement := workspace.WorkflowDBMutationStatement{SQL: raw}
+			if rawParams, ok := args["params"].([]interface{}); ok {
+				statement.Params = rawParams
+			}
+			if rawSets, ok := args["param_sets"].([]interface{}); ok {
+				for _, rawSet := range rawSets {
+					set, isList := rawSet.([]interface{})
+					if !isList {
+						return "", fmt.Errorf("param_sets must be a list of lists: one list of values per row")
+					}
+					statement.ParamSets = append(statement.ParamSets, set)
+				}
+			}
+			payload.Statements = []workspace.WorkflowDBMutationStatement{statement}
+		}
+	}
+	if len(payload.Statements) == 0 {
+		// A bare "statements must contain at least one mutation" told the caller
+		// nothing about the shape it wanted, so agents guessed: sql=, set=, and
+		// upsert= at top level produced 10 failures in a single run. Show the
+		// contract and what actually arrived.
+		return "", fmt.Errorf(
+			"no mutation supplied. Received top-level keys %v. "+
+				"Pass sql for one statement, exactly like query_workflow_db: "+
+				`{"sql":"UPDATE t SET c = ? WHERE id = ?","params":["value",1]}. `+
+				"For an all-or-nothing batch pass statements with 1-200 entries of the same shape, or param_sets for many rows of one statement. There is no `set` or `upsert` argument",
+			sortedArgumentKeys(args),
+		)
+	}
+	result, err := client.MutateAuthorizedWorkflowDB(ctx, workspace.MutateWorkflowDBParams{DBPath: dbPath, Statements: payload.Statements})
+	if err != nil {
+		return "", workflowDBUnquotedBindSigilHint(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return "", fmt.Errorf("encode workflow DB mutation result: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// RunWorkflowDBMigration applies the migration file at migrationPath (a
+// db/migrations/<filename> of the same workflow) to the database at dbPath.
+func RunWorkflowDBMigration(ctx context.Context, client *workspace.Client, dbPath, migrationPath, filename string) (string, error) {
+	file, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: migrationPath})
+	if err != nil {
+		return "", fmt.Errorf("read migration file %q: %w", migrationPath, err)
+	}
+	statements, err := parseManagedMigrationStatements(file.Content)
+	if err != nil {
+		return "", fmt.Errorf("migration file %q: %w", migrationPath, err)
+	}
+	result, err := client.InitializeWorkflowDB(ctx, workspace.InitializeWorkflowDBParams{DBPath: dbPath, Migrations: statements, MigrationFile: filename})
+	if err != nil {
+		return "", fmt.Errorf("apply migration %q: %w", migrationPath, err)
+	}
+	response := map[string]any{
+		"applied_file":       migrationPath,
+		"statements_applied": len(statements),
+	}
+	if result.BackupPath != "" {
+		response["backup_path"] = result.BackupPath
+		response["note"] = "a destructive statement (DROP/RENAME/DROP COLUMN) was applied; backup_path is a pre-migration snapshot to recover from if this turns out wrong"
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		return "", fmt.Errorf("encode migration result: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// ValidWorkflowDBMigrationFileName reports whether name is a bare .sql filename.
+func ValidWorkflowDBMigrationFileName(name string) bool {
+	return safeMigrationFileName.MatchString(name)
 }

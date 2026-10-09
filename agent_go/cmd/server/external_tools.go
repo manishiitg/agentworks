@@ -228,6 +228,7 @@ func externalTools() ([]externalTool, error) {
 		externalPulseManageDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
+		externalDatabaseDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -439,6 +440,25 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if tool.Name == "query_database" && externalArg(call.Arguments, "crew_id") != "" {
+		claims := GetUserFromContext(r.Context())
+		crewID := externalArg(call.Arguments, "crew_id")
+		if externalArg(call.Arguments, "workflow_id") != "" {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
+			return
+		}
+		if t := claims.AccessToken; t != nil && (!t.Allows("crews:read") || !t.AllowsCrew(crewID)) {
+			externalError(w, 403, "insufficient_scope", "This connection cannot read this Crew.")
+			return
+		}
+		crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, crewID)
+		if !ok {
+			externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+			return
+		}
+		api.externalQueryDatabase(w, r, call.Arguments, crew.Binding.WorkspacePath)
+		return
+	}
 	if tool.Name == "manage_crew_chats" {
 		api.externalCrewChatsCall(w, r, call.Arguments)
 		return
@@ -594,6 +614,14 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "manage_project" {
 		api.externalWorkflowProjectCall(w, r, args, *selected)
+		return
+	}
+	if tool.Name == "query_database" {
+		if t := GetUserFromContext(r.Context()).AccessToken; t != nil && !t.Allows("workflows:read") && !t.Allows("runs:execute") {
+			externalError(w, 403, "insufficient_scope", "This connection cannot read workflows.")
+			return
+		}
+		api.externalQueryDatabase(w, r, args, selected.WorkspacePath)
 		return
 	}
 	if tool.Name == "manage_pulse" {

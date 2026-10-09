@@ -410,6 +410,7 @@ chat:
       - manage_pulse
       - manage_project
       - manage_crew_chats
+      - query_database
       - list_files
       - search_files
       - list_step_code
