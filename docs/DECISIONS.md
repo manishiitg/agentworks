@@ -27,9 +27,12 @@ Design references for the linked runtime decisions:
   the summary in Activity and delivers it to the workflow's saved channels, recipients and webhooks by kind, the same
   pipeline `notify_user` used. Sending to named people stays with `send_email` and `send_slack_message`. The scheduler,
   finalizer and default instructions and the summary guidance now name `record_summary`.
-- **Still open.** `notify_user` remains (deprecated for summaries) because a plain message from an agent to the owner
-  has no replacement yet (`send_email` needs an address the agent does not have), and live scripted steps call it through
-  the custom tool endpoint. It is removed once those are moved.
+- **Also.** The multi-agent chat prompt that told an agent to `notify_user` when delegated work finished
+  (`GetMultiAgentDelegationInstructions*`) had no caller since the chat handler dropped the legacy delegation path; it
+  and its tests are deleted, and the live CLI tool prompt now names `record_summary` and `send_email`. No tool for a
+  plain message to the owner is added: only workflow chats could call `notify_user`, and a summary covers them.
+- **Still open.** `notify_user` remains (deprecated) until the live scripted steps that call it through the custom tool
+  endpoint, such as rts-data-reports, have moved to `record_summary` or `send_email`; then it is removed.
 
 ### 2026-10-09 — send_email: emailing named people is its own tool; notify_user tells the owner
 
