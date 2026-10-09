@@ -142,7 +142,7 @@ type WorkspacePolicy struct {
 	// whose conversation key selects a project manifest below ProjectsRoot.
 	Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
 	// Root is the server-owned default workspace for profile-chat turns. A
-	// product with no user-selected project (for example Dominion) declares it
+	// product with no user-selected project (for example SparkQuill) declares it
 	// here so its chat client never has to send an AgentWorks folder path.
 	// Project-based products leave it empty and keep supplying their selected
 	// project workspace through their product surface.
@@ -394,7 +394,7 @@ type Profile struct {
 	AdminInspection bool   `json:"admin_inspection,omitempty" yaml:"admin_inspection,omitempty"`
 	OwnerID         string `json:"owner_id,omitempty" yaml:"owner_id,omitempty"`
 	// Product names which product surface this builtin profile belongs to
-	// (e.g. "dominion", "video-studio", "sparkquill") -- set by each product's
+	// (e.g. "video-studio", "sparkquill") -- set by each product's
 	// registration call in server.go, never by the product package itself.
 	// Empty for non-builtin profiles and for the generic, profile-less
 	// AgentWorks chat path. Used only to key per-user product access checks;

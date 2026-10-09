@@ -33,13 +33,13 @@ describe('ProductSurfaceSwitcher deployment allowlist', () => {
   it('further narrows to a per-user allowlist on top of the deployment allowlist', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'dominion',
-        enabledProductSurfaces: ['dominion', 'agentworks'],
+        defaultProductSurface: 'video-studio',
+        enabledProductSurfaces: ['video-studio', 'agentworks'],
       },
     })
-    expect(visibleProductSurfaceIDs(['dominion'])).toEqual(['dominion'])
-    expect(visibleProductSurfaceIDs(['dominion', 'agentworks'])).toEqual(['agentworks', 'dominion'])
-    expect(visibleProductSurfaceIDs(null)).toEqual(['agentworks', 'dominion'])
+    expect(visibleProductSurfaceIDs(['video-studio'])).toEqual(['video-studio'])
+    expect(visibleProductSurfaceIDs(['video-studio', 'agentworks'])).toEqual(['agentworks', 'video-studio'])
+    expect(visibleProductSurfaceIDs(null)).toEqual(['agentworks', 'video-studio'])
   })
 
   it('shows Work alongside AgentWorks when the deployment allowlists it', () => {

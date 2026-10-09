@@ -6,13 +6,12 @@ import { CodeMark } from '../products/work/CodeMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { BrainMark } from '../products/knowledgebase/BrainMark'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
-import { DominionMark } from '../products/dominion/DominionMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { PRODUCT_SURFACE_LABELS, type ProductSurface } from '../products/productSurfaceConfig'
 
 const icons: Record<ProductSurface, ComponentType<{ className?: string; title?: string }>> = {
   agentworks: RunloopMark, relays: Waypoints, work: WorkMark, code: CodeMark,
-  'mcp-gateway': VaultMark, 'video-studio': VideoStudioMark, dominion: DominionMark, sparkquill: SparkQuillMark,
+  'mcp-gateway': VaultMark, 'video-studio': VideoStudioMark, sparkquill: SparkQuillMark,
   knowledgebase: BrainMark,
 }
 

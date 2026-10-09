@@ -150,7 +150,7 @@ export function GmailSetupGuide({ backend }: { backend?: string }) {
                 where your browser is:
               </Gotcha>
               <p>
-                <strong>AgentWorks running on a real server</strong> (Dominion, or any hosted deployment reachable
+                <strong>AgentWorks running on a real server</strong> (any hosted deployment reachable
                 at a public HTTPS address) — create a <strong>Web application</strong> client, and add the exact
                 callback below under <strong>Authorized redirect URIs</strong>. Google rejects a{' '}
                 <strong>Desktop app</strong> client here with <code>400: redirect_uri_mismatch</code>, since a

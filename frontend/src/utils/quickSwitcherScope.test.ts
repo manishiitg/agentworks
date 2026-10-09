@@ -15,7 +15,7 @@ describe('AgentWorks quick switcher scope', () => {
     expect(isAgentWorksSwitcherTab(tab('ordinary'))).toBe(true)
     expect(isAgentWorksSwitcherTab(tab('explicit', 'agentworks'))).toBe(true)
     expect(isAgentWorksSwitcherTab({ sessionId: 'workflow-run', metadata: { mode: 'workflow' } })).toBe(true)
-    for (const profile of ['video-studio', 'dominion', 'sparkquill', 'sparkquill-child', 'future-product']) {
+    for (const profile of ['video-studio', 'sparkquill', 'sparkquill-child', 'future-product']) {
       expect(isAgentWorksSwitcherTab(tab('new', profile, null))).toBe(false)
     }
   })

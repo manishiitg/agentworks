@@ -33,7 +33,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dominionproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
@@ -129,7 +128,7 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 
 var mcpBridgeVirtualToolCategories = map[string]bool{}
 
-// coreProducts are never switched off by AGENT_PRODUCTS (except on a SparkQuill or Dominion deployment).
+// coreProducts are never switched off by AGENT_PRODUCTS (except on a SparkQuill deployment).
 var coreProducts = []string{"mcp-gateway", "knowledgebase"}
 
 // productEnabled reports whether a product's profiles and skills should be
@@ -150,7 +149,7 @@ func productEnabled(product string) bool {
 	// Vault and Brain are core: on in every installation, local included. What a person may do in them is decided by
 	// their account (product access and role) and by folder grants, never by this list.
 	configured := strings.TrimSpace(os.Getenv("AGENT_PRODUCTS"))
-	if !allowlistHasProduct(configured, "sparkquill") && !allowlistHasProduct(configured, "dominion") { // Their own products keep their allowlists.
+	if !allowlistHasProduct(configured, "sparkquill") { // SparkQuill keeps its own allowlist.
 		for _, core := range coreProducts {
 			if strings.EqualFold(strings.TrimSpace(product), core) {
 				return true
@@ -169,7 +168,7 @@ func productEnabled(product string) bool {
 }
 
 // isSingleProductServerDeployment reports whether this server instance is
-// dedicated to exactly one product surface (Video Studio, Dominion, SparkQuill)
+// dedicated to exactly one product surface (Video Studio or SparkQuill)
 // via AGENT_PRODUCTS, as opposed to the shared desktop/multi-product server
 // where AGENT_PRODUCTS is unset. Only a genuinely dedicated deployment is
 // eligible for the missing-Claude-Code-token refusal in handleQuery: on the
@@ -2165,20 +2164,6 @@ func runServer(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to register SparkQuill agent profile runtime: %v", err)
 		}
 		runSparkQuillLegacyMigrationIfNeeded()
-	}
-	if productEnabled("dominion") {
-		if err := dominionproduct.RegisterProductSkills(); err != nil {
-			log.Fatalf("Failed to register Dominion skills: %v", err)
-		}
-		for _, profile := range dominionproduct.BuiltinAgentProfiles() {
-			profile.Product = "dominion"
-			if err := profileRegistry.RegisterProfile(profile); err != nil {
-				log.Fatalf("Failed to register Dominion agent profile: %v", err)
-			}
-		}
-		if err := dominionproduct.RegisterAgentProfileRuntime(profileRegistry, getWorkspaceAPIURL()); err != nil {
-			log.Fatalf("Failed to register Dominion agent profile runtime: %v", err)
-		}
 	}
 	if productEnabled("agentworks") {
 		// Scaffolding only: no bespoke tools yet, so no
@@ -4510,7 +4495,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// branch), the deprecated "workflow" (see below), or "multi-agent" — the
 	// generic direct-chat mode (model + skills + tools + workspace context)
 	// that the base agentworks surface uses by default and that other product
-	// surfaces (Video Studio, Dominion) opt into explicitly for plain chat.
+	// surfaces (Video Studio, SparkQuill) opt into explicitly for plain chat.
 	// "multi-agent" is NOT a "Chief of Staff" product — no such product exists
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
@@ -7190,7 +7175,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// already the authoritative source of what tools exist. The generic
 			// text predates per-product custom tools: it names platform tools an
 			// allowlist filters out and never mentions the product's own tool at
-			// all, so a CLI-provider product chat (e.g. SparkQuill, Dominion) can
+			// all, so a CLI-provider product chat (e.g. SparkQuill, Video Studio) can
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.

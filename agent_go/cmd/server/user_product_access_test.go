@@ -19,11 +19,11 @@ func withUserProductAccessFile(t *testing.T, content string) {
 func TestUserAllowedProductDefaultsToUnrestrictedWhenFileAbsent(t *testing.T) {
 	withUserProductAccessFile(t, "")
 
-	claims := &UserClaims{UserID: "u1", Username: "john"}
+	claims := &UserClaims{UserID: "u1", Username: "reader"}
 	if !userAllowedProduct(claims, "agentworks") {
 		t.Fatal("user with no config entry should be unrestricted")
 	}
-	if !userAllowedWorkflowID(claims, "tectonicusadaytrading") {
+	if !userAllowedWorkflowID(claims, "demo-workflow") {
 		t.Fatal("user with no config entry should see every workflow")
 	}
 }
@@ -83,66 +83,66 @@ func TestProductsAvailableToAllAugmentReadOnlyAccounts(t *testing.T) {
 			t.Fatalf("%s frontend products = %v, want Work", userID, products)
 		}
 	}
-	if userAllowedProduct(&UserClaims{UserID: "new-reader", Username: "new-reader"}, "dominion") {
+	if userAllowedProduct(&UserClaims{UserID: "new-reader", Username: "new-reader"}, "video-studio") {
 		t.Fatal("deployment-wide Work access must not unlock unrelated products")
 	}
 }
 
 func TestUserAllowedProductRestrictsExplicitEntry(t *testing.T) {
 	withUserProductAccessFile(t, `{
-		"john": { "products": ["dominion"] },
-		"manish": { "products": ["dominion", "agentworks"], "workflow_ids": ["tectonicusadaytrading"] }
+		"reader": { "products": ["video-studio"] },
+		"owner": { "products": ["video-studio", "agentworks"], "workflow_ids": ["demo-workflow"] }
 	}`)
 
-	john := &UserClaims{UserID: "u-john", Username: "john"}
-	if !userAllowedProduct(john, "dominion") {
-		t.Fatal("john should be allowed dominion")
+	reader := &UserClaims{UserID: "u-reader", Username: "reader"}
+	if !userAllowedProduct(reader, "video-studio") {
+		t.Fatal("reader should be allowed video-studio")
 	}
-	if userAllowedProduct(john, "agentworks") {
-		t.Fatal("john should not be allowed agentworks")
+	if userAllowedProduct(reader, "agentworks") {
+		t.Fatal("reader should not be allowed agentworks")
 	}
-	// john has no workflow_ids entry, so workflow access is unrestricted --
+	// reader has no workflow_ids entry, so workflow access is unrestricted --
 	// products and workflows are independent narrowings.
-	if !userAllowedWorkflowID(john, "tectonicusadaytrading") {
-		t.Fatal("john with no workflow_ids entry should be unrestricted for workflows")
+	if !userAllowedWorkflowID(reader, "demo-workflow") {
+		t.Fatal("reader with no workflow_ids entry should be unrestricted for workflows")
 	}
 
-	manish := &UserClaims{UserID: "u-manish", Username: "manish"}
-	if !userAllowedProduct(manish, "agentworks") {
-		t.Fatal("manish should be allowed agentworks")
+	owner := &UserClaims{UserID: "u-owner", Username: "owner"}
+	if !userAllowedProduct(owner, "agentworks") {
+		t.Fatal("owner should be allowed agentworks")
 	}
-	if !userAllowedWorkflowID(manish, "tectonicusadaytrading") {
-		t.Fatal("manish should be allowed tectonicusadaytrading")
+	if !userAllowedWorkflowID(owner, "demo-workflow") {
+		t.Fatal("owner should be allowed demo-workflow")
 	}
-	if userAllowedWorkflowID(manish, "some-other-workflow") {
-		t.Fatal("manish should not be allowed a workflow outside his explicit list")
+	if userAllowedWorkflowID(owner, "some-other-workflow") {
+		t.Fatal("owner should not be allowed a workflow outside his explicit list")
 	}
 }
 
 func TestUserAllowedProductMatchesByUsernameCaseInsensitive(t *testing.T) {
-	withUserProductAccessFile(t, `{ "John": { "products": ["dominion"] } }`)
+	withUserProductAccessFile(t, `{ "Reader": { "products": ["video-studio"] } }`)
 
-	claims := &UserClaims{UserID: "u-john", Username: "john"}
+	claims := &UserClaims{UserID: "u-reader", Username: "reader"}
 	if userAllowedProduct(claims, "agentworks") {
 		t.Fatal("normalized username match should still restrict")
 	}
-	if !userAllowedProduct(claims, "dominion") {
+	if !userAllowedProduct(claims, "video-studio") {
 		t.Fatal("normalized username match should still allow the granted product")
 	}
 }
 
 func TestFilterWorkflowManifestsForUserNarrowsList(t *testing.T) {
-	withUserProductAccessFile(t, `{ "manish": { "products": ["dominion", "agentworks"], "workflow_ids": ["tectonicusadaytrading"] } }`)
+	withUserProductAccessFile(t, `{ "owner": { "products": ["video-studio", "agentworks"], "workflow_ids": ["demo-workflow"] } }`)
 
 	discovered := []DiscoveredWorkflow{
-		{WorkspacePath: "Workflow/tectonicusadaytrading", Manifest: &WorkflowManifest{ID: "tectonicusadaytrading"}},
+		{WorkspacePath: "Workflow/demo-workflow", Manifest: &WorkflowManifest{ID: "demo-workflow"}},
 		{WorkspacePath: "Workflow/other", Manifest: &WorkflowManifest{ID: "other"}},
 	}
 
-	manish := &UserClaims{UserID: "u-manish", Username: "manish"}
-	filtered := filterWorkflowManifestsForUser(manish, discovered)
-	if len(filtered) != 1 || filtered[0].Manifest.ID != "tectonicusadaytrading" {
-		t.Fatalf("filtered = %+v, want only tectonicusadaytrading", filtered)
+	owner := &UserClaims{UserID: "u-owner", Username: "owner"}
+	filtered := filterWorkflowManifestsForUser(owner, discovered)
+	if len(filtered) != 1 || filtered[0].Manifest.ID != "demo-workflow" {
+		t.Fatalf("filtered = %+v, want only demo-workflow", filtered)
 	}
 
 	unrestricted := &UserClaims{UserID: "u-other", Username: "someone-else"}

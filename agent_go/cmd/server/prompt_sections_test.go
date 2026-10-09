@@ -115,7 +115,7 @@ func TestProjectMemoryIsSharedByEveryProductAndWorkflow(t *testing.T) {
 	for _, ctx := range []promptContext{
 		{HasProfile: true, ProfileID: "work", Provider: "claude-code"},
 		{HasProfile: true, ProfileID: "video-studio", Provider: "codex-cli"},
-		{HasProfile: true, ProfileID: "dominion", Provider: "cursor-cli"},
+		{HasProfile: true, ProfileID: "video-studio", Provider: "cursor-cli"},
 		{IsWorkflowPhase: true, Provider: "cursor-cli"},
 	} {
 		if !section.Applies(ctx) {

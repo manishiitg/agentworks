@@ -82,7 +82,7 @@ func ensureProjectRuntimeManifest(ctx context.Context, profileID, workspacePath 
 	if found {
 		return raw, manifestPath, nil
 	}
-	// Fixed-workspace products (SparkQuill, Dominion, ...) never run a "create
+	// Fixed-workspace products (SparkQuill, ...) never run a "create
 	// project" step that would leave a manifest behind, so one must be created
 	// here on first use -- unlike Work, there is no legacy product.json to
 	// migrate from. Without this, every read/write of selected_secrets or
@@ -158,7 +158,7 @@ func productSelectedSecrets(ctx context.Context, profileID, workspacePath string
 		// migrates any already-stored secrets and persists them, which creates
 		// the manifest (see ensureProjectRuntimeManifest). Treating this as an
 		// error instead left every fixed-workspace product (SparkQuill,
-		// Dominion, ...) permanently unable to attach secrets, since nothing
+		// SparkQuill, ...) permanently unable to attach secrets, since nothing
 		// ever creates this file for them ahead of time.
 		return nil, false, nil
 	}

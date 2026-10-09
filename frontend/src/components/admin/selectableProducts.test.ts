@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { selectableProducts } from './selectableProducts'
 
-const all = ['agentworks', 'code', 'dominion', 'sparkquill', 'video-studio', 'work']
+const all = ['agentworks', 'code', 'sparkquill', 'video-studio', 'work']
 
 describe('products an admin can grant', () => {
   it('offers only the deployment’s main products', () => {
@@ -9,10 +9,10 @@ describe('products an admin can grant', () => {
     expect(selectableProducts(all, ['agentworks', 'work', 'code'])).toEqual(['agentworks', 'code', 'work'])
   })
   it('never offers the dedicated products on a shared deployment, even when enabled', () => {
-    expect(selectableProducts(all, ['agentworks', 'work', 'code', 'dominion', 'sparkquill', 'video-studio'])).toEqual(['agentworks', 'code', 'work'])
+    expect(selectableProducts(all, ['agentworks', 'work', 'code', 'sparkquill', 'video-studio'])).toEqual(['agentworks', 'code', 'work'])
   })
   it('a dedicated product deployment still offers its own product', () => {
-    expect(selectableProducts(all, ['dominion'])).toEqual(['dominion'])
+    expect(selectableProducts(all, ['sparkquill'])).toEqual(['sparkquill'])
     expect(selectableProducts(all, ['video-studio'])).toEqual(['video-studio'])
   })
   it('offers CapLayer only when the server and deployment enable it', () => {
@@ -29,6 +29,6 @@ describe('products an admin can grant', () => {
     expect(selectableProducts(['agentworks'], ['agentworks', 'relays'])).toEqual(['agentworks'])
   })
   it('allows Brain access alongside the main products', () => {
-    expect(selectableProducts(['agentworks', 'knowledgebase', 'dominion'], ['agentworks', 'knowledgebase', 'dominion'])).toEqual(['agentworks', 'knowledgebase'])
+    expect(selectableProducts(['agentworks', 'knowledgebase'], ['agentworks', 'knowledgebase'])).toEqual(['agentworks', 'knowledgebase'])
   })
 })

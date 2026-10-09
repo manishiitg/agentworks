@@ -1,9 +1,9 @@
-export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'dominion', 'sparkquill', 'work', 'code', 'mcp-gateway', 'knowledgebase'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'sparkquill', 'work', 'code', 'mcp-gateway', 'knowledgebase'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
-  agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio', dominion: 'Dominion',
+  agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio',
   sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', knowledgebase: 'Brain',
 }
 
@@ -96,9 +96,7 @@ export function intersectAllowedProductSurfaces(
 ): ProductSurface[] {
   if (!allowedProducts) return surfaces
   const allowed = new Set(allowedProducts.map((p) => p.toLowerCase()))
-  // Relays use the existing workflow APIs and permissions. A user granted
-  // AgentWorks workflow access can use the Relay view without a new ACL.
-  return surfaces.filter((surface) => allowed.has(surface.toLowerCase()) || (surface === 'relays' && allowed.has('agentworks')))
+  return surfaces.filter((surface) => allowed.has(surface.toLowerCase()))
 }
 
 /** Product switcher entries in stable UI order for the current user. */

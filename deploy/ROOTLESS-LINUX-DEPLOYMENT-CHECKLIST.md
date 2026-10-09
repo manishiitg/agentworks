@@ -1,9 +1,9 @@
 # Rootless Linux deployment checklist
 
 Shared requirements for the **rootless, `systemd --user`, host-level-Caddy**
-deployment pattern — the architecture Dominion
-([`dedicated-vm/dominion-hetzner.md`](dedicated-vm/dominion-hetzner.md)) and
-Video Studio ([`aws-ec2/README.md`](aws-ec2/README.md)) both use: an
+deployment pattern used by shared workflows
+([`rootless-linux/README.md`](rootless-linux/README.md)) and
+Video Studio ([`aws-ec2/README.md`](aws-ec2/README.md)): an
 unprivileged service account runs the agent + workspace API + gateway
 directly (no root, no Docker), a shared host-level Caddy reverse-proxies to
 it, and shell tools run inside a Landlock-first sandbox with a mount-
@@ -155,8 +155,7 @@ failures if missing:
   bootstrap independent of the workspace docs tree. Its absence produces
   `SANDBOX_UNAVAILABLE: ... stat <home>/Downloads: no such file or
   directory` — silently blocking `execute_shell_command` for every session
-  from first boot, discovered live on Dominion 2026-08-25 (see
-  `dominion-hetzner.md`).
+  from first boot, as observed on an early dedicated deployment.
 
 Create both explicitly during account/directory bootstrap, not as an
 afterthought:
@@ -373,11 +372,8 @@ point the new service at the same docs directory. Persistence is not a backup;
 configure snapshots/backups separately. A release redeploy does not migrate or
 clear existing workflow documents or change their code-layout versions.
 
-## Not yet automated
+## Shared deployment automation
 
-Every item above is currently a manual, human-run checklist. The more
-durable fix — a `deploy-dominion.sh` (or similarly named) script mirroring
-`./deploy.sh rts`'s automatic guarantees for this specific deployment,
-so a release can't silently skip any of these — has not been built. Worth
-doing if this deployment gets another release cycle rather than staying
-effectively static.
+The shared rootless deployer and the Video Studio deployer enforce these requirements.
+Use the repository-root entry point and the private deployment configuration for an
+existing host; retired product installers are not supported.

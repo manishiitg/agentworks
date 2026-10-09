@@ -54,7 +54,7 @@ class SlackInstallerTest(unittest.TestCase):
     def test_server_deploys_and_images_use_shared_pinned_installer(self):
         for filename in ['deploy.sh',
                          'deploy/aws-ec2/server/build-and-activate.sh', 'deploy/aws-ec2/server/repair-bootstrap.sh',
-                         'deploy/dedicated-vm/deploy-dominion.sh', 'agent_go/Dockerfile']:
+                         'agent_go/Dockerfile']:
             self.assertIn('install-slack-cli.sh', (REPO / filename).read_text(), filename)
 
 if __name__ == '__main__':

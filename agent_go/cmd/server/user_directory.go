@@ -1188,7 +1188,7 @@ func registeredProductIDs() []string {
 	if os.Getenv("CAPLAYER_SERVICE_URL") != "" && productEnabled("mcp-gateway") {
 		out = append(out, "mcp-gateway")
 	}
-	for _, id := range []string{"video-studio", "dominion", "sparkquill", "work", "code", "knowledgebase"} {
+	for _, id := range []string{"video-studio", "sparkquill", "work", "code", "knowledgebase"} {
 		if productEnabled(id) {
 			out = append(out, id)
 		}

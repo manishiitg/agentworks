@@ -53,8 +53,8 @@ profile:
     - costs
     - background-work
     - workspace-ui
-  # project scope, not global -- same reasoning as Finance/Dominion: global
-  # scope (1) makes provider_options non-authoritative and (2) skips this
+  # project scope, not global: global scope (1) makes provider_options
+  # non-authoritative and (2) skips this
   # profile's own prompt.file in favor of the dynamic multi-agent
   # delegation prompt. Crew's prompt (plain coding work, no workflow
   # vocabulary) must actually reach the model.

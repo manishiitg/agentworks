@@ -5,6 +5,7 @@ import {
   gatewayAdminUrl,
   gatewayBaseUrl,
   intersectAllowedProductSurfaces,
+  isProductSurface,
   isEnabledProductSurface,
   hasGatewaySSO,
   isSingleProductDeployment,
@@ -15,6 +16,18 @@ afterEach(() => {
 })
 
 describe('product surface deployment configuration', () => {
+  it('ignores a retired product in saved deployment configuration', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: {
+        defaultProductSurface: 'dominion',
+        enabledProductSurfaces: ['dominion', 'agentworks'],
+      },
+    })
+    expect(isProductSurface('dominion')).toBe(false)
+    expect(enabledProductSurfaces()).toEqual(['agentworks'])
+    expect(deploymentDefaultProductSurface()).toBe('agentworks')
+  })
+
   it('defaults to AgentWorks, Relays, Crew, and Brain when no deployment allowlist is configured', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
@@ -48,7 +61,7 @@ describe('product surface deployment configuration', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'video-studio'])
     expect(deploymentDefaultProductSurface()).toBe('video-studio')
     expect(isEnabledProductSurface('agentworks')).toBe(true)
-    expect(isEnabledProductSurface('dominion')).toBe(false)
+    expect(isEnabledProductSurface('sparkquill')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
   })
 
@@ -79,7 +92,7 @@ describe('product surface deployment configuration', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isEnabledProductSurface('work')).toBe(true)
-    expect(isEnabledProductSurface('dominion')).toBe(false)
+    expect(isEnabledProductSurface('sparkquill')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
   })
 })
@@ -137,14 +150,15 @@ describe('intersectAllowedProductSurfaces', () => {
     expect(intersectAllowedProductSurfaces(['knowledgebase'], [])).toEqual([])
   })
   it('passes the deployment list through unchanged when the user is unrestricted', () => {
-    expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], null)).toEqual(['dominion', 'agentworks'])
-    expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], undefined)).toEqual(['dominion', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], null)).toEqual(['video-studio', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], undefined)).toEqual(['video-studio', 'agentworks'])
     // An empty list is a read-only account with nothing enabled: no products.
-    expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], [])).toEqual([])
+    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], [])).toEqual([])
   })
 
   it('narrows to the explicit per-user allowlist, case-insensitively', () => {
-    expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], ['Dominion'])).toEqual(['dominion'])
-    expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['agentworks'])).toEqual(['agentworks', 'relays'])
+    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], ['Video-Studio'])).toEqual(['video-studio'])
+    expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['agentworks'])).toEqual(['agentworks'])
+    expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['relays'])).toEqual(['relays'])
   })
 })

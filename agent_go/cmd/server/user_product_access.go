@@ -17,8 +17,8 @@ import (
 // Storage: config/user-product-access.json, shape:
 //
 //	{
-//	  "manish": { "products": ["dominion", "agentworks"], "workflow_ids": ["tectonicusadaytrading"] },
-//	  "john":   { "products": ["dominion"] }
+//	  "owner": { "products": ["video-studio", "agentworks"], "workflow_ids": ["demo-workflow"] },
+//	  "reader":   { "products": ["video-studio"] }
 //	}
 //
 // Keys are normalized (lowercase, trimmed) and matched against UserID,

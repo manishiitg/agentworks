@@ -18,8 +18,7 @@ Servers:
   sparkquill            SparkQuill rootless Linux deployment
   excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
-  dominion              trader.tectonicmarkets.com (shared build, like Confida; the owner's testing ground)
-  dominion-legacy       Dominion's former own deploy (builds on the box)
+  dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
   report [server]       how each server differs from the standard runtime profile (read-only)
   slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
@@ -47,9 +46,6 @@ server only copies and activates it after verifying its manifest (architecture, 
   DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
   Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
 
-dominion-legacy optionally takes --activate (stage-only otherwise):
-  ./deploy.sh dominion-legacy              # clone/pull, build, stage a release
-  ./deploy.sh dominion-legacy --activate   # also flip `current` and restart services
 EOF
 }
 
@@ -408,7 +404,7 @@ deploy_label() {
     all-hetzner) echo "Excellence, Confida and SparkQuill" ;;
     confida) echo "Confida (confida.agentworkshq.com)" ;;
     citymall) echo "Citymall (agents.citymall.live)" ;;
-    dominion) echo "Dominion (trader.tectonicmarkets.com)" ;;
+    dominion) echo "Trader workflow host" ;;
     *) echo "$SERVER" ;;
   esac
 }
@@ -605,44 +601,6 @@ case "$SERVER" in
     deploy_rootless_product confida
     deploy_rootless_product sparkquill
     prune_builds_remote  # once, after all three: a chosen older build must still exist for the next product
-    ;;
-  dominion-legacy)
-    # Dominion's former own deploy (builds on the box); kept until the shared path has run there for a while.
-    [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "Dominion has its own deploy path; --build does not apply to it." >&2; exit 2; }
-    ACTIVATE_FLAG=""
-    if [[ $# -gt 0 ]]; then
-      if [[ $# -gt 1 || "$1" != "--activate" ]]; then
-        echo "Server 'dominion-legacy' only accepts an optional --activate flag." >&2
-        usage >&2
-        exit 2
-      fi
-      ACTIVATE_FLAG="--activate"
-    fi
-    # deploy-dominion.sh runs natively ON the box. Upload the selected
-    # checkout's guarded script first: an older remote copy might not know
-    # how to fetch the requested branch and could otherwise stage main.
-    DOMINION_HOST="${DOMINION_HOST:-116.202.210.102}"
-    DOMINION_PORT="${DOMINION_PORT:-2299}"
-    DOMINION_USER="${DOMINION_USER:-dominion}"
-    DOMINION_REMOTE_SCRIPT="${DOMINION_REMOTE_SCRIPT:-/srv/dominion/deploy-dominion.sh}"
-    SSH_ARGS=(-p "$DOMINION_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-    SCP_ARGS=(-P "$DOMINION_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-    if [[ -n "${DOMINION_SSH_KEY:-}" ]]; then
-      SSH_ARGS+=(-i "$DOMINION_SSH_KEY")
-      SCP_ARGS+=(-i "$DOMINION_SSH_KEY")
-    fi
-    printf -v REMOTE_SCRIPT_Q '%q' "$DOMINION_REMOTE_SCRIPT"
-    LOCAL_DOMINION_SCRIPT="$REPO_ROOT/deploy/dedicated-vm/deploy-dominion.sh"
-    scp "${SCP_ARGS[@]}" "$LOCAL_DOMINION_SCRIPT" "$DOMINION_USER@$DOMINION_HOST:$DOMINION_REMOTE_SCRIPT.next"
-    ssh "${SSH_ARGS[@]}" "$DOMINION_USER@$DOMINION_HOST" "chmod +x ${REMOTE_SCRIPT_Q}.next && mv ${REMOTE_SCRIPT_Q}.next $REMOTE_SCRIPT_Q"
-    REMOTE_CMD=(bash "$DOMINION_REMOTE_SCRIPT")
-    if [[ -n "${DOMINION_BUILDER_REF:-}" ]]; then
-      git check-ref-format --branch "$DOMINION_BUILDER_REF" >/dev/null || { echo "Invalid DOMINION_BUILDER_REF: $DOMINION_BUILDER_REF" >&2; exit 2; }
-      printf -v BUILDER_REF_Q '%q' "$DOMINION_BUILDER_REF"
-      REMOTE_CMD=(env "DOMINION_BUILDER_REF=$BUILDER_REF_Q" bash "$DOMINION_REMOTE_SCRIPT")
-    fi
-    [[ -z "$ACTIVATE_FLAG" ]] || REMOTE_CMD+=("$ACTIVATE_FLAG")
-    exec ssh "${SSH_ARGS[@]}" "$DOMINION_USER@$DOMINION_HOST" "${REMOTE_CMD[@]}"
     ;;
   -h|--help|help)
     usage

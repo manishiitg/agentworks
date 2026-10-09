@@ -57,7 +57,7 @@ func TestProductSelectedSecretsUsesSharedCapabilityContractAndPreservesManifest(
 	}
 }
 
-// Fixed-workspace products (SparkQuill, Dominion, ...) never run a "create
+// Fixed-workspace products (SparkQuill, ...) never run a "create
 // project" step, so no product.json exists ahead of time -- unlike Work,
 // which always has one to migrate from. Confirmed live: a SparkQuill parent's
 // saved secret never reached agent_browser because this path returned

@@ -19,7 +19,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	if len(manifest.Dependencies.Skills) != 0 {
 		t.Fatalf("Crew must not install external skills merely because a project opens: %+v", manifest.Dependencies.Skills)
 	}
-	// Project, not global -- same reasoning as Finance/Dominion: global
+	// Project, not global -- same reasoning as fixed-workspace products: global
 	// scope makes provider_options non-authoritative and skips this
 	// profile's own prompt.file in favor of the dynamic delegation
 	// prompt. Crew's prompt (plain coding work, no workflow vocabulary)

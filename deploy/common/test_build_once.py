@@ -105,15 +105,10 @@ class EntryPointTest(unittest.TestCase):
 
     def test_all_hetzner_never_deploys_dominion(self):
         entry = (DEPLOY.parent / "deploy.sh").read_text()
-        block = entry[entry.index("\n  all-hetzner)\n"):entry.index("\n  dominion)\n")]
+        block = entry[entry.index("\n  all-hetzner)\n"):entry.index("\n  -h|--help|help)")]
         self.assertNotIn("dominion", block.lower().replace("never dominion", ""))
         self.assertEqual([l.strip() for l in block.splitlines() if l.strip().startswith("deploy_rootless_product ")],
                          ["deploy_rootless_product agents", "deploy_rootless_product confida", "deploy_rootless_product sparkquill"])
-
-    def test_dominion_script_is_independent_of_prebuilt_mode(self):
-        script = (DEPLOY / "dedicated-vm/deploy-dominion.sh").read_text()
-        for word in ("prebuilt", "_builds", "build-release"):
-            self.assertNotIn(word, script)
 
     def test_the_build_on_the_server_path_is_kept_as_the_fallback(self):
         entry = (DEPLOY.parent / "deploy.sh").read_text()

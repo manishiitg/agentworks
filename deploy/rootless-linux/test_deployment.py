@@ -50,7 +50,7 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             self.assertIn(expected, config)
 
     def test_every_deployment_uses_the_complete_cli_installer(self):
-        for name in ("deploy.sh", "deploy/aws-ec2/server/build-and-activate.sh", "deploy/dedicated-vm/deploy-dominion.sh"):
+        for name in ("deploy.sh", "deploy/aws-ec2/server/build-and-activate.sh"):
             with self.subTest(entry=name):
                 self.assertIn("deploy/common/install-coding-clis.sh", (REPO / name).read_text())
         # Product-specific dependency lists must not silently omit a provider.
@@ -108,19 +108,16 @@ class GogKeyringDeploymentCheckTest(unittest.TestCase):
                 self.checks.check_gog_keyring_process(bad)
 
     def test_every_deploy_path_sets_the_keyring_and_updates_gog(self):
-        dominion = (REPO / "deploy/dedicated-vm/deploy-dominion.sh").read_text()
         rootless = (ROOT / "build-and-activate.sh").read_text()
         rts = (REPO / "deploy/aws-ec2/server/build-and-activate.sh").read_text()
         entry = (REPO / "deploy.sh").read_text()
-        for name, text in (("dominion", dominion), ("rootless", rootless), ("rts", rts)):
+        for name, text in (("rootless", rootless), ("rts", rts)):
             with self.subTest(deploy=name):
                 self.assertIn("GOG_KEYRING_BACKEND", text)
                 self.assertIn("GOG_KEYRING_PASSWORD", text)
-        for name, text in (("dominion", dominion), ("rootless-entry", entry), ("rts", rts)):
+        for name, text in (("rootless-entry", entry), ("rts", rts)):
             with self.subTest(deploy=name):
                 self.assertIn("deploy/common/install-gog.sh", text)
-        self.assertIn("deployment_checks.py\" preflight", dominion)
-        self.assertIn("deployment_checks.py\" running", dominion)
 
 
 if __name__ == "__main__":

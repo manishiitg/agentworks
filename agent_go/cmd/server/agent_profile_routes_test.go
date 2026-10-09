@@ -35,8 +35,8 @@ func routeTestProfile(id string, builtIn bool, ownerID string) agentprofiles.Pro
 }
 
 func TestQueryRequestForAgentProfileChatUsesOnlyServerOwnedProfileConfiguration(t *testing.T) {
-	profile := routeTestProfile("dominion", true, "")
-	profile.Name = "Dominion"
+	profile := routeTestProfile("example-product", true, "")
+	profile.Name = "Example Product"
 
 	query, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
 		Message: "What changed in the portfolio today?",
@@ -45,7 +45,7 @@ func TestQueryRequestForAgentProfileChatUsesOnlyServerOwnedProfileConfiguration(
 		ConversationKey: "main",
 		SessionID:       "session-1",
 		WorkspacePath:   "Chats",
-		Title:           "Dominion",
+		Title:           "Example Product",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,10 +54,10 @@ func TestQueryRequestForAgentProfileChatUsesOnlyServerOwnedProfileConfiguration(
 	if query.Query != "What changed in the portfolio today?" {
 		t.Fatalf("query=%q", query.Query)
 	}
-	if query.AgentProfileID != "dominion" || query.AgentProfileVersion != 1 {
+	if query.AgentProfileID != "example-product" || query.AgentProfileVersion != 1 {
 		t.Fatalf("unexpected profile binding: id=%q version=%d", query.AgentProfileID, query.AgentProfileVersion)
 	}
-	if query.SelectedFolder != "Chats" || query.AgentProfileContext.ProjectTitle != "Dominion" {
+	if query.SelectedFolder != "Chats" || query.AgentProfileContext.ProjectTitle != "Example Product" {
 		t.Fatalf("unexpected server-owned workspace binding: folder=%q context=%+v", query.SelectedFolder, query.AgentProfileContext)
 	}
 	if query.RestoredConversationPath != "" || query.RestoredConversationSessionID != "session-1" {
@@ -218,7 +218,7 @@ func TestProjectChatUsesManifestMCPAndSkillsInsteadOfBrowserInput(t *testing.T) 
 }
 
 func TestQueryRequestForAgentProfileChatRejectsUndeclaredChatExtras(t *testing.T) {
-	profile := routeTestProfile("dominion", true, "")
+	profile := routeTestProfile("example-product", true, "")
 	_, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
 		Message:              "hello",
 		EnabledServers:       []string{"github"},
@@ -230,7 +230,7 @@ func TestQueryRequestForAgentProfileChatRejectsUndeclaredChatExtras(t *testing.T
 }
 
 func TestQueryRequestForAgentProfileChatAcceptsNoServersSentinelOnFixedPurposeProfile(t *testing.T) {
-	profile := routeTestProfile("dominion", true, "")
+	profile := routeTestProfile("example-product", true, "")
 	_, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
 		Message:        "hello",
 		EnabledServers: []string{"NO_SERVERS"},
@@ -241,7 +241,7 @@ func TestQueryRequestForAgentProfileChatAcceptsNoServersSentinelOnFixedPurposePr
 }
 
 func TestQueryRequestForAgentProfileChatRejectsUndeclaredWorkflowReferences(t *testing.T) {
-	profile := routeTestProfile("dominion", true, "")
+	profile := routeTestProfile("example-product", true, "")
 	_, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
 		Message:              "hello",
 		WorkflowContextPaths: []string{"Workflow/customer-research"},
@@ -255,11 +255,11 @@ func TestAgentProfileChatEndpointRejectsBroadAgentWorksFields(t *testing.T) {
 	api := &StreamingAPI{}
 	req := profileRouteRequest(
 		http.MethodPost,
-		"/api/agent-profiles/dominion/query",
+		"/api/agent-profiles/example-product/query",
 		[]byte(`{"message":"hello","provider":"codex-cli"}`),
 		"user-1",
 	)
-	req = mux.SetURLVars(req, map[string]string{"id": "dominion"})
+	req = mux.SetURLVars(req, map[string]string{"id": "example-product"})
 	recorder := httptest.NewRecorder()
 
 	api.handleAgentProfileChatQuery(recorder, req)

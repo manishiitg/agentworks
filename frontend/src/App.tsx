@@ -19,7 +19,7 @@ import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
-import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
+import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { useWorkflowTabRestore } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
@@ -51,7 +51,6 @@ const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
 const AdminPages = lazy(() => import('./components/AdminPages'))
 const VideoStudioSurface = lazy(() => loadVideoStudioSurface().then(module => ({ default: module.VideoStudioSurface })))
-const DominionSurface = lazy(() => loadDominionSurface().then(module => ({ default: module.DominionSurface })))
 const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ default: module.SparkQuillSurface })))
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
 const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
@@ -121,8 +120,8 @@ function App() {
   }, [setProductSurface])
 
   // A dedicated deployment is an allowlist, not a visual preference. Correct
-  // persisted desktop selections before rendering so a stale SparkQuill or
-  // Dominion choice cannot expose a product disabled on this host -- or, now,
+  // persisted desktop selections before rendering so a stale product
+  // choice cannot expose a product disabled on this host -- or, now,
   // a product this specific logged-in user isn't granted.
   useEffect(() => {
     const userAllowedSurfaces = intersectAllowedProductSurfaces([productSurface], allowedProducts)
@@ -788,8 +787,6 @@ function App() {
         {showPanelSwitcher && <PanelSwitcher onClose={() => setShowPanelSwitcher(false)} />}
         {productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
-        ) : productSurface === 'dominion' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Dominion" />}><DominionSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'knowledgebase' ? (

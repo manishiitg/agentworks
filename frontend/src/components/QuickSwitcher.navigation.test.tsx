@@ -35,7 +35,7 @@ afterEach(() => {
   useAuthStore.setState({ user: null })
 })
 
-async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'code', 'video-studio', 'relays', 'dominion', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
+async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'code', 'video-studio', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: allowed, gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
@@ -145,7 +145,7 @@ it('shows Vault-specific icons only in Vault and opens its audit page', async ()
 
 it('lists every available product and opens its workspace from another product', async () => {
   const { host, onClose } = await renderNavigation('@products ')
-  expect(host.querySelectorAll('[data-navigation-id^="product:"]')).toHaveLength(8)
+  expect(host.querySelectorAll('[data-navigation-id^="product:"]')).toHaveLength(7)
   expect(host.textContent).toContain('Vault')
   expect(host.textContent).toContain('SparkQuill')
   useAppStore.setState({ adminPage: 'users', showSchedulesOverview: true })

@@ -11,7 +11,6 @@ class DeploymentRetentionTest(unittest.TestCase):
         installers = {
             'aws-ec2/server/build-and-activate.sh': (8000, 8080),
             'aws-ec2/rootless/migrate-once.sh': (8000, 8080),
-            'dedicated-vm/deploy-dominion.sh': (21000, 21001),
         }
         for name, (agent, workspace) in installers.items():
             with self.subTest(script=name):
@@ -22,7 +21,7 @@ class DeploymentRetentionTest(unittest.TestCase):
                 self.assertIn(f'--health-url http://127.0.0.1:{workspace}/health', script)
 
     def test_every_release_builder_packages_the_shared_helper(self):
-        for name in ('aws-ec2/server/build-and-activate.sh', 'rootless-linux/build-and-activate.sh', 'dedicated-vm/deploy-dominion.sh'):
+        for name in ('aws-ec2/server/build-and-activate.sh', 'rootless-linux/build-and-activate.sh'):
             with self.subTest(script=name):
                 self.assertIn('/deploy/common/prune-releases.py', (DEPLOY / name).read_text())
 

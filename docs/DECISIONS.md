@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Retire Dominion; trading is a workflow in Goals
+
+Remove the standalone trading product, its frontend surface, backend profile and tools, and legacy installer.
+Existing trading workflows and databases remain available through Goals. Assign former product viewers the
+workflow reader grant, which enforces Run mode without Builder or editing access. Keep the existing host's
+shared deployment alias and use Goals as its landing product. Saved selections of the removed surface migrate
+to Goals. Product grants are exact: Goals no longer implicitly exposes the Relays surface, so a workflow-only
+viewer sees only the assigned product. SparkQuill and Video Studio remain dedicated products. Owner request; ticket:
+[PLAT-742](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/products/plat-742.md).
+
 ### 2026-10-09 — Motion guidance is requested usage, not a prescribed visual style
 
 Expose an on-demand motion reference for workflow Builder and project Dashboards.

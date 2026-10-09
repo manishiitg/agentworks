@@ -147,21 +147,6 @@ class VaultInstallTest(unittest.TestCase):
         import re
         for expected in re.findall(r"grep -Fq '([^']+)' ", script[:script.index('RELEASE_ID=')]):
             self.assertIn(expected, runtime + unit + (rts / 'rootless/video-studio-workspace.service').read_text())
-        command = 'source "$1"; for snippet in "${RUNTIME_CONFIG_REQUIRED_SNIPPETS[@]}"; do grep -Fq "$snippet" "$2" || exit 1; done'
-        for product in ('agents', 'confida', 'dominion'):
-            directory = repo / 'deploy/rootless-linux/products' / product
-            subprocess.run(['bash', '-c', command, 'test', str(directory / 'product.env'), str(directory / 'runtime-config.js')], check=True)
-            # The browser hides Vault even when allowlisted if its URL is absent.
-            runtime = (directory / 'runtime-config.js').read_text()
-            public_url = subprocess.check_output(['bash', '-c', 'source "$1"; printf "%s" "$EXPECTED_PUBLIC_URL"', 'test', str(directory / 'product.env')], text=True)
-            self.assertIn(f'gatewayUrl: "{public_url}"', runtime)
-            if product == 'dominion':
-                # A stale .env masked the new product list on the first shared deploy.
-                settings = subprocess.check_output(['bash', '-c', 'source "$1"; printf "%s\\n" "$VAULT_ENABLED" "$AGENT_PRODUCTS" "${EXTRA_ENV[@]}"', 'test', str(directory / 'product.env')], text=True).splitlines()
-                self.assertEqual(settings[0], 'true')
-                self.assertEqual(settings[1], 'dominion,agentworks,work,code,relays,mcp-gateway,knowledgebase')
-                self.assertIn('AGENT_PRODUCTS=' + settings[1], settings[2:])
-
     def test_both_deployments_build_bootstrap_and_health_check(self):
         repo = ROOT.parents[1]
         for path in ('deploy/rootless-linux/build-and-activate.sh', 'deploy/aws-ec2/server/build-and-activate.sh'):

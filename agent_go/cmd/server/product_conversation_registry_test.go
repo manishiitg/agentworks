@@ -32,7 +32,7 @@ func memoryProductConversationStore() (productConversationRegistryStore, map[str
 }
 
 func singletonConversationProfile() agentprofiles.Profile {
-	profile := routeTestProfile("dominion", true, "")
+	profile := routeTestProfile("example-product", true, "")
 	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeFixed, Root: "Chats"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeSingleton}
 	return profile
@@ -540,7 +540,7 @@ func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 		want         bool
 	}{
 		{`{"native_agent_tools":true}`, true},
-		{`{}`, true}, // on by default
+		{`{}`, true},                           // on by default
 		{`{"native_agent_tools":false}`, true}, // no switch any more: a stored off is ignored
 	} {
 		store := productProjectStore{

@@ -33,7 +33,7 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
     }),
     {
       name: 'agentworks-product-surface',
-      version: 5,
+      version: 6,
       migrate: (persisted) => {
         const state = persisted as Partial<ProductSurfaceState> | undefined
         const surface = state?.productSurface

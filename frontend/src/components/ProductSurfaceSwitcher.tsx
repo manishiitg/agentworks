@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Check, ChevronDown, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
-import { DominionMark } from '../products/dominion/DominionMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
@@ -35,7 +34,6 @@ const products: Array<{
   { id: 'agentworks', label: 'Goals', description: 'Set a goal, give the agents a metric, and watch them hit it', icon: RunloopMark },
   { id: 'relays', label: 'Relays', description: 'Build and run an API callable agent graph', icon: Waypoints },
   { id: 'video-studio', label: 'Video Studio', description: 'Projects and video production', icon: VideoStudioMark },
-  { id: 'dominion', label: 'Dominion', description: 'Paper-trading watchlist and portfolio', icon: DominionMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },

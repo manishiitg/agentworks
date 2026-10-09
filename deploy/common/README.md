@@ -6,7 +6,6 @@ All deployments that write `releases/<id>` share `prune-releases.py`:
 | --- | --- |
 | Video Studio rootless | `/var/lib/video-studio/video-studio` |
 | Confida rootless | `/srv/confida` |
-| Dominion native | `/srv/dominion` |
 | Legacy EC2 installer | `/opt/video-studio` |
 | EC2 rootless migration | `/var/lib/video-studio/video-studio` |
 
@@ -18,15 +17,9 @@ so a later successful deployment can remove incomplete copies. If an SSH
 connection is lost and marker removal fails, clear the marker once the upload
 is confirmed stopped.
 
-Dominion's staging-only mode preserves its new candidate with `--keep` for that
-cleanup invocation. A later build replaces this candidate, preventing repeated
-staging from accumulating releases. Its previous active release remains available
-for automatic rollback until the new deployment passes health checks.
-
 No rollback archive is kept after successful deployment. Application data,
 logs, source checkouts, unknown directories, and symlink targets are not removed.
-Dominion's deploy-dominion.sh manages its own releases; container images built
-from docker-compose.yml are not release directories.
+Container images built from docker-compose.yml are not release directories.
 This helper does not prune container images, registries, or Docker volumes.
 
 Preview or apply cleanup on a server:

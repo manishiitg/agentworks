@@ -473,7 +473,7 @@ func TestProductBrowserDiscoveryUsesActualUserBinding(t *testing.T) {
 	}
 }
 
-// Fixed-workspace products (SparkQuill, Dominion, ...) have no workflow.json
+// Fixed-workspace products (SparkQuill, ...) have no workflow.json
 // at their workspace path, so workflowAccessForWorkspacePath always returns a
 // nil manifest for them. Confirmed live: this made every SparkQuill managed-
 // browser session invisible to /api/browser/live/sessions, since the discovery
@@ -629,7 +629,7 @@ func TestCanControlLiveBrowserTreatsManifestBackedCrewAsProductWorkspace(t *test
 	}
 }
 
-// A fixed-workspace product project (SparkQuill, Dominion, ...) is owner-
+// A fixed-workspace product project (SparkQuill, ...) is owner-
 // qualified: the logical path always names the caller's own tree, so two users
 // at "Chats/SparkQuill" get distinct browsers and neither sees the other's.
 func TestUserBrowserDiscoveryKeepsFixedWorkspaceProjectBrowsersPerOwnerInMultiUserMode(t *testing.T) {
@@ -664,7 +664,7 @@ func TestUserBrowserDiscoveryKeepsFixedWorkspaceProjectBrowsersPerOwnerInMultiUs
 
 // canControlLiveBrowser is the "take control" gate; it must apply the exact
 // same fixed-workspace-product fallback liveBrowserSessions does, or nobody
-// could ever take control of a SparkQuill/Dominion live browser (manifest is
+// could ever take control of a SparkQuill live browser (manifest is
 // always nil for them) even after they became visible in the session list.
 func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
