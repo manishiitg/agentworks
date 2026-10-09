@@ -111,7 +111,7 @@ func TestPlatformRuntimeBindingRequiresTrustedServiceAndGrantsPlatformResourcesA
 	if out := request("/api/admin/runtime/secrets", "later-user", "secret", ""); out.Code != 200 || !strings.Contains(out.Body.String(), "TEAM_KEY") {
 		t.Fatal(out.Code, out.Body.String())
 	}
-	if err := a.SetMember(group, "later-user", false); err == nil {
+	if err := a.SetMember(group, "later-user", false, ""); err == nil {
 		t.Fatal("automatic membership edited through API")
 	}
 	if err := a.RenameGroup(group, "Other name"); err == nil {

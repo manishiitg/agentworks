@@ -96,6 +96,16 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 			}
 		}
 		return map[string]any{"group": group, "connector_id": in.ConnectorID, "removed": true, "server_grant_active": a.Store.GroupHasServer(group.ID, in.ConnectorID), "allowed_tool_count": allowed, "permissions": permissions}, nil
+	case "inspect_user":
+		var in struct {
+			UserID string `json:"user_id"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(raw)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&in) != nil || decoder.Decode(&struct{}{}) != io.EOF || in.UserID == "" || len(in.UserID) > 200 {
+			return nil, errors.New("provide an exact user_id from list_users")
+		}
+		return a.userAccess(in.UserID)
 	case "inspect_tool":
 		var in struct {
 			PublicName string `json:"public_name"`

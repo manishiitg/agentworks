@@ -153,7 +153,7 @@ func (a *Admin) uiGroupMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	back(w, r, "/admin/groups", a.SetMember(r.PostForm.Get("group"), r.PostForm.Get("user"), r.PostForm.Get("action") != "remove"))
+	back(w, r, "/admin/groups", a.SetMember(r.PostForm.Get("group"), r.PostForm.Get("user"), r.PostForm.Get("action") != "remove", adminActor(r)))
 }
 
 func (a *Admin) uiConnectors(w http.ResponseWriter, r *http.Request) {

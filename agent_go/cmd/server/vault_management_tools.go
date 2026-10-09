@@ -68,7 +68,7 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 			"fingerprint": externalString("Fingerprint of the reviewed version, from versions."),
 			"version":     map[string]any{"type": "integer", "minimum": 1},
 		}, "operation")},
-		agentprofiles.ToolSpec{Name: "read_vault_audit", Category: "vault", Description: "Read the Vault audit log (operation=events: who called which tool, when, the decision and outcome) or a usage summary (operation=usage). Optional filters: user, group, client, connector, tool, decision, outcome, after, before (RFC 3339). Read-only.", Parameters: object(map[string]any{
+		agentprofiles.ToolSpec{Name: "read_vault_audit", Category: "vault", Description: "Read the Vault audit log (operation=events: who called which tool, when, the decision and outcome) or a usage summary (operation=usage). Optional filters: user, group, client, connector, tool, decision, outcome, after, before (RFC 3339). Read-only. For who changed access (groups, members, grants, rules, SQL edits), query_vault_db the policy_history table.", Parameters: object(map[string]any{
 			"operation": map[string]any{"type": "string", "enum": []string{"events", "usage"}},
 			"user":      externalString("Platform user ID."), "group": externalString("Vault group ID."), "client": externalString("Client name."),
 			"connector": externalString("Connection ID."), "tool": externalString("Public tool name."), "decision": externalString("allow or deny."),

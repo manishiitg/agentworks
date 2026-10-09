@@ -5,7 +5,7 @@ name: MCP Gateway
 # recurring: the module must build, vet clean, and pass its suite.
 on:
   push:
-    branches: [main]
+    branches: [main, "verify/**"]
     paths:
       - "mcp-gateway/**"
       - ".github/workflows/mcp-gateway.yml"

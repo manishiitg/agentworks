@@ -476,7 +476,7 @@ func (s *MemoryStore) MutateSQL(ctx context.Context, workspaceID, actor string, 
 		return empty, err
 	}
 	if result.TotalRowsAffected > 0 {
-		state.History[workspaceID] = append(state.History[workspaceID], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: "sql_mutation"})
+		state.History[workspaceID] = append(state.History[workspaceID], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: "sql_mutation", Detail: sqlMutationDetail(req)})
 		if len(state.History[workspaceID]) > 10000 {
 			state.History[workspaceID] = state.History[workspaceID][len(state.History[workspaceID])-10000:]
 		}
@@ -651,4 +651,21 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 	}
 
 	return nil
+}
+
+// sqlMutationDetail records the statements a mutation ran, so the access
+// history says what changed. The mutable tables hold IDs and grants only.
+func sqlMutationDetail(req SQLMutation) string {
+	parts := []string{}
+	if req.SQL != "" {
+		parts = append(parts, fmt.Sprintf("%s %v", req.SQL, req.Params))
+	}
+	for _, statement := range req.Statements {
+		parts = append(parts, fmt.Sprintf("%s %v", statement.SQL, statement.Params))
+	}
+	detail := strings.Join(parts, "; ")
+	if len(detail) > 4000 {
+		detail = detail[:4000] + "..."
+	}
+	return detail
 }

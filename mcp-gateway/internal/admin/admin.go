@@ -202,7 +202,7 @@ func (a *Admin) CreateGroupWithDescription(id, name, description string) error {
 	return nil
 }
 
-func (a *Admin) SetMember(groupID, userID string, add bool) error {
+func (a *Admin) SetMember(groupID, userID string, add bool, actor string) error {
 	g, ok := a.Store.GetGroup(groupID)
 	if !ok || g.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown group")
@@ -214,11 +214,14 @@ func (a *Admin) SetMember(groupID, userID string, add bool) error {
 	if !ok || u.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown user")
 	}
+	action := "add_member"
 	if add {
 		a.Store.AddMember(groupID, userID)
 	} else {
 		a.Store.RemoveMember(groupID, userID)
+		action = "remove_member"
 	}
+	a.Store.AppendPolicyEvent(a.WorkspaceID, store.PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: action, GroupID: groupID, UserID: userID})
 	return nil
 }
 
@@ -742,7 +745,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			writeErr(w, 400, err)
 			return
 		}
-		if err := a.SetMember(r.PathValue("id"), in.UserID, true); err != nil {
+		if err := a.SetMember(r.PathValue("id"), in.UserID, true, adminActor(r)); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
@@ -753,7 +756,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		if err := a.SetMember(r.PathValue("id"), r.PathValue("uid"), false); err != nil {
+		if err := a.SetMember(r.PathValue("id"), r.PathValue("uid"), false, adminActor(r)); err != nil {
 			writeErr(w, 400, err)
 			return
 		}

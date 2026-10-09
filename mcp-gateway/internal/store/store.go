@@ -171,6 +171,10 @@ type PolicyEvent struct {
 	Version     int       `json:"version"`
 	GroupID     string    `json:"group_id,omitempty"`
 	ConnectorID string    `json:"connector_id,omitempty"`
+	UserID      string    `json:"user_id,omitempty"`
+	// Detail is what changed when the action alone does not say, e.g. the
+	// SQL statements of a sql_mutation.
+	Detail string `json:"detail,omitempty"`
 }
 
 // Fingerprint returns a stable snapshot fingerprint for quarantine diffing.

@@ -9,7 +9,7 @@ import (
 
 func TestToolDefinitionsAreValidJSON(t *testing.T) {
 	var tools []map[string]any
-	if err := json.Unmarshal(toolDefinitions, &tools); err != nil || len(tools) != 6 {
+	if err := json.Unmarshal(toolDefinitions, &tools); err != nil || len(tools) != 7 {
 		t.Fatalf("invalid setup tool schema: %v", err)
 	}
 	names := map[string]bool{}

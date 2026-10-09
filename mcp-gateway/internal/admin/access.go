@@ -186,3 +186,52 @@ func (a *Admin) groupPermissions(groupID string) []groupPermission {
 	}
 	return permissions
 }
+
+type userToolAccess struct {
+	PublicName  string   `json:"public_name"`
+	ConnectorID string   `json:"connector_id"`
+	Allowed     bool     `json:"allowed"`
+	Governed    bool     `json:"governed"`
+	Via         []string `json:"via"`
+}
+
+// userAccess answers "what can this person reach in Vault": their groups,
+// every tool with whether the same check as a real call allows it, and which
+// groups (or an old direct grant) give it. Governed tools are also limited
+// by their rules' conditions at call time.
+func (a *Admin) userAccess(userID string) (map[string]any, error) {
+	user, ok := a.Store.GetUser(userID)
+	if !ok || user.WorkspaceID != a.WorkspaceID {
+		return nil, errors.New("unknown user; they appear after their first sign-in to Vault")
+	}
+	groups := a.Store.GroupsOf(userID)
+	direct := a.Store.UserGrantsFor(userID)
+	directSet := map[string]bool{}
+	for _, name := range direct {
+		directSet[name] = true
+	}
+	tools := []userToolAccess{}
+	allowedCount := 0
+	for _, tool := range a.Store.ListTools(a.WorkspaceID) {
+		_, err := policy.Authorize(a.Store, auth.Identity{WorkspaceID: a.WorkspaceID, UserID: userID}, tool.PublicName)
+		_, governed := a.Store.PolicyForTool(a.WorkspaceID, tool.PublicName)
+		via := []string{}
+		for _, group := range groups {
+			if a.Store.GroupHasServer(group, tool.ConnectorID) {
+				via = append(via, group+" (whole server)")
+			} else if a.Store.GroupHasTool(group, tool.PublicName) {
+				via = append(via, group)
+			}
+		}
+		if directSet[tool.PublicName] {
+			via = append(via, "direct grant (old; move to a group)")
+		}
+		if err == nil {
+			allowedCount++
+		}
+		if err == nil || len(via) > 0 {
+			tools = append(tools, userToolAccess{tool.PublicName, tool.ConnectorID, err == nil, governed, via})
+		}
+	}
+	return map[string]any{"user": user, "groups": groups, "direct_grants": direct, "allowed_tool_count": allowedCount, "tools": tools}, nil
+}
