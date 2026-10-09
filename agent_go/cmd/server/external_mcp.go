@@ -384,7 +384,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Dashboards"
 		case strings.HasSuffix(name, "_needs_you"):
 			group = "Needs you"
-		case strings.HasPrefix(name, "builder_pulse"):
+		case strings.HasPrefix(name, "builder_pulse") || name == "manage_pulse":
 			group = "Pulse"
 		case strings.HasPrefix(name, "builder_"):
 			group = "Builder"

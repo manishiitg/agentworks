@@ -221,6 +221,7 @@ func externalTools() ([]externalTool, error) {
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalNeedsYouDefinitions(add)
+		externalPulseManageDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -568,6 +569,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	access := workflowAccessForManifest(GetUserFromContext(r.Context()), selected.Manifest)
 	if tool.Name == "manage_triggers" {
 		api.externalWorkflowTriggerCall(w, r, args, *selected, access)
+		return
+	}
+	if tool.Name == "manage_pulse" {
+		api.externalPulseManageCall(w, r, args, *selected, access)
 		return
 	}
 	if tool.Name == "manage_schedules" {

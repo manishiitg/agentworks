@@ -407,6 +407,7 @@ chat:
       - manage_triggers
       - list_needs_you
       - answer_needs_you
+      - manage_pulse
       - list_files
       - search_files
       - list_step_code

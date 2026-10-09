@@ -33,3 +33,26 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 		t.Fatalf("settings after update: %d %s", w.Code, body)
 	}
 }
+
+// Pulse settings follow the Pulse tab: an owner turns Pulse on with an
+// autonomy level and pace, and a reader cannot run it.
+func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AUTH_SECRET", "external-settings-test-auth-secret-0123456789")
+	store, err := chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.api.chatStore = store
+	if w := f.call(t, "reader", "manage_pulse", map[string]any{"workflow_id": "invoices", "action": "run_now"}); w.Code != 403 {
+		t.Fatalf("reader ran Pulse: %d %s", w.Code, w.Body)
+	}
+	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "autonomy_level": 2, "pace": "calm"}})
+	if w.Code != 200 {
+		t.Fatalf("owner pulse settings: %d %s", w.Code, w.Body)
+	}
+	body := f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"}).Body.String()
+	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"autonomy_level":2`) || !strings.Contains(body, `"pace":"calm"`) {
+		t.Fatalf("pulse settings not saved: %s", body)
+	}
+}

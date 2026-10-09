@@ -59,6 +59,11 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Pulse owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). autonomy_level 0-5 is the standing permission ladder; pace sets how often Pulse checks and fixes.", "properties": map[string]any{
+			"enabled":        map[string]any{"type": "boolean"},
+			"autonomy_level": map[string]any{"type": "integer", "minimum": 0, "maximum": 5},
+			"pace":           map[string]any{"type": "string", "enum": []any{"calm", "steady", "aggressive"}},
+		}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Relays only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels": names, "pulse_channels": names,
@@ -392,8 +397,20 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		}
 		return map[string]any{}
 	}
+	pulseView := func(m *WorkflowManifest) map[string]any {
+		view := map[string]any{"enabled": m.PulseEnabled(), "has_goal": workflowHasSoul(ctx, workflow.WorkspacePath)}
+		if m.Pulse != nil {
+			view["pace"] = m.Pulse.Pace
+			if m.Pulse.Autonomy != nil && m.Pulse.Autonomy.Level != nil {
+				view["autonomy_level"] = *m.Pulse.Autonomy.Level
+			}
+		}
+		return view
+	}
 	if name == "get_settings" {
-		externalJSON(w, api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps)))
+		view := api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps))
+		view["pulse"] = pulseView(manifest)
+		externalJSON(w, view)
 		return
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
@@ -425,6 +442,19 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		}
 		changed = append(changed, "notifications")
 	}
+	if p, ok := args["pulse"].(map[string]any); ok {
+		if v, ok := p["enabled"].(bool); ok {
+			req.PulseEnabled = &v
+		}
+		if v, ok := p["autonomy_level"].(float64); ok {
+			level := int(v)
+			req.PulseAutonomyLevel = &level
+		}
+		if v, ok := p["pace"].(string); ok {
+			req.PulsePace = &v
+		}
+		changed = append(changed, "pulse")
+	}
 	if len(changed) == 0 {
 		externalError(w, 400, "invalid_settings", "Nothing to change; send at least one setting.")
 		return
@@ -444,11 +474,13 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 
 	if updated, _, err := ReadWorkflowManifest(ctx, workflow.WorkspacePath); err == nil && updated != nil {
 		caps = updated.Capabilities
+		manifest = updated
 	}
 	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode}, notifications(caps))
 	view["changed"] = changed
+	view["pulse"] = pulseView(manifest)
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
 	}
@@ -513,6 +545,10 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 	}
 	if _, ok := args["notifications"]; ok {
 		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Relays only.")
+		return
+	}
+	if _, ok := args["pulse"]; ok {
+		externalError(w, 400, "invalid_settings", "pulse applies to workflows only.")
 		return
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
