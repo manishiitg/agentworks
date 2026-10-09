@@ -175,5 +175,9 @@ func externalCompactScheduleRun(run ScheduleRunEntry) map[string]any {
 	if run.RanWorkflow != nil {
 		view["ran_workflow"] = *run.RanWorkflow
 	}
+	// Webhook deploy metadata is small and is what a webhook run is read for.
+	if run.Webhook != nil {
+		view["webhook"] = run.Webhook
+	}
 	return view
 }
