@@ -7,6 +7,8 @@ export interface WorkSurfaceLayoutInput {
   splitRatio: number
   /** Mobile preview pins the panel to phone width, like the Builder split. */
   mobilePreview?: boolean
+  /** The phone column's width in px after the person dragged the rail in Mobile preview; absent keeps the phone-width default. */
+  mobilePaneWidth?: number | null
 }
 
 export interface WorkSurfaceLayout {
@@ -31,14 +33,14 @@ export interface WorkSurfaceLayout {
  * regions to content height, and freeze pane scrolling.
  */
 export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSurfaceLayout {
-  const { chatOpen, panelOpen, splitRatio, mobilePreview = false } = input
+  const { chatOpen, panelOpen, splitRatio, mobilePreview = false, mobilePaneWidth = null } = input
   const split = chatOpen && panelOpen
 
   return {
     gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] ${split ? 'md:[grid-template-columns:var(--work-split-columns)]' : ''}`,
     gridStyle: split
       ? ({ '--work-split-columns': mobilePreview
-        ? `minmax(240px, 1fr) ${MOBILE_PREVIEW_PANE_COLUMN}`
+        ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
         : `minmax(240px, ${splitRatio}fr) minmax(240px, ${1 - splitRatio}fr)` } as CSSProperties)
       : undefined,
     toolbarClassName: `${split ? 'md:col-span-2' : ''} col-start-1 row-start-1`,

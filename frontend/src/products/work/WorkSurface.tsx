@@ -128,6 +128,21 @@ function writeWorkSplitRatio(projectId: string | undefined, ratio: number) {
   try { window.localStorage.setItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`, String(ratio)) } catch { /* UI preference only. */ }
 }
 
+// Mobile preview shows the workspace as a phone-width column; the person may still drag the rail a little, so that width is
+// remembered per project (px), separately from the split ratio of the other previews.
+const MOBILE_PANE_MIN = 320
+function readMobilePaneWidth(projectId?: string): number | null {
+  if (typeof window === 'undefined' || !projectId) return null
+  try {
+    const value = Number.parseFloat(window.localStorage.getItem(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`) || '')
+    return Number.isFinite(value) && value >= MOBILE_PANE_MIN && value <= 1600 ? value : null
+  } catch { return null }
+}
+function writeMobilePaneWidth(projectId: string | undefined, width: number) {
+  if (typeof window === 'undefined' || !projectId) return
+  try { window.localStorage.setItem(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`, String(Math.round(width))) } catch { /* UI preference only. */ }
+}
+
 async function restoreWorkRuntimeSelection(tabId: string, sessionId: string, workspacePath: string): Promise<WorkRuntimeSelection | null> {
   const cachedRuntime = useChatStore.getState().activeSessionsCache.find(
     session => session.session_id === sessionId,
@@ -1033,6 +1048,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const splitLayoutRef = useRef<HTMLDivElement>(null)
   const [splitRatio, setSplitRatioState] = useState(() => readWorkSplitRatio(selected?.id))
   const splitRatioRef = useRef(splitRatio)
+  const [mobilePaneWidth, setMobilePaneWidthState] = useState<number | null>(() => readMobilePaneWidth(selected?.id))
+  const mobilePaneWidthRef = useRef(mobilePaneWidth)
+  useEffect(() => { const next = readMobilePaneWidth(selected?.id); mobilePaneWidthRef.current = next; setMobilePaneWidthState(next) }, [selected?.id])
   const [reportPreviewPreference, setReportPreviewPreference] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(selected?.workspacePath))
   // All split classes derive from the shared layout resolver: one decision
   // point for every flag combination (see workSurfaceLayoutResolver.ts).
@@ -1248,10 +1266,21 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [selected?.id])
 
   const handleSplitPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
-    // Mobile preview pins the panel to phone width; nothing to drag.
-    if (window.innerWidth < 768 || reportPreviewPreference === 'mobile') return
+    if (window.innerWidth < 768) return
     const rect = splitLayoutRef.current?.getBoundingClientRect()
     if (!rect?.width) return
+    if (reportPreviewPreference === 'mobile') {
+      // Mobile preview keeps a phone-width column, but the rail still drags: the column's width follows the pointer.
+      startSplitDrag(event, {
+        onMove: clientX => {
+          const width = Math.max(MOBILE_PANE_MIN, Math.min(rect.width - 240, rect.right - clientX))
+          mobilePaneWidthRef.current = width
+          setMobilePaneWidthState(width)
+        },
+        onEnd: () => { if (mobilePaneWidthRef.current) writeMobilePaneWidth(selected?.id, mobilePaneWidthRef.current) },
+      })
+      return
+    }
     startSplitDrag(event, {
       onMove: clientX => setSplitRatio((clientX - rect.left) / rect.width),
       onEnd: () => writeWorkSplitRatio(selected?.id, splitRatioRef.current),
@@ -1431,7 +1460,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
             <ProductWorkspaceShell
               splitRef={splitLayoutRef}
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={shownSplitRatio}
-              mobilePreview={reportPreviewPreference === 'mobile'}
+              mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !selected.shared} /> : <div className="min-w-0 flex-1" />}
               toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
@@ -1511,7 +1540,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   <WorkspaceSplitRail
                     ratio={shownSplitRatio}
                     onPointerDown={handleSplitPointerDown}
-                    onStep={delta => { if (reportPreviewPreference !== 'mobile') setSplitRatio(splitRatioRef.current + delta, true) }}
+                    onStep={delta => {
+                      if (reportPreviewPreference !== 'mobile') { setSplitRatio(splitRatioRef.current + delta, true); return }
+                      const width = Math.max(MOBILE_PANE_MIN, (mobilePaneWidthRef.current ?? 494) - Math.round(delta * 600))
+                      mobilePaneWidthRef.current = width; setMobilePaneWidthState(width); writeMobilePaneWidth(selected?.id, width)
+                    }}
                     className="md:row-start-2"
                     previewDevice={reportPreviewPreference}
                     onPreviewDeviceChange={device => writeReportPreviewPreference(selected.workspacePath, device)}

@@ -35,4 +35,9 @@ describe('resolveWorkSurfaceLayout', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.3, mobilePreview: true })
     expect(layout.gridStyle).toEqual({ '--work-split-columns': `minmax(240px, 1fr) ${MOBILE_PREVIEW_PANE_COLUMN}` })
   })
+
+  it('follows the width the person dragged the rail to in Mobile preview', () => {
+    const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.3, mobilePreview: true, mobilePaneWidth: 410.4 })
+    expect(layout.gridStyle).toEqual({ '--work-split-columns': 'minmax(240px, 1fr) 410px' })
+  })
 })
