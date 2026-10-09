@@ -225,6 +225,9 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	if err != nil {
 		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Code settings show the exact command)")
 	}
+	if latest, ok := latestCLIVersion(ctx, cfg.Server); ok && cliVersion != "dev" && latest != cliVersion {
+		fmt.Fprintf(o.stderr, "A newer AgentWorks CLI is available on this server (yours %s, latest %s). Run `agentworks update`.\n", shortVersion(cliVersion), shortVersion(latest))
+	}
 	login := func() error {
 		fmt.Fprintln(o.stderr, "Signing in (this approval is only for sharing local folders)...")
 		return o.browserLogin(ctx, cfg, cfgPath, []string{"devices:connect"}, false)
@@ -714,4 +717,37 @@ func saveShareLinks(path string, links map[string]string) {
 	if raw, err := json.Marshal(links); err == nil {
 		_ = os.WriteFile(path, raw, 0o600)
 	}
+}
+
+func shortVersion(v string) string {
+	if len(v) > 7 {
+		return v[:7]
+	}
+	return v
+}
+
+// latestCLIVersion is the CLI build this server currently offers for download (its version.json); ok is false when it cannot
+// be read in a couple of seconds, and nothing is said then.
+func latestCLIVersion(ctx context.Context, server string) (string, bool) {
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, strings.TrimRight(server, "/")+"/api/downloads/cli/version.json", nil)
+	if err != nil {
+		return "", false
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", false
+	}
+	var release struct {
+		Version string `json:"version"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&release) != nil || strings.TrimSpace(release.Version) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(release.Version), true
 }

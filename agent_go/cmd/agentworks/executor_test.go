@@ -200,6 +200,9 @@ func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
 	}()
 	select {
 	case hello := <-received:
+		if hello.CLIVersion != cliVersion {
+			t.Fatalf("the CLI must tell the server which build it is (%q), got %q", cliVersion, hello.CLIVersion)
+		}
 		if hello.DeviceID != defaultDeviceName() || len(hello.Resources) != 1 {
 			t.Fatalf("hello %+v", hello)
 		}
@@ -315,5 +318,70 @@ func TestShareLogIsBoundedAndRotates(t *testing.T) {
 	defer again.Close()
 	if info, _ := os.Stat(path); info.Size() != 0 {
 		t.Fatal("a new run must start an empty log")
+	}
+}
+
+// `agentworks start` tells the person when this server offers a newer CLI build, and stays quiet when it is current.
+func TestStartSaysWhenTheServerHasANewerCLI(t *testing.T) {
+	old := cliVersion
+	defer func() { cliVersion = old }()
+	for _, tc := range []struct {
+		name, mine, latest string
+		hint               bool
+	}{{"older", "aaaaaaa1111", "bbbbbbb2222", true}, {"current", "bbbbbbb2222", "bbbbbbb2222", false}, {"development build", "dev", "bbbbbbb2222", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			cliVersion = tc.mine
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("APPDATA", home)
+			t.Setenv("USERPROFILE", home)
+			project := filepath.Join(t.TempDir(), "app")
+			if err := os.Mkdir(project, 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(project)
+			connected := make(chan struct{}, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/downloads/cli/version.json") {
+					fmt.Fprintf(w, `{"version":%q}`, tc.latest)
+					return
+				}
+				conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				var hello localfiles.Hello
+				if conn.ReadJSON(&hello) != nil || conn.WriteJSON(map[string]bool{"connected": true}) != nil {
+					return
+				}
+				connected <- struct{}{}
+				var request any
+				_ = conn.ReadJSON(&request)
+			}))
+			defer server.Close()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var stdout, stderr bytes.Buffer
+			finished := make(chan int, 1)
+			go func() {
+				finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--no-open", "--workspace", "App"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+					if key == "AGENTWORKS_TOKEN" {
+						return "test-token"
+					}
+					return ""
+				})
+			}()
+			select {
+			case <-connected:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("start did not connect: %s", stderr.String())
+			}
+			cancel()
+			<-finished
+			if got := strings.Contains(stderr.String(), "agentworks update"); got != tc.hint {
+				t.Fatalf("update hint = %v, want %v:\n%s", got, tc.hint, stderr.String())
+			}
+		})
 	}
 }

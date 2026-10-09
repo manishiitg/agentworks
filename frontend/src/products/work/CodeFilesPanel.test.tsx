@@ -13,7 +13,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
 import { CodeChatConnectionStatus } from './CodeChatConnectionStatus'
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
-import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, setPendingLocalLink, setProjectLocalFiles, setProjectMode, takePendingLocalLink, writeCodeFilesPreference } from './codeLocalFiles'
+import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, resetLatestCliVersionForTests, setPendingLocalLink, setProjectLocalFiles, setProjectMode, takePendingLocalLink, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const session = 'code-session-1'
@@ -261,6 +261,21 @@ it('a project made in Local mode is Local before any folder is linked, and Dev o
   expect(codeChatModeForChat('cowork-chat')).toBe('server')
   setProjectLocalFiles('proj-local', target)
   expect(codeLocalFilesForChat('new-local-chat')).toEqual(target)
+})
+
+it('asks the person to update a CLI that is not the build this server offers, and says nothing when it is current', async () => {
+  const devices = (cli_version?: string) => ({ data: { devices: [{ device_id: 'laptop', ...(cli_version ? { cli_version } : {}), resources: [{ id: 'project', writable: true, shell: true, guard: {} }] }] } })
+  const serve = (cli_version: string | undefined, latest: string) => transport.get.mockImplementation(async (url: string) => String(url).includes('version.json') ? { data: { version: latest } } : devices(cli_version))
+  for (const [mine, latest, notice] of [['aaaaaaa111', 'bbbbbbb222', true], [undefined, 'bbbbbbb222', true], ['bbbbbbb222', 'bbbbbbb222', false], ['dev', 'bbbbbbb222', false]] as const) {
+    resetLatestCliVersionForTests()
+    serve(mine, latest)
+    writeCodeFilesPreference(session, { location: 'computer', target })
+    const { host } = await render(true)
+    await act(async () => { await Promise.resolve() })
+    expect(host.textContent?.includes('Update your CLI'), `${mine} vs ${latest}`).toBe(notice)
+    if (notice) expect(host.textContent).toContain('agentworks update')
+    act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''
+  }
 })
 
 it('shows Downloads permission before switching and on the connected summary', async () => {

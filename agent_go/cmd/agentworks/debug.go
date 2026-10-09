@@ -114,6 +114,15 @@ func buildDebugReport(ctx context.Context, o *options) string {
 			}
 		}
 		line("sign-in:   %s", signed)
+		if latest, ok := latestCLIVersion(ctx, cfg.Server); ok {
+			state := "up to date"
+			if cliVersion == "dev" {
+				state = "a development build"
+			} else if latest != cliVersion {
+				state = "OUT OF DATE: run `agentworks update`"
+			}
+			line("latest cli: %s (%s)", shortVersion(latest), state)
+		}
 		debugNetwork(ctx, &b, cfg.Server)
 	}
 

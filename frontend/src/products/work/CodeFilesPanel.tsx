@@ -5,7 +5,7 @@ import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import { useChatStore } from '../../stores/useChatStore'
 import { getApiBaseUrl } from '../../services/api'
-import { useCodeFilesPreference, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
+import { cliUpdateNeeded, shortCliVersion, useCodeFilesPreference, useLatestCliVersion, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
 
 function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
 
@@ -93,6 +93,13 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(local || setupOpen)
   useEffect(() => { setDraftKey(selectedKey); setSetupOpen(false); setConfirmServer(false); setSettingError(null) }, [sessionId, selectedKey, local])
   const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
+  // The CLI on this computer is not the build this server offers: ask the person to update it.
+  const latestCli = useLatestCliVersion(local || setupOpen)
+  const connectedDevice = devices.find(device => device.device_id === selected?.device_id) ?? devices[0]
+  const updateNotice = cliUpdateNeeded(connectedDevice, latestCli) ? <div role="status" className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5">
+    <p className="font-medium text-amber-700 dark:text-amber-300">Update your CLI</p>
+    <p className="text-muted-foreground">{connectedDevice?.cli_version ? `Your CLI (${shortCliVersion(connectedDevice.cli_version)}) is older than this server's (${shortCliVersion(latestCli)}).` : 'Your CLI is older than this server\'s.'} In a terminal run <code className="font-mono">agentworks update</code>, then restart it with <code className="font-mono">agentworks stop</code> and <code className="font-mono">agentworks start</code>.</p>
+  </div> : null
   const draftResource = devices.flatMap(device => device.resources.map(folder => ({ ...folder, deviceId: device.device_id }))).find(folder => JSON.stringify([folder.deviceId, folder.id]) === draftKey)
   // The saved folder is not connected but exactly one other folder is (the user started the CLI somewhere else): offer it,
   // instead of saying "not connected" while the computer is connected.
@@ -129,6 +136,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
         <div className="min-w-0"><p role="status" className="text-sm font-medium">Connected</p><p className="truncate text-xs text-muted-foreground">{selected?.device_id} · {resource.id}</p></div>
       </div>
       <div className="flex flex-wrap gap-2 rounded-md bg-emerald-500/5 px-3 py-2 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}{resource.shell && <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5" />Shell commands enabled on this computer</span>}</div>
+      {updateNotice}
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button><Button size="sm" variant="ghost" onClick={() => setDetails(true)}>Details</Button></div>
       {busy && <p className="text-xs text-muted-foreground">Wait for the current turn to finish before changing the file connection.</p>}
       {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
@@ -136,6 +144,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   </SettingsCard>
   return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="Choose where this workspace works with files. Your agent and model always run on the server.">
     {offlinePrompt}
+    {updateNotice && <div className="mb-3">{updateNotice}</div>}
     {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : !local && !setupOpen ?
       <Button variant="outline" disabled={busy} onClick={() => setSetupOpen(true)}>Connect local files</Button> : <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

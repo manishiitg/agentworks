@@ -6,6 +6,7 @@ import (
 	"fmt"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"regexp"
+	"strings"
 )
 
 const Version = 1
@@ -26,13 +27,16 @@ type Resource struct {
 	Guard     wf.FolderGuard `json:"guard"`
 }
 type Hello struct {
-	Version   int        `json:"version"`
-	DeviceID  string     `json:"device_id"`
-	Resources []Resource `json:"resources"`
+	Version  int    `json:"version"`
+	DeviceID string `json:"device_id"`
+	// CLIVersion is the build the CLI was made from (a source revision, or "dev"); the website compares it with the server's
+	// current one and asks the person to update. Empty from a CLI older than this field.
+	CLIVersion string     `json:"cli_version,omitempty"`
+	Resources  []Resource `json:"resources"`
 }
 
 func (h Hello) Validate() error {
-	if h.Version != Version || !ValidID(h.DeviceID) || len(h.Resources) == 0 || len(h.Resources) > 32 {
+	if h.Version != Version || !ValidID(h.DeviceID) || len(h.Resources) == 0 || len(h.Resources) > 32 || len(h.CLIVersion) > 80 || strings.ContainsAny(h.CLIVersion, "\r\n\x00") {
 		return fmt.Errorf("invalid executor handshake")
 	}
 	seen := map[string]bool{}

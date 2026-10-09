@@ -7,7 +7,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 export interface CodeLocalFileTarget { device_id: string; resource_id: string }
 export type CodeFilesPreference = { location: 'server' } | { location: 'computer'; target?: CodeLocalFileTarget }
 export interface LocalFolderGuard { read_paths?: string[]; write_paths?: string[]; read_only_paths?: string[]; blocked_write_paths?: string[]; blocked_paths?: string[] }
-export interface LocalFileDevice { device_id: string; resources: { id: string; writable: boolean; shell?: boolean; downloads?: boolean; guard: LocalFolderGuard }[] }
+export interface LocalFileDevice { device_id: string; cli_version?: string; resources: { id: string; writable: boolean; shell?: boolean; downloads?: boolean; guard: LocalFolderGuard }[] }
 const changed = 'code-files-location-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
@@ -164,3 +164,31 @@ export function useLocalFileDevices(enabled: boolean) {
   }, [enabled, account, workspace])
   return { devices, error, checked, refreshing, refresh: () => refreshRef.current() }
 }
+
+// The CLI build this server currently offers (its public version.json), read once per page load; undefined until known or when the
+// server publishes none.
+let latestCliPromise: Promise<string | undefined> | undefined
+function fetchLatestCliVersion(): Promise<string | undefined> {
+  latestCliPromise ??= api.get<{ version?: string }>('/api/downloads/cli/version.json', { skipSessionContext: true })
+    .then(response => (typeof response.data?.version === 'string' && response.data.version.trim() ? response.data.version.trim() : undefined))
+    .catch(() => undefined)
+  return latestCliPromise
+}
+export function resetLatestCliVersionForTests() { latestCliPromise = undefined }
+export function useLatestCliVersion(enabled: boolean): string | undefined {
+  const [latest, setLatest] = useState<string | undefined>()
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    void fetchLatestCliVersion().then(version => { if (live) setLatest(version) })
+    return () => { live = false }
+  }, [enabled])
+  return latest
+}
+/** The connected CLI is not the build this server offers (a CLI from before it reported its version counts as older). */
+export function cliUpdateNeeded(device: LocalFileDevice | undefined, latest: string | undefined): boolean {
+  if (!device || !latest) return false
+  if (device.cli_version === 'dev') return false
+  return device.cli_version !== latest
+}
+export function shortCliVersion(version: string | undefined) { return version ? version.slice(0, 7) : 'older' }

@@ -81,6 +81,7 @@ func runExecutor(ctx context.Context, o *options, p executorParams) error {
 		return err
 	}
 	defer executor.Close()
+	executor.Hello.CLIVersion = cliVersion
 	for _, grant := range grants {
 		access := "read-only files"
 		if grant.Writable {
