@@ -1,5 +1,6 @@
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
+import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
@@ -1055,6 +1056,11 @@ export function VideoStudioSurface() {
     setOpenProjectId(projectId)
     setLastProjectId(projectId)
   }
+
+  useProductCreateRequest('video-studio', () => {
+    selectProject(null)
+    setCreateOpen(true)
+  })
 
   // key by project id so switching projects REMOUNTS rather than reusing the
   // instance. ProjectWorkspace holds per-project refs that are meaningless

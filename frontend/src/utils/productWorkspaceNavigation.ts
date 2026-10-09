@@ -1,3 +1,4 @@
+import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useLLMStore } from '../stores/useLLMStore'
@@ -9,6 +10,7 @@ import { cancelPendingWorkflowNavigation } from './workflowNavigation'
 export function openProductWorkspace(surface: ProductSurface) {
   // A product click is newer intent than any in-flight workflow lookup.
   cancelPendingWorkflowNavigation()
+  useCommandDialogStore.getState().requestProductCreate(null)
   const app = useAppStore.getState()
   useLLMStore.getState().setShowLLMModal(false)
   app.setShowSchedulesOverview(false)

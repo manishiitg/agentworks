@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -213,6 +213,7 @@ const activeSessionSearchText = (session?: ActiveSessionInfo): string =>
 
 function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
   const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : item.scope === 'code' ? 'code' : undefined)
+  if (item.action === 'create' || item.scope === 'create') return <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
   if (surface) return <ProductSurfaceIcon surface={surface} />
   const Icon = item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
     : item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug
@@ -255,8 +256,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // the account may open it.
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const user = useAuthStore(state => state.user)
-  const navigationItems = useMemo(() => quickNavigationItems(user, productSurface), [user, productSurface])
-  const footerItems = navigationItems.filter(item => item.type === 'menu')
+  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
+  const navigationItems = useMemo(() => quickNavigationItems(user, productSurface, isMultiUserMode), [user, productSurface, isMultiUserMode])
+  const footerItems = navigationItems.filter(item => item.type === 'menu' && item.action !== 'create')
   const codeAvailable = useMemo(
     () => isEnabledProductSurface('code') && intersectAllowedProductSurfaces(['code'], allowedProducts).includes('code'),
     [allowedProducts],
@@ -525,21 +527,23 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|code|products?|menus?|panels?)\s*/)
+    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|code|products?|menus?|panels?|create)\s*/)
     const scope = scopeMatch?.[1] || scopeFilter
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
       ? allItems.filter(item => {
           // Every running session once: its own row, plus tabs whose only
           // activity is local (no server session yet).
+          const creates = (surface: string) => item.type === 'menu' && item.action === 'create' && item.surface === surface
+          if (scope === 'create') return item.type === 'menu' && item.action === 'create'
           if (scope === 'active') return item.type === 'active' || (!item.activeSession && item.hasLocalActivity)
-          if (scope === 'workflow' || scope === 'workflows') return item.type === 'workflow' && item.preset.workflowKind !== 'relay'
-          if (scope === 'relay' || scope === 'relays') return item.type === 'workflow' && item.preset.workflowKind === 'relay'
+          if (scope === 'workflow' || scope === 'workflows') return (item.type === 'workflow' && item.preset.workflowKind !== 'relay') || creates('agentworks')
+          if (scope === 'relay' || scope === 'relays') return (item.type === 'workflow' && item.preset.workflowKind === 'relay') || creates('relays')
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel'
-          if (scope === 'crew') return item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && isWorkProductSession(item.session))
-          if (scope === 'code') return item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && isCodeProductSession(item.session))
+          if (scope === 'crew') return creates('work') || item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && isWorkProductSession(item.session))
+          if (scope === 'code') return creates('code') || item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && isCodeProductSession(item.session))
           if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
           return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew' || item.type === 'code'
         })
@@ -700,7 +704,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   if (!isOpen) return null
 
-  const placeholder = 'Search work, products, panels, or tabs...'
+  const placeholder = 'Search work, products, panels, or create something new...'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
@@ -784,7 +788,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.label}
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'workflow' && item.preset.workflowKind === 'relay' ? 'relay' : item.type}
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' && item.preset.workflowKind === 'relay' ? 'relay' : item.type}
                       </span>
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (

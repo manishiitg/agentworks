@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Ctrl+K opens existing product creation forms
+
+Offer Create new workflow, Relay, Crew, Code workspace and video project actions
+for enabled, admitted products. Workflow and Relay creation keep the account-level
+create gate. List creation actions in the matching product browse scopes and @create.
+Switch to the destination and retain the request until it mounts, then open its existing
+form once; selecting the action does not create a saved object. Later product navigation
+cancels any pending creation request.
+Ticket: [PLAT-753](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-753.md).
+
 ### 2026-10-09 — One dashboard runtime across Goals, Relays, Crew and Code
 
 Use the shared HTML documents, toolbar discovery and live query/script bridge

@@ -34,6 +34,7 @@ import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from 
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { clearPendingLocalLink, peekPendingLocalLink, registerLocalFilesPersister, setProjectLocalFiles, setProjectMode, useCodeFilesPreference } from './codeLocalFiles'
+import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -1263,6 +1264,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreateMode('dev')
     setCreateOpen(true)
   }, [])
+  useProductCreateRequest(product.profileId === 'code' ? 'code' : 'work', openCreateProject)
+
   // "Switch mode" in a project's settings sends people here: a project keeps the mode it was created in, so they make a new one.
   useEffect(() => {
     if (product.profileId !== 'code') return

@@ -1,3 +1,4 @@
+import { useCommandDialogStore } from './useCommandDialogStore'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { isProductSurface, type ProductSurface } from '../products/productSurfaceConfig'
@@ -19,13 +20,16 @@ interface ProductSurfaceState {
 
 export const useProductSurfaceStore = create<ProductSurfaceState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       productSurface: 'agentworks',
       lastVideoProjectId: null,
       selectedWorkProjectId: null,
       selectedCodeProjectId: null,
       pendingWorkView: null,
-      setProductSurface: (productSurface) => set({ productSurface }),
+      setProductSurface: (productSurface) => {
+        if (get().productSurface !== productSurface) useCommandDialogStore.getState().requestProductCreate(null)
+        set({ productSurface })
+      },
       setLastVideoProjectId: (lastVideoProjectId) => set({ lastVideoProjectId }),
       setSelectedWorkProjectId: (selectedWorkProjectId) => set({ selectedWorkProjectId }),
       setSelectedCodeProjectId: (selectedCodeProjectId) => set({ selectedCodeProjectId }),

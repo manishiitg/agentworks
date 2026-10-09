@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 
@@ -14,10 +14,14 @@ vi.hoisted(() => {
 vi.mock('../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: vi.fn(async () => []) }))
 
 vi.mock('../services/llm-config-api', () => {
-  const service = new Proxy({}, { get: () => vi.fn(async () => ({})) })
+  const service = new Proxy({}, { get: (_, key) => vi.fn(async () => key === 'getProviderConnections' ? [] : {}) })
   return { llmConfigService: service, default: service }
 })
 
+import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
+import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useCommandDialogStore'
+import { CreateCodeWorkspaceDialog } from '../products/work/CreateCodeWorkspaceDialog'
+import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import QuickSwitcher from './QuickSwitcher'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
@@ -33,7 +37,8 @@ const cleanups: (() => void)[] = []
 afterEach(() => {
   cleanups.splice(0).forEach(fn => fn())
   delete (window as Window & { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__
-  useAuthStore.setState({ user: null })
+  useAuthStore.setState({ user: null, isMultiUserMode: false })
+  useCommandDialogStore.getState().closeAll()
   usePanelSwitcherStore.setState({ entries: {}, toolbarMinimized: false })
 })
 
@@ -103,11 +108,11 @@ it('browses all workflows or Relays from footer icons without requiring typed sc
   })
   const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
   await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All workflows"]')!.click())
-  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow'])
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow', 'create:agentworks'])
   expect(host.querySelector('input')!.value).toBe('')
   expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All workflows')
   await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Relays"]')!.click())
-  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:relay'])
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:relay', 'create:relays'])
   expect(onClose).not.toHaveBeenCalled()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show all work and navigation"]')!.click())
   expect(host.querySelector('[data-navigation-id="browse:crew"]')).not.toBeNull()
@@ -234,4 +239,67 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
   })
   expect(open).not.toHaveBeenCalled()
   expect(onClose).not.toHaveBeenCalled()
+})
+
+
+it('offers creation for every supported product and routes each action from another product', async () => {
+  const { host, onClose } = await renderNavigation('@create ')
+  const surfaces: ProductCreateSurface[] = ['agentworks', 'relays', 'video-studio', 'work', 'code']
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(surfaces.map(surface => `create:${surface}`))
+  for (const surface of surfaces) {
+    await act(async () => {
+      useProductSurfaceStore.setState({ productSurface: 'mcp-gateway' })
+      host.querySelector(`[data-navigation-id="create:${surface}"]`)!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    })
+    expect(useProductSurfaceStore.getState().productSurface).toBe(surface)
+    expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
+  }
+  expect(onClose).toHaveBeenCalledTimes(surfaces.length)
+})
+
+it('retains a Code creation request through lazy mounting, opens the real form once, and cancels superseded requests', async () => {
+  const { host, onClose } = await renderNavigation('Create new Code workspace')
+  await act(async () => host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(onClose).toHaveBeenCalledOnce()
+  expect(useCommandDialogStore.getState().productCreateSurface).toBe('code')
+  useLLMStore.setState({ providerManifest: [], providerManifestLoaded: true })
+  const opened = vi.fn()
+  function CodeCreateHost() {
+    const [open, setOpen] = useState(false)
+    useProductCreateRequest('code', () => { opened(); setOpen(true) })
+    return open ? <CreateCodeWorkspaceDialog onClose={() => setOpen(false)} onCreate={() => {}} submitting={false} error={null} /> : null
+  }
+  const formHost = document.createElement('div'); document.body.append(formHost)
+  const root = createRoot(formHost)
+  cleanups.push(() => { act(() => root.unmount()); formHost.remove() })
+  await act(async () => root.render(<CodeCreateHost />))
+  expect(formHost.querySelector('[role="dialog"]')?.textContent).toContain('New Code workspace')
+  expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
+  await act(async () => formHost.querySelector<HTMLButtonElement>('[aria-label="Close"]')!.click())
+  await act(async () => root.render(<CodeCreateHost />))
+  expect(formHost.querySelector('[role="dialog"]')).toBeNull()
+  expect(opened).toHaveBeenCalledOnce()
+  await act(async () => {
+    useCommandDialogStore.getState().requestProductCreate('work')
+    useProductSurfaceStore.getState().setProductSurface('relays')
+  })
+  expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
+  await act(async () => {
+    useCommandDialogStore.getState().requestProductCreate('relays')
+    openProductWorkspace('relays')
+  })
+  expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
+})
+
+it('hides creation for unavailable products and respects the workflow create gate at activation time', async () => {
+  const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'code'], false, () => {
+    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'code'] } as never })
+  })
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:code'])
+  await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: true } }))
+  const workflow = quickNavigationItems(useAuthStore.getState().user, 'code').find(item => item.id === 'create:agentworks')!
+  expect(workflow).toBeDefined()
+  await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: false } }))
+  expect(openQuickNavigation(workflow)).toBe(false)
+  expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
 })

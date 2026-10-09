@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
     showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null,
     showLLMModal: false, workflows: [], activeSessionsCache: [], chatTabs: {},
     activeTabId: null, showPresetSettings: false, showPresetCreate: false, canCreate: true,
+    productCreateSurface: null,
+    consumeProductCreate: (surface: string) => { if (state.productCreateSurface !== surface) return false; state.productCreateSurface = null; return true },
     closeDialog: (dialog: string) => { if (dialog === 'presetCreate') state.showPresetCreate = false },
     addToast: vi.fn(),
     refreshPresets: async () => {}, getActivePreset: () => state.activePreset,
@@ -70,7 +72,7 @@ beforeEach(() => {
   } })
   delete (window as any).__llmDiscoveryOnboardingState
   delete window.electronAPI
-  Object.assign(mocks.state, { workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showLLMModal: false, loading: false, showPresetCreate: false, canCreate: true, productSurface: 'agentworks' })
+  Object.assign(mocks.state, { workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showLLMModal: false, loading: false, showPresetCreate: false, productCreateSurface: null, canCreate: true, productSurface: 'agentworks' })
   mocks.renderedTours.length = 0
   host = document.createElement('div')
   document.body.append(host)
@@ -167,4 +169,14 @@ it.each([
   expect(Boolean(product?.querySelector('[data-tour="global-schedules"]'))).toBe(schedules)
   expect(global.querySelector('[aria-label="Activity"]')).toBeNull()
   expect(global.querySelector('[data-tour="global-schedules"]')).toBeNull()
+})
+
+
+it.each(['agentworks', 'relays'])('opens the existing %s creation form for a pending Ctrl+K request', async surface => {
+  mocks.state.productSurface = surface
+  mocks.state.productCreateSurface = surface
+  mocks.state.activePreset = { id: 'existing', label: 'Existing automation' }
+  await render()
+  expect(host.querySelector('[data-testid="preset-modal"]')?.textContent).toBe(surface === 'relays' ? 'create:relay' : 'create:workflow')
+  expect(mocks.state.productCreateSurface).toBeNull()
 })

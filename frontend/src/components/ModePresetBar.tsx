@@ -3,6 +3,7 @@ import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
 import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
+import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
 import { hasWorkflowCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
 import { useModeStore } from '../stores/useModeStore'
 import { useGlobalPresetStore, usePresetApplication, usePresetManagement } from '../stores/useGlobalPresetStore'
@@ -365,6 +366,11 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     setShowPresetModal(true)
     setWorkspaceMinimized(true)
   }, [canCreateWorkflows, setWorkspaceMinimized])
+
+  useProductCreateRequest(
+    !reduced && presetModeCategory === 'workflow' && (productSurface === 'agentworks' || productSurface === 'relays') ? productSurface : null,
+    handleAddWorkflow,
+  )
 
   // Intro pages reuse the same creation dialog and permission check as the plus button.
   const showPresetCreate = useCommandDialogStore(s => s.showPresetCreate)
