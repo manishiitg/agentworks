@@ -155,7 +155,8 @@ func shareWebURL(server, device, alias, workspace string) string {
 	return strings.TrimRight(server, "/") + "/?" + q.Encode()
 }
 
-func openWebsite(link string) { openLoginBrowser(link) }
+// openWebsite is a variable so tests do not open a browser.
+var openWebsite = func(link string) { openLoginBrowser(link) }
 
 type startFlags struct {
 	device                 string
@@ -164,7 +165,6 @@ type startFlags struct {
 	foreground, background bool
 	askAgain               bool
 	workspace              string
-	noOpen                 bool
 }
 
 func startCommand(o *options) *cobra.Command {
@@ -186,7 +186,6 @@ func startCommand(o *options) *cobra.Command {
 	cmd.Flags().BoolVar(&f.background, "background", false, "Run in the background without asking")
 	cmd.Flags().StringVar(&f.workspace, "workspace", "", "The Code workspace (its name in Settings) that uses this folder; asked the first time, then remembered")
 	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask the background and open-website questions again instead of using the saved answers")
-	cmd.Flags().BoolVar(&f.noOpen, "no-open", false, "Do not open the website (for a machine with no browser)")
 	cmd.Flags().BoolVar(&f.debug, "debug", false, "Stay in this terminal, print diagnostics and log every file and command request the server sends")
 	return cmd
 }
@@ -225,8 +224,8 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	if err != nil {
 		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Code settings show the exact command)")
 	}
-	if latest, ok := latestCLIVersion(ctx, cfg.Server); ok && cliVersion != "dev" && latest != cliVersion {
-		fmt.Fprintf(o.stderr, "A newer AgentWorks CLI is available on this server (yours %s, latest %s). Run `agentworks update`.\n", shortVersion(cliVersion), shortVersion(latest))
+	if latest, ok := latestCLIRelease(ctx, cfg.Server); ok && cliVersion != "dev" && !cliIsCurrent(cliVersion, cliBuild, latest.Version, latest.CLIBuild) {
+		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`, then `agentworks stop` and `agentworks start`.")
 	}
 	login := func() error {
 		fmt.Fprintln(o.stderr, "Signing in (this approval is only for sharing local folders)...")
@@ -282,8 +281,9 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 		bg := ask(in, os.Stderr, "Run in the background? (No keeps this terminal open and shows live activity; Ctrl-C stops.)", true)
 		foreground, prefs.Background = !bg, &bg
 	}
-	// The website link is what applies this folder to the named workspace, so it is always opened (--no-open for a headless machine).
-	openWeb := !f.noOpen
+	// The website link is what applies this folder to the named workspace, so it is always opened (no option; a machine with no
+	// browser simply cannot open it).
+	openWeb := true
 	if interactive {
 		saveStartPrefs(prefsPath, prefs)
 	}
@@ -726,28 +726,27 @@ func shortVersion(v string) string {
 	return v
 }
 
-// latestCLIVersion is the CLI build this server currently offers for download (its version.json); ok is false when it cannot
-// be read in a couple of seconds, and nothing is said then.
-func latestCLIVersion(ctx context.Context, server string) (string, bool) {
+// latestCLIRelease is the CLI this server currently offers for download (its version.json); ok is false when it cannot be read in a
+// couple of seconds, and nothing is said then.
+func latestCLIRelease(ctx context.Context, server string) (cliRelease, bool) {
 	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, strings.TrimRight(server, "/")+"/api/downloads/cli/version.json", nil)
 	if err != nil {
-		return "", false
+		return cliRelease{}, false
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", false
+		return cliRelease{}, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", false
+		return cliRelease{}, false
 	}
-	var release struct {
-		Version string `json:"version"`
-	}
+	var release cliRelease
 	if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&release) != nil || strings.TrimSpace(release.Version) == "" {
-		return "", false
+		return cliRelease{}, false
 	}
-	return strings.TrimSpace(release.Version), true
+	release.Version, release.CLIBuild = strings.TrimSpace(release.Version), strings.TrimSpace(release.CLIBuild)
+	return release, true
 }

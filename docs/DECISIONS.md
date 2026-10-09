@@ -77,7 +77,7 @@ runtime APIs, data contracts and validation, without prescribing layouts,
 typography, colors, charts or tab arrangements. Follow the user's preferences
 and supplied references. Owner decision: platform instructions should explain
 how to use the capability rather than impose a design.
-Ticket: [PLAT-739](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-739.md).
+Ticket: [PLAT-740](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-739.md).
 
 ### 2026-10-09 — record_summary: the agent records a run or Pulse summary, the server delivers it
 
@@ -131,7 +131,7 @@ Ticket: [PLAT-739](https://github.com/runloop-workflows/deployments/blob/main/ti
   (`workflowfiles.CleanRelative`: trailing dot or space, 8.3 short names, `:` streams, device names) because a textual
   blocked-path rule did not recognise `blocked./file` or `blocked /file`.
 - **Why.** Most users are on Windows; a Windows sandbox (AppContainer) is days of work and the owner accepted the risk for
-  Windows users. Windows is tested on a Windows runner (`Verify-Windows-Test:` lines in a verify commit). Ticket: PLAT-739.
+  Windows users. Windows is tested on a Windows runner (`Verify-Windows-Test:` lines in a verify commit). Ticket: PLAT-740.
 
 ### 2026-10-08 — Local Code: one command in the project folder, always read and write
 

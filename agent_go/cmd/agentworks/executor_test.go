@@ -158,6 +158,8 @@ func TestExecutorRetriesAStaleDeviceConnection(t *testing.T) {
 	}
 }
 
+func init() { openWebsite = func(string) {} } // tests never open a browser
+
 // `agentworks start` shares the folder you are standing in, read and write with shell, named after the folder and the
 // computer, with no flags: the one-command flow the setup page describes.
 func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
@@ -191,7 +193,7 @@ func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	finished := make(chan int, 1)
 	go func() {
-		finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--no-open", "--workspace", "My App"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+		finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--workspace", "My App"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
 			if key == "AGENTWORKS_TOKEN" {
 				return "test-token"
 			}
@@ -248,7 +250,7 @@ func TestStartRequiresAWorkspace(t *testing.T) {
 	}
 	t.Chdir(project)
 	var stdout, stderr bytes.Buffer
-	code := run(t.Context(), []string{"--server", "https://agents.example.test", "start", "--foreground", "--no-open"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+	code := run(t.Context(), []string{"--server", "https://agents.example.test", "start", "--foreground"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
 		if key == "AGENTWORKS_TOKEN" {
 			return "test-token"
 		}
@@ -321,16 +323,25 @@ func TestShareLogIsBoundedAndRotates(t *testing.T) {
 	}
 }
 
-// `agentworks start` tells the person when this server offers a newer CLI build, and stays quiet when it is current.
+// `agentworks start` tells the person when this server offers a newer CLI, judged by the CLI's own build (not by the whole-repository
+// revision, which changes with every deploy), and stays quiet when it is current.
 func TestStartSaysWhenTheServerHasANewerCLI(t *testing.T) {
-	old := cliVersion
-	defer func() { cliVersion = old }()
+	oldVersion, oldBuild := cliVersion, cliBuild
+	defer func() { cliVersion, cliBuild = oldVersion, oldBuild }()
 	for _, tc := range []struct {
-		name, mine, latest string
-		hint               bool
-	}{{"older", "aaaaaaa1111", "bbbbbbb2222", true}, {"current", "bbbbbbb2222", "bbbbbbb2222", false}, {"development build", "dev", "bbbbbbb2222", false}} {
+		name                               string
+		mine, myBuild, latest, latestBuild string
+		hint                               bool
+	}{
+		{"older build", "aaaaaaa1", "build-old", "bbbbbbb2", "build-new", true},
+		{"same build, newer deploy", "aaaaaaa1", "build-same", "bbbbbbb2", "build-same", false},
+		{"no build ids: by revision, older", "aaaaaaa1", "", "bbbbbbb2", "", true},
+		{"no build ids: by revision, current", "bbbbbbb2", "", "bbbbbbb2", "", false},
+		{"a CLI too old to have a build id, server has one", "aaaaaaa1", "", "bbbbbbb2", "build-new", true},
+		{"development build", "dev", "dev", "bbbbbbb2", "build-new", false},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cliVersion = tc.mine
+			cliVersion, cliBuild = tc.mine, tc.myBuild
 			home := t.TempDir()
 			t.Setenv("HOME", home)
 			t.Setenv("APPDATA", home)
@@ -343,7 +354,7 @@ func TestStartSaysWhenTheServerHasANewerCLI(t *testing.T) {
 			connected := make(chan struct{}, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasSuffix(r.URL.Path, "/downloads/cli/version.json") {
-					fmt.Fprintf(w, `{"version":%q}`, tc.latest)
+					fmt.Fprintf(w, `{"version":%q,"cli_build":%q}`, tc.latest, tc.latestBuild)
 					return
 				}
 				conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -365,7 +376,7 @@ func TestStartSaysWhenTheServerHasANewerCLI(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			finished := make(chan int, 1)
 			go func() {
-				finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--no-open", "--workspace", "App"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+				finished <- run(ctx, []string{"--server", server.URL, "start", "--foreground", "--workspace", "App"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
 					if key == "AGENTWORKS_TOKEN" {
 						return "test-token"
 					}

@@ -22,6 +22,20 @@ import (
 // accepts an update.
 var cliVersion = "dev"
 
+// cliBuild identifies the source the CLI is built from (its own packages and every package of this repository it imports; stamped
+// by the release scripts via -X main.cliBuild=<id>). Unlike cliVersion it changes only when the CLI's source does, so a deploy that
+// touches only server code does not make every installed CLI "out of date".
+var cliBuild = "dev"
+
+// cliIsCurrent reports whether a CLI (version, build) is the one the server offers: by build when both sides have one, else by the
+// whole-repository revision.
+func cliIsCurrent(version, build, latestVersion, latestBuild string) bool {
+	if latestBuild != "" && build != "" && build != "dev" {
+		return build == latestBuild
+	}
+	return version == latestVersion
+}
+
 // updateTargetOverride pins the install target in tests. Empty means replace
 // the running executable.
 var updateTargetOverride string
@@ -38,8 +52,9 @@ func versionCommand(o *options) *cobra.Command {
 }
 
 type cliRelease struct {
-	Version string `json:"version"`
-	Release string `json:"release"`
+	Version  string `json:"version"`
+	CLIBuild string `json:"cli_build"`
+	Release  string `json:"release"`
 }
 
 func updateCommand(o *options) *cobra.Command {
@@ -143,7 +158,7 @@ func runUpdate(o *options, check, force bool) error {
 		return fmt.Errorf("server published an unreadable CLI version")
 	}
 	current := cliVersion
-	upToDate := !force && current != "dev" && current == release.Version
+	upToDate := !force && current != "dev" && cliIsCurrent(current, cliBuild, release.Version, release.CLIBuild)
 	if check {
 		return o.output(map[string]any{"current": current, "latest": release.Version, "update_available": !upToDate})
 	}

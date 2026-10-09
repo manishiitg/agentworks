@@ -137,7 +137,8 @@ cp -R "$PREBUILT/source/." "$BUILD_DIR/source/"
 # browser, workspace-security.test and update-coding-clis are used by the RTS host only.
 prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" "$PRODUCT" "agent workspace gateway" "browser workspace-security.test update-coding-clis"
 cp -R "$PREBUILT/downloads/." "$BUILD_DIR/downloads/"
-printf '{"version":"%s","release":"%s"}\n' "$builder_revision" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
+cli_build="$(cat "$BUILD_DIR/downloads/cli-build.txt" 2>/dev/null || true)"
+printf '{"version":"%s","cli_build":"%s","release":"%s"}\n' "$builder_revision" "$cli_build" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
 cp -R "$PREBUILT/frontend/." "$BUILD_DIR/frontend/"
 else
 # Build exactly the requested checkout while resolving the shared sibling
@@ -183,17 +184,19 @@ vault_build "$REPO_ROOT" "$BUILD_DIR"
 
 echo "==> [$RELEASE_ID] Building AgentWorks CLI downloads"
 mkdir -p "$BUILD_DIR/downloads"
+source "$REPO_ROOT/deploy/common/cli-build-id.sh"
+cli_build="$(cli_build_id "$REPO_ROOT" "$WORKSPACE_ROOT" "$DEPLOY_GOWORK")"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   os="${target%-*}"
   arch="${target#*-}"
   name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
+  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision -X main.cliBuild=$cli_build" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
   [[ "$os" == windows ]] || chmod +x "$BUILD_DIR/downloads/$name"
   (cd "$BUILD_DIR/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
 done
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$BUILD_DIR/downloads/install-agentworks.sh"
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$BUILD_DIR/downloads/install-agentworks.ps1"
-printf '{"version":"%s","release":"%s"}\n' "$builder_revision" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
+printf '{"version":"%s","cli_build":"%s","release":"%s"}\n' "$builder_revision" "$cli_build" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
 bash -n "$BUILD_DIR/downloads/install-agentworks.sh"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac

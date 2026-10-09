@@ -748,8 +748,8 @@ streams, device names such as `CON` and `NUL`) and do not follow a junction out 
 (asked in a terminal) and remembered per folder. `start` signs you in the first time (a browser approval limited to sharing local
 folders), shares the current folder with read and write access and shell commands, and keeps the connection open. It asks once
 whether to run in the background or keep the terminal open (`--background` / `--foreground` skip the question; the answer is
-remembered, `--ask` asks again), then opens the website, whose link finds that workspace by name, opens it in Local mode and saves
-the folder in its `product.json` (`local_files`); `--no-open` skips the browser. Once connected it prints a short summary
+remembered, `--ask` asks again), then always opens the website, whose link finds that workspace by name, opens it in Local mode and saves
+the folder in its `product.json` (`local_files`); Once connected it prints a short summary
 (folder, computer, workspace, website link); a terminal that stays open shows each file and command request live, and
 `agentworks watch` shows the same for a background share (a terminal that stays open also writes the log). `agentworks debug` writes one text file (CLI version, system, sign-in state without the token, name lookup, HTTPS and WebSocket checks to the server, proxy settings, sandbox, what is shared, and recent activity) into Downloads, shows it in the file manager, and is meant to be sent to support; tokens and passwords are removed, folder paths and recent commands are not. Logs are size-limited: each folder's log stops at 2 MB, the 3 previous files are kept, a new run starts a new file, and logs of a folder no longer shared are deleted after 14 days. A lost connection is retried with exponential backoff (1 s up to 30 s, with a little random spread). `agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
 shared, and `agentworks start --debug` stays in the terminal, prints diagnostics (CLI version, server reachability, sign-in,
