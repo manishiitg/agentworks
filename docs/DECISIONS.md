@@ -55,6 +55,14 @@ hide cycle, including across product remounts. The left-edge reopen target stays
 available. Replace the manual hide toast to keep the behavior consistent.
 Ticket: [PLAT-779](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-779.md).
 
+### 2026-10-09 — A Slack DM runs in the Crew's main chat; a channel mention gets its own conversation (PLAT-786)
+
+A direct message to a Crew's Slack bot runs in the Crew's main chat, so its answers also show in the normal chat.
+An @mention in a channel starts a separate conversation per thread, answered only in that Slack thread. Bot turns run
+on the owner's account, so their spend counts under that person; the split by user and by bot is an administrator's
+view (Providers > Costs). The owner confirmed this on 2026-10-09 after a tester read it as a bug. Test the split
+with an administrator account.
+
 ### 2026-10-09 — A Crew call between Crews of the same owner runs in the called Crew's main chat (PLAT-784)
 
 When one Crew calls another and both belong to the same person, the call runs in the called Crew's main chat and
