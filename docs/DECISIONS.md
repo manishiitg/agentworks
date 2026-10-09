@@ -17,6 +17,16 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Browser empty state explains automatic viewing before setup (PLAT-759)
+
+Show one primary Open browser action that starts the built-in browser directly,
+with opening feedback and no settings detour. Explain that helper activity and
+browser tests appear automatically; using signed-in Chrome or Edge is optional
+and explains the extension requirement. Keep direct browser connections in
+advanced settings. Why: equal browser-choice cards and Idle hid the next step
+from users unfamiliar with browser automation.
+Ticket: [PLAT-759](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/browser/experience/plat-759.md).
+
 ### 2026-10-09 — Crew Run mode saves outputs in a run folder (PLAT-756)
 - Run mode is not read-only. It runs what the Crew's owner built (functions, scripts, attached workflow triggers) and
   cannot change the Crew. It now matches workflows, whose Run chat cannot author but whose runs write `runs/<run>/`.

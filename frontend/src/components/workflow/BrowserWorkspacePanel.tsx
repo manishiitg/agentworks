@@ -4,7 +4,7 @@ import { Button } from '../ui/Button'
 import { Settings2, X, Monitor, PlugZap, Loader2, ArrowRight } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode, type BrowserChoice } from '../BrowserAutomationSettings'
 import { isBrowserCDPEnabled } from '../../utils/runtimeCapabilities'
-import WorkflowLiveBrowser from './WorkflowLiveBrowser'
+import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLiveBrowser'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
@@ -75,19 +75,35 @@ export function BrowserWorkspacePanel({
     if (connection.status.selected && !await connection.disconnect()) return
     setExtensionSetup(false); onBrowserModeChange(next)
   }
-  const browserOptions = !readOnly && workspacePath ? <div className="space-y-4 text-left" aria-label="Choose a browser">
-    <div><h3 className="text-base font-semibold">Choose a browser</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Select where your agent should browse.</p></div>
+  const otherBrowsers = extensionAvailable || isBrowserCDPEnabled() ? <div className="space-y-3 border-t border-border pt-4">
+    {extensionAvailable && <div className="space-y-1">
+      <p className="text-xs leading-relaxed text-muted-foreground">Need a website where you’re already signed in?</p>
+      <Button type="button" variant="outline" disabled={connection.busy} onClick={() => { void changeChoice('extension').then(() => setSettingsOpen(true)) }} className="h-auto w-full justify-start gap-2 whitespace-normal py-2 text-left">
+        <PlugZap className="h-4 w-4 shrink-0" aria-hidden="true" />Use my Chrome or Edge
+        <ArrowRight className="ml-auto h-4 w-4 shrink-0" aria-hidden="true" />
+      </Button>
+      <p className="text-xs leading-relaxed text-muted-foreground">{connection.status.account_connected ? 'Your browser is connected to your account. Choose it to use it here.' : 'Requires the AgentWorks browser extension. We’ll help you connect it.'}</p>
+    </div>}
+    {isBrowserCDPEnabled() && <Button type="button" variant="ghost" disabled={connection.busy} onClick={() => { void changeChoice('cdp').then(() => setSettingsOpen(true)) }} className="h-auto whitespace-normal text-xs">Advanced browser connection</Button>}
+  </div> : null
+  const browserOptions = !readOnly && workspacePath ? <div className="space-y-4 text-left" aria-label="Switch browser">
+    <Button type="button" variant="outline" disabled={connection.busy} onClick={() => { void changeChoice('headless').then(() => setSettingsOpen(false)) }} className="w-full">Use the built-in browser</Button>
+    {otherBrowsers}
+  </div> : undefined
+  const emptyBrowser = !readOnly && workspacePath ? ({ startBrowser, startingBrowser, canStart }: BrowserEmptyStateActions) => <div className="space-y-5 text-left" aria-label="Open a browser">
     <div className="space-y-2">
-      {([
-        {value:'headless', title:'Workspace browser', description:`A separate browser for this ${scopeNoun}. Watch and control it here.`, icon:Monitor},
-        ...(extensionAvailable ? [{value:'extension', title:'My Chrome or Edge', description:connection.status.account_connected ? `Your browser is connected. Use it for this ${scopeNoun} with separate tabs.` : 'Use your signed-in tabs with the AgentWorks extension.', icon:PlugZap}] : []),
-        ...(isBrowserCDPEnabled() ? [{value:'cdp', title:'Chrome · direct connection', description:'Connect to Chrome running on this machine.', icon:Settings2}] : []),
-      ] as const).map(option => <Button type="button" variant="ghost" key={option.value} disabled={connection.busy} onClick={() => { void changeChoice(option.value as BrowserChoice).then(() => setSettingsOpen(true)) }} className="flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-xl border border-border bg-muted/20 p-4 text-left font-normal transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-        <option.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 text-sm font-medium">{option.title}{option.value === 'extension' && connection.status.account_connected && <span className="inline-flex items-center gap-1.5 text-[11px] font-normal text-emerald-600 dark:text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Connected to your account</span>}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.description}</span></span>
-        <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      </Button>)}
+      <h3 className="text-base font-semibold">Your browser will appear here</h3>
+      <p className="text-sm leading-relaxed text-muted-foreground">When your helper browses a website or runs a browser test, you can watch it here.</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">You can also open a browser yourself to visit a website or show your helper what to do.</p>
     </div>
+    {canStart && <div className="space-y-2">
+      <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="w-full gap-2">
+        {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Monitor className="h-4 w-4" aria-hidden="true" />}
+        {startingBrowser ? 'Opening browser…' : 'Open browser'}
+      </Button>
+      <p className="text-xs leading-relaxed text-muted-foreground">Uses a separate browser for this {scopeNoun}. Sign in to websites here when needed.</p>
+    </div>}
+    {otherBrowsers}
   </div> : undefined
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
   const guidedAssistantControl = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions
@@ -128,7 +144,7 @@ export function BrowserWorkspacePanel({
             {!connection.status.connected && browserOptions}
           </div>
         </div>
-      </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} emptyContent={browserOptions} showGuide={false} toolbar={<>
+      </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} emptyContent={emptyBrowser} showGuide={false} toolbar={<>
         <WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />
         {guidedAssistantControl}
       </>} />}

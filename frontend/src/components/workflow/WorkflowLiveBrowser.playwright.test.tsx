@@ -2,9 +2,11 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
+import { BrowserWorkspacePanel } from './BrowserWorkspacePanel'
+import { TooltipProvider } from '../ui/tooltip'
 import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import WorkflowLiveBrowser, { BROWSER_RECONNECT_ATTEMPTS, browserReconnectDelayMs, mapToViewport } from './WorkflowLiveBrowser'
-const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
+const api = vi.hoisted(() => ({ defaults: {}, get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: api, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => 'viewer-token' }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
@@ -583,4 +585,40 @@ it('never launches a missing managed browser for a passive viewer', async () => 
   await act(async () => { FakeSocket.instances.at(-1)!.onmessage?.(frameMessage()); FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(1000) })
   await act(async () => { FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(2000) })
   expect(api.post.mock.calls.some(call => call[0] === '/api/browser/workspace')).toBe(false)
+})
+
+
+it('opens the built-in browser directly from the panel, with a retry and no settings detour', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('WebSocket', FakeSocket)
+  api.get.mockImplementation(async (url: string) => ({ data: url === '/api/browser/extension'
+    ? { selected: false, connected: false, account_connected: false, tabs: 0 }
+    : { sessions: [] } }))
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  cleanups.push(() => { act(() => root.unmount()); host.remove() })
+  await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Chats/Work/projects/one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
+  expect(host.textContent).toContain('Your browser will appear here')
+  expect(host.textContent).toContain('runs a browser test')
+  expect(host.textContent).toContain('Requires the AgentWorks browser extension')
+  expect(host.textContent).not.toContain('Choose a browser')
+  expect(host.textContent).not.toContain('Idle')
+  expect(buttonNamed(host, 'Start browser')).toBeUndefined()
+  expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Open browser')).toHaveLength(1)
+  api.post.mockRejectedValueOnce(new Error('Browser unavailable'))
+  await act(async () => { buttonNamed(host, 'Open browser')!.click() })
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Browser unavailable')
+  expect(buttonNamed(host, 'Open browser')?.disabled).toBe(false)
+  let opened!: (value: unknown) => void
+  api.post.mockImplementationOnce(() => new Promise(resolve => { opened = resolve }))
+  await act(async () => { buttonNamed(host, 'Open browser')!.click() })
+  expect(buttonNamed(host, 'Opening browser…')?.disabled).toBe(true)
+  expect(host.querySelector('[role="dialog"][aria-label="Browser settings"]')).toBeNull()
+  expect(api.post).toHaveBeenLastCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/Work/projects/one', profile_id: 'work' } }))
+  await act(async () => { opened({ data: { browser_session: 'workspace-browser' } }) })
+  expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
+  await act(async () => { FakeSocket.instances.at(-1)?.onmessage?.(frameMessage()) })
+  expect(host.querySelector('img')?.getAttribute('src')).toContain('data:image/jpeg;base64,')
+  expect(host.textContent).not.toContain('Your browser will appear here')
 })

@@ -51,7 +51,13 @@ const PAGE_SIZES = [
   { value: '1280x800', label: 'Wide page · 1280 × 800' },
 ]
 
-export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, allowTeaching = true, profileId, onLearn, emptyContent }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; allowTeaching?: boolean; profileId?: string; onLearn?: (message: string) => void | Promise<unknown>; emptyContent?: ReactNode }) {
+export type BrowserEmptyStateActions = {
+  startBrowser: () => Promise<void>
+  startingBrowser: boolean
+  canStart: boolean
+}
+
+export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, allowTeaching = true, profileId, onLearn, emptyContent }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; allowTeaching?: boolean; profileId?: string; onLearn?: (message: string) => void | Promise<unknown>; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [startingBrowser, setStartingBrowser] = useState(false)
@@ -525,7 +531,8 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     : connected && displayFrame ? 'Live'
       : completed ? 'Completed'
         : retainedFrame ? 'Disconnected'
-          : !session ? 'Idle'
+          : startingBrowser ? 'Opening…'
+            : !session ? 'No browser open'
             : linkState === 'reconnecting' ? 'Reconnecting…'
               : linkState === 'failed' ? 'Not connected'
                 : 'Starting…'
@@ -540,7 +547,8 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     </button>
   )
   const teachToggle = allowTeaching && connected && canControl && <button type="button" className={tertiaryButtonClass} aria-label="Teach task" title="Teach task" aria-expanded={teachOpen} onClick={() => setTeachOpen(value => !value)}><BookOpen className="h-4 w-4" aria-hidden="true" /><span className="browser-action-label">Teach task</span></button>
-  const startToggle = canWrite && !connected && !displayFrame && !replayURL && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={() => void startBrowser()}>{startingBrowser ? 'Starting…' : 'Start browser'}</button>
+  const showingEmptyContent = Boolean(emptyContent) && sessionsLoaded && sessions.length === 0 && !displayFrame && !replayURL
+  const startToggle = !(showingEmptyContent && typeof emptyContent === 'function') && canWrite && !connected && !displayFrame && !replayURL && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={() => void startBrowser()}>{startingBrowser ? 'Starting…' : 'Start browser'}</button>
   function navigateAddress() {
     const value = address.trim()
     send({ type: 'navigate', url: /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}` })
@@ -614,7 +622,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
           icon={Monitor}
           title="Browser"
           showWalkthrough={showGuide}
-          subtitle={browserPicker ?? (sessions.length ? undefined : 'See what your helper does in its browser. Take control anytime.')}
+          subtitle={browserPicker ?? (sessions.length ? undefined : 'Watch your helper browse websites. You can take control when needed.')}
           context={<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" role="status"><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}{singleBrowserLabel && <span className="text-muted-foreground/80">· {singleBrowserLabel}</span>}{lastAction && <span className="text-muted-foreground/80">·</span>}{lastAction}</span>}
           actions={<>
             {startToggle}
@@ -670,7 +678,7 @@ Review this browser demonstration. Inspect its recorded evidence and test errors
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.pasteFromClipboard() }}>Paste</button>
         </div>}
         {retainedFrame && <span className="pointer-events-none absolute bottom-3 right-3 rounded bg-background/90 px-3 py-1 text-xs shadow">{completed ? 'Completed' : 'Disconnected'} · Last frame</span>}
-      </div> : emptyContent && sessionsLoaded && sessions.length === 0 && !startingBrowser ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground">{centered}</div>}
+      </div> : showingEmptyContent ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{typeof emptyContent === 'function' ? emptyContent({ startBrowser, startingBrowser, canStart: canWrite }) : emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground">{centered}</div>}
       {(readOnly && !minimal) || session === 'shared-browser' ? <p className="live-browser-footer shrink-0 border-t border-border px-3 py-1 text-[11px] text-muted-foreground">{readOnly && !minimal ? 'Playwright test · Watch-only. Video replay is recorded automatically.' : 'Shared browser · everyone uses the same tabs and sign-ins. Coordinate before making changes.'}</p> : null}
     </section>
   )

@@ -5,10 +5,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { BrowserWorkspacePanel } from './BrowserWorkspacePanel'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
 const mocks = vi.hoisted(() => ({ learn: undefined as undefined | ((message: string) => unknown), send: vi.fn() }))
+vi.mock('./ChromeExtensionConnection', () => ({ ChromeExtensionConnection: () => null, useChromeExtensionConnection: () => ({ status: { selected: false, connected: false, tabs: 0 }, loading: false, busy: false }) }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: mocks.send }))
 vi.mock('./WorkflowLiveBrowser', () => ({ default: (props: { onLearn?: (message: string) => unknown }) => { mocks.learn = props.onLearn; return null } }))
 const cleanups: (() => void)[] = []
-afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks() })
+afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); mocks.learn = undefined })
 async function mount(onAsk?: (message: string) => Promise<void>) {
  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
  const root = createRoot(document.createElement('div'))
