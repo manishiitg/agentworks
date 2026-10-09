@@ -59,7 +59,7 @@ func codingAgentUsesStructuredTransportForChat(provider string, retainsTmux bool
 // to structured JSON. When such a turn landed in a person's retained chat (a
 // crew schedule posting its "Daily wrap-up" into the project conversation) it
 // replaced the chat's tmux agent with a structured one; the person's later
-// messages were queued for a turn that never came (RTS 2026-09-25). Retained
+// messages were queued for a turn that never came (server A 2026-09-25). Retained
 // panes that go idle are closed by the idle reaper.
 func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
 	if req == nil {

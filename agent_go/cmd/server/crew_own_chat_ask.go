@@ -16,7 +16,7 @@ import (
 // else's continues their reader chat. Only Crews and workflows calling a Crew
 // get a separate per-caller conversation. Before this, an owner's MCP ask
 // opened a new "Called by external connection" chat with a machine-written
-// task instead of their message (RTS 2026-09-28).
+// task instead of their message (server A 2026-09-28).
 
 // crewOwnChatAskTurn runs the turn; tests replace it.
 var crewOwnChatAskTurn func(api *StreamingAPI, ctx context.Context, reqMap map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error)

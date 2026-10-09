@@ -6,7 +6,7 @@ import (
 )
 
 // A Codex chat in Code said "the UI control tools aren't available" because the prompt told it to "discover tools through the current runtime's tool search", which for Codex
-// is its own tool listing, not the platform's search_tools (Excellence, 2026-10-04). The prompt must name search_tools and say platform tools are bridge tools.
+// is its own tool listing, not the platform's search_tools (server B, 2026-10-04). The prompt must name search_tools and say platform tools are bridge tools.
 func TestCodePromptNamesTheBridgeToolDiscovery(t *testing.T) {
 	prompt := renderProductPrompt()
 	for _, want := range []string{"search_tools", "bridge tool routing", "is not missing"} {

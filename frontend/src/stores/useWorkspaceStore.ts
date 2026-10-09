@@ -566,7 +566,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         // callers who want to update the scope should call setActiveFolder() separately.
         const effectiveFolder = folder ?? get().activeFolder ?? undefined
         // Never walk the whole workspace root: on a shared server it holds
-        // every user's files (RTS: 652k files, 11-36 s per request, slowing
+        // every user's files (server A: 652k files, 11-36 s per request, slowing
         // every other request on page open). A root request is capped at two
         // levels; deeper folders load when opened.
         if (!effectiveFolder && options?.maxDepth === undefined) {

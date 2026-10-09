@@ -96,7 +96,7 @@ type promptContext struct {
 // codeHostSafetyInstructions are the rules for a Code project's agent. A Code project is a shared
 // server that other people's projects also run on; its agent may write code, install packages and
 // run tools for the project, but must keep to the project and never turn the server into a service
-// for someone else (Ashutosh's Code chat, excellence, 2026-09-30: a browser IDE opened to the
+// for someone else (Ashutosh's Code chat, server B, 2026-09-30: a browser IDE opened to the
 // internet and used to browse the server's folders).
 const codeHostSafetyInstructions = `## Working on a shared server
 

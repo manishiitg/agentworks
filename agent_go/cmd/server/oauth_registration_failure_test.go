@@ -13,7 +13,7 @@ import (
 	"github.com/manishiitg/mcpagent/oauth"
 )
 
-// PLAT-708 (Confida, 2026-10-07): Vercel rejected our registration for a hosted callback, yet the person was
+// PLAT-708 (server C, 2026-10-07): Vercel rejected our registration for a hosted callback, yet the person was
 // linked to vercel.com/oauth/authorize with no client and saw "The app ID is invalid". A failed registration must
 // return no authorize URL at all, say why in words, and mark the app "Needs admin setup" in Vault's Add app until a
 // client is configured.

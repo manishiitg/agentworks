@@ -3,7 +3,7 @@ import type { PollingEvent } from '../services/api-types'
 import { buildTranscriptItems, selectTerminalEvents } from '../../shared/session/transcript/terminalEventTranscript'
 import { intermediateUpdateFromTranscriptChunk } from '../utils/transcriptChunkUpdates'
 
-// RTS SDE crew, 2026-09-23: live SSE delivered Claude's narration as the
+// server A SDE crew, 2026-09-23: live SSE delivered Claude's narration as the
 // projected llm_generation_end `<chunk>-update`, while the durable journal
 // holds the same row as a raw transcript streaming_chunk. When both reached a
 // tab they rendered as two items with one key and the user saw no text.

@@ -8,7 +8,7 @@ import (
 )
 
 // Run mode must be told to consult what the workflow knows and how to turn a
-// request into a run (RTS 2026-09-25 review: learnings/KB were optional,
+// request into a run (server A 2026-09-25 review: learnings/KB were optional,
 // route matching and per-run values were not described).
 func TestRunPromptCoversKnowledgeAndRouteSelection(t *testing.T) {
 	raw, err := productConfigFiles.ReadFile("prompts/run.md")

@@ -436,7 +436,7 @@ var retainedCLIAtPrompt = func(api *StreamingAPI, sessionID string) bool {
 // endIdleTurnForRuntimeChange applies the between-turns rule for a message queued
 // only because the runtime changed. In tmux live-input mode one streaming turn
 // stays open while the person keeps typing into the running CLI, so it holds the
-// input lane long after the CLI finished answering. Code chat sde-private on RTS,
+// input lane long after the CLI finished answering. Code chat sde-private on server A,
 // 2026-10-07: a turn open since 05:40 held the lane, a deploy at 06:39 changed the
 // Code definition, and the message sent at 07:31 stayed "Queued" with "Working…"
 // forever. When the CLI has been idle at its prompt for runtimeChangeIdleChecks
@@ -444,7 +444,7 @@ var retainedCLIAtPrompt = func(api *StreamingAPI, sessionID string) bool {
 // close the CLI: interruptWorkflowPolicySession) and release its busy markers as
 // Stop does; the watcher then kicks the queue and the message relaunches the CLI
 // with the new runtime. A CLI that is mid-response keeps the turn: a relaunch
-// mid-turn killed a running Muse turn (Excellence 2026-10-03).
+// mid-turn killed a running Muse turn (server B 2026-10-03).
 func (api *StreamingAPI) endIdleTurnForRuntimeChange(sessionID, occupant string, idleChecks *int) bool {
 	api.conversationTurnQueueMu.Lock()
 	waiting := api.conversationTurnQueueRuntimeChange[sessionID]
@@ -629,7 +629,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 
 // staleWaitingTurnAge: a message that has waited this long without ever starting was stuck behind
 // a turn that never finished; the person has almost always resent it since. Running it after a
-// restart would repeat work (excellence, 2026-09-30: the same demo-data request queued three times).
+// restart would repeat work (server B, 2026-09-30: the same demo-data request queued three times).
 const staleWaitingTurnAge = 30 * time.Minute
 
 // dropStaleWaitingTurns removes turns that never started and are older than staleWaitingTurnAge.

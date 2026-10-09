@@ -16,7 +16,7 @@ func chatMessage(role llmtypes.ChatMessageType, text string) llmtypes.MessageCon
 	return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: text}}}
 }
 
-// RTS 2026-09-25: a builder chat reached 37,882 rows (1,407 unique) and 18
+// server A 2026-09-25: a builder chat reached 37,882 rows (1,407 unique) and 18
 // leading system prompts. Each turn end merged the file with the agent's
 // in-memory history; side writers (live input, structured completion) had
 // added rows only the file held, so the memory was never a prefix of the file

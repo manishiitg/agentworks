@@ -218,7 +218,7 @@ everyone does in Code.**
 Code is private and has a live terminal, so the server's isolation between
 users has to hold:
 
-- **Done (PLAT-364 step 1, deployed on RTS 2026-09-28, QA #236).**
+- **Done (PLAT-364 step 1, deployed on server A 2026-09-28, QA #236).**
   - Each sandboxed command gets its own private `/tmp`, and the tmux server
     socket is unreachable from the sandbox.
   - `HOME` is per workflow or Crew.
@@ -261,7 +261,7 @@ users has to hold:
 6. **Per-user browser sockets** (security prerequisite above).
 7. **QA ticket** after each user-visible step, per the QA template.
 
-## Acceptance (live, on RTS)
+## Acceptance (live, on server A)
 
 1. **Privacy.**
    - User A creates a Code. User B cannot see it in lists, search, MCP or the
@@ -332,7 +332,7 @@ Code ships a basic setup first; integrations come later. In Code's
   inside the same Landlock sandbox as the agent's shell tool (private /tmp and
   /dev/pts). A person without a slot gets none. One per person per Code; it keeps
   running while the tab is closed and stops after 30 idle minutes, on Stop, or when
-  the Code is deleted. Not enabled on RTS until its instance-role exposure is closed.
+  the Code is deleted. Not enabled on server A until its instance-role exposure is closed.
   See docs/DECISIONS.md, 2026-10-03.
 
 ## To think about

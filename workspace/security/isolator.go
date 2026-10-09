@@ -27,7 +27,7 @@ type Isolator struct {
 	// ExtraEnv is the per-call environment the platform hands a command (session token, secrets, workflow
 	// variables, step paths). For a slot it must be in the request that is written when the command is wrapped:
 	// a command run as another account only sees what that request carries, so values appended to the command's
-	// environment afterwards never reach it (Confida 2026-10-01: 401 from the tools gateway, no secrets, no
+	// environment afterwards never reach it (server C 2026-10-01: 401 from the tools gateway, no secrets, no
 	// variables in a slotted workflow's shell). Callers pass only keys they have already filtered.
 	ExtraEnv     map[string]string
 	ReadPaths    []string
@@ -304,7 +304,7 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		// The shared socket folder the sandbox grants (landlockSystemWritePaths, the private /tmp's kept paths). Without it
 		// agent-browser falls back to $XDG_RUNTIME_DIR/agent-browser (/run/user/<uid>), which no sandbox grants: in native mode
 		// (no shared HOME to replace) every Code project browser failed with "Socket directory ... is not writable" once the
-		// mount-namespace fallback, which could reach that folder, was removed (Excellence 2026-10-03).
+		// mount-namespace fallback, which could reach that folder, was removed (server B 2026-10-03).
 		cmd.Env = append(cmd.Env, "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir)
 	}
 	pythonPath := tmp

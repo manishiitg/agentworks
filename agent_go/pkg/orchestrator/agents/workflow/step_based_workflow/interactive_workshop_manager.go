@@ -5086,7 +5086,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 					// The builder chat's own shell captured its environment at turn
 					// start; push the change there too so the next shell command in
-					// this same turn sees it (RTS 2026-09-25: an attached
+					// this same turn sees it (server A 2026-09-25: an attached
 					// SENTRY_AUTH_TOKEN stayed unset until the user sent another message).
 					notifySecretsAttached(iwm.secretsAttached, currentSecrets, removeSecrets)
 

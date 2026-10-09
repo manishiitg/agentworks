@@ -949,7 +949,7 @@ type QueryRequest struct {
 	// Triggered by: "manual", "cron" — for tracking execution source
 	TriggeredBy string `json:"triggered_by,omitempty"`
 	// TriggeredByLabel names who or what started the run, for display only
-	// ("Called by RTS Flow Tester", "Schedule: Daily digest").
+	// ("Called by server A Flow Tester", "Schedule: Daily digest").
 	TriggeredByLabel string `json:"triggered_by_label,omitempty"`
 	// CostSource* name the product schedule, reminder or trigger that sent
 	// this turn (job id, display name, automation run id). Set only by the
@@ -2200,7 +2200,7 @@ func runServer(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to register Brain runtime: %v", err)
 		}
 		// The chat is told the caller's own role: without it the model could not tell an administrator from anyone else
-		// and asked the owner whether they were one before it would set up backup (RTS, 2026-10-06).
+		// and asked the owner whether they were one before it would set up backup (server A, 2026-10-06).
 		if err := profileRegistry.RegisterPromptVariables(knowledgebaseproduct.ProfileID, func(_ context.Context, rt agentprofiles.RuntimeContext) (map[string]string, error) {
 			return map[string]string{"CALLER": knowledgebaseCallerLine(rt.UserID)}, nil
 		}); err != nil {
@@ -4169,7 +4169,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if req.RestartCodingCLI {
 		// The product chat's runtime changed while a turn was running (PLAT-676): this message waits
 		// for that turn, then the CLI is relaunched for it. Closing it on arrival killed the running
-		// Muse turn ("muse tmux session ... died before run completion", Excellence 2026-10-07).
+		// Muse turn ("muse tmux session ... died before run completion", server B 2026-10-07).
 		if api.queueOccupiedConversationTurnForRuntimeChange(w, r, currentUserID, sessionID, req) {
 			return
 		}
@@ -4203,7 +4203,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	// A different coding provider than the retained CLI's makes that CLI the wrong target, whatever the definition says: a message must never be steered into
 	// (or fail against) the old provider's terminal. Before this a provider change was invisible here, so after switching Muse to Codex mid-chat the next sends went to the old Muse
-	// record and answered 409 delivery_uncertain until a watchdog cleared it (Code on Excellence, 2026-10-04). Like any runtime change it waits for a running turn
+	// record and answered 409 delivery_uncertain until a watchdog cleared it (Code on server B, 2026-10-04). Like any runtime change it waits for a running turn
 	// and then relaunches on the selected provider (the native conversation resumes across providers).
 	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, api.effectiveProviderOf(r.Context(), req))
 	if providerChanged {
@@ -4213,7 +4213,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || !requestLLMConfigOverridesManifest(req)) {
 		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
 		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
-		// reasoning effort mid-turn, Excellence 2026-10-03). While a turn is running, the message waits in the durable turn queue;
+		// reasoning effort mid-turn, server B 2026-10-03). While a turn is running, the message waits in the durable turn queue;
 		// when it runs, this check sees no running turn and relaunches with the new runtime. A retained CLI that is idle at its
 		// prompt does not count as mid-turn: the queue watcher ends that turn and the message runs (see endIdleTurnForRuntimeChange).
 		if api.queueOccupiedConversationTurnForRuntimeChange(w, r, currentUserID, sessionID, req) {
@@ -8141,7 +8141,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// talk to, so this error must stop the turn rather than be logged
 						// and stepped over. Streaming anyway sends the turn into a dead
 						// pane where it produces nothing and sits until cancellation:
-						// observed on an RTS Latency cron run as two consecutive ~32-minute
+						// observed on an server A Latency cron run as two consecutive ~32-minute
 						// turns, which consumed the run's budget and killed every producing
 						// step scheduled after them. Failing here also preserves any queued
 						// background-child completion, so recovery retries only the parent
@@ -9696,7 +9696,7 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	// mcpagent Session owns a follow-up watch that emits the input's own
 	// completion (or closes it as answered by this response). Settling here
 	// took the older response as the input's answer and left the CLI's real
-	// reply with no stream (Excellence 2026-09-29 06:27).
+	// reply with no stream (server B 2026-09-29 06:27).
 	if completionMetadataFlag(event, mcpagent.LiveInputFollowupMetadataKey) {
 		log.Printf("[RETAINED_TURN] Completion precedes a live-input follow-up; keeping the input's turn open session=%s", sessionID)
 		return
@@ -10894,7 +10894,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	// wrapped turn and reports the transport that actually accepted the input.
 	tryColdRetainedFallback := true
 	if sessionSecretsChanged(sessionID) {
-		// The CLI still holds the secrets it launched with; typing into it would run on the old values (Excellence
+		// The CLI still holds the secrets it launched with; typing into it would run on the old values (server B
 		// 2026-10-07: rotated Unipile keys "not picked up"). A new turn relaunches it with the current ones.
 		log.Printf("[QUERY->LIVE] Secrets changed since session %s launched; starting a new turn instead of steering", sessionID)
 		return false
@@ -10954,7 +10954,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			if err != nil {
 				// The same proof the warm-session branch above accepts: the retained terminal is gone (Stop, a died CLI or a provider switch ended it), so nothing
 				// was sent and a fresh turn is safe. Answering 409 delivery_uncertain here left every send, and each of its 30 s retries, rejected until the
-				// stale record cleared (Code on Excellence, 2026-10-04: three 409s after a provider switch).
+				// stale record cleared (Code on server B, 2026-10-04: three 409s after a provider switch).
 				if liveInputErrorProvesNoTarget(err) {
 					log.Printf("[QUERY->LIVE] Retained terminal for session %s has no live target; starting a new turn: %v", sessionID, err)
 					return false

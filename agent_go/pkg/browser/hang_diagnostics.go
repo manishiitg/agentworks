@@ -24,8 +24,8 @@ import (
 // Hang diagnostics: when a managed-browser command times out, the agent-browser
 // daemon is usually stuck behind the page, so asking it for anything else hangs
 // too. This talks to the session's Chrome directly over its DevTools port and
-// saves what is needed to tell a busy page from a blocked one (RTS 2026-09-25:
-// every eval/get on the RTS simulation page timed out at 30s, with no evidence
+// saves what is needed to tell a busy page from a blocked one (server A 2026-09-25:
+// every eval/get on the server A simulation page timed out at 30s, with no evidence
 // either way).
 
 const (

@@ -298,7 +298,7 @@ func privateSandboxHome(env []string, home string) []string {
 
 // ensureScratchDir creates a scratch or cache folder the sandboxed command writes to. The platform creates it, so for a
 // command that runs as a slot account (a different user in the same group) it must be group-writable, or the slot
-// cannot create a temp file in its own TMPDIR (the private terminal launcher failed this way on Confida).
+// cannot create a temp file in its own TMPDIR (the private terminal launcher failed this way on server C).
 func ensureScratchDir(dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -308,7 +308,7 @@ func ensureScratchDir(dir string) {
 }
 
 // SlotHomeEnv gives a command that runs as a user's slot account the project's private home, whatever the service's own HOME is.
-// In native mode (NATIVE_WORKSPACE=true, Excellence) privateSandboxHome keeps the real host HOME for host CLIs, so an agent's shell
+// In native mode (NATIVE_WORKSPACE=true, server B) privateSandboxHome keeps the real host HOME for host CLIs, so an agent's shell
 // as the slot got the service account's home (/srv/agents/home), which the slot cannot even read, while the Code terminal used the
 // project's home: nvm installed in the terminal was invisible to the agent, which kept the system Node (2026-10-03). The home is the
 // same one the terminal uses: <the granted folder holding the working folder>/.sandbox-cache/home (a workflow's persistent

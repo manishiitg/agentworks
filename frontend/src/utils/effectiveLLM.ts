@@ -73,7 +73,7 @@ export function effectiveLLMUnderLock(
  * turn runs on the published default unless the caller's provider is itself
  * published or owned by a product profile, so that is what the label must say -- it read the workflow's
  * saved builder provider and announced "Sending to Claude Code" on a
- * deployment locked to Cursor (RTS, 2026-09-03).
+ * deployment locked to Cursor (server A, 2026-09-03).
  */
 export function effectiveProviderUnderLock(
   provider: string | null | undefined,

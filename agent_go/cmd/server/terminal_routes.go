@@ -1759,7 +1759,7 @@ func (api *StreamingAPI) canAccessTerminalSession(r *http.Request, sessionID str
 // botSessionTerminalAllowed lets the people who run a workflow open the
 // terminal of its Slack/WhatsApp bot sessions. Those sessions are owned by the
 // bot's own user, so the owner check alone left every human with a terminal
-// that 404ed and flipped back to the conversation (RTS 2026-09-25). The
+// that 404ed and flipped back to the conversation (server A 2026-09-25). The
 // terminal stream can type into the pane, so workflow readers (who may see the
 // run in the monitor) do not get it: Owner or Write access is required.
 func botSessionTerminalAllowed(ctx context.Context, session *ActiveSessionInfo) bool {

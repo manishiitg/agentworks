@@ -107,7 +107,7 @@ var sharedProjectExcludedRootFiles = map[string]bool{"product.json": true, "work
 // .sandbox-cache/home is the project's HOME (git credentials, ssh keys, CLI
 // logins), plus .git (remote URLs with tokens), .env files, .ssh, .claude.
 // Before this, any reader could open .sandbox-cache/home/.git-credentials
-// of a Crew (RTS 2026-09-28).
+// of a Crew (server A 2026-09-28).
 func sharedProjectHiddenPath(rel string) bool {
 	rel = strings.Trim(rel, "/")
 	if sharedProjectExcludedRootFiles[rel] {
@@ -577,7 +577,7 @@ func flattenSharedProjectFiles(root string, listing virtualtools.WorkspaceFolder
 	entries := []sharedProjectFileEntry{}
 	truncated := false
 	// A path is listed once: the workspace listing can name an entry both as a child and again at the level above it
-	// (every file and folder showed twice in a shared Crew, Excellence 2026-10-09).
+	// (every file and folder showed twice in a shared Crew, server B 2026-10-09).
 	listed := map[string]bool{}
 	var walk func(items []virtualtools.WorkspaceFolderItem) bool
 	walk = func(items []virtualtools.WorkspaceFolderItem) bool {

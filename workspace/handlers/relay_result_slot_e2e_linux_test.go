@@ -45,7 +45,7 @@ func TestRelayScriptWritesJSONAsItsSlotE2E(t *testing.T) {
 	if err := os.MkdirAll(output, 0750); err != nil {
 		t.Fatal(err)
 	}
-	// Same group-readable but non-writable output mode found in Excellence.
+	// Same group-readable but non-writable output mode found in server B.
 	if err := os.Chmod(output, 0750|os.ModeSetgid); err != nil {
 		t.Fatal(err)
 	}

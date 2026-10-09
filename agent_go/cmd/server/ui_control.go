@@ -180,7 +180,7 @@ func (b *uiControlBroker) unbind(session, id, token string) error {
 }
 
 // validObservedUIView accepts the view a page reports it is showing. It is an observation, not a command: a page on a tab the agent cannot open (Code's Terminal,
-// Plan or Suggestions) must still register and renew, or the agent sees "browser_disconnected" for as long as the person looks at that tab (Code on Excellence,
+// Plan or Suggestions) must still register and renew, or the agent sees "browser_disconnected" for as long as the person looks at that tab (Code on server B,
 // 2026-10-04). Which views an action may open stays with the contract (validateUIActionForContract); this only keeps the reported name well-formed.
 var observedUIViewName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
@@ -267,7 +267,7 @@ func (b *uiControlBroker) snapshot(session string) (uiSnapshot, error) {
 // onlyClient is the browser tab that receives a UI action for this chat. With
 // the chat open in several tabs it is the one in use: the visible tab that
 // became visible last, else the one last seen visible. Refusing whenever a
-// second tab existed left the agent unable to open any view (Confida
+// second tab existed left the agent unable to open any view (server C
 // 2026-10-06, PLAT-664); it still refuses when no tab can be told apart.
 func (b *uiControlBroker) onlyClient(session string) (*uiBinding, error) {
 	var candidates []*uiBinding

@@ -10,7 +10,7 @@ import (
 )
 
 // RegisterEmbeddedSkillsRendered parses every skill's YAML header and the server stops at startup
-// on an invalid one (excellence was down on 2026-10-01 over one unquoted "key: value" inside a
+// on an invalid one (server B was down on 2026-10-01 over one unquoted "key: value" inside a
 // description). Check every SKILL.md in the repo here, so the build fails first.
 func TestEverySkillFrontmatterIsValidYAML(t *testing.T) {
 	checked := 0

@@ -44,7 +44,7 @@ class ReleaseTraversalTest(unittest.TestCase):
         (build / "bin").mkdir(parents=True)
         runner = build / "bin" / "video-studio-landlock-runner"
         runner.write_text("x")
-        # The RTS layout of 2026-10-04: releases/ 0700 (a umask-077 mkdir), so slots could not reach the launcher.
+        # The server A layout of 2026-10-04: releases/ 0700 (a umask-077 mkdir), so slots could not reach the launcher.
         os.chmod(app / "releases", 0o700)
         os.chmod(build, 0o700)
         os.chmod(build / "bin", 0o700)

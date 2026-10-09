@@ -62,8 +62,8 @@ read/search and web read/search tools; commands, writes and subagents still
 use the bridge in this hybrid mode. Local **Full CLI** enables the complete native
 toolset alongside MCP on a person's own Mac (single-user; no switch needed).
 Keep Native agent tools on for the chat. See [AGY Full CLI](../design/agy_full_native_tools.md)
-for the mode contract and local certification. AGY is excluded from the RTS and
-excellence rollout for now.
+for the mode contract and local certification. AGY is excluded from the server A and
+Server B rollout for now.
 
 AgentWorks installs a temporary `.gemini/hooks.json` entry in
 the AGY workspace for this gate and restores the prior hook file after the

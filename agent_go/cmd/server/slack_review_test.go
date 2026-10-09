@@ -634,7 +634,7 @@ func TestSlackEmailBlockTakesEffectOnNextTurn(t *testing.T) {
 }
 
 // A workflow's own Slack app works with no shared Slack bot saved at all
-// (RTS 2026-09-25: the turn failed with "bot connector config not found:
+// (server A 2026-09-25: the turn failed with "bot connector config not found:
 // slack" and Slack showed "You don't currently have access").
 func TestSlackOwnAppTurnNeedsNoSharedConnectorConfig(t *testing.T) {
 	store, err := chathistory.NewFilesystemStore(t.TempDir())

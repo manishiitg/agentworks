@@ -8,7 +8,7 @@ import (
 )
 
 // A Crew's workflow.json has top-level fields WorkflowManifest does not model. Rewriting it through the struct dropped its
-// internal `triggers`, so a workflow step that called the Crew died with "internal trigger not found" (Confida, 2026-10-07).
+// internal `triggers`, so a workflow step that called the Crew died with "internal trigger not found" (server C, 2026-10-07).
 func TestRewritingAManifestKeepsFieldsTheStructDoesNotModel(t *testing.T) {
 	stub, _ := newScheduleRunWorkspaceStub(t)
 	ws := "Crew/blueprint-1"

@@ -418,7 +418,7 @@ Creation and account-role editing use the same picker. Keyboard selection and
 submitted role/product behavior are covered in the component regressions.
 
 The user clarified that "slots" means the root-provisioned Linux execution
-accounts used by RTS and Excellence. The attempted relocation to global-only
+accounts used by server A and server B. The attempted relocation to global-only
 account creation and local navigation visibility change were withdrawn. The UI
 still does not provision slots or check them when granting execution products;
 the current-state document records this unresolved boundary. No account, role,

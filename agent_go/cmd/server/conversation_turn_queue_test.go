@@ -239,7 +239,7 @@ func TestRecoveryDropsStaleWaitingTurnsOnly(t *testing.T) {
 }
 
 // The Stop button (handleStopSession) releases the stopped turn's markers too: after it, the next
-// message is accepted instead of queueing behind a dead turn (excellence, a Muse Code chat).
+// message is accepted instead of queueing behind a dead turn (server B, a Muse Code chat).
 func TestStopButtonReleasesTheStoppedTurnsMarkers(t *testing.T) {
 	files := map[string]string{}
 	api := newConversationTurnQueueTestAPI(files)
@@ -300,11 +300,11 @@ func TestClosingACLIOnPurposeReleasesTheTurnMarkers(t *testing.T) {
 	closeCodingCLIAndReleaseTurnMarkers("session-2", "no api") // must not panic without an API
 }
 
-// Code chat sde-private, RTS 2026-10-07: a deploy changed the Code definition
+// Code chat sde-private, server A 2026-10-07: a deploy changed the Code definition
 // while a tmux live-input turn held the input lane, and the message queued for
 // the relaunch stayed "Queued" forever although the CLI sat idle at its prompt.
 // An idle CLI's turn is ended after runtimeChangeIdleChecks ticks; a CLI that is
-// mid-response keeps its turn (Excellence 2026-10-03).
+// mid-response keeps its turn (server B 2026-10-03).
 func TestRuntimeChangeEndsOnlyAnIdleLiveTurn(t *testing.T) {
 	original := retainedCLIAtPrompt
 	t.Cleanup(func() { retainedCLIAtPrompt = original })

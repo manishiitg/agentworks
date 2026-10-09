@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Download a published build and check it (PLAT-426). Runs ON THE TARGET SERVER (a product account, or video-studio on RTS); needs curl, tar, gzip, python3.
+# Download a published build and check it (PLAT-426). Runs ON THE TARGET SERVER (a product account, or video-studio on server A); needs curl, tar, gzip, python3.
 #
 #   fetch-build.sh <tag> <asset> <expected-manifest-sha256> <dest>
 #
 #   tag      build-<builder8>-<mcpagent8>-<provider8>, a release of github.com/manishiitg/agentworks-builds (public: no credential)
-#   asset    build.tar.gz (the whole build) or build-rts.tar.gz (the trimmed copy for RTS)
+#   asset    build.tar.gz (the whole build) or build-rts.tar.gz (the trimmed copy for server A)
 #   hash     sha256 of the build's manifest.json as announced by the build host (deploy.sh reads it there)
 #   dest     the folder to create; it must not exist
 #

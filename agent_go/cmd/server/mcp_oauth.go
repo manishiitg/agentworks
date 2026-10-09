@@ -143,7 +143,7 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	// Relay authoring needs the server switch AND an account that may edit and has the Relays product (the same rule
 	// validateMCPOAuthBuilderSelection enforces); Builder editing needs the server switch. A connection never asks for,
 	// shows or grants what the server or the account would refuse: a client that requests every advertised scope used
-	// to get a 404 on Allow (Excellence 2026-10-05).
+	// to get a 404 on Allow (server B 2026-10-05).
 	canRelays := builderOn && userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
 		switch scope {

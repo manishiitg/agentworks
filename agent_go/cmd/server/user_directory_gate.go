@@ -20,7 +20,7 @@ func canonicalizeDirectoryUserClaims(claims *UserClaims) {
 // Why this matters: a JWT stays cryptographically valid for its whole
 // lifetime, so a session minted before a deployment adopted the user
 // directory (or before a migration renamed its users) keeps authenticating
-// as a ghost. Seen live on RTS 2026-09-03: the migration had moved
+// as a ghost. Seen live on server A 2026-09-03: the migration had moved
 // `_users/default` to the admin's real ID, but a browser still held a
 // pre-migration token with user_id "default" -- every request resolved to
 // that phantom user, so Video Studio showed zero projects and the workflow

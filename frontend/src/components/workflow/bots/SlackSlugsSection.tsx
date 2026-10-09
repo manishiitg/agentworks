@@ -9,7 +9,7 @@ import type { SlackTargetSettings } from '../../../services/api-types'
 // The platform ("AgentWorks") bot for one target (docs/design/slack_slugs.md,
 // PLAT-668): its switch and the platform channels it answers in. Rendered
 // only when the server has a platform bot; a server with own bots only never
-// shows it (RTS 2026-10-07).
+// shows it (server A 2026-10-07).
 
 const CHANNEL_RE = /^[CG][A-Z0-9]{2,}$/
 

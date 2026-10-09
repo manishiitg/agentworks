@@ -31,7 +31,7 @@ purpose.
 
 Problems: nobody can see which of 1-3 a server account really is; a sign-in
 on the Providers page silently replaces the login everyone uses (Muse on
-excellence, 2026-09-28); and a person cannot share their own account with a
+Server B, 2026-09-28); and a person cannot share their own account with a
 workflow, a Crew or a colleague.
 
 ## Model

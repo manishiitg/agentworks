@@ -155,7 +155,7 @@ For each `_users/<owner>/Chats/Work/projects/<p>` with a valid work `product.jso
    change.
 2. **Switch readers and writers** to the resolver and `Crew/`, and add the migration. Put the guard
    test in.
-3. **Verify on an isolated server** (per the P0-gate recipe) with a copy of RTS's 4 crews (18 GB, all
+3. **Verify on an isolated server** (per the P0-gate recipe) with a copy of server A's 4 crews (18 GB, all
    one owner) and their `~/.claude` stores:
    - owner chat resumes the **same** native CLI session, for Claude, Cursor and Codex;
    - a reader gets Run mode and cannot write;

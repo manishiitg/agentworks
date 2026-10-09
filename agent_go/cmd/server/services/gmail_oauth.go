@@ -61,7 +61,7 @@ func gmailOAuthTokenDir() string {
 		return v
 	}
 	// Same rule as the MCP connector tokens and the DCR client cache: a host
-	// whose ~/.config is not writable by the service user (RTS: root-owned)
+	// whose ~/.config is not writable by the service user (server A: root-owned)
 	// points XDG_CONFIG_HOME at a writable tree, and this must follow it.
 	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
 		return filepath.Join(xdg, "agentworks", "gmail-oauth")
@@ -126,7 +126,7 @@ func readGmailClientSecretFile() (string, string, error) {
 	if path == "" {
 		// Same rule as the MCP connector tokens, the DCR client cache, and the
 		// Gmail refresh-token directory: a host whose ~/.config is not
-		// writable by the service user (RTS: root-owned) points
+		// writable by the service user (server A: root-owned) points
 		// XDG_CONFIG_HOME at a writable tree instead.
 		if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
 			path = filepath.Join(xdg, "gws", "client_secret.json")

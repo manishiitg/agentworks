@@ -1390,7 +1390,7 @@ describe('product side-channel events', () => {
   })
 })
 
-// RTS rtslatency, Cursor over tmux: the confirmation of a steered question and
+// server A rtslatency, Cursor over tmux: the confirmation of a steered question and
 // its whole one-chunk reply arrived in one batch. The backend dates the
 // question no later than the reply it held (equal time, journal order breaks
 // the tie); the reply must render after the question as the newest row.

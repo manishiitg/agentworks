@@ -61,7 +61,7 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	// A versioned diagnostic must not lock the binding twice (RTS deadlock, 2026-10-07).
+	// A versioned diagnostic must not lock the binding twice (server A deadlock, 2026-10-07).
 	if got := b.Status().ExtensionVersion; got != "0.4.8" {
 		t.Fatalf("extension version = %q, want 0.4.8", got)
 	}

@@ -2,7 +2,7 @@
 # Publish a finished build to the PUBLIC GitHub repo that only holds builds (PLAT-426), so servers download it themselves.
 #
 #   publish-build.sh <build-dir>     publish (idempotent): release build-<builder8>-<mcpagent8>-<provider8> with the assets
-#                                    build.tar.gz (the whole build folder), build-rts.tar.gz (the trimmed copy RTS needs),
+#                                    build.tar.gz (the whole build folder), build-rts.tar.gz (the trimmed copy server A needs),
 #                                    manifest.json, SHA256SUMS; then keep only the newest 8 build releases per architecture
 #   publish-build.sh --list          the build releases on GitHub (anonymous, read-only)
 #
@@ -24,7 +24,7 @@ TAG_RE = re.compile(r"^build-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}(-arm64)?$")
 ASSETS = ("build.tar.gz", "build-rts.tar.gz", "manifest.json", "SHA256SUMS")
 MAX_ASSET = 2 * 1024**3 - 1
 REPOS = ("mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go")
-# Left out of the copy RTS needs: the two library sources and the CLI downloads (RTS never used them). Same as ship_build_to_rts.
+# Left out of the copy server A needs: the two library sources and the CLI downloads (server A never used them). Same as ship_build_to_rts.
 RTS_EXCLUDE = ("source/mcpagent", "source/multi-llm-provider-go", "downloads")
 
 

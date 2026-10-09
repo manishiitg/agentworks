@@ -696,7 +696,7 @@ func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *te
 
 // PLAT-673: a member with the read-only workflow role still owns their Code
 // project, so its browser is theirs to use. Requiring the workflow role left
-// every Code browser on excellence stuck loading (all status checks 403).
+// every Code browser on server B stuck loading (all status checks 403).
 func TestCodeBrowserNeedsProjectOwnershipNotTheWorkflowRole(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":["code"]}]}`)

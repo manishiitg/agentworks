@@ -12,7 +12,7 @@ CODING_CLI_BINARIES=(claude codex cursor-agent pi muse agy)
 install -d -m 0755 "$prefix/bin" "$service_home/.local/bin"
 export PATH="$prefix/node/bin:$prefix/bin:$service_home/.local/bin:$PATH"
 # Clean abandoned npm staging copies that can otherwise leave the old binary
-# on PATH after an interrupted update (RTS 2026-09-25).
+# on PATH after an interrupted update (server A 2026-09-25).
 rm -rf "$prefix"/lib/node_modules/@anthropic-ai/.claude-code-* \
   "$prefix"/lib/node_modules/@earendil-works/.pi-coding-agent-* \
   "$prefix"/lib/node_modules/@openai/.codex-*
@@ -23,7 +23,7 @@ install_node_clis() {
 }
 install_node_clis
 # A new release can be tagged latest before its platform binary package is downloadable (Codex 0.160.1 on 2026-10-05
-# failed an RTS deploy for a few minutes). Wait and reinstall before the launch check below fails the deploy.
+# failed an server A deploy for a few minutes). Wait and reinstall before the launch check below fails the deploy.
 for attempt in 1 2 3 4; do
   timeout 45 "$prefix/bin/codex" --version >/dev/null 2>&1 && break
   [[ "$attempt" == 4 ]] && break

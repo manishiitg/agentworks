@@ -21,7 +21,7 @@ import (
 // because nothing recorded the outcome — so the choice drifted to habit in one
 // workflow (the same four modules every run) and to everything-at-once in another.
 //
-// The evidence that this was costing real findings: confida ran seven reviewers
+// The evidence that this was costing real findings: Server C ran seven reviewers
 // in one cycle. All seven wrote substantive artifacts to disk — the knowledgebase
 // reviewer caught a half-finished migration where two live consumers were reading
 // a deleted path and silently getting nothing. Every one of those seven left

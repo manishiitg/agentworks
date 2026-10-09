@@ -143,7 +143,7 @@ func slackPlatformBot() (*services.SlackService, services.SlackConnection, bool)
 	}
 	// A platform bot exists only when the server's default connection is an
 	// unscoped app with both tokens and switched on. Own bots never count:
-	// without one, "Use the AgentWorks bot" is hidden and refused (RTS
+	// without one, "Use the AgentWorks bot" is hidden and refused (server A
 	// 2026-10-07: the switch showed on a server with own bots only).
 	conn, found := slackAppConnection("")
 	if !found || strings.TrimSpace(conn.WorkspacePath) != "" {

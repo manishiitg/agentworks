@@ -7,7 +7,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-// Admitting a turn must not strip a live Code CLI's write access (RTS 2026-10-06: every write failed with "Permission
+// Admitting a turn must not strip a live Code CLI's write access (server A 2026-10-06: every write failed with "Permission
 // denied" after a message to a running CLI), while a moved Crew's stale guard still becomes read-only (PLAT-442).
 func TestAdmissionKeepsACurrentGuardAndPinsAStaleOne(t *testing.T) {
 	const live, moved = "guard-live-code", "guard-moved-crew"
@@ -26,7 +26,7 @@ func TestAdmissionKeepsACurrentGuardAndPinsAStaleOne(t *testing.T) {
 }
 
 // handleQuery rewrites a Builder request's mode from workflow_phase to multi-agent before tools run; the Builder must
-// still get authority for its Brain project tools, and nothing outside the Builder phase may (RTS 2026-10-06).
+// still get authority for its Brain project tools, and nothing outside the Builder phase may (server A 2026-10-06).
 func TestKnowledgeProjectBuilderAuthoritySurvivesTheModeRewrite(t *testing.T) {
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
 	builder := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", admittedWorkflowPhase: true}

@@ -397,7 +397,7 @@ admission. Existing non-AgentWorks products keep their own tool allowlists.
 Service deployments should set `AGENTWORKS_MCP_STATE_DIR` to a private durable
 state directory, outside release/workspace folders. Startup refreshes the shipped
 base catalog there and preserves its user overlay. When migrating an existing
-release layout, copy the old current overlay before switching releases (as RTS
+release layout, copy the old current overlay before switching releases (as server A
 deployment does). Local startup can keep its existing config path by leaving the
 variable unset. Neither secrets nor user server entries belong in product.yaml.
 

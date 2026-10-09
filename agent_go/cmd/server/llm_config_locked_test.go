@@ -72,7 +72,7 @@ func TestResolveLockedLLMHonoursProfileBindingsAndFallsBackOtherwise(t *testing.
 // A workflow's saved llm_config is what the Builder chat, scheduled runs and
 // step tiers actually use, so the lock must rewrite it. Locking to a
 // coding-agent provider (Cursor) means locking to that provider's role
-// profile -- all tiers on Cursor's auto routing as of 2026-09-03 (a live RTS
+// profile -- all tiers on Cursor's auto routing as of 2026-09-03 (a live server A
 // run hit quota_exhausted on the previously-pinned grok-4.6 with no
 // fallback) -- not flattening every role onto one hardcoded model; the saved
 // config is never mutated and passes through untouched off-lock.

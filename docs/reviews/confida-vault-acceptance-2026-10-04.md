@@ -1,4 +1,4 @@
-# Confida Vault acceptance — 2026-10-04
+# Server C Vault acceptance — 2026-10-04
 
 ## Baseline (read-only inspection)
 
@@ -28,7 +28,7 @@ route `/api/vault/mcp`.
 
 1. Save private backups of deployment settings, users, MCP metadata and OAuth
    credentials, and record the previous release for rollback.
-2. Build from main, verify the manifest and stage the Confida release before
+2. Build from main, verify the manifest and stage the server C release before
    changing the running deployment.
 3. Resolve existing MCP migration before activation: enabling governed runtime
    without corresponding private/Vault connections can invalidate old catalog
@@ -144,7 +144,7 @@ fixed/auto-hide preference remains shared across products.
 - Standard deployment activated `confida-f1405622-20261004141516`, built from
   `f14056220d9dcb4e86e6e43c377a92d0181bf513`. All four services and agent/Vault
   health checks passed. Browser inspection confirmed Vault is visible and opens
-  with Confida's branding.
+  with server C's branding.
 - Normal runtime calls to Linear `list_teams` and Langfuse `getMetricsSchema`
   succeeded. Audit records contain the actual actor, connector, input and output.
   Both existing owners of `Workflow/testingv3` also completed an allowed Linear
@@ -194,7 +194,7 @@ fixed/auto-hide preference remains shared across products.
   remain in that manifest. Vault's normal runtime MCP inventory is available.
   The private acceptance record is
   `/srv/confida/state/vault/secret-selection-acceptance.json`.
-- The Confida browser was refreshed and its unsent chat draft was preserved.
+- The server C browser was refreshed and its unsent chat draft was preserved.
   Stored project secrets are visible with values masked. The existing manual
   workflow contract update banner (`v1.0.44` to `v1.0.45`) remains a separate
   prerequisite for starting this workflow from chat. It was not applied during

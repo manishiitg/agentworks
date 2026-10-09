@@ -89,7 +89,7 @@ func (s *Service) boundRole(p Principal, folder string) int {
 	}
 	for _, id := range policy.Audience {
 		// An administrator reads every folder (implicit Owner), so they never narrow what a project can use; checking
-		// only their explicit grants hid most of Brain from an admin's own Crew (RTS 2026-10-06).
+		// only their explicit grants hid most of Brain from an admin's own Crew (server A 2026-10-06).
 		if s.IdentityActive(context.Background(), id) && containsString(policy.Admins, id) {
 			continue
 		}

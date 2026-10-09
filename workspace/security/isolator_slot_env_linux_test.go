@@ -15,7 +15,7 @@ import (
 
 // A slotted command is run from a request written when the command is wrapped, so the per-call environment
 // (session token, secrets, workflow variables) has to be in that request. It used to be appended to the command
-// afterwards and never reached the slot's shell (Confida 2026-10-01: the tools gateway answered 401).
+// afterwards and never reached the slot's shell (server C 2026-10-01: the tools gateway answered 401).
 func TestSlottedCommandRequestCarriesTheExtraEnvironment(t *testing.T) {
 	t.Setenv(slots.EnvSlotctl, "/opt/slotctl")
 	t.Setenv("GOG_HOME", "/ungranted-host-gog")

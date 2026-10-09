@@ -15,7 +15,7 @@ import (
 // Why it matters: the browser tool starts its daemon and Chrome from inside the command and the platform manages
 // them (profile folders, the live view, restarts), so a browser command runs as the service account like it did
 // before per-user accounts; as a slot it could not write the profile folders or be stopped by the platform
-// ("Browser restarted - reconnecting" in a loop on RTS, "Permission denied" on Confida, 2026-10-01). Only this
+// ("Browser restarted - reconnecting" in a loop on server A, "Permission denied" on server C, 2026-10-01). Only this
 // exact shape is exempted from the slot, so adding `agent-browser` to a longer command does not escape it.
 func isStandaloneBrowserCommand(command string) bool {
 	command = strings.TrimSpace(command)

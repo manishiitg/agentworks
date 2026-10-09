@@ -803,7 +803,7 @@ func TestSlackConfigureToolProductScope(t *testing.T) {
 
 // The crew Slack tab sends the crew's logical path ("Chats/Work/projects/<id>").
 // Stored or read as-is it names no folder: selecting the new bot failed with
-// "product manifest not found" and its route had no owner (RTS 2026-09-25).
+// "product manifest not found" and its route had no owner (server A 2026-09-25).
 func TestCrewSlackBotAcceptsTheLogicalProjectPath(t *testing.T) {
 	api, workspace := setupSlackConnectionTest(t)
 	profiles := agentprofiles.NewRegistry()
@@ -869,7 +869,7 @@ func TestLegacyLogicalCrewSlackConnectionStaysManageableByItsOwner(t *testing.T)
 	}
 }
 
-// RTS 2026-09-26: crew destinations saved in the logical form had no owner,
+// server A 2026-09-26: crew destinations saved in the logical form had no owner,
 // so the crew's own bot answered "This Slack route is no longer configured".
 // The startup migration rewrites every store (connection scope, its channel
 // routes, the platform channel routes) to the owner's physical folder and

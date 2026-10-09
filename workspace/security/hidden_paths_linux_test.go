@@ -14,7 +14,7 @@ import (
 
 // A blocked file inside a writable folder (a Code project's db/db.sqlite) used to make the Landlock policy fail, and
 // the command then fell back to the mount-namespace backend, which ran it as the service account with the host
-// readable (Excellence 2026-10-03: an agent's shell read the platform's .env). The blocked file is now hidden by the
+// readable (server B 2026-10-03: an agent's shell read the platform's .env). The blocked file is now hidden by the
 // launcher and the command stays under Landlock.
 func TestBlockedFileInsideAWritableFolderIsHiddenNotAFallback(t *testing.T) {
 	project := t.TempDir()

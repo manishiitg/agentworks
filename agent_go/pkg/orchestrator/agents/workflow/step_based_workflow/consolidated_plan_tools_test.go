@@ -247,7 +247,7 @@ func TestConsolidatedConversionRetainsNativeRestrictions(t *testing.T) {
 	}
 }
 
-// RTS: a crew add_step missing id was rejected with every oneOf branch's
+// server A: a crew add_step missing id was rejected with every oneOf branch's
 // complaints (including other types' validation_schema rules), which led the
 // agent to add fields crew steps do not take. The error now names the chosen
 // type's own problems only.

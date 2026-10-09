@@ -155,7 +155,7 @@ const interactiveShellTmuxQuietBindings = `set-option -g prefix None \; set-opti
 // interactiveShellServerAccess lets the service account talk to a terminal that runs as a user's slot. tmux 3.3+ refuses every client of
 // another user ("access not allowed") whatever the socket's file mode, so without it the service could not see, resize or stop the shell:
 // each start removed the "dead" socket and started another server, and each stop removed the folder but left the server running, so a
-// person's shells piled up (Excellence 2026-10-03: five servers for one terminal).
+// person's shells piled up (server B 2026-10-03: five servers for one terminal).
 //
 // The tmux server runs in the sandbox's user namespace, which maps only the slot's own id: every other user, the service included,
 // arrives as the overflow user (nobody, 65534), so that is the user to allow. Who can reach the socket at all is still decided by its
@@ -335,7 +335,7 @@ func StartInteractiveShell(c *gin.Context) {
 	}
 	// Every sandboxed terminal, a user's slot account included, gets the project's private home: the slot used to keep the service
 	// account's real HOME, so a login shell read /srv/agents/home/.profile ("Permission denied") and the terminal and the coding agent
-	// (whose shell already uses this home) saw different installs (Excellence 2026-10-03).
+	// (whose shell already uses this home) saw different installs (server B 2026-10-03).
 	if !unconfined && isolator.UserHome != "" {
 		// As the owner's slot: the slot's own home, the same one the Code agent's shell uses (one home per person for Code).
 		environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(isolator.UserHome), shellQuote(filepath.Join(isolator.UserHome, ".config")))

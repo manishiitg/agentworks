@@ -94,7 +94,7 @@ if ! /usr/local/bin/gog --version 2>/dev/null | grep -Fq "$gog_version"; then
   rm -rf "$gog_tmp"
 fi
 
-# AWS profile "RTS" for workflow shells. The rtslatency workflow was written
+# AWS profile "server A" for workflow shells. The rtslatency workflow was written
 # against a named profile on the operator's laptop; on the box the credentials
 # are the instance role, so both `default` and `RTS` resolve to it through
 # IMDS. The sandbox runs with HOME=/tmp and exports

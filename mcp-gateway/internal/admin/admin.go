@@ -280,7 +280,7 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, providerName, label, slug string) (store.Connector, error) {
 	p, ok := a.Catalog.Find(providerName)
 	if !ok {
-		// A bare "unknown provider" left people guessing (Confida 2026-10-07: "Github" is not in Vault's catalog).
+		// A bare "unknown provider" left people guessing (server C 2026-10-07: "Github" is not in Vault's catalog).
 		return store.Connector{}, fmt.Errorf("%q is not an app Vault can connect. Available: %s. Google apps, GitHub and Slack are connected through their own integrations (Integrations), not Vault; for another app, store its API key as a Vault secret", strings.TrimSpace(providerName), strings.Join(a.Catalog.Names(), ", "))
 	}
 	if p.OAuth && (a.Gateway == nil || !a.Gateway.HasSharedOAuth()) {

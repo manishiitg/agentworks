@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Invoked only inside a fresh server-side checkout started by `./deploy.sh rts`.
+# Invoked only inside a fresh server-side checkout started by `./deploy.sh <server>`.
 #
 #   build-and-activate.sh WORKSPACE_ROOT GLOBAL_FILE [--prebuilt BUILD_DIR [--manifest-sha256 HASH]]
 #
@@ -367,7 +367,7 @@ REMOTE_PREFLIGHT
 # Carry the previous release's hashed frontend assets into the new one. A tab
 # opened before the swap still lazy-imports chunks by their old hashed names on
 # its next navigation; without these files it fails with "Failed to fetch
-# dynamically imported module" and shows "Something went wrong" (RTS,
+# dynamically imported module" and shows "Something went wrong" (server A,
 # 2026-09-03, three deploys in one afternoon). Hashed names never collide, so
 # only missing files are copied (-n), mtimes are preserved (-p) and anything
 # carried for more than 14 days is dropped so the directory cannot grow forever.
@@ -381,7 +381,7 @@ echo "activation: immediate breaking deploy (logical-session drain disabled)"
 # Migrate a legacy release-local overlay before swapping current. Never replace
 # an existing durable overlay; only the base catalog is refreshed on startup.
 "${SSH[@]}" 'set -e; state="$HOME/.local/state/agentworks/mcp"; old="$HOME/video-studio/current/configs/mcp_servers_video_studio_user.json"; install -d -m 0700 "$state"; if [ -f "$old" ] && [ ! -e "$state/mcp_servers_video_studio_user.json" ]; then cp -n "$old" "$state/mcp_servers_video_studio_user.json"; chmod 600 "$state/mcp_servers_video_studio_user.json"; fi'
-# Slot accounts must reach this release's Landlock launcher: releases/ was 0700 on RTS and every slotted command failed
+# Slot accounts must reach this release's Landlock launcher: releases/ was 0700 on server A and every slotted command failed
 # with "fork/exec ...: permission denied" (PLAT-478). releases/ 0711, the release and bin/ o+x. No-op without slots.
 slots_release_traversal "$REMOTE_APP" "$BUILD_DIR"
 vault_prepare "$BUILD_DIR" "$REMOTE_APP" /data/video-studio/docs video-studio 8000 "$VAULT_PORT"

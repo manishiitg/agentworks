@@ -299,7 +299,7 @@ func TestMountNamespaceFallbackHandlesFileReadPath(t *testing.T) {
 	}
 }
 
-// PLAT-514 (RTS 2026-10-05): a read-only folder that does not exist (a workflow's learnings/_global before any learning
+// PLAT-514 (server A 2026-10-05): a read-only folder that does not exist (a workflow's learnings/_global before any learning
 // is written) must not stop the sandbox, or no shell command of that workflow can start. A missing WRITE folder and an
 // unreadable existing folder still fail closed.
 func TestLandlockPolicySkipsAMissingReadOnlyFolderButNotAMissingWritableOne(t *testing.T) {

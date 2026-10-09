@@ -58,7 +58,7 @@ done
   exit 1
 }
 export BUILD_ARCH
-# Keep the newest $KEEP builds; never remove a pinned one or one younger than 15 minutes (an activation or a shipment to RTS may still be reading it);
+# Keep the newest $KEEP builds; never remove a pinned one or one younger than 15 minutes (an activation or a shipment to server A may still be reading it);
 # clear stale scratch folders.
 prune_builds() {
 python3 - "$BUILDS" "$KEEP" <<'PY'

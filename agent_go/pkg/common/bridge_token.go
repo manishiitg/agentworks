@@ -38,7 +38,7 @@ const bridgeTokenPrefix = "mcps2."
 // warm sessions live up to the 3h idle limit and long steps or background
 // agents run for hours, so a 2h lifetime made every tool call of a
 // long-lived session fail with 401 "invalid API token" (82c864776, caught in
-// review 2026-09-28 before it fired on RTS). Keep it well above any session
+// review 2026-09-28 before it fired on server A). Keep it well above any session
 // lifetime until tokens are refreshed in place.
 const bridgeTokenLifetime = 7 * 24 * time.Hour
 

@@ -206,7 +206,7 @@ configure a fixed outer route plus mapped group and inner branch like this:
 {
   "action": "update",
   "id": "EXISTING_TRIGGER_ID",
-  "name": "Confida deployment",
+  "name": "server C deployment",
   "enabled": true,
   "auth_mode": "bearer",
   "input_mode": "raw",

@@ -72,7 +72,7 @@ func TestDeferredSteerIntoBusySessionLetsInFlightAnswerFinish(t *testing.T) {
 	expectIDs(t, store, "chat", "answer-a", "tool-a", "completion-a", "user:b", "answer-b")
 }
 
-// RTS, Cursor: an idle retained session; the reply's first tool call reached
+// server A, Cursor: an idle retained session; the reply's first tool call reached
 // the journal ~0.7s before the durable ack wrote the user's message.
 func TestDeferredSteerIntoIdleSessionHoldsTheReplyImmediately(t *testing.T) {
 	store := NewEventStore(100)
@@ -201,7 +201,7 @@ func liveEvents(store *EventStore, sessionID string) map[string]Event {
 	return byID
 }
 
-// RTS rtslatency, Cursor: the whole reply was one transcript chunk produced at
+// server A rtslatency, Cursor: the whole reply was one transcript chunk produced at
 // 12:11:20.96, the durable ack wrote the question at 12:11:21.55. Journal order
 // was right (question, reply), but the chat orders the main conversation by
 // timestamp, so the reply rendered above its own question and never as the
@@ -249,7 +249,7 @@ func TestDeferredSteerUserRowKeepsAckTimeWithoutHeldRows(t *testing.T) {
 
 // Answer rows that arrive after their turn ended (Cursor's late transcript chunks) must not keep
 // the session "in flight" forever: after a quiet gap a steer counts as idle, so the reply to the
-// new message is held until the message row is written (RTS 2026-09-30: the reply landed above it).
+// new message is held until the message row is written (server A 2026-09-30: the reply landed above it).
 func TestDeferredSteerAfterAQuietGapHoldsTheReply(t *testing.T) {
 	store := NewEventStore(100)
 	defer store.Stop()
@@ -289,7 +289,7 @@ func TestDeferredSteerWithARunningToolCallStillLetsTheAnswerFinish(t *testing.T)
 
 // The CLI takes a queued message the moment its answer ends, but the answer's completion row is
 // recorded a moment after the ack. The user row must wait for it, or the tail of the first answer
-// lands below the second message (Muse, excellence 2026-09-30).
+// lands below the second message (Muse, server B 2026-09-30).
 func TestAckedSteerWaitsForTheInFlightAnswersEnd(t *testing.T) {
 	store := NewEventStore(100)
 	defer store.Stop()

@@ -126,7 +126,7 @@ func TestBotErrorAndTerminalCompletionNotifyOnceP0(t *testing.T) {
 // A restored session's relaunch replays terminal output before the turn's
 // user message, at a different hierarchy level than the turn itself. That
 // preamble must not calibrate "main": the turn's reply was skipped as a
-// sub-agent on RTS 2026-09-25 (preamble level 0, turn level 3).
+// sub-agent on server A 2026-09-25 (preamble level 0, turn level 3).
 func TestBotPreambleEventsDoNotCalibrateMainLevel(t *testing.T) {
 	connector := &testBotConnector{}
 	filter := NewBotEventFilter(connector, ThreadID{Platform: "slack"}, "session-1", "", "user-1")

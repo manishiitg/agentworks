@@ -10,7 +10,7 @@ import (
 )
 
 // A deleted crew or workflow left in a crew's saved attachments is skipped for
-// the turn instead of failing it (RTS 2026-09-27: deleting new-project made
+// the turn instead of failing it (server A 2026-09-27: deleting new-project made
 // every call into the SDE crew answer 403). Existing attachments still load;
 // the strict check used by attach/secrets still refuses a missing path.
 func TestTurnSkipsAttachmentsThatNoLongerExist(t *testing.T) {

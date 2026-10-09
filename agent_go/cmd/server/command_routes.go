@@ -209,7 +209,7 @@ func commandPathForRequest(w http.ResponseWriter, r *http.Request, write bool) (
 		return path.Join(clean, commands.CustomCommandsSubPath), true
 	}
 	// A Crew at the shared Crew/<id> root keeps its commands there, where its chat's manage_custom_commands saves
-	// them. Without this the list refused every Crew/ path (400), so a Crew's new command never showed (excellence
+	// them. Without this the list refused every Crew/ path (400), so a Crew's new command never showed (server B
 	// 2026-10-07, PLAT-661).
 	if crew, ok := resolveCrewPath(r.Context(), userID, clean); ok && crew.Shared {
 		access := crewAccessFor(GetUserFromContext(r.Context()), crew)

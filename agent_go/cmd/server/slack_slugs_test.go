@@ -297,7 +297,7 @@ func TestSlackSlugsBotMembershipAndSlugs(t *testing.T) {
 	}
 }
 
-// Without a platform bot (RTS has only own bots) the AgentWorks bot is not
+// Without a platform bot (server A has only own bots) the AgentWorks bot is not
 // offered: settings say so, show it off, and refuse turning it on.
 func TestSlackSlugsNoPlatformBotIsNotOffered(t *testing.T) {
 	w := newBotDryRunWorld(t)

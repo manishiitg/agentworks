@@ -2,12 +2,12 @@
 
 A repeatable redeploy pipeline for fixed-workspace products running as their
 own isolated Linux account on a shared rootless-systemd host, generalized
-from Confida's original deployer. One host can run several products, each under
+from server C's original deployer. One host can run several products, each under
 its own system account (`sparkquill`, `confida`, `dominion`, ...); this
 pipeline only ever touches the one account and `$PRODUCT-*` systemd units
 named on the command line.
 
-Confida and SparkQuill use this shared pipeline. Its local half is the
+Server C and SparkQuill use this shared pipeline. Its local half is the
 `deploy_rootless_product` function in the repository-root `deploy.sh` (the only
 deployment entry point); this directory holds the server-side half and the
 per-product configuration. Video Studio and Dominion have their own cases in
@@ -64,19 +64,19 @@ By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no long
    this step) and runs the **same activation as before**: state dirs, standard runtime profile env, units and drop-ins, drain
    (`DEPLOY_DRAIN_SECONDS`), restart, `deployment_checks`, managed Chrome, profile report, release pruning.
 3. RTS: `./deploy.sh rts` gets a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) onto RTS, checks it
-   against the manifest hash read from the build host, and runs the unchanged RTS activation without compiling. RTS downloads the copy
+   against the manifest hash read from the build host, and runs the unchanged server A activation without compiling. Server A downloads the copy
    itself from GitHub (next section); the old stream through this machine is the fallback.
 
 ```
 ./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
 ./deploy.sh builds                     # list builds: name, age, build seconds, the three revisions, pinned
-./deploy.sh excellence                 # build once if needed, then copy + activate
-./deploy.sh all-hetzner                # excellence, confida, sparkquill in sequence from ONE build (never dominion)
-./deploy.sh rts                        # same build, shipped to RTS
-./deploy.sh confida --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
+./deploy.sh <server>                 # build once if needed, then copy + activate
+./deploy.sh all-hetzner                # Server B, server C, sparkquill in sequence from ONE build (never dominion)
+./deploy.sh <server>                        # same build, shipped to server A
+./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
                                        # ancestors of origin/main, so a known-good older build can go out while main is held
 ./deploy.sh pin 7357c770               # keep that build from being pruned by later builds ("unpin" to release it)
-DEPLOY_BUILD_MODE=server ./deploy.sh confida   # the original path: the server clones main and compiles (fallback)
+DEPLOY_BUILD_MODE=server ./deploy.sh <server>   # the original path: the server clones main and compiles (fallback)
 ```
 
 Build host settings: `BUILD_HOST`, `BUILD_PORT`, `BUILD_USER` (default root; host and port in the private deployments/deploy.env), `BUILD_SSH_KEY`, `BUILDS_DIR`
@@ -98,7 +98,7 @@ publishing prints one message and is skipped, and deploys stream as before. To r
 ```
 ./deploy.sh publish [build]            # upload the newest (or the named) build now; prints Published: <build> -> <tag>
 ./deploy.sh builds                     # also lists the builds on GitHub
-DEPLOY_BUILD_TRANSPORT=github ./deploy.sh rts   # RTS must download it (no fallback); "stream" forces the old path; default "auto"
+DEPLOY_BUILD_TRANSPORT=github ./deploy.sh <server>   # Server A must download it (no fallback); "stream" forces the old path; default "auto"
 ```
 
 `deploy/common/fetch-build.sh <tag> <asset> <manifest-sha256> <dest>` is what RTS runs: it downloads anonymously (resume, retries), refuses
@@ -155,7 +155,7 @@ Requirements this template assumes:
 
 ```
 ./deploy.sh sparkquill
-./deploy.sh confida
+./deploy.sh <server>
 ```
 
 Run those commands from the repository root; `deploy.sh` is the only
@@ -183,7 +183,7 @@ every deploy:
   back. Fix the cause (usually as root through `provision-slots.sh` / `deploy/aws-ec2/slots-admin.sh`) and re-run the check alone:
 
 ```
-./deploy.sh slotcheck excellence      # or confida, sparkquill, rts
+./deploy.sh slotcheck <server>      # any deployment target
 ```
 
 Do not assign a slot to anyone on a server whose self-test fails. A slot command never receives a browser profile, a browser

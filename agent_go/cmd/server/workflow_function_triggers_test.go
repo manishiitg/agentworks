@@ -270,7 +270,7 @@ func TestWorkflowAskUsesCallersAssistantThread(t *testing.T) {
 	}
 }
 
-// The run-start check must accept a function's own inputs (RTS 2026-09-24:
+// The run-start check must accept a function's own inputs (server A 2026-09-24:
 // review_pr failed with "GITHUB_OWNER is no longer allowed" because function
 // triggers have no allowed_variables list).
 func TestFunctionTriggerVariablesPassRunStartCheck(t *testing.T) {

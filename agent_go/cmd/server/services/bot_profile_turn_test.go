@@ -255,7 +255,7 @@ func TestDefaultProfilePersistsWithTheOwner(t *testing.T) {
 
 // A crew's Slack thread is its own chat, new to the thread: its first turn
 // carries the thread's earlier messages, as a workflow's first turn does
-// (RTS 2026-09-26: the crew answered without the thread it was asked about).
+// (server A 2026-09-26: the crew answered without the thread it was asked about).
 func TestSlackCrewFirstTurnGetsTheThread(t *testing.T) {
 	manager := NewBotConversationManager(nil, "", "")
 	manager.RegisterConnector(&historyTestConnector{

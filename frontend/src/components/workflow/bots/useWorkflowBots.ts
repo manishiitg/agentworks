@@ -314,7 +314,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       // The server answers the first read with "checking" while it runs each
       // account's auth check in the background (~5s per gws call) and never
       // pushes the result, so a row sat on "Checking…" with a "Sign in with
-      // Google" button for an account that was already connected (RTS,
+      // Google" button for an account that was already connected (server A,
       // 2026-09-03). Re-read while anything is still checking, bounded so a
       // check that never settles cannot poll forever.
       if (attempt < 15 && connections.some(entry => entry.auth?.checking)) {

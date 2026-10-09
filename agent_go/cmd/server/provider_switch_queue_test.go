@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
-// Muse is running a turn, the person switches the chat to Codex on the Models page and sends another message (Code on Excellence, 2026-10-04). The message must wait
+// Muse is running a turn, the person switches the chat to Codex on the Models page and sends another message (Code on server B, 2026-10-04). The message must wait
 // in the turn queue; it must not interrupt the running Muse turn and must not be steered into (or fail against) the old provider's terminal.
 func TestProviderSwitchDuringARunningTurnQueuesTheMessage(t *testing.T) {
 	const sessionID = "workflow-provider-switch-queue"

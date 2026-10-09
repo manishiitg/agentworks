@@ -94,7 +94,7 @@ Groups below are investigation buckets, not proven shared root causes. Exact dup
 ## Next investigation order
 
 1. Pulse premature failures and parent/child receipt identity: compare fresh paths against PLAT-199/258 and interrupted-review recovery before proposing another patch.
-2. DB response envelopes: RTS PUL-25BDBC42 and Upwork PUL-76F2EE72/PUL-A14F764F are similar reports; reproduce both transports before consolidating.
+2. DB response envelopes: Server A PUL-25BDBC42 and Upwork PUL-76F2EE72/PUL-A14F764F are similar reports; reproduce both transports before consolidating.
 3. Scheduling/retention: separate missing runs, wrong injected turns, lost retries and rotation. PLAT-219 and PLAT-242 do not cover all of them.
 4. Folder grants: distinguish declared db/research/db/growth paths from supported db/assets and actual runtime grants. Do not loosen raw SQLite access.
 5. Cost history: PLAT-226/241 are explicitly deferred; they must not be closed merely because other cost improvements landed.

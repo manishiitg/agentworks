@@ -9,7 +9,7 @@ contracts. Durable correctness and pane-only safety blockers are
 P0; secondary pane interpretation and terminal experience are P1.
 Live P0 green for all five providers; live server↔chat e2e PASS
 for codex/pi/muse/Claude (probe: /tmp/durable-e2e/probe.py).
-Cursor live P0 passed 2026-09-20 using the RTS deployment key;
+Cursor live P0 passed 2026-09-20 using the server A deployment key;
 its server↔chat e2e remains pending. 2026-09-20 fix: durability receipts are
 now consumed on every ingestion path including durable restore
 (see "Restore-path receipt consumption" below).**
@@ -24,7 +24,7 @@ reviewer has not yet re-verified.
 ### Muse refusal notice: no retype (2026-10-04)
 
 The PLAT-417 retry retyped the message whenever the pane showed "Message not sent -- another run is still starting", and a notice left on screen made every later submit
-look refused: one message ran three or more times on Excellence (seven copies in the pane). That violated this document (attempt once, observe-only, pane never decides).
+look refused: one message ran three or more times on server B (seven copies in the pane). That violated this document (attempt once, observe-only, pane never decides).
 Now `museSendPrompt` only logs the notice and `museWaitIntake` decides from `runtime.user_intent.accepted`. Ticket: PLAT-422. Open: a Muse that truly refuses while a resume
 is starting leaves its text in the input and ends the turn as unconfirmed; a structured readiness record to wait on before submitting is not identified yet.
 
@@ -40,7 +40,7 @@ The isolated full application P0 runner and retained Chat live check passed
 with AGY 1.2.12 in Gemini API-key mode. This extends the live receipt proof
 to six providers; it does not revise the earlier historical five-provider run.
 
-### RTS rapid-input follow-up (2026-09-21)
+### Server A rapid-input follow-up (2026-09-21)
 
 Production session `c7d58080-0058-4f6f-a394-feea651f405b` clarified a UI
 latency case that must not be misclassified as slow durable acknowledgement.
@@ -594,7 +594,7 @@ helpers + fixtures, NOT yet by a live pane).
 
 Initial probe evidence (auto model, persistent tmux): idle steer
 committed its row in ~9.5s; reader stable. The authenticated
-P0 contract was subsequently run with the RTS deployment-managed
+P0 contract was subsequently run with the server A deployment-managed
 `CURSOR_API_KEY`: the busy steer committed to `store.db` in 37.5s,
 affected the active turn, and the idle follow-up committed in 8.4s.
 Budget

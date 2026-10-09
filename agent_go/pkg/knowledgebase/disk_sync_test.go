@@ -50,7 +50,7 @@ func TestBrainPicksUpDirectEditsInItsFolder(t *testing.T) {
 
 // Brain's notes folder lives outside its data folder on servers (Brain/ in the documents tree). Every save went through
 // a journal that only accepted paths inside the data folder, so after the move every save failed and the stuck
-// journal made Brain unavailable (RTS and Excellence, 2026-10-07).
+// journal made Brain unavailable (server A and server B, 2026-10-07).
 func TestBrainWorksWithItsFolderOutsideItsData(t *testing.T) {
 	root := t.TempDir()
 	s, err := New(Config{Root: filepath.Join(root, "data"), LiveRoot: filepath.Join(root, "docs", "Brain"), OrganizationID: "org"})

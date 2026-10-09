@@ -129,7 +129,7 @@ func TestEnsureRegisteredClientCacheHonoursXDGConfigHome(t *testing.T) {
 	}
 	// The record sits beside the token files, which follow XDG_CONFIG_HOME
 	// (mcpagentTokensRoot); a literal ~/.config path would be unwritable where
-	// that directory is root-owned (RTS).
+	// that directory is root-owned (server A).
 	if _, err := os.Stat(filepath.Join(xdg, "mcpagent/tokens/user1/Demo.client.json")); err != nil {
 		t.Fatalf("client cache not written under XDG_CONFIG_HOME: %v", err)
 	}

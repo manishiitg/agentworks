@@ -145,7 +145,7 @@ func WithExtraEnv(env map[string]string) ClientOption {
 // the SAME turn: WithExtraEnv deliberately clones its input, so the map handed
 // to the client at turn start is a snapshot and in-place writes to the caller's
 // map never arrived (a shell run 3s after setting a secret saw no SECRET_* var,
-// RTS 2026-09-03).
+// server A 2026-09-03).
 func (c *Client) SetExtraEnv(key, value string) {
 	c.extraEnvMu.Lock()
 	defer c.extraEnvMu.Unlock()

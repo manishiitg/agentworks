@@ -30,13 +30,13 @@ var deferredSteerInFlightCap = 30 * time.Minute
 // call running) before it counts as idle for a new steer. Answer rows that arrive after their
 // turn's end (Cursor's late transcript chunks, native transcript catch-up) mark the session
 // "in flight" with nothing left to end it, so the reply to the next message was let through above
-// the message (RTS 2026-09-30). Silence past this window means the CLI is not mid-answer.
+// the message (server A 2026-09-30). Silence past this window means the CLI is not mid-answer.
 var deferredSteerQuietWindow = 15 * time.Second
 
 // deferredSteerAckGrace is how long an acked steer waits for the in-flight answer's end to be
 // recorded before its user row is written anyway. A CLI takes a queued message the moment its
 // answer ends, but the platform records that answer's completion a moment later (Muse: ~0.5 s), so
-// the row landed above the tail of the answer it followed (Muse, excellence 2026-09-30).
+// the row landed above the tail of the answer it followed (Muse, server B 2026-09-30).
 var deferredSteerAckGrace = 3 * time.Second
 
 // steerNow is the clock for the quiet window (tests replace it).

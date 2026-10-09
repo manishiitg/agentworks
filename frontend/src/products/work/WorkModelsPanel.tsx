@@ -48,7 +48,7 @@ export function WorkModelsPanel({
   accountProduct?: string
 }) {
   // The provider options of this project's own product: a Code asks the Code
-  // profile. Asking Crew's left a Code-only member (Excellence) with no
+  // profile. Asking Crew's left a Code-only member (server B) with no
   // providers at all (issue #252).
   const product = useProjectProduct()
   const effectiveProfileId = profileId ?? product.profileId
@@ -167,7 +167,7 @@ export function WorkModelsPanel({
   )
   // Only providers this person may run here: one with a usable account (the server's, if it is available to them,
   // or one of their own or shared with them). Offering Codex to someone it is closed to saved a model every turn then
-  // refused ("the codex-cli server account is not available to you here", excellence 2026-10-07).
+  // refused ("the codex-cli server account is not available to you here", server B 2026-10-07).
   const workProviderIds = useMemo(() => {
     const all = options.map(option => option.provider || option.id)
     if (accounts === null) return all

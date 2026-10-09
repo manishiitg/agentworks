@@ -66,7 +66,7 @@ access. Code: `mcp-gateway/internal/admin/admin.go` (SetUserGrant),
 
 ### 2026-10-09 — The scheduler pause is per product and holds Crews and Code too (PLAT-782)
 - "All schedules are paused" was true for Goals workflows only: the Crew and Code scheduler never read the pause, so
-  their timed runs kept firing on RTS. The pause of everything now holds every product, and a product can be paused on
+  their timed runs kept firing on server A. The pause of everything now holds every product, and a product can be paused on
   its own (Goals, Relays, Crews, Code): `paused_products` in `config/scheduler.json`. Manual runs and webhooks are
   never held.
 - Each product's Schedules page shows its own banner and button. While everything is paused, resuming from a product
@@ -121,7 +121,7 @@ by another person. Code: `job.Schedule.Isolated = !match.SharedProjectOwner` (`p
 
 Muse's reasoning summaries are sent as plain reasoning chunks, the same as every other coding agent's: the compact
 muted thinking line. They were tagged `presentation=assistant_update`, which drew them as large message blocks that
-a reload then lost (Excellence, 2026-10-09). Reverses the earlier choice that Muse summaries render as assistant
+a reload then lost (server B, 2026-10-09). Reverses the earlier choice that Muse summaries render as assistant
 updates. Progress status from `muse exec` (`museStatusChunk`) stays an assistant update. Code:
 `musecli_transcript_stream.go` in multi-llm-provider-go (d18b55b).
 
@@ -132,7 +132,7 @@ An account and its slot always go together, and only DevOps creates them, with
 users, and not administrators in the app: the Add user form is removed from Admin > Users,
 `POST /api/admin/users` refuses for everyone, and the Builder user tool has no `create_user`. Why: where slots are on, an
 account without one cannot run a single command, and only root can assign a slot, so an account made in the app was
-a broken account (Excellence, 2026-10-09). Role and product changes of existing accounts stay in the app. Servers without
+a broken account (server B, 2026-10-09). Role and product changes of existing accounts stay in the app. Servers without
 a provisioning script use `agentworks server add-user`. Code: `handleAdminCreateUser` (user_directory.go),
 `user_access_tools.go`, `UsersAdminPanel.tsx`.
 
@@ -323,7 +323,7 @@ Ticket: [PLAT-740](https://github.com/runloop-workflows/deployments/blob/main/ti
   `send_email` is admitted in Run mode (workflow runs and scripted steps) and is on the external run denylist, so an MCP
   token cannot email arbitrary addresses in a workflow's name.
 - **Why.** `notify_user` fans one message out to Gmail, Slack, WhatsApp and Activity, so it cannot make a recipient
-  mandatory: a scripted step that named none emailed the workspace default (on RTS, the account owner), five times in 11
+  mandatory: a scripted step that named none emailed the workspace default (on server A, the account owner), five times in 11
   minutes. Owner decision, 2026-10-09. Ticket: PLAT-736.
 
 ### 2026-10-09 — Local Code on a Mac: a light sandbox, like using a coding CLI locally
@@ -704,7 +704,7 @@ the default). Only that account's ledger events count, and reaching it refuses
 only new turns on that account, naming it; other shared accounts and the
 person's own accounts keep working. The person-wide `token_limits` stays as an
 optional overall cap across all shared accounts, checked as well. Why: owner,
-Excellence: Codex and Muse plans run out at different rates.
+Server B: Codex and Muse plans run out at different rates.
 PLAT-693.
 
 ### 2026-10-07 — A project's own PROJECT_INSTRUCTIONS.md is appended below the platform instructions
@@ -762,7 +762,7 @@ PLAT-668.
 ### 2026-10-07 — A runtime change ends an idle live-input turn instead of waiting for it
 
 A definition or provider change still applies only between turns, and a CLI that is mid-response keeps its turn
-(Excellence 2026-10-03). But a tmux live-input turn whose CLI sits idle at its prompt is not "mid-turn": after 3
+(server B 2026-10-03). But a tmux live-input turn whose CLI sits idle at its prompt is not "mid-turn": after 3
 watcher ticks (2 s apart) of the provider's idle-composer check, the queue watcher cancels that turn, closes the CLI
 and releases its markers, and the queued message relaunches the CLI with the new runtime. Providers without a pane
 check (Muse) keep waiting. `endIdleTurnForRuntimeChange` in `agent_go/cmd/server/conversation_turn_queue.go`.
@@ -792,7 +792,7 @@ PLAT-646.
 ### 2026-10-07 — Test Relays on Dominion as an admin product
 
 Enable Relays alongside Crew for administrators at trader.tectonicmarkets.com.
-The owner moved Relay integration testing from Excellence to this installation.
+The owner moved Relay integration testing from server B to this installation.
 Keep regular accounts on Dominion using the existing server-side admin product
 filter, and preserve the hand-maintained runtime configuration across releases.
 PLAT-642.
@@ -822,7 +822,7 @@ PLAT-637.
 Python Relay function triggers expose no workflow routes or step targets and
 never load a plan for target admission/listing. Reject saved workflow targeting
 instead of ignoring it. Why: Python owns branching, and the shared plan check
-blocked trigger creation on Excellence.
+blocked trigger creation on server B.
 PLAT-638.
 
 ### 2026-10-07 — The Chrome extension shows a hidden tab before clicks and typing
@@ -848,7 +848,7 @@ session's sandbox gets it unless granted, and it is app-owned 0700 so slot accou
 cannot read it. Brain's private data (access database, journal) stays outside the
 workspace roots. Why: owner, 2026-10-06 ("agent should get raw access to file system and
 it should use git normally", "like all other agents products"); the backup tool wedged on
-RTS with its git errors hidden. Replaces the rule that all Brain data stays outside the
+Server A with its git errors hidden. Replaces the rule that all Brain data stays outside the
 workspace tool roots. PLAT-633.
 
 ### 2026-10-06 — Workflow's single Model card represents Builder chat
@@ -882,7 +882,7 @@ sessions stay. Why: owner, 2026-10-06: bindings were set by imports without anyo
 choosing them, and they disagreed with Brain's own roles once Brain was reorganized;
 the step charter already states inputs and outputs in plain words. Accepted
 trade-off: a folder limit is an instruction, not an enforced boundary. No project on
-RTS, Excellence or Confida had a binding. This supersedes the Folders option in the
+Server A, server B or server C had a binding. This supersedes the Folders option in the
 two 2026-10-05 entries below. PLAT-628.
 
 ### 2026-10-06 — Plan Drift is shown as "Workflow Review"
@@ -923,7 +923,7 @@ A private provider account's setup terminal uses that account HOME as both its
 runtime home and credential source. Never import or refresh the server's login
 there. Refuse existing credential symlinks on private account admission; explicit
 reconnect detaches the link without copying another account's credentials.
-Why: private Claude sign-in on Excellence overwrote the shared server login.
+Why: private Claude sign-in on server B overwrote the shared server login.
 Ticket: PLAT-615.
 
 ### 2026-10-06 — Product chats distinguish the app user from provider identity
@@ -944,7 +944,7 @@ Secrets, Skills and Vault. Ticket: PLAT-620.
 
 An AGY launch-only resume emits a captured terminal frame before returning its
 idle session handle. A failed capture fails warmup. Why: retained Session turns
-use structured progress, so waiting for the normal adapter stream left Confida's
+use structured progress, so waiting for the normal adapter stream left server C's
 working chat with a “not started” terminal. Warmup sends no user prompt.
 Ticket: PLAT-612.
 
@@ -998,14 +998,14 @@ lost on restart or tab close, and it had no recorded use. Ticket: PLAT-601.
 Goals and Relays share workflow mode, but a saved chat may restore only inside
 its selected product and preset. Unknown manifest ownership waits for the catalog;
 explicit tab navigation still follows the chosen tab. Why: selecting Relays
-reopened a saved Goal Builder and returned Rakesh on Confida to Goals.
+reopened a saved Goal Builder and returned Rakesh on server C to Goals.
 Ticket: PLAT-607.
 
 ### 2026-10-06 — Extension CDP requests do not wait for unrelated renderer replies
 
 Serialize agent tool calls by their existing project/conversation gate, but
 allow concurrent CDP requests inside a call. A pending renderer probe must not
-block browser-level controls, another tab or recording acknowledgements. RTS
+block browser-level controls, another tab or recording acknowledgements. Server A
 sandbox shells explicitly use the deployment-managed browser CLI and grant its
 installed tooling read-only; the service home remains inaccessible. Qualify
 that restricted path during deployment, not just the service's PATH. Why: a
@@ -1145,7 +1145,7 @@ restore domain subscriptions, never replay page actions. Startup subscriptions
 may wait about ten seconds for transient Chrome frame permission checks, with
 permissions checked on every attempt. Human cancellation,
 closed/protected tabs, connection replacement and changed ownership still
-revoke access. Why: RTS discarded live tabs and subsequent agent commands
+revoke access. Why: Server A discarded live tabs and subsequent agent commands
 returned NO_TABS. Ticket: PLAT-569.
 
 ### 2026-10-06 — Copy the account browser code without changing connections
@@ -1281,7 +1281,7 @@ Ticket: PLAT-558.
   URL are unchanged: the tool index still lists each server's real tool names under its route, `get_api_spec` takes the
   prefixed name or a real name (with `server_name` when a platform tool shares it), and specs show the real route.
   Replaces the "prefix only on a clash" direction; the stopgap (platform tool wins, `[TOOL_SHADOW]`) stays as a safety net.
-  A read-only scan of local, Confida, Excellence and RTS found nothing saved that depends on bare MCP tool names.
+  A read-only scan of local, server C, server B and server A found nothing saved that depends on bare MCP tool names.
   Ticket: PLAT-519.
 
 ### 2026-10-05 — Product workspace toolbar choices survive page refresh
@@ -1347,10 +1347,10 @@ Ticket: PLAT-542.
 
 ### 2026-10-05 — Deploys prune old releases by default and make room first
 
-Every deployer (RTS, the rootless-Linux products, Dominion) keeps the live release
+Every deployer (server A, the rootless-Linux products, Dominion) keeps the live release
 and the one before it, plus anything a running process still uses, and removes the
 rest; when the disk has under 15 GB free it does this before delivering the new
-release. Why: a silently failing cleanup let 27 releases fill RTS and break a deploy.
+release. Why: a silently failing cleanup let 27 releases fill server A and break a deploy.
 PLAT-545.
 
 ### 2026-10-06 — Platform tickets are organized like Brain; no register
@@ -1583,7 +1583,7 @@ The deployment gateway admits only the exact GET/POST review route and GET
 Google callbacks carrying Gmail setup state. It removes spoofed user headers;
 the backend still validates expiring plans, current admin authority and
 single-use Google consent with PKCE before provisioning. Why: browser review
-links cannot carry the app bearer token, and RTS rejected them before those
+links cannot carry the app bearer token, and server A rejected them before those
 checks. Management and sender approval stay authenticated. Ticket:
 PLAT-497.
 
@@ -1601,7 +1601,7 @@ The Landlock launcher every confined CLI starts through now removes the platform
   native file read/edit, skills, subagents and every other native tool. Anything that needs a shell uses `execute_shell_command`, which
   runs as the user's slot. `mcp_only` for these chats was rejected. The switch is one setting, **off by default**:
   `AGENTWORKS_CLI_NATIVE_SHELL=on` turns the built-in shell back on (`nativeshell.Enabled()` in the provider, read once per launch).
-- **Why.** A live probe on Excellence found the built-in shell runs as the app account (a member of every slot group), can print
+- **Why.** A live probe on server B found the built-in shell runs as the app account (a member of every slot group), can print
   platform secrets from its environment and can use the app's rootless Docker, none of which holds for the bridge shell. Landlock was
   the only boundary. The bridge shell covers every shell job, so the built-in shell added exposure and little else.
 - **What it changes.** Reverses "native tools on" (2026-10-03, PLAT-402/PLAT-390, and Full mode in PLAT-396/PLAT-473) **for the shell
@@ -1846,7 +1846,7 @@ Ticket: PLAT-441.
 
 Remove the admin/reviewer workspace inspection button and popup from the
 shared Code/Crew surface at the user's request: the unfamiliar popup failed
-with a Network Error on Excellence. The separate audited review API and
+with a Network Error on server B. The separate audited review API and
 Providers conversations overview retain their existing authorization.
 Ticket: PLAT-439.
 
@@ -1910,7 +1910,7 @@ a build that should outlive the next one is pinned (`./deploy.sh pin`). Deploys 
 `./deploy.sh excellence|confida|sparkquill|all-hetzner|rts` builds the three repositories once on the Hetzner box
 (`deploy/common/build-release.sh` into `/srv/_builds/<sha>-<time>/`, with `manifest.json`) and each server only copies that build and runs
 its usual activation. Before touching anything the target verifies the manifest and refuses on another CPU architecture, a glibc older than
-the build's, or any missing, changed or unlisted file. Before, every server cloned and compiled the same commit (5 min each, RTS 7 min), and
+the build's, or any missing, changed or unlisted file. Before, every server cloned and compiled the same commit (5 min each, server A 7 min), and
 each build could differ. `--build <name|sha>` deploys an existing build instead of main's head, allowed only when its three revisions are
 ancestors of `origin/main`, so a known-good older build can go out while main is held. `DEPLOY_BUILD_MODE=server` keeps the old on-server
 build. Dominion is not part of it.
@@ -2363,7 +2363,7 @@ shell's `HOME` is now the same private home as the Code terminal (user request).
   skills and system guidance describe setup without asking users for IDs or forms.
 - **Validation.** Admission/dedup/migration, queued edits, sender authorization,
   saved workflow bindings, project actions and read-only UI have regression tests.
-  No live mailbox or RTS deployment is part of this change.
+  No live mailbox or server A deployment is part of this change.
 - **Files.** `pkg/gmailinbound/{rules,store,service}.go`, server Gmail trigger tools,
   scheduler/webhook dispatch, `GmailInboundPanel`, shared Builder guidance and guides.
 
@@ -2413,7 +2413,7 @@ The private sandbox home is group-accessible (rwx + setgid, healed on each start
 `~/.bashrc`. Why: the service created it 0700, so slot users could not install anything under `$HOME` (nvm). Ticket:
 PLAT-404.
 
-### 2026-10-03 — Explicit address navigation in teaching and RTS startup prerequisite
+### 2026-10-03 — Explicit address navigation in teaching and server A startup prerequisite
 
 - **Done.** Flush the current page before viewer navigation and mark that
   navigation as an explicit open. Recorded link navigation still waits for the
@@ -2457,7 +2457,7 @@ PLAT-403.
     logged as `[CLI_LANDLOCK] SECURITY`. It never falls back to unconfined.
 - Before this, a host whose launcher failed its preflight ran CLIs unconfined
   with one log line, and a server that forgot the switch ran them unconfined.
-  RTS confined every CLI session in its current log (Cursor and Claude, Full
+  Server A confined every CLI session in its current log (Cursor and Claude, Full
   inside the lock), so nothing changes there.
 - No emergency off switch on servers: a CLI that cannot run inside the lock
   stays usable bridge-only instead of being exempted.
@@ -2498,9 +2498,9 @@ PLAT-403.
 - **Verification.** Real Chrome covers opening a tab, switching back, a popup,
   closing it, repeated replay with fresh IDs and privacy for tabs selected while
   paused. Control and trusted-launch flags remain required for tab commands.
-- **Deployment.** RTS deployment was requested for user testing. Release and
+- **Deployment.** Server A deployment was requested for user testing. Release and
   server runtime verification follow the existing guarded deployment script.
-  RTS upgrades an older agent-browser in its service account tool prefix to
+  Server A upgrades an older agent-browser in its service account tool prefix to
   0.38.2, the minimum version providing the qualified teaching primitives.
 - **Guide.** See [Browser](core/browser.md) for storage conventions and remaining
   unsupported interactions; the reusable file belongs to its workflow/project.
@@ -2540,7 +2540,7 @@ PLAT-403.
 - **Implementation.** `pkg/gmailinbound` and server trigger authorization/tools;
   `GmailInboundPanel`, `GoogleAccountConnect`; shared Builder skill and owner guide.
   Backend admission/authentication regressions and UI action/state tests cover
-  the behavior. Source changes only; this task does not deploy to RTS.
+  the behavior. Source changes only; this task does not deploy to server A.
 
 ### 2026-10-03 — Granted folders outside the workspace pass the folder-guard write-path check (amends 2026-09-30)
 - The 2026-09-30 boundary check rejected every absolute write path outside the
@@ -2630,7 +2630,7 @@ Ticket: PLAT-403.
   leaves server notification sending available; removing a service restricts
   agent access and does not claim to revoke the Google OAuth token. Changes keep
   the connection ID and its OAuth client, then request Google consent as before.
-- RTS investigation: at 2026-10-03 08:25 UTC the resumed SDE Code session reported
+- Server A investigation: at 2026-10-03 08:25 UTC the resumed SDE Code session reported
   quota exhaustion while its native transcript recorded successful tool calls.
   Its only native quota notice was from October 1. Resume redraw made historical
   scrollback appear new before a structured usage statusline was available.
@@ -2639,7 +2639,7 @@ Ticket: PLAT-403.
   Provider fix: `e38d33f`; regression tests live in
   `claudecode_resumed_quota_test.go` in the provider repo.
 - Validation: Google permission component/integration tests, production frontend
-  build and dark/light/narrow visual checks; Claude adapter tests. Live RTS still
+  build and dark/light/narrow visual checks; Claude adapter tests. Live server A still
   needs a deployment of these changes; this investigation did not restart it.
 
 ### 2026-10-03 — Cursor offers GLM and Grok choices plus the CLI's live list
@@ -2682,7 +2682,7 @@ PLAT-386.
 - **Found (user asked whether the terminal shows locally).** On macOS the shell did not start: the sandbox's trimmed PATH lacks Homebrew's
   folder, so `tmux` was "not found". The workspace service now runs tmux by its full path (`/usr/bin/tmux`, else the one on the service's
   PATH), for the start and the attach. Checked on a Mac: the shell starts, writes only inside its project, and cannot read or write
-  another project; typing through the attach works. The Linux tests (Excellence, slot and non-slot) still pass. Inside a Mac shell
+  another project; typing through the attach works. The Linux tests (server B, slot and non-slot) still pass. Inside a Mac shell
   `tmux` itself is not on PATH (same trimmed PATH as the agent's shell tool).
 
 ### 2026-10-03 — Google account sign-in and compact layout across products
@@ -2702,7 +2702,7 @@ PLAT-386.
   Change-access events are scoped to the displayed workspace.
 - **Validation.** Component tests cover all target paths, prefixed Code, shared
   readers, legacy reconnection, workspace isolation and missing-app fallback.
-  The owner requested an RTS deployment of latest main for Gmail testing;
+  The owner requested an server A deployment of latest main for Gmail testing;
   Pub/Sub provisioning remains a separate prerequisite, checked during rollout.
 
 ### 2026-10-03 — Project model choices require a ready account; remove older Codex choices
@@ -2719,7 +2719,7 @@ notices. Reversed by the entry above. Ticket: PLAT-405.
 
 ### 2026-10-03 — The Terminal button did not show, and would have opened nothing (two pieces lost in the port)
 
-- **Found (user, after the Excellence deploy):** no Terminal option in Code. Two pieces of the 2026-09-28 code were lost when it was ported
+- **Found (user, after the server B deploy):** no Terminal option in Code. Two pieces of the 2026-09-28 code were lost when it was ported
   onto today's files: `WorkSurface` never passed `showShell` to the toolbar (which hides the button by default), and the pane imported
   the panel but never rendered it. My tests had checked the label text and the server side, not that the button was wired up.
 - **Done.** Both restored. Source tests pin the toolbar prop and the pane's render line; a render test checks the button appears for a Code
@@ -2798,20 +2798,20 @@ Code gets a Terminal tab again (user), a real shell in the Code's folder in the 
 because every person now has their own Linux account. Where slots are on it runs as the caller's slot; a person without a slot gets no terminal (403)
 rather than a shell as the service account. Ticket: PLAT-403.
 
-### 2026-10-03 — Re-running the slot setup for Excellence took Confida's slot table away again — PLAT-404
+### 2026-10-03 — Re-running the slot setup for server B took server C's slot table away again — PLAT-404
 
 `provision-slots.sh init` sets `o+x` on `/etc/agentworks` unconditionally. Why: init for the default product reset it to 0750 and Confida's service,
 which reads its slot table through that folder, would fail with "slot table unavailable". Ticket:
 PLAT-404.
 
-### 2026-10-03 — Incoming email has an Ask AI action; Excellence Google app restored
+### 2026-10-03 — Incoming email has an Ask AI action; server B Google app restored
 
 - **UI.** Incoming email's read-only card offers the shared Ask AI button in
   both Email and Triggers, including when deployment setup is missing. It sends
   Gmail setup guidance to the target's interactive chat; Crew/Code use their
   project chat callback and workflow targets use Builder. Consent and trigger
   configuration remain in Builder tools, with no direct pane mutations.
-- **Excellence diagnosis and configuration.** The live agent's Google app was
+- **Server B diagnosis and configuration.** The live agent's Google app was
   absent under its current HOME `/srv/agents/home`; Gmail inbound environment
   settings were also absent. Imported the matching downloaded web OAuth client
   (project `excellence-jobs-b45cc`, callback on the Excellence domain) using the
@@ -2820,17 +2820,17 @@ PLAT-404.
   No code deployment or restart. Google account consent remains a human step.
 - **Open rollout requirement.** Google sign-in app configuration does not enable
   Gmail inbound delivery: Pub/Sub, topic mapping and receiver authentication
-  still need operator setup on Excellence before triggers can be enabled.
+  still need operator setup on server B before triggers can be enabled.
 
 ### 2026-10-03 — Old releases were never pruned: stale `.deploying` markers pinned them — PLAT-405
 
 The release pruner ignores a `.deploying` marker older than 6 hours. Why: the rootless deploy removes it only on its last line, so a deploy that
-exited after the release went live left it behind and pinned the release (14 GB on Confida). Ticket:
+exited after the release went live left it behind and pinned the release (14 GB on server C). Ticket:
 PLAT-405.
 
 ### 2026-10-02 — Muse "MCP stdio connection is closed": a slow tool call killed the bridge for good
 
-- **Found (Mayur, Code on excellence; same pattern in a second session).** A shell command ran 5 minutes; Muse recorded
+- **Found (Mayur, Code on server B; same pattern in a second session).** A shell command ran 5 minutes; Muse recorded
   `timed_out` at exactly 5:00 (its own tool-call limit) and the very next call failed with "api-bridge: MCP stdio
   connection is closed". The Muse process had no `mcpbridge` child any more and never reconnects, so every file write
   and shell call failed for the rest of that session. Checked across all Muse sessions: the two sessions that ever
@@ -2899,9 +2899,9 @@ PLAT-405.
   Queued work rechecks current filters; running work/final responses continue.
 - **UI and rollout.** Panes display filters read-only. Owner/operator docs are
   corrected for workflow reply runs and actual sync behavior. No deployment,
-  cloud provisioning or live RTS certification is performed here.
+  cloud provisioning or live server A certification is performed here.
 
-### 2026-10-01 — Live browser stuck on "Browser restarted — reconnecting…" (RTS, Code project)
+### 2026-10-01 — Live browser stuck on "Browser restarted — reconnecting…" (server A, Code project)
 
 - **Found.** The browser of a Code project is started by the coding CLI inside its sandbox. The sandbox's private
   `/tmp` is the workspace's shared tmp folder, so the browser's socket folder and `.stream` file land in
@@ -2943,9 +2943,9 @@ PLAT-405.
 
 ### 2026-10-01 — Opening a Relay from activity or the global tab opener landed on Goals
 
-- **Reported** (Confida, two users): opening Relays opens Goals. The switcher and the Relay list are correct; two
+- **Reported** (server C, two users): opening Relays opens Goals. The switcher and the Relay list are correct; two
   navigation paths forced the Goals surface for every workflow tab (`openGlobalTab`, and the activity-session
-  fallback). Not reproduced in a browser: the fix is by reading the code, so confirm on Confida after the deploy.
+  fallback). Not reproduced in a browser: the fix is by reading the code, so confirm on server C after the deploy.
 - **Done.** `workflowSurfaceForPreset` (a Relay maps to Relays, else Goals) is used by both. Test:
   `workflowSurfaceForPreset.test.ts`. Still forcing Goals by design: the Quick Switcher and Schedules open
   the workflow afterwards, which sets the right surface.
@@ -2985,11 +2985,11 @@ PLAT-405.
   the slot's own socket for commands run as a slot (`slots.WithSlotDocker`, builder; `slotfs.WithSlotDocker`, provider,
   for CLIs run as a slot); a host without `slot_docker` is unchanged. Users cannot see or stop each other's containers.
 - **Costs to know per host.** Each slot keeps its own images and volumes under its home (disk) and a running daemon
-  is roughly 100-150 MB (memory): a small host (RTS, 4 GB) should enable it only for the slots that need it
+  is roughly 100-150 MB (memory): a small host (server A, 4 GB) should enable it only for the slots that need it
   (`docker slot03`). Rootless Docker needs unprivileged user namespaces (the script refuses on a host whose AppArmor
   restricts them unless `FORCE_DOCKER=1`) and `docker-ce-rootless-extras`/`uidmap`. Published ports are host-wide:
   two users publishing the same host port still collide (the port-limit plan is separate).
-- **Not applied yet.** The shared Hetzner host (excellence, Confida) is at 97% disk (15 GB free) with 59 GB of unused
+- **Not applied yet.** The shared Hetzner host (server B, server C) is at 97% disk (15 GB free) with 59 GB of unused
   images in the root Docker daemon (other developers' accounts); applying per-slot Docker waits for that headroom.
   Tests: `slots/docker_env_linux_test.go`, `internal/slotfs` (provider).
 
@@ -3013,7 +3013,7 @@ PLAT-405.
   `executor`, `cmd/mcpbridge`. A real executor → HTTP → stdio MCP test covers
   Jam-shaped mixed and image-only results, exact bytes and private file modes.
 - The fix must be deployed and the CLI's bridge restarted before a retained
-  session gets it. No RTS deployment or live conversation restart was done
+  session gets it. No server A deployment or live conversation restart was done
   during this investigation.
 
 ### 2026-10-01 — Tagged project procedures belong in the reference skill
@@ -3038,7 +3038,7 @@ PLAT-405.
 
 ### 2026-10-01 — Slotted commands were not stopped by a timeout, cancel or kill
 
-- **Found (tested on Confida, then on a server with the real code path).** The platform stops a shell command by
+- **Found (tested on server C, then on a server with the real code path).** The platform stops a shell command by
   signalling its process group (a hard kill). A slotted command's processes belong to another Linux account, so the
   signal stopped only `sudo`: after the kill the command (and anything it started) was still running (2 `sleep`
   processes before the kill, 2 after). Timeouts, cancelled chats and "stop process" left slotted commands running.
@@ -3074,7 +3074,7 @@ PLAT-405.
 - The supplied host is a fresh Ubuntu 26.04 machine (details in the private deployments repo).
   Prepare `/srv/<product>` under an unprivileged `<product>` account with a persistent
   user manager, workspace directories, native/Python/browser prerequisites and
-  Confida's checksum-pinned Node runtime. Generate new persistent secrets; never
+  Server C's checksum-pinned Node runtime. Generate new persistent secrets; never
   borrow another customer's logins, credentials or data. Code:
   a host setup script and runbook kept in the private deployments repo.
 - **Open:** domain, enabled products, sign-in configuration and initial admin
@@ -3085,16 +3085,16 @@ PLAT-405.
 
 ### 2026-10-01 — Slotted shell commands lost their per-call environment (401 from the tools gateway)
 
-- **Incident (Confida, Vaibhav's workflow session).** A shell command run as a slot only got the base environment
+- **Incident (server C, Vaibhav's workflow session).** A shell command run as a slot only got the base environment
   plus `MCP_API_URL`; `MCP_API_TOKEN`/`MCP_AUTH` (so the HTTP tools gateway answered 401), every `SECRET_*`, `VAR_*`,
   `STEP_*`, `DB_PATH`, `WORKFLOW_*` and `PYTHONPATH` were missing. Cause: the handler appended those values to the
   command's environment *after* the isolator had wrapped it for the slot, and the wrap writes the environment into
   the request at that moment. Fix: `security.Isolator.ExtraEnv` carries the filtered per-call values and they are merged
   (`MergeExtraEnv`) before `WrapCommand`; non-slot commands are unchanged. Tests: `security/extra_env_test.go`,
   `security/isolator_slot_env_linux_test.go`. Affects every slotted workflow shell on any host (excellence, RTS,
-  Confida) until deployed.
+  Server C) until deployed.
 - **By design.** `planning/` is mounted read-only in a workflow shell so plan changes go through the authenticated tools.
-- **Browser (RTS "Browser restarted - reconnecting" loop; Confida "Permission denied ... google-chrome").** The
+- **Browser (server A "Browser restarted - reconnecting" loop; server C "Permission denied ... google-chrome").** The
   `agent-browser` CLI starts its own daemon and Chrome from inside the command and the platform manages them (profile
   folders `browser-profile*` are service-owned 0700, the live view, restarts, killing). As a slot the CLI could not
   write the profile folders (so `daemonPID=0`, no Chrome, live view 502) and the platform could not stop a browser
@@ -3106,7 +3106,7 @@ PLAT-405.
   daemon reads `file://` as the service. Making browsers run as the slot would need slot-writable profile folders and
   a platform that can manage processes it does not own; not done.
 
-### 2026-10-01 — RTS resized to t3.medium (2 vCPU / 4 GB) for performance testing
+### 2026-10-01 — server A resized to t3.medium (2 vCPU / 4 GB) for performance testing
 
 - **Decided and done.** The RTS instance went from `t3.large` to `t3.medium` through the stack (change set
   `rts-resize-t3-medium`, in place, same disks and Elastic IP; a few minutes of downtime). `t3.medium` was added to the
@@ -3124,21 +3124,21 @@ PLAT-405.
 - **Incident.** With slots on, every shell command a workflow or Relay ran as the user's slot failed with
   `slotctl: could not start: fork/exec ...: permission denied` (Go reports a failed chdir this way): the shared
   folders (`Workflow/`, `Downloads/`, `skills/`, `subagents/`, `tmp/`) belong to the service account and the folders
-  inside them are owner-only, so no slot could enter its own workflow's folder. Found on Confida (Vaibhav, 13:12);
-  RTS (scheduled workflows run as the admin, who has a slot) and excellence (Relays/Crew) had the same gap. This is
+  inside them are owner-only, so no slot could enter its own workflow's folder. Found on server C (Vaibhav, 13:12);
+  Server A (scheduled workflows run as the admin, who has a slot) and server B (Relays/Crew) had the same gap. This is
   the "shared folders are not slot-writable yet" item flagged when opt-in mode was introduced; assigning every
-  Confida user a slot made it bite.
+  Server C user a slot made it bite.
 - **Decided and done.** One group per product (`<prefix>shared`: `cfshared` on Confida, `slotshared` on RTS and
-  excellence) holds the service account and every slot; the shared folders get that group, group read/write and
+  Server B) holds the service account and every slot; the shared folders get that group, group read/write and
   setgid, so files either side creates stay reachable by both. Private trees stay closed to other slots (checked: one
   slot cannot list another's tree). Apps still decide who may open which workflow; this only restores what the
   shell could do as the service account. `provision-slots.sh init` runs it and `provision-slots.sh shared` re-runs it
   (`SHARED_DIRS` overrides the folder list); the service's user manager must be restarted once for the new group.
 - **Open.** Anything else a slot must reach but does not own (new shared folders outside that list) needs the same
-  treatment. CLIs as the user's own account (not enabled outside the excellence canary) have the equivalent question
+  treatment. CLIs as the user's own account (not enabled outside the server B canary) have the equivalent question
   for their runtime files.
 
-### 2026-10-01 — Excellence offers Crew and Relays (the product switcher list lives in runtime-config.js)
+### 2026-10-01 — server B offers Crew and Relays (the product switcher list lives in runtime-config.js)
 
 - **Correction.** Which products a deployment's switcher lists is the frontend `runtime-config.js`
   (`enabledProductSurfaces`), narrowed per account by `allowed_products` (administrators: all enabled; others:
@@ -3162,7 +3162,7 @@ PLAT-405.
 - **Found (Confida, Vaibhav).** `read_image` called by a coding CLI arrives through the tool bridge as a plain HTTP
   request, with none of the turn's provider accounts in its context. The analysis fell back to "the agent's own
   model" (claude-code/claude-sonnet-5-5) but, with no account in hand, started Claude under the **server's**
-  account: Confida has no server Claude login, so Claude stopped on "Select login method" and timed out
+  account: Server C has no server Claude login, so Claude stopped on "Select login method" and timed out
   ("LLM image analysis failed ... [auth]"), even for a user with their own Claude connection.
 - **Decided.** The turn's account keys (`mergedAPIKeys`) are attached to bridge-originated `read_image` calls
   (`SetReadImageLLMConfig(..., keys)` / `injectSelectedLLMConfig`), so the analysis uses the same CLI, connection
@@ -3173,18 +3173,18 @@ PLAT-405.
   model call was wrong. Other bridge-called tools that start their own model (e.g. `generate_text_llm`) were not
   audited for the same gap.
 
-### 2026-10-01 — Confida slot table unreachable (incident), and image analysis login
+### 2026-10-01 — server C slot table unreachable (incident), and image analysis login
 
-- **Incident.** After Confida's slots went live (12:00), its service could not read
+- **Incident.** After server C's slots went live (12:00), its service could not read
   `/etc/agentworks/confida/slots.json`: `/etc/agentworks` was `root:agents 0750` (excellence's group), so Confida's
   service could not traverse it. In opt-in mode a table that cannot be read is an error, so every shell and
-  browser call failed for every Confida user ("No account slot for this user ... permission denied"), about
+  browser call failed for every server C user ("No account slot for this user ... permission denied"), about
   13 calls until it was fixed (`chmod 0751 /etc/agentworks`, search-only; the tables and per-product folders stay
   closed to the other product, verified both ways). `provision-slots.sh` now sets that for any non-default
-  prefix. My earlier probe ran as the Confida account but never read the table, so it missed this; the probe
+  prefix. My earlier probe ran as the server C account but never read the table, so it missed this; the probe
   must read the slot table through the service's own path.
 - **Not from slots.** Image analysis (`read_image`) on Confida uses the workflow's chosen model
-  (claude-code/claude-sonnet-5-5); Confida has no Claude login (no token, no credentials file), so Claude shows
+  (claude-code/claude-sonnet-5-5); server C has no Claude login (no token, no credentials file), so Claude shows
   its login screen and the call times out. Fix by connecting a Claude account (Providers) or choosing a model
   with a login for image analysis.
 
@@ -3256,7 +3256,7 @@ PLAT-405.
 
 ### 2026-10-01 — A closed main terminal does not imply an inactivity timeout
 - The raw terminal's recovery banner now says the terminal is no longer
-  running, without attributing every exit to inactivity. Excellence logs show
+  running, without attributing every exit to inactivity. Server B logs show
   both idle-backstop cleanup and unexpected pane exits; the terminal snapshot
   does not establish a cause for this banner.
 - "Back to chat" switches the existing chat to its formatted view. It does
@@ -3267,11 +3267,11 @@ PLAT-405.
   at the bottom of the terminal pane where people expect to type. The footer
   does not shrink into the output and is announced as a status notice.
 
-### 2026-10-01 — Slots per product on a shared host (Confida: prefix cf, 15 accounts)
+### 2026-10-01 — Slots per product on a shared host (server C: prefix cf, 15 accounts)
 
 - **Decided.** Products that share a host each get their own slot accounts, launcher, config, table and sudo
   rule, so one product's service account is never in another's slot groups (a single set would let
-  Confida's service read excellence users' folders). The prefix, config path, launcher and table path are
+  Server C's service read server B users' folders). The prefix, config path, launcher and table path are
   settings (`AGENTWORKS_SLOT_PREFIX`, `_SLOTCTL_CONFIG`, `_SLOTCTL`, `_SLOTS_FILE`; `slot_prefix` in the
   slotctl config for programs that run without the service environment). The default (`slot`,
   `/usr/local/libexec/agentworks/`, `/etc/agentworks/`) is unchanged, so excellence needs no migration.
@@ -3283,7 +3283,7 @@ PLAT-405.
   refusing shell commands, so a product can deploy with the slot settings first and be provisioned after.
   A damaged or unreadable table is still an error; `on` mode still refuses without a table.
 
-### 2026-10-01 — Crew offered on excellence (Code + Crew); Code keeps its own-login rule
+### 2026-10-01 — Crew offered on server B (Code + Crew); Code keeps its own-login rule
 
 - **Decided.** Crew (`work`) on excellence is given per person, not to everyone: administrators (every
   product) and anyone whose `users.json` `products` lists it. Vaibhav now has `code` and `work`; the other
@@ -3305,7 +3305,7 @@ PLAT-405.
   its completion, even when tab flags or a session-status poll still describe
   the previous idle/completed turn. Waiting-for-input remains distinct and
   completion still clears stale running flags. The shared hook applies to
-  Code, Crew and workflows, including RTS's Cursor workflow chats.
+  Code, Crew and workflows, including server A's Cursor workflow chats.
 - Select the latest lifecycle event by its timestamp, using sequence to break
   equal timestamps and arrival order when timing is unavailable. A replayed
   older completion appended after a new message cannot settle that new turn.
@@ -3370,7 +3370,7 @@ PLAT-405.
 
 Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 
-- **Decided.** A project (a Crew in the project directory, on RTS the Video Studio / Goals projects that every
+- **Decided.** A project (a Crew in the project directory, on server A the Video Studio / Goals projects that every
   account could open) is private to its owner, as Code workspaces already were. A non-owner can no longer
   see it in the shared-project list or open it as a reader. One switch, `projectSharingEnabled`
   (`agent_go/cmd/server/project_sharing.go`, off by default, `AGENTWORKS_PROJECT_SHARING=on` restores it),
@@ -3385,21 +3385,21 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   `project_sharing_test.go` covers the default. `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID` and
   `TestSalesCrewCatalogHasInstallableRoles` fail on a clean `origin/main` as well; not caused by this change.
 
-### 2026-10-01 — Slots on the RTS host: one shared build step, opt-in mode, SSM provisioning
+### 2026-10-01 — Slots on the server A host: one shared build step, opt-in mode, SSM provisioning
 
 - **Decided.** Every deployment builds and installs slots through one shared script, `deploy/common/slots.sh`
   (build `slotctl` and `slottmux`; install the tmux front-end outside the releases), called from both
   `deploy/rootless-linux/build-and-activate.sh` and `deploy/aws-ec2/server/build-and-activate.sh`. The
   provisioning script moved to `deploy/common/provision-slots.sh` and takes `APP_DIR`, `DOCS` and
   `SERVICE_HOME`, so the same script serves `/srv/<product>` hosts and RTS. The two build scripts themselves
-  are still separate (RTS has its own Docker, CloudFront and AppArmor steps); merging them is a larger
+  are still separate (server A has its own Docker, CloudFront and AppArmor steps); merging them is a larger
   change and is not done.
 - **Decided.** `AGENTWORKS_SLOTS=optin` (new): a user who holds a slot runs shell commands as it; a user without
   one is unchanged (`on` still refuses them). RTS runs Video Studio and Workflow/Crew runs that write into
   shared folders a slot account cannot write yet (the per-slot state roots item below), so it rolls out per
   user. The RTS build writes `optin` only when `/etc/agentworks/slots.json` exists, i.e. after an administrator
   ran `deploy/aws-ec2/slots-admin.sh init`.
-- **Decided.** RTS has no sudo and SSH is deploy-only, so root steps go through SSM Run Command
+- **Decided.** Server A has no sudo and SSH is deploy-only, so root steps go through SSM Run Command
   (`deploy/aws-ec2/slots-admin.sh`, like `install-system-tools.sh`). `init` also installs `acl` (setfacl).
 - **Open.** CLIs as the user's own account (`AGENTWORKS_SLOT_CLI*`) are not enabled on RTS; shared Workflow and
   Crew folders still need slot-writable state roots before shell-as-slot can cover those runs.
@@ -3420,19 +3420,19 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 
 - **Decided.** `utils.IsValidFilePath` (behind `ResolveUserPath` and every other handler) refuses a symlink
   that carries a path from one user's tree into another's, or from a shared folder into a user's tree: a
-  link planted in your own folder can no longer read someone else's. Checked first on excellence and RTS:
+  link planted in your own folder can no longer read someone else's. Checked first on server B and server A:
   no existing link does either. Regression tests in `workspace/utils/path_cross_user_test.go`.
 - **Reversed the same day (RTS outage).** The first version also refused any `_users/<id>/` path whose id was
   not the requester's. That broke RTS: the agent could not load `_users/_system_global_secrets/secrets.json`
-  at startup, never listened, and RTS was down for about 8 minutes until the release was rolled back. The
+  at startup, never listened, and server A was down for about 8 minutes until the release was rolled back. The
   workspace API has no authorization of its own by design; the app server authorizes the caller and stamps
   `X-User-ID`, and shared Code collaborators, Crew owners and administrators legitimately read another
   user's folder, so the name check must not live there. Lesson: a change to a shared resolver needs a
   startup check against a copy of the real data layout before a swap.
-- **Second outage, same day (excellence startup).** The symlink rule compared a path's owner with the owner of
+- **Second outage, same day (server B startup).** The symlink rule compared a path's owner with the owner of
   its nearest *existing* parent, so a path that does not exist yet (`_users/_system_global_secrets/...`, or
   a new user's first file, whose nearest parent is `_users` itself) was refused and the agent could not
-  start; excellence went down until its release was rolled back. Fixed: the comparison applies only once the
+  start; server B went down until its release was rolled back. Fixed: the comparison applies only once the
   resolved path has reached a user's own folder, and a link to `_users` itself stays refused. RTS was only
   unaffected because those folders already existed. Checked against the real service with a data layout
   that has no `_system_global_secrets` folder and a brand-new user's first write, not only unit tests.
@@ -3765,7 +3765,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   branch), the proxy adds the service token itself, and the proxy only inspects path fields,
   not command text. Any user could therefore run commands as the shared server account and
   read other users' chats and files, or delete them. Logged: his calls returned 200 at
-  16:35-16:36 on excellence. Whether anyone used it to read or delete anything is not known.
+  16:35-16:36 on server B. Whether anyone used it to read or delete anything is not known.
 - `api/execute` is now in `workspaceProxyRefusedRoutes` (server-only). The UI never called
   it and the agent server reaches the workspace service directly. The test that allowed
   shell text through the proxy now asserts it is refused. Code:
@@ -3924,7 +3924,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 
 ### 2026-09-30 — Agy tool calls show while the turn runs, not only at the end
 - Agy has no live tool stream; its calls are read from the conversation database.
-  They were published only once the whole turn settled, so a 4-minute Confida turn
+  They were published only once the whole turn settled, so a 4-minute server C turn
   showed no tools until the end. `ReadRetainedTurnStructuredProgressMessages` now
   also publishes calls a later step follows (`agyCompletedToolCallsSince`): tools
   run one after another, so those have finished. The newest step waits for the next
@@ -3943,7 +3943,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   `frontend/src/components/providers/CostConversations.tsx`.
 
 ### 2026-09-30 — Switching provider mid-chat no longer inherits the old provider's account
-- Confida: Pi -> Agy in one chat failed 403 "provider connection does not match
+- Server C: Pi -> Agy in one chat failed 403 "provider connection does not match
   selected provider" (a hard refresh cleared it). `queryRequestForAgentProfileChat`
   filled a missing account from the conversation's saved one, which belongs to the
   old provider. It is now inherited only while the provider is unchanged; the new
@@ -3977,7 +3977,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 
 ### 2026-09-30 — People can disconnect their own legacy Gmail account
 - The shared-account admin gate also blocked removal of personal connections
-  created before owner IDs were recorded. Confida has an ownerless Gmail entry
+  created before owner IDs were recorded. Server C has an ownerless Gmail entry
   whose Google-discovered email matches an enabled, non-admin directory user.
 - DELETE now permits the recorded owner, or for an ownerless legacy entry an
   exact email match with the authenticated user's current server-side directory
@@ -4005,7 +4005,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   ledger rows with native model requests. Daily details use that date's subset.
   Old servers/records without conversation attribution keep the totals and
   cannot provide a conversation link.
-- Excellence investigation: the two Muse cron conversations recorded
+- Server B investigation: the two Muse cron conversations recorded
   43,671,464 input (33,867,163 cache reads), 32,226 output, and $1.054609626
   on September 30 UTC. Contributor rates already discounted cache reads:
   $0.9804301 fresh + $0.067734326 cached + $0.0064452 output.
@@ -4058,7 +4058,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 - Visible project rows include their owner's directory email, when available,
   in the list, summary and search. Ownership is distinct from contributors in
   the existing per-user breakdown; access filtering still precedes lookup.
-- Excellence's September 28–30 Muse ledger had $3.78333333 in token estimates:
+- Server B's September 28–30 Muse ledger had $3.78333333 in token estimates:
   184,406,599 input, 531,213 output, 150,648,665 cached input. The old UI added
   cache again (335.60M overall tokens). Contributor pricing and cache discounts
   explain the small recorded dollar estimate; it is not an invoice.
@@ -4106,7 +4106,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 - The hold was skipped whenever the session looked "mid-answer". Answer rows
   that arrive after their turn ended (Cursor's late transcript chunks, native
   transcript catch-up) marked it mid-answer with nothing left to end it, so
-  Cursor's first reply line to a message landed above that message (RTS
+  Cursor's first reply line to a message landed above that message (server A
   rts-pr-reviewer: the line looked missing; it was above the message).
 - Now a session is mid-answer only if an answer row arrived in the last 15 s
   (`deferredSteerQuietWindow`) or a tool call is still running. Past that it is
@@ -4144,7 +4144,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 ### 2026-09-30 — Cursor reads the confined chat's own store first
 - `cursorChatsRoots(home)` puts the given home's `.config/cursor/chats` before
   the server's XDG folder. The other order read a stale copy of the same chat
-  (started before the lock) and so nothing streamed mid-turn on RTS; the reply
+  (started before the lock) and so nothing streamed mid-turn on server A; the reply
   only landed at turn end.
 - Code: `multi-llm-provider-go/pkg/adapters/cursorcli/cursorcli_paths.go`.
 
@@ -4216,7 +4216,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   (`cursor-askpass-*.sock`, and `/tmp/.cursor/<project>` when its home path is
   too long for a socket). Every other CLI uses its private `TMPDIR`: Muse, Pi and
   Agy were started under the real launcher without `/tmp` and made no `/tmp`
-  access; Claude and Codex ran confined on RTS before the grant existed.
+  access; Claude and Codex ran confined on server A before the grant existed.
   Verified 2026-09-30; a CLI that turns out to need `/tmp` is added by name.
 - Muse's private `TMPDIR` was first narrowed by a separate patch (provider
   `3428203`, review PRs provider #39 / builder #258); the Cursor-only rule
@@ -4249,7 +4249,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   `XDG_CONFIG_HOME` / `CODEX_HOME` / `CLAUDE_CONFIG_DIR`; for the server account,
   the server process's environment (RTS sets `XDG_CONFIG_HOME`, so its Cursor
   login was never found before). `CLISecurityPolicy.CredentialEnv`.
-- On RTS Cursor runs on an API key, so it does not depend on the login file.
+- On server A Cursor runs on an API key, so it does not depend on the login file.
 
 ### 2026-09-30 — Accounts on Crew and Code
 - Your own signed-in account is used by default for your own interactive chats
@@ -4275,7 +4275,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 ## Deploy state (2026-09-30, deploys on hold)
 
 - **Live:** RTS `fa635b8` (Cursor store order); Confida (Pi launch folder,
-  extension cache, bridge; Pi confirmed working); excellence (Muse hooks,
+  extension cache, bridge; Pi confirmed working); server B (Muse hooks,
   resume adoption).
 - **On main, not deployed:** the steer-ordering fix (`e8340db68`).
 - Deploys wait for the next batch of major fixes. Deploy from a clean
@@ -4371,19 +4371,19 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   Unix sockets, so the tmux socket (`/tmp/tmux-<uid>/default`) is reachable
   from a confined CLI whatever its grants. Fixing both needs the private mount
   namespace above.
-- **Confida Slack replies about 90 s late.** The gap is before the session is
+- **Server C Slack replies about 90 s late.** The gap is before the session is
   saved; `[BOT_TIMING]` and `[BUILDER_RESTORE_TIMING]` logs are in place to
   name the slow step (suspect: `restoreLatestBuilderConversation` reading every
   saved Builder conversation).
 - **Deploy check can fail on a stale `claude`.** `deploy/common/install-coding-clis.sh`
-  refuses when a CLI resolves outside the managed install. Confida had a stray
+  refuses when a CLI resolves outside the managed install. Server C had a stray
   `tools/node/bin/claude` from an interrupted install (removed by hand
   2026-09-30). The check names only the CLI, not the path it found.
 - **Muse authenticated smoke test.** Startup and resume pass under the lock;
   a real Meta-authenticated turn with native tools is still to be run.
 - **Personal accounts per provider.** The Providers screen says "The
   installation does not allow personal accounts for this provider" when the
-  provider is locked to the server's account (RTS Cursor runs on the server's
+  provider is locked to the server's account (server A Cursor runs on the server's
   API key) and `ALLOW_PERSONAL_PROVIDER_CONNECTIONS` is not set
   (`personalProviderConnectionsLocked`, `provider_connections.go`). It is a
   server setting with no UI switch, and the screen does not say who can change it.

@@ -25,7 +25,7 @@ func writeClientSecretFile(t *testing.T, path, id, secret string) {
 
 // The default client_secret.json location follows XDG_CONFIG_HOME like the
 // Gmail refresh-token directory, the MCP connector tokens, and the DCR client
-// cache -- on RTS ~/.config is root-owned and only the XDG tree is writable.
+// cache -- on server A ~/.config is root-owned and only the XDG tree is writable.
 func TestReadGmailClientSecretFileHonoursXDGConfigHome(t *testing.T) {
 	home := t.TempDir()
 	xdg := filepath.Join(home, "xdg-config")

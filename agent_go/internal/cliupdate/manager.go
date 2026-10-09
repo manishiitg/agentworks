@@ -304,7 +304,7 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 // recordedExecutableMissing reports a CLI whose last good install no longer
 // resolves. A later npm run in the same prefix can drop another package's bin
 // link; the services then fall back to an older system copy until the next
-// daily check (RTS 2026-09-25: ~/.local/bin/claude vanished after an update,
+// daily check (server A 2026-09-25: ~/.local/bin/claude vanished after an update,
 // and a root-installed 2.1.233 ran instead). Such a CLI is checked right away.
 func recordedExecutableMissing(r Result) bool {
 	if r.Executable == "" || r.Status == "not_installed" {

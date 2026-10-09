@@ -101,7 +101,7 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 			reason := "tmux pane disappeared unexpectedly"
 			// A main pane can vanish because the running turn replaced it:
 			// the provider's submit retry starts a fresh pane. Cancelling the
-			// session then kills the very retry that could recover (RTS SDE
+			// session then kills the very retry that could recover (server A SDE
 			// crew, 2026-09-27). While a turn is in flight it owns the outcome
 			// -- the adapter fails the turn itself if its pane is truly lost --
 			// so only retire this terminal record.
@@ -258,7 +258,7 @@ func codingWatchdogRateLimitEvidence(content string) string {
 		// prefixes reply blocks with "● ", user messages with ">"/"❯", and
 		// indents their wrapped lines by two spaces; tool results ("⎿", where
 		// API errors appear) and CLI status lines are still checked. Seen on
-		// RTS 2026-09-27: a resumed SDE crew pane redrew the user's "we got rate
+		// server A 2026-09-27: a resumed SDE crew pane redrew the user's "we got rate
 		// limited" message, the watchdog read it as a limit wall and killed
 		// every new turn.
 		trimmedLeft := strings.TrimLeft(raw, " ")

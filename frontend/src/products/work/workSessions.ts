@@ -73,7 +73,7 @@ export async function createWorkSession(title: string, description: string, icon
   const template = templateId && product.hasTemplates ? getCrewTemplate(templateId) : undefined
   const options = await loadAgentProfileProviderOptions(product.profileId)
   // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
-  // then the first coding agent they may run, so a new project does not start on a refused account (excellence
+  // then the first coding agent they may run, so a new project does not start on a refused account (server B
   // 2026-10-07). Unknown accounts keep the product default.
   const accounts = await llmConfigService.getProviderConnections({ product: product.profileId }).catch(() => null)
   const usable = (option: { provider?: string }) => accounts === null || accounts.some(account => account.provider === option.provider && account.usable !== false)

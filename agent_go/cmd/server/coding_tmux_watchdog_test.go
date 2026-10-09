@@ -393,7 +393,7 @@ func TestCodingWatchdogLimitReasonNamesProviderAndRecovery(t *testing.T) {
 	}
 }
 
-// RTS SDE crew: Claude narrating a third-party throttle ("Notion
+// server A SDE crew: Claude narrating a third-party throttle ("Notion
 // rate-limited that query") in classic-renderer scrollback made the watchdog
 // cancel a healthy session every 30s.
 func TestCodingWatchdogRateLimitEvidenceIgnoresAssistantNarration(t *testing.T) {
@@ -424,7 +424,7 @@ func TestCodingWatchdogRateLimitEvidenceIgnoresAssistantNarration(t *testing.T) 
 	}
 }
 
-// RTS 2026-09-27: a resumed SDE crew pane redrew the user's own message
+// server A 2026-09-27: a resumed SDE crew pane redrew the user's own message
 // "...we got rate limited in mcp"; the watchdog read it as a limit wall and
 // killed every new turn. User messages, assistant replies and continuation
 // lines the window cannot attribute are not evidence; real notices are.
@@ -489,7 +489,7 @@ func TestCodingTmuxWatchdogTrustsCLIUsageOverScreenText(t *testing.T) {
 
 // A main pane that vanishes while a turn is in flight was replaced by that
 // turn (the provider's submit retry starts a fresh pane): the watchdog must not
-// cancel the session and kill the retry (RTS SDE crew, 2026-09-27). Without an
+// cancel the session and kill the retry (server A SDE crew, 2026-09-27). Without an
 // in-flight turn, a vanished main pane still fails the session.
 func TestCodingTmuxWatchdogLeavesReplacedMainPaneToRunningTurn(t *testing.T) {
 	oldOutput := runTerminalTmuxOutputCommand

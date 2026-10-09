@@ -13,14 +13,14 @@ from urllib.request import urlopen
 
 # A `.deploying` marker protects a release that is still being built or uploaded. A deploy that exits after the
 # release went live but before its last line (a false failure) leaves the marker behind, and a marker that old
-# must not pin the release forever (Confida kept 15 releases, 14 GB, this way).
+# must not pin the release forever (server C kept 15 releases, 14 GB, this way).
 DEPLOYING_MARKER_MAX_AGE_SECONDS = 6 * 3600
 
 RELEASE_NAME = re.compile(r"(?:[a-z][a-z0-9-]*-)?[0-9a-f]{7,40}-[0-9]{14}\Z")
 
 
 # A first boot can run one-time state carry-over and chat migration before the
-# listener opens (about a minute on RTS), so wait well past that.
+# listener opens (about a minute on server A), so wait well past that.
 DEFAULT_HEALTH_TIMEOUT = 180
 # Besides the live release, keep the previous one: a margin for processes that cannot be inspected and a fast rollback.
 DEFAULT_KEEP_NEWEST = 2
@@ -60,7 +60,7 @@ def active_releases(releases, proc=Path('/proc')):
                     resolved = os.path.realpath(path)
                 except OSError:
                     # Another account's /proc/<pid>/root and similar cannot be resolved (slot accounts). Before this
-                    # was caught, one such path aborted the whole cleanup and RTS kept every release (34 GB, disk full).
+                    # was caught, one such path aborted the whole cleanup and server A kept every release (34 GB, disk full).
                     continue
                 referenced.update(pattern.findall(resolved))
     return referenced

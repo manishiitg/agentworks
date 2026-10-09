@@ -3,7 +3,7 @@ import { shouldHoldSendInBrowser } from './liveInputSubmission'
 
 describe('shouldHoldSendInBrowser', () => {
   it('never holds a send for a chat that has a session, even if the tab believes a turn is streaming', () => {
-    // RTS SDE crew after a server restart: event stream dropped mid-turn, the
+    // server A SDE crew after a server restart: event stream dropped mid-turn, the
     // provider list 502ed so the tmux route was unknown — sends were stranded.
     expect(shouldHoldSendInBrowser({ isStreaming: true, routeLiveInputToCLI: false, hasSession: true })).toBe(false)
     expect(shouldHoldSendInBrowser({ isStreaming: true, routeLiveInputToCLI: true, hasSession: true })).toBe(false)

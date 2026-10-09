@@ -156,7 +156,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	closeAllCodingCLISessionsForRuntimeCancel(sessionID, closeReason)
 	// Stop closes the coding CLI, so nothing can finish the turn it was running: release every
 	// marker that says the session is busy, or the next message queues behind a dead turn forever
-	// (excellence, 2026-09-30: every message after a Stop stayed "queued_for_turn").
+	// (server B, 2026-09-30: every message after a Stop stayed "queued_for_turn").
 	api.releaseStoppedSessionTurnMarkers(sessionID)
 	if api.terminalStore == nil {
 		return
@@ -446,7 +446,7 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	log.Printf("[SESSION DEBUG] Closed any tmux-backed coding-CLI session for stopped session %s", sessionID)
 	// The Stop button closes the coding CLI, so nothing can finish the turn it was running:
 	// release every marker that says the conversation is busy, or the next message is refused
-	// (409) or queued behind a dead turn forever (excellence, 2026-09-30: a Muse Code chat).
+	// (409) or queued behind a dead turn forever (server B, 2026-09-30: a Muse Code chat).
 	// The runtime-cancel path has the same call; this is the one the Stop button takes.
 	api.releaseStoppedSessionTurnMarkers(sessionID)
 

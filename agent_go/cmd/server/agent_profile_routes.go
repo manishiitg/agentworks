@@ -295,7 +295,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 	// An account belongs to one provider. The one inherited from the conversation is only valid
 	// while the chat stays on that provider: switching Pi -> Agy with no account picked used to
 	// send Pi's account with Agy and fail "provider connection does not match selected provider"
-	// (Confida 2026-09-30). The new provider then gets its own default account.
+	// (server C 2026-09-30). The new provider then gets its own default account.
 	if strings.TrimSpace(input.ConnectionID) == "" && req.ConnectionID != "" &&
 		strings.TrimSpace(conversation.Provider) != "" && strings.TrimSpace(req.Provider) != "" &&
 		!strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(req.Provider)) &&
@@ -312,7 +312,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 func providerOptionOffersModel(option agentprofiles.ProviderOption, modelID string) bool {
 	// Pi runs any "<service>/<model>" its key's service offers: the models a person picked on their own key
 	// (OpenRouter, NVIDIA NIM, ...) and custom ids typed into the picker are not in the platform catalog, and
-	// rejecting them made a key account's model impossible to change (422, Excellence 2026-10-08, PLAT-720).
+	// rejecting them made a key account's model impossible to change (422, server B 2026-10-08, PLAT-720).
 	// Which models an account may use is the account's own list, enforced when the turn runs.
 	if strings.EqualFold(strings.TrimSpace(option.Provider), "pi-cli") && piServiceModelID(modelID) {
 		return true

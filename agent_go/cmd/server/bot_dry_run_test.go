@@ -114,7 +114,7 @@ func TestBotDryRunCrewOwnApp(t *testing.T) {
 	requireAdmitted(t, w.mention(t, app.ID, "C0CREWCHAN1"), "crew-aaa")
 }
 
-// RTS 2026-09-26: a crew app saved with the logical path answered "This
+// server A 2026-09-26: a crew app saved with the logical path answered "This
 // Slack route is no longer configured". The startup migration repairs it.
 func TestBotDryRunLegacyLogicalCrewAppAfterMigration(t *testing.T) {
 	w := newBotDryRunWorld(t)
@@ -181,7 +181,7 @@ func TestBotDryRunSharedBotUnroutedChannelIsRefused(t *testing.T) {
 	}
 }
 
-// RTS 2026-09-26: gptlive1 attaches two other crews by their logical path and
+// server A 2026-09-26: gptlive1 attaches two other crews by their logical path and
 // a workflow; its Slack bot was refused ("One or more attached workflows or
 // Crew projects are unavailable"). Attachments are the owner's context.
 func TestBotDryRunCrewWithAttachedCrewsAndWorkflow(t *testing.T) {
@@ -206,7 +206,7 @@ func TestBotDryRunCrewWithAttachedCrewsAndWorkflow(t *testing.T) {
 }
 
 // Each Slack thread is its own chat in the crew, never the crew's main
-// conversation (RTS 2026-09-26: every thread landed in the owner's web chat).
+// conversation (server A 2026-09-26: every thread landed in the owner's web chat).
 func TestBotDryRunCrewSlackThreadsGetTheirOwnChats(t *testing.T) {
 	w := newBotDryRunWorld(t)
 	app := w.createApp(t, "SDE", crewRunModeOwnerRoot, "work")

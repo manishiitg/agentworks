@@ -54,7 +54,7 @@ func testAssistantMessage(id, content string) internalevents.Event {
 	}
 }
 
-// Live RTS incident: B was sent while the CLI was still answering A. The CLI
+// Live server A incident: B was sent while the CLI was still answering A. The CLI
 // took B only after finishing A, but B was recorded at send time, so A's
 // answer rendered under B. B must be recorded where the CLI took it.
 func TestSteeredMessageIsRecordedAfterTheInFlightAnswer(t *testing.T) {

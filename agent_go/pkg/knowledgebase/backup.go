@@ -874,7 +874,7 @@ func (s *Service) deletionReusable(d Deletion) bool {
 	st := s.backupState()
 	// Nothing has ever been published (no remote, or a remote that never received a backup): there is no remote
 	// deletion to confirm, so the path is free again. A configured but never-working backup used to keep every deleted
-	// path locked forever (RTS 2026-10-06: a curator could not recreate notes at their topic paths). Never use this
+	// path locked forever (server A 2026-10-06: a curator could not recreate notes at their topic paths). Never use this
 	// exception after backup initialization or while receipts exist: those may hold unpublished snapshots.
 	_ = destination
 	if !st.Initialized && !st.ExternalChange && st.Tip == "" && len(st.Paths) == 0 {

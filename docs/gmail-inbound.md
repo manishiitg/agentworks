@@ -128,7 +128,7 @@ senders or deploy a release. The manual setup below remains available.
 
 The receiver is `POST /api/hooks/gmail/events`. Google-signed OIDC tokens must
 match the configured service account and exact audience. The event endpoint verifies Google push identity itself. The exact expiring setup-review endpoint and existing OAuth callbacks also bypass browser login; all management remains authenticated. The
-AWS RTS gateway and the Hetzner gateways compile the same gateway source.
+AWS server A gateway and the Hetzner gateways compile the same gateway source.
 
 Use one topic per Google OAuth project, and a separate push subscription and
 service account for each deployment. A Gmail watch specifies one topic:
@@ -200,7 +200,7 @@ audience. Keep the default wrapped Pub/Sub JSON payload. Do not use
 `--push-no-wrapper`. Domain-restricted organization policies may need an
 exception for Google's Gmail publisher account.
 
-## RTS first, then other deployments
+## Server A first, then other deployments
 
 RTS is the AWS deployment at `video.realtrainingsys.com`, reached by
 `./deploy.sh rts`. Its active rootless service reads
@@ -215,7 +215,7 @@ causes a 401 and Pub/Sub retries.
 
 Hetzner rootless deployments keep runtime settings under
 `/srv/<product>/.env`; Dominion uses `/srv/dominion/.env`. Use each deployment's
-public domain and its own subscription. This implementation contains no RTS
+public domain and its own subscription. This implementation contains no server A
 host names in the application code and requires no deployment-specific build.
 
 After the operator configures and deploys a release:

@@ -101,7 +101,7 @@ func (s *SlackService) RewriteSlackScopes(ctx context.Context, resolve ScopeReso
 // platform, channel, thread and arrival connection. All bot turn builders
 // (workflow, crew conversation, default chat) use it so none can omit one; the
 // crew builder once dropped the connection and revalidation refused the
-// crew's own Slack bot (RTS 2026-09-26). The trigger stays with each builder
+// crew's own Slack bot (server A 2026-09-26). The trigger stays with each builder
 // (a bot workflow turn is scheduled-shaped, a chat turn is "bot:<platform>").
 // platform may be empty when threadID names it.
 func ApplyBotThreadFields(req map[string]interface{}, platform string, threadID ThreadID) {

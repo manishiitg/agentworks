@@ -46,7 +46,7 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
   // Each folder's direct children are fetched once and cached. Expanding a folder fetches only that folder, and the
   // tree is rebuilt from the cache at once; a refresh refetches the root and every open folder in parallel. The old
   // version refetched the whole tree level by level on every click, so a folder looked dead and then filled all at
-  // once (RTS 2026-10-06).
+  // once (server A 2026-10-06).
   const cache = useRef(new Map<string, { folders: KnowledgeFolder[]; entries: KnowledgeEntry[] }>())
   const expandedRef = useRef(expandedFolders)
   expandedRef.current = expandedFolders

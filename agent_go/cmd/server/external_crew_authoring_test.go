@@ -162,7 +162,7 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	if code, out := externalCrewRequest(t, env, crewWriter("viewer"), "create_crew", spec); code != 403 {
 		t.Fatalf("read-only account create = %d %v", code, out)
 	}
-	// "can create" is the one switch for new workflows, Relays and Crews: an editor without it makes no Crew (RTS).
+	// "can create" is the one switch for new workflows, Relays and Crews: an editor without it makes no Crew (server A).
 	if code, out := externalCrewRequest(t, env, crewWriter("editor"), "create_crew", spec); code != 403 {
 		t.Fatalf("an account without the create permission created a Crew = %d %v", code, out)
 	}

@@ -35,7 +35,7 @@ func mergeChatConversationSnapshots(canonical, incoming map[string]interface{}) 
 //
 // A system prompt is regenerated every turn (it carries turn-local data such
 // as the time), so it never matches: the newest one replaces old's leading
-// system prompts instead of being inserted next to them. (RTS 2026-09-25: a
+// system prompts instead of being inserted next to them. (server A 2026-09-25: a
 // builder chat had 18 system prompts and 37,882 rows, 1,407 of them unique,
 // after a concatenating merge re-appended the whole history every turn.)
 func alignChatHistories(old, next []json.RawMessage) ([]json.RawMessage, error) {

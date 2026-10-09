@@ -6,7 +6,7 @@ import (
 )
 
 // The refresh-token directory follows XDG_CONFIG_HOME like the MCP connector
-// tokens do: on RTS ~/.config is root-owned and only the XDG tree is writable.
+// tokens do: on server A ~/.config is root-owned and only the XDG tree is writable.
 func TestGmailOAuthTokenDirHonoursXDGConfigHome(t *testing.T) {
 	t.Setenv("GMAIL_OAUTH_TOKEN_DIR", "")
 	t.Setenv("XDG_CONFIG_HOME", "/srv/xdg")

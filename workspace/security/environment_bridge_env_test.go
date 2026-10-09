@@ -68,7 +68,7 @@ func TestNativeEnvironmentDoesNotInheritVaultAuthority(t *testing.T) {
 }
 
 // A user's shell must not see who else may sign in, other people's account ids, the gateway's settings or the
-// service's SSH agent (Excellence 2026-10-06: they were all in a Code terminal's env).
+// service's SSH agent (server B 2026-10-06: they were all in a Code terminal's env).
 func TestNativeEnvironmentDropsServerIdentityAndAccountData(t *testing.T) {
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	for _, key := range []string{"AUTH_ALLOWED_EMAILS", "AUTH_PROVIDERS", "GATEWAY_DISABLE_PASSWORD_GATE", "GATEWAY_USER_ID", "AGENTWORKS_SLOT_CLI_USERS", "SSH_AUTH_SOCK"} {

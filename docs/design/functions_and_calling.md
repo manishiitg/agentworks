@@ -86,10 +86,10 @@ Kept minimal, around 40–60 tokens per agent:
       "busy": "review_pr for PR 151"
     },
     {
-      "name": "RTS Flow Tester",
+      "name": "server A Flow Tester",
       "id": "14374cfd-a624-5dd3-91b3-eff300ec5d5c",
       "kind": "crew",
-      "about": "Runs live Playwright checks of RTS flows and reports with video evidence."
+      "about": "Runs live Playwright checks of server A flows and reports with video evidence."
     }
   ],
   "next": "ask(name, message) for anything; call_function(name, function, args) to run one."

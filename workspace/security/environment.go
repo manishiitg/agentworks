@@ -81,7 +81,7 @@ func buildDockerEnvironment() []string {
 
 		// HOME is /tmp here, so the AWS CLI and boto3 would look for profiles in
 		// /tmp/.aws. Point both at the system config the box installs
-		// (deploy/aws-ec2/install-system-tools.sh), where the named "RTS" profile
+		// (deploy/aws-ec2/install-system-tools.sh), where the named "server A" profile
 		// and the default both resolve to the instance role. A path, not a secret.
 		"AWS_CONFIG_FILE=/usr/local/etc/aws/config",
 
@@ -150,7 +150,7 @@ func buildNativeEnvironment() []string {
 		// Per-deployment global secrets (GLOBAL_SECRET_<NAME>) belong to workflows that declare them.
 		"GLOBAL_SECRET_",
 		// Sign-in configuration (who may sign in, providers) and the gateway's settings are the server's, not a
-		// shell's: AUTH_ALLOWED_EMAILS listed every allowed person in each user's Code terminal (Excellence 2026-10-06).
+		// shell's: AUTH_ALLOWED_EMAILS listed every allowed person in each user's Code terminal (server B 2026-10-06).
 		"AUTH_",
 		"GATEWAY_",
 	}

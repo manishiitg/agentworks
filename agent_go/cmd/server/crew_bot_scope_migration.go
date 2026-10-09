@@ -16,7 +16,7 @@ import (
 // (docs/design/bot_destination_scope.md): Slack connections, their
 // per-channel routes, and the platform channel routes. A logical crew path has
 // no owner, so the crew's own bot answered "This Slack route is no longer
-// configured" and shared-bot crew channels were refused (RTS 2026-09-26).
+// configured" and shared-bot crew channels were refused (server A 2026-09-26).
 //
 // The owner is the recorded one when its tree holds the project, else the one
 // user whose tree does; zero or several candidates leave the record as it is

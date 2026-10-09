@@ -54,12 +54,12 @@ type resolvedAgentProfile struct {
 	// turn's servers later in the query path; here they only feed the session
 	// fingerprint, so connecting Gmail to a Code relaunches its retained CLI
 	// (resuming the same conversation) instead of the old process answering
-	// "not registered by any connected server" (RTS 2026-09-29).
+	// "not registered by any connected server" (server A 2026-09-29).
 	ChatConnections []string
 	// ChatSecrets are the names (never values) of the secrets this chat gets as SECRET_*
 	// environment variables. The coding CLI's environment is fixed when it launches, so a secret
 	// attached to the project later reaches it only through a relaunch: the names feed the
-	// session fingerprint, like ChatConnections (RTS, SDE private, GITHUB_TOKEN, 2026-09-30).
+	// session fingerprint, like ChatConnections (server A, SDE private, GITHUB_TOKEN, 2026-09-30).
 	ChatSecrets []string
 	// APIKeys carries the project-scoped credential this resolver loaded from the
 	// encrypted per-user/workspace store. It is returned on the resolver's own
@@ -222,7 +222,7 @@ func agentProfileRuntimeWorkspace(userID, workspacePath string) string {
 // logical "Chats/..." project path maps into the caller's own tree; an
 // explicit "_users/<owner>/..." path (Crew Run-mode readers) is kept. The
 // logical form alone resolves outside any user tree and finds nothing — which
-// made restored Crews start a fresh native session (RTS 2026-09-24).
+// made restored Crews start a fresh native session (server A 2026-09-24).
 func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(selectedFolder)))
 	if ref.IsEmpty() && !ref.IsUsersRoot() {
@@ -304,7 +304,7 @@ func resolveProfileRuntimeModel(runtime agentprofiles.RuntimePolicy, requestedPr
 		}
 		// Pi runs any "<service>/<model>" its key's service offers, which is never in a curated list: the same rule
 		// as providerOptionOffersModel. Without it the turn fell back to the profile's default provider while still
-		// carrying the Pi account: "provider connection does not match selected provider" (Excellence 2026-10-08 and
+		// carrying the Pi account: "provider connection does not match selected provider" (server B 2026-10-08 and
 		// 2026-10-09, PLAT-770). The account's own allowed models are enforced when the turn runs.
 		if strings.EqualFold(strings.TrimSpace(option.Provider), "pi-cli") && piServiceModelID(requestedModelID) {
 			return strings.TrimSpace(option.Provider), requestedModelID
@@ -500,7 +500,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	identityKey := ""
 	// A Crew that moved keeps its session id, but the folder guard left by its last turn still names the old folder, so
 	// the prompt-variable read of its product.json below was refused ("ACCESS DENIED ... Writable folders: _users/...",
-	// Excellence 2026-10-05, first chat after a Crew move). The turn's real guard is set later in this request; until then
+	// server B 2026-10-05, first chat after a Crew move). The turn's real guard is set later in this request; until then
 	// the session may only READ the folder this turn was verified to run in.
 	if isProjectProfileID(profile.ID) && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(workspacePath) != "" {
 		pinReadOnlyUnlessGuardCovers(sessionID, strings.TrimSuffix(workspacePath, "/")+"/")
@@ -749,7 +749,7 @@ func (api *StreamingAPI) chatSecretNames(ctx context.Context, userID string, req
 // with no tools, so the chat's retained CLI must relaunch again when the sign-in
 // finishes (same list of names, different state), not only when a server is
 // added. Without that the CLI kept the tool-less server and the agent said the
-// connection was fine but had no tools (RTS, SDE private, Notion, 2026-09-30).
+// connection was fine but had no tools (server A, SDE private, Notion, 2026-09-30).
 func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder string) []string {
 	if !isProjectProfileID(profileID) {
 		return nil
@@ -1084,7 +1084,7 @@ func agentProfileReadOnlyFolders(sandbox agentprofiles.SandboxPolicy, workflowRe
 // pinReadOnlyUnlessGuardCovers replaces a session's folder guard with read-only access to root only when the guard is
 // stale (it grants no write inside root, as after a Crew move). A current guard is kept: a message to a coding CLI that
 // is already running is admitted here but delivered to the live CLI before the turn's real guard is set again, and
-// replacing it left that CLI's shell read-only ("Permission denied" on every write, RTS SDE Code, 2026-10-06).
+// replacing it left that CLI's shell read-only ("Permission denied" on every write, server A SDE Code, 2026-10-06).
 func pinReadOnlyUnlessGuardCovers(sessionID, root string) {
 	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil && cfg.FolderGuardSet {
 		for _, write := range cfg.WritePaths {

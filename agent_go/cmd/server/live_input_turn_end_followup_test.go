@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 )
 
-// Excellence 2026-09-29 06:27: live input reached the Muse CLI as the running
+// server B 2026-09-29 06:27: live input reached the Muse CLI as the running
 // Session.Run completed. The Run's completion settled the input's retained
 // turn, so the CLI's later reply had no owner and the chat went idle. A
 // completion marked live_input_followup must keep the input's turn open until

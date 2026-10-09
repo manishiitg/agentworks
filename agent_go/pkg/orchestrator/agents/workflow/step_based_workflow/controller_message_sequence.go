@@ -1593,7 +1593,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupMessageSequenceFolderGuard(stepP
 	if itemWriteAccess.Learnings && learningsAccess == LearningsAccessReadWrite {
 		globalLearnings := filepath.Join(baseWorkspacePath, LearningsFolderName, GlobalLearningID)
 		// The step may write here, so the folder must exist: the sandbox refuses to start over a writable folder it
-		// cannot find, and a workflow that never wrote a learning has none (RTS 2026-10-05: the review step could not
+		// cannot find, and a workflow that never wrote a learning has none (server A 2026-10-05: the review step could not
 		// run a single shell command, PLAT-514). Creating it is idempotent.
 		if err := createFolderViaAPI(context.Background(), globalLearnings); err != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not create the global learnings folder %s: %v", globalLearnings, err))

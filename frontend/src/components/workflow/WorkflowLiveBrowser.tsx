@@ -40,7 +40,7 @@ export function browserReconnectDelayMs(attempt: number): number {
  * Maps a pointer position over the object-contain frame to page coordinates. The painted area is worked out from the
  * frame image's own size when it is known (`frame`), not from the page size the stream reports: when the two shapes
  * differ, centring and scaling by the reported size misplaces every click, by nothing at the middle of the page and
- * more toward its edges (a 2:1 frame in a 16:9 page: a click at the top landed about 70 px low, Excellence 2026-10-09,
+ * more toward its edges (a 2:1 frame in a 16:9 page: a click at the top landed about 70 px low, server B 2026-10-09,
  * PLAT-776). Without a frame size the page size is used, as before.
  */
 export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }, frame?: { width: number; height: number }) {

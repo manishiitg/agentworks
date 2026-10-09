@@ -124,7 +124,7 @@ var providerSetupANSI = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x
 
 // providerSetupCursorMoves are the escapes a full-screen CLI draws rows with instead of newlines (move to row/column,
 // next line, line down). Codex 0.161 draws its whole screen this way, so with escapes simply removed its "›" prompt was
-// never at the start of a line, /status was never sent and Check usage returned the start screen (Excellence 2026-10-08).
+// never at the start of a line, /status was never sent and Check usage returned the start screen (server B 2026-10-08).
 var providerSetupCursorMoves = regexp.MustCompile(`\x1b\[[0-9;]*[HfEBd]`)
 
 // providerUsageScreenText is a usage terminal's output as plain text, one screen row per line.
@@ -140,7 +140,7 @@ var terminalQueryPattern = regexp.MustCompile(`\x1b\[0?6n|\x1b\[0?c|\x1b\](10|11
 // terminalQueryReplies answers those queries as a plain terminal would. A
 // read-only usage run has no browser terminal to answer them, and Muse gave up
 // with "cursor position could not be read within a normal duration" instead
-// of printing its usage (excellence 2026-10-07, PLAT-688).
+// of printing its usage (server B 2026-10-07, PLAT-688).
 func terminalQueryReplies(output []byte) string {
 	var b strings.Builder
 	for _, m := range terminalQueryPattern.FindAllSubmatch(output, -1) {
@@ -1112,7 +1112,7 @@ func seedClaudeTheme(home string) {
 // providerSetupIsPersonalBinding says whether a Providers-screen terminal belongs to a personal account (its own private
 // HOME, confined). The server's own account (binding "global:<provider>", managed by an admin, "Admin-managed account"
 // in the UI) is not one: it has no private home to confine to, and starting it under the Landlock launcher with an empty
-// working folder failed every Cursor/Claude/Codex/Muse terminal on a host that can confine (RTS 2026-10-03).
+// working folder failed every Cursor/Claude/Codex/Muse terminal on a host that can confine (server A 2026-10-03).
 func providerSetupIsPersonalBinding(provider, bindingID string) bool {
 	return bindingID != provider && !strings.HasPrefix(bindingID, "global:")
 }

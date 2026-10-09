@@ -196,7 +196,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   useEffect(() => {
     if (!signIn.url || !signIn.connectionId || pendingDone || Date.now() > signIn.until) return
     // A steady interval, not one timeout per render: a refresh that changes nothing does not re-run this effect, so
-    // a single timeout re-read the vault only once and the row updated only by luck of timing (Confida, 2026-10-08).
+    // a single timeout re-read the vault only once and the row updated only by luck of timing (server C, 2026-10-08).
     // Coming back to this tab after signing in elsewhere re-reads at once.
     const timer = window.setInterval(() => { if (Date.now() <= signIn.until) onChanged() }, 4000)
     const onReturn = () => { if (document.visibilityState === 'visible') onChanged() }

@@ -64,7 +64,7 @@ var agyCLIModelsCommand = func(ctx context.Context) ([]byte, error) {
 // "gemini" plus GEMINI_API_KEY in the service environment) has no stored
 // Google login, so a probe without the key answered "Please sign in" and
 // Providers showed Needs authentication while every chat worked (PLAT-666,
-// Confida 2026-10-06).
+// server C 2026-10-06).
 func agyCLIProbeEnv() []string {
 	return append(minimalChildEnv(), passthroughChildEnv("GEMINI_API_KEY", "GOOGLE_API_KEY")...)
 }

@@ -224,7 +224,7 @@ function isBotWorkflowSession(session: ActiveSessionInfo, runningWorkflow?: Runn
 // A plain switch to a workflow follows a live session only when it is the
 // user's own conversation with it. Schedule, webhook, bot and external runs
 // are separate read-only lanes: following them took the user to a schedule's
-// chat instead of their main chat (RTS 2026-09-28). They stay reachable from
+// chat instead of their main chat (server A 2026-09-28). They stay reachable from
 // their run tabs, Active work and Ctrl+K, which open them explicitly.
 export function followsOnWorkflowSwitch(session: ActiveSessionInfo, runningWorkflow?: RunningWorkflowInfo): boolean {
   if (isScheduledWorkflowSession(session, runningWorkflow) || isBotWorkflowSession(session, runningWorkflow)) return false

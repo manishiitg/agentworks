@@ -83,7 +83,7 @@ func (api *StreamingAPI) cleanupStaleCodingAgentTmuxSessions(now time.Time) int 
 		api.closeRetainedSessionForReapedTmux(snapshot.SessionID, tmuxSession)
 		// The pane is gone, so nothing can finish the turn it was running: clear what still marks
 		// the conversation busy (retained-turn record, claimed queue entry), or every later message
-		// queues behind the dead turn (excellence, 2026-09-30, a Muse Code chat).
+		// queues behind the dead turn (server B, 2026-09-30, a Muse Code chat).
 		api.releaseStoppedSessionTurnMarkers(snapshot.SessionID)
 		closed++
 		log.Printf("[TMUX_REAPER] Closed stale coding-agent tmux session %q terminal=%q owner=%q session=%q reason=%s",

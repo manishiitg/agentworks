@@ -60,8 +60,8 @@ An illustrative `plan.json` entry is:
 {
   "type": "crew",
   "id": "review-with-rts",
-  "title": "Review with RTS Crew",
-  "description": "Ask the maintained RTS reviewer to review this pull request.",
+  "title": "Review with server A Crew",
+  "description": "Ask the maintained server A reviewer to review this pull request.",
   "crew_profile_id": "work",
   "crew_project_id": "rts-pr-reviewer",
   "trigger_id": "5f16e1fa-7ddd-4ee5-8311-63b34745ad46",
@@ -428,7 +428,7 @@ conversation destination, and the response output.
 Example:
 
 ```text
-🚀 RTS PR Reviewer
+🚀 server A PR Reviewer
 Trigger: Review pull request
 Conversation: Trigger history
 Output: response.md

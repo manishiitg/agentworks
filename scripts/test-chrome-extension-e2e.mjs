@@ -187,7 +187,7 @@ try {
   assert.equal((await message({action:'state'})).tabs.some(t=>t.id===tabId),true,'failed initialization keeps the human sharing grant');
   console.log('PASS failed native initialization releases CDP; tab list and tab new recover without re-pairing');
   const snapshot = await cli('snapshot', '-i'); console.log('PASS shared-page snapshot');
-  // Reproduce the real RTS boundary: debugger target closes, physical tab stays.
+  // Reproduce the real server A boundary: debugger target closes, physical tab stays.
   // Detach Chrome's actual transport, then deliver its observed reason through
   // the fixture worker. No test hook is shipped in the extension package.
   await worker.evaluate(tabId => globalThis.fixtureTargetClosed(tabId), tabId);

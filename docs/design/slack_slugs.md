@@ -10,7 +10,7 @@ Status: built on main (2026-10-07), not deployed; see the ticket for what is lef
 A free Slack workspace caps the number of installed apps (about 10). Today each Slack app answers for one target (its
 "own bot") or is reused per channel ("one of my bots"), a channel reaches exactly one target, a DM always reaches the
 bot's own target, and a Code can only use its own bot. So every workflow, Crew or Code that wants Slack tends to cost an
-app. On RTS the owner wants one bot serving the workflows plus 3 Crews, possibly in one channel, and Codes in DMs.
+app. On server A the owner wants one bot serving the workflows plus 3 Crews, possibly in one channel, and Codes in DMs.
 
 ## Two ways to connect, one routing model
 

@@ -18,7 +18,7 @@ func homeEnvValue(env []string, key string) string {
 }
 
 // HOME=/tmp was one home for every sandboxed command, so git credentials and
-// CLI logins one user's agent wrote were read by every other agent (RTS
+// CLI logins one user's agent wrote were read by every other agent (server A
 // 2026-09-28). Each workflow or Crew now gets its own.
 func TestSandboxHomeIsPrivateToTheWorkflowOrCrew(t *testing.T) {
 	base := []string{"HOME=/tmp", "PATH=/usr/bin", "XDG_CONFIG_HOME=/tmp/.xdg-config"}
@@ -66,7 +66,7 @@ func TestSandboxHomeWithoutAnyWriteGrantIsTheCommandScratch(t *testing.T) {
 }
 
 // A command that runs as a user's slot account is another user in the project's group: the private home the service creates for it must be
-// group-accessible, or the slot cannot even enter its own HOME and installers such as nvm die with "Permission denied" (Excellence 2026-10-03).
+// group-accessible, or the slot cannot even enter its own HOME and installers such as nvm die with "Permission denied" (server B 2026-10-03).
 func TestSandboxHomeIsGroupAccessibleForSlotAccounts(t *testing.T) {
 	project := t.TempDir()
 	sandboxToolEnv([]string{"HOME=/tmp"}, project, []string{project})

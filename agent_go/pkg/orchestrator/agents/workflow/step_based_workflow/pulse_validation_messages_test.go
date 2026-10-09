@@ -58,7 +58,7 @@ func TestFindingDispositionRejectionsNameTheContractTheyEnforce(t *testing.T) {
 	}{
 		{
 			// The live failure: the Fixer wrote "shared workflow runtime" and then
-			// "RTS dev voi..." across two runs, both meaning platform.
+			// "server A dev voi..." across two runs, both meaning platform.
 			name: "invalid external_owner names the closed set and disambiguates platform",
 			disposition: PulseFindingDisposition{
 				Fingerprint: "fp-1", FindingID: "HARNESS-RUN-FULL-WORKFLOW-HUMAN-INPUT-LOSS",

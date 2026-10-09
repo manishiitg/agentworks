@@ -25,7 +25,7 @@ import (
 
 // Chat history dedupe (one-time migration). Until c630fc680 the turn-end merge
 // re-appended a chat's whole in-memory history onto its saved file whenever a
-// side writer had added a row, so saved histories grew by whole copies: on RTS
+// side writer had added a row, so saved histories grew by whole copies: on server A
 // every chat over 5 MB was 54-98% duplicates (37,882 rows, 1,407 unique;
 // 166,969 rows, 1,802 unique). This removes the copies:
 //
@@ -546,7 +546,7 @@ func writeFileAtomically(path string, content []byte) error {
 // dedupeImportedChatEvents removes the same copies from the chat window's
 // transcript database. The one-time import of old JSON histories
 // (chat-events-v2) copied every duplicated row into it as its own event
-// (IDs "legacy-chat-..."); on RTS a builder chat showed 2,474 repeats among
+// (IDs "legacy-chat-..."); on server A a builder chat showed 2,474 repeats among
 // 2,618 user messages. Only imported events are considered, with the same
 // rule as the files, so live events and messages really sent twice stay.
 func dedupeImportedChatEvents(databasePath string, dryRun bool) (int, error) {

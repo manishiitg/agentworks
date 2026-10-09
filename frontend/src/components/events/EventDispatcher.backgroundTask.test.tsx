@@ -6,7 +6,7 @@ import { EventDispatcher } from './EventDispatcher'
 import { summarizeBackgroundTaskMessage } from '../../utils/cleanConversation'
 import type { PollingEvent } from '../../services/api-types'
 
-// Muse's background shell polling loop showed as boxed cards holding the raw tool payload (Relay chat on Excellence, 2026-10-04).
+// Muse's background shell polling loop showed as boxed cards holding the raw tool payload (Relay chat on server B, 2026-10-04).
 const rawOutput = JSON.stringify({
   chunk_id: 'exec-11-1',
   command: 'for i in $(seq 1 24); do\n META=$(cat project/runs/iteration-0/default/run_metadata.json 2>/dev/null)\n sleep 10\ndone; echo DONE',

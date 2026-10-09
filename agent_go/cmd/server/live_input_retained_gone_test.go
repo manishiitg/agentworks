@@ -13,7 +13,7 @@ import (
 )
 
 // A retained Muse terminal record whose process is gone (Stop, a died CLI, a provider switch) must not make the next send a 409 delivery_uncertain: the error
-// proves nothing was sent, so the message starts a fresh turn (Code on Excellence, 2026-10-04).
+// proves nothing was sent, so the message starts a fresh turn (Code on server B, 2026-10-04).
 func TestRetainedTerminalGoneStartsANewTurnInsteadOfDeliveryUncertain(t *testing.T) {
 	const sessionID = "product-retained-gone"
 	terminalStore := terminals.NewStore()

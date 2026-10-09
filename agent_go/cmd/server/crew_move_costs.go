@@ -11,7 +11,7 @@ import (
 
 // renameCostLedgerKeys re-files a moved Crew's cost rows under its new path. The cost ledger (<docs>/_system/costs.sqlite)
 // keys every row by workflow_id = the path the turn ran in, and the Costs popup reads only the Crew's current path, so
-// after a move the history from before it showed "No cost data found" (Excellence 2026-10-05). It is idempotent, a missing
+// after a move the history from before it showed "No cost data found" (server B 2026-10-05). It is idempotent, a missing
 // ledger is not an error, and the caller treats a failure as a warning: the Crew itself has already moved.
 func renameCostLedgerKeys(docsRoot, oldKey, newKey string) (int64, error) {
 	db := filepath.Join(docsRoot, "_system", "costs.sqlite")

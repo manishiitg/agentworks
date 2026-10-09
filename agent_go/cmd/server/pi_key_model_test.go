@@ -6,7 +6,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-// Excellence 2026-10-08 (PLAT-720): a model picked on a person's own NVIDIA key was refused with
+// server B 2026-10-08 (PLAT-720): a model picked on a person's own NVIDIA key was refused with
 // "model is not offered for engine pi-cli", so the key account's model could never change.
 func TestPiAcceptsServiceModelsFromAPersonsKey(t *testing.T) {
 	pi := agentprofiles.ProviderOption{ID: "pi-cli", Provider: "pi-cli", Models: []string{"google/gemini-3.8-flash"}}

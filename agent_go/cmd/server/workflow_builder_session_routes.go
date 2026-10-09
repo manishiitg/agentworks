@@ -237,7 +237,7 @@ func workflowBuilderConversationLogPath(workspacePath, sessionID string, timesta
 // session's existing file for this owner when there is one, and a path dated
 // today only for a new chat. Writers used today's date whenever they lacked
 // the path, so a continued chat started a second file every day it was used
-// (RTS: one session had a 56 MB 09-16 file and a 115 MB 09-18 copy).
+// (server A: one session had a 56 MB 09-16 file and a 115 MB 09-18 copy).
 func stableBuilderConversationLogPath(ctx context.Context, workspacePath, userID, sessionID string) string {
 	ownerFolder := "/users/" + sanitizeUserIDForPath(userID) + "/"
 	if existing, found, err := findWorkflowBuilderConversationPathForSession(ctx, userID, sessionID, workspacePath); err == nil && found && strings.Contains(filepath.ToSlash(existing), ownerFolder) {

@@ -257,7 +257,7 @@ func (f *BotEventFilter) Start(ctx context.Context, subscriber BotEventSubscribe
 			pendingDel := f.pendingDelegations
 			// Once this turn's reply is out, remaining events are background
 			// work the reply already announced ("I'll update this thread");
-			// a placeholder then only clutters the thread (RTS 2026-09-25).
+			// a placeholder then only clutters the thread (server A 2026-09-25).
 			replied := f.mainTextSent
 			f.mu.Unlock()
 			// Only send heartbeat if: session active, reply not yet sent, events flowing recently, and no message sent recently
@@ -319,7 +319,7 @@ func (f *BotEventFilter) processEvent(ctx context.Context, event BotEventData) b
 		f.mu.Lock()
 		if !f.sawUserMessage {
 			f.sawUserMessage = true
-			// Events before the turn's own user message are preamble (RTS
+			// Events before the turn's own user message are preamble (server A
 			// 2026-09-25: a restored session's relaunch replayed terminal
 			// chunks at level 0, the turn ran at level 3, and its reply was
 			// skipped as a sub-agent). Recalibrate from the turn itself.
@@ -1383,7 +1383,7 @@ func (f *BotEventFilter) flushStreamingMessage(ctx context.Context, finalText st
 	// when the streamed text merely contains the answer, which kept the turn's
 	// running narration ("I'll check…", "Switching to us-east-2…") in front
 	// of the final answer in Slack, while the web chat showed the answer
-	// alone (RTS 2026-09-25, QA bot).
+	// alone (server A 2026-09-25, QA bot).
 	if normalizeBotMainText(text) == normalizeBotMainText(f.streamingSentText) {
 		f.mainTextSent = true
 		f.lastMainText = strings.TrimSpace(f.streamingSentText)

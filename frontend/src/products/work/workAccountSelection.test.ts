@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 // "Use account" saved only the provider, so a Crew or Code kept launching the server account
-// (Claude's login screen on excellence and Confida, 2026-09-30).
+// (Claude's login screen on server B and server C, 2026-09-30).
 describe('Crew/Code account selection is saved', () => {
   it('passes the chosen account into the saved project config', () => {
     const surface = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')

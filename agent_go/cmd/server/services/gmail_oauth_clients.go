@@ -59,7 +59,7 @@ func ValidateGmailOAuthClientName(name string) error {
 // workflow, a workspace backup), so a secret placed there is a standing
 // exposure. Follows the identical env-override / XDG_CONFIG_HOME / ~/.config
 // resolution as gmailOAuthTokenDir, so both land in the same place on a host
-// whose ~/.config is not writable by the service user (RTS: root-owned).
+// whose ~/.config is not writable by the service user (server A: root-owned).
 func gmailOAuthClientsBaseDir() string {
 	if v := strings.TrimSpace(os.Getenv("GMAIL_OAUTH_CLIENTS_DIR")); v != "" {
 		return v

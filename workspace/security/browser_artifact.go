@@ -188,7 +188,7 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 		return fmt.Errorf("sync browser artifact: %w", err)
 	}
 	// CreateTemp makes the file 0600 for this server's account. A slot user's
-	// chat could then not read its own recording (RTS 2026-10-07, PLAT-709), so
+	// chat could then not read its own recording (server A 2026-10-07, PLAT-709), so
 	// the file gets the access its folder gives.
 	if parentInfo, err := os.Stat(parent); err == nil {
 		if err := tmp.Chmod(fileModeForDir(parentInfo.Mode())); err != nil {

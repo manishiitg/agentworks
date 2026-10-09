@@ -19,7 +19,7 @@ func TestProtectCodingAgentProjectionWritesCoversWorkspaceAndRelativePaths(t *te
 		}
 	}
 	// A person's own skills are installed under <cli>/skills (npx skills add writes .agents/skills): neither the skills
-	// folders nor the CLI folders around them are blocked, only our policy files in them (Excellence, 2026-10-06).
+	// folders nor the CLI folders around them are blocked, only our policy files in them (server B, 2026-10-06).
 	for _, path := range []string{".agents", ".agents/skills", ".claude", ".claude/skills", ".pi/skills", filepath.Join(root, ".agents", "skills")} {
 		if slices.Contains(guard.BlockedWritePaths, path) {
 			t.Fatalf("%q must stay writable: %v", path, guard.BlockedWritePaths)

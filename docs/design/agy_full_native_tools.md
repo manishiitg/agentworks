@@ -38,7 +38,7 @@ home. The key does not need to be duplicated into global AGY settings.
 AGY is offered on local and multi-user installations alongside the other
 coding CLIs; no alpha environment flag hides or refuses it. Normal account
 admission, authentication and CLI sandbox policy still apply. Every deployment
-installs and updates all six coding CLIs through the shared installer. Confida
+installs and updates all six coding CLIs through the shared installer. Server C
 selects Gemini API-key mode using the service's existing `GEMINI_API_KEY`.
 The managed AGY installer verifies Google's release checksum before replacing
 the binary. This rollout does not extend local certification to every Linux

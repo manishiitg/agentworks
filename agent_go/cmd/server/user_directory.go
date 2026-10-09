@@ -965,7 +965,7 @@ func normalizeProducts(in []string) []string {
 
 // handleAdminCreateUser refuses: accounts are not created from the app any more. People are added by DevOps on the
 // server with `provision-slots.sh adduser <email>`, which creates the account and gives it a slot in one step; an
-// account without a slot cannot run a single command (Excellence 2026-10-09, PLAT-777), and only root can assign one.
+// account without a slot cannot run a single command (server B 2026-10-09, PLAT-777), and only root can assign one.
 func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	writeUsersError(w, http.StatusForbidden, "Accounts are added by DevOps on the server, not from the app: run `provision-slots.sh adduser <email>`, which creates the account and its slot together.")
 }

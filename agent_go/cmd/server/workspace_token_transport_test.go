@@ -10,7 +10,7 @@ import (
 
 // The server's startup hook must leave http.DefaultTransport an
 // *http.Transport: whatsmeow.NewClient asserts that type, and a wrapper made
-// the agent panic at startup on RTS (2026-09-26).
+// the agent panic at startup on server A (2026-09-26).
 func TestWorkspaceTokenHookKeepsDefaultTransportForWhatsApp(t *testing.T) {
 	if _, ok := http.DefaultTransport.(*http.Transport); !ok {
 		t.Fatalf("DefaultTransport is %T", http.DefaultTransport)

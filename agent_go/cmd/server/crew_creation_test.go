@@ -1437,7 +1437,7 @@ func TestCreateCrewProjectResolves(t *testing.T) {
 	_ = profile
 }
 
-// RTS: create_crew rejected the built-in agent-browser skill because only the
+// server A: create_crew rejected the built-in agent-browser skill because only the
 // workspace skills/ folder was consulted.
 func TestCrewCreationAcceptsBuiltinSkills(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", "http://127.0.0.1:1")

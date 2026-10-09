@@ -265,7 +265,7 @@ func migrateGmailConnections(cfg *GmailConfig) {
 
 // hostAccountConnection builds the registry entry for the host's own gws
 // login. migrateGmailConnections only seeds from a legacy gmail-config.json;
-// an operator who ran `gws auth login` on the host (RTS, 2026-09-03) had a
+// an operator who ran `gws auth login` on the host (server A, 2026-09-03) had a
 // working sender that the Sending accounts panel could not see ("No sending
 // accounts yet") and could not select per workflow. ConfigHome stays empty on
 // purpose: that is the host default gws directory, which the server's own

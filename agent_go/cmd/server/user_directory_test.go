@@ -253,7 +253,7 @@ func adminRequest(method, path, body string, claims *UserClaims, vars map[string
 }
 
 // Accounts are added by DevOps on the server (provision-slots.sh adduser: account and slot together), never from the
-// app: the API refuses for everyone, admins included (Excellence 2026-10-09, PLAT-777).
+// app: the API refuses for everyone, admins included (server B 2026-10-09, PLAT-777).
 func TestAdminCannotCreateUsersFromTheApp(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]}]}`)

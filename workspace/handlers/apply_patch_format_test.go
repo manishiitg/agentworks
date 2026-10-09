@@ -94,7 +94,7 @@ func TestApplyPatchFormatRefusesWhatItCannotPlace(t *testing.T) {
 	}
 }
 
-// The shape of the real RTS patch: the @@ anchor is only the start of the
+// The shape of the real server A patch: the @@ anchor is only the start of the
 // signature line, and that line is also the first line the hunk replaces.
 func TestApplyPatchFormatPrefixAnchorThatIsAlsoTheFirstRemovedLine(t *testing.T) {
 	src := "import os\n\n\ndef helper():\n    return 1\n\n\ndef open_assets(page: Page) -> tuple[bool, str]:\n    page.click(\"#assets\")\n    return True, \"\"\n\n\ndef tail():\n    return 2\n"

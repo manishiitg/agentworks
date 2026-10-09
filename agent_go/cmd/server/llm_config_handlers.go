@@ -145,7 +145,7 @@ func isAllowedDefaultLLM(provider, modelID string) bool {
 	// what that list names. Without one, the historical behaviour stands and
 	// any model the platform knows for a locked provider is accepted -- which
 	// let a workflow's saved config keep a provider the UI no longer offered
-	// (found on RTS 2026-09-03 while fixing AgentWorks to one Cursor model).
+	// (found on server A 2026-09-03 while fixing AgentWorks to one Cursor model).
 	if publishedLLMListConfigured() {
 		if publishedLLMListContains(provider, modelID, defaults.PrimaryConfig) {
 			return true
@@ -1363,7 +1363,7 @@ func (api *StreamingAPI) handleGetAzureDeployedModels(w http.ResponseWriter, r *
 // Why here and not in handleQuery's primary-config check: the Builder chat,
 // scheduled runs and step execution take their models from the manifest's
 // llm_config, not from the request's primary config, so a locked deployment
-// still ran a synced workflow on claude-sonnet-5 (RTS, 2026-09-03).
+// still ran a synced workflow on claude-sonnet-5 (server A, 2026-09-03).
 func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.PresetLLMConfig {
 	if !isGlobalLLMConfigLocked() || !publishedLLMListConfigured() {
 		return cfg
@@ -1389,7 +1389,7 @@ func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.Pr
 	// that provider (GetCodingAgentDefaultTierModels). Locking to such a
 	// provider means locking to that profile, not flattening every role onto
 	// one hardcoded model, so the tiers keep meaning something. Cursor's
-	// profile is all-auto as of 2026-09-03: a live RTS run hit
+	// profile is all-auto as of 2026-09-03: a live server A run hit
 	// quota_exhausted on the previously-pinned grok-4.6 with no fallback.
 	if _, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(defProvider)); ok {
 		out.Mode = workflowtypes.LLMConfigModeProviderProfile

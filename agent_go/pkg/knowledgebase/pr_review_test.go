@@ -80,7 +80,7 @@ func TestValidateCapsUsesLiveGrantsAndIdentity(t *testing.T) {
 	}
 }
 
-// Someone with no Brain folder opens Brain and is told so, not "Resource not found." (Excellence 2026-10-09).
+// Someone with no Brain folder opens Brain and is told so, not "Resource not found." (server B 2026-10-09).
 func TestListingBrainWithoutAnyFolderSaysSo(t *testing.T) {
 	s, admin, reader := fixture(t, false)
 	folder(t, s, admin, "", "Payments")

@@ -30,7 +30,7 @@ class ReleaseCleanupTest(unittest.TestCase):
                 module.prune(app, apply=True, proc=proc, keep=['../data'])
 
     def test_unreadable_process_path_does_not_abort_cleanup_and_newest_are_kept(self):
-        # RTS 2026-10-05: one unreadable /proc/<pid>/root of another account aborted every cleanup, so 27 releases
+        # Server A 2026-10-05: one unreadable /proc/<pid>/root of another account aborted every cleanup, so 27 releases
         # (34 GB) piled up and the disk filled. The cleanup must go on, and keep the newest releases as a margin.
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp).resolve()

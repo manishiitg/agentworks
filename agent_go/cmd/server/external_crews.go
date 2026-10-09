@@ -272,7 +272,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	case "list_crew_files", "search_crew_files":
 		// The workflow file engine: folder, depth, glob, pagination and text
 		// search. A fixed 4-level, 1,000-entry listing could not reach files
-		// inside the repositories a Crew clones (RTS 2026-09-28: SDE).
+		// inside the repositories a Crew clones (server A 2026-09-28: SDE).
 		operation := "list"
 		if name == "search_crew_files" {
 			operation = "search"

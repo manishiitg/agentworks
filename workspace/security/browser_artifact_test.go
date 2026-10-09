@@ -143,7 +143,7 @@ func stagedArtifactFile(t *testing.T, extension string, data []byte) string {
 	return name
 }
 
-// RTS 2026-10-07 (PLAT-709): a recording saved into a slot user's project was
+// server A 2026-10-07 (PLAT-709): a recording saved into a slot user's project was
 // 0600 for the server account, so the user's own chat could not read it.
 func TestFinalizeBrowserArtifactKeepsTheProjectGroupsAccess(t *testing.T) {
 	base := t.TempDir()

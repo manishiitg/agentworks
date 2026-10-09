@@ -101,7 +101,7 @@ const (
 // The closed sets below are the single source of truth for both the accept
 // check and the rejection message. A rejection that does not name its members
 // cannot be converged on: the Fixer wrote external_owner "shared workflow
-// runtime" and then "RTS dev voice..." across two live runs, both meaning
+// runtime" and then "server A dev voice..." across two live runs, both meaning
 // platform, because nothing in the error said the set was closed or what was
 // in it.
 var (

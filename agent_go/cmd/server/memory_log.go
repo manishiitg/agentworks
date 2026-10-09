@@ -11,7 +11,7 @@ import (
 )
 
 // memoryLogInterval is how often the server logs its memory use. There was
-// no record of what grew before the 2026-09-25 OOM kill on RTS.
+// no record of what grew before the 2026-09-25 OOM kill on server A.
 const memoryLogInterval = time.Minute
 
 // startMemoryLog logs heap, goroutines and the event store's in-memory size

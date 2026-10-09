@@ -80,7 +80,7 @@ func cachedTerminalCLIUsage(tmux string, now time.Time) terminalCLIUsage {
 // withTerminalCLIUsage fills a terminal's usage from the coding CLI's own
 // report. Launch-only turns (Crew chats) hand the reply to the transcript
 // streamer, so the adapter never streams this for them and the hover showed
-// no plan usage (RTS 2026-09-27). The CLI's plan windows replace older ones;
+// no plan usage (server A 2026-09-27). The CLI's plan windows replace older ones;
 // counters the stream already recorded are kept.
 func withTerminalCLIUsage(snapshot terminals.Snapshot) terminals.Snapshot {
 	tmux := strings.TrimSpace(snapshot.TmuxSession)

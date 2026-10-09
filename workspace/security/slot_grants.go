@@ -15,7 +15,7 @@ import (
 // profiles (logged-in sessions, app-owned 0700), their socket folders, and the app's state area. The slot account
 // cannot open them by Unix permissions anyway, and the launcher, which runs as the slot, used to fail the whole
 // command when it could not even stat one ("SANDBOX_UNAVAILABLE: inspect Landlock path: stat
-// .../browser-profile-projects/project-...--browser: permission denied", RTS 2026-10-04). They must not become
+// .../browser-profile-projects/project-...--browser: permission denied", server A 2026-10-04). They must not become
 // readable to slots either, so the rule is: not granted, never opened up. A slot drives its project's browser
 // through the platform (a standalone agent-browser command runs as the service account, see
 // handlers.isStandaloneBrowserCommand, and agent_go's agent_browser tool).

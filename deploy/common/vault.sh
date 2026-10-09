@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared Vault lifecycle for rootless Linux and RTS. Vault's service stays
+# Shared Vault lifecycle for rootless Linux and server A. Vault's service stays
 # private; only the product's SSO-bound /api/vault/mcp is internet-facing.
 
 vault_build() {

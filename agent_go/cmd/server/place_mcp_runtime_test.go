@@ -124,7 +124,7 @@ func TestCodeBridgeResolvesPlainConnectionNames(t *testing.T) {
 
 // A connection added but not signed in starts a CLI with no tools; when the sign-in finishes the
 // chat must relaunch. The chat's session key carries each connection's sign-in state, so it changes
-// when the sign-in completes even though the list of names does not (RTS, 2026-09-30: Notion was
+// when the sign-in completes even though the list of names does not (server A, 2026-09-30: Notion was
 // "connected" but its tools never reached the retained CLI).
 func TestPlaceMCPSignInStateChangesTheChatKey(t *testing.T) {
 	withMCPConnectionsRoot(t)

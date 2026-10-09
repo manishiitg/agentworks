@@ -21,7 +21,7 @@ to the caller rather than being logged behind a successful response.
 
 Provider-profile mode is explicitly rejected, not silently converted. The
 operator's model-routing choice and any separate set_workflow_llm_config
-permission problem remain outside this fix. The RTS report is not closed
+permission problem remain outside this fix. The server A report is not closed
 solely from this local change.
 
 ## Duplicate decisions

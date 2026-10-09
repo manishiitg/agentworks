@@ -11,7 +11,7 @@ import (
 // Without a saved default (installation or admin), a product starts with a
 // provider that works for everyone there: the first, in the product's own
 // order, whose shared server account is signed in (or has a key) and is
-// available to everyone in that product. Nothing is hard-coded: Excellence
+// available to everyone in that product. Nothing is hard-coded: Server B
 // with only Muse signed in starts new Codes on Muse.
 
 // providerReadyForEveryone reports whether provider's shared account can run

@@ -6,7 +6,7 @@ import (
 )
 
 // An administrator's own Crew saw only the one folder the admin had an explicit grant on, because the output-audience
-// check ignored the admin's implicit Owner role (RTS 2026-10-06). An admin in the audience never narrows a project.
+// check ignored the admin's implicit Owner role (server A 2026-10-06). An admin in the audience never narrows a project.
 func TestAdminInAudienceDoesNotNarrowProjectBrain(t *testing.T) {
 	s, admin, _ := fixture(t, false)
 	folder(t, s, admin, "", "Company")

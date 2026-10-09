@@ -65,7 +65,7 @@ per-server list. A post-deploy check runs the same tests on every server (shell 
 1. Settings report + guard in the rootless-linux path (changes nothing, shows drift).
 2. Add rollback and parameterised dirs/bind address to the rootless-linux path.
 3. Bring Excellence, Confida, SparkQuill to the profile (Dominion and RTS untouched): browser profile on, `MULTI_USER_MODE` on SparkQuill,
-   prefixed slot table on Excellence, units from the repo.
+   prefixed slot table on server B, units from the repo.
 4. Dominion: products/dominion directory, then switch paths in a quiet window (Saturday, no trading), agreed with its owning session.
    Adds private `/tmp` (trading code must use `$TMPDIR`) and the cgo build.
 5. RTS: Secrets Manager pre-step, browser service and Chrome wrapper ported, keep the live profile at `/data/video-studio/browser-profile`,
@@ -75,5 +75,5 @@ per-server list. A post-deploy check runs the same tests on every server (shell 
 
 - RTS layout (`/var/lib/video-studio`, `/data` mount, 0.0.0.0 behind Caddy) differs from `/srv/<product>`; moving it needs parameters, not
   a data move. Its 144 MB browser profile holds sign-ins and must stay where it is.
-- Switching RTS to native mode changes HOME and env for every sandboxed command; test on Confida first.
+- Switching server A to native mode changes HOME and env for every sandboxed command; test on server C first.
 - Dominion runs a live trading workflow on weekdays; its first switch also changes the agent build (cgo) and adds private `/tmp`.

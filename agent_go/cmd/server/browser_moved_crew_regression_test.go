@@ -19,7 +19,7 @@ import (
 )
 
 // Uses the real Start handler, workspace shell handler and Chrome. The old
-// Crew directory deliberately does not exist, reproducing Excellence.
+// Crew directory deliberately does not exist, reproducing server B.
 func TestMovedCrewBrowserStartsRealChrome(t *testing.T) {
 	if os.Getenv("RUN_BROWSER_TEACH_E2E") != "1" {
 		t.Skip("set RUN_BROWSER_TEACH_E2E=1 for owned Chrome")

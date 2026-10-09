@@ -202,12 +202,12 @@ func (c *RuntimeCoordinator) StartGeneration(sessionID, reason string) (RuntimeS
 }
 
 // BusyCount reports how many sessions have a generation in flight (starting
-// or running). It is the drain signal the RTS deploy waits on: the
+// or running). It is the drain signal the server A deploy waits on: the
 // session tracker's "running" status and the in-flight HTTP request count
 // both read idle during a steered coding-agent turn (the request returns
 // at once and the model runs in the background), which let a deploy restart
 // the agent mid-turn and cut a Cursor conversation off with a tool error as
-// its last event (RTS, 2026-09-03 16:30Z).
+// its last event (server A, 2026-09-03 16:30Z).
 func (c *RuntimeCoordinator) BusyCount() int {
 	if c == nil {
 		return 0

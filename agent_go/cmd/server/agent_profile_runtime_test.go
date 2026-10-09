@@ -604,7 +604,7 @@ func TestResolveProfileRuntimeModelUsesOnlyYAMLProviderOptions(t *testing.T) {
 }
 
 // A model picked on the person's own key (nvidia/..., openrouter/...) stays on Pi; falling back to the profile default
-// paired the Pi account with another provider and the turn was refused (Excellence 2026-10-09, PLAT-770).
+// paired the Pi account with another provider and the turn was refused (server B 2026-10-09, PLAT-770).
 func TestResolveProfileRuntimeModelKeepsPiOnAnOwnKeyModel(t *testing.T) {
 	runtime := agentprofiles.RuntimePolicy{
 		Provider: "codex-cli", ModelID: "gpt-6-luna",

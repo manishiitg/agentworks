@@ -219,7 +219,7 @@ func resolveAccountModel(ctx context.Context, provider, connectionID, model stri
 // constrainProductChatModel applies the account's list to a product chat turn (Crew, Code, Goals, ...) before its runtime is bound. A model the
 // account does not allow runs on the first allowed one instead: the turn never fails. It used to refuse a model that differed from the conversation's
 // bound one, but after one fallback the conversation is bound to the allowed model while the browser keeps re-sending the saved one, so every later message
-// was refused with a 422 (Code on Excellence, 2026-10-04). The pickers only offer allowed models, so a refusal protected nothing the fallback does not.
+// was refused with a 422 (Code on server B, 2026-10-04). The pickers only offer allowed models, so a refusal protected nothing the fallback does not.
 func constrainProductChatModel(ctx context.Context, query *QueryRequest) error {
 	if strings.TrimSpace(query.Provider) == "" {
 		return nil

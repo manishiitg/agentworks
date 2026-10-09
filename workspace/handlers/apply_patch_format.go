@@ -18,7 +18,7 @@ import (
 //
 // Hunks carry no line numbers; each is located by its context and removed
 // lines, optionally after an "@@ <anchor>" line, searching forward from the
-// previous hunk. Rejecting it sent an agent on RTS (2026-09-27) to hand-rolled
+// previous hunk. Rejecting it sent an agent on server A (2026-09-27) to hand-rolled
 // Python string slicing that truncated a 228 KB library.
 
 const applyPatchBegin = "*** Begin Patch"

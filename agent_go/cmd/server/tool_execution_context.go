@@ -96,7 +96,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			// web turn started. Only a shared channel route may not run on a
 			// person's tools. Refusing every bot-marked session broke all
 			// tools of a Crew's main chat when a Slack DM followed a web turn
-			// (RTS 2026-09-28).
+			// (server A 2026-09-28).
 			if active, _ := api.getActiveSession(authoritySession); active != nil && (active.BotPlatform != "" || strings.HasPrefix(active.TriggeredBy, "bot:")) && !ownersOwnBotTurn(active.TurnProvider) {
 				return nil, fmt.Errorf("%s session origin changed; start a new turn", tool)
 			}

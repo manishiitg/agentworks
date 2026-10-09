@@ -993,7 +993,7 @@ func (api *StreamingAPI) executeBackgroundDelegatedTask(
 	// The background agent acts for the same authenticated principal as the
 	// tool call that started it. Without the claims, the delegated access
 	// check (conversationTargetAccess) saw no user and refused every
-	// background agent in a Crew: "Crew access denied" (RTS 2026-09-29).
+	// background agent in a Crew: "Crew access denied" (server A 2026-09-29).
 	if claims := GetUserFromContext(ctx); claims != nil {
 		copied := *claims
 		if claims.ExecutionPrincipal != nil {
@@ -1749,7 +1749,7 @@ func (api *StreamingAPI) schedulePendingCompletionRetry(sessionID string) {
 // turn runs) back off exponentially and give up after
 // maxFailedCompletionRetries. A session whose CLI is gone ("session is
 // closed", e.g. after a provider quota wall) otherwise retried every 5s
-// forever (RTS 2026-09-29: 178 attempts in 15 minutes).
+// forever (server A 2026-09-29: 178 attempts in 15 minutes).
 const (
 	maxFailedCompletionRetries = 8
 	maxFailedCompletionBackoff = 5 * time.Minute
@@ -3261,7 +3261,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 // (a Crew's main chat) whose latest turn came from their 1:1 Slack DM or
 // WhatsApp. One person, one chat means a DM continues that chat, so its ID has
 // no "bot-" prefix; checking only the prefix dropped the result of work a DM
-// started (the PR review SDE ran from Slack, RTS 2026-09-28). A later web turn
+// started (the PR review SDE ran from Slack, server A 2026-09-28). A later web turn
 // clears the bot marks, so work started in the app never lands in Slack.
 func (api *StreamingAPI) syntheticTurnRepliesToBot(sessionID string) bool {
 	if strings.HasPrefix(sessionID, "bot-") {

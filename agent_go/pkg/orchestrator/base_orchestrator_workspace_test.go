@@ -11,7 +11,7 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// Regression for the RTS PR Reviewer webhook failure: context_dependencies
+// Regression for the server A PR Reviewer webhook failure: context_dependencies
 // resolved route_selection.json to an absolute run path. The deterministic
 // branch then used the direct BaseOrchestrator workspace reader, bypassing the
 // agent-tool normalization wrapper, and Folder Guard rejected the otherwise

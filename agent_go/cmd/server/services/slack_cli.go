@@ -67,7 +67,7 @@ func (b *slackCLIOutput) Write(p []byte) (int, error) {
 // (conversations.replies/info/history, users.info, ...) reject a JSON body
 // with invalid_arguments, so flat parameters are form-encoded; a JSON body is
 // kept only when a parameter is structured (e.g. blocks on a post), which
-// only write methods take. (RTS 2026-09-25: the QA bot could not read the
+// only write methods take. (server A 2026-09-25: the QA bot could not read the
 // Slack thread it was asked about.)
 func slackCLIBodyArgs(parameters map[string]interface{}) ([]string, error) {
 	form := url.Values{}

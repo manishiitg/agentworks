@@ -215,7 +215,7 @@ func TestLiveCrewAttachmentGrantsSkipInvalidAttachments(t *testing.T) {
 	if err := os.MkdirAll(workflowDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Only the rts crew workspace exists: the gone crew is deleted and
+	// Only the server A crew workspace exists: the gone crew is deleted and
 	// the evil alias is retargeted at an arbitrary path.
 	if err := os.MkdirAll(filepath.Join(docsRoot, "_users", "owner", "Chats", "Work", "projects", "rts"), 0o755); err != nil {
 		t.Fatal(err)

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Combined UX and screenshot-based accessibility audit of the RTS Latency Pulse
+Combined UX and screenshot-based accessibility audit of the server A Latency Pulse
 popup. The user goal is to understand what Pulse is handling, what needs a
 workflow run, what needs the user's decision, and where to inspect reviewer
 evidence without reading an internal database console.

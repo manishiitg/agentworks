@@ -238,7 +238,7 @@ Recovery never creates a replacement blank tab or infers a grant from a group.
 Group and recovery diagnostics contain lifecycle metadata only. Startup/domain
 subscriptions wait up to about ten seconds for transient Chrome foreign-frame
 permission checks to clear; Chrome rechecks permissions on every attempt. This
-wait never retries navigation, evaluation, clicks or typing. The full local Chrome regression and an uninterrupted RTS SDE Private retry
+wait never retries navigation, evaluation, clicks or typing. The full local Chrome regression and an uninterrupted server A SDE Private retry
 pass new-tab creation, existing-tab navigation, snapshots and reading/listing two
 tabs in one group; no login or authenticated application action was attempted.
 Tracking: PLAT-569.
@@ -1183,7 +1183,7 @@ gear button. Implementation and qualification: PLAT-382.
 
 ### Runtime mode changes
 
-The RTS UI check exposed a missing-tool bug when a chat started with **No
+The server A UI check exposed a missing-tool bug when a chat started with **No
 browser** and was later changed to **Automatic**. Persistent CLI turns reused
 the original tool registration. The follow-up release keeps the workflow
 browser tool registered and reads the current manifest on each invocation.
@@ -1345,7 +1345,7 @@ page state and ongoing calls may need to be resumed.
 
 The Builder agent-browser skill explains how to verify getUserMedia and the
 application outcome without switching to an unrelated Playwright harness. A
-microphone permission success alone is not evidence that an RTS simulation started.
+microphone permission success alone is not evidence that an server A simulation started.
 
 References: [agent-browser launch options](https://agent-browser.dev/configuration),
 [Chromium media switches](https://chromium.googlesource.com/chromium/src/+/main/media/base/media_switches.cc).
@@ -1485,7 +1485,7 @@ they do not prevent a caller from selecting another listed tab on the same port.
 - [Work browser settings](../../frontend/src/products/work/WorkWorkspacePane.tsx).
 - [Workflow learning](../workflow/learning_architecture.md).
 
-The former live guide contained RTS releases and rollout observations from
+The former live guide contained server A releases and rollout observations from
 2026-09-09 (`0b9593dd0`, `504c35a5e`, `34a9b1d17`, `66c9a7e07`), including a
 legacy global shared-profile deployment and then-pending Dominion/Confida work.
 Those are historical evidence in Git history, not statements of current server

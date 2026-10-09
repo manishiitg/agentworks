@@ -48,9 +48,9 @@ func validateExtensionRecording(args []string, active bool) error {
 }
 
 // defaultRecordingFPS is used when a take does not ask for a frame rate. At
-// agent-browser's 30 fps a .webm take on a 2-vCPU server (RTS) encodes at about
+// agent-browser's 30 fps a .webm take on a 2-vCPU server (server A) encodes at about
 // real time, so any other load made the encoder fall behind and the whole take
-// was lost ("Recording encoder fell more than 500 ms behind capture", RTS,
+// was lost ("Recording encoder fell more than 500 ms behind capture", server A,
 // 2026-10-07). 15 fps is enough for screen recordings.
 const defaultRecordingFPS = "15"
 

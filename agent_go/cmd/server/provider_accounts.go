@@ -610,7 +610,7 @@ func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope p
 }
 
 // providerAccountMismatch is the refusal for a chat whose account belongs to another coding agent than the turn runs on.
-// Users saw only "provider connection does not match selected provider" (Excellence 2026-10-09, Pi key accounts) and the
+// Users saw only "provider connection does not match selected provider" (server B 2026-10-09, Pi key accounts) and the
 // server logged nothing, so the pairing could not be seen. It logs both providers and says what to do.
 func providerAccountMismatch(principal, id, turnProvider, accountProvider string, run providerAccountRun) error {
 	log.Printf("[PROVIDER_ACCOUNT] provider mismatch for %q (%s): account %s belongs to %s, the turn runs on %s", principal, run.Label, id, accountProvider, turnProvider)
@@ -626,7 +626,7 @@ func providerAccountUnavailable(run providerAccountRun) error {
 // (or not shared with this person or place). It says what to do; there is no fallback to another
 // account.
 // Users saw "the account workflow X is set to run on is private to its owner" and could not tell whose account it was
-// or what to do (excellence 2026-10-07): it now names the owner and the provider.
+// or what to do (server B 2026-10-07): it now names the owner and the provider.
 func providerAccountNotShared(run providerAccountRun, record storedProviderConnection) error {
 	owner := "its owner"
 	if rec := directoryUserFor(record.OwnerUserID, "", ""); rec != nil {
@@ -727,7 +727,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 		return nil, providerAccountNotShared(run, record)
 	}
 	// The chat or project still names an account that was removed (a re-added key gets a new ID). Logged, since the
-	// refusal was otherwise silent on the server (Excellence 2026-10-08).
+	// refusal was otherwise silent on the server (server B 2026-10-08).
 	log.Printf("[PROVIDER_ACCOUNT] account %s (%s) not found for %s (%s): removed or never existed", id, provider, principal, run.Label)
 	return nil, providerAccountUnavailable(run)
 }

@@ -556,7 +556,7 @@ func TestProductRuntimeSwitchRetiresDurableSession(t *testing.T) {
 	}
 }
 
-// PLAT-676 (Excellence 2026-10-07): a chat's second message changed its runtime selection while the
+// PLAT-676 (server B 2026-10-07): a chat's second message changed its runtime selection while the
 // first Muse turn was running, and preparing it closed the CLI ("muse tmux session ... died before run
 // completion"). The running turn's CLI must survive; the message carries the restart to its own turn.
 func TestProductRuntimeChangeDuringRunningTurnDefersTheRestart(t *testing.T) {

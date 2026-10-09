@@ -47,7 +47,7 @@ func TestReflectionTurnRoutesEachStoreExplicitly(t *testing.T) {
 func TestReflectionTurnNamesRealDBTables(t *testing.T) {
 	msg := BuildStepReflectionTurn(reflectionInput())
 
-	// RTS Latency pasted percentile tables and cost baselines into learnings
+	// server A Latency pasted percentile tables and cost baselines into learnings
 	// that already existed in latency_baselines and cost_daily_metrics, with
 	// fresher data. Nothing told the step those tables existed, so caching felt
 	// safer than betting a later run would query. Naming them is what makes
@@ -121,7 +121,7 @@ func TestReflectionTurnTreatsSkillAsOneSharedTopicOrganisedArtifact(t *testing.T
 func TestReflectionTurnJudgesIndexStructurallyNotBySize(t *testing.T) {
 	small := reflectionInput() // SkillIndexLines: 42
 	large := reflectionInput()
-	large.SkillIndexLines = 510 // RTS Latency's actual bloated index size
+	large.SkillIndexLines = 510 // server A Latency's actual bloated index size
 
 	for name, in := range map[string]StepReflectionTurnInput{"small index": small, "large index": large} {
 		msg := BuildStepReflectionTurn(in)

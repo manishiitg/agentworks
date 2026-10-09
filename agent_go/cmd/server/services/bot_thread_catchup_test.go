@@ -156,7 +156,7 @@ func TestThreadCatchupHistoryFailureContinuesWithoutIt(t *testing.T) {
 	}
 }
 
-// The RTS case end to end: a completed threaded conversation continued by a
+// The server A case end to end: a completed threaded conversation continued by a
 // follow-up gets the Sentry alert posted in the thread since its last reply.
 func TestCompletedThreadFollowUpIncludesAppAlert(t *testing.T) {
 	manager, _, threadID := newCatchupManager([]ThreadMessage{

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Per-user Linux accounts ("slots"): the build and install steps shared by every deployment's
-# build-and-activate.sh (rootless-linux products and the AWS EC2 / RTS host). Source this file.
+# build-and-activate.sh (rootless-linux products and the AWS EC2 / server A host). Source this file.
 #
 # What a deployment gets: the two small programs (slotctl, slottmux) built into every release, and, on a
 # host an administrator has provisioned (deploy/common/provision-slots.sh creates /etc/agentworks/slots.json),
@@ -35,7 +35,7 @@ slots_install_shim() {
 }
 
 # slots_release_traversal APP_DIR BUILD_DIR: a slot account must reach the Landlock launcher in the release
-# (BUILD_DIR/bin/video-studio-landlock-runner, which slotctl starts as the slot). RTS had releases/ at 0700, so every
+# (BUILD_DIR/bin/video-studio-landlock-runner, which slotctl starts as the slot). Server A had releases/ at 0700, so every
 # slotted command failed with "fork/exec ...: permission denied" (PLAT-478). Search-only (x), never read: releases/ is
 # 0711 (traversable, not listable), the release folder and its bin/ get o+x, the launcher is 0755. Idempotent; only
 # folders this account owns are touched (the folders above APP_DIR are provision-slots.sh's, run as root).

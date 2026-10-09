@@ -33,7 +33,7 @@ func TestDynamicProductDefaultPicksAProviderEveryoneCanUse(t *testing.T) {
 	ready := map[string]bool{}
 	providerReadyForEveryone = func(_ context.Context, provider, product string) bool { return product == "code" && ready[provider] }
 
-	// Only Muse is signed in and open to everyone (Excellence): new Codes start on it.
+	// Only Muse is signed in and open to everyone (server B): new Codes start on it.
 	ready = map[string]bool{"muse-cli": true}
 	p := codeProfileForDefaultTest()
 	applyDynamicProductDefault(context.Background(), &p)

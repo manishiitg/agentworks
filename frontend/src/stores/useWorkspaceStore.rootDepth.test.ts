@@ -13,7 +13,7 @@ describe('workspace file tree scope', () => {
   })
 
   // A request with no folder used to walk the whole shared workspace
-  // (RTS: 652k files, 11-36 s on page open).
+  // (server A: 652k files, 11-36 s on page open).
   it('caps a root request at two levels', async () => {
     await useWorkspaceStore.getState().fetchFiles(undefined, { force: true })
     expect(getPlannerFiles).toHaveBeenCalledWith(undefined, -1, 2)

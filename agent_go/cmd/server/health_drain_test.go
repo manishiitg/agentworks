@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The RTS deploy (./deploy.sh rts) polls /health .drain.idle before swapping releases.
+// The server A deploy (./deploy.sh <server>) polls /health .drain.idle before swapping releases.
 func TestHealthReportsDrainStatus(t *testing.T) {
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{}}
 	rec := httptest.NewRecorder()

@@ -32,7 +32,7 @@ profile:
       read_only: []
       chat_history: none
     # Every coding CLI, as for Code: each runs here in mcp_only mode (no native tools, no personal MCP config).
-    # Offering only Codex and Pi left the picker empty on servers where neither is signed in (RTS, 2026-10-06).
+    # Offering only Codex and Pi left the picker empty on servers where neither is signed in (server A, 2026-10-06).
     provider: claude-code
     model_id: claude-sonnet-5-5
     provider_options:

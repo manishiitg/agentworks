@@ -8,7 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
-// Switching the provider on the Models page must make the retained CLI of the old provider the wrong target (Code on Excellence, 2026-10-04: after Muse -> Codex
+// Switching the provider on the Models page must make the retained CLI of the old provider the wrong target (Code on server B, 2026-10-04: after Muse -> Codex
 // the next sends went to the old Muse record and answered 409 delivery_uncertain).
 func TestRetainedCLIProviderDiffersFromTheRequestedProvider(t *testing.T) {
 	const sessionID = "product-provider-switch"

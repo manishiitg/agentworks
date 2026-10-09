@@ -9,7 +9,7 @@ import (
 // Typed slash commands in the browser terminal are limited to an allowlist (default: /usage).
 // Slash commands change the CLI's own settings or run large commands, both of which the app offers
 // itself; the session-switching ones (/new, /clear, /resume, /fork) leave the chat reading a session
-// the CLI has left; and any slash command leaves a draft the CLI never records (Confida,
+// the CLI has left; and any slash command leaves a draft the CLI never records (server C,
 // 2026-09-30). /usage stays because people need to see their limits.
 //
 // The CLI's slash menu can be driven without typing a name: "/", then the arrow keys, then Enter.

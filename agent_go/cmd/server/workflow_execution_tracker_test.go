@@ -216,7 +216,7 @@ func TestInteractiveWorkflowBuilderTaskBlocksNewBuilderChat(t *testing.T) {
 		t.Fatal("interactive workflow-builder task should block a second builder chat")
 	}
 
-	// The refusal names who holds the workflow (RTS: two co-owners kept getting a bare 409).
+	// The refusal names who holds the workflow (server A: two co-owners kept getting a bare 409).
 	withMemoryUserDirectory(t, `{"users":[{"id":"holder","username":"laxmi","can_create":false,"can_edit":true}]}`)
 	exec.UserID = "holder"
 	if name, msg := workflowBusyMessage(exec, "other"); name != "laxmi" || !strings.Contains(msg, "laxmi is using the Builder") || !strings.Contains(msg, "Run mode") {
@@ -227,7 +227,7 @@ func TestInteractiveWorkflowBuilderTaskBlocksNewBuilderChat(t *testing.T) {
 	}
 
 	// A step started from a Run-mode session (an MCP execute_step) never edits the workflow and must not hold the
-	// lock (RTS 2026-10-09: an MCP smoke run blocked a co-owner's Builder chat for 13 minutes).
+	// lock (server A 2026-10-09: an MCP smoke run blocked a co-owner's Builder chat for 13 minutes).
 	t.Cleanup(func() { common.ClearSessionShellConfig(exec.SessionID) })
 	common.SetSessionWorkflowReadOnly(exec.SessionID, true)
 	if trackedExecutionBlocksNewWorkflowBuilderChat(exec) {

@@ -1504,7 +1504,7 @@ export interface ActiveSessionInfo {
   phase_name?: string
   bot_platform?: string
   triggered_by?: string
-  /** Who or what started the run, e.g. "Called by RTS Flow Tester". */
+  /** Who or what started the run, e.g. "Called by server A Flow Tester". */
   triggered_by_label?: string
   has_running_background_agents?: boolean
   running_background_agent_count?: number

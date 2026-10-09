@@ -52,7 +52,7 @@ func TestResolveWorkflowWorkspaceFolderKnowledgebaseOnlyAndRealConflicts(t *test
 	}
 }
 
-// RTS SDE crew: attached Crews are writable, so WritePaths name several Crew
+// server A SDE crew: attached Crews are writable, so WritePaths name several Crew
 // projects; the session's own working dir must still pick its database.
 func TestResolveWorkflowWorkspaceFolderWorkingDirWinsOverWritableAttachedCrews(t *testing.T) {
 	got, err := resolveWorkflowWorkspaceFolder("s", &common.SessionShellConfig{

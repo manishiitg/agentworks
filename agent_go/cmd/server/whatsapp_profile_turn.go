@@ -219,7 +219,7 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 	// In a multi-chat project (a crew) a Slack thread is its own chat (a
 	// separate native session and history), not the project's main
 	// conversation: that main chat is the owner's, and every thread sharing
-	// it mixed colleagues' questions into one context (RTS 2026-09-26).
+	// it mixed colleagues' questions into one context (server A 2026-09-26).
 	// WhatsApp, and single-conversation products, keep the main conversation.
 	if msg.Platform == "slack" && msg.PresetProfile != nil && conversationKey != "" && strings.TrimSpace(threadID.ThreadTS) != "" && profileHasProjectChats(profile) {
 		conversationKey = slackThreadConversationKey(conversationKey, threadID)

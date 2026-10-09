@@ -81,13 +81,13 @@ func walkCrewTree(root *os.Root) ([]crewTreeEntry, []crewTreeFinding, error) {
 			}
 			// SQLite's shared-memory index (<db>-shm) holds no data: it is created and deleted as processes open and close the
 			// database and is rebuilt on the next open. Copying it is meaningless and it can vanish mid-copy, which aborted a
-			// real move (RTS 2026-10-05). The database and its -wal file are still copied and still must not change.
+			// real move (server A 2026-10-05). The database and its -wal file are still copied and still must not change.
 			if strings.HasSuffix(name, "-shm") && present[strings.TrimSuffix(name, "-shm")] {
 				findings = append(findings, crewTreeFinding{Rel: child, Kind: "sqlite-shm", Detail: "SQLite shared-memory index, rebuilt on open"})
 				continue
 			}
 			// The report runtime's scratch folder holds throwaway database snapshots that are created and deleted while a
-			// report is served; they vanished mid-copy and aborted a real move (RTS 2026-10-05). Nothing in it is kept.
+			// report is served; they vanished mid-copy and aborted a real move (server A 2026-10-05). Nothing in it is kept.
 			if child == ".report-cache/.runtime" {
 				findings = append(findings, crewTreeFinding{Rel: child, Kind: "sqlite-shm", Detail: "report runtime scratch folder, recreated on demand"})
 				continue

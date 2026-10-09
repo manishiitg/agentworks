@@ -177,7 +177,7 @@ explicit private linked-CLI exception and passes.
 
 ## Measured evidence
 
-Byte counts below compare identical controlled fixtures, not the entire RTS
+Byte counts below compare identical controlled fixtures, not the entire server A
 provider request or its token count.
 
 | Fixture | Before | After |
@@ -248,7 +248,7 @@ duplication is mainly semantic, not repeated identical manifest blocks.
 
 ## Real prompt baseline
 
-An earlier read-only RTS inspection of a saved Code session from
+An earlier read-only server A inspection of a saved Code session from
 2026-09-30T13:18:04Z measured its saved system text:
 
 | Portion | Unicode characters |

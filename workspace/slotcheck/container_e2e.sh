@@ -18,7 +18,7 @@
 #   6. deploy/common/slotcheck.sh (if /src/deploy is mounted), the wrapper a deploy runs: passes, prints no secret;
 #      then: the new code created no browser profile folder;
 #   4. (last, it creates profile folders as it goes) the self-test built against the OLD grant builder and launcher
-#      (if /src/old is mounted, e.g. `git archive origin/main~N workspace`): the probes FAIL with the RTS error, exit 1.
+#      (if /src/old is mounted, e.g. `git archive origin/main~N workspace`): the probes FAIL with the server A error, exit 1.
 set -euo pipefail
 export GOFLAGS=-mod=mod GOTOOLCHAIN=local CGO_ENABLED=0
 apt-get update >/dev/null && apt-get install -y sudo tmux >/dev/null

@@ -110,7 +110,7 @@ def check_user_slots(env_path=ENV_FILE, users_path=None):
     held = set(json.loads(table.read_text()).get("slots", {}).values())
     without = sorted(u.get("email") or u.get("username") or u["id"] for u in users if u["id"] not in held)
     if without and mode == "optin":
-        # Opt-in is a rollout state (Confida, Dominion): accounts without a slot still run as the service account. Say so loudly.
+        # Opt-in is a rollout state (server C, Dominion): accounts without a slot still run as the service account. Say so loudly.
         print(f"WARN {len(without)} of {len(users)} accounts have no slot yet (AGENTWORKS_SLOTS=optin): {', '.join(without)}")
         return
     if without:

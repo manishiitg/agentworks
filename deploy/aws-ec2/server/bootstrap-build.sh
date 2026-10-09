@@ -7,7 +7,7 @@ export PATH="$HOME/.local/go/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 exec 9>"$HOME/video-studio/deploy.lock"
 flock -n 9 || { echo 'Another deployment is already running.' >&2; exit 1; }
 trap 'rm -rf "$JOB"' EXIT
-# Prebuilt release (PLAT-426): shipped into $JOB/build by `./deploy.sh rts`; nothing to install, clone or compile. The activation
+# Prebuilt release (PLAT-426): shipped into $JOB/build by `./deploy.sh <server>`; nothing to install, clone or compile. The activation
 # script that runs is the one from the very revisions the build was made from.
 if [[ -f "$JOB/prebuilt" ]]; then
   PREBUILT="$JOB/build"

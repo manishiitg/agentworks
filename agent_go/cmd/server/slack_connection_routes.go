@@ -145,7 +145,7 @@ func slackConnectionService(w http.ResponseWriter, r *http.Request) (*services.S
 // caller's physical project folder. The browser sends a crew's logical path
 // ("Chats/Work/projects/<id>"); stored or read as-is it names no folder in the
 // document root, so the project's manifest was "not found" when the new bot
-// was selected, and the bot's Slack route had no owner (RTS 2026-09-25, #201
+// was selected, and the bot's Slack route had no owner (server A 2026-09-25, #201
 // sub-issue 5). A "_users/<owner>/..." path is already physical and is kept.
 // Workflow scopes (no profile) are returned unchanged.
 func physicalProductSlackScope(ctx context.Context, profileID, workspacePath string) string {
@@ -616,7 +616,7 @@ func slackConnectionWorkflowReference(ctx context.Context, connID string) string
 			name = manifest.ID
 		}
 		// Name who can change it: the person removing a bot is often not an owner of the workflow that still uses it
-		// (Confida 2026-10-07).
+		// (server C 2026-10-07).
 		var owners []string
 		for _, id := range manifest.Access.Owners {
 			if rec := directoryUserFor(id, "", ""); rec != nil {

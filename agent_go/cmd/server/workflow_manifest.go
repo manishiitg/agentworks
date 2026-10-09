@@ -1901,7 +1901,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		return fmt.Errorf("failed to marshal workflow.json: %w", err)
 	}
 	// A Crew's workflow.json carries top-level fields this struct does not model (its internal `triggers`, its `identity`).
-	// Rewriting it from the struct erased them: Confida's blueprint Crew lost the trigger a workflow step called it by, and every
+	// Rewriting it from the struct erased them: Server C's blueprint Crew lost the trigger a workflow step called it by, and every
 	// webhook run then died with "internal trigger not found" (2026-10-07). Keep what the file already had that the struct
 	// has no field for; fields the struct does model still follow the struct (clearing one still clears it).
 	if previousExists {

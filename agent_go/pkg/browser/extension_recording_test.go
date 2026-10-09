@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// RTS 2026-10-07: a 30 fps .webm take fell behind the encoder on a 2-vCPU
+// server A 2026-10-07: a 30 fps .webm take fell behind the encoder on a 2-vCPU
 // server and was lost, so a take without --fps records at 15 fps.
 func TestRecordStartDefaultsTo15FPS(t *testing.T) {
 	got := withDefaultRecordingFPS([]string{"start", "evidence/take.webm"})

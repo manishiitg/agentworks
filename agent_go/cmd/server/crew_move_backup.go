@@ -74,7 +74,7 @@ func (m *crewMover) makeBackup(todo []crewMoveCandidate) error {
 			return err
 		}
 		// Lock the Crew while it is backed up: the server then runs no turn and the proxy refuses writes for it, so the copy
-		// is of a still Crew. A 7 GiB Crew took ~20 minutes to back up on RTS and its chat, report runtime and schedule kept
+		// is of a still Crew. A 7 GiB Crew took ~20 minutes to back up on server A and its chat, report runtime and schedule kept
 		// writing, which aborted three attempts (PLAT-442, 2026-10-05).
 		if err := writeCrewMoveActive(m.opts.StateRoot, c.plan.Folder); err != nil {
 			return err

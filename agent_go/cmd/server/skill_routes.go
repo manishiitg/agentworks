@@ -49,7 +49,7 @@ func workspaceSkillRoute(write bool, handler http.HandlerFunc) http.HandlerFunc 
 			return
 		}
 		// The panels send folder paths with a trailing slash ("Workflow/<name>/"); that names the same workspace. Every
-		// Skills tab answered 400 for it (Excellence 2026-10-06).
+		// Skills tab answered 400 for it (server B 2026-10-06).
 		raw := strings.TrimSuffix(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 		clean := path.Clean(raw)
 		if raw == "" || clean != raw || strings.Contains(raw, "..") || path.IsAbs(raw) {

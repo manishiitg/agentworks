@@ -149,7 +149,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
   // A retained CLI keeps its tmux pane between turns (process_state "live"),
   // so the live view stays mounted across turns. Keying it on the turn
   // (active) swapped it for a static snapshot at every turn end and back to a
-  // fresh, blank live view on every send: a ~1s flash (RTS 2026-09-29).
+  // fresh, blank live view on every send: a ~1s flash (server A 2026-09-29).
   const isLive = paneIsLive(snapshot)
 
   return (

@@ -29,7 +29,7 @@ export function botPlatformLabel(botPlatform: string | undefined, sessionId: str
 }
 
 /** What started a running session, for every active-work row: the server's
- * label when it has one ("Called by RTS Flow Tester", "Schedule: Daily
+ * label when it has one ("Called by server A Flow Tester", "Schedule: Daily
  * digest"), else a name for the trigger kind. */
 export function sessionOriginLabel(session: Pick<ActiveSessionInfo, 'session_id' | 'triggered_by' | 'triggered_by_label' | 'bot_platform'>): string {
   const label = session.triggered_by_label?.trim()

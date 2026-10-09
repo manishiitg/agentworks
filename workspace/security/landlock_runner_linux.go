@@ -236,7 +236,7 @@ func landlockSystemReadPaths() []string {
 	}
 	// The system Chrome the browser launches by default (/usr/bin/google-chrome -> /etc/alternatives -> /opt/google/chrome/google-chrome).
 	// Without it every browser start in the sandbox fails with "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied"
-	// (Excellence 2026-10-03, once the mount-namespace fallback that could reach /opt was removed). Dropped when it is not installed.
+	// (server B 2026-10-03, once the mount-namespace fallback that could reach /opt was removed). Dropped when it is not installed.
 	paths = append(paths, "/opt/google/chrome")
 	if browserPath := strings.TrimSpace(os.Getenv("AGENT_BROWSER_EXECUTABLE_PATH")); browserPath != "" {
 		if resolved, err := filepath.EvalSymlinks(browserPath); err == nil {
@@ -275,14 +275,14 @@ func landlockSystemReadPaths() []string {
 func landlockSystemWritePaths(privateTmp, browserScoped bool) []string {
 	// Never the host /tmp: every sandboxed command runs as the same service
 	// user, so a shared /tmp let one user's agent read what another's left
-	// there -- on RTS a Crew's repository clones, and git credentials written
+	// there -- on server A a Crew's repository clones, and git credentials written
 	// through HOME=/tmp (2026-09-28). With a private /tmp (its own tmpfs, see
 	// private_tmp_ns_linux.go) the command may use /tmp freely. Without one,
 	// only the browser folders stay writable: the daemons' socket folder, and
 	// the managed Chrome wrapper's temp folder, where Chrome keeps its shared
 	// memory (/dev/shm is not granted). Without that grant every sandboxed
 	// browser launch failed ("Creating shared memory in /tmp/aw-browser-<uid>
-	// failed: Permission denied", RTS 2026-09-28).
+	// failed: Permission denied", server A 2026-09-28).
 	// A command scoped to its own browser has that browser's socket folder
 	// and profile in its policy; every other browser stays out of reach.
 	var paths []string

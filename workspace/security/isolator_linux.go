@@ -32,7 +32,7 @@ func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command s
 			// Never fall back to the mount-namespace backend here. It ignores the user's slot (the command ran as the
 			// service account) and leaves the rest of the host as the service account sees it: an agent's shell with
 			// a blocked db.sqlite in its project read the platform's .env and wrote the service account's home
-			// (Excellence 2026-10-03). A policy Landlock cannot carry is refused.
+			// (server B 2026-10-03). A policy Landlock cannot carry is refused.
 			return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: this Folder Guard policy cannot be enforced: %w", policyErr)
 		}
 		return iso.landlockCommand(ctx, policy, command, args)
@@ -51,7 +51,7 @@ func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command s
 func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	// A read-only folder that does not exist grants nothing and cannot be granted later (the rules are fixed when the
 	// command starts), so it must not stop the whole sandbox: the platform lists optional folders such as a workflow's
-	// learnings/_global, and a workflow that never created one could not run a single shell command (PLAT-514, RTS
+	// learnings/_global, and a workflow that never created one could not run a single shell command (PLAT-514, server A
 	// 2026-10-05). Only "does not exist" is skipped; a folder that exists but cannot be read still fails closed.
 	reads, err := iso.canonicalOptionalPolicyPaths(iso.ReadPaths)
 	if err != nil {

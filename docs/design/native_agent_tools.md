@@ -71,7 +71,7 @@ those workflows and crews are now on.
   files. Confining the CLIs is the follow-up that closes both.
   The plan (lock every CLI, CLI-login accounts, login proxy, then **Full CLI**
   on Code) is in PLAT-364.
-  The leak and the lock were both shown live on RTS on 2026-09-29.
+  The leak and the lock were both shown live on server A on 2026-09-29.
 
 ## The crew switch
 

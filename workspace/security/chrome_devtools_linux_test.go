@@ -37,7 +37,7 @@ func managedChromeSandbox(t *testing.T) (*Isolator, string, string) {
 		t.Fatal(err)
 	}
 	t.Setenv("AGENT_BROWSER_EXECUTABLE_PATH", wrapper)
-	// The service's own HOME (outside every grant, so not writable inside the sandbox) on a native-mode server (Excellence, RTS): the
+	// The service's own HOME (outside every grant, so not writable inside the sandbox) on a native-mode server (server B, server A): the
 	// shape that killed Chrome.
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	t.Setenv("HOME", t.TempDir())
@@ -53,7 +53,7 @@ func managedChromeSandbox(t *testing.T) (*Isolator, string, string) {
 
 // A managed Chrome must get as far as DevTools inside the sandbox, started the way the app starts it (the headless arguments of
 // browserconfig.HeadlessArgsForSession, through the chrome-agentworks wrapper the deploy installs beside the system Chrome).
-// Excellence 2026-10-03: Chrome launched but "exited early (exit code: 1) without writing DevToolsActivePort".
+// server B 2026-10-03: Chrome launched but "exited early (exit code: 1) without writing DevToolsActivePort".
 // Skips without a system Chrome or the Landlock launcher (AGENTWORKS_LANDLOCK_RUNNER).
 func TestManagedChromeReachesDevToolsInsideTheSandbox(t *testing.T) {
 	iso, wrapper, profile := managedChromeSandbox(t)

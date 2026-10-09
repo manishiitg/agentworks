@@ -243,7 +243,7 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
 
 export async function loadProductProjects<P extends string>(root: string, product: P, storage: ProductProjectStorageOptions = {}): Promise<ProductProject<P>[]> {
   // The folder listing, the shared-project listing and each project's two manifest reads used to run one
-  // after another, so opening Crew or Code waited for 1 + 2N round trips in a row (slow on RTS, PLAT-531).
+  // after another, so opening Crew or Code waited for 1 + 2N round trips in a row (slow on server A, PLAT-531).
   // Independent requests now run together.
   const [response, own] = await Promise.all([
     agentApi.getPlannerFiles(root, -1, 2),

@@ -141,7 +141,7 @@ The two Sentry approaches are documented in [SENTRY_ACCESS.md](../../mcp-gateway
 
 The [Platform group implementation review](../reviews/vault-platform-group-review-2026-10-03.md)
 verifies bootstrap, persistence, automatic membership and shared runtime grants.
-RTS and Excellence now build and bootstrap a private Vault service and configure
+Server A and server B now build and bootstrap a private Vault service and configure
 the product proxy through the shared deployment helper. Startup repeats the
 idempotent Platform initialization. Their existing authentication gateways
 remain separate. See [server installation](vault-server-installation.md).
@@ -167,7 +167,7 @@ The shared add-user HTTP endpoint writes an account to the platform directory;
 it does not provision a Linux execution slot. The root-run
 `deploy/common/provision-slots.sh adduser` explicitly performs both steps:
 the platform `server add-user` command, followed by slot assignment, filesystem
-ownership and isolation configuration. Excellence's deployment sets
+ownership and isolation configuration. Server B's deployment sets
 `AGENTWORKS_SLOTS=on`; unassigned identities fail slot-aware execution. RTS's
 build sets `optin` when slots are installed, retaining legacy execution for
 unassigned users. These statements describe checked deployment source, not a
@@ -668,7 +668,7 @@ This test used the connected Codex CLI temporarily because Muse did not load its
 
 The merge retains main's ownership registry, explicit CLI run-as identity and Crew migration to `Crew/<id>`, including native session continuity. Product manifests declare main's existing `native-subagents` guidance. Workflow MCP registration now obeys its manifest tool admission so the Vault call wrapper does not silently widen the workflow surface. Gateway end-to-end fixtures explicitly include approved tool fingerprints. Main's pinned provider version and its module checksums are retained.
 
-Verification after integration: the gateway Go suite, focused Vault/Crew/migration/product-surface tests, linked runtime tests, 35 Vault UI tests, TypeScript checking and 16 installer/deployment transport tests passed. Confida deployment acceptance remains a separate server test; this merge does not verify or resolve the local Muse MCP-loading issue.
+Verification after integration: the gateway Go suite, focused Vault/Crew/migration/product-surface tests, linked runtime tests, 35 Vault UI tests, TypeScript checking and 16 installer/deployment transport tests passed. Server C deployment acceptance remains a separate server test; this merge does not verify or resolve the local Muse MCP-loading issue.
 
 
 ### Vault builder user identities

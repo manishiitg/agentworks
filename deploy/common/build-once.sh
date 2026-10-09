@@ -100,7 +100,7 @@ ensure_prebuilt_build() {
   build_release_remote
 }
 
-# Streams a trimmed copy of a build to RTS (no mcpagent/provider source, no downloads/: that host never used them).
+# Streams a trimmed copy of a build to server A (no mcpagent/provider source, no downloads/: that host never used them).
 ship_build_to_rts() { # name remote_job_dir
   local name="$1" job="$2"
   build_ssh "tar -C '$BUILDS_DIR' --exclude='$name/source/mcpagent' --exclude='$name/source/multi-llm-provider-go' --exclude='$name/downloads' -cf - '$name' | gzip -3" \
@@ -118,9 +118,9 @@ publish_build_remote() { # name
   printf '%s\n' "$out" | sed -n 's/^RELEASE_TAG=//p' | tail -n 1
 }
 
-# Gets the trimmed build onto the RTS job folder as <job>/build. DEPLOY_BUILD_TRANSPORT: auto (default: RTS downloads the build from
+# Gets the trimmed build onto the server A job folder as <job>/build. DEPLOY_BUILD_TRANSPORT: auto (default: Server A downloads the build from
 # GitHub, and the old stream through this machine is the fallback when the release is missing or the download fails), github
-# (never fall back), stream (the old path only). Needs SSH (the ssh command line to RTS) like ship_build_to_rts.
+# (never fall back), stream (the old path only). Needs SSH (the ssh command line to server A) like ship_build_to_rts.
 deliver_build_to_rts() { # name remote_job_dir manifest_sha256
   local name="$1" job="$2" hash="$3" mode="${DEPLOY_BUILD_TRANSPORT:-auto}" tag="" why=""
   case "$mode" in auto|github|stream) ;; *) echo "DEPLOY_BUILD_TRANSPORT must be auto, github or stream (got '$mode')" >&2; return 1 ;; esac

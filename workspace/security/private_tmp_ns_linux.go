@@ -24,7 +24,7 @@ import (
 // grant stopped file access, but Landlock does not govern connect() on
 // pathname Unix sockets (no such right on kernel 7.0 / ABI 8), so the shared
 // tmux server socket /tmp/tmux-<uid>/default stayed reachable and a sandboxed
-// shell could read or type into other users' CLIs (PLAT-364, verified on RTS
+// shell could read or type into other users' CLIs (PLAT-364, verified on server A
 // 2026-09-28). In the command's own /tmp that socket does not exist.
 // /proc/<pid>/root is no way around it: Landlock already denies a sandboxed
 // process access to processes outside its domain.

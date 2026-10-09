@@ -427,7 +427,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	// A live terminal, a running turn or a retained session may be the very CLI the submission went to, so they keep it uncertain. But a live terminal that
 	// started AFTER the submission cannot hold it (any CLI: the provider was switched, or the old CLI closed and a new one launched): it and its turns say nothing
 	// about this submission. Without this an old uncertain message of a chat that is in use again was never reconciled: the browser re-sent it, waited 30 s and got
-	// 409 every time, although the chat kept working (Code on Excellence, 2026-10-04). The transcript check below stays the proof of non-delivery.
+	// 409 every time, although the chat kept working (Code on server B, 2026-10-04). The transcript check below stays the proof of non-delivery.
 	if snapshot, live := api.liveMainCodingTmuxSnapshot(record.Session); live {
 		if snapshot.CreatedAt.IsZero() || !snapshot.CreatedAt.After(recordTime) {
 			return false

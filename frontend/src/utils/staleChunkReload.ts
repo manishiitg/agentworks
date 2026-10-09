@@ -2,7 +2,7 @@
 // deploy still asks for the previous names on its next lazy import, the new
 // release no longer serves them, and React surfaces it as "Failed to fetch
 // dynamically imported module" -- which looked to users like a random crash
-// ("Something went wrong") after each deploy (RTS, 2026-09-03). The only
+// ("Something went wrong") after each deploy (server A, 2026-09-03). The only
 // correct recovery is a reload, so do it once, automatically.
 
 const RELOAD_FLAG = 'agentworks:stale-chunk-reload'

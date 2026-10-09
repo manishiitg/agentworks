@@ -64,7 +64,7 @@ class VaultInstallTest(unittest.TestCase):
 
     def test_unit_paths_are_unquoted_where_systemd_takes_quotes_literally(self):
         # systemd reads quotes in EnvironmentFile= and WorkingDirectory= as part of the path ("path is not absolute"), so the unit never started
-        # (first Vault install on Excellence, 2026-10-04). ExecStart= may be quoted.
+        # (first Vault install on server B, 2026-10-04). ExecStart= may be quoted.
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             app, docs, units = root / 'app', root / 'docs', root / 'units'

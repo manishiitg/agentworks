@@ -27,7 +27,7 @@ to the deployer's current public IP; it is not publicly open.
 From the repository root:
 
 ```bash
-./deploy.sh rts
+./deploy.sh <server>
 ```
 
 The RTS case in `deploy.sh` (`deploy_rts`) sends the deployment instructions
@@ -67,7 +67,7 @@ managed by an admin in the app ("Users & access" in the workflow toolbar)
 — see `docs/design/user_accounts_and_workflow_sharing.md` and
 `docs/core/multi_user_authentication.md`.
 
-The one-time switch-over from the shared password (done on RTS in
+The one-time switch-over from the shared password (done on server A in
 September 2026; the script has since been removed) set `MULTI_USER_MODE`, `ADMIN_USERS`, a bootstrap `AUTH_USERS` (initial
 password = the old `ACCESS_PASSWORD`; remove that line once the admin has
 logged in), `GATEWAY_DISABLE_PASSWORD_GATE`, and moves everything the shared
@@ -172,7 +172,7 @@ address:
 MCP_API_URL=http://127.0.0.1:8000
 ```
 
-This is a deployment setting, not a secret. The RTS deploy preserves an
+This is a deployment setting, not a secret. The server A deploy preserves an
 existing value or writes this default into
 `/var/lib/video-studio/video-studio/.env` before restarting the services.
 Do not set it to `http://host.docker.internal:8000`: that hostname is only

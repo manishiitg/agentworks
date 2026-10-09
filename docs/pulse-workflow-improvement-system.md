@@ -169,7 +169,7 @@ for reviewers or Workshop.
   and the reviewer skill/tool cutover. All local workflow databases are migrated.
 - Pending: switching every Gate/UI/Activity read to the three tables, removing
   the legacy compatibility writes, and dropping retired tables after the
-  rollback window. RTS and other hosts migrate when the code is deployed there.
+  rollback window. Server A and other hosts migrate when the code is deployed there.
 - Until then, legacy tables (module audit, review notes, finding details,
   impact records, and so on) remain and are still written behind the compact
   contract, so some UI and API fields below still come from them.

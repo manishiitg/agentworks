@@ -29,7 +29,7 @@ reload notice.
 **Decisions.** The desktop app keeps its own family server; the standalone
 backend and renderers stay in the learning app and the two backends are not
 expected to have feature parity. WhatsApp stays unimplemented on the
-platform backend. The RTS deploy is not needed yet.
+platform backend. The server A deploy is not needed yet.
 
 **Open.** Whether SparkQuill's Settings should list only its own secrets or
 the whole per-user store (today: the whole store).
@@ -328,7 +328,7 @@ Decisions taken the same day, which fix the shape of steps 3-5:
   "switch profile behind a PIN" concept; the PIN hash lives in the family's
   `family.json`, the verify step in the product's runtime, and the mode
   switch in the SparkQuill surface.
-- **The RTS box is redeployed only at the end.** It keeps its pre-migration
+- **The server A box is redeployed only at the end.** It keeps its pre-migration
   build until the cutover; that deploy carries the shared WhatsApp connector,
   the whatsmeow upgrade and product schedules together.
 

@@ -322,7 +322,7 @@ func TestCanRetryUncertainChatSubmissionUsesClosedNativeTranscriptProof(t *testi
 }
 
 // A live terminal that started before the submission may hold it (uncertain); one that started after it cannot, whatever CLI it is, so the transcript proof can
-// reconcile the old submission (Code on Excellence, 2026-10-04: an old uncertain message answered 409 forever once the chat ran on another provider).
+// reconcile the old submission (Code on server B, 2026-10-04: an old uncertain message answered 409 forever once the chat ran on another provider).
 func TestCanRetryUncertainChatSubmissionIgnoresALiveTerminalThatStartedLater(t *testing.T) {
 	home := t.TempDir()
 	docs := t.TempDir()

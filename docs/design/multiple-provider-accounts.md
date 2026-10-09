@@ -409,7 +409,7 @@ Missing/identical fixtures fail the live account matrix. It uses real CLI execut
 ## Builder provider-switch incident tracking
 
 PLAT-099 tracks the
-2026-09-18 Confida recurrence: compare selected provider/model/account before
+2026-09-18 server C recurrence: compare selected provider/model/account before
 retained delivery, carry the manifest account ID into runtime construction, and
 resolve the workflow workspace before durable receipt comparison. PLAT-324
 tracks the related persistence/retry boundary. Provider-switch live acceptance

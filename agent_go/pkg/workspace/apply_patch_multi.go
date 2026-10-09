@@ -18,7 +18,7 @@ import (
 // with a dry run, and only then are they written, in order. A write that fails
 // after others succeeded restores those files from the originals read before
 // writing. Nothing is half-applied, unlike applying file by file, which is how
-// a half-edited library broke a workflow on RTS (2026-09-27).
+// a half-edited library broke a workflow on server A (2026-09-27).
 
 type ApplyPatchSection = patchformat.ApplyPatchSection
 

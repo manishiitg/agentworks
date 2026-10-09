@@ -78,7 +78,7 @@ describe('shouldKeepChatSessionSubscribed', () => {
 
 describe('visible workflow Builder chat keeps its stream', () => {
   it('stays subscribed while visible even when idle-but-alive (live input into a retained CLI)', () => {
-    // RTS rts-pr-reviewer (Cursor): input typed into the idle retained CLI set
+    // server A rts-pr-reviewer (Cursor): input typed into the idle retained CLI set
     // no streaming flag and the session was not backend-active, so the visible
     // Builder chat had no stream and the reply appeared only after a reload.
     expect(shouldKeepChatSessionSubscribed({ isVisible: true, isStreaming: false, hasRunningBackgroundAgents: false, isBackendActive: false })).toBe(true)

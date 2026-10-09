@@ -37,7 +37,7 @@ class ProvisionSlotsConfigTest(unittest.TestCase):
 
     def test_table_rewrites_keep_the_owner_and_group(self):
         # assign and release rewrite the slot table as root; without a chown it became root:root, unreadable by the
-        # service, and every slot user was refused (RTS, 2026-10-04, PLAT-478).
+        # service, and every slot user was refused (server A, 2026-10-04, PLAT-478).
         rewrites = SCRIPT.count('os.replace(tmp, path)')
         chowns = SCRIPT.count('os.chown(tmp, current.st_uid, current.st_gid)')
         table_writes = SCRIPT.count('json.dump(table, open(tmp, "w"), indent=2)')

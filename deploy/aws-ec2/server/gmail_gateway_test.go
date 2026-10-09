@@ -39,7 +39,7 @@ func TestGmailPushBypassesBrowserGatePreservingGoogleIdentity(t *testing.T) {
 	}
 }
 
-// Regression from RTS: opening the review link without an app bearer token
+// Regression from server A: opening the review link without an app bearer token
 // returned authentication_required before the plan handler could validate it.
 func TestGmailSetupBrowserRoundTripBypassesOnlyItsReviewAndCallbacks(t *testing.T) {
 	for _, gateOff := range []bool{false, true} {

@@ -3,7 +3,7 @@
 # Everything below runs directly on the target host -- there is no
 # cross-compile and no artifact upload, matching
 # deploy/aws-ec2/server/build-and-activate.sh's (video-studio's) on-server
-# build shape. Confida and SparkQuill share this parameterized version:
+# build shape. Server C and SparkQuill share this parameterized version:
 # per-product
 # facts (ports, provider/model, CLI list, extra env, runtime-config.js,
 # an optional mcp-servers.override.json) live under deploy/rootless-linux/products/$PRODUCT/ and
@@ -134,7 +134,7 @@ echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no com
 cp "$PREBUILT/SOURCE_REVISIONS" "$BUILD_DIR/SOURCE_REVISIONS"
 mkdir -p "$BUILD_DIR/source" "$BUILD_DIR/downloads"
 cp -R "$PREBUILT/source/." "$BUILD_DIR/source/"
-# browser and update-coding-clis are used by the RTS host only. workspace-security.test goes to every host: the activation runs it.
+# browser and update-coding-clis are used by the server A host only. workspace-security.test goes to every host: the activation runs it.
 prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" "$PRODUCT" "agent workspace gateway" "browser update-coding-clis"
 cp -R "$PREBUILT/downloads/." "$BUILD_DIR/downloads/"
 cli_build="$(cat "$BUILD_DIR/downloads/cli-build.txt" 2>/dev/null || true)"
@@ -176,7 +176,7 @@ mv "$BUILD_DIR/bin/video-studio-agent" "$BUILD_DIR/bin/$PRODUCT-agent"
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner")
 # The activation proves the sandbox works on this host with it (below).
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go test -c -o "$BUILD_DIR/bin/workspace-security.test" "$REPO_ROOT/workspace/security")
-# Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the RTS build).
+# Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the server A build).
 source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$BUILD_DIR"
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
@@ -273,7 +273,7 @@ node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
 
 if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
   # With --prebuilt, REPO_ROOT is the shared build's source: read-only for the product account, and the playbook tests create temporary folders
-  # next to the playbooks (Confida's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once
+  # next to the playbooks (server C's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once
   # (build-release.sh); the release's own writable copy is validated below.
   [[ -n "$PREBUILT" ]] || python3 "$REPO_ROOT/playbooks/scripts/validate_playbooks.py"
   mkdir -p "$BUILD_DIR/playbooks"
@@ -368,7 +368,7 @@ fi
 # `systemctl show` while the executed process still receives whatever PATH
 # is (or is not) in .env. Replace just that one line atomically so the
 # managed PATH always wins regardless of what the drop-in also says, and
-# preserve every other line in .env untouched (Confida hit this live on
+# preserve every other line in .env untouched (server C hit this live on
 # 2026-09-11). Keys this deploy wrote last time and no longer lists are removed
 # (deploy/common/merge_env.py remembers them in .env.managed-keys); a line added
 # by hand stays.

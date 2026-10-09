@@ -545,7 +545,7 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 		return r, nil
 	}
 	// Only the knowledge configuration must match the preview. The cutover requires schedules to be paused first, and
-	// pausing them edits the manifest, so comparing the whole manifest made the documented order impossible (RTS
+	// pausing them edits the manifest, so comparing the whole manifest made the documented order impossible (server A
 	// 2026-10-06). Concurrent edits are still caught by the save below, which checks the current version.
 	if project.Version != r.ManifestVersion && !knowledgeConfigMatches(project, r.Original) {
 		return nil, &knowledgebase.Error{Code: "VERSION_CONFLICT", Message: "The project's knowledge configuration changed since the migration preview."}

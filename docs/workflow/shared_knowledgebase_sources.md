@@ -1,6 +1,6 @@
 # Shared knowledge bases through workflow references
 
-Status: deployed to RTS; fresh real-workflow attachment acceptance remains unverified in this deployment check. Updated 2026-09-17: write access shipped (not yet deployed to RTS) — see PLAT-325, a follow-up to PLAT-310.
+Status: deployed to server A; fresh real-workflow attachment acceptance remains unverified in this deployment check. Updated 2026-09-17: write access shipped (not yet deployed to server A) — see PLAT-325, a follow-up to PLAT-310.
 
 ## Purpose
 
@@ -12,8 +12,8 @@ Workflow boundaries follow work that needs to be planned, executed, and evaluate
 together. A need for common knowledge should not force otherwise independent work
 into one workflow.
 
-For example, RTS performance, security, and cost workflows could read architecture,
-service descriptions, and API contracts maintained by an existing RTS workflow.
+For example, server A performance, security, and cost workflows could read architecture,
+service descriptions, and API contracts maintained by an existing server A workflow.
 Each consumer would retain its own local investigation notes.
 
 ## Decisions
@@ -42,7 +42,7 @@ Configure `workflow.json` through the workflow configuration API or builder tool
   "knowledgebase_sources": [
     {
       "workflow_id": "wf_rts",
-      "alias": "rts",
+      "alias": "server A",
       "access": "read"
     },
     {
@@ -134,7 +134,7 @@ kept out of write grants entirely. Expose one environment variable per
 attachment:
 
 ```text
-WORKFLOW_KB_RTS=<resolved RTS workflow>/knowledgebase
+WORKFLOW_KB_RTS=<resolved server A workflow>/knowledgebase
 WORKFLOW_KB_SECURITY=<resolved security workflow>/knowledgebase
 ```
 
@@ -258,7 +258,7 @@ blocked sibling reads, and blocked reads through a cached path after detach. Fou
 frontend tests cover attach, detach, reader controls, source browsing and errors;
 TypeScript compilation passes.
 
-The implementation has not been deployed to RTS and no real workflows have been
+The implementation has not been deployed to server A and no real workflows have been
 attached automatically. After deployment, select sources in Knowledge or through
 the builder configuration tool. No bulk note migration is required: consumers read
 the existing source KB immediately. Reorganizing notes remains a separate operation

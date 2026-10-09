@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Regression for Vaibhav's Code on Excellence: drive real account registry and
+// Regression for Vaibhav's Code on server B: drive real account registry and
 // principal admission before the exact preflight used by handleQuery.
 func TestClaudeCodeQueryAuthenticationUsesOnlyAdmittedAccount(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")

@@ -2,7 +2,7 @@
 # Prints how each production server differs from the standard runtime profile (deploy/common/runtime_profile.json,
 # docs/design/deploy_unification.md). Read-only: it reads the running processes' environment and a few facts, and changes nothing.
 #   deploy/common/profile-report-all.sh            # every server
-#   deploy/common/profile-report-all.sh excellence  # one
+#   deploy/common/profile-report-all.sh server B  # one
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="$(python3 -c 'import json,sys;print(json.dumps(json.load(open(sys.argv[1]))))' "$HERE/runtime_profile.json")"
@@ -25,7 +25,7 @@ for line in "${SERVERS[@]}"; do
   [[ -z "$want" || "$want" == "$name" ]] || continue
   args=(--profile-json "$PROFILE" --name "$name" --account "$account" --app "$app" --data "$data" --workspace-port "$port")
   if [[ "$name" == rts ]]; then
-    # RTS: SSH is deploy-only and IP-restricted; read it through SSM like deploy/aws-ec2/slots-admin.sh.
+    # Server A: SSH is deploy-only and IP-restricted; read it through SSM like deploy/aws-ec2/slots-admin.sh.
     quoted="$(printf '%q ' "${args[@]}")"
     remote="python3 - $quoted <<'PYREPORT'
 $(cat "$HERE/profile_report.py")

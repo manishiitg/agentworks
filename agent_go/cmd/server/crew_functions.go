@@ -42,7 +42,7 @@ const (
 // (wait_seconds) before returning {status:"running"} and notifying later.
 // The default is no wait: functions are agentic and usually take minutes,
 // and a caller whose request is cut short (a shell curl with its own
-// timeout) never saw the call_id and called again (RTS 2026-09-27). A var for
+// timeout) never saw the call_id and called again (server A 2026-09-27). A var for
 // tests.
 var crewFunctionFastWait = 120 * time.Second
 
@@ -609,7 +609,7 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 // caller for the same function and target with the same arguments. A caller
 // that retries a call it believes failed (a shell curl that timed out while
 // call_function was still waiting) joins the running call instead of starting
-// a duplicate run (RTS 2026-09-27: one PR reviewed three times at once).
+// a duplicate run (server A 2026-09-27: one PR reviewed three times at once).
 // Needs crewFunctionCalls locked.
 func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerProfileID, callerID, callerPath, callerChat, targetKind, targetProfileID, targetID, targetPath, targetChat, function, argsKey string) *crewFunctionCall {
 	for _, call := range crewFunctionCalls.m {

@@ -12,7 +12,7 @@ import (
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
-// newSyntheticCollisionFixture models the RTS incident: a user message was
+// newSyntheticCollisionFixture models the server A incident: a user message was
 // delivered as live input into the retained Cursor CLI (a turn owns the
 // session and its main tmux terminal) when a background step's completion
 // turn started on the same session.

@@ -122,7 +122,7 @@ Legacy single-primary definitions acquire supporting links on read without rewri
 observations. Reconfiguration with multiple primaries requires explicit supporting
 links. Role/group/link edits preserve history; measurement meaning changes do not.
 Old workflows and collectors continue to work; no workflow is split automatically.
-Existing RTS roles should be reviewed via setup, not automatically promoted or assigned
+Existing server A roles should be reviewed via setup, not automatically promoted or assigned
 new targets by a database migration.
 
 Reviews cover each primary with progress and evidence freshness, then prioritize

@@ -141,7 +141,7 @@ export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = fal
   const targetKey = target ? `${target.profile_id || ''}|${target.workspace_path}` : ''
 
   // This target's slug and platform-bot state (the platform bot only exists
-  // on servers that have one; RTS has own bots only).
+  // on servers that have one; server A has own bots only).
   const [settings, setSettings] = useState<SlackTargetSettings | null>(null)
   useEffect(() => {
     if (!workflowId || !target?.workspace_path) return

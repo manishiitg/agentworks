@@ -1267,7 +1267,7 @@ func getUserTokenFilePath(userID, serverName string) string {
 // connections use the reserved _platform directory; legacy persisted paths are
 // retained during upgrade so credentials do not need to be copied.
 // honours XDG_CONFIG_HOME so a host whose ~/.config is not writable by the
-// service user (RTS: root-owned, the bootstrap wrote the systemd units there)
+// service user (server A: root-owned, the bootstrap wrote the systemd units there)
 // can point the agent at a writable directory -- the same knob cursor-agent
 // needed. Falls back to the historical ~/.config/mcpagent/tokens.
 func mcpagentTokensRoot() string {
@@ -1290,7 +1290,7 @@ type registeredClient struct {
 // It sits beside the token file so removing a user's token directory clears the
 // registration with it.
 func getUserClientFilePath(userID, serverName string) string {
-	// Same root as the token files (XDG_CONFIG_HOME-aware): on RTS ~/.config is
+	// Same root as the token files (XDG_CONFIG_HOME-aware): on server A ~/.config is
 	// root-owned and only the XDG tree is writable, so a literal ~/.config path
 	// would fail to persist the registration there.
 	return filepath.Join(mcpagentTokensRoot(), userID, serverName+".client.json")

@@ -19,7 +19,7 @@ import (
 
 // A Code agent's shell call blocks the project's db/db.sqlite. That used to push the command off Landlock onto the
 // mount-namespace backend, which ran it as the service account: it read the platform's .env and wrote the service
-// account's home (Excellence 2026-10-03). It must run as the user's slot, under Landlock, with the file hidden.
+// account's home (server B 2026-10-03). It must run as the user's slot, under Landlock, with the file hidden.
 // Opt-in, same settings as TestInteractiveShellRunsAsTheUsersSlotE2E.
 func TestShellWithABlockedFileRunsAsTheUsersSlotE2E(t *testing.T) {
 	user := os.Getenv("AGENTWORKS_SHELL_SLOT_E2E_USER")

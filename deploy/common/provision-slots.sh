@@ -19,7 +19,7 @@ set -euo pipefail
 
 # PRODUCT is the service account. The layout defaults to the rootless-linux products (/srv/<product>);
 # another host sets APP_DIR (releases, current, slots, .env), DOCS and SERVICE_HOME, for example the
-# RTS EC2 host: PRODUCT=video-studio APP_DIR=/var/lib/video-studio/video-studio DOCS=/data/video-studio/docs
+# Server A EC2 host: PRODUCT=video-studio APP_DIR=/var/lib/video-studio/video-studio DOCS=/data/video-studio/docs
 # SERVICE_HOME=/var/lib/video-studio
 PRODUCT="${PRODUCT:-agents}"
 HOME_DIR="${APP_DIR:-/srv/$PRODUCT}"
@@ -28,7 +28,7 @@ SERVICE_HOME="${SERVICE_HOME:-$HOME_DIR/home}"
 SLOT_COUNT="${SLOT_COUNT:-50}"
 # Products that share one host each get their own slot accounts, launcher, config, table and sudo rule, so a
 # product's service account is only ever in its own slot groups. The default prefix "slot" keeps the original
-# host-wide names (the first product on a host, excellence's `agents`); any other prefix puts everything under
+# host-wide names (the first product on a host, server B's `agents`); any other prefix puts everything under
 # a per-product name: accounts <prefix>01.., /usr/local/libexec/agentworks/<product>/, /etc/agentworks/<product>/,
 # /etc/sudoers.d/agentworks-slots-<product>. Set the same prefix in the product's service environment
 # (AGENTWORKS_SLOT_PREFIX, AGENTWORKS_SLOTCTL, AGENTWORKS_SLOTCTL_CONFIG, AGENTWORKS_SLOTS_FILE).
@@ -104,11 +104,11 @@ while p not in ("/", ""):
   install -o root -g root -m 0755 "$slotctl_src" "$LIBEXEC/slotctl"
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
   # A product's folder below /etc/agentworks is only reachable if every parent is searchable: /etc/agentworks
-  # belongs to the first product's group (excellence's agents, 0750), which would hide another product's folder
-  # from its own service ("slot table unavailable: permission denied", Confida 2026-10-01). Search-only for
+  # belongs to the first product's group (server B's agents, 0750), which would hide another product's folder
+  # from its own service ("slot table unavailable: permission denied", server C 2026-10-01). Search-only for
   # everyone on that one parent; each product's own folder and table stay closed to the others. Always, not only for
-  # the other products: running init for the first product itself resets the folder to 0750 (excellence's init on
-  # 2026-10-02 took Confida's table away again).
+  # the other products: running init for the first product itself resets the folder to 0750 (server B's init on
+  # 2026-10-02 took server C's table away again).
   chmod o+x /etc/agentworks
   local docker_flag
   docker_flag="$(slot_docker_enabled)"
@@ -154,7 +154,7 @@ SUDO
 
 # Folders every account shares (workflows, downloads, skills): they belong to the service account, and a slot
 # account could not even enter a workflow's folder, so every shell command a workflow ran as a slot failed
-# ("fork/exec ...: permission denied", Confida and RTS, 2026-10-01). One group per product holds the service
+# ("fork/exec ...: permission denied", server C and server A, 2026-10-01). One group per product holds the service
 # account and every slot; the shared folders get that group, group read/write and setgid, so what the service
 # writes there stays reachable by the slots and the other way round. Private trees stay closed to other slots.
 # SHARED_DIRS (below DOCS) can be overridden. Safe to run again; run it after adding slots.
@@ -219,7 +219,7 @@ enable_slot_docker() {
 
 cmd_docker() {
   # Ubuntu 24.04 restricts unprivileged user namespaces and ships a profile that lets /usr/bin/rootlesskit make them:
-  # with that profile in place rootless Docker works for any account (the RTS app account's own Docker already does).
+  # with that profile in place rootless Docker works for any account (the server A app account's own Docker already does).
   if [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" == 1 && -z "${FORCE_DOCKER:-}" && ! -e /etc/apparmor.d/rootlesskit ]]; then
     echo "Unprivileged user namespaces are restricted by AppArmor on this host and there is no rootlesskit profile: rootless Docker needs an exception first (FORCE_DOCKER=1 tries anyway)." >&2
     exit 1
@@ -275,7 +275,7 @@ with open(path + ".lock", "a") as lock:
     json.dump(table, open(tmp, "w"), indent=2)
     os.chmod(tmp, 0o640)
     # Keep the owner and group of the table, root and the product group: the service reads it through that group.
-    # A plain rewrite as root left it root:root and the platform refused every slot user, RTS 2026-10-04.
+    # A plain rewrite as root left it root:root and the platform refused every slot user, server A 2026-10-04.
     current = os.stat(path)
     os.chown(tmp, current.st_uid, current.st_gid)
     os.replace(tmp, path)
@@ -328,7 +328,7 @@ with open(path + ".lock", "a") as lock:
     json.dump(table, open(tmp, "w"), indent=2)
     os.chmod(tmp, 0o640)
     # Keep the owner and group of the table, root and the product group: the service reads it through that group.
-    # A plain rewrite as root left it root:root and the platform refused every slot user, RTS 2026-10-04.
+    # A plain rewrite as root left it root:root and the platform refused every slot user, server A 2026-10-04.
     current = os.stat(path)
     os.chown(tmp, current.st_uid, current.st_gid)
     os.replace(tmp, path)
@@ -343,7 +343,7 @@ cmd_status() {
 }
 
 # PLAT-480 (F1): a slot command runs in its own user and mount namespaces so the launcher can hide the slot's tmux
-# socket folder from it. Hosts whose AppArmor restricts unprivileged user namespaces (Ubuntu 24.04+, the RTS instance)
+# socket folder from it. Hosts whose AppArmor restricts unprivileged user namespaces (Ubuntu 24.04+, the server A instance)
 # strip the launcher's capabilities in them unless its binary has a profile with `userns`. Path-scoped and
 # unconfined otherwise, like the product's own exception: every unrelated process keeps the host-wide restriction.
 USERNS_PROFILE="/etc/apparmor.d/$PRODUCT-slot-userns"

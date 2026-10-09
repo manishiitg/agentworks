@@ -72,7 +72,7 @@ func getWorkspaceDocsAbsPath() string {
 
 // listGroupSubdirs returns the names of immediate subdirectories under a workspace
 // folder path, used to discover per-group folders inside an iteration (e.g. the
-// "xspaces" / "excellence" / etc. dirs under runs/iteration-N/). Returns nil on
+// "xspaces" / "server B" / etc. dirs under runs/iteration-N/). Returns nil on
 // any error or when the folder is empty.
 func listGroupSubdirs(ctx context.Context, folderPath string) []string {
 	apiURL := getWorkspaceAPIURL() + "/api/documents"

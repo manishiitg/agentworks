@@ -6,7 +6,7 @@ import { EventDispatcher } from './EventDispatcher'
 import type { PollingEvent } from '../../services/api-types'
 
 // A Muse multiple-choice question rendered as "Unknown Event Type: coding_agent_question" with the raw JSON in the
-// detailed chat view (Excellence 2026-10-03). These are the two events from that report, trimmed.
+// detailed chat view (server B 2026-10-03). These are the two events from that report, trimmed.
 const requested = {
   type: 'coding_agent_question',
   timestamp: '2026-10-03T16:01:38.668877623+02:00',

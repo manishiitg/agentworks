@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Per-user Linux accounts on the RTS EC2 host, run from an administrator's laptop. The box has no sudo and
+# Per-user Linux accounts on the server A EC2 host, run from an administrator's laptop. The box has no sudo and
 # SSH is deploy-only, so the root-only provisioning script (deploy/common/provision-slots.sh, shared with the
 # rootless-linux hosts) goes through SSM Run Command, like install-system-tools.sh.
 #
