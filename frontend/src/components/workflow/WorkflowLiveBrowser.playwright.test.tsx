@@ -423,6 +423,20 @@ it('maps pointer positions through the letterboxed frame', () => {
   expect(mapToViewport(10, 490, rect, { width: 1000, height: 1000 })).toEqual({ x: 0, y: 980 })
 })
 
+it('places clicks by the frame that is painted, not by the page size the stream reports', () => {
+  // A 1000×500 frame (2:1) shown in a 700×630 box while the stream reports a 1280×720 page (16:9): the frame is painted
+  // 700×350 with 140px bars above and below. Going by the reported size put a click at the top of the frame 40 page units low.
+  const rect = { left: 0, top: 0, width: 700, height: 630 }
+  const page = { width: 1280, height: 720 }
+  const frame = { width: 1000, height: 500 }
+  const at = (x: number, y: number) => mapToViewport(x, y, rect, page, frame)
+  expect(at(350, 315).x).toBeCloseTo(640, 5)
+  expect(at(350, 315).y).toBeCloseTo(360, 5)
+  expect(at(350, 140).y).toBeCloseTo(0, 5)
+  expect(at(0, 490).y).toBeCloseTo(720, 5)
+  expect(mapToViewport(350, 140, rect, page).y).toBeCloseTo(40, 3)
+})
+
 it('lets the user start a scoped browser before an agent opens one', async () => {
  api.get.mockResolvedValue({ data: { sessions: [] } })
  const { host } = await mountBrowser()

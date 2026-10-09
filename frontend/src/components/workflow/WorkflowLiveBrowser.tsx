@@ -36,14 +36,25 @@ export const BROWSER_RECONNECT_ATTEMPTS = 5
 export function browserReconnectDelayMs(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, 15000)
 }
-export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }) {
-  const scale = Math.min(rect.width / viewport.width, rect.height / viewport.height)
-  const offsetX = (rect.width - viewport.width * scale) / 2
-  const offsetY = (rect.height - viewport.height * scale) / 2
+/**
+ * Maps a pointer position over the object-contain frame to page coordinates. The painted area is worked out from the
+ * frame image's own size when it is known (`frame`), not from the page size the stream reports: when the two shapes
+ * differ, centring and scaling by the reported size misplaces every click, by nothing at the middle of the page and
+ * more toward its edges (a 2:1 frame in a 16:9 page: a click at the top landed about 70 px low, Excellence 2026-10-09,
+ * PLAT-776). Without a frame size the page size is used, as before.
+ */
+export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }, frame?: { width: number; height: number }) {
+  const shown = frame && frame.width > 0 && frame.height > 0 ? frame : viewport
+  const scale = Math.min(rect.width / shown.width, rect.height / shown.height)
+  const offsetX = (rect.width - shown.width * scale) / 2
+  const offsetY = (rect.height - shown.height * scale) / 2
+  // One painted pixel is this many page units on each axis (exactly 1 when the frame is the page).
+  const toPageX = viewport.width / shown.width
+  const toPageY = viewport.height / shown.height
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value))
   return {
-    x: clamp((clientX - rect.left - offsetX) / scale, viewport.width),
-    y: clamp((clientY - rect.top - offsetY) / scale, viewport.height),
+    x: clamp((clientX - rect.left - offsetX) / scale * toPageX, viewport.width),
+    y: clamp((clientY - rect.top - offsetY) / scale * toPageY, viewport.height),
   }
 }
 const PAGE_SIZES = [
@@ -444,7 +455,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
       if (!rect.width || !rect.height || ws?.readyState !== WebSocket.OPEN) return
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.current.height : 1
       ws.send(JSON.stringify({ type: 'input_mouse', eventType: 'mouseWheel',
-        ...mapToViewport(event.clientX, event.clientY, rect, viewport.current),
+        ...mapToViewport(event.clientX, event.clientY, rect, viewport.current, { width: image.naturalWidth, height: image.naturalHeight }),
         deltaX: event.deltaX * unit, deltaY: event.deltaY * unit,
       }))
     }
@@ -463,7 +474,8 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
   function point(clientX: number, clientY: number) {
     const rect = screen.current?.getBoundingClientRect()
     if (!rect || !rect.width || !rect.height) return { x: 0, y: 0 }
-    return mapToViewport(clientX, clientY, rect, viewport.current)
+    const image = screen.current
+    return mapToViewport(clientX, clientY, rect, viewport.current, image ? { width: image.naturalWidth, height: image.naturalHeight } : undefined)
   }
   function mouse(event: MouseEvent<HTMLImageElement>, eventType: string) {
     if (!controlling) return
