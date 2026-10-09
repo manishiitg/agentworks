@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — "Can create" is the one switch for new workflows, Relays and Crews (PLAT-760)
+- An account without the create permission (an editor or viewer) can no longer create a Crew, as it already could not
+  create a workflow or Relay. It still edits what it may edit and uses Crews. Accounts with no directory record are
+  unchanged. Separate per-product create switches were considered and not built.
+- Enforced on the app's reservation (`/projects/reserve`), MCP `create_crew`/`import_crew` and the Builder's
+  `create_crew` (`crewCreateGate`, `CreateCrewProject`). The app no longer falls back to creating a Crew in the person's
+  own tree when the server refuses (`productProjects.ts`).
+  Ticket: [PLAT-760](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/crew/access/plat-760.md).
+
 ### 2026-10-09 — Browser empty state explains automatic viewing before setup (PLAT-759)
 
 Show one Open browser action that starts the built-in browser directly,

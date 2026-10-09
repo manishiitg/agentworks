@@ -332,6 +332,18 @@ func externalCrewAuthorGate(claims *UserClaims) (int, string) {
 	return 0, ""
 }
 
+// crewCreateGate is externalCrewAuthorGate plus the account's create permission: "can create" is the one switch for
+// making new workflows, Relays and Crews. An editor or viewer edits and uses what exists but makes no new Crew.
+func crewCreateGate(claims *UserClaims) (int, string) {
+	if status, message := externalCrewAuthorGate(claims); status != 0 {
+		return status, message
+	}
+	if !userAccessForClaims(claims).CanCreate {
+		return http.StatusForbidden, "This account cannot create Crews or workflows. An administrator can give it the create permission."
+	}
+	return 0, ""
+}
+
 func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
@@ -343,6 +355,10 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 	}
 	switch name {
 	case "create_crew", "import_crew":
+		if status, message := crewCreateGate(claims); status != 0 {
+			externalError(w, status, "forbidden", message)
+			return
+		}
 		// A new Crew is outside any Crew list a bounded token names; only
 		// a connection reaching all of the user's Crews may mint one.
 		if claims.AccessToken != nil && !claims.AccessToken.AllCrews {

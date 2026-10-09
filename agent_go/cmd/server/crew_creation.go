@@ -136,6 +136,9 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if !userAllowedProduct(claims, "work") {
 		return CreatedCrew{}, fmt.Errorf("Crew product is unavailable or access denied")
 	}
+	if !userAccessForClaims(claims).CanCreate {
+		return CreatedCrew{}, fmt.Errorf("this account cannot create Crews or workflows; an administrator can give it the create permission")
+	}
 	if err := validateCrewCreationWorkflowPath(workflowPath); err != nil {
 		return CreatedCrew{}, err
 	}

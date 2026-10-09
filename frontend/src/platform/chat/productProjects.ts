@@ -307,9 +307,13 @@ export async function createProductProject<P extends string>(options: {
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
-  // The server decides where a new Crew lives (the shared Crew/ root once that is on); any failure or another product
-  // falls back to the user's own tree.
-  const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch(() => ({ shared: false } as { shared: boolean; id?: string; workspace_path?: string }))
+  // The server decides where a new Crew lives (the shared Crew/ root once that is on); a failure or another product
+  // falls back to the user's own tree, except a refusal: an account without the create permission makes no Crew.
+  const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch((error: unknown) => {
+    const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
+    if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
+    return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
+  })
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path
   const id = shared ? reserved.id! : globalThis.crypto.randomUUID()
   const sessionId = `${options.sessionPrefix}:${id}`

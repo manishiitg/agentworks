@@ -156,11 +156,18 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 func TestExternalCrewAuthoringAccess(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"viewer","username":"viewer","role":"viewer","products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"viewer","username":"viewer","role":"viewer","products":["work"]},{"id":"editor","username":"editor","can_create":false,"can_edit":true,"products":["work"]}]}`)
 	spec := map[string]any{"name": "Probe", "role": "Probe", "purpose": "Probe access."}
 
 	if code, out := externalCrewRequest(t, env, crewWriter("viewer"), "create_crew", spec); code != 403 {
 		t.Fatalf("read-only account create = %d %v", code, out)
+	}
+	// "can create" is the one switch for new workflows, Relays and Crews: an editor without it makes no Crew (RTS).
+	if code, out := externalCrewRequest(t, env, crewWriter("editor"), "create_crew", spec); code != 403 {
+		t.Fatalf("an account without the create permission created a Crew = %d %v", code, out)
+	}
+	if code, _ := externalCrewRequest(t, env, crewWriter("editor"), "import_crew", map[string]any{"spec": spec}); code != 403 {
+		t.Fatalf("an account without the create permission imported a Crew, got %d", code)
 	}
 	bounded := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, CrewIDs: []string{"beta"}}}
 	if code, _ := externalCrewRequest(t, env, bounded, "create_crew", spec); code != 403 {

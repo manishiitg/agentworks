@@ -246,12 +246,17 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		writeAgentProfileError(w, http.StatusNotFound, "profile not found")
 		return
 	}
-	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) || !crewSharedRootEnabled() {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false})
-		return
+	isCrew := strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID)
+	// The app reserves every new Crew here first, so this refuses an account without the create permission in both
+	// layouts (shared root or the owner's own tree).
+	if isCrew {
+		if status, msg := crewCreateGate(claims); status != 0 {
+			writeAgentProfileError(w, status, msg)
+			return
+		}
 	}
-	if status, msg := externalCrewAuthorGate(claims); status != 0 {
-		writeAgentProfileError(w, status, msg)
+	if !isCrew || !crewSharedRootEnabled() {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false})
 		return
 	}
 	var body struct {
