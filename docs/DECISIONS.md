@@ -46,6 +46,15 @@ hide cycle, including across product remounts. The left-edge reopen target stays
 available. Replace the manual hide toast to keep the behavior consistent.
 Ticket: [PLAT-779](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-779.md).
 
+### 2026-10-09 — A Crew call between Crews of the same owner runs in the called Crew's main chat (PLAT-784)
+
+When one Crew calls another and both belong to the same person, the call runs in the called Crew's main chat and
+its people see it. Only a caller owned by someone else gets a separate caller conversation (listed under the
+called Crew's Automation > Chats > History). Why: one person's own Crews share their chat; a stranger's calls
+stay apart. The owner confirmed this on 2026-10-09 after a tester read it as a bug. Test it with a caller owned
+by another person. Code: `job.Schedule.Isolated = !match.SharedProjectOwner` (`product_webhooks.go`) and
+`crewCallMessage` (`trigger_link_tools.go`).
+
 ### 2026-10-09 — Muse's reasoning summaries are compact thinking, not assistant updates (PLAT-781)
 
 Muse's reasoning summaries are sent as plain reasoning chunks, the same as every other coding agent's: the compact
