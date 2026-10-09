@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -300,7 +301,15 @@ func shareParams(f startFlags, device, alias, folder string) executorParams {
 }
 
 func runShareForeground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, statePath string, openWeb bool) error {
-	st := shareState{PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now()}
+	// A terminal that stays open also writes the same log a background share does, so `agentworks debug` has something to send.
+	logPath := strings.TrimSuffix(statePath, ".json") + ".log"
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
+		defer logFile.Close()
+		teed := *o
+		teed.stderr = io.MultiWriter(o.stderr, logFile)
+		o = &teed
+	}
+	st := shareState{PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 	writeShareState(statePath, st)
 	defer os.Remove(statePath)
 	p := shareParams(f, device, alias, folder)

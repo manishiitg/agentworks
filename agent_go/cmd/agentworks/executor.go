@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,8 +111,11 @@ func runExecutor(ctx context.Context, o *options, p executorParams) error {
 		if errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 409 && apiErr.Code != "device_busy") {
 			return err
 		}
-		fmt.Fprintf(o.stderr, "Executor disconnected; reconnecting in %s.\n", delay)
-		timer := time.NewTimer(delay)
+		// Exponential backoff (1s, 2s, 4s ... 30s) plus up to a quarter of the delay at random, so many computers that lost the
+		// server at the same moment do not all retry in the same second.
+		wait := delay + time.Duration(rand.Int64N(int64(delay/4)+1))
+		fmt.Fprintf(o.stderr, "Executor disconnected; reconnecting in %s.\n", wait.Round(100*time.Millisecond))
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

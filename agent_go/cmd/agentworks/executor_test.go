@@ -248,3 +248,26 @@ func TestStartRequiresAWorkspace(t *testing.T) {
 		t.Fatalf("expected a refusal naming --workspace, got %d: %s", code, stderr.String())
 	}
 }
+
+// A debug report leaves the machine (it is sent over Slack): tokens, sign-in codes and passwords must not be in it.
+func TestDebugReportRemovesSecrets(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	report := redactDebug(strings.Join([]string{
+		"Authorization: Bearer abcdef0123456789abcdef0123456789",
+		"token=aw_pat_0123456789abcdef0123456789abcdef",
+		"https://deploy:hunter2secret@example.test/repo.git",
+		"code cli_verify_4a6e96b1868d4506fa43daf2d3609ce5",
+		`{"refresh_token": "r-1234567890abcdef"}`,
+		"export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx",
+		"folder " + home + "/project",
+		"08:07:55  shell  app  $ ls  -> 200 in 46ms  exit 0",
+	}, "\n"))
+	for _, secret := range []string{"abcdef0123456789abcdef0123456789", "aw_pat_0123", "hunter2secret", "4a6e96b1868d4506", "r-1234567890abcdef", "sk-abcdefghijklmnop"} {
+		if strings.Contains(report, secret) {
+			t.Fatalf("secret %q survived:\n%s", secret, report)
+		}
+	}
+	if !strings.Contains(report, "shell  app  $ ls  -> 200") || !strings.Contains(report, "~/project") {
+		t.Fatalf("the useful activity lines must stay, and the home folder is shortened:\n%s", report)
+	}
+}
