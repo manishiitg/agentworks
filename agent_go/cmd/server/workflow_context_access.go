@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"log"
 	"strings"
@@ -58,9 +59,25 @@ func contextReferenceReadRoot(userID, folder string) (string, bool) {
 			return "", false
 		}
 		return ref.Root, true
+	case isCodeContextShape(parts) && strings.TrimSpace(userID) != "":
+		// The caller's own Code project (logical Chats/Code/projects/<project>) in their own tree.
+		return agentProfileRuntimeWorkspace(userID, folder), true
 	default:
 		return "", false
 	}
+}
+
+// codeContextAllowedKey marks a context whose turn is a Code turn: only there may a Code project be attached as read-only context.
+type codeContextAllowedKey struct{}
+
+// isCodeContextShape reports whether parts spell a Code project root: Chats/Code/projects/<project> (only the caller's own; a Code is
+// private, so there is no other-owner spelling).
+func isCodeContextShape(parts []string) bool {
+	if len(parts) != 4 || parts[0] != "Chats" || parts[1] != "Code" || parts[2] != "projects" {
+		return false
+	}
+	name := parts[3]
+	return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".")
 }
 
 // isCrewContextShape reports whether parts spell a Crew project root in one of the three accepted spellings
@@ -151,6 +168,27 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 				logContextDenial(claims, folder, "crew product.json is not a Work crew")
 				return nil, nil, denied
 			}
+		case isCodeContextShape(parts):
+			// One of the person's own Code projects, as read-only context for another of their Code projects. Never for a Crew
+			// (a Crew is shareable: its readers would see a private project's files).
+			if allowed, _ := ctx.Value(codeContextAllowedKey{}).(bool); !allowed || claims == nil || strings.TrimSpace(claims.UserID) == "" {
+				logContextDenial(claims, folder, "a Code project can be attached only to a Code project")
+				return nil, nil, denied
+			}
+			rawManifest, exists, err := readFileFromWorkspace(ctx, readRoot+"/product.json")
+			if skipMissing && err == nil && !exists {
+				log.Printf("[WORKFLOW_CONTEXT] Skipping attached Code project %s: it no longer exists", folder)
+				continue
+			}
+			if err != nil || !exists {
+				logContextDenial(claims, folder, "code project has no product.json")
+				return nil, nil, denied
+			}
+			var manifest productProjectManifest
+			if json.Unmarshal([]byte(rawManifest), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), codeproduct.ProfileID) || strings.TrimSpace(manifest.ID) == "" {
+				logContextDenial(claims, folder, "product.json is not a Code project")
+				return nil, nil, denied
+			}
 		default:
 			logContextDenial(claims, folder, "unsupported attachment path")
 			return nil, nil, denied
@@ -191,7 +229,11 @@ func isOtherOwnerCrewPath(parts []string) bool {
 // and their read roots on req. handleQuery and the bot dry run share it.
 func admitTurnContextPaths(ctx context.Context, req *QueryRequest) error {
 	req.WorkflowContextPaths = mergeDurableWorkflowContextPaths(ctx, req.SelectedFolder, req.WorkflowContextPaths)
-	contextPaths, contextReadPaths, err := authorizeContextPathsWithReadRoots(workflowContextAuthorizationContext(ctx), req.WorkflowContextPaths, true)
+	authCtx := workflowContextAuthorizationContext(ctx)
+	if strings.TrimSpace(req.AgentProfileID) == codeproduct.ProfileID {
+		authCtx = context.WithValue(authCtx, codeContextAllowedKey{}, true)
+	}
+	contextPaths, contextReadPaths, err := authorizeContextPathsWithReadRoots(authCtx, req.WorkflowContextPaths, true)
 	if err != nil {
 		return err
 	}

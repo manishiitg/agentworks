@@ -15,12 +15,12 @@ import { Textarea } from '../../components/ui/Textarea'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
-import type { ProductIdentity } from '../../platform/chat/productProjects'
+import { productMode, type ProductIdentity } from '../../platform/chat/productProjects'
 import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
-import { useProjectProduct } from './projectProduct'
+import { CODE_PRODUCT, useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
@@ -283,6 +283,10 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [crewReferences, setCrewReferences] = useState<Array<{ path: string; label: string; icon?: string }>>([])
+  // A Code project can also attach the person's other Code and Cowork projects (their files, read-only). Not Local ones (their
+  // files are on a computer), and not for a Crew, which others can open.
+  const product = useProjectProduct()
+  const [codeReferences, setCodeReferences] = useState<Array<{ path: string; label: string }>>([])
 
   useEffect(() => {
     let cancelled = false
@@ -312,6 +316,16 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
     }).catch(() => { if (!cancelled) setCrewReferences([]) })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (product.profileId !== 'code') return
+    let cancelled = false
+    void loadWorkSessions(CODE_PRODUCT).then(sessions => {
+      if (cancelled) return
+      setCodeReferences(sessions.filter(session => productMode(session) !== 'local').map(session => ({ path: session.workspacePath, label: session.title })))
+    }).catch(() => { if (!cancelled) setCodeReferences([]) })
+    return () => { cancelled = true }
+  }, [product.profileId])
 
   const refresh = async () => {
     setLoading(true)
@@ -347,6 +361,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
+        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private Code and Cowork projects: their files, read-only. Local projects are not available.', placeholder: 'Attach a project…', references: codeReferences }] : []}
         hideAdd
       />
       <SettingsCard

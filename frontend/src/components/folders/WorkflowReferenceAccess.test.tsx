@@ -1,74 +1,31 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
-import { createRoot } from 'react-dom/client'
-import { describe, expect, it, vi } from 'vitest'
-
-const refreshWorkflows = vi.fn()
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('../../stores/useWorkflowManifestStore', () => ({
-  useWorkflowManifestStore: (selector: (state: unknown) => unknown) => selector({
-    workflows: [{
-      workspace_path: 'Workflow/release',
-      manifest: { label: 'Release', icon: '🚀' },
-    }],
-    refreshWorkflows,
-  }),
+  useWorkflowManifestStore: (selector: (state: unknown) => unknown) => selector({ workflows: [], refreshWorkflows: vi.fn() }),
 }))
-
 import { WorkflowReferenceAccess } from './WorkflowReferenceAccess'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+let root: Root | undefined
+afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = '' })
 
-describe('WorkflowReferenceAccess', () => {
-  it('separates workflow and Crew references and renders configured icons', async () => {
-    const onChange = vi.fn()
-    const host = document.createElement('div')
-    document.body.append(host)
-    const root = createRoot(host)
-
-    await act(async () => root.render(<WorkflowReferenceAccess
-      selectedPaths={['Workflow/release', 'Work/projects/ops']}
-      onChange={onChange}
-      excludeWorkspacePath="Work/projects/current"
-      additionalReferences={[
-        { path: 'Work/projects/current', label: 'Current Crew', icon: '🏠' },
-        { path: 'Work/projects/ops', label: 'Operations', icon: '🧭' },
-      ]}
-      showAdditionalGroup
-    />))
-
-    try {
-      expect(host.textContent).toContain('Workflows')
-      expect(host.textContent).toContain('Crew')
-      expect(host.textContent).toContain('🚀')
-      expect(host.textContent).toContain('🧭')
-      expect(host.textContent).not.toContain('Current Crew')
-    } finally {
-      await act(async () => root.unmount())
-      host.remove()
-    }
+it('lets a Code project attach its person\'s other projects even where the other pickers are hidden, and not itself', async () => {
+  const onChange = vi.fn()
+  const host = document.createElement('div'); document.body.append(host)
+  root = createRoot(host)
+  await act(async () => root?.render(<WorkflowReferenceAccess selectedPaths={[]} onChange={onChange} excludeWorkspacePath="Chats/Code/projects/this-1" hideAdd
+    extraGroups={[{ label: 'Code projects', description: 'Your other private projects.', placeholder: 'Attach a project…', references: [
+      { path: 'Chats/Code/projects/this-1', label: 'This' }, { path: 'Chats/Code/projects/api-2', label: 'API' }] }]} />))
+  expect(host.textContent).toContain('Code projects')
+  const selects = [...host.querySelectorAll('select')]
+  expect(selects).toHaveLength(1) // only the Code projects picker; workflows and Crews stay "ask the assistant"
+  expect([...selects[0].options].map(option => option.value)).toEqual(['', 'Chats/Code/projects/api-2'])
+  await act(async () => {
+    selects[0].value = 'Chats/Code/projects/api-2'
+    selects[0].dispatchEvent(new Event('change', { bubbles: true }))
   })
-
-  it('hides the attach dropdowns when adding goes through Ask AI', async () => {
-    const onChange = vi.fn()
-    const host = document.createElement('div')
-    document.body.append(host)
-    const root = createRoot(host)
-
-    await act(async () => root.render(<WorkflowReferenceAccess
-      selectedPaths={['Workflow/release']}
-      onChange={onChange}
-      excludeWorkspacePath="Work/projects/current"
-      hideAdd
-    />))
-
-    try {
-      expect(host.querySelector('select')).toBeNull()
-      expect(host.textContent).toContain('Release')
-      expect(host.querySelector('button[aria-label="Remove Workflow/release"]')).not.toBeNull()
-    } finally {
-      await act(async () => root.unmount())
-      host.remove()
-    }
-  })
+  expect(onChange).toHaveBeenCalledWith(['Chats/Code/projects/api-2'])
 })

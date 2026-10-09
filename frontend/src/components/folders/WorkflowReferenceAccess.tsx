@@ -20,9 +20,11 @@ type WorkflowReferenceAccessProps = {
   showAdditionalGroup?: boolean
   /** Hide the attach dropdowns: the list stays visible with remove, adding goes through Ask AI. */
   hideAdd?: boolean
+  /** More groups of attachable projects (a Code project's other Code projects), each with its own heading and picker. */
+  extraGroups?: Array<{ label: string; description: string; placeholder: string; references: AdditionalReadOnlyReference[] }>
 }
 
-export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorkspacePath, disabled = false, additionalReferences = [], additionalLabel = 'Crew', showAdditionalGroup = false, hideAdd = false }: WorkflowReferenceAccessProps) {
+export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorkspacePath, disabled = false, additionalReferences = [], additionalLabel = 'Crew', showAdditionalGroup = false, extraGroups = [], hideAdd = false }: WorkflowReferenceAccessProps) {
   const workflows = useWorkflowManifestStore(state => state.workflows)
   const refreshWorkflows = useWorkflowManifestStore(state => state.refreshWorkflows)
   const normalizedSelected = useMemo(
@@ -45,7 +47,8 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
   const availableCrew = crewReferences.filter(reference => {
     return !normalizedSelected.includes(reference.path)
   })
-  const knownReferences = [...workflowReferences, ...crewReferences]
+  const extraReferences = extraGroups.map(group => group.references.map(reference => ({ ...reference, path: normalizeWorkspacePath(reference.path) })).filter(reference => reference.path && reference.path !== excluded))
+  const knownReferences = [...workflowReferences, ...crewReferences, ...extraReferences.flat()]
   const unknownSelected = normalizedSelected.filter(path => !knownReferences.some(reference => reference.path === path))
 
   const add = (path: string) => {
@@ -68,17 +71,17 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
       </div>
     ))
 
-  const renderGroup = (label: string, description: string, references: AdditionalReadOnlyReference[], available: AdditionalReadOnlyReference[], placeholder: string) => (
+  const renderGroup = (label: string, description: string, references: AdditionalReadOnlyReference[], available: AdditionalReadOnlyReference[], placeholder: string, canAdd = !hideAdd) => (
     <div className="rounded-md border border-border/80 bg-background/50 p-3">
       <div className="text-xs font-medium text-foreground">{label}</div>
       <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>
       {references.some(reference => normalizedSelected.includes(reference.path)) && (
         <div className="mt-2 space-y-2">{renderSelected(references)}</div>
       )}
-      {!references.some(reference => normalizedSelected.includes(reference.path)) && hideAdd && (
+      {!references.some(reference => normalizedSelected.includes(reference.path)) && !canAdd && (
         <p className="mt-2 text-[11px] text-muted-foreground">Nothing attached.</p>
       )}
-      {!hideAdd && (
+      {canAdd && (
       <select disabled={disabled || available.length === 0} value="" onChange={event => add(event.target.value)} className="mt-2 w-full rounded-md border border-border bg-background px-2.5 py-2 text-xs text-foreground disabled:opacity-50">
         <option value="">{available.length > 0 ? placeholder : `No other accessible ${label.toLowerCase()}`}</option>
         {available.map(reference => <option key={reference.path} value={reference.path}>{reference.icon ? `${reference.icon} ` : ''}{reference.label} — {reference.path}</option>)}
@@ -97,12 +100,13 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
           <h3 className="text-sm font-medium text-foreground">Read-only context</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Attach workflows or Crew as durable context. Access is checked again on every run.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Attach workflows, Crews or your other projects as durable context. Access is checked again on every run.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">
         {renderGroup('Workflows', 'Reusable AgentWorks automations.', workflowReferences, availableWorkflows, 'Attach a workflow…')}
         {showAdditionalGroup && renderGroup(additionalLabel, 'Other persistent Crew projects.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
+        {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}
         {unknownSelected.length > 0 && <div className="rounded-md border border-border/80 p-3">
           <div className="text-xs font-medium text-foreground">Other linked folders</div>
           <div className="mt-2 space-y-2">{renderSelected(unknownSelected.map(path => ({ path, label: path.split('/').pop() || path })))}</div>

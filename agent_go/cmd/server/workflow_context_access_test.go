@@ -123,3 +123,36 @@ func TestMergeDurableWorkflowContextPaths(t *testing.T) {
 		t.Fatalf("product path unexpectedly loaded a workflow manifest: %v", got)
 	}
 }
+
+// A person's own Code project can be attached, read-only, to another of their Code projects, and nowhere else: not to a Crew turn,
+// not by another owner's spelling, and not when product.json says it is not a Code project.
+func TestCodeProjectContextIsOwnReadOnlyAndCodeTurnsOnly(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":[]},{"id":"bob","username":"bob","products":[]}]}`)
+	workspace := &mockWorkspaceAPI{files: map[string]string{
+		"_users/alice/Chats/Code/projects/api/product.json":     `{"schema_version":1,"product":"code","id":"api","title":"API"}`,
+		"_users/alice/Chats/Code/projects/notcode/product.json": `{"schema_version":1,"product":"work","id":"x","title":"X"}`,
+		"_users/bob/Chats/Code/projects/private/product.json":   `{"schema_version":1,"product":"code","id":"p","title":"Private"}`,
+	}}
+	host := httptest.NewServer(workspace)
+	defer host.Close()
+	t.Setenv("WORKSPACE_API_URL", host.URL)
+	alice := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"})
+	codeTurn := context.WithValue(alice, codeContextAllowedKey{}, true)
+
+	if got, _, err := authorizeWorkflowContextPathsWithReadRoots(alice, []string{"Chats/Code/projects/api"}); err == nil || got != nil {
+		t.Fatalf("a Code project must not be attached outside a Code turn: %v %v", got, err)
+	}
+	logical, roots, err := authorizeWorkflowContextPathsWithReadRoots(codeTurn, []string{"Chats/Code/projects/api", "Chats/Code/projects/api/"})
+	if err != nil || !reflect.DeepEqual(logical, []string{"Chats/Code/projects/api"}) || !reflect.DeepEqual(roots, []string{"_users/alice/Chats/Code/projects/api"}) {
+		t.Fatalf("own Code project: logical=%v roots=%v err=%v", logical, roots, err)
+	}
+	if writes, reads := splitCrewReferenceFolders(roots); len(writes) != 0 || !reflect.DeepEqual(reads, roots) {
+		t.Fatalf("an attached Code project is read-only: writes=%v reads=%v", writes, reads)
+	}
+	for _, path := range []string{"_users/bob/Chats/Code/projects/private", "Chats/Code/projects/private", "Chats/Code/projects/notcode", "Chats/Code/projects/api/code", "Chats/Code/projects/../projects/api"} {
+		if got, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(codeTurn, []string{path}); err == nil || got != nil || readRoots != nil {
+			t.Fatalf("unauthorized Code reference accepted: %q => %v %v %v", path, got, readRoots, err)
+		}
+	}
+}
