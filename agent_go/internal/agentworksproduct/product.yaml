@@ -405,6 +405,8 @@ chat:
       - update_settings
       - manage_schedules
       - manage_triggers
+      - list_needs_you
+      - answer_needs_you
       - list_files
       - search_files
       - list_step_code

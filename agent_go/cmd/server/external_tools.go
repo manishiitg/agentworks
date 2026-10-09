@@ -220,6 +220,7 @@ func externalTools() ([]externalTool, error) {
 		externalScheduleDefinitions(add)
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
+		externalNeedsYouDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -508,6 +509,9 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	// Global tools need no workflow. They run before workflow resolution so a
 	// restricted token can still obtain guidance and context.
 	switch tool.Name {
+	case "list_needs_you", "answer_needs_you":
+		api.externalNeedsYou(w, r, tool.Name, args, visible)
+		return
 	case "get_agent_context":
 		api.externalAgentContext(w, r, args, visible)
 		return
