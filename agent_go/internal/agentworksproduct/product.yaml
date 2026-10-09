@@ -385,6 +385,7 @@ chat:
       - get_workflow
       - get_settings
       - update_settings
+      - manage_schedules
       - list_files
       - search_files
       - list_step_code

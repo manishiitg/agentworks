@@ -217,6 +217,7 @@ func externalTools() ([]externalTool, error) {
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalSettingsDefinitions(add)
+		externalScheduleDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -428,6 +429,21 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_schedules" {
+		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""
+		if hasCrew == hasWorkflow {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
+			return
+		}
+		if hasCrew {
+			if _, _, _, ok := api.externalCrewResolve(r.Context(), GetUserFromContext(r.Context()), externalArg(call.Arguments, "crew_id")); !ok {
+				externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+				return
+			}
+			api.externalScheduleCall(w, r, call.Arguments, externalScheduleTarget{crewID: externalArg(call.Arguments, "crew_id")})
+			return
+		}
+	}
 	if isExternalSettingsTool(tool.Name) {
 		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""
 		if hasCrew == hasWorkflow {
@@ -532,6 +548,14 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	access := workflowAccessForManifest(GetUserFromContext(r.Context()), selected.Manifest)
+	if tool.Name == "manage_schedules" {
+		if selected.Manifest.Kind == "relay" {
+			externalError(w, 400, "relay_api_only", "Relays have no schedules; they run through function triggers.")
+			return
+		}
+		api.externalScheduleCall(w, r, args, externalScheduleTarget{workflow: selected})
+		return
+	}
 	if tool.mutates && access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 		externalError(w, 403, "forbidden", "Workflow write access is required.")
 		return
