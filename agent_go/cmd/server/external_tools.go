@@ -428,6 +428,17 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if isExternalSettingsTool(tool.Name) {
+		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""
+		if hasCrew == hasWorkflow {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
+			return
+		}
+		if hasCrew {
+			api.externalCrewSettingsCall(w, r, tool.Name, call.Arguments)
+			return
+		}
+	}
 	if isExternalKnowledgebaseTool(tool.Name) {
 		api.externalKnowledgebaseCall(w, r, tool.Name, call.Arguments)
 		return

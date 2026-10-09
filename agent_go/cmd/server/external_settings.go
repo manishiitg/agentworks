@@ -12,17 +12,19 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// Workflow and Relay settings over MCP: the fields the app's settings panels
-// save, saved through the same manifest handler and its owner/editor check.
-// Every choice the panels only offer from a list (model accounts, MCP servers,
-// skills, shared secrets) is checked against what the caller may use, since an
-// MCP client can send anything. Secret values are write-only and, as in the
-// app, owner-only; they are never returned.
+// Workflow, Relay and Crew settings over MCP: the fields the app's settings
+// panels save. Workflows and Relays save through the app's manifest handler
+// and its owner/editor check; Crews rewrite the Crew's runtime manifest like
+// the Crew panels, owner only (as update_crew). Every choice the panels only
+// offer from a list (model accounts, MCP servers, skills, shared secrets) is
+// checked against what the caller may use, since an MCP client can send
+// anything. Secret values are write-only and owner-only; never returned.
 
 func isExternalSettingsTool(name string) bool {
 	return name == "get_settings" || name == "update_settings"
@@ -34,13 +36,20 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		return map[string]any{"type": "object", "additionalProperties": false, "description": what,
 			"properties": map[string]any{"add": names, "remove": names}}
 	}
-	add("get_settings", "Read a workflow's or Relay's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode and notifications, plus a version for update_settings.", false, true, nil)
-	add("update_settings", "Change a workflow's or Relay's settings. Send only what changes. Requires owner or editor access; setting or removing secret values requires owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, true, map[string]any{
+	target := func() map[string]any {
+		return map[string]any{
+			"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
+			"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
+		}
+	}
+	add("get_settings", "Read a workflow's, Relay's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Relays), plus a version for update_settings.", false, false, target())
+	props := target()
+	for key, value := range map[string]any{
 		"expected_version": externalString("Version from get_settings; the update is refused if the settings changed since."),
 		"models":           map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
 		"mcp_servers":      addRemove("MCP servers to attach or detach, by name."),
 		"tools":            addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
-		"skills":           addRemove("Installed skills to use or stop using."),
+		"skills":           addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Stores the value (write-only, owner only) and selects the secret."},
 			"remove":      names,
@@ -48,13 +57,43 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"unselect":    names,
 			"use_shared":  names,
 			"stop_shared": names,
-		}, "description": "set/remove store or delete this workflow's secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
+		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
-		"notifications": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Relays only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels": names, "pulse_channels": names,
 		}},
-	})
+	} {
+		props[key] = value
+	}
+	add("update_settings", "Change a workflow's, Relay's or Crew's settings. Send only what changes. Workflows and Relays need owner or editor access, Crews their owner; setting or removing secret values needs owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, false, props)
+}
+
+// externalSettingsState is the part of a workflow's or Crew's capabilities
+// these tools read and change.
+type externalSettingsState struct {
+	LLMConfig     *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
+	Servers       []string                       `json:"selected_servers,omitempty"`
+	Tools         []string                       `json:"selected_tools,omitempty"`
+	Skills        []string                       `json:"selected_skills,omitempty"`
+	Secrets       []string                       `json:"selected_secrets,omitempty"`
+	GlobalSecrets *[]string                      `json:"selected_global_secret_names,omitempty"`
+	BrowserMode   string                         `json:"browser_mode,omitempty"`
+}
+
+func (s externalSettingsState) version() string {
+	encoded, _ := json.Marshal(s)
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:8])
+}
+
+type externalSettingsTarget struct {
+	kind       string // workflow, relay or crew
+	path       string
+	access     string
+	owner      bool
+	product    string
+	skillCheck func(context.Context, []string) error
 }
 
 type externalSettingsSecret struct {
@@ -62,45 +101,33 @@ type externalSettingsSecret struct {
 	Selected bool   `json:"selected"`
 }
 
-func externalSettingsVersion(caps WorkflowCapabilities) string {
-	encoded, _ := json.Marshal(caps)
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:8])
-}
-
-func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string, manifest *WorkflowManifest, workspacePath string, access WorkflowAccessLevel) map[string]any {
-	caps := manifest.Capabilities
-	kind := "workflow"
-	if manifest.Kind == "relay" {
-		kind = "relay"
-	}
+func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string, t externalSettingsTarget, s externalSettingsState, notifications map[string]any) map[string]any {
 	stored := []externalSettingsSecret{}
-	if rows, err := api.ensureSharedWorkflowSecrets(ctx, workspacePath, userID); err == nil {
+	if rows, err := api.ensureSharedWorkflowSecrets(ctx, t.path, userID); err == nil {
 		for _, row := range rows {
-			stored = append(stored, externalSettingsSecret{Name: row.Name, Selected: slices.Contains(caps.SelectedSecrets, row.Name)})
+			stored = append(stored, externalSettingsSecret{Name: row.Name, Selected: slices.Contains(s.Secrets, row.Name)})
 		}
 	}
 	shared := []string{}
-	if caps.SelectedGlobalSecretNames != nil {
-		shared = append(shared, (*caps.SelectedGlobalSecretNames)...)
+	if s.GlobalSecrets != nil {
+		shared = append(shared, (*s.GlobalSecrets)...)
 	}
 	available := []string{}
 	for _, secret := range visibleGlobalSecrets(ctx, userID) {
 		available = append(available, secret.Name)
 	}
-	notifications := map[string]any{}
-	if n := caps.Notifications; n != nil {
-		notifications = map[string]any{"run_instructions": n.RunSummaryInstructions, "pulse_instructions": n.PulseSummaryInstructions,
-			"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels}
-	}
-	return map[string]any{
-		"kind": kind, "version": externalSettingsVersion(caps), "my_access": access,
-		"models": caps.LLMConfig, "mcp_servers": nonNilStrings(caps.SelectedServers), "tools": nonNilStrings(caps.SelectedTools),
-		"skills": nonNilStrings(caps.SelectedSkills),
+	view := map[string]any{
+		"kind": t.kind, "version": s.version(), "my_access": t.access,
+		"models": s.LLMConfig, "mcp_servers": nonNilStrings(s.Servers), "tools": nonNilStrings(s.Tools),
+		"skills": nonNilStrings(s.Skills),
 		"secrets": map[string]any{"stored": stored, "shared_selected": shared, "shared_available": available,
 			"note": "Values are never returned. Only owners may set or remove values."},
-		"browser_mode": caps.BrowserMode, "notifications": notifications,
+		"browser_mode": s.BrowserMode,
 	}
+	if notifications != nil {
+		view["notifications"] = notifications
+	}
+	return view
 }
 
 func externalSettingsList(args map[string]any, field, key string) []string {
@@ -135,28 +162,20 @@ func settingsWith(values []string, add ...string) []string {
 	return out
 }
 
-func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow, access WorkflowAccessLevel) {
-	ctx := r.Context()
-	claims := GetUserFromContext(ctx)
-	manifest, exists, err := ReadWorkflowManifest(ctx, workflow.WorkspacePath)
-	if err != nil || !exists || manifest == nil {
-		externalError(w, 502, "workspace_unavailable", "Workflow settings could not be read.")
-		return
-	}
-	if name == "get_settings" {
-		externalJSON(w, api.externalSettingsView(ctx, claims.UserID, manifest, workflow.WorkspacePath, access))
-		return
-	}
-	if expected := externalArg(args, "expected_version"); expected != "" && expected != externalSettingsVersion(manifest.Capabilities) {
-		externalError(w, 409, "version_conflict", "Settings changed since get_settings; read them again and reapply your change.")
-		return
-	}
-	fail := func(format string, a ...any) { externalError(w, 400, "invalid_settings", fmt.Sprintf(format, a...)) }
-	caps := manifest.Capabilities
-	caps.SelectedServers = append([]string{}, caps.SelectedServers...)
-	caps.SelectedTools = append([]string{}, caps.SelectedTools...)
-	caps.SelectedSkills = append([]string{}, caps.SelectedSkills...)
-	caps.SelectedSecrets = append([]string{}, caps.SelectedSecrets...)
+type externalSettingsError struct {
+	status  int
+	code    string
+	message string
+}
+
+func settingsInvalid(format string, a ...any) *externalSettingsError {
+	return &externalSettingsError{400, "invalid_settings", fmt.Sprintf(format, a...)}
+}
+
+// applyExternalSettings validates the requested changes against what the
+// caller may use, stores secret values, and applies everything to s. It
+// returns which settings changed and the servers still waiting for sign-in.
+func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID string, t externalSettingsTarget, s *externalSettingsState, args map[string]any) ([]string, []PendingConnection, *externalSettingsError) {
 	changed := []string{}
 	var pending []PendingConnection
 
@@ -167,8 +186,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		decoder := json.NewDecoder(bytes.NewReader(encoded))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&config); err != nil {
-			fail("models: %v", err)
-			return
+			return nil, nil, settingsInvalid("models: %v", err)
 		}
 		pins := []*workflowtypes.AgentLLMConfig{config.BuilderLLM, config.PulseLLM}
 		if config.TieredConfig != nil {
@@ -177,31 +195,28 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		if config.ConnectionID != "" {
 			pins = append(pins, &workflowtypes.AgentLLMConfig{Provider: config.Provider, ConnectionID: config.ConnectionID})
 		}
-		scope := providerAccountScope{Principal: claims.UserID, WorkspacePath: workflow.WorkspacePath, Product: productWorkflows}
+		scope := providerAccountScope{Principal: userID, WorkspacePath: t.path, Product: t.product}
 		for _, pin := range pins {
 			if pin == nil || pin.ConnectionID == "" {
 				continue
 			}
 			if _, err := api.admitProviderAccount(ctx, scope, pin.Provider, pin.ConnectionID); err != nil {
-				fail("models: account %s (%s) cannot be used: %v", pin.ConnectionID, pin.Provider, err)
-				return
+				return nil, nil, settingsInvalid("models: account %s (%s) cannot be used: %v", pin.ConnectionID, pin.Provider, err)
 			}
 		}
-		caps.LLMConfig = &config
+		s.LLMConfig = &config
 		changed = append(changed, "models")
 	}
 
 	if adds := externalSettingsList(args, "mcp_servers", "add"); len(adds) > 0 {
 		if api.productSchedules == nil {
-			externalError(w, 503, "mcp_unavailable", "MCP configuration is unavailable.")
-			return
+			return nil, nil, &externalSettingsError{503, "mcp_unavailable", "MCP configuration is unavailable."}
 		}
-		canonical, waiting, err := api.productSchedules.validateCrewCreationServers(ctx, claims.UserID, adds)
+		canonical, waiting, err := api.productSchedules.validateCrewCreationServers(ctx, userID, adds)
 		if err != nil {
-			fail("mcp_servers: %v", err)
-			return
+			return nil, nil, settingsInvalid("mcp_servers: %v", err)
 		}
-		caps.SelectedServers = settingsWith(caps.SelectedServers, canonical...)
+		s.Servers = settingsWith(s.Servers, canonical...)
 		for _, p := range waiting {
 			p.Reason = "attached, but you have not signed in to it yet; sign in from the app's Integrations panel"
 			pending = append(pending, p)
@@ -209,50 +224,44 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		changed = append(changed, "mcp_servers")
 	}
 	if drops := externalSettingsList(args, "mcp_servers", "remove"); len(drops) > 0 {
-		caps.SelectedServers = settingsWithout(caps.SelectedServers, drops)
-		kept := caps.SelectedTools[:0]
-		for _, tool := range caps.SelectedTools {
+		s.Servers = settingsWithout(s.Servers, drops)
+		kept := []string{}
+		for _, tool := range s.Tools {
 			server, _, _ := strings.Cut(tool, ":")
 			if !slices.ContainsFunc(drops, func(d string) bool { return strings.EqualFold(d, server) }) {
 				kept = append(kept, tool)
 			}
 		}
-		caps.SelectedTools = kept
+		s.Tools = kept
 		changed = settingsWith(changed, "mcp_servers")
 	}
 	if adds := externalSettingsList(args, "tools", "add"); len(adds) > 0 {
 		for _, tool := range adds {
 			server, toolName, ok := strings.Cut(tool, ":")
 			if !ok || server == "" || toolName == "" {
-				fail("tools: %q must be server:tool", tool)
-				return
+				return nil, nil, settingsInvalid("tools: %q must be server:tool", tool)
 			}
-			if !slices.ContainsFunc(caps.SelectedServers, func(s string) bool { return strings.EqualFold(s, server) }) {
-				fail("tools: server %q is not attached; add it under mcp_servers first", server)
-				return
+			if !slices.ContainsFunc(s.Servers, func(name string) bool { return strings.EqualFold(name, server) }) {
+				return nil, nil, settingsInvalid("tools: server %q is not attached; add it under mcp_servers first", server)
 			}
 		}
-		caps.SelectedTools = settingsWith(caps.SelectedTools, adds...)
+		s.Tools = settingsWith(s.Tools, adds...)
 		changed = append(changed, "tools")
 	}
 	if drops := externalSettingsList(args, "tools", "remove"); len(drops) > 0 {
-		caps.SelectedTools = settingsWithout(caps.SelectedTools, drops)
+		s.Tools = settingsWithout(s.Tools, drops)
 		changed = settingsWith(changed, "tools")
 	}
 
 	if adds := externalSettingsList(args, "skills", "add"); len(adds) > 0 {
-		read := skills.NewInstalledSkillReader(getWorkspaceAPIURL(), workflow.WorkspacePath)
-		for _, skill := range adds {
-			if _, err := read(skill, "SKILL.md"); err != nil {
-				fail("skills: %q is not installed in this workflow", skill)
-				return
-			}
+		if err := t.skillCheck(ctx, adds); err != nil {
+			return nil, nil, settingsInvalid("skills: %v", err)
 		}
-		caps.SelectedSkills = settingsWith(caps.SelectedSkills, adds...)
+		s.Skills = settingsWith(s.Skills, adds...)
 		changed = append(changed, "skills")
 	}
 	if drops := externalSettingsList(args, "skills", "remove"); len(drops) > 0 {
-		caps.SelectedSkills = settingsWithout(caps.SelectedSkills, drops)
+		s.Skills = settingsWithout(s.Skills, drops)
 		changed = settingsWith(changed, "skills")
 	}
 
@@ -266,21 +275,19 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	removeValues := externalSettingsList(args, "secrets", "remove")
 	if len(values) > 0 || len(removeValues) > 0 {
-		if access != WorkflowAccessOwner {
-			externalError(w, 403, "forbidden", "Only an owner can set or remove secret values.")
-			return
+		if !t.owner {
+			return nil, nil, &externalSettingsError{403, "forbidden", "Only an owner can set or remove secret values."}
 		}
 		named := append([]string{}, removeValues...)
 		for key := range values {
 			named = append(named, key)
 		}
 		if _, err := validateCrewCreationNames("secret", named); err != nil {
-			fail("secrets: %v", err)
-			return
+			return nil, nil, settingsInvalid("secrets: %v", err)
 		}
 	}
 	storedNames := map[string]bool{}
-	if rows, err := api.ensureSharedWorkflowSecrets(ctx, workflow.WorkspacePath, claims.UserID); err == nil {
+	if rows, err := api.ensureSharedWorkflowSecrets(ctx, t.path, userID); err == nil {
 		for _, row := range rows {
 			storedNames[row.Name] = true
 		}
@@ -288,57 +295,118 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	selects := externalSettingsList(args, "secrets", "select")
 	for _, secret := range selects {
 		if _, setting := values[secret]; !storedNames[secret] && !setting {
-			fail("secrets: %q has no stored value; set it first", secret)
-			return
+			return nil, nil, settingsInvalid("secrets: %q has no stored value; set it first", secret)
 		}
 	}
 	shared := externalSettingsList(args, "secrets", "use_shared")
 	if len(shared) > 0 {
 		if api.productSchedules == nil {
-			externalError(w, 503, "secrets_unavailable", "Shared secrets are unavailable.")
-			return
+			return nil, nil, &externalSettingsError{503, "secrets_unavailable", "Shared secrets are unavailable."}
 		}
-		if _, err := api.productSchedules.validateCrewCreationGlobalSecrets(ctx, claims.UserID, shared); err != nil {
-			fail("secrets: %v", err)
-			return
+		if _, err := api.productSchedules.validateCrewCreationGlobalSecrets(ctx, userID, shared); err != nil {
+			return nil, nil, settingsInvalid("secrets: %v", err)
 		}
 	}
 	for key, value := range values {
-		if err := api.upsertSharedWorkflowSecret(ctx, workflow.WorkspacePath, key, value); err != nil {
-			externalError(w, 502, "secret_store_failed", fmt.Sprintf("Could not store secret %s.", key))
-			return
+		if err := api.upsertSharedWorkflowSecret(ctx, t.path, key, value); err != nil {
+			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not store secret %s.", key)}
 		}
 		selects = settingsWith(selects, key)
 	}
 	for _, key := range removeValues {
-		if err := api.deleteSharedWorkflowSecret(ctx, workflow.WorkspacePath, key, claims.UserID); err != nil {
-			externalError(w, 502, "secret_store_failed", fmt.Sprintf("Could not remove secret %s.", key))
-			return
+		if err := api.deleteSharedWorkflowSecret(ctx, t.path, key, userID); err != nil {
+			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not remove secret %s.", key)}
 		}
 	}
 	if len(selects) > 0 {
-		caps.SelectedSecrets = settingsWith(caps.SelectedSecrets, selects...)
+		s.Secrets = settingsWith(s.Secrets, selects...)
 	}
 	if drops := append(externalSettingsList(args, "secrets", "unselect"), removeValues...); len(drops) > 0 {
-		caps.SelectedSecrets = settingsWithout(caps.SelectedSecrets, drops)
+		s.Secrets = settingsWithout(s.Secrets, drops)
 	}
 	if stop := externalSettingsList(args, "secrets", "stop_shared"); len(shared) > 0 || len(stop) > 0 {
 		current := []string{}
-		if caps.SelectedGlobalSecretNames != nil {
-			current = *caps.SelectedGlobalSecretNames
+		if s.GlobalSecrets != nil {
+			current = *s.GlobalSecrets
 		}
 		next := settingsWithout(settingsWith(current, shared...), stop)
-		caps.SelectedGlobalSecretNames = &next
+		s.GlobalSecrets = &next
 	}
 	if secretArgs != nil {
 		changed = append(changed, "secrets")
 	}
 
 	if mode := externalArg(args, "browser_mode"); mode != "" {
-		caps.BrowserMode = mode
+		if err := enforceDeploymentBrowserCapability(&WorkflowCapabilities{BrowserMode: mode}); err != nil {
+			return nil, nil, settingsInvalid("browser_mode: %v", err)
+		}
+		s.BrowserMode = mode
 		changed = append(changed, "browser_mode")
 	}
+	if len(values) > 0 || len(removeValues) > 0 {
+		log.Printf("[EXTERNAL_SETTINGS] user=%s path=%s secrets_set=%d secrets_removed=%d", userID, t.path, len(values), len(removeValues))
+	}
+	return changed, pending, nil
+}
 
+func externalSettingsWorkflowSkillCheck(path string) func(context.Context, []string) error {
+	return func(_ context.Context, names []string) error {
+		read := skills.NewInstalledSkillReader(getWorkspaceAPIURL(), path)
+		for _, name := range names {
+			if skills.IsBuiltinSkill(name) {
+				continue
+			}
+			if _, err := read(name, "SKILL.md"); err != nil {
+				return fmt.Errorf("%q is not installed in this workflow", name)
+			}
+		}
+		return nil
+	}
+}
+
+func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow, access WorkflowAccessLevel) {
+	ctx := r.Context()
+	claims := GetUserFromContext(ctx)
+	if t := claims.AccessToken; t != nil && !t.Allows("workflows:read") && !t.Allows("runs:execute") {
+		externalError(w, 403, "insufficient_scope", "This connection cannot read workflows.")
+		return
+	}
+	manifest, exists, err := ReadWorkflowManifest(ctx, workflow.WorkspacePath)
+	if err != nil || !exists || manifest == nil {
+		externalError(w, 502, "workspace_unavailable", "Workflow settings could not be read.")
+		return
+	}
+	target := externalSettingsTarget{kind: "workflow", path: workflow.WorkspacePath, access: string(access),
+		owner: access == WorkflowAccessOwner, product: productWorkflows, skillCheck: externalSettingsWorkflowSkillCheck(workflow.WorkspacePath)}
+	if manifest.Kind == "relay" {
+		target.kind = "relay"
+	}
+	caps := manifest.Capabilities
+	state := externalSettingsState{LLMConfig: caps.LLMConfig, Servers: append([]string{}, caps.SelectedServers...),
+		Tools: append([]string{}, caps.SelectedTools...), Skills: append([]string{}, caps.SelectedSkills...),
+		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode}
+	notifications := func(c WorkflowCapabilities) map[string]any {
+		if n := c.Notifications; n != nil {
+			return map[string]any{"run_instructions": n.RunSummaryInstructions, "pulse_instructions": n.PulseSummaryInstructions,
+				"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels}
+		}
+		return map[string]any{}
+	}
+	if name == "get_settings" {
+		externalJSON(w, api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps)))
+		return
+	}
+	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
+		externalError(w, 409, "version_conflict", "Settings changed since get_settings; read them again and reapply your change.")
+		return
+	}
+	changed, pending, failure := api.applyExternalSettings(ctx, claims.UserID, target, &state, args)
+	if failure != nil {
+		externalError(w, failure.status, failure.code, failure.message)
+		return
+	}
+	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, state.Servers, state.Tools, state.Skills
+	caps.SelectedSecrets, caps.SelectedGlobalSecretNames, caps.BrowserMode = state.Secrets, state.GlobalSecrets, state.BrowserMode
 	req := UpdateWorkflowManifestRequest{WorkspacePath: workflow.WorkspacePath, Capabilities: &caps}
 	if n, ok := args["notifications"].(map[string]any); ok {
 		if v, ok := n["run_instructions"].(string); ok {
@@ -358,7 +426,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		changed = append(changed, "notifications")
 	}
 	if len(changed) == 0 {
-		fail("nothing to change; send at least one setting")
+		externalError(w, 400, "invalid_settings", "Nothing to change; send at least one setting.")
 		return
 	}
 
@@ -372,14 +440,126 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		externalError(w, recorder.Code, "settings_rejected", strings.TrimSpace(recorder.Body.String()))
 		return
 	}
-	log.Printf("[EXTERNAL_SETTINGS] user=%s workflow=%s changed=%s secrets_set=%d secrets_removed=%d", claims.UserID, manifest.ID, strings.Join(changed, ","), len(values), len(removeValues))
+	log.Printf("[EXTERNAL_SETTINGS] user=%s workflow=%s changed=%s", claims.UserID, manifest.ID, strings.Join(changed, ","))
 
-	updated, _, err := ReadWorkflowManifest(ctx, workflow.WorkspacePath)
-	if err != nil || updated == nil {
-		updated = manifest
-		updated.Capabilities = caps
+	if updated, _, err := ReadWorkflowManifest(ctx, workflow.WorkspacePath); err == nil && updated != nil {
+		caps = updated.Capabilities
 	}
-	view := api.externalSettingsView(ctx, claims.UserID, updated, workflow.WorkspacePath, access)
+	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
+		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
+		BrowserMode: caps.BrowserMode}, notifications(caps))
+	view["changed"] = changed
+	if len(pending) > 0 {
+		view["pending_sign_in"] = pending
+	}
+	externalJSON(w, view)
+}
+
+// externalCrewSettingsCall reads or changes a Crew's settings in its runtime
+// manifest, the file the Crew's Models and Integrations panels write.
+func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
+	ctx := r.Context()
+	claims := GetUserFromContext(ctx)
+	crewID := externalArg(args, "crew_id")
+	if t := claims.AccessToken; t != nil {
+		scope := "crews:read"
+		if name == "update_settings" {
+			scope = "crews:write"
+		}
+		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
+			externalError(w, 403, "insufficient_scope", "This connection does not allow "+name+" on this Crew.")
+			return
+		}
+	}
+	crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID)
+	if !ok {
+		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+		return
+	}
+	root := crew.Binding.WorkspacePath
+	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, "work", root)
+	if err != nil {
+		externalError(w, 502, "workspace_unavailable", "Crew settings could not be read.")
+		return
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
+		externalError(w, 502, "workspace_unavailable", "Crew settings are not valid JSON.")
+		return
+	}
+	capabilities, _ := manifest["capabilities"].(map[string]any)
+	if capabilities == nil {
+		capabilities = map[string]any{}
+	}
+	var state externalSettingsState
+	if encoded, err := json.Marshal(capabilities); err == nil {
+		_ = json.Unmarshal(encoded, &state)
+	}
+	access := "member"
+	if crew.OwnedByCaller {
+		access = "owner"
+	}
+	target := externalSettingsTarget{kind: "crew", path: root, access: access, owner: crew.OwnedByCaller, product: productCrews,
+		skillCheck: func(ctx context.Context, names []string) error {
+			return checkCrewSkillsAvailable(ctx, root, names, nil)
+		}}
+	if name == "get_settings" {
+		externalJSON(w, api.externalSettingsView(ctx, claims.UserID, target, state, nil))
+		return
+	}
+	if !crew.OwnedByCaller {
+		externalError(w, 403, "forbidden", "Only the Crew's owner can change its settings.")
+		return
+	}
+	if _, ok := args["notifications"]; ok {
+		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Relays only.")
+		return
+	}
+	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
+		externalError(w, 409, "version_conflict", "Settings changed since get_settings; read them again and reapply your change.")
+		return
+	}
+	changed, pending, failure := api.applyExternalSettings(ctx, claims.UserID, target, &state, args)
+	if failure != nil {
+		externalError(w, failure.status, failure.code, failure.message)
+		return
+	}
+	if len(changed) == 0 {
+		externalError(w, 400, "invalid_settings", "Nothing to change; send at least one setting.")
+		return
+	}
+	// Write only the keys that changed, so fields the Crew panels own and
+	// this tool does not know keep their exact stored form.
+	for _, field := range changed {
+		switch field {
+		case "models":
+			capabilities["llm_config"] = state.LLMConfig
+		case "mcp_servers", "tools":
+			capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(state.Servers), nonNilStrings(state.Tools)
+		case "skills":
+			capabilities["selected_skills"] = nonNilStrings(state.Skills)
+		case "secrets":
+			capabilities["selected_secrets"] = nonNilStrings(state.Secrets)
+			if state.GlobalSecrets != nil {
+				capabilities["selected_global_secret_names"] = nonNilStrings(*state.GlobalSecrets)
+			}
+		case "browser_mode":
+			capabilities["browser_mode"] = state.BrowserMode
+		}
+	}
+	manifest["capabilities"] = capabilities
+	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		externalError(w, 500, "encode_failed", err.Error())
+		return
+	}
+	if err := writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n"); err != nil {
+		externalError(w, 502, "workspace_unavailable", "Crew settings could not be saved.")
+		return
+	}
+	log.Printf("[EXTERNAL_SETTINGS] user=%s crew=%s changed=%s", claims.UserID, crewID, strings.Join(changed, ","))
+	view := api.externalSettingsView(ctx, claims.UserID, target, state, nil)
 	view["changed"] = changed
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
