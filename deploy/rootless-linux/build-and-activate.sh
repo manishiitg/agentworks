@@ -219,6 +219,8 @@ cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
 # The slot self-test and the secret admission scan travel with the release (./deploy.sh slotcheck runs current's copy).
 cp "$REPO_ROOT/deploy/common/slotcheck.sh" "$BUILD_DIR/slotcheck.sh"
 cp "$REPO_ROOT/deploy/common/admission_scan.py" "$BUILD_DIR/admission_scan.py"
+# The env merge travels with the release too: it updates the host .env from EXTRA_ENV and drops keys the deploy wrote before and no longer lists (PLAT-789).
+cp "$REPO_ROOT/deploy/common/merge_env.py" "$BUILD_DIR/merge_env.py"
 # frontend's build:report-preview step (part of `npm run build` above) writes
 # report-preview.js to agent_go/cmd/server/static/ in the source checkout,
 # never into the release. $PRODUCT-agent, like every other product on this
@@ -367,11 +369,18 @@ fi
 # is (or is not) in .env. Replace just that one line atomically so the
 # managed PATH always wins regardless of what the drop-in also says, and
 # preserve every other line in .env untouched (Confida hit this live on
-# 2026-09-11).
+# 2026-09-11). Keys this deploy wrote last time and no longer lists are removed
+# (deploy/common/merge_env.py remembers them in .env.managed-keys); a line added
+# by hand stays.
 env_file="$REMOTE_APP/.env"
 if [[ -f "$env_file" ]]; then
   env_next="$(mktemp "$REMOTE_APP/.env.runtime.XXXXXX")"
-  python3 - "$env_file" "$env_next" "$runtime_path" "${EXTRA_ENV[@]:-}" <<'PY'
+  if [[ -f "$BUILD_DIR/merge_env.py" ]]; then
+    python3 "$BUILD_DIR/merge_env.py" "$env_file" "$env_next" "$REMOTE_APP/.env.managed-keys" "$runtime_path" "${EXTRA_ENV[@]:-}"
+  else
+    # A release built before merge_env.py existed (the deploy script comes from this checkout, the release from the build):
+    # the old merge, which updates listed keys but removes nothing.
+    python3 - "$env_file" "$env_next" "$runtime_path" "${EXTRA_ENV[@]:-}" <<'PY'
 from pathlib import Path
 import sys
 
@@ -400,6 +409,7 @@ for key, value in managed.items():
         output.append(f"{key}={value}")
 Path(destination).write_text("\n".join(output) + "\n")
 PY
+  fi
   chmod 0600 "$env_next"
   mv "$env_next" "$env_file"
 fi

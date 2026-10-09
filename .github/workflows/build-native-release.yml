@@ -49,6 +49,7 @@ jobs:
           python3 -m unittest discover -s deploy/common -p 'test_publish_build.py'
           python3 -m unittest discover -s deploy/common -p 'test_prune_builds.py'
           python3 -m unittest discover -s deploy/common -p 'test_release_manifest.py'
+          python3 -m unittest discover -s deploy/common -p 'test_merge_env.py'
           python3 -m unittest discover -s deploy/rootless-linux -p 'test_prebuilt.py'
       - name: Build the complete release from pinned revisions
         id: release
