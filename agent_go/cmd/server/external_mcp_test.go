@@ -171,7 +171,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "get_api_spec")
 	listed := marshalStructured(t, spec)
-	for _, name := range []string{"list_workflows", "get_plan", "read_file", "execute_step", "help"} {
+	for _, name := range []string{"workflow", "files", "execute_step", "help"} {
 		if !strings.Contains(listed, name) {
 			t.Fatalf("spec list missing %q: %s", name, listed)
 		}
@@ -257,7 +257,7 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "read-only spec list")
 	listed := marshalStructured(t, spec)
-	for _, name := range []string{"list_workflows", "read_file", "help"} {
+	for _, name := range []string{"workflow", "files", "help"} {
 		if !strings.Contains(listed, name) {
 			t.Fatalf("read-only spec missing %q", name)
 		}

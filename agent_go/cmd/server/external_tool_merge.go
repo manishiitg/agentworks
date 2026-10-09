@@ -12,9 +12,13 @@ import (
 // the tool menu show only the merged tool, narrowed to the actions this
 // connection may use. A call is translated to its member before any check,
 // so every scope, owner and validation rule stays the member's.
+//
+// A member may be "workflowTool|crewTool": the call runs the second when it
+// names a crew_id, else the first. A merged tool with one action takes it
+// without an action argument.
 type externalToolMerge struct {
 	name, summary string
-	actions       [][2]string // action, member tool
+	actions       [][2]string // action, member tool (or "workflowTool|crewTool")
 }
 
 var externalToolMerges = []externalToolMerge{
@@ -34,6 +38,24 @@ var externalToolMerges = []externalToolMerge{
 	}},
 	{"help", "Guidance for using this connection: your access context, guidance topics to load, and the AgentWorks skill to install.", [][2]string{
 		{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skill", "get_skill"},
+	}},
+	{"workflow", "Find workflows and Relays you can use, read one workflow's manifest and access, or its plan.", [][2]string{
+		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
+	}},
+	{"crew", "Crews you can use: list, read, create, edit, export and import. Ask a Crew with ask_crew.", [][2]string{
+		{"list", "list_crews"}, {"get", "get_crew"}, {"create", "create_crew"}, {"update", "update_crew"},
+		{"export", "export_crew"}, {"import", "import_crew"},
+	}},
+	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Relay (workflow_id) or a Crew (crew_id; read-only). action=code lists a step's saved code.", [][2]string{
+		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
+		{"write", "write_file"}, {"code", "list_step_code"},
+	}},
+	{"functions", "A workflow's or Crew's typed entry points (workflow_id or crew_id): list them, call one, check a call and answer its question.", [][2]string{
+		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
+		{"status", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
+	}},
+	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
+		{"suggest", "suggest_workflow_change|suggest_crew_change"},
 	}},
 	{"code_review", "Read-only, audited review of every Code workspace for admins and Code reviewers: workspaces, costs, files, chats and the audit log.", [][2]string{
 		{"workspaces", "list_code_workspaces"}, {"costs", "get_code_costs"}, {"files", "list_code_files"}, {"file", "read_code_file"},
@@ -62,21 +84,27 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		actions := map[string]string{}
 		order := []string{}
 		for _, pair := range merge.actions {
-			i, ok := index[pair[1]]
-			if !ok {
-				continue // not admitted on this server
-			}
-			member := &catalog[i]
-			if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
-				return nil, fmt.Errorf("merged tool %q: member %q already has an action field", merge.name, member.Name)
-			}
-			member.hidden = true
-			actions[pair[0]] = member.Name
-			order = append(order, pair[0])
-			for key, value := range member.InputSchema["properties"].(map[string]any) {
-				if _, seen := props[key]; !seen {
-					props[key] = value
+			found := false
+			for _, name := range externalMemberNames(pair[1]) {
+				i, ok := index[name]
+				if !ok {
+					continue // not admitted on this server
 				}
+				found = true
+				member := &catalog[i]
+				if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
+					return nil, fmt.Errorf("merged tool %q: member %q already has an action field", merge.name, member.Name)
+				}
+				member.hidden = true
+				for key, value := range member.InputSchema["properties"].(map[string]any) {
+					if _, seen := props[key]; !seen {
+						props[key] = value
+					}
+				}
+			}
+			if found {
+				actions[pair[0]] = pair[1]
+				order = append(order, pair[0])
 			}
 		}
 		if len(order) == 0 {
@@ -86,7 +114,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		catalog = append(catalog, externalTool{
 			Name:        merge.name,
 			Description: merge.summary,
-			InputSchema: map[string]any{"type": "object", "properties": props, "required": []any{"action"}, "additionalProperties": false},
+			InputSchema: map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(order), "additionalProperties": false},
 			actions:     actions,
 			actionOrder: order,
 		})
@@ -110,31 +138,67 @@ func externalCatalogTool(name string) (externalTool, bool) {
 // externalMergedForClaims narrows a merged tool to the actions this
 // connection may call and describes each one with its required fields.
 // ok is false when no action is allowed.
+func externalMemberNames(spec string) []string { return strings.Split(spec, "|") }
+
+// externalMergedRequired: the action is required unless the tool has just one.
+func externalMergedRequired(actions []string) []any {
+	if len(actions) <= 1 {
+		return []any{}
+	}
+	return []any{"action"}
+}
+
+// externalMergedAllows: some action of the merged tool is allowed.
+func externalMergedAllows(c *UserClaims, tool externalTool) bool {
+	for _, spec := range tool.actions {
+		for _, name := range externalMemberNames(spec) {
+			if m, ok := externalCatalogTool(name); ok && externalTokenAllows(c, m) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// externalMergedForClaims narrows a merged tool to the actions this
+// connection may call and describes each one with its required fields.
+// ok is false when no action is allowed.
 func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalTool, bool) {
 	allowed := []string{}
 	var lines []string
 	props := map[string]any{}
 	for _, action := range tool.actionOrder {
-		member, ok := externalCatalogTool(tool.actions[action])
-		if !ok || !externalTokenAllows(claims, member) {
+		var members []externalTool
+		for _, name := range externalMemberNames(tool.actions[action]) {
+			if member, ok := externalCatalogTool(name); ok && externalTokenAllows(claims, member) {
+				members = append(members, member)
+			}
+		}
+		if len(members) == 0 {
 			continue
 		}
 		allowed = append(allowed, action)
-		required := []string{}
-		if raw, ok := member.InputSchema["required"].([]any); ok {
-			for _, r := range raw {
-				required = append(required, fmt.Sprint(r))
+		line := "- action=" + action + ": " + firstSentence(members[0].Description)
+		if len(members) == 1 {
+			required := []string{}
+			if raw, ok := members[0].InputSchema["required"].([]any); ok {
+				for _, r := range raw {
+					required = append(required, fmt.Sprint(r))
+				}
 			}
-		}
-		sort.Strings(required)
-		line := "- action=" + action + ": " + firstSentence(member.Description)
-		if len(required) > 0 {
-			line += " Requires " + strings.Join(required, ", ") + "."
+			sort.Strings(required)
+			if len(required) > 0 {
+				line += " Requires " + strings.Join(required, ", ") + "."
+			}
+		} else {
+			line += " Pass workflow_id, or crew_id for a Crew."
 		}
 		lines = append(lines, line)
-		for key, value := range member.InputSchema["properties"].(map[string]any) {
-			if _, seen := props[key]; !seen {
-				props[key] = value
+		for _, member := range members {
+			for key, value := range member.InputSchema["properties"].(map[string]any) {
+				if _, seen := props[key]; !seen {
+					props[key] = value
+				}
 			}
 		}
 	}
@@ -143,8 +207,10 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	}
 	props["action"] = map[string]any{"type": "string", "enum": stringsToAny(allowed)}
 	out := tool
-	out.Description = tool.Description + "\n" + strings.Join(lines, "\n")
-	out.InputSchema = map[string]any{"type": "object", "properties": props, "required": []any{"action"}, "additionalProperties": false}
+	if len(allowed) > 1 {
+		out.Description = tool.Description + "\n" + strings.Join(lines, "\n")
+	}
+	out.InputSchema = map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(allowed), "additionalProperties": false}
 	return out, true
 }
 
@@ -181,13 +247,21 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		return tool, args, nil
 	}
 	action := externalArg(args, "action")
-	name, ok := tool.actions[action]
+	if action == "" && len(tool.actionOrder) == 1 {
+		action = tool.actionOrder[0]
+	}
+	spec, ok := tool.actions[action]
 	if !ok {
 		return tool, args, fmt.Errorf("%s needs action, one of: %s", tool.Name, strings.Join(tool.actionOrder, ", "))
 	}
+	names := externalMemberNames(spec)
+	name := names[0]
+	if len(names) == 2 && externalArg(args, "crew_id") != "" {
+		name = names[1]
+	}
 	member, ok := externalCatalogTool(name)
 	if !ok {
-		return tool, args, fmt.Errorf("%s action %s is unavailable", tool.Name, action)
+		return tool, args, fmt.Errorf("%s action %s is unavailable here", tool.Name, action)
 	}
 	rest := make(map[string]any, len(args))
 	for key, value := range args {

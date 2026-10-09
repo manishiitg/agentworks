@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 // Every merged tool is built from tools that exist, hides them from the menu
@@ -29,15 +31,17 @@ func TestExternalToolMergesAreWellFormed(t *testing.T) {
 			continue // none of its members is admitted on this server
 		}
 		for _, pair := range merge.actions {
-			member, ok := byName[pair[1]]
-			if !ok {
-				continue
-			}
-			if !member.hidden || listed[member.Name] {
-				t.Fatalf("%s: member %s is still in the menu", merge.name, member.Name)
-			}
-			if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
-				t.Fatalf("%s: member %s has its own action field", merge.name, member.Name)
+			for _, name := range externalMemberNames(pair[1]) {
+				member, ok := byName[name]
+				if !ok {
+					continue
+				}
+				if !member.hidden || listed[member.Name] {
+					t.Fatalf("%s: member %s is still in the menu", merge.name, member.Name)
+				}
+				if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
+					t.Fatalf("%s: member %s has its own action field", merge.name, member.Name)
+				}
 			}
 		}
 		if merged.hidden {
@@ -51,4 +55,58 @@ func TestExternalToolMergesAreWellFormed(t *testing.T) {
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "needs action") {
 		t.Fatalf("unknown action: %d %s", w.Code, w.Body)
 	}
+}
+
+// A workflow-or-Crew action runs the Crew's tool when the call names a crew_id,
+// and a one-action tool needs no action argument.
+func TestExternalMergedToolPicksWorkflowOrCrewMember(t *testing.T) {
+	catalog, err := externalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files, suggest externalTool
+	for _, tool := range catalog {
+		switch tool.Name {
+		case "files":
+			files = tool
+		case "suggest_change":
+			suggest = tool
+		}
+	}
+	for args, want := range map[string]string{`{"action":"list","workflow_id":"w"}`: "list_files", `{"action":"list","crew_id":"c"}`: "list_crew_files", `{"action":"read","crew_id":"c","path":"x"}`: "read_crew_file", `{"action":"write","workflow_id":"w"}`: "write_file"} {
+		var in map[string]any
+		_ = json.Unmarshal([]byte(args), &in)
+		member, rest, err := externalResolveMerged(files, in)
+		if err != nil || member.Name != want || rest["action"] != nil {
+			t.Fatalf("%s resolved to %s (%v), want %s", args, member.Name, err, want)
+		}
+	}
+	if member, _, err := externalResolveMerged(suggest, map[string]any{"crew_id": "c"}); err != nil || member.Name != "suggest_crew_change" {
+		t.Fatalf("one-action tool: %s %v", member.Name, err)
+	}
+}
+
+// A read-only connection is shown files without its write action.
+func TestExternalMergedFilesAreNarrowedForReaders(t *testing.T) {
+	catalog, err := externalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := &UserClaims{UserID: "r", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "files:read"}, AllWorkflows: true}}
+	for _, tool := range externalListedTools(reader, catalog) {
+		if tool.Name != "files" {
+			continue
+		}
+		actions, _ := tool.InputSchema["properties"].(map[string]any)["action"].(map[string]any)["enum"].([]any)
+		for _, action := range actions {
+			if action == "write" {
+				t.Fatalf("a files:read connection is offered write: %v", actions)
+			}
+		}
+		if len(actions) == 0 {
+			t.Fatal("no files actions for a files:read connection")
+		}
+		return
+	}
+	t.Fatal("files tool not offered to a files:read connection")
 }

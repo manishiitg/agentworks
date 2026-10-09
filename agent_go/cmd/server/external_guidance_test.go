@@ -95,7 +95,7 @@ func TestExternalAgentContextGlobalAndScoped(t *testing.T) {
 	for _, raw := range body["effective_tools"].([]any) {
 		effective[raw.(string)] = true
 	}
-	if !effective["get_plan"] || !effective["read_file"] {
+	if !effective["workflow"] || !effective["files"] {
 		t.Fatalf("wrong effective tools: %v", effective)
 	}
 	unknown := f.call(t, "owner", "get_agent_context", map[string]any{"workflow_id": "nope"})

@@ -265,7 +265,7 @@ func TestAccessTokenHTTPManagementAndRestrictions(t *testing.T) {
 	for _, tool := range catalogBody.Tools {
 		visible[tool.Name] = true
 	}
-	if !visible["read_file"] || !visible["list_step_code"] || visible["write_file"] || visible["builder_chat"] {
+	if !visible["files"] || !visible["workflow"] || visible["write_file"] || visible["builder_chat"] {
 		t.Fatal(catalog.Code, catalog.Body)
 	}
 	for _, path := range []string{"/api/auth/access-tokens", "/api/auth/password", "/api/wp/api/documents", "/api/query"} {

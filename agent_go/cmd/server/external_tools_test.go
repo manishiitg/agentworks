@@ -232,9 +232,11 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		}
 		for _, merge := range externalToolMerges {
 			for _, pair := range merge.actions {
-				if want[pair[1]] {
-					delete(want, pair[1])
-					want[merge.name] = true
+				for _, member := range externalMemberNames(pair[1]) {
+					if want[member] {
+						delete(want, member)
+						want[merge.name] = true
+					}
 				}
 			}
 		}
@@ -723,7 +725,7 @@ func TestExternalToolsClientTransportThroughJWTAndWorkspace(t *testing.T) {
 	for _, tool := range catalog {
 		found[tool.Name] = true
 	}
-	for _, name := range []string{"get_plan", "read_file", "help"} {
+	for _, name := range []string{"workflow", "files", "help"} {
 		if !found[name] {
 			t.Fatalf("read tool %s missing from client catalog", name)
 		}

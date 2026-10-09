@@ -222,6 +222,15 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 	if callArgs == nil {
 		callArgs = map[string]any{}
 	}
+	// A merged tool runs as its underlying tool from here on, so the function-call
+	// question flow below sees the tool it knows.
+	if merged := byName[target]; merged.actions != nil {
+		member, rest, err := externalResolveMerged(merged, callArgs)
+		if err != nil {
+			return mcp.NewToolResultError("invalid_arguments: " + err.Error())
+		}
+		target, callArgs = member.Name, rest
+	}
 	// A function call with a pending question may come back as an MCP form
 	// for clients that declare elicitation (docs/design/mcp_elicitation.md).
 	elicitation := api.externalMCPElicitation(r, byName)
