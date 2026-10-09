@@ -275,11 +275,23 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	if !ok {
 		return tool, args, fmt.Errorf("%s action %s is unavailable here", tool.Name, action)
 	}
+	// The merged schema is the union of its members' fields, so a caller may pass a field only another member takes: crew_id
+	// picks the crew member, whose own status tool names no crew (the call_id says which), and wait_seconds belongs to the
+	// members that wait. Leave out what this member does not declare but the merged tool does; anything the merged tool
+	// does not know is still passed on and refused by the member's own validation.
+	memberProps, _ := member.InputSchema["properties"].(map[string]any)
+	mergedProps, _ := tool.InputSchema["properties"].(map[string]any)
 	rest := make(map[string]any, len(args))
 	for key, value := range args {
-		if key != "action" {
-			rest[key] = value
+		if key == "action" {
+			continue
 		}
+		if _, declared := memberProps[key]; !declared {
+			if _, merged := mergedProps[key]; merged {
+				continue
+			}
+		}
+		rest[key] = value
 	}
 	return member, rest, nil
 }

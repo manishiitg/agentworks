@@ -110,3 +110,33 @@ func TestExternalMergedFilesAreNarrowedForReaders(t *testing.T) {
 	}
 	t.Fatal("files tool not offered to a files:read connection")
 }
+
+// functions status for a Crew passes crew_id (to pick the crew member) and wait_seconds, which the crew status tool does not declare;
+// the call used to be refused with "additional properties 'crew_id', 'wait_seconds' not allowed" (Citymall acceptance run, 2026-10-09).
+func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
+	catalog, err := externalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var functions externalTool
+	for _, tool := range catalog {
+		if tool.Name == "functions" {
+			functions = tool
+		}
+	}
+	member, rest, err := externalResolveMerged(functions, map[string]any{"action": "status", "crew_id": "c", "call_id": "fn-1", "wait_seconds": 5})
+	if err != nil || member.Name != "get_crew_function_call" {
+		t.Fatalf("resolved to %s (%v)", member.Name, err)
+	}
+	if _, has := rest["crew_id"]; has {
+		t.Fatalf("crew_id reached a tool that does not take it: %v", rest)
+	}
+	if rest["call_id"] != "fn-1" {
+		t.Fatalf("call_id lost: %v", rest)
+	}
+	// A field no member knows is still passed on, to be refused by the member's own validation.
+	_, rest, _ = externalResolveMerged(functions, map[string]any{"action": "status", "crew_id": "c", "call_id": "fn-1", "bogus": 1})
+	if rest["bogus"] == nil {
+		t.Fatalf("an unknown field was silently dropped: %v", rest)
+	}
+}
