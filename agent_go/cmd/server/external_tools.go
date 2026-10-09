@@ -97,9 +97,13 @@ func externalTools() ([]externalTool, error) {
 		add("get_skill", "Return the AgentWorks skill (SKILL.md) for this server so you can install it: save `content` to <your skills folder>/agentworks/SKILL.md (Claude Code: ~/.claude/skills/agentworks/SKILL.md). Read-only; no workflow required.", false, false, nil)
 		add("list_workflow_knowledge", "List a workflow's learnings, knowledgebase notes, workspace skills, and skill wiring (workflow-selected skills plus per-step enabled_skills). Page the file inventories with limit and offset; has_more signals another page.", false, true, page())
 		add("read_workflow_knowledge", "Read one knowledge file: learnings/ or knowledgebase/ paths from the workflow, or skills/<folder>/<file> from the workspace skill catalog. Nothing else is addressable.", false, true, map[string]any{"path": externalString("Knowledge path: learnings/..., knowledgebase/..., or skills/<folder>/<file>.")}, "path")
-		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run.", false, true, page())
+		relayVersion := externalString("Relays only: a published version from get_relay_releases (e.g. v3) to read that version's production runs; omit for draft test runs. Needs owner or editor access.")
+		p = page()
+		p["version"] = relayVersion
+		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run. For a Relay, pass version to see a published version's production runs.", false, true, p)
 		for _, name := range []string{"get_run", "get_logs"} {
 			p = page()
+			p["version"] = relayVersion
 			p["run_folder"] = externalString("Run directory relative to runs/, e.g. iteration-0/group-name.")
 			description := "Inspect a saved run's files or log files; use read_file to retrieve selected content."
 			if name == "get_run" {
@@ -153,8 +157,8 @@ func externalTools() ([]externalTool, error) {
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see run_status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from run_status."), "request_id": externalString("Pending input request ID from run_status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
-		addRun("stop_step", "Stop one running step or background execution by its execution ID from execute_step, query_step, or list_executions. The execution's session must belong to this connection.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or query_step."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
-		addRun("stop_all_executions", "Stop all running executions owned by this connection in the workflow, or one session when session_id is given. Executes directly.", true, map[string]any{"session_id": map[string]any{"type": "string", "description": "Optional run session ID to stop instead of every owned session."}})
+		addRun("stop_step", "Stop one running step or background execution by its execution ID from execute_step, query_step, or list_executions. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or query_step."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
+		addRun("stop_all_executions", "Stop all running executions owned by this connection in the workflow, or one session you started (here or in the app) when session_id is given. Executes directly.", true, map[string]any{"session_id": map[string]any{"type": "string", "description": "Optional run session ID to stop instead of every owned session."}})
 		// Crews: bounded by the token's Crew list; crews:read.
 		crewID := func(props map[string]any) map[string]any {
 			if props == nil {
@@ -756,6 +760,24 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 			req.Path = path.Join(req.Path, "logs")
 		}
 	}
+	// A Relay's published version keeps its production runs in its own
+	// release folder, the one the app's version picker reads.
+	if version := externalArg(args, "version"); version != "" {
+		if workflow.Manifest.Kind != "relay" {
+			externalError(w, 400, "invalid_arguments", "version applies to Relays only.")
+			return
+		}
+		if access := workflowAccessForManifest(GetUserFromContext(r.Context()), workflow.Manifest); access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+			externalError(w, 403, "forbidden", "Production runs of a Relay need owner or editor access.")
+			return
+		}
+		root := relayReleaseWorkspace(workflow.WorkspacePath, version)
+		if draft, err := relayDraftWorkspaceForRelease(r.Context(), root); err != nil || draft != workflow.WorkspacePath {
+			externalError(w, 404, "version_not_found", "No published version "+version+"; see get_relay_releases.")
+			return
+		}
+		req.Root = root
+	}
 	result, err := externalFileRequest(r.Context(), req)
 	if err != nil {
 		externalFailure(w, err)
@@ -774,7 +796,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 		if name == "get_run" {
 			folder := strings.Split(externalArg(args, "run_folder"), "/")[0]
 			if webhookFolderPattern.MatchString(folder) {
-				runs, err := ReadScheduleRuns(r.Context(), workflow.WorkspacePath)
+				runs, err := ReadScheduleRuns(r.Context(), req.Root)
 				if err != nil {
 					externalError(w, http.StatusBadGateway, "workspace_unavailable", "Webhook run history is unavailable.")
 					return

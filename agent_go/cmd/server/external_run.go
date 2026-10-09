@@ -276,8 +276,8 @@ func (api *StreamingAPI) externalStopStep(w http.ResponseWriter, r *http.Request
 		externalError(w, http.StatusNotFound, "execution_not_found", "That execution is not in the given session")
 		return
 	}
-	if claims.AccessToken != nil && !strings.HasPrefix(targetSessionID, accessTokenSessionPrefix(claims)) {
-		externalError(w, http.StatusNotFound, "execution_not_found", "This access token does not own that execution.")
+	if claims.AccessToken != nil && !strings.HasPrefix(targetSessionID, accessTokenSessionPrefix(claims)) && !api.sessionStartedBy(targetSessionID, claims.UserID) {
+		externalError(w, http.StatusNotFound, "execution_not_found", "You did not start that execution.")
 		return
 	}
 	rawSession, ok := api.workshopChatSessions.Load(targetSessionID)
@@ -319,8 +319,8 @@ func (api *StreamingAPI) externalStopAllExecutions(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusBadRequest, "invalid_arguments", "Invalid session_id")
 			return
 		}
-		if claims.AccessToken != nil && !strings.HasPrefix(sessionID, accessTokenSessionPrefix(claims)) {
-			externalError(w, http.StatusNotFound, "session_not_found", "This access token does not own that run session.")
+		if claims.AccessToken != nil && !strings.HasPrefix(sessionID, accessTokenSessionPrefix(claims)) && !api.sessionStartedBy(sessionID, claims.UserID) {
+			externalError(w, http.StatusNotFound, "session_not_found", "You did not start that run session.")
 			return
 		}
 		if _, _, err := api.externalBuilderSession(r, workflow.WorkspacePath, sessionID); err != nil {
@@ -587,4 +587,16 @@ func (api *StreamingAPI) externalTriggerSchedule(w http.ResponseWriter, r *http.
 		status = "queued"
 	}
 	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedule_id": externalArg(args, "schedule_id"), "run_id": runID, "status": status})
+}
+
+// sessionStartedBy reports whether a person started this chat or run, in the
+// app or through any connection; the app's stop button allows the same.
+func (api *StreamingAPI) sessionStartedBy(sessionID, userID string) bool {
+	if strings.TrimSpace(userID) == "" {
+		return false
+	}
+	api.activeSessionsMux.RLock()
+	defer api.activeSessionsMux.RUnlock()
+	session, ok := api.activeSessions[sessionID]
+	return ok && session != nil && session.UserID == userID
 }

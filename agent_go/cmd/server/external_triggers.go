@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -14,11 +16,12 @@ import (
 // returned once, on create or rotate, as in the app.
 
 func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_triggers", "List, create, update or delete the triggers of a workflow, Relay or Crew: webhooks, function triggers (Relays and workflows) and internal triggers bound to a calling workflow or Crew; for workflows and Relays also test a trigger and read a test run's status. Pass workflow_id (also for a Relay) or crew_id. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
+	add("manage_triggers", "List, create, update or delete the triggers of a workflow, Relay or Crew, or read a trigger's recent deliveries (runs): webhooks, function triggers (Relays and workflows) and internal triggers bound to a calling workflow or Crew; for workflows and Relays also test a trigger and read a test run's status. Pass workflow_id (also for a Relay) or crew_id. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
 		"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
-		"action":      map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status"}},
-		"id":          externalString("Trigger ID from list; required for update, delete and test."),
+		"action":      map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
+		"limit":       externalInteger(1, 100),
+		"id":          externalString("Trigger ID from list; required for update, delete, test and runs."),
 		"trigger":     map[string]any{"type": "object", "description": "For create and update. Workflows and Relays: name, enabled, kind (webhook default, function, internal), auth_mode (bearer or github), route_selections, group_names (workflows), function {name, description, inputs, allowed_callers}, caller, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Crews: name, enabled, message, auth_mode, run_destination (crew_chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
 	}, "action")
 }
@@ -26,7 +29,7 @@ func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]
 func (api *StreamingAPI) externalWorkflowTriggerCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow, access WorkflowAccessLevel) {
 	claims := GetUserFromContext(r.Context())
 	action := externalArg(args, "action")
-	if action != "list" && access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+	if action != "list" && action != "runs" && access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 		externalError(w, 403, "forbidden", "Changing or testing triggers needs owner or editor access.")
 		return
 	}
@@ -35,6 +38,14 @@ func (api *StreamingAPI) externalWorkflowTriggerCall(w http.ResponseWriter, r *h
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" here.")
 			return
 		}
+	}
+	if action == "runs" {
+		if externalArg(args, "id") == "" {
+			externalError(w, 400, "invalid_arguments", "id is required for runs.")
+			return
+		}
+		api.externalScheduleRuns(w, r, map[string]any{"schedule_id": externalArg(args, "id"), "limit": float64(externalInt(args, "limit", 20))}, workflow)
+		return
 	}
 	flat := map[string]any{"action": action}
 	if trigger, ok := args["trigger"].(map[string]any); ok {
@@ -59,7 +70,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 	action := externalArg(args, "action")
 	if t := claims.AccessToken; t != nil {
 		scope := "crews:write"
-		if action == "list" {
+		if action == "list" || action == "runs" {
 			scope = "crews:read"
 		}
 		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
@@ -76,7 +87,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
 	}
-	if action != "list" && !crew.OwnedByCaller {
+	if action != "list" && action != "runs" && !crew.OwnedByCaller {
 		externalError(w, 403, "forbidden", "Only the Crew's owner can change its triggers.")
 		return
 	}
@@ -146,6 +157,10 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 			return
 		}
 		externalJSON(w, response)
+	case "runs":
+		query := url.Values{"profile_id": {profileID}, "project_id": {crewID}, "limit": {fmt.Sprint(externalInt(args, "limit", 20))}}
+		status, body := scheduleHandler(r, api.productSchedules.listProductWebhookRuns, http.MethodGet, "/api/product-webhooks/"+url.PathEscape(id)+"/runs", map[string]string{"id": id}, query, nil)
+		externalScheduleRespond(w, status, body)
 	case "delete":
 		if err := api.productSchedules.deleteProductWebhookConfig(ctx, userID, profileID, crewID, id); err != nil {
 			externalError(w, 400, "trigger_rejected", err.Error())
