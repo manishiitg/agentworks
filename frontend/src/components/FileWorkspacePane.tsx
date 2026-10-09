@@ -34,6 +34,8 @@ type FileWorkspacePaneProps = {
   hideManagedEntriesByDefault?: boolean
   testId?: string
   headerAction?: ReactNode
+  /** Offers Edit in the file viewer (the person's own project files). */
+  editable?: boolean
   /** Sends a request to the project's agent (commit, pull and push go through it). */
   onAsk?: (message: string) => void | Promise<unknown>
 }
@@ -55,6 +57,7 @@ function FileWorkspacePaneBody({
   hideManagedEntriesByDefault = false,
   testId,
   headerAction,
+  editable = false,
   onAsk,
 }: FileWorkspacePaneProps) {
   const git = useFileGit()
@@ -184,7 +187,7 @@ function FileWorkspacePaneBody({
         </div>
       ) : showFileContent && (
         <div className="min-h-0 min-w-0 flex-1">
-          <FileContentViewerBody headerAction={headerAction} source={source} />
+          <FileContentViewerBody headerAction={headerAction} source={source} editable={editable} />
         </div>
       )}
     </div>

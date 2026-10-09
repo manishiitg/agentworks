@@ -2,7 +2,7 @@ import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Link, Loader2, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Link, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
@@ -22,6 +22,9 @@ import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
 import { copyToClipboard } from '../utils/textUtils'
+import { agentApi } from '../services/api'
+import { openWorkspaceFile, isViewableBinaryFile } from '../utils/openWorkspaceFile'
+import { readRawFile, saveEditedFile } from '../utils/editRawFile'
 import { isCodeFile } from '../utils/codeFileLanguage'
 import {
   AUDIO_MIME_TYPES,
@@ -176,7 +179,15 @@ function PaneActionsMenu({ actions }: { actions: PaneAction[] }) {
  * is inside the viewer so Ctrl+E / Ctrl+S / Esc typed in the chat next to it
  * are left alone.
  */
-export function FileContentViewerBody({ headerAction, source }: { headerAction?: React.ReactNode; source?: FileViewerSource }) {
+// A file the editor can hold as text: not an image, document or media file.
+const NON_TEXT_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|ico|svg|pdf|docx?|xlsx?|pptx?|zip|gz|tar|mp[34]|mov|webm|wav|m4a|ogg|flac)$/i
+
+/**
+ * @param editable Offers Edit for the signed-in person's own files (the server still refuses writes they may not make).
+ *   Editing loads and saves the file's raw text: the view above unescapes "\\n" and reformats JSON, which would corrupt
+ *   code if saved back.
+ */
+export function FileContentViewerBody({ headerAction, source, editable = false }: { headerAction?: React.ReactNode; source?: FileViewerSource; editable?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const workspaceState = useWorkspaceStore(useShallow(state => ({
     selectedFile: state.selectedFile, fileContent: state.fileContent, loadingFileContent: state.loadingFileContent,
@@ -207,6 +218,12 @@ export function FileContentViewerBody({ headerAction, source }: { headerAction?:
   const [contentCopied, setContentCopied] = useState(false)
   const [slackCopied, setSlackCopied] = useState(false)
   const [failedImagePath, setFailedImagePath] = useState<string | null>(null)
+  const [edit, setEdit] = useState<{ path: string; opened: string; draft: string; saving: boolean } | null>(null)
+  // Switching to another file ends an edit (an unsaved draft is dropped).
+  useEffect(() => { setEdit(null) }, [selectedFile?.path])
+  const editingHere = edit !== null && edit.path === selectedFile?.path ? edit : null
+  const canEdit = editable && !source && !!selectedFile?.path && !loadingFileContent && !binaryFileData
+    && !fileContent.startsWith('data:') && !NON_TEXT_EXTENSIONS.test(selectedFile.path) && !isViewableBinaryFile(selectedFile.name)
   const markdownContentRef = useRef<HTMLDivElement>(null)
   const selectedFilePathLower = selectedFile?.path?.toLowerCase() || ''
   // Parsed once per render: the dispatch below used to re-parse the whole
@@ -332,6 +349,36 @@ export function FileContentViewerBody({ headerAction, source }: { headerAction?:
     }
   }, [fileContent])
 
+  const startEdit = useCallback(async () => {
+    if (!selectedFile?.path) return
+    const path = selectedFile.path
+    try {
+      const raw = await readRawFile(agentApi, path)
+      setEdit({ path, opened: raw, draft: raw, saving: false })
+    } catch {
+      addToast('Could not open this file for editing.', 'error')
+    }
+  }, [selectedFile?.path, addToast])
+
+  const saveEdit = useCallback(async () => {
+    if (!edit || edit.saving || edit.draft === edit.opened) return
+    setEdit({ ...edit, saving: true })
+    try {
+      if (await saveEditedFile(agentApi, edit.path, edit.opened, edit.draft) === 'changed') {
+        addToast('This file changed since you opened it. Close the editor, reopen the file and make your edit again.', 'error')
+        setEdit({ ...edit, saving: false })
+        return
+      }
+      setEdit(null)
+      await openWorkspaceFile(edit.path)
+      addToast('Saved.', 'success')
+    } catch (cause) {
+      const status = (cause as { response?: { status?: number } })?.response?.status
+      addToast(status === 403 ? 'You do not have permission to change this file.' : 'Could not save this file. Your edit is still here.', 'error')
+      setEdit(current => current && { ...current, saving: false })
+    }
+  }, [edit, addToast])
+
   const copyShareLink = useCallback(() => {
     if (!selectedFile?.path) return
     const uid = useAuthStore.getState().user?.id || ''
@@ -401,6 +448,16 @@ export function FileContentViewerBody({ headerAction, source }: { headerAction?:
           subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} onReveal={source?.revealFolder} /> : undefined}
           actions={<>
             <div className="flex items-center gap-0.5">
+              {editingHere ? (
+                <>
+                  <button onClick={() => setEdit(null)} disabled={editingHere.saving} className={`${ICON_BUTTON_CLASS} px-2 text-xs disabled:opacity-50`}>Cancel</button>
+                  <button onClick={() => { void saveEdit() }} disabled={editingHere.saving || editingHere.draft === editingHere.opened} className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50">{editingHere.saving ? 'Saving…' : 'Save'}</button>
+                </>
+              ) : canEdit && (
+                <button onClick={() => { void startEdit() }} className={ICON_BUTTON_CLASS} title="Edit file" aria-label="Edit file">
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
               <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
                 <Download className="w-4 h-4" />
               </button>
@@ -445,6 +502,18 @@ export function FileContentViewerBody({ headerAction, source }: { headerAction?:
                     />
                   )}
                   <p className="text-sm text-muted-foreground mt-2">Image file</p>
+                </div>
+              ) : editingHere ? (
+                <div className="h-full overflow-hidden">
+                  <Suspense fallback={<FileSurfaceFallback />}>
+                    <FileEditor
+                      value={editingHere.draft}
+                      filepath={editingHere.path}
+                      readOnly={editingHere.saving}
+                      onChange={draft => setEdit(current => current && { ...current, draft })}
+                      height="100%"
+                    />
+                  </Suspense>
                 </div>
               ) : (selectedFile?.path && isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path)) ? (
                 <div className="h-full overflow-hidden">

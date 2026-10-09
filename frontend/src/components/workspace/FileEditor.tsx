@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
-import type { OnMount } from '@monaco-editor/react'
+import type { OnChange, OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { useTheme } from '../../hooks/useTheme'
 import type { GitLineChanges } from '../../utils/gitDiffLines'
@@ -41,6 +41,9 @@ const formatPythonCode = (value: string): string => {
 interface FileEditorProps {
   value: string
   filepath: string
+  /** Read-only unless an editing surface turns it off. */
+  readOnly?: boolean
+  onChange?: (value: string) => void
   height?: string
   onMount?: (editor: editor.IStandaloneCodeEditor) => void
   /** Git change markers for the gutter (green added, blue modified, red deleted). */
@@ -50,6 +53,8 @@ interface FileEditorProps {
 export const FileEditor: React.FC<FileEditorProps> = ({
   value,
   filepath,
+  readOnly = true,
+  onChange,
   height = '100%',
   onMount,
   lineChanges,
@@ -163,6 +168,10 @@ export const FileEditor: React.FC<FileEditorProps> = ({
     else decorationsRef.current = instance.createDecorationsCollection(next)
   }, [lineChanges, editorReady])
 
+  const handleChange: OnChange = (next) => {
+    if (onChange && next !== undefined) onChange(next)
+  }
+
   // Expose a best-effort formatter to parent consumers.
   const formatDocument = useCallback(() => {
     if (!editorRef.current) {
@@ -204,10 +213,11 @@ export const FileEditor: React.FC<FileEditorProps> = ({
         height={height}
         language={language}
         value={value}
+        onChange={handleChange}
         theme={getMonacoTheme(theme)}
         onMount={handleEditorDidMount}
         options={{
-          readOnly: true,
+          readOnly,
           minimap: { enabled: true },
           wordWrap: 'on',
           lineNumbers: 'on',
