@@ -337,6 +337,7 @@ chat:
       - dismiss_duplicate_human_input_request
       - human_feedback
       - notify_user
+      - send_email
       - send_slack_message
       - google_workspace_cli
       - query_step
@@ -359,7 +360,8 @@ chat:
     # including its configured notifications. Only account-scoped tools
     # are withheld: google_workspace_cli runs arbitrary commands against
     # the account's default Google connection, which is not bound to any
-    # workflow; list_mcp_servers is the platform's MCP inventory. Deliberately kept: send_slack_message (configured workflow
+    # workflow; list_mcp_servers is the platform's MCP inventory; send_email emails any address the caller
+    # names, which a token must not do in the workflow's name (PLAT-736). Deliberately kept: send_slack_message (configured workflow
     # routes only; arbitrary channels are rejected), notify_user (the
     # user's own channels), trigger_schedule (this workflow's own
     # schedules). Adding a name here is a deliberate API change; pinning
@@ -367,6 +369,7 @@ chat:
     external_denylist:
       - google_workspace_cli
       - list_mcp_servers
+      - send_email
     # External-native tools: scoped readers plus run operations with no chat
     # equivalent, each with a server implementation. The run-mode `tools`
     # list above is the single source of truth for the run surface and is

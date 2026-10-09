@@ -363,7 +363,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 			t.Fatalf("admitted[%d] = %s, want %s", i, admitted[i], name)
 		}
 	}
-	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "notify_user", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
+	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "notify_user", "send_email", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
 	wantRun = append([]string{"brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access"}, wantRun...)
 	if len(run) != len(wantRun) {
 		t.Fatalf("run.tools has %d tools, want %d", len(run), len(wantRun))
@@ -381,8 +381,8 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 	// because they are the workflow running as configured, not the token
 	// acting beyond it. Changing either list is a deliberate API change.
 	denied := agentworksproduct.RunExternalDenylist()
-	if len(denied) != 2 || denied[0] != "google_workspace_cli" || denied[1] != "list_mcp_servers" {
-		t.Fatalf("external denylist = %v, want exactly [google_workspace_cli list_mcp_servers]", denied)
+	if len(denied) != 3 || denied[0] != "google_workspace_cli" || denied[1] != "list_mcp_servers" || denied[2] != "send_email" {
+		t.Fatalf("external denylist = %v, want exactly [google_workspace_cli list_mcp_servers send_email]", denied)
 	}
 	catalog, err := externalTools()
 	if err != nil {

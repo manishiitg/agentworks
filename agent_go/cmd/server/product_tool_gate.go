@@ -223,7 +223,7 @@ func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
 }
 
 func (g *productToolGate) allowsLocked(name string) bool {
-	if name == "notify_user" && !g.workflowNotifications {
+	if (name == "notify_user" || name == "send_email") && !g.workflowNotifications {
 		return false
 	}
 	if g.deny != nil && g.deny(name) {

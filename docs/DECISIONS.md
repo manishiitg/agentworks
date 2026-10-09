@@ -17,6 +17,20 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — send_email: emailing named people is its own tool; notify_user tells the owner
+
+- **Decided.** A new tool `send_email` (`agent_go/cmd/server/virtual-tools/send_email_tool.go`) emails the addresses the
+  caller names, by Gmail only: `to` (at least one) and `subject` are required, plus `cc`, `body`, `html` or `html_file`,
+  `attachments`. The workflow's blocked-recipients list and the account's list still apply, and the workflow's sender is
+  kept. It is held whole when the Outward permission is ask (the Pulse autonomy level below Publish), and it is refused
+  when the workflow excludes email. `notify_user` stays "tell the owner through the configured channels"; its
+  `email_to` and `email_cc` still work but its description points to `send_email`, and they are to be removed later.
+  `send_email` is admitted in Run mode (workflow runs and scripted steps) and is on the external run denylist, so an MCP
+  token cannot email arbitrary addresses in a workflow's name.
+- **Why.** `notify_user` fans one message out to Gmail, Slack, WhatsApp and Activity, so it cannot make a recipient
+  mandatory: a scripted step that named none emailed the workspace default (on RTS, the account owner), five times in 11
+  minutes. Owner decision, 2026-10-09. Ticket: PLAT-736.
+
 ### 2026-10-08 — Local Code: one command in the project folder, always read and write
 
 - **Decided.** `agentworks start` (`agent_go/cmd/agentworks/share.go`) shares the folder you are in: read and write with

@@ -179,7 +179,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		notifyProps["email_to"] = map[string]interface{}{
 			"type":        "array",
 			"items":       map[string]interface{}{"type": "string"},
-			"description": "Optional one-off Gmail To recipients for THIS notification, replacing the recipients that would otherwise apply. The DURABLE per-workflow recipient lists belong in workflow.json notifications.run_summary_recipients and pulse_summary_recipients — those are applied automatically by notification_kind, so use this arg only for a one-time send to someone else. Addresses in the account-wide or per-workflow blocked recipients list are rejected. Other channels ignore this.",
+			"description": "Optional one-off Gmail To recipients for THIS notification, replacing the recipients that would otherwise apply. Prefer the send_email tool for emailing specific people: its recipients are required and it sends by Gmail only. The DURABLE per-workflow recipient lists belong in workflow.json notifications.run_summary_recipients and pulse_summary_recipients — those are applied automatically by notification_kind, so use this arg only for a one-time send to someone else. Addresses in the account-wide or per-workflow blocked recipients list are rejected. Other channels ignore this.",
 		}
 		notifyProps["email_cc"] = map[string]interface{}{
 			"type":        "array",
@@ -218,6 +218,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		},
 	}
 	humanTools = append(humanTools, notifyUserTool)
+	humanTools = append(humanTools, createSendEmailTool())
 	humanTools = append(humanTools, llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
@@ -429,7 +430,7 @@ func IsHumanToolCategory(category string) bool {
 // assembled into the human_tools category. It is not a chat admission list;
 // AgentWorks product.yaml owns Builder/Run admission.
 func HumanToolImplementationNames() []string {
-	return []string{"human_feedback", "notify_user", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"}
+	return []string{"human_feedback", "notify_user", "send_email", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"}
 }
 
 // CreateHumanToolExecutors creates the execution functions for human tools
@@ -438,6 +439,7 @@ func CreateHumanToolExecutors() map[string]func(ctx context.Context, args map[st
 
 	executors["human_feedback"] = handleHumanFeedback
 	executors["notify_user"] = handleNotifyUser
+	executors["send_email"] = handleSendEmail
 	executors["get_notification_history"] = handleGetNotificationHistory
 	executors["send_slack_message"] = handleSlackMessage
 	executors["slack"] = handleSlackCLI
