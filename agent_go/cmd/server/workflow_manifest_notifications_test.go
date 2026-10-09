@@ -107,10 +107,10 @@ func TestLegacyNotificationInstructionsRemainEffectiveForBothSections(t *testing
 
 func TestNotificationInstructionsDefaultToMaterialTransitions(t *testing.T) {
 	var config *WorkflowNotificationConfig
-	if got := runSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "dashboard_only") {
+	if got := runSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "record_only") {
 		t.Fatalf("run default does not require history-aware quiet delivery: %q", got)
 	}
-	if got := pulseSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "external_only") {
+	if got := pulseSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "deliver_only") {
 		t.Fatalf("Pulse default does not require history-aware external delivery: %q", got)
 	}
 

@@ -17,6 +17,20 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — record_summary: the agent records a run or Pulse summary, the server delivers it
+
+- **Decided.** `record_summary` (`virtual-tools/record_summary_tool.go`) replaces the summary use of `notify_user`
+  (PLAT-736, owner decision 2026-10-09: separate tools instead of one tool for every channel). The agent supplies content
+  only: `kind` (`run_summary` or `pulse_summary`), `message`, `title`, `status`, `fields`, `sections`, optional rich email
+  and Slack renderings, and `delivery` (`record_and_deliver` default, `record_only` for an unchanged run, `deliver_only`
+  for a Pulse update already projected to Activity). It cannot name recipients, channels or webhooks: the server records
+  the summary in Activity and delivers it to the workflow's saved channels, recipients and webhooks by kind, the same
+  pipeline `notify_user` used. Sending to named people stays with `send_email` and `send_slack_message`. The scheduler,
+  finalizer and default instructions and the summary guidance now name `record_summary`.
+- **Still open.** `notify_user` remains (deprecated for summaries) because a plain message from an agent to the owner
+  has no replacement yet (`send_email` needs an address the agent does not have), and live scripted steps call it through
+  the custom tool endpoint. It is removed once those are moved.
+
 ### 2026-10-09 — send_email: emailing named people is its own tool; notify_user tells the owner
 
 - **Decided.** A new tool `send_email` (`agent_go/cmd/server/virtual-tools/send_email_tool.go`) emails the addresses the

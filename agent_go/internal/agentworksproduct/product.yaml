@@ -338,6 +338,7 @@ chat:
       - human_feedback
       - notify_user
       - send_email
+      - record_summary
       - send_slack_message
       - google_workspace_cli
       - query_step

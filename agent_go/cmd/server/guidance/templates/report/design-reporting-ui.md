@@ -71,7 +71,7 @@ distinct views needs this one top-level tab; the rest of the Dashboard's
 content becomes a second tab rather than the whole page staying tab-less.
 
 **Build it from the run summaries you already send, by default.**
-`notify_user(notification_kind="run_summary")` already writes a structured
+`record_summary(kind="run_summary")` already writes a structured
 row (title, status, message, fields, timestamp) into
 `org_dashboard_notifications` in the same `db/db.sqlite`, for every run.
 The default implementation is one call —

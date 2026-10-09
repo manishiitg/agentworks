@@ -48,14 +48,14 @@ housekeeping turn, when its prompt asks for them:
    The terminal `record_pulse_result(module=...)` calls are the single source for
    **What Pulse did**. The backend projects their user-readable reasons into one
    Activity item for the Pulse run. Do not publish, rewrite, or duplicate a Pulse
-   summary in Activity with `notify_user`.
+   summary in Activity with `record_summary`.
 
    Record the workflow execution outcome with
-   `notify_user(notification_kind="run_summary")` when this invocation ran the
-   workflow. Use `delivery_mode="dashboard_only"` when no important external
+   `record_summary(kind="run_summary")` when this invocation ran the
+   workflow. Use `delivery="record_only"` when no important external
    update is warranted, otherwise use normal delivery. Pulse Activity is already
    projected; when its instructions call for an external update, send
-   `notification_kind="pulse_summary"` with `delivery_mode="external_only"` so
+   `kind="pulse_summary"` with `delivery="deliver_only"` so
    Slack/Gmail/WhatsApp receive it without duplicating Activity. Keep final command statuses truthful with
    `record_pulse_result(command=...)`.
 

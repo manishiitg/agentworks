@@ -209,6 +209,7 @@ func CreateHumanTools() []llmtypes.Tool {
 	}
 	humanTools = append(humanTools, notifyUserTool)
 	humanTools = append(humanTools, createSendEmailTool())
+	humanTools = append(humanTools, createRecordSummaryTool(notifyProps))
 	humanTools = append(humanTools, llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
@@ -250,6 +251,8 @@ var channelLabels = map[string]string{
 
 var sendRichSlackIncomingWebhook = services.SendRichSlackIncomingWebhook
 
+const notifyUserPurposeNote = "PREFER record_summary for a workflow run or Pulse summary, and send_email or send_slack_message to reach specific people; use notify_user only for a plain message to the workflow's owner. "
+
 // buildNotifyDescription renders the notify_user description with the set of
 // channels enabled when the tool list is built (per session/run), so the agent
 // knows where its message will actually land. The always-on web UI connector is
@@ -276,13 +279,13 @@ func buildNotifyDescription() string {
 	}
 
 	if len(labels) == 0 {
-		return base + " NOTE: No notification providers are currently enabled. A configured workflow Slack webhook may still receive the message."
+		return notifyUserPurposeNote + base + " NOTE: No notification providers are currently enabled. A configured workflow Slack webhook may still receive the message."
 	}
 	desc := base + " Currently enabled delivery channels: " + strings.Join(labels, ", ") + ". The message is delivered to all enabled channels — you do not choose which."
 	if gmailOn {
 		desc += " Gmail is enabled, so email_subject, email_html, email_html_file, and email_attachments are available for the email rendering (other channels ignore these). For workflow, Pulse, org pulse, and Goal Advisor notifications, treat email as the default rich rendering: set email_subject and one inline-styled email_html body on the same notify_user call unless the user's notification preference explicitly says not to email. Do not write a separate plain email body; message_for_user is the automatic fallback. notify_user tells the owner through the configured channels and cannot name recipients: the workflow's saved recipients (notifications.run_summary_recipients / pulse_summary_recipients) apply by notification_kind. To email specific people, use the send_email tool."
 	}
-	return desc
+	return notifyUserPurposeNote + desc
 }
 
 // gmailEnabled reports whether the Gmail connector is currently an enabled
@@ -418,7 +421,7 @@ func IsHumanToolCategory(category string) bool {
 // assembled into the human_tools category. It is not a chat admission list;
 // AgentWorks product.yaml owns Builder/Run admission.
 func HumanToolImplementationNames() []string {
-	return []string{"human_feedback", "notify_user", "send_email", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"}
+	return []string{"human_feedback", "notify_user", "send_email", "record_summary", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"}
 }
 
 // CreateHumanToolExecutors creates the execution functions for human tools
@@ -428,6 +431,7 @@ func CreateHumanToolExecutors() map[string]func(ctx context.Context, args map[st
 	executors["human_feedback"] = handleHumanFeedback
 	executors["notify_user"] = handleNotifyUser
 	executors["send_email"] = handleSendEmail
+	executors["record_summary"] = handleRecordSummary
 	executors["get_notification_history"] = handleGetNotificationHistory
 	executors["send_slack_message"] = handleSlackMessage
 	executors["slack"] = handleSlackCLI

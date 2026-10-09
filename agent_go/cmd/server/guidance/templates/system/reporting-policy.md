@@ -98,7 +98,7 @@ There is no Dashboard generation step or widget-layout registry.
   for a daily workflow, `Recent Activity` for hourly/weekly/on-demand ones).
   A Dashboard with no other tabs still needs this one; the rest of its content
   becomes a second tab.
-  **Default source, no extra step needed:** every `notify_user(notification_kind="run_summary")`
+  **Default source, no extra step needed:** every `record_summary(kind="run_summary")`
   call (required at the end of a Pulse cycle, and normal after an ordinary
   run) already writes a row — title, status, message, structured fields,
   timestamp — into `org_dashboard_notifications` in this same `db.sqlite`.
