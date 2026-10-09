@@ -6,6 +6,7 @@ const GOAL_SETUP_ACTION_LABEL: Record<string, string> = {
   plan: 'Design the plan in chat',
   metrics: 'Add metrics in chat',
   dashboard: 'Design the dashboard in chat',
+  pulse: 'Turn on Pulse',
 }
 
 // Hover text for each step: what the user gets from it.
@@ -14,6 +15,7 @@ const STEP_HINT: Record<string, string> = {
   plan: 'The steps to get there',
   metrics: 'How progress is measured',
   dashboard: 'Where you see it',
+  pulse: 'Someone owns the goal from here',
 }
 
 export interface GoalSetupCardProps {

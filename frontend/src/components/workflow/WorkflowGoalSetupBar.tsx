@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { workflowManifestApi, type WorkflowGoalSetupCheck, type WorkflowGoalSetupStatus } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
+import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { goalSetupChatMessage } from '../../utils/goalSetupChat'
 import { GoalSetupCard } from './GoalSetupCard'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
@@ -50,9 +51,16 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
     if (!step || busy) return
     setBusy(true)
     try {
+      if (step.id === 'pulse') {
+        // Pulse is one click, not a chat: the same update the Pulse tab makes.
+        await useWorkflowManifestStore.getState().updateWorkflow(workspacePath, { pulse_enabled: true })
+        useChatStore.getState().addToast('Pulse turned on', 'success')
+        await refresh()
+        return
+      }
       await sendWorkspacePaneMessageToChat({ workspacePath, message: goalSetupChatMessage(step.command || 'setup-goals', playbooks) })
     } catch (cause) {
-      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not start goal setup in chat.', 'error')
+      useChatStore.getState().addToast(cause instanceof Error ? cause.message : step.id === 'pulse' ? 'Could not turn on Pulse.' : 'Could not start goal setup in chat.', 'error')
     } finally {
       setBusy(false)
     }

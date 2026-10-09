@@ -20,6 +20,8 @@ vi.mock('../../utils/goalSetupChat', () => ({
   goalSetupChatMessage: (command: string, playbooks: Array<{ title: string }> = []) => `expanded /${command}${playbooks.length ? ` from ${playbooks[0].title}` : ''}`,
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
+const updateWorkflow = vi.fn()
+vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: { getState: () => ({ updateWorkflow }) } }))
 const openWorkspaceView = vi.fn()
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView }) } }))
 
@@ -131,5 +133,32 @@ describe('WorkflowGoalSetupBar', () => {
     await act(async () => { action!.click() })
     expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ workspacePath: 'Workflow/new', message: 'expanded /setup-goals from Website Growth Loop' })
     await act(async () => second.root.unmount())
+  })
+
+  it('ends with a Pulse step that turns Pulse on directly, with no chat', async () => {
+    const ready = {
+      ...pending,
+      checks: [
+        { id: 'playbook', label: 'Playbook', done: false, optional: true },
+        { id: 'goal', label: 'Goal', done: true, command: 'setup-goals' },
+        { id: 'plan', label: 'Plan', done: true, command: 'design-plan' },
+        { id: 'metrics', label: 'Metrics', done: true, command: 'setup-goals' },
+        { id: 'dashboard', label: 'Dashboard', done: true, command: 'design-dashboard' },
+        { id: 'pulse', label: 'Pulse', done: false },
+      ],
+      next: { id: 'pulse', label: 'Pulse', done: false },
+    }
+    getGoalSetup.mockResolvedValueOnce(ready).mockResolvedValue({ ...ready, show: false, complete: true })
+    updateWorkflow.mockResolvedValue({})
+    const { container, root } = await render({ workspacePath: 'Workflow/new', canEdit: true })
+
+    expect(container.textContent).toContain('Next: Pulse')
+    const action = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Turn on Pulse')
+    expect(action).toBeTruthy()
+    await act(async () => { action!.click() })
+    expect(updateWorkflow).toHaveBeenCalledWith('Workflow/new', { pulse_enabled: true })
+    expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+    expect(container.textContent).toBe('')
+    await act(async () => root.unmount())
   })
 })
