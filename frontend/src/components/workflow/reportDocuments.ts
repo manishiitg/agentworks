@@ -97,7 +97,7 @@ export function buildReportDocumentCatalog(
 export async function loadReportDocumentCatalog(workspacePath: string): Promise<ReportDocumentCatalog> {
   // Keep the pure catalog helpers usable without initializing the full API/store
   // graph (notably in tests and lightweight toolbar renders).
-  const { agentApi } = await import('../../services/api')
+  const { agentApi, default: api } = await import('../../services/api')
   const reportRoot = `${workspacePath.replace(/\/+$/, '')}/db/reports`
   let paths: string[] = []
   try {
@@ -105,8 +105,25 @@ export async function loadReportDocumentCatalog(workspacePath: string): Promise<
     paths = flattenFiles(responseFiles(listing))
       .filter(file => file.type !== 'folder')
       .map(file => workspaceReportPath(file.filepath, workspacePath))
-      .filter(path => cleanReportPath(path) && !path.startsWith('db/reports/preview/'))
+      .filter(path => cleanReportPath(path) && !path.startsWith('db/reports/preview/') && !path.startsWith('db/reports/managed/'))
   } catch { /* a project without reports is valid */ }
+
+  const managedTitles: Record<string, string> = {}
+  try {
+    let offset = 0
+    let hasMore = true
+    while (hasMore) {
+      const { data } = await api.post<{ dashboards?: { document_path: string; title: string; managed: boolean; published_revision?: string }[]; has_more?: boolean }>('/api/dashboards', { workspace: workspacePath, action: 'list', limit: 200, offset })
+      const dashboards = data.dashboards || []
+      for (const dashboard of dashboards) {
+        if (dashboard.managed && !dashboard.published_revision) continue
+        if (!paths.includes(dashboard.document_path)) paths.push(dashboard.document_path)
+        managedTitles[dashboard.document_path] = dashboard.title
+      }
+      offset += dashboards.length
+      hasMore = Boolean(data.has_more) && dashboards.length > 0 && offset <= 10000
+    }
+  } catch { /* existing deployments without the service retain their HTML catalog */ }
 
   let manifestText = ''
   try {
@@ -128,7 +145,8 @@ export async function loadReportDocumentCatalog(workspacePath: string): Promise<
 
   const htmlEntries = await Promise.all(paths.map(async path => {
     try {
-      const content = responseContent(await agentApi.getPlannerFileContent(`${workspacePath.replace(/\/+$/, '')}/${path}`))?.content
+      const content = managedTitles[path] ? `<title>${managedTitles[path]}</title>`
+        : responseContent(await agentApi.getPlannerFileContent(`${workspacePath.replace(/\/+$/, '')}/${path}`))?.content
       return [path, content || null] as const
     } catch {
       return [path, null] as const

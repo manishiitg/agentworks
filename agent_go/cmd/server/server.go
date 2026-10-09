@@ -3069,6 +3069,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/update", api.handleUpdateWorkflow).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/constants", orchtypes.HandleWorkflowConstants).Methods("GET")
 	apiRouter.HandleFunc("/workflow/builder-session", api.handleGetWorkflowBuilderSession).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	// Headless report preview data (preview_report tool). The only API paths a
 	// report-preview scoped token can reach; see report_preview_routes.go.
 	apiRouter.HandleFunc("/workflow/report-preview/query", api.handleReportPreviewQuery).Methods("POST")

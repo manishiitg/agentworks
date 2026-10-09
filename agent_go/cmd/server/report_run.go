@@ -199,6 +199,21 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	} else if !isCode && !requireWorkflowVisible(w, r, workspacePath) {
 		return
 	}
+	if claims.PreviewConnectionID != "" {
+		if err := reportPreviewReadable(r, claims, workspacePath); err != nil {
+			writeWorkflowPermissionDenied(w, "read")
+			return
+		}
+	}
+	if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(script, false) {
+		http.Error(w, "outside connection read grants", http.StatusForbidden)
+		return
+	}
+	script, err = api.resolveDashboardDocument(r, workspacePath, script)
+	if err != nil {
+		dashboardError(w, err)
+		return
+	}
 	args := "{}"
 	if trimmed := bytes.TrimSpace(body.Args); len(trimmed) > 0 && string(trimmed) != "null" {
 		if len(trimmed) > reportRunMaxArgs || !json.Valid(trimmed) {

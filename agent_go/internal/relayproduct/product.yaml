@@ -58,6 +58,15 @@ chat:
       - perform_ui_action
       - get_file_link
       - get_report_link
+      - list_dashboards
+      - get_dashboard
+      - create_dashboard
+      - update_dashboard
+      - validate_dashboard
+      - preview_dashboard
+      - publish_dashboard
+      - restore_dashboard
+      - get_dashboard_link
       - validate_report_html
       - preview_report
       - query_workflow_db

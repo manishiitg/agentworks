@@ -1219,184 +1219,190 @@ func registerHTMLReportTools(
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", relativePath, err)
 			}
-			lower := strings.ToLower(content)
-			errors := make([]string, 0)
-			warnings := make([]string, 0)
-			if !strings.Contains(lower, "<html") {
-				warnings = append(warnings, "missing explicit <html> root; the browser will synthesize one, but a complete document is easier to inspect")
-			}
-			if !strings.Contains(lower, "<body") {
-				warnings = append(warnings, "missing explicit <body>; the browser will synthesize one, but a complete document is easier to inspect")
-			}
-			title := ""
-			if start := strings.Index(lower, "<title"); start >= 0 {
-				if openEnd := strings.Index(lower[start:], ">"); openEnd >= 0 {
-					body := content[start+openEnd+1:]
-					if end := strings.Index(strings.ToLower(body), "</title>"); end >= 0 {
-						title = strings.TrimSpace(body[:end])
-					}
-				}
-			}
-			if title == "" {
-				warnings = append(warnings, "missing non-empty <title>; add one for toolbar naming and accessibility")
-			}
-			blocks := reportScriptBlocks(content)
-			jsErrors, jsWarnings, scriptCount := validateReportJS(content, blocks)
-			errors = append(errors, jsErrors...)
-			warnings = append(warnings, jsWarnings...)
-
-			// Content after </html> is silently dropped by the browser: a
-			// <script> pasted there never runs.
-			if closes := reportHTMLClosePattern.FindAllStringIndex(content, -1); len(closes) > 0 {
-				if rest := strings.TrimSpace(content[closes[len(closes)-1][1]:]); rest != "" {
-					errors = append(errors, fmt.Sprintf("content after </html> is ignored by the browser (line %d); move it inside the document", reportLineNumber(content, closes[len(closes)-1][1])))
-				}
-			}
-
-			// A <base> tag is valid, but it changes every relative URL. Make the
-			// choice visible and leave runtime resolution to preview_report.
-			if loc := reportBaseTagPattern.FindStringIndex(content); loc != nil {
-				warnings = append(warnings, fmt.Sprintf("a <base> tag repoints relative URLs (line %d); verify all linked assets and navigation in preview_report", reportLineNumber(content, loc[0])))
-			}
-
-			// Subresources never resolve inside the sandboxed srcdoc report;
-			// https URLs are already an error above, data: URLs are fine.
-			for _, loc := range reportLinkTagPattern.FindAllStringSubmatchIndex(content, -1) {
-				attrs := content[loc[2]:loc[3]]
-				href := ""
-				if m := reportLinkHrefPattern.FindStringSubmatch(attrs); m != nil {
-					href = reportFirstNonEmpty(m[1], m[2], m[3])
-				}
-				if href == "" || strings.HasPrefix(href, "data:") || strings.HasPrefix(strings.ToLower(href), "http") {
-					continue
-				}
-				rel := ""
-				if m := reportLinkRelPattern.FindStringSubmatch(attrs); m != nil {
-					rel = strings.ToLower(reportFirstNonEmpty(m[1], m[2], m[3]))
-				}
-				tagLine := reportLineNumber(content, loc[0])
-				if strings.Contains(rel, "stylesheet") {
-					warnings = append(warnings, fmt.Sprintf("stylesheet link %q is relative (line %d); verify that it resolves in preview_report", href, tagLine))
-				} else {
-					warnings = append(warnings, fmt.Sprintf("resource link %q is ignored inside the sandboxed report (line %d); drop the tag or inline the asset", href, tagLine))
-				}
-			}
-
-			// Theme: the Report tab mirrors the APP theme onto the document as
-			// `.dark` + `data-theme`, not the OS scheme. A report that only keys
-			// off prefers-color-scheme ignores the in-app toggle.
-			usesOSScheme := strings.Contains(lower, "prefers-color-scheme")
-			usesAppTheme := strings.Contains(lower, ".dark") || strings.Contains(lower, "data-theme") || strings.Contains(lower, "report:theme") || strings.Contains(lower, "var(--")
-			if usesOSScheme && !usesAppTheme {
-				warnings = append(warnings, "dark mode keys only off prefers-color-scheme (the OS), so it ignores the app's light/dark toggle; key off `:root.dark` / `[data-theme=\"dark\"]` or the injected hsl(var(--token)) palette instead")
-			}
-
-			// Tabs: view-switch buttons without tab semantics leave
-			// screen-reader and keyboard users with no selected-state
-			// announcement.
-			hasTabButtons := strings.Contains(lower, "<button") &&
-				(strings.Contains(content, "data-report-view") ||
-					strings.Contains(lower, "tabbtn") ||
-					strings.Contains(lower, "tab-button"))
-			hasTabRoles := strings.Contains(lower, "role=\"tab\"") ||
-				strings.Contains(lower, "role='tab'") ||
-				strings.Contains(lower, "aria-selected")
-			if hasTabButtons && !hasTabRoles {
-				warnings = append(warnings, "view-switch buttons have no tab semantics; add role=\"tablist\"/role=\"tab\", aria-selected toggling, and arrow-key support")
-			}
-
-			// Activity: a hand-rolled feed over the run summaries duplicates
-			// the platform widget. Custom merged timelines stay valid; this
-			// is a nudge, not a mandate.
-			queriesActivity := strings.Contains(content, "org_dashboard_notifications")
-			buildsRows := strings.Contains(content, "innerHTML") ||
-				strings.Contains(content, "insertAdjacentHTML") ||
-				strings.Contains(content, "createElement")
-			if queriesActivity && buildsRows && !strings.Contains(content, "renderActivity") {
-				warnings = append(warnings, "hand-rolled activity feed over org_dashboard_notifications; consider window.report.renderActivity(target) for the standard route-grouped section (custom merged timelines remain valid)")
-			}
-
-			// Live SQL: run each literal query through the database so a typo'd
-			// table or column fails here, not silently in the Report tab.
-			queries, dynamicQueries := reportHTMLLiteralQueries(content)
-			sqlChecked := 0
-			if hooks.ExplainSQL != nil {
-				for _, sqlText := range queries {
-					sqlChecked++
-					if err := hooks.ExplainSQL(ctx, sqlText); err != nil {
-						preview := sqlText
-						if len(preview) > 160 {
-							preview = preview[:160] + "…"
-						}
-						errors = append(errors, fmt.Sprintf("window.report.query SQL fails against db/db.sqlite: %v -- %s", err, preview))
-					}
-				}
-			}
-
-			// Referenced files: a path that is not under the workflow shows a
-			// broken image and nothing else at runtime.
-			referenced := reportHTMLReferencedPaths(content)
-			pathsChecked := 0
-			if hooks.FileExists != nil {
-				for _, path := range referenced {
-					pathsChecked++
-					exists, err := hooks.FileExists(ctx, path)
-					if err != nil {
-						warnings = append(warnings, fmt.Sprintf("could not check referenced path %q: %v", path, err))
-						continue
-					}
-					if !exists {
-						errors = append(errors, fmt.Sprintf("referenced file %q does not exist in the workflow folder; publish it under db/ or fix the path", path))
-					}
-				}
-			}
-			// Live-data scripts: the server only runs scripts under code/.
-			runScripts := reportHTMLRunScripts(content)
-			for _, script := range runScripts {
-				if !reportRunScriptAllowed(script) {
-					errors = append(errors, fmt.Sprintf("window.report.run(%q): only a .py or .js script under code/ can run (e.g. code/reports/pipeline.py)", script))
-					continue
-				}
-				if hooks.FileExists == nil {
-					continue
-				}
-				pathsChecked++
-				referenced = append(referenced, script)
-				exists, err := hooks.FileExists(ctx, script)
-				if err != nil {
-					warnings = append(warnings, fmt.Sprintf("could not check window.report.run script %q: %v", script, err))
-				} else if !exists {
-					errors = append(errors, fmt.Sprintf("window.report.run script %q does not exist; write it under code/ first and run it once with REPORT_ARGS set", script))
-				}
-			}
-
-			result := map[string]interface{}{
-				"valid":    len(errors) == 0,
-				"path":     relativePath,
-				"title":    title,
-				"bytes":    len(content),
-				"errors":   errors,
-				"warnings": warnings,
-				"checked": map[string]interface{}{
-					"sql_literals":       sqlChecked,
-					"sql_unchecked":      dynamicQueries + (len(queries) - sqlChecked),
-					"referenced_paths":   pathsChecked,
-					"paths_unchecked":    len(referenced) - pathsChecked,
-					"script_blocks":      scriptCount,
-					"sql_check_enabled":  hooks.ExplainSQL != nil,
-					"path_check_enabled": hooks.FileExists != nil,
-				},
-				"next_step":     "Open the Report tab to verify layout and scrolling.",
-				"page_contract": "Each db/reports/*.html document owns its internal layout; the shared toolbar selects documents.",
-			}
-			out, marshalErr := json.MarshalIndent(result, "", "  ")
-			if marshalErr != nil {
-				return "", fmt.Errorf("marshal report validation: %w", marshalErr)
-			}
-			return string(out), nil
+			return ValidateDashboardHTML(ctx, relativePath, content, hooks)
 		},
 		"workflow",
 	)
 	logger.Info("✅ Registered HTML report validation tool")
 	return nil
+}
+
+// ValidateDashboardHTML is shared by app Builder and direct dashboard authoring.
+func ValidateDashboardHTML(ctx context.Context, relativePath, content string, hooks ReportHTMLValidationHooks) (string, error) {
+
+	lower := strings.ToLower(content)
+	errors := make([]string, 0)
+	warnings := make([]string, 0)
+	if !strings.Contains(lower, "<html") {
+		warnings = append(warnings, "missing explicit <html> root; the browser will synthesize one, but a complete document is easier to inspect")
+	}
+	if !strings.Contains(lower, "<body") {
+		warnings = append(warnings, "missing explicit <body>; the browser will synthesize one, but a complete document is easier to inspect")
+	}
+	title := ""
+	if start := strings.Index(lower, "<title"); start >= 0 {
+		if openEnd := strings.Index(lower[start:], ">"); openEnd >= 0 {
+			body := content[start+openEnd+1:]
+			if end := strings.Index(strings.ToLower(body), "</title>"); end >= 0 {
+				title = strings.TrimSpace(body[:end])
+			}
+		}
+	}
+	if title == "" {
+		warnings = append(warnings, "missing non-empty <title>; add one for toolbar naming and accessibility")
+	}
+	blocks := reportScriptBlocks(content)
+	jsErrors, jsWarnings, scriptCount := validateReportJS(content, blocks)
+	errors = append(errors, jsErrors...)
+	warnings = append(warnings, jsWarnings...)
+
+	// Content after </html> is silently dropped by the browser: a
+	// <script> pasted there never runs.
+	if closes := reportHTMLClosePattern.FindAllStringIndex(content, -1); len(closes) > 0 {
+		if rest := strings.TrimSpace(content[closes[len(closes)-1][1]:]); rest != "" {
+			errors = append(errors, fmt.Sprintf("content after </html> is ignored by the browser (line %d); move it inside the document", reportLineNumber(content, closes[len(closes)-1][1])))
+		}
+	}
+
+	// A <base> tag is valid, but it changes every relative URL. Make the
+	// choice visible and leave runtime resolution to preview_report.
+	if loc := reportBaseTagPattern.FindStringIndex(content); loc != nil {
+		warnings = append(warnings, fmt.Sprintf("a <base> tag repoints relative URLs (line %d); verify all linked assets and navigation in preview_report", reportLineNumber(content, loc[0])))
+	}
+
+	// Subresources never resolve inside the sandboxed srcdoc report;
+	// https URLs are already an error above, data: URLs are fine.
+	for _, loc := range reportLinkTagPattern.FindAllStringSubmatchIndex(content, -1) {
+		attrs := content[loc[2]:loc[3]]
+		href := ""
+		if m := reportLinkHrefPattern.FindStringSubmatch(attrs); m != nil {
+			href = reportFirstNonEmpty(m[1], m[2], m[3])
+		}
+		if href == "" || strings.HasPrefix(href, "data:") || strings.HasPrefix(strings.ToLower(href), "http") {
+			continue
+		}
+		rel := ""
+		if m := reportLinkRelPattern.FindStringSubmatch(attrs); m != nil {
+			rel = strings.ToLower(reportFirstNonEmpty(m[1], m[2], m[3]))
+		}
+		tagLine := reportLineNumber(content, loc[0])
+		if strings.Contains(rel, "stylesheet") {
+			warnings = append(warnings, fmt.Sprintf("stylesheet link %q is relative (line %d); verify that it resolves in preview_report", href, tagLine))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("resource link %q is ignored inside the sandboxed report (line %d); drop the tag or inline the asset", href, tagLine))
+		}
+	}
+
+	// Theme: the Report tab mirrors the APP theme onto the document as
+	// `.dark` + `data-theme`, not the OS scheme. A report that only keys
+	// off prefers-color-scheme ignores the in-app toggle.
+	usesOSScheme := strings.Contains(lower, "prefers-color-scheme")
+	usesAppTheme := strings.Contains(lower, ".dark") || strings.Contains(lower, "data-theme") || strings.Contains(lower, "report:theme") || strings.Contains(lower, "var(--")
+	if usesOSScheme && !usesAppTheme {
+		warnings = append(warnings, "dark mode keys only off prefers-color-scheme (the OS), so it ignores the app's light/dark toggle; key off `:root.dark` / `[data-theme=\"dark\"]` or the injected hsl(var(--token)) palette instead")
+	}
+
+	// Tabs: view-switch buttons without tab semantics leave
+	// screen-reader and keyboard users with no selected-state
+	// announcement.
+	hasTabButtons := strings.Contains(lower, "<button") &&
+		(strings.Contains(content, "data-report-view") ||
+			strings.Contains(lower, "tabbtn") ||
+			strings.Contains(lower, "tab-button"))
+	hasTabRoles := strings.Contains(lower, "role=\"tab\"") ||
+		strings.Contains(lower, "role='tab'") ||
+		strings.Contains(lower, "aria-selected")
+	if hasTabButtons && !hasTabRoles {
+		warnings = append(warnings, "view-switch buttons have no tab semantics; add role=\"tablist\"/role=\"tab\", aria-selected toggling, and arrow-key support")
+	}
+
+	// Activity: a hand-rolled feed over the run summaries duplicates
+	// the platform widget. Custom merged timelines stay valid; this
+	// is a nudge, not a mandate.
+	queriesActivity := strings.Contains(content, "org_dashboard_notifications")
+	buildsRows := strings.Contains(content, "innerHTML") ||
+		strings.Contains(content, "insertAdjacentHTML") ||
+		strings.Contains(content, "createElement")
+	if queriesActivity && buildsRows && !strings.Contains(content, "renderActivity") {
+		warnings = append(warnings, "hand-rolled activity feed over org_dashboard_notifications; consider window.report.renderActivity(target) for the standard route-grouped section (custom merged timelines remain valid)")
+	}
+
+	// Live SQL: run each literal query through the database so a typo'd
+	// table or column fails here, not silently in the Report tab.
+	queries, dynamicQueries := reportHTMLLiteralQueries(content)
+	sqlChecked := 0
+	if hooks.ExplainSQL != nil {
+		for _, sqlText := range queries {
+			sqlChecked++
+			if err := hooks.ExplainSQL(ctx, sqlText); err != nil {
+				preview := sqlText
+				if len(preview) > 160 {
+					preview = preview[:160] + "…"
+				}
+				errors = append(errors, fmt.Sprintf("window.report.query SQL fails against db/db.sqlite: %v -- %s", err, preview))
+			}
+		}
+	}
+
+	// Referenced files: a path that is not under the workflow shows a
+	// broken image and nothing else at runtime.
+	referenced := reportHTMLReferencedPaths(content)
+	pathsChecked := 0
+	if hooks.FileExists != nil {
+		for _, path := range referenced {
+			pathsChecked++
+			exists, err := hooks.FileExists(ctx, path)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("could not check referenced path %q: %v", path, err))
+				continue
+			}
+			if !exists {
+				errors = append(errors, fmt.Sprintf("referenced file %q does not exist in the workflow folder; publish it under db/ or fix the path", path))
+			}
+		}
+	}
+	// Live-data scripts: the server only runs scripts under code/.
+	runScripts := reportHTMLRunScripts(content)
+	for _, script := range runScripts {
+		if !reportRunScriptAllowed(script) {
+			errors = append(errors, fmt.Sprintf("window.report.run(%q): only a .py or .js script under code/ can run (e.g. code/reports/pipeline.py)", script))
+			continue
+		}
+		if hooks.FileExists == nil {
+			continue
+		}
+		pathsChecked++
+		referenced = append(referenced, script)
+		exists, err := hooks.FileExists(ctx, script)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("could not check window.report.run script %q: %v", script, err))
+		} else if !exists {
+			errors = append(errors, fmt.Sprintf("window.report.run script %q does not exist; write it under code/ first and run it once with REPORT_ARGS set", script))
+		}
+	}
+
+	result := map[string]interface{}{
+		"valid":    len(errors) == 0,
+		"path":     relativePath,
+		"title":    title,
+		"bytes":    len(content),
+		"errors":   errors,
+		"warnings": warnings,
+		"checked": map[string]interface{}{
+			"sql_literals":       sqlChecked,
+			"sql_unchecked":      dynamicQueries + (len(queries) - sqlChecked),
+			"referenced_paths":   pathsChecked,
+			"paths_unchecked":    len(referenced) - pathsChecked,
+			"script_blocks":      scriptCount,
+			"sql_check_enabled":  hooks.ExplainSQL != nil,
+			"path_check_enabled": hooks.FileExists != nil,
+		},
+		"next_step":     "Open the Report tab to verify layout and scrolling.",
+		"page_contract": "Each db/reports/*.html document owns its internal layout; the shared toolbar selects documents.",
+	}
+	out, marshalErr := json.MarshalIndent(result, "", "  ")
+	if marshalErr != nil {
+		return "", fmt.Errorf("marshal report validation: %w", marshalErr)
+	}
+	return string(out), nil
 }

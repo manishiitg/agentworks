@@ -39,7 +39,7 @@ func TestCodeSkillOptionsStayPrivateAndRefreshWithoutMutatingBuiltins(t *testing
 				t.Fatal("Code peer boundary missing from skill")
 			}
 		case "code-mcp":
-			if !strings.Contains(skill.Description, "tool is missing or fails") || !strings.Contains(skill.Content, "search_tools(server_name=") || strings.Contains(skill.Content, "works right away") {
+			if !strings.Contains(skill.Description, "tool is missing or fails") || !strings.Contains(skill.Content, "search_tools(query=") || !strings.Contains(skill.Content, "exact runtime `server_name`") || strings.Contains(skill.Content, "works right away") {
 				t.Fatal("canonical MCP discovery/timing contract missing")
 			}
 		}

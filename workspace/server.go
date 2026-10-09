@@ -176,6 +176,7 @@ func registerAPIRoutes(r *gin.Engine) {
 
 		// SQLite query routes (report widgets + DatabasePopup). The query
 		// connection is WAL-capable but query-only and statement-validated.
+		api.POST("/dashboards", requireWorkspaceAPIToken(), handlers.DashboardOperation)
 		api.POST("/query", handlers.QueryWorkflowDB)
 		api.GET("/db/tables", handlers.GetWorkflowDBTables)
 		// Mutations are internal agent/backend operations and require the workspace

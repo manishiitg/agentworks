@@ -72,13 +72,18 @@ func mintReportPreviewToken(claims *UserClaims, workspacePath string) (string, e
 	if claims != nil {
 		userID, username, email = claims.UserID, claims.Username, claims.Email
 	}
+	connectionID := ""
+	if claims != nil && claims.AccessToken != nil {
+		connectionID = claims.AccessToken.ID
+	}
 	now := time.Now()
 	preview := &UserClaims{
-		UserID:         userID,
-		Username:       username,
-		Email:          email,
-		Scope:          reportPreviewScope,
-		ScopeWorkspace: strings.Trim(strings.TrimSpace(workspacePath), "/"),
+		UserID:              userID,
+		Username:            username,
+		Email:               email,
+		Scope:               reportPreviewScope,
+		PreviewConnectionID: connectionID,
+		ScopeWorkspace:      strings.Trim(strings.TrimSpace(workspacePath), "/"),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(reportPreviewTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -108,6 +113,15 @@ func scopeAllowsPath(scope, requestPath string) bool {
 // durable store and the other authored folders, never a run's scratch output,
 // never a parent traversal.
 func reportPreviewAllowedPath(relative string) (string, bool) {
+	raw := strings.TrimSpace(relative)
+	if path.Clean(raw) != raw || strings.Contains(raw, "\\") {
+		return "", false
+	}
+	for _, part := range strings.Split(raw, "/") {
+		if strings.HasPrefix(part, ".") || strings.HasSuffix(strings.ToLower(part), ".sqlite") || strings.HasSuffix(strings.ToLower(part), ".sqlite3") || strings.HasSuffix(strings.ToLower(part), ".db") || strings.HasSuffix(part, "-wal") || strings.HasSuffix(part, "-shm") {
+			return "", false
+		}
+	}
 	normalized := strings.TrimPrefix(path.Clean("/"+strings.ReplaceAll(strings.TrimSpace(relative), "\\", "/")), "/")
 	if normalized == "" || normalized == "." || strings.HasPrefix(normalized, "../") || strings.Contains(normalized, "/../") {
 		return "", false
@@ -145,6 +159,17 @@ func reportPreviewReadable(r *http.Request, claims *UserClaims, workspacePath st
 	// A preview token is minted server-side for one workflow's session and
 	// is bound to it by reportPreviewWorkspace; the binding is its authorization.
 	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeWorkspace != "" {
+		if claims.PreviewConnectionID == "" {
+			return nil
+		}
+		copy := *claims
+		copy.Scope = ""
+		if copy.AccessToken == nil || !dashboardScopeAllowed(&copy, "preview") {
+			return errWorkspaceReadDenied
+		}
+		if _, err := (&StreamingAPI{}).dashboardTarget(r.Context(), &copy, workspacePath); err != nil {
+			return errWorkspaceReadDenied
+		}
 		return nil
 	}
 	// The preview reads with the caller's identity, so a logical per-user
@@ -204,6 +229,15 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 	relative, ok := reportPreviewAllowedPath(r.URL.Query().Get("path"))
 	if !ok {
 		http.Error(w, "path must be under db/, knowledgebase/, docs/, planning/, evaluation/, costs/ or variables/", http.StatusBadRequest)
+		return
+	}
+	relative, err = api.resolveDashboardDocument(r, workspacePath, relative)
+	if err != nil {
+		dashboardError(w, err)
+		return
+	}
+	if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(relative, false) {
+		http.Error(w, "outside connection read grants", 403)
 		return
 	}
 	full := filepath.ToSlash(filepath.Join(workspacePath, relative))

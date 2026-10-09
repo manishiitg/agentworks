@@ -98,7 +98,7 @@ func workspaceProxyHandler() http.Handler {
 		}
 		// Keep the retired workflow-files path closed, and never expose the
 		// internal shared-assets endpoint through the generic proxy.
-		if internalPath := path.Clean("/" + workspaceProxyRelativePath(r)); internalPath == "/api/workflow-files" || internalPath == "/api/shared-assets" || internalPath == "/api/shared-file-write" {
+		if internalPath := path.Clean("/" + workspaceProxyRelativePath(r)); internalPath == "/api/workflow-files" || internalPath == "/api/shared-assets" || internalPath == "/api/shared-file-write" || internalPath == "/api/dashboards" {
 			http.NotFound(w, r)
 			return
 		}

@@ -26,7 +26,7 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
+var Scopes = []string{"dashboards:read", "dashboards:write", "workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -154,8 +154,8 @@ func Validate(t Token, now time.Time) error {
 	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
-	if t.FileGuard != nil && !t.Allows("files:write") {
-		return errors.New("file guards require files:write")
+	if t.FileGuard != nil && !t.Allows("files:write") && !t.Allows("dashboards:write") {
+		return errors.New("file guards require files:write or dashboards:write")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
 		return err
@@ -198,9 +198,14 @@ func Validate(t Token, now time.Time) error {
 			seenCaps[key] = true
 		}
 	}
+	if t.Allows("dashboards:write") && !t.Allows("dashboards:read") {
+		return errors.New("dashboards:write requires dashboards:read")
+	}
 	hasWorkflowScope, hasCrewScope := false, false
 	for _, s := range t.Scopes {
 		switch {
+		case strings.HasPrefix(s, "dashboards:"):
+			hasWorkflowScope, hasCrewScope = true, true
 		case strings.HasPrefix(s, "crews:"):
 			hasCrewScope = true
 		case s == "code:review" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":

@@ -295,6 +295,15 @@ chat:
       - update_variable
       - update_workflow_config
       - validate_plan_change
+      - list_dashboards
+      - get_dashboard
+      - create_dashboard
+      - update_dashboard
+      - validate_dashboard
+      - preview_dashboard
+      - publish_dashboard
+      - restore_dashboard
+      - get_dashboard_link
       - validate_report_html
     prompt:
       file: prompts/builder.md
@@ -381,6 +390,15 @@ chat:
     # lists. Admitting an authoring mutation here is a deliberate API
     # change: direct file writes require their own scope; plans remain Builder-owned.
     external_tools:
+      - list_dashboards
+      - get_dashboard
+      - create_dashboard
+      - update_dashboard
+      - validate_dashboard
+      - preview_dashboard
+      - publish_dashboard
+      - restore_dashboard
+      - get_dashboard_link
       - list_workflows
       - get_workflow
       - get_settings

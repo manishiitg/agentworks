@@ -46,9 +46,10 @@ type UserClaims struct {
 	// only to the paths scopeAllowsPath names for that scope. A normal session
 	// token has no scope. Today's only scope is "report-preview" (a headless
 	// browser rendering one workflow's report), bound to ScopeWorkspace.
-	Scope          string `json:"scope,omitempty"`
-	ScopeWorkspace string `json:"scope_workspace,omitempty"`
-	ScopeFile      string `json:"scope_file,omitempty"` // exact file for report media playback
+	Scope               string `json:"scope,omitempty"`
+	ScopeWorkspace      string `json:"scope_workspace,omitempty"`
+	PreviewConnectionID string `json:"preview_connection_id,omitempty"`
+	ScopeFile           string `json:"scope_file,omitempty"` // exact file for report media playback
 	jwt.RegisteredClaims
 }
 
@@ -300,6 +301,15 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error": "This token is not valid for this endpoint"}`, http.StatusForbidden)
 			return
 		}
+		if claims.PreviewConnectionID != "" {
+			connection, err := activeDashboardPreviewConnection(r.Context(), claims.PreviewConnectionID)
+			if err != nil || connection.UserID != claims.UserID {
+				http.Error(w, "preview connection expired or revoked", 401)
+				return
+			}
+			claims.AccessToken = &connection
+		}
+
 		// Token is valid, add claims to context
 		ctx := context.WithValue(r.Context(), UserContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))

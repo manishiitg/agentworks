@@ -13,6 +13,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -100,7 +101,7 @@ func (api *StreamingAPI) registerWorkShareLinkTool(reg definitionToolRegistrar, 
 	}
 	return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun,
 		"Recipients must sign in to AgentWorks and have access to this "+noun+" (the owner, or anyone with "+name+" access), and they get read-only access to that file or folder only.",
-		name+" dashboards read the project's private db/ database, so today only the owner can open this link; for other people, share the underlying files with get_file_link.")
+		"Recipients must sign in and have current "+name+" access. Dashboard scripts use the viewer's permissions for selected data sources.")
 }
 
 // registerProjectShareLinkTools registers get_file_link and get_report_link
@@ -145,7 +146,7 @@ func registerProjectShareLinkTools(reg definitionToolRegistrar, userID, cleanWor
 		if err != nil {
 			return "", err
 		}
-		return createSecureReportLink(ctx, physicalRoot, canonicalWorkspace, reportPath, userID, reportAccess+" The link contains no credential.")
+		return createSecureReportLink(ctx, physicalRoot, physicalRoot, reportPath, "", reportAccess+" The link contains no credential.")
 	}, "work_files")
 }
 
@@ -162,7 +163,15 @@ func cleanReportLinkPath(value interface{}) (string, error) {
 }
 
 func createSecureReportLink(ctx context.Context, metadataRoot, linkRoot, reportPath, userID, authentication string) (string, error) {
-	metadata, err := sharedAssetMetadata(ctx, metadataRoot, reportPath)
+	metadataPath := reportPath
+	if strings.HasPrefix(reportPath, "db/reports/managed/") {
+		resolved, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: metadataRoot, Action: "resolve", DocumentPath: reportPath})
+		if err != nil {
+			return "", fmt.Errorf("project report is unavailable: %w", err)
+		}
+		metadataPath = resolved.ResolvedPath
+	}
+	metadata, err := sharedAssetMetadata(ctx, metadataRoot, metadataPath)
 	if err != nil {
 		return "", fmt.Errorf("project report is unavailable: %w", err)
 	}

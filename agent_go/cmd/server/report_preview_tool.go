@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
@@ -38,9 +40,9 @@ type reportPreviewSnapshot struct {
 	ConsoleErrors []string `json:"consoleErrors"`
 	FetchErrors   []string `json:"fetchErrors"`
 	Report        struct {
-		State        string   `json:"state"`
-		Errors       []string `json:"errors"`
-		Title        string   `json:"title"`
+		State         string   `json:"state"`
+		Errors        []string `json:"errors"`
+		Title         string   `json:"title"`
 		Tabs          []string `json:"tabs"`
 		LoadingTexts  []string `json:"loadingTexts"`
 		MarkdownTexts []string `json:"markdownTexts"`
@@ -53,6 +55,7 @@ type reportPreviewScreenshot struct {
 	Width int    `json:"width"`
 	Path  string `json:"path"`
 	Error string `json:"error,omitempty"`
+	URL   string `json:"url,omitempty"`
 }
 
 // reportPreviewScreenshotPaths returns the workspace-rooted destination for
@@ -158,7 +161,11 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 	themes := reportPreviewChoices(args["theme"], []string{"dark", "light"})
 	widths := reportPreviewWidthChoices(args["width"])
 
-	token, err := mintReportPreviewToken(&UserClaims{UserID: userID, Username: userID}, workspacePath)
+	previewClaims := GetUserFromContext(ctx)
+	if previewClaims == nil {
+		previewClaims = &UserClaims{UserID: userID, Username: userID}
+	}
+	token, err := mintReportPreviewToken(previewClaims, workspacePath)
 	if err != nil {
 		return "", fmt.Errorf("mint preview token: %w", err)
 	}
@@ -174,7 +181,8 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 	)
 	browserCtx := context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
 	browserCtx = context.WithValue(browserCtx, common.WorkflowSessionIDKey, sessionID)
-	session := "report-preview-" + shortSessionIDForPreview(sessionID)
+	previewID := uuid.NewString()
+	session := "report-preview-" + previewID
 	run := func(command string, cmdArgs ...string) (string, error) {
 		return executor.HandleAgentBrowser(browserCtx, map[string]interface{}{
 			"command": command,
@@ -243,7 +251,9 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 				}
 				time.Sleep(400 * time.Millisecond)
 				destination, reported := reportPreviewScreenshotPaths(workspacePath, documentPath, theme, width)
-				shot := reportPreviewScreenshot{Theme: theme, Width: px, Path: reported}
+				reported = path.Join(path.Dir(reported), previewID, path.Base(reported))
+				destination = workspacePath + "/" + reported
+				shot := reportPreviewScreenshot{Theme: theme, Width: px, Path: reported, URL: strings.TrimRight(api.GetCodeExecAPIURL(), "/") + "/api/workflow/report-preview/file?workspace=" + url.QueryEscape(workspacePath) + "&path=" + url.QueryEscape(reported)}
 				if _, err := run("screenshot", destination, "--full"); err != nil {
 					// Retry without the full-page flag in case this CLI build rejects it.
 					if _, retryErr := run("screenshot", destination); retryErr != nil {
@@ -382,15 +392,4 @@ func nonNilStrings(values []string) []string {
 		return []string{}
 	}
 	return values
-}
-
-func shortSessionIDForPreview(sessionID string) string {
-	sessionID = strings.TrimSpace(sessionID)
-	if len(sessionID) > 8 {
-		return sessionID[:8]
-	}
-	if sessionID == "" {
-		return "default"
-	}
-	return sessionID
 }

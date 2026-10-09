@@ -17,6 +17,20 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Managed dashboards use one revision service in the app and MCP
+
+Expose dedicated dashboard discovery, source authoring, validation, rendered preview,
+publication, restore and URL operations. Explicit dashboard read/write connection
+consent retains live project access and workflow/Crew bounds; preview additionally
+requires run consent because it may execute selected live data scripts. Immutable
+bundles keep drafts separate and publication switches one pointer, so stable URLs
+continue serving the published revision. Generic file tools still cannot edit SQLite
+or dashboard state. Crew links resolve canonical and legacy roots under current Crew
+access. Code stays owner-only. External previews preserve connection expiry,
+revocation and selected-source authority. Design follows user preferences.
+Tickets: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md),
+[PLAT-751](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-751.md).
+
 ### 2026-10-09 — Ctrl+K opens existing product creation forms
 
 Offer Create new workflow, Relay, Crew, Code workspace and video project actions

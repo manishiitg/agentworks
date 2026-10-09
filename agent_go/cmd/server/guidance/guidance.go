@@ -112,6 +112,7 @@ var allKinds = map[string]kindMeta{
 // References own procedures and examples. Prompts retain mode/authorization
 // boundaries and live context; tool discovery uses the current runtime registry.
 var referenceKinds = map[string]kindMeta{
+	"dashboard-authoring": {Group: "system", Description: "Use the shared dashboard APIs to discover, author, validate, preview, publish, restore and share live dashboards; follow user design preferences.", Modes: []string{"workshop", "run", "reporting"}, RawTemplate: true},
 	"working-with-pulse":  {Group: "system", Description: "How the Builder works with the workflow's Pulse: when to ask it, #pulse, acting on its direction within its levels, raising decisions for it, reporting back.", Modes: []string{"workshop"}},
 	"workflow-chat":       {Group: "system", Description: "Workflow chat procedures: runtime grounding, route/input selection, execution and notifications, Builder design/review flow, schedules and channel handling. Read before any workflow platform action.", Modes: []string{"workshop", "run"}},
 	"step-system-prompts": {Group: "system", Description: "Canonical runtime system prompt source for execution and orchestrator steps, including managed DB guidance. Read alongside step-description before authoring: these platform rules are supplied by the runtime, so descriptions should add only task-specific requirements. Conditions/placeholders are resolved per run; get_step_prompts shows a saved run.", Modes: []string{"workshop"}, RawTemplate: true},

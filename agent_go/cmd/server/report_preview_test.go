@@ -16,15 +16,17 @@ import (
 func TestReportPreviewAllowedPath(t *testing.T) {
 	t.Parallel()
 	for input, want := range map[string]string{
-		"db/reports/index.html":      "db/reports/index.html",
-		"/db/assets/logo.png":        "db/assets/logo.png",
-		"knowledgebase/notes/a.md":   "knowledgebase/notes/a.md",
-		"soul.md":                    "soul.md",
-		"db/../workflow.json":        "workflow.json", // cleaned, still an allowed file
-		"runs/iteration-1/out.txt":   "",
-		"../other/db/reports/x.html": "",
-		"db/../../etc/passwd":        "",
-		"":                           "",
+		"db/reports/index.html":                    "db/reports/index.html",
+		"/db/assets/logo.png":                      "db/assets/logo.png",
+		"knowledgebase/notes/a.md":                 "knowledgebase/notes/a.md",
+		"soul.md":                                  "soul.md",
+		"db/../workflow.json":                      "", // reject ambiguous traversal
+		"db/db.sqlite":                             "",
+		"db/reports/.dashboard-state/a/state.json": "",
+		"runs/iteration-1/out.txt":                 "",
+		"../other/db/reports/x.html":               "",
+		"db/../../etc/passwd":                      "",
+		"":                                         "",
 	} {
 		got, ok := reportPreviewAllowedPath(input)
 		if got != want || ok != (want != "") {

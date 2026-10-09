@@ -603,6 +603,7 @@ func (api *StreamingAPI) runQueuedExternalBuilder(ctx context.Context, turn queu
 // Managed authoring has no shell. Keep one tool list for both permission checks
 // and the direct coding-agent bridge so registered tools stay callable.
 var externalBuilderManagedTools = []string{
+	"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link",
 	"read_file", "write_file", "list_files", "search_files",
 	"add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link",
 }

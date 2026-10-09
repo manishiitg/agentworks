@@ -346,6 +346,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil {
 		return false
 	}
+	if isDashboardTool(tool.Name) {
+		return dashboardScopeAllowed(c, dashboardActions[tool.Name])
+	}
 	if knowledgebase.IsMCPTool(tool.Name) {
 		if !knowledgebaseMCPAllowed(c) {
 			return false
@@ -423,7 +426,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return reads || t.Allows("crews:read") || t.Allows("crews:write")
 	case "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill":
 		// Canonical server-owned guidance carries no workflow content.
-		return reads || t.Allows("vault:manage")
+		return reads || t.Allows("dashboards:read") || t.Allows("vault:manage")
 	case "list_workflow_knowledge", "read_workflow_knowledge":
 		// Workflow-authored learnings, notes, and skills are workflow content.
 		return t.Allows("files:read")

@@ -91,5 +91,8 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 	if err := api.registerReportPreviewTool(llmAgent, sessionID, userID, publicWorkspacePath); err != nil {
 		return fmt.Errorf("register Dashboard preview: %w", err)
 	}
+	if err := api.registerDashboardTools(llmAgent, userID, publicWorkspacePath); err != nil {
+		return err
+	}
 	return nil
 }

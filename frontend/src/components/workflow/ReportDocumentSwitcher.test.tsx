@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 const getPlannerFiles = vi.hoisted(() => vi.fn())
 const getPlannerFileContent = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({
+  default: { post: vi.fn().mockResolvedValue({ data: { dashboards: [] } }) },
   agentApi: { getPlannerFiles, getPlannerFileContent },
   getApiBaseUrl: () => '',
   getAuthToken: () => null,

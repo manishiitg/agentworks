@@ -400,6 +400,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		// the retired names asserted they still occur, which cost real
 		// debugging time while diagnosing PLAT-125.
 		if policy.allows("report_authoring") {
+			if err := api.registerDashboardTools(definitionAgent, userID, phaseWorkspacePath); err != nil {
+				return err
+			}
 			// The HTML report is loaded directly from db/reports/index.html. The
 			// builder edits those files with normal workspace tools and validates
 			// each page; there is no report-plan JSON registry or widget layer.

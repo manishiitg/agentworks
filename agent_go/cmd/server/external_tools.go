@@ -219,6 +219,7 @@ func externalTools() ([]externalTool, error) {
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
 		externalTriggerDefinitions(add)
+		dashboardToolDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
 		creatorJSON, err := json.Marshal(creatorSchema)
@@ -452,6 +453,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 			api.externalScheduleCall(w, r, call.Arguments, externalScheduleTarget{crewID: externalArg(call.Arguments, "crew_id")})
 			return
 		}
+	}
+	if isDashboardTool(tool.Name) {
+		api.externalDashboardCall(w, r, tool.Name, call.Arguments)
+		return
 	}
 	if isExternalSettingsTool(tool.Name) {
 		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""

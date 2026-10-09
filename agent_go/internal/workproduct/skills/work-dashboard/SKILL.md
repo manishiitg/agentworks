@@ -144,11 +144,40 @@ window.report.ready(async function () {
   with that document path (or omit it for the default) and present its returned
   `url` verbatim. It opens the full live
   Dashboard runtime, not the restricted generic HTML file preview. The link is
-  private to the same signed-in {{product}} account; it contains no credential and
-  does not grant access or publish the project publicly. Inspect `shareable`,
+  protected by current project access. Crew readers can open shared Crew
+  dashboards; Code dashboards remain owner-only. It contains no credential and
+  grants no access or public publication. Inspect `shareable`,
   `scope`, and `warning`; when `shareable` is false (including localhost and
   loopback deployments), describe it only as a same-machine preview and relay
   the warning instead of presenting it as shareable. It uses AgentWorks SSO and
   must not receive a second publish password/login gate; only a separately
   hosted public/static Dashboard uses publish visibility controls.
 - Tell the user the Dashboard is available from the {{product}} **Dashboard** button.
+
+## Managed dashboards and external MCP
+
+Use `create_dashboard` to create a draft from `index.html`, optional assets and
+`scripts/*.py`, `.js` or `.mjs`. PNG/JPEG/GIF/WebP images and WOFF fonts
+use matching base64 data URLs as file values. Supply the user's design; no platform style is
+required. `{{dashboard_assets}}` and `{{dashboard_scripts}}` are expanded into
+paths for the exact immutable revision. Read with `get_dashboard`; change only
+needed files through `update_dashboard` with `expected_revision`. Omitted files
+stay unchanged. Validate that revision with `validate_dashboard`, render it with
+`preview_dashboard`, and repair errors before `publish_dashboard`. Publication
+validates and switches the live pointer. `restore_dashboard` selects a previously
+published revision and checks the current draft revision. Never directly edit
+managed revision files or their state.
+
+`list_dashboards` discovers accessible dashboards and URLs. `get_dashboard_link`
+returns an authenticated published URL; users need current project access. Code
+stays owner-only. Existing HTML documents remain discoverable; use their returned
+`document_path` for get/validate/preview/link. To manage an existing document with
+revisions, read it and create a new managed dashboard from its source.
+
+External MCP clients use `get_api_spec` then `call_tool`. Request explicit
+`dashboards:read` and `dashboards:write` consent; older connections gain no new
+rights automatically. Read/write scopes retain workflow and Crew ID bounds.
+Preview additionally requires `runs:execute` and edit access because it can run
+live data scripts. It keeps the connection's scope, expiry and revocation checks.
+Publishing does not run the Relay API or a workflow. SQLite files, transcripts,
+secrets and runtime selections stay outside dashboard authoring.

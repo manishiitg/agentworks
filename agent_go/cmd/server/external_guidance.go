@@ -50,6 +50,7 @@ type externalGuidanceTopic struct {
 // rather than the external typed plan tools) are excluded, and topics that
 // mix internal and external tools carry an ExternalNote with the mapping.
 var externalGuidanceTopics = []externalGuidanceTopic{
+	{Name: "dashboard-authoring", Description: "Dashboard MCP operations, revisioned bundles, live HTML data APIs, Python/JS scripts, validation, preview and authenticated team links."},
 	{Name: "plan-change-impact", Description: "Plan-change impact analysis: trace and reconcile the blast radius across downstream steps, measurement, reports, db, learnings, and KB. Load before treating a plan change as done.", ExternalNote: "External mapping: read_skill, get_goal_metrics, mark_changelog_artifact_reviewed, and review-artifact-drift are not in your catalog. Do the combined compatibility check yourself with search_files/read_file and report dispositions in your reply. read_skill pointers to builder-reference files outside this topic list (measurement-plan, reporting-policy, stores) have no external equivalent; describe the needed change in your reply instead of attempting it. Never edit changelog files directly."},
 	{Name: "plan-design", Description: "Plan-design playbook: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns. Load when designing a new plan or restructuring one.", ExternalNote: "External mapping: read_skill, add_step, update_step, and update_step_config are not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic. execute_step and run_full_workflow ARE in your catalog when the token allows runs:execute: validate a design by running it and polling run_status. If builder_chat is available, delegate plan edits to it and poll builder_status; otherwise describe or suggest the change."},
 	{Name: "planning-steps", Description: "Workshop plan composition: take-action-by-default discipline, step-type selection, validation_schema requirements, forward-only context flow. Load before adding or editing plan steps.", ExternalNote: "External mapping: read_skill is not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic."},
@@ -57,7 +58,7 @@ var externalGuidanceTopics = []externalGuidanceTopic{
 	{Name: "step-config", Description: "Per-step config reference: store-access modes, locks, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step.", ExternalNote: "External mapping: update_step_config, add_step, update_step, change_step_type, and update_validation_schema are not direct external tools. Delegate edits through builder_chat only when it is available. read_skill, query_workflow_db, mutate_workflow_db, and other config tools named here are not either; describe the needed change in your reply instead of attempting it."},
 	{Name: "skill-management", Description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills.", ExternalNote: "External mapping: install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config are not in your catalog. list_skills and search_skills ARE in your catalog when the token allows runs:execute; use list_workflow_knowledge to inspect wiring. Installs and changes are not exposed, so say so instead of attempting them."},
 	{Name: "file-layout", Description: "Workspace file layout reference and path discipline."},
-	{Name: "secure-share-links", Description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing.", ExternalNote: "External mapping: get_file_link IS in your catalog; get_report_link and manage_internet_share are not. Use files download for local copies."},
+	{Name: "secure-share-links", Description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing.", ExternalNote: "External mapping: get_file_link IS in your catalog; get_report_link and get_dashboard_link require dashboards:read and return authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."},
 }
 
 // externalToolMutates reports whether a catalog tool performs mutations.
@@ -169,6 +170,12 @@ func externalPreparation(claims *UserClaims) []string {
 		"Load only the guidance topics relevant to the task; topic list via list_guidance_topics.",
 		"Use get_file_link for preview/download URLs; links identify a file and never grant permission.",
 		"Use files download (not read_file) for a local copy; downloads refuse to overwrite existing files.",
+	}
+	if claims != nil && claims.AccessToken != nil && claims.AccessToken.Allows("dashboards:read") {
+		steps[0] = "Use only tools present in this connection’s catalog. Dashboards: list_dashboards discovers accessible projects and published documents; get_dashboard reads the selected source. Links require recipients to have current project access."
+		if claims.AccessToken.Allows("dashboards:write") {
+			steps = append(steps, "Create or update a dashboard draft, validate its revision, preview it when runs:execute is granted, then publish_dashboard using expected_revision. restore_dashboard republishes a previous published revision. Use {{dashboard_assets}} and {{dashboard_scripts}} for revision-scoped assets and scripts; styling follows the user’s preferences.")
+		}
 	}
 	canRun := claims == nil || claims.AccessToken == nil || claims.AccessToken.Allows("runs:execute")
 	if canRun {

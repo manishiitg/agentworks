@@ -192,7 +192,7 @@ var featureCatalog = map[string]featureDefinition{
 	},
 	"dashboard": {
 		Dependencies:    []string{"database", "files"},
-		Tools:           []string{"validate_report_html", "preview_report"},
+		Tools:           []string{"validate_report_html", "preview_report", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"},
 		Skills:          []string{"work-dashboard"},
 		UIPanels:        []string{"dashboard"},
 		PromptExtension: "A visual Dashboard is enabled. Read the attached `work-dashboard` skill before creating or changing it. Follow the user's design preferences; this skill describes platform usage, not a visual style. The dashboard may contain multiple HTML views under db/reports/ with optional views.json metadata; the shared toolbar handles navigation. Reports may opt into the pinned daisyUI CDN stylesheet. Use the managed data contract and validate every changed view.",

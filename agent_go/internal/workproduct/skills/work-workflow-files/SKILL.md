@@ -64,11 +64,10 @@ include the warning; do not call it a shareable link. A URL based on `localhost`
 `127.0.0.1`, or `::1` cannot be opened by another user or device. The deployment
 must have a reachable `PUBLIC_URL` before the link can be shared.
 
-{{product}} projects are personal. The URL contains no credentials and grants no
-access; it can currently be opened only by the same signed-in {{product}} account.
-Do not describe it as public publishing or as a way to grant another user
-access. Use a publishing workflow when the user explicitly needs public or
-cross-user distribution.
+Crew dashboard links follow current Crew access, including legacy links after
+server-side root resolution. Code remains private to its owner. Links contain
+no credentials and grant no access. Each viewer's live permissions govern
+script-backed data; do not promise that sharing a URL grants data-source access.
 
 Resolve the authorized root before reading:
 

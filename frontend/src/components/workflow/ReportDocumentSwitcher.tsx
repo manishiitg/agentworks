@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, LayoutDashboard, Share2 } from 'lucide-react'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { publicWorkspacePathForUser } from '../../utils/workspacePathUtils'
 import { useChatStore } from '../../stores/useChatStore'
-import { isShareableAppOrigin, sharedReportLink } from '../../utils/sharedLinks'
+import { isShareableAppOrigin } from '../../utils/sharedLinks'
+import api from '../../services/api'
 import { copyToClipboard } from '../../utils/textUtils'
 import { readStoredReportDocumentSelection, selectReportDocument, useReportDocuments, useSelectedReportDocument } from './reportDocuments'
 
@@ -61,12 +60,14 @@ export function ReportDocumentSwitcher({ workspacePath, active, onOpen }: {
   }
 
   const copyShareLink = async (path: string) => {
-    const currentUserId = useAuthStore.getState().user?.id || ''
-    const publicWorkspacePath = publicWorkspacePathForUser(workspacePath, currentUserId)
-    const uid = publicWorkspacePath.startsWith('Chats/Work/projects/') || publicWorkspacePath.startsWith('Chats/Code/projects/')
-      ? currentUserId
-      : ''
-    const url = sharedReportLink(window.location.origin, publicWorkspacePath, path, uid)
+    let url: string
+    try {
+      const { data } = await api.post<{ url: string }>('/api/dashboards', { workspace: workspacePath, action: 'link', document_path: path })
+      url = data.url
+    } catch {
+      useChatStore.getState().addToast('Could not create the dashboard share link.', 'error')
+      return
+    }
     if (!await copyToClipboard(url)) {
       useChatStore.getState().addToast('Could not copy the report share link.', 'error')
       return

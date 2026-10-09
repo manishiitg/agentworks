@@ -28,7 +28,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review", "vault:manage", "users:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "files:write")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "files:write", "dashboards:read", "dashboards:write")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -155,7 +155,7 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return !canReview
 		case "users:manage":
 			return !claimsIsAdmin(user)
-		case "files:write":
+		case "files:write", "dashboards:write":
 			return user == nil || !userAccessForClaims(user).CanEdit
 		case "builder:chat":
 			return !builderOn
@@ -180,6 +180,9 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 			return nil, false
 		}
 		seen[scope] = true
+	}
+	if seen["dashboards:write"] && !seen["dashboards:read"] {
+		return nil, false
 	}
 	if seen["files:write"] && (!seen["workflows:read"] || !seen["files:read"]) {
 		return nil, false
@@ -470,6 +473,6 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	}
 	// A grant with no workflow IDs reaches every workflow the account may use (Builder included, bounded by the
 	// account's live role); an older Builder grant keeps the IDs it was given.
-	allCrews := slices.Contains(grant.Scopes, "crews:read") || slices.Contains(grant.Scopes, "crews:run") || slices.Contains(grant.Scopes, "crews:write")
+	allCrews := slices.Contains(grant.Scopes, "dashboards:read") || slices.Contains(grant.Scopes, "crews:read") || slices.Contains(grant.Scopes, "crews:run") || slices.Contains(grant.Scopes, "crews:write")
 	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0, AllCrews: allCrews, ExpiresAt: grant.Expires}
 }

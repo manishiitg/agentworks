@@ -25,18 +25,17 @@ describe("standalone report page", () => {
   it("opens a Work project in the full dashboard runtime for its owner", async () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "work-user");
     try {
-      expect(view.host.textContent).toContain("Dashboard runtime Chats/Work/projects/demo");
+      expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
       expect(view.host.textContent).not.toContain("Live Dashboard");
     } finally {
       await act(async () => view.root.unmount());
     }
   });
 
-  it("does not open a personal Work dashboard for a different account", async () => {
+  it("routes a team Crew link to its owner's root for server authorization", async () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "other-user");
     try {
-      expect(view.host.textContent).toContain("Only the workspace owner can open this dashboard");
-      expect(view.host.textContent).not.toContain("Dashboard runtime");
+      expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
     } finally {
       await act(async () => view.root.unmount());
     }

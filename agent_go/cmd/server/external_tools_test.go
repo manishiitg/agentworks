@@ -56,6 +56,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[]}`)
 	f.write(t, "Workflow/invoices/docs/process.md", "Invoices are reviewed weekly.\n")
 	router := gin.New()
+	router.POST("/api/dashboards", workspacehandlers.DashboardOperation)
 	router.POST("/api/shared-file-write", func(c *gin.Context) {
 		if c.GetHeader("X-Workspace-Token") != workspaceToken {
 			c.AbortWithStatus(401)
@@ -75,7 +76,17 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	})
 	router.GET("/api/documents/*file", func(c *gin.Context) {
 		rel := strings.TrimPrefix(c.Param("file"), "/")
-		if rel != "Workflow/invoices/workflow.json" && rel != "Workflow/secret/workflow.json" && rel != "Workflow/invoices/schedule-runs.json" && rel != userProductAccessFilePath() {
+		if (strings.HasPrefix(rel, "Workflow/invoices/") || strings.HasPrefix(rel, "Crew/dashboard-team/")) && strings.HasSuffix(rel, "/raw") {
+			data, err := os.ReadFile(filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw")))
+			if err != nil {
+				c.Status(404)
+				return
+			}
+			c.Data(200, "text/html", data)
+			return
+		}
+
+		if rel != "Crew/dashboard-team/product.json" && rel != "Crew/dashboard-team/workflow.json" && rel != "Workflow/invoices/workflow.json" && rel != "Workflow/secret/workflow.json" && rel != "Workflow/invoices/schedule-runs.json" && rel != userProductAccessFilePath() {
 			c.Status(404)
 			return
 		}
@@ -218,7 +229,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
-		native := map[string]bool{}
+		native := map[string]bool{"get_report_link": true}
 		for _, name := range append(agentworksproduct.RunExternalTools(), caplayerproduct.ExternalTools()...) {
 			native[name] = true
 		}
@@ -323,7 +334,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" {
+		if tool.mutates && !isDashboardTool(tool.Name) && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -346,7 +357,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 			}
 			continue
 		}
-		if name == "get_file_link" || name == "list_executions" || name == "list_schedules" || name == "get_schedule_runs" {
+		if name == "get_file_link" || name == "get_report_link" || name == "list_executions" || name == "list_schedules" || name == "get_schedule_runs" {
 			if byName[name].executes {
 				t.Fatalf("native read %s is marked executes", name)
 			}
@@ -369,7 +380,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	// Golden pin: changing the exposed surface means editing product.yaml and
 	// these lists together, deliberately.
-	wantExternal := []string{"list_workflows", "get_workflow", "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "get_token_usage", "set_token_limits", "set_allowed_models"}
+	wantExternal := []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "list_workflows", "get_workflow", "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "get_token_usage", "set_token_limits", "set_allowed_models"}
 	if len(admitted) != len(wantExternal) {
 		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
 	}
@@ -646,7 +657,7 @@ func TestExternalStopAllExecutions(t *testing.T) {
 func TestExternalToolsInternalFileEndpointCannotBeProxied(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	proxy := workspaceProxyHandler()
-	for _, target := range []string{"/api/wp/api/workflow-files", "/api/wp/api/workflow-files/", "/api/wp/api/nested/../workflow-files", "/api/wp//api//workflow-files", "/api/wp/api/nested/%2e%2e/workflow-files", "/api/wp/api/%77orkflow-files"} {
+	for _, target := range []string{"/api/wp/api/dashboards", "/api/wp/api/nested/../dashboards", "/api/wp/api/workflow-files", "/api/wp/api/workflow-files/", "/api/wp/api/nested/../workflow-files", "/api/wp//api//workflow-files", "/api/wp/api/nested/%2e%2e/workflow-files", "/api/wp/api/%77orkflow-files"} {
 		t.Run(fmt.Sprintf("path=%s", target), func(t *testing.T) {
 			before := f.upstreamCalls.Load()
 			w := httptest.NewRecorder()

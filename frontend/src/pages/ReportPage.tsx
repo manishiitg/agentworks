@@ -24,11 +24,12 @@ function decodeBase64Utf8(value: string): string | null {
 export function ReportPage({ encodedPath, ownerUid, currentUserId, onBack }: ReportPageProps) {
   const decodedPath = decodeBase64Utf8(encodedPath);
   const isValidPath = decodedPath !== null && isSafeReportWorkspacePath(decodedPath);
-  const workspacePath = decodedPath;
-  // Crew dashboards read the crew's private db/, so they stay owner-only.
+  const workspacePath = decodedPath?.startsWith("Chats/Work/projects/") && ownerUid && /^[a-zA-Z0-9_-]{1,128}$/.test(ownerUid)
+    ? `_users/${ownerUid}/${decodedPath}` : decodedPath;
+  // Crew dashboard reads are authorized by the server; Code stays owner-only.
   const physicalCodeOwner = decodedPath?.match(/^_users\/([^/]+)\/Chats\/Code\/projects\//)?.[1];
   const isWrongPersonalAccount = Boolean(
-    ((decodedPath?.startsWith("Chats/Work/") || decodedPath?.startsWith("Chats/Code/")) && ownerUid && ownerUid !== currentUserId) ||
+    (decodedPath?.startsWith("Chats/Code/") && ownerUid && ownerUid !== currentUserId) ||
     (physicalCodeOwner && physicalCodeOwner !== currentUserId),
   );
   const requestedDocument = new URLSearchParams(window.location.search).get("document") || "db/reports/index.html";
