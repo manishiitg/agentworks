@@ -54,6 +54,7 @@ interface ReportViewProps {
   reserveTopControlsSpace?: boolean
   documentPath?: string
   emptyDescription?: string
+  emptyAction?: React.ReactNode
   emptyIdentity?: { icon?: string; name: string; projectName: string }
   sendChatMessage?: ReportDataApi['sendChatMessage']
   headerAction?: React.ReactNode
@@ -194,7 +195,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard' }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyIdentity, sendChatMessage, headerAction }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -274,19 +275,22 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
                   <div className="flex flex-col items-center gap-2">
                     <EntityIdentityIcon icon={emptyIdentity.icon} label={emptyIdentity.name} className="h-12 w-12 rounded-xl text-2xl shadow-sm" />
                     <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Crew identity</div>
+                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Project identity</div>
                       <div className="mt-0.5 text-lg font-semibold">{emptyIdentity.name}</div>
-                      {emptyIdentity.projectName !== emptyIdentity.name && <div className="mt-0.5 text-xs text-muted-foreground">Crew name: {emptyIdentity.projectName}</div>}
+                      {emptyIdentity.projectName !== emptyIdentity.name && <div className="mt-0.5 text-xs text-muted-foreground">Project name: {emptyIdentity.projectName}</div>}
                     </div>
                   </div>
                 ) : <BarChart3 className="h-8 w-8 text-muted-foreground" />}
                 <div>
-                  <div className="font-semibold">Dashboard isn’t set up yet</div>
+                  <div className="font-semibold">No dashboard yet</div>
                   <p className="mt-1 text-sm text-muted-foreground">{emptyDescription ?? 'Run the workflow or ask the Builder to set up its dashboard. It will appear here when it is ready.'}</p>
                 </div>
-                <button type="button" onClick={refresh} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                  <RefreshCw className="h-3.5 w-3.5" /> Check again
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {emptyAction}
+                  <button type="button" onClick={refresh} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">
+                    <RefreshCw className="h-3.5 w-3.5" /> Check again
+                  </button>
+                </div>
               </div>
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}

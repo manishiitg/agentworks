@@ -442,7 +442,13 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
             emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
-            emptyDescription={`Ask ${noun} to create a visual dashboard for this project. It can organize tasks, notes, plans, status, research, or anything else you want to manage visually.`}
+            emptyDescription="Bring tasks, plans, notes, research and progress into one dashboard. Ask AI to build it in your preferred style, with interactive charts, animation or a video explainer."
+            emptyAction={<AskAIButton
+              workspacePath={workspacePath}
+              label="Ask AI to create"
+              message={`Create a dashboard for this ${noun} project using relevant tasks, plans, notes, research and progress already available. Follow any design or motion preferences I've shared. Use live data where useful and validate the dashboard before finishing.`}
+              onAsk={async message => { await ask(message) }}
+            />}
             sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton
               workspacePath={workspacePath}

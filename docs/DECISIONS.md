@@ -17,6 +17,23 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Open global navigation expires after ten idle minutes
+
+Hide the rail after ten minutes without navigation activity, including when
+pinned open. Pointer, scroll and keyboard activity within navigation restart the
+deadline; workspace activity does not. Carry the deadline across products and
+reloads, keep live controls mounted, and leave a small reopen control with a
+Ctrl+K / Command+K quick navigation hint. This supersedes indefinite Fixed mode.
+Ticket: [PLAT-775](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-775.md).
+
+### 2026-10-09 — Project dashboard empty states offer Ask AI creation
+
+Show a visible Ask AI action beside Check again when a project has no dashboard.
+Use the existing project chat delivery and confirmation flow, including queued
+turns, rather than prefilling a composer. Describe charts, animation and video
+explainers as options; design and motion choices follow user preferences.
+Ticket: [PLAT-774](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-774.md).
+
 ### 2026-10-09 — Each product has its own create permission (PLAT-767)
 - Replaces the single "can create" switch of PLAT-760. An admin sets, per account, where it may create: Goals
   workflows, Relays, Crews, Code, Video Studio, SparkQuill. The role still decides whether an account creates at all:

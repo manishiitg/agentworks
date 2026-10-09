@@ -1,6 +1,9 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { Pin, PinOff, X } from 'lucide-react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { PanelLeft, Pin, PinOff, X } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
+
+const NAVIGATION_IDLE_MS = 10 * 60 * 1000
+const NAVIGATION_ACTIVITY_KEY = 'product_navigation_last_activity'
 
 const ProductNavigationContext = createContext(false)
 export const useProductNavigationSidebar = () => useContext(ProductNavigationContext)
@@ -11,6 +14,46 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     'product_navigation_mode', 'fixed', ['fixed', 'auto-hide'] as const,
   )
   const autoHide = navigationMode === 'auto-hide'
+  const [revealed, setRevealed] = useState(false)
+  // Session storage carries the deadline across product remounts and reloads.
+  const lastActivity = useRef<number | null>(null)
+  const idleTimer = useRef<number | undefined>(undefined)
+  const expireNavigation = useRef(() => {})
+  expireNavigation.current = () => {
+    setRevealed(false)
+    setNavigationMode('auto-hide')
+  }
+  const scheduleIdle = useCallback(() => {
+    window.clearTimeout(idleTimer.current)
+    const remaining = NAVIGATION_IDLE_MS - (Date.now() - (lastActivity.current ?? Date.now()))
+    idleTimer.current = window.setTimeout(() => expireNavigation.current(), Math.max(0, remaining))
+  }, [])
+  const navigationActivity = useCallback(() => {
+    lastActivity.current = Date.now()
+    try { window.sessionStorage.setItem(NAVIGATION_ACTIVITY_KEY, String(lastActivity.current)) } catch { /* Storage is optional. */ }
+    scheduleIdle()
+  }, [scheduleIdle])
+  useEffect(() => {
+    if (!sidebar) return
+    if (lastActivity.current === null) {
+      let stored = 0
+      try { stored = Number(window.sessionStorage.getItem(NAVIGATION_ACTIVITY_KEY)) } catch { /* Storage is optional. */ }
+      lastActivity.current = stored > 0 && stored <= Date.now() ? stored : Date.now()
+      try { window.sessionStorage.setItem(NAVIGATION_ACTIVITY_KEY, String(lastActivity.current)) } catch { /* Storage is optional. */ }
+    }
+    scheduleIdle()
+    // Background tabs throttle timers; check the deadline immediately on return.
+    const checkDeadline = () => {
+      if (Date.now() - (lastActivity.current ?? Date.now()) >= NAVIGATION_IDLE_MS) expireNavigation.current()
+    }
+    document.addEventListener('visibilitychange', checkDeadline)
+    window.addEventListener('focus', checkDeadline)
+    return () => {
+      window.clearTimeout(idleTimer.current)
+      document.removeEventListener('visibilitychange', checkDeadline)
+      window.removeEventListener('focus', checkDeadline)
+    }
+  }, [sidebar, scheduleIdle])
   const [showNavigationHint, setShowNavigationHint] = useState(false)
   useEffect(() => {
     if (!showNavigationHint) return
@@ -20,18 +63,26 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   return <ProductNavigationContext.Provider value={sidebar}>
     {/* Navigation flyouts sit above workspace toolbars (z-30), below dialogs (z-50). */}
     {sidebar ? <div data-terminal-focus-chrome="header" data-product-navigation-mode={navigationMode}
-      className={`group/navigation relative z-40 shrink-0 ${autoHide ? 'w-0' : 'w-12'}`}>
+      onPointerEnter={() => { navigationActivity(); if (autoHide) setRevealed(true) }}
+      onPointerLeave={() => setRevealed(false)}
+      onPointerMove={navigationActivity} onPointerDown={navigationActivity} onWheel={navigationActivity}
+      onFocusCapture={() => { navigationActivity(); if (autoHide) setRevealed(true) }} onKeyDownCapture={navigationActivity}
+      onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRevealed(false) }}
+      className={`relative z-40 shrink-0 ${autoHide ? 'w-0' : 'w-12'}`}>
       {autoHide && <button type="button" aria-label="Show navigation" title="Show navigation"
+        onClick={() => { navigationActivity(); setNavigationMode('fixed') }}
         className="absolute inset-y-0 left-0 w-1.5 outline-none" />}
       {/* Use left rather than transform: fixed-position selector/monitor
           flyouts must keep the viewport as their containing block. The rail
           stays mounted so hiding it never stops the global activity monitor. */}
       <nav aria-label="Product navigation" data-product-navigation="sidebar"
-        className={`${autoHide ? 'absolute inset-y-0 -left-12 group-hover/navigation:left-0 group-hover/navigation:shadow-xl group-has-[:focus-visible]/navigation:left-0 group-has-[:focus-visible]/navigation:shadow-xl' : 'relative h-full'} flex w-12 flex-col border-r border-border bg-background px-1.5 py-3`}>
+        className={`${autoHide ? `absolute inset-y-0 ${revealed ? 'left-0 shadow-xl' : '-left-12'}` : 'relative h-full'} flex w-12 flex-col border-r border-border bg-background px-1.5 py-3`}>
         {children}
         <button type="button" aria-label="Keep navigation fixed" aria-pressed={!autoHide}
-          title={autoHide ? 'Navigation: Auto-hide · click to keep fixed' : 'Navigation: Fixed · click to auto-hide'}
+          title={autoHide ? 'Navigation: Auto-hide · click to keep fixed' : 'Navigation: Open · hides after 10 minutes without navigation activity · click to hide now'}
           onClick={() => {
+            navigationActivity()
+            setRevealed(false)
             setNavigationMode(autoHide ? 'fixed' : 'auto-hide')
             setShowNavigationHint(!autoHide)
           }}
@@ -41,6 +92,15 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
       </nav>
     </div> : <div data-terminal-focus-chrome="header" className="shrink-0 border-b border-border bg-muted px-4 py-2">
       <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">{children}</div>
+    </div>}
+    {sidebar && autoHide && !revealed && <div data-terminal-focus-chrome="header"
+      className="fixed bottom-3 left-3 z-40 flex items-center gap-1 rounded-md border border-border bg-popover p-1 text-muted-foreground shadow-sm">
+      <button type="button" aria-label="Reopen navigation" title="Reopen navigation · hides after 10 minutes without navigation activity"
+        className="rounded p-1 hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        onClick={() => { navigationActivity(); setNavigationMode('fixed') }}><PanelLeft className="h-3.5 w-3.5" /></button>
+      <button type="button" aria-label="Open quick navigation (Ctrl+K or Command+K)" title="Search products, projects, chats and panels"
+        className="rounded px-1.5 py-1 text-[10px] hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}><kbd>Ctrl+K / ⌘K</kbd></button>
     </div>}
     {showNavigationHint && <div data-terminal-focus-chrome="header" role="status"
       className="fixed bottom-3 left-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-start gap-3 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg">

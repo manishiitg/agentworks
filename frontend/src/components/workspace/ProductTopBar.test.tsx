@@ -10,6 +10,7 @@ const roots: Root[] = []
 
 beforeEach(() => {
   saved.clear()
+  window.sessionStorage.clear()
   Object.defineProperty(window, 'localStorage', { configurable: true, value: {
     getItem: (key: string) => saved.get(key) ?? null,
     setItem: (key: string, value: string) => saved.set(key, value),
@@ -19,6 +20,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => { roots.splice(0).forEach(root => root.unmount()) })
   document.body.innerHTML = ''
+  vi.useRealTimers()
 })
 
 async function render(children: React.ReactNode = <ProductTopBarActions>Account</ProductTopBarActions>) {
@@ -85,4 +87,34 @@ it('opens quick navigation from the hide hint and dismisses the hint', async () 
   } finally {
     window.removeEventListener('open-quick-switcher', opened)
   }
+})
+
+it('hides after ten minutes of navigation inactivity, and restarts after reopening', async () => {
+  vi.useFakeTimers()
+  const host = await render()
+  const navigation = host.querySelector('nav')!
+  const mode = () => host.querySelector('[data-product-navigation-mode]')?.getAttribute('data-product-navigation-mode')
+  await act(async () => vi.advanceTimersByTime(9 * 60 * 1000))
+  // Work outside the rail does not extend its deadline.
+  await act(async () => document.body.dispatchEvent(new Event('pointermove', { bubbles: true })))
+  await act(async () => vi.advanceTimersByTime(60 * 1000))
+  expect(mode()).toBe('auto-hide')
+  expect(navigation.isConnected).toBe(true)
+  const opened = vi.fn()
+  window.addEventListener('open-quick-switcher', opened)
+  try {
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open quick navigation (Ctrl+K or Command+K)"]')!.click())
+    expect(opened).toHaveBeenCalledTimes(1)
+  } finally { window.removeEventListener('open-quick-switcher', opened) }
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Reopen navigation"]')!.click())
+  expect(mode()).toBe('fixed')
+  await act(async () => vi.advanceTimersByTime(9 * 60 * 1000))
+  await act(async () => navigation.dispatchEvent(new Event('pointermove', { bubbles: true })))
+  await act(async () => vi.advanceTimersByTime(9 * 60 * 1000))
+  expect(mode()).toBe('fixed')
+  // Switching products must preserve the same deadline.
+  const restored = await render()
+  await act(async () => vi.advanceTimersByTime(60 * 1000))
+  expect(mode()).toBe('auto-hide')
+  expect(restored.querySelector('[data-product-navigation-mode]')?.getAttribute('data-product-navigation-mode')).toBe('auto-hide')
 })
