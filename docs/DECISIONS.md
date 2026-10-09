@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Someone else using the Builder gives you Run mode, not an error (PLAT-766)
+- One person at a time uses the Builder on a workflow (so edits cannot overwrite each other). A second person's
+  Builder message now runs in Run mode, and the agent and the app tell them who has the Builder; the 409 stays only for
+  your own second Builder chat. Builder returns on the next message once the holder's turn ends.
+- Work started from Run mode (MCP runs, ask, Run chats) never holds the lock (PLAT-761).
+- Code: `workflowBuilderHeldByOther` (`workflow_execution_tracker.go`), `server.go` (before session flags are set),
+  `agentSessionModeForTurn`, `ChatArea.tsx` notice from `builder_held_by`.
+  Ticket: [PLAT-766](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/builder/plat-766.md).
+
 ### 2026-10-09 — "Can create" is the one switch for new workflows, Relays and Crews (PLAT-760)
 - An account without the create permission (an editor or viewer) can no longer create a Crew, as it already could not
   create a workflow or Relay. It still edits what it may edit and uses Crews. Accounts with no directory record are

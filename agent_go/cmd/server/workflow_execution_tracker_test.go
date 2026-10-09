@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	workflowtypes "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
 func TestRunningWorkflowListIncludesWorkflowBuilderTask(t *testing.T) {
@@ -320,5 +321,30 @@ func TestOnlyFullWorkflowExecutionBlocksSchedule(t *testing.T) {
 				t.Fatalf("trackedExecutionBlocksScheduledWorkflow() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// PLAT-766: when someone else is using the Builder on a workflow, another person's Builder message runs in Run mode
+// (told who has it) instead of being refused; the holder's own second chat is not handed over.
+func TestBuilderHeldByAnotherPersonMovesTheTurnToRunMode(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"holder","username":"laxmi","can_edit":true},{"id":"other","username":"owner","can_create":true}]}`)
+	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
+		"builder-1": {
+			ExecutionID: "builder-1", SessionID: "holder-session", Source: trackedExecutionSourceWorkshopBackground,
+			Kind: "workflow_builder_task", WorkspacePath: "Workflow/automationtesting", PhaseID: "workflow-builder",
+			Status: trackedExecutionStatusRunning, UserID: "holder", TriggeredBy: "workflow_builder", StartedAt: time.Now().UTC(),
+		},
+	}}
+	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: workflowtypes.WorkflowStatusWorkflowBuilder, SelectedFolder: "Workflow/automationtesting",
+		ExecutionOptions: &ExecutionOptions{WorkshopMode: "builder"}}
+	if got := api.workflowBuilderHeldByOther("other-session", "other", req); got != "laxmi" {
+		t.Fatalf("another person's Builder message: holder = %q, want laxmi", got)
+	}
+	if got := api.workflowBuilderHeldByOther("holder-session-2", "holder", req); got != "" {
+		t.Fatalf("the holder's own second chat was handed over to Run mode (holder %q)", got)
+	}
+	req.builderHeldBy = "laxmi"
+	if notice := agentSessionModeForTurn(req, "other", "other-session", nil, true); !strings.Contains(notice, "laxmi is using the Builder") || !strings.Contains(notice, "submit_workflow_suggestion") {
+		t.Fatalf("Run-mode notice = %q", notice)
 	}
 }

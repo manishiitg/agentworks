@@ -197,6 +197,8 @@ export interface AgentQueryResponse {
   session_id?: string
   // Populated when status === 'live_input_delivered' or 'accepted'.
   delivery_status?: 'sent_to_cli' | 'queued_for_injection' | 'queued_for_turn' | 'next_turn_started'
+  /** Set when someone else was using the Builder on this workflow, so this turn ran in Run mode (PLAT-766). */
+  builder_held_by?: string
   provider?: string
   delivery_transport?: string
   delivery_source?: string

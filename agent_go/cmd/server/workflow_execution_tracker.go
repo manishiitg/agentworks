@@ -171,6 +171,20 @@ func trackedExecutionBlocksNewWorkflowBuilderChat(exec *TrackedWorkflowExecution
 	return true
 }
 
+// workflowBuilderHeldByOther is the name of the person whose Builder chat on this workflow is running, when that is
+// someone other than the caller and this request would otherwise be refused by the Builder lock; "" otherwise.
+func (api *StreamingAPI) workflowBuilderHeldByOther(sessionID, currentUserID string, req QueryRequest) string {
+	if api == nil || !workflowBusyGuardApplies(sessionID, req) {
+		return ""
+	}
+	running := api.findRunningTrackedExecutionForWorkspaceWhere(req.SelectedFolder, trackedExecutionBlocksNewWorkflowBuilderChat)
+	if running == nil || running.SessionID == sessionID {
+		return ""
+	}
+	name, _ := workflowBusyMessage(running, currentUserID)
+	return name
+}
+
 // workflowBusyMessage tells the person who was refused who holds the workflow's Builder lock and what to do.
 func workflowBusyMessage(running *TrackedWorkflowExecution, currentUserID string) (string, string) {
 	since := ""

@@ -95,6 +95,11 @@ func sessionModeFromContext(ctx context.Context) string {
 // agentSessionModeForTurn carries current access guidance into fresh and
 // retained turns. Codex's built-in sandbox is distinct from platform tools.
 func agentSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
+	if holder := strings.TrimSpace(req.builderHeldBy); holder != "" {
+		// Someone else is using the Builder on this workflow, so this turn was moved to Run mode (PLAT-766).
+		return sessionModeOpen + "\n" + holder + " is using the Builder on this workflow right now, so this turn is in Run mode: run steps and the workflow, read results and answer questions, but change nothing in the workflow (plan, code, settings, schedules). " +
+			"If the user asks for a change, tell them " + holder + " is using the Builder and offer to record it with `submit_workflow_suggestion`, or to make it once " + holder + " is done.\n" + sessionModeClose
+	}
 	if resolvedProfile != nil && resolvedProfile.Definition.ID == sparkquillproduct.ParentProfileID && !readOnly {
 		if agentProfileToolsMode(resolvedProfile) == "full" {
 			return sessionModeOpen + "\nYou are in SparkQuill Parent Mode with full native tools. Use native tools within the granted workspace and the admitted platform tools for product actions. If a built-in tool reports read-only, platform tools such as execute_shell_command still enforce their own actual folder and access permissions; attempt authorised work through them and report an actual denial instead of asking the parent to enable editing from the CLI label alone.\n" + sessionModeClose

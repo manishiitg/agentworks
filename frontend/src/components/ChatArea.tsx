@@ -3147,6 +3147,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         consumeSubmittedWorkflowContext()
         consumeSubmittedFiles()
         acceptReceipt()
+        if (response.builder_held_by) {
+          // One person at a time uses the Builder on a workflow; this message ran in Run mode instead (PLAT-766).
+          chatStore.addToast(`${response.builder_held_by} is using the Builder on this workflow, so this message runs in Run mode: you can run steps and ask questions, but not change the workflow. Builder comes back when ${response.builder_held_by} is done.`, 'info')
+        }
 
         console.log('[WF_DEBUG] 3. Before updateTabSessionId', { old: tabSessionId, new: responseSessionId, changed: responseSessionId !== tabSessionId, oldEvents: chatStore.getTabEvents(tabSessionId).length, newEvents: chatStore.getTabEvents(responseSessionId).length })
         chatStore.setSessionId(responseSessionId)

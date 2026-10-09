@@ -989,6 +989,9 @@ type QueryRequest struct {
 	// Internal: the owner a Slack channel turn's shared-account tokens count
 	// toward (botRouteTokenOwner); sub-agents bill the same person.
 	tokenOwner string `json:"-"`
+	// builderHeldBy names the person using the Builder on this workflow when this turn was moved to Run mode because
+	// of it (PLAT-766). Empty otherwise.
+	builderHeldBy string `json:"-"`
 }
 
 func buildWorkflowNotificationInstructionsPrompt(runInstructions, pulseInstructions string) string {
@@ -1436,6 +1439,8 @@ type QueryResponse struct {
 	SessionID string `json:"session_id"` // The actual session ID used for conversation history
 	Status    string `json:"status"`
 	Message   string `json:"message,omitempty"`
+	// BuilderHeldBy is set when someone else was using the Builder on this workflow, so the turn ran in Run mode.
+	BuilderHeldBy string `json:"builder_held_by,omitempty"`
 	// DeliveryStatus/Provider are populated only when handleQuery short-circuits a
 	// message into retained coding-agent CLI delivery (Status ==
 	// "live_input_delivered"). They mirror the live-input endpoint's response so the
@@ -3986,6 +3991,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
+	// One person at a time uses the Builder on a workflow. When someone else has it, this turn runs in Run mode instead
+	// of being refused, and is told who has it (PLAT-766). Your own other Builder chat still gets the 409 below.
+	if !currentUserIsReadOnly {
+		if holder := api.workflowBuilderHeldByOther(sessionID, currentUserID, req); holder != "" {
+			req.PinRunMode = true
+			req.builderHeldBy = holder
+			currentUserIsReadOnly = true
+			logfWithContext(queryLogCtx, "[WORKFLOW_BUSY] %s is using the Builder on %q: session %s runs this turn in Run mode", holder, req.SelectedFolder, sessionID)
+		}
+	}
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
@@ -5029,10 +5044,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Return immediate response with query ID
 		response := QueryResponse{
-			QueryID:   queryID,
-			SessionID: sessionID, // Include the actual session ID used for conversation history
-			Status:    "started",
-			Message:   "Query processing started. Use polling API to get real-time updates.",
+			QueryID:       queryID,
+			SessionID:     sessionID, // Include the actual session ID used for conversation history
+			Status:        "started",
+			Message:       "Query processing started. Use polling API to get real-time updates.",
+			BuilderHeldBy: req.builderHeldBy,
 		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -5476,10 +5492,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Return immediate response with query ID
 	response := QueryResponse{
-		QueryID:   queryID,
-		SessionID: sessionID, // Include the actual session ID used for conversation history
-		Status:    "started",
-		Message:   "Query processing started. Use polling API to get real-time updates.",
+		QueryID:       queryID,
+		SessionID:     sessionID, // Include the actual session ID used for conversation history
+		Status:        "started",
+		Message:       "Query processing started. Use polling API to get real-time updates.",
+		BuilderHeldBy: req.builderHeldBy,
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
