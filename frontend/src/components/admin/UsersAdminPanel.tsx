@@ -344,6 +344,16 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
     return patch
   }
 
+  // Vault reader also opens the Vault product for a restricted account.
+  const vaultReaderPatch = (u: AdminUser, role: Role, next: boolean): AdminUserWrite => {
+    const patch: AdminUserWrite = { vault_reader: next }
+    const restricted = role === 'viewer' || role === 'editor' || u.products.length > 0
+    if (next && restricted && products.includes('mcp-gateway') && !u.products.includes('mcp-gateway')) {
+      patch.products = [...u.products, 'mcp-gateway']
+    }
+    return patch
+  }
+
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
 
   return (
@@ -410,6 +420,20 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                             aria-label={`Code reviewer for ${u.username}`}
                           />
                           Code reviewer
+                        </label>
+                      )}
+                      {!vaultOnly && role !== 'admin' && products.includes('mcp-gateway') && (
+                        <label
+                          className="mt-1.5 flex items-center gap-1.5 text-xs"
+                          title="Sees Vault connections, tools, groups, who can reach what and the audit log. Changes nothing."
+                        >
+                          <Checkbox
+                            disabled={busy}
+                            checked={u.vault_reader === true}
+                            onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, vaultReaderPatch(u, role, u.vault_reader !== true))) }}
+                            aria-label={`Vault reader for ${u.username}`}
+                          />
+                          Vault reader
                         </label>
                       )}
                     </td>

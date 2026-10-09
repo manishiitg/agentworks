@@ -44,7 +44,7 @@ func (api *StreamingAPI) externalVaultCall(w http.ResponseWriter, r *http.Reques
 	claims := GetUserFromContext(r.Context())
 	// Recheck discovery's authorization: cached tools cannot retain a revoked role.
 	if !externalTokenAllows(claims, externalTool{Name: name}) {
-		externalError(w, 403, "forbidden", "Vault management requires vault:manage and an active Vault administrator.")
+		externalError(w, 403, "forbidden", "Vault tools need vault:read or vault:manage and a matching Vault role.")
 		return
 	}
 	api.vaultManagementCall(w, r, name, args)
@@ -53,8 +53,13 @@ func (api *StreamingAPI) externalVaultCall(w http.ResponseWriter, r *http.Reques
 // Both transports supply an authenticated identity; arguments never select it.
 func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !vaultBuilderAdministrator(claims.UserID) {
-		externalError(w, 403, "forbidden", "Vault administrator required.")
+	level := vaultClaimsLevel(claims)
+	if level == vaultNone || !activeMCPPerson(claims.UserID) {
+		externalError(w, 403, "forbidden", "Vault manager or Vault reader required.")
+		return
+	}
+	if level == vaultRead && !vaultOperationReads(name, args) {
+		externalError(w, 403, "forbidden", "This is read-only Vault access; changing Vault needs a Vault manager with vault:manage.")
 		return
 	}
 	if name == "query_vault_db" || name == "mutate_vault_db" {

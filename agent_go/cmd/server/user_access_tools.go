@@ -48,7 +48,7 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 			"username":       str("Account username (update_user may rename)."),
 			"email":          str("Account email."), "password": str("User-provided account password only; never echo it."),
 			"role":  map[string]interface{}{"type": "string", "enum": []string{"admin", "creator", "editor", "viewer"}, "description": "Standardized account role; wins over admin/can_create/can_edit."},
-			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"}, "code_reviewer": map[string]interface{}{"type": "boolean", "description": "May review every Code workspace's cost, chats and files, read-only and audited."},
+			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"}, "vault_reader": map[string]interface{}{"type": "boolean", "description": "May read Vault (connections, tools, groups, access, audit, SQL queries) without being an admin; changes nothing. Needs the Vault product."}, "code_reviewer": map[string]interface{}{"type": "boolean", "description": "May review every Code workspace's cost, chats and files, read-only and audited."},
 			"products": map[string]interface{}{"type": "array", "items": str("Allowed product ID.")},
 		}, "required": []string{"action"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -111,7 +111,7 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 			handler = api.handleAdminUpdateUser
 			method = http.MethodPut
 			target = "/api/admin/users"
-			for _, key := range []string{"username", "email", "password", "role", "admin", "can_create", "can_edit", "disabled", "code_reviewer", "products"} {
+			for _, key := range []string{"username", "email", "password", "role", "admin", "can_create", "can_edit", "disabled", "code_reviewer", "vault_reader", "products"} {
 				if v, ok := args[key]; ok {
 					payload[key] = v
 				}

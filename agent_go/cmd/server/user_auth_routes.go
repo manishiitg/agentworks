@@ -44,6 +44,7 @@ type UserInfo struct {
 	AllowedWorkflowIDs      []string `json:"allowed_workflow_ids,omitempty"`
 	IsAdmin                 bool     `json:"is_admin"`
 	IsCodeReviewer          bool     `json:"is_code_reviewer,omitempty"`
+	IsVaultReader           bool     `json:"is_vault_reader,omitempty"`
 	CanCreate               bool     `json:"can_create"`
 }
 

@@ -399,7 +399,7 @@ func (api *StreamingAPI) logoutVaultConnection(ctx context.Context, userID, id, 
 
 // Chat uses the exact same connection OAuth flow as the shared UI.
 func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, operation string, args json.RawMessage) (string, error) {
-	if !vaultAdminActive(userID) {
+	if level := vaultPersonLevel(userID); level == vaultNone || (level == vaultRead && !vaultReadOperations["manage_vault_access"][operation]) {
 		return "", errors.New("Vault management requires an administrator account")
 	}
 	if operation != "sign_in_connection" && operation != "connection_status" && operation != "sync_connection" && operation != "disconnect_connection" {

@@ -25,7 +25,8 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		writeUsersError(w, http.StatusUnauthorized, "sign in to the product")
 		return
 	}
-	if !currentUserIsAdmin(r) || !userAllowedProduct(claims, "mcp-gateway") {
+	// Vault readers may read (GET) what managers see; only managers change it.
+	if level := vaultPersonLevel(claims.UserID); !(currentUserIsAdmin(r) && userAllowedProduct(claims, "mcp-gateway")) && !(level == vaultRead && r.Method == http.MethodGet) {
 		writeUsersError(w, http.StatusForbidden, "Vault management requires an administrator account")
 		return
 	}
@@ -197,8 +198,7 @@ var capLayerTransport = &http.Transport{Proxy: http.ProxyFromEnvironment, DialCo
 // session. Administrator access is checked on every individual tool call.
 func capLayerAgentAccess(ctx context.Context, userID, operation string, arguments json.RawMessage) (string, error) {
 	claims := &UserClaims{UserID: userID}
-	access := userAccessForClaims(claims)
-	if userID == "" || !access.Admin || access.Disabled || !userAllowedProduct(claims, "mcp-gateway") {
+	if level := vaultPersonLevel(userID); level == vaultNone || (level == vaultRead && !vaultReadOperations["manage_vault_access"][operation]) {
 		return "", errors.New("Vault management requires an administrator account")
 	}
 	switch operation {
@@ -266,9 +266,7 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 }
 
 func capLayerAgentRequest(ctx context.Context, userID, path string, payload json.RawMessage) (string, error) {
-	claims := &UserClaims{UserID: userID}
-	access := userAccessForClaims(claims)
-	if userID == "" || !access.Admin || access.Disabled || !userAllowedProduct(claims, "mcp-gateway") {
+	if level := vaultPersonLevel(userID); level == vaultNone || (level == vaultRead && !vaultReadAgentRequest(path, payload)) {
 		return "", errors.New("Vault management requires an administrator account")
 	}
 	target, secret, err := capLayerServiceConfig()
@@ -306,7 +304,7 @@ func canUseCapLayerProfile(ctx context.Context, profileID string) bool {
 	if profileID != caplayerproduct.ProfileID {
 		return true
 	}
+	// Readers get the Vault chat too; its tools refuse them every change.
 	claims := GetUserFromContext(ctx)
-	access := userAccessForClaims(claims)
-	return claims != nil && access.Admin && !access.Disabled && userAllowedProduct(claims, "mcp-gateway")
+	return claims != nil && vaultPersonLevel(claims.UserID) != vaultNone
 }

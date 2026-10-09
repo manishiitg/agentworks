@@ -253,6 +253,10 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 403, "forbidden", "vault:manage requires an active Vault administrator.")
 			return
 		}
+		if t.Allows("vault:read") && vaultPersonLevel(c.UserID) == vaultNone {
+			externalError(w, 403, "forbidden", "vault:read requires a Vault manager or Vault reader.")
+			return
+		}
 		if t.Allows("code:review") && !currentUserCanReviewCode(r) {
 			externalError(w, 403, "forbidden", "code:review is for admins and Code reviewers.")
 			return
@@ -372,7 +376,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return c.AccessToken.Allows("knowledgebase:read")
 	}
 	if isExternalVaultTool(tool.Name) {
-		return vaultAdminActive(c.UserID) && (c.AccessToken == nil || c.AccessToken.Allows("vault:manage"))
+		level := vaultClaimsLevel(c)
+		return level == vaultManage || (level == vaultRead && vaultToolHasReads(tool.Name))
 	}
 	// Code review tools exist only for admins and Code reviewers, and a token
 	// also needs code:review; both are re-checked on every call.
@@ -438,7 +443,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return reads || t.Allows("crews:read") || t.Allows("crews:write")
 	case "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill":
 		// Canonical server-owned guidance carries no workflow content.
-		return reads || t.Allows("dashboards:read") || t.Allows("vault:manage")
+		return reads || t.Allows("dashboards:read") || t.Allows("vault:manage") || t.Allows("vault:read")
 	case "list_workflow_knowledge", "read_workflow_knowledge":
 		// Workflow-authored learnings, notes, and skills are workflow content.
 		return t.Allows("files:read")

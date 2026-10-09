@@ -242,6 +242,7 @@ func userInfoWithWorkflowPermissions(info UserInfo) UserInfo {
 		info.IsAdmin = rec.Admin
 		info.CanCreate = rec.Admin || rec.CanCreate
 		info.IsCodeReviewer = rec.CodeReviewer && !rec.Disabled
+		info.IsVaultReader = rec.VaultReader && !rec.Disabled
 	} else {
 		acc := userAccessForClaims(&UserClaims{UserID: info.ID, Username: info.Username, Email: info.Email})
 		info.IsAdmin = acc.Admin

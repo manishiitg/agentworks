@@ -6,6 +6,7 @@ type Consent = { client_name: string; redirect_uri: string; scopes: string[] }
 
 const scopeDescriptions: Record<string, string> = {
   'vault:manage': 'Manage Vault MCP connections, groups, tool and regex permissions, and secret access as an administrator. Secret values are not returned',
+  'vault:read': 'See Vault connections, tools, groups, who can reach what, the audit log, and run read-only SQL. Changes nothing',
   'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
   'workflows:read': 'See workflows you can access and their setup',
   'files:read': 'Read workflow files, including test code',
@@ -19,7 +20,7 @@ const scopeDescriptions: Record<string, string> = {
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',
   'crews:write': 'Create Crews and edit the Crews you own (identity, skills, functions, schedules, files)',
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
-  'knowledgebase:write': 'Update shared knowledge and prepare or push backups within your folder grants',
+  'knowledgebase:write': 'Save shared knowledge within your folder grants',
   'code:review': 'Review every Code workspace: cost, chats and files, read-only. Every view is recorded in the audit log',
   'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
@@ -27,6 +28,7 @@ const scopeDescriptions: Record<string, string> = {
 // The page leads with a few plain lines, one per kind of access; the exact permissions sit behind "Show details".
 const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Manage Vault connections, groups and permissions (administrator)', scopes: ['vault:manage'] },
+  { summary: 'See Vault setup, access and the audit log (read-only)', scopes: ['vault:read'] },
   { summary: 'Use Vault MCP tools you are allowed to use', scopes: ['vault:mcp'] },
   { summary: 'See and run your workflows', scopes: ['workflows:read', 'files:read', 'runs:execute'] },
   { summary: 'Discover and view your accessible dashboards', scopes: ['dashboards:read'] },

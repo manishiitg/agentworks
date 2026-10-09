@@ -17,6 +17,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Vault has two levels: manage and read
+
+A person is a Vault manager (admin with Vault) or a Vault reader (the
+`vault_reader` account flag, with Vault, no admin needed). A connection holds
+`vault:manage` or `vault:read`. Every call gets the lower of the two,
+rechecked per call. Readers see connections, tools, groups, members, who can
+reach what, the audit log and access history, and run read-only SQL; they
+open the Vault chat but change nothing and never call a Vault tool as the
+administrator. Code: `agent_go/cmd/server/vault_access_level.go`; ticket
+PLAT-738.
+
 ### 2026-10-09 — Vault access is group-only
 
 Vault tool access is given to groups, never directly to one person (a group

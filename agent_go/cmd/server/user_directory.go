@@ -83,7 +83,11 @@ type UserRecord struct {
 	// audited (code_admin.go), and read that audit log. It grants no write
 	// anywhere and is not admin.
 	CodeReviewer bool `json:"code_reviewer,omitempty"`
-	Disabled     bool `json:"disabled,omitempty"`
+	// VaultReader may read Vault (connections, tools, groups, access, audit
+	// and SQL queries) without being an admin, and changes nothing. Needs the
+	// Vault product. Vault managers are admins with Vault.
+	VaultReader bool `json:"vault_reader,omitempty"`
+	Disabled    bool `json:"disabled,omitempty"`
 	// TokenLimits caps this person's tokens per UTC day and Monday-start
 	// week on the shared server accounts (token_limits.go). Nil is unlimited.
 	TokenLimits *UserTokenLimits `json:"token_limits,omitempty"`
@@ -404,6 +408,8 @@ type UserAccess struct {
 	Disabled  bool
 	// CodeReviewer: see UserRecord.CodeReviewer.
 	CodeReviewer bool
+	// VaultReader: see UserRecord.VaultReader.
+	VaultReader bool
 	// Products the identity may open when ProductsRestricted; ignored
 	// otherwise (all products).
 	Products           []string
@@ -508,7 +514,7 @@ func accessForRecord(rec *UserRecord) UserAccess {
 	case UserRoleEditor:
 		canEdit = true
 	}
-	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled, CodeReviewer: rec.CodeReviewer}
+	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled, CodeReviewer: rec.CodeReviewer, VaultReader: rec.VaultReader}
 	if rec.CreateProducts != nil {
 		acc.CreateProducts = append([]string{}, (*rec.CreateProducts)...)
 	}
@@ -754,6 +760,7 @@ type userAdminView struct {
 	// CreateProducts is the per-product create list; null follows the role (PLAT-767).
 	CreateProducts *[]string `json:"create_products"`
 	CodeReviewer   bool      `json:"code_reviewer"`
+	VaultReader    bool      `json:"vault_reader"`
 	Disabled       bool      `json:"disabled"`
 	// Invited: added by email, no password, not signed in with SSO yet.
 	Invited            bool                        `json:"invited"`
@@ -780,7 +787,7 @@ func viewOf(rec UserRecord) userAdminView {
 		ID: rec.ID, Username: rec.Username, Email: rec.Email, Provider: provider,
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
-		Products: products, CreateProducts: rec.CreateProducts, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+		Products: products, CreateProducts: rec.CreateProducts, CodeReviewer: rec.CodeReviewer, VaultReader: rec.VaultReader, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 		Invited:              rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
 		TokenLimits:          rec.TokenLimits.normalized(),
 		AccountTokenLimits:   normalizedAccountTokenLimits(rec.AccountTokenLimits),
@@ -883,6 +890,7 @@ type userWriteRequest struct {
 	CreateProducts      *[]string `json:"create_products"`
 	ClearCreateProducts bool      `json:"clear_create_products"`
 	CodeReviewer        *bool     `json:"code_reviewer"`
+	VaultReader         *bool     `json:"vault_reader"`
 	Disabled            *bool     `json:"disabled"`
 	// TokenLimits replaces both limits when present; zero is unlimited.
 	TokenLimits *UserTokenLimits `json:"token_limits"`
@@ -1035,6 +1043,9 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	if req.CodeReviewer != nil {
 		rec.CodeReviewer = *req.CodeReviewer
 	}
+	if req.VaultReader != nil {
+		rec.VaultReader = *req.VaultReader
+	}
 	if req.Disabled != nil {
 		rec.Disabled = *req.Disabled
 	}
@@ -1054,7 +1065,7 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v token_limits=%+v account_token_limits=%s account_allowed_models=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits), accountAllowedModelsSummary(rec.AccountAllowedModels))
+	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v vault_reader=%v disabled=%v token_limits=%+v account_token_limits=%s account_allowed_models=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.VaultReader, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits), accountAllowedModelsSummary(rec.AccountAllowedModels))
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
 

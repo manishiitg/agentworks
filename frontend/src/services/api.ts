@@ -2796,6 +2796,8 @@ export interface AuthUser {
   is_admin?: boolean
   /** Reviews every Code workspace's cost, chats and files (read-only, audited). */
   is_code_reviewer?: boolean
+  /** Reads Vault (setup, access, audit, SQL queries) without being an admin; changes nothing. */
+  is_vault_reader?: boolean
   can_create?: boolean
   /** Per product, whether this account may create there (PLAT-767). */
   can_create_in?: Record<string, boolean>
@@ -2820,6 +2822,8 @@ export interface AdminUser {
   create_products?: string[] | null
   /** A permission on top of the role: reviews every Code, read-only and audited. */
   code_reviewer?: boolean
+  /** A permission on top of the role: reads Vault, changes nothing. */
+  vault_reader?: boolean
   disabled: boolean
   /** Added by email, no password, and not signed in with SSO yet. */
   invited?: boolean
@@ -2880,6 +2884,7 @@ export interface AdminUserWrite {
   /** Returns create permissions to the role's default. */
   clear_create_products?: boolean
   code_reviewer?: boolean
+  vault_reader?: boolean
   disabled?: boolean
   /** Replaces both limits; 0 is unlimited. */
   token_limits?: TokenLimits

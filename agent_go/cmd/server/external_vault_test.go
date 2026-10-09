@@ -200,3 +200,40 @@ func TestExternalVaultThroughMainMCPDiscoveryAndInvocation(t *testing.T) {
 	result = callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "manage_vault_secret_access", "arguments": map[string]any{"operation": "list"}})
 	requireRemoteError(t, result, "revoked management", "insufficient_scope")
 }
+
+// Two Vault levels (owner, 2026-10-09): a Vault reader, or a manager on a
+// vault:read connection, may read Vault but every change is refused before
+// it reaches the service; tools with no read operation are not offered.
+func TestVaultReadLevelReadsButNeverChanges(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","role":"admin"},{"id":"auditor","role":"viewer","products":["mcp-gateway"],"vault_reader":true},{"id":"member","role":"viewer","products":["mcp-gateway"]}]}`)
+	api := &StreamingAPI{}
+	call := func(claims *UserClaims, name string, args map[string]any) *httptest.ResponseRecorder {
+		raw, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
+		w := httptest.NewRecorder()
+		api.handleExternalCall(w, adminRequest("POST", "/api/external/v1/call", string(raw), claims, nil))
+		return w
+	}
+	token := func(user string, scopes ...string) *UserClaims {
+		return &UserClaims{UserID: user, AccessToken: &accesstokens.Token{Scopes: scopes}}
+	}
+	for _, claims := range []*UserClaims{token("auditor", "vault:read"), token("auditor", "vault:manage"), token("admin", "vault:read")} {
+		if w := call(claims, "manage_vault_secret_access", map[string]any{"operation": "list"}); w.Code != 200 {
+			t.Fatalf("%s read: %d %s", claims.UserID, w.Code, w.Body)
+		}
+		if w := call(claims, "manage_vault_groups", map[string]any{"operation": "create", "group_id": "x", "name": "X"}); w.Code != 403 {
+			t.Fatalf("%s changed Vault at read level: %d %s", claims.UserID, w.Code, w.Body)
+		}
+		for _, name := range []string{"mutate_vault_db", "call_vault_mcp_tool"} {
+			if externalTokenAllows(claims, externalTool{Name: name}) {
+				t.Fatalf("%s offered %s at read level", claims.UserID, name)
+			}
+		}
+	}
+	if externalTokenAllows(token("member", "vault:read"), externalTool{Name: "read_vault_audit"}) {
+		t.Fatal("a person with no Vault role reads Vault")
+	}
+	if !externalTokenAllows(token("admin", "vault:manage"), externalTool{Name: "mutate_vault_db"}) {
+		t.Fatal("manager lost manage tools")
+	}
+}
