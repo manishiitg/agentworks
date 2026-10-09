@@ -4231,7 +4231,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.interruptWorkflowPolicySession(sessionID, req.Provider)
 	}
 	if retainedWorkflowCompatible {
-		r = r.WithContext(contextWithSessionMode(r.Context(), agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly)))
+		r = r.WithContext(contextWithSessionMode(r.Context(), agentSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, currentUserIsReadOnly)))
 	}
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
 		return
@@ -6348,12 +6348,28 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					guardReadOnly := profileReadOnly
 					guardWrite := []string{profileWrite}
 					guardBlocked := []string(nil)
+					crewRunOutput := ""
 					if crewReadOnlyTurn {
 						guardWriteRoot = ""
 						guardReadOnly = append([]string{profileWrite}, profileReadOnly...)
 						guardWrite = nil
-						guardBlocked = append(guardBlocked, profileWrite)
+						// Run mode runs what the owner built and saves what it produces in this conversation's run
+						// folder, made here; the rest of the Crew stays unwritable (PLAT-756). The project root is then
+						// not a blocked-write root: blocked writes win in every layer and would close the folder.
+						if folder := crewRunFolder(profileRoot, sessionID); folder != "" {
+							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
+								log.Printf("[AGENT PROFILE FOLDER GUARD] Run folder %s not created: %v", folder, err)
+							} else {
+								crewRunOutput = folder
+								guardWrite = []string{folder}
+							}
+						}
+						if crewRunOutput == "" {
+							guardBlocked = append(guardBlocked, profileWrite)
+						}
 					}
+					common.SetSessionRunOutputPath(sessionID, crewRunOutput)
+					common.ReplaceSessionShellEnvPrefix(sessionID, crewRunDirEnv, crewRunFolderEnv(crewRunOutput))
 					// Brain's chat: a person who owns the whole Brain also works in Brain's folder with a shell and git,
 					// like any product's folder (PLAT-633); everyone else stays in their own Brain chat folder.
 					brainGrant := ""
@@ -6369,6 +6385,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
+					if crewRunOutput != "" {
+						executorWrite = append(executorWrite, crewRunOutput)
+					}
 					if brainGrant != "" {
 						executorWrite = append(executorWrite, brainGrant)
 					}
@@ -8234,7 +8253,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationMux.Unlock()
 		}
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
-		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly), chatQuery)
+		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, currentUserIsReadOnly), chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)

@@ -24,7 +24,7 @@ const (
 // chatting in it, a guest call into the owner's Crew, or a read-only Slack/WhatsApp
 // channel route. shared is true for a chat channel, where several people write to one
 // conversation, so the "this conversation is yours alone" line is left out.
-func crewSessionModeNotice(crewRoot string, shared bool) string {
+func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
 	owner := ""
 	if ownerID, ok := crewProjectOwnerID(crewRoot); ok {
 		owner = crewOwnerDisplayName(ownerID)
@@ -37,9 +37,19 @@ func crewSessionModeNotice(crewRoot string, shared bool) string {
 	if shared {
 		scope = "This is a shared chat channel: several people write to this conversation. "
 	}
-	return sessionModeOpen + "\nYou are a read-only reader of " + who + " Crew. " +
-		"Inspect freely (files, briefs, configuration, schedules, triggers, run history) and run the Crew's attached workflow triggers when asked. " +
-		"Change nothing: no file, shell, database, schedule, trigger, selection, identity, folder or bot changes; mutation tools are not available, so do not work around that. " +
+	output := "Change nothing: no file, database, schedule, trigger, selection, identity, folder or bot changes; mutation tools are not available, so do not work around that. "
+	if runFolder != "" {
+		where := "`" + runFolder + "`"
+		if abs := cliPolicyPath(runFolder); abs != "" {
+			where += " (absolute path `" + abs + "`)"
+		}
+		output = "Save everything a run produces (evidence, recordings, reports, results, scratch files) in this conversation's run folder " + where + ", " +
+			"also in the environment variable " + crewRunDirEnv + ". It exists already and is the only place you can write; when a script writes elsewhere, point it there with an argument or environment variable rather than editing it. " +
+			"Change nothing else: not the Crew's files, code, memory, skills, functions, database, schedules, triggers, selections, identity, folders or bots; those tools are not available, so do not work around that. "
+	}
+	return sessionModeOpen + "\nYou are in Run mode on " + who + " Crew: you run what its owner built and cannot change the Crew. " +
+		"Inspect freely (files, briefs, configuration, schedules, triggers, run history), and run the Crew's functions, scripts and attached workflow triggers when asked. " +
+		output +
 		"If the user wants something changed, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
 		scope + "Never print secret values.\n" + sessionModeClose
 }
@@ -84,14 +94,14 @@ func sessionModeFromContext(ctx context.Context) string {
 
 // agentSessionModeForTurn carries current access guidance into fresh and
 // retained turns. Codex's built-in sandbox is distinct from platform tools.
-func agentSessionModeForTurn(req QueryRequest, currentUserID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
+func agentSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
 	if resolvedProfile != nil && resolvedProfile.Definition.ID == sparkquillproduct.ParentProfileID && !readOnly {
 		if agentProfileToolsMode(resolvedProfile) == "full" {
 			return sessionModeOpen + "\nYou are in SparkQuill Parent Mode with full native tools. Use native tools within the granted workspace and the admitted platform tools for product actions. If a built-in tool reports read-only, platform tools such as execute_shell_command still enforce their own actual folder and access permissions; attempt authorised work through them and report an actual denial instead of asking the parent to enable editing from the CLI label alone.\n" + sessionModeClose
 		}
 		return sessionModeOpen + "\nYou are in SparkQuill Parent Mode. Use the admitted platform tools, including execute_shell_command, to create and save requested lessons in the family workspace. Codex's read-only sandbox applies to its built-in tools; it does not make the platform workspace tools viewing-only. Those tools enforce the actual folder and access permissions. Use them for authorised writes and report their actual errors if denied; do not ask the parent to enable editing merely because the CLI reports read-only.\n" + sessionModeClose
 	}
-	return crewSessionModeForTurn(req, currentUserID, resolvedProfile, readOnly)
+	return crewSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, readOnly)
 }
 
 // crewSessionModeForTurn is the notice for this turn, or "" for an owner or editor.
@@ -101,12 +111,13 @@ func agentSessionModeForTurn(req QueryRequest, currentUserID string, resolvedPro
 // but with read-only access, so "the caller is not the owner" would miss it, while tools
 // and folder guards already treat it as read-only. A non-owner reader and a guest call
 // are read-only turns too; they are also matched directly as a belt-and-braces check.
-func crewSessionModeForTurn(req QueryRequest, currentUserID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
+func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
 	if resolvedProfile == nil || !isProjectProfileID(resolvedProfile.Definition.ID) {
 		return ""
 	}
 	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
-		return crewSessionModeNotice(req.SelectedFolder, strings.TrimSpace(req.BotPlatform) != "")
+		runFolder := crewRunFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder), sessionID)
+		return crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
 	}
 	return ""
 }
@@ -226,5 +237,9 @@ func readOnlyRefusalHint(ctx context.Context) string {
 	if strings.TrimSpace(cfg.WorkflowPath) != "" {
 		tool = "submit_workflow_suggestion"
 	}
-	return ". This session is read-only, so this change is not possible: do not work around it. Offer it to the owner with `" + tool + "` (the user's request in their words)"
+	where := ""
+	if cfg.RunOutputPath != "" {
+		where = " Outputs belong in the run folder `" + cfg.RunOutputPath + "`."
+	}
+	return ". This session is in Run mode, which cannot change the Crew or workflow, so this change is not possible: do not work around it." + where + " Offer the change to the owner with `" + tool + "` (the user's request in their words)"
 }

@@ -111,8 +111,8 @@ func TestIsActiveWorkProjectWorkspaceAnyOwner(t *testing.T) {
 
 func TestCrewSessionModeNotice(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
-	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha", false)
-	for _, marker := range []string{"read-only", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
+	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha", "", false)
+	for _, marker := range []string{"Run mode", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
 		if !strings.Contains(notice, marker) {
 			t.Fatalf("session notice missing %q:\n%s", marker, notice)
 		}
@@ -1186,7 +1186,7 @@ func TestReadOnlyRefusalHint(t *testing.T) {
 		t.Fatalf("owner session got a hint: %q", hint)
 	}
 	common.SetSessionWorkflowReadOnly(sid, true)
-	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, crewSuggestionToolName) || !strings.Contains(hint, "read-only") {
+	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, crewSuggestionToolName) || !strings.Contains(hint, "Run mode") {
 		t.Fatalf("Crew reader hint = %q", hint)
 	}
 	common.SetSessionWorkflowPath(sid, "Workflow/x")
@@ -1213,7 +1213,7 @@ func TestReaderDeniedToolRefusal(t *testing.T) {
 	}
 	common.SetSessionCrewReader(sid, true)
 	msg := readerDeniedToolRefusal(ctx, "create_project_schedule")
-	for _, want := range []string{"create_project_schedule", "read-only", crewSuggestionToolName} {
+	for _, want := range []string{"create_project_schedule", "Run mode", crewSuggestionToolName} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("refusal missing %q: %q", want, msg)
 		}
@@ -1234,7 +1234,7 @@ func TestReaderDeniedToolRefusal(t *testing.T) {
 		Success bool   `json:"success"`
 		Error   string `json:"error"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Success || !strings.Contains(body.Error, "read-only") {
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Success || !strings.Contains(body.Error, "Run mode") {
 		t.Fatalf("response = %s (%v)", rec.Body.String(), err)
 	}
 }
@@ -1259,17 +1259,17 @@ func TestReadOnlyShellHint(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &outer)
 		return outer.Result
 	}
-	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); strings.Contains(got, "read-only") {
+	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); strings.Contains(got, "Run mode") {
 		t.Fatalf("owner got a hint: %s", got)
 	}
 	common.SetSessionWorkflowReadOnly(sid, true)
-	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); !strings.Contains(got, "Operation not permitted") || !strings.Contains(got, "read-only") || !strings.Contains(got, crewSuggestionToolName) {
+	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); !strings.Contains(got, "Operation not permitted") || !strings.Contains(got, "Run mode") || !strings.Contains(got, crewSuggestionToolName) {
 		t.Fatalf("blocked write not explained: %s", got)
 	}
-	if got := run("execute_shell_command", "cat: nope: No such file or directory\n"); strings.Contains(got, "read-only") {
+	if got := run("execute_shell_command", "cat: nope: No such file or directory\n"); strings.Contains(got, "Run mode") {
 		t.Fatalf("an unrelated failure was annotated: %s", got)
 	}
-	if got := run("read_image", "sh: x: Operation not permitted\n"); strings.Contains(got, "read-only") {
+	if got := run("read_image", "sh: x: Operation not permitted\n"); strings.Contains(got, "Run mode") {
 		t.Fatalf("another tool was annotated: %s", got)
 	}
 }
@@ -1282,24 +1282,24 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	profile := &resolvedAgentProfile{}
 	profile.Definition.ID = "work"
 	req := QueryRequest{AgentProfileID: "work", SelectedFolder: "_users/owner/Chats/Work/projects/alpha"}
-	if got := crewSessionModeForTurn(req, "owner", profile, false); got != "" {
+	if got := crewSessionModeForTurn(req, "owner", "", profile, false); got != "" {
 		t.Fatalf("an owner's own turn got a notice: %q", got)
 	}
 	slack := req
 	slack.BotPlatform = "slack"
-	got := crewSessionModeForTurn(slack, "owner", profile, true)
-	if !strings.Contains(got, "read-only reader") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
+	got := crewSessionModeForTurn(slack, "owner", "", profile, true)
+	if !strings.Contains(got, "Run mode") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
 		t.Fatalf("read-only channel turn (running as the owner) notice = %q", got)
 	}
-	if got := crewSessionModeForTurn(req, "owner", profile, true); !strings.Contains(got, "alone") {
+	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") {
 		t.Fatalf("read-only web turn notice = %q", got)
 	}
 	code := &resolvedAgentProfile{}
 	code.Definition.ID = "code"
-	if got := crewSessionModeForTurn(req, "owner", code, true); got == "" {
+	if got := crewSessionModeForTurn(req, "owner", "", code, true); got == "" {
 		t.Log("a Code profile is a project profile; read-only turns there get the notice too")
 	}
-	if got := crewSessionModeForTurn(req, "owner", nil, true); got != "" {
+	if got := crewSessionModeForTurn(req, "owner", "", nil, true); got != "" {
 		t.Fatalf("no profile must mean no notice: %q", got)
 	}
 }

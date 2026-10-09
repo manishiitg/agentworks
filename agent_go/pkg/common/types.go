@@ -213,9 +213,12 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 // as a write prefix but adds Workflow/<name>/planning/ to BlockedWritePaths so the
 // agent can read plan.json but not raw-write it.
 type SessionShellConfig struct {
-	WorkflowPath      string   // Owning workflow for live capability reconciliation
-	WorkflowReadOnly  bool     // Current workflow turn cannot receive attached-folder write grants
-	CrewReader        bool     // Current turn is a read-only Crew reader (or a guest call): mutating Crew tools are refused
+	WorkflowPath     string // Owning workflow for live capability reconciliation
+	WorkflowReadOnly bool   // Current workflow turn cannot receive attached-folder write grants
+	CrewReader       bool   // Current turn is a Crew Run-mode turn (a reader or a guest call): mutating Crew tools are refused
+	// RunOutputPath is a Run-mode Crew turn's run folder (workspace-relative, trailing slash): the one place it may
+	// write, created by the platform. Empty on every other turn.
+	RunOutputPath     string
 	ReadOnlyAccess    bool     // The signed-in caller has read-only access to this session's target (not merely a pinned Run turn)
 	WorkingDir        string   // Default working directory (relative to workspace-docs)
 	FolderGuardSet    bool     // An explicit guard exists; empty capabilities must fail closed
@@ -267,6 +270,13 @@ func SetSessionReadOnlyAccess(sessionID string, readOnly bool) {
 func SetSessionCrewReader(sessionID string, crewReader bool) {
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
 		cfg.CrewReader = crewReader
+	})
+}
+
+// SetSessionRunOutputPath records the current turn's run folder ("" for none). It is refreshed on every turn.
+func SetSessionRunOutputPath(sessionID, runOutputPath string) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.RunOutputPath = strings.TrimSpace(runOutputPath)
 	})
 }
 

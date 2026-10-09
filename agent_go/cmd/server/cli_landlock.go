@@ -170,6 +170,12 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 	readOnly := cfg != nil && (cfg.CrewReader || cfg.WorkflowReadOnly)
 	if readOnly {
 		policy.WorkspaceWritePaths = nil
+		// A Crew Run-mode turn may write its run folder, and nothing else of the project (PLAT-756).
+		if cfg.CrewReader && cfg.RunOutputPath != "" {
+			if path := cliPolicyPath(cfg.RunOutputPath); path != "" {
+				policy.WorkspaceWritePaths = append(policy.WorkspaceWritePaths, path)
+			}
+		}
 	}
 	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
 	if cfg != nil {

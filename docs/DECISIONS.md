@@ -17,6 +17,21 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-09 — Crew Run mode saves outputs in a run folder (PLAT-756)
+- Run mode is not read-only. It runs what the Crew's owner built (functions, scripts, attached workflow triggers) and
+  cannot change the Crew. It now matches workflows, whose Run chat cannot author but whose runs write `runs/<run>/`.
+- A Run-mode Crew turn (another user, a guest function call, a Slack or WhatsApp route) gets a run folder
+  `<crew>/runs/<conversation>/`, made by the server each turn. It is the one place the turn may write: the folder
+  guard, the shell tool and the coding CLI's Landlock/Seatbelt policy all grant it. The rest of the Crew (files, code,
+  memory, skills, functions, database, schedules, triggers) stays unwritable. The notice and the shell get the path
+  (`CREW_RUN_DIR`); a Slack thread or a caller's function conversation is one folder, so follow-ups find earlier output.
+- The Crew root is no longer a blocked-write root in these turns: blocked writes win in every layer and would close
+  the run folder. The write allow-lists keep the root unwritable. If the folder cannot be made, the old rule applies.
+- Notices and refusals say Run mode, not read-only. Not covered yet: writing the Crew database from Run mode, and
+  keeping one caller's run folder from other readers (run folders are readable like the Crew, as workflow runs are).
+- Code: `crew_run_folder.go`, `server.go` (Crew folder guard), `cli_landlock.go`, `crew_session_mode.go`.
+  Ticket: [PLAT-756](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/crew/functions/plat-756.md).
+
 ### 2026-10-09 — Managed dashboards use one revision service in the app and MCP
 
 Expose dedicated dashboard discovery, source authoring, validation, rendered preview,

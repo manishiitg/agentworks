@@ -10,7 +10,7 @@ import (
 
 func TestSparkQuillSessionAccessNotice(t *testing.T) {
 	profile := &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: sparkquillproduct.ParentProfileID}}
-	notice := agentSessionModeForTurn(QueryRequest{}, "default", profile, false)
+	notice := agentSessionModeForTurn(QueryRequest{}, "default", "", profile, false)
 	if !strings.Contains(notice, "execute_shell_command") || !strings.Contains(notice, "actual folder and access permissions") {
 		t.Fatalf("missing platform write guidance: %s", notice)
 	}
@@ -18,14 +18,14 @@ func TestSparkQuillSessionAccessNotice(t *testing.T) {
 		t.Fatal("access notice must reach retained input without changing display text or duplicating")
 	}
 	profile.Definition.Runtime.AgentTools.Mode = "full"
-	if fullNotice := agentSessionModeForTurn(QueryRequest{}, "default", profile, false); !strings.Contains(fullNotice, "full native tools") || !strings.Contains(fullNotice, "within the granted workspace") {
+	if fullNotice := agentSessionModeForTurn(QueryRequest{}, "default", "", profile, false); !strings.Contains(fullNotice, "full native tools") || !strings.Contains(fullNotice, "within the granted workspace") {
 		t.Fatalf("full native tools guidance missing: %s", fullNotice)
 	}
-	if got := agentSessionModeForTurn(QueryRequest{}, "default", profile, true); got != "" {
+	if got := agentSessionModeForTurn(QueryRequest{}, "default", "", profile, true); got != "" {
 		t.Fatalf("read-only caller received write guidance: %s", got)
 	}
 	profile.Definition.ID = sparkquillproduct.ChildProfileID
-	if got := agentSessionModeForTurn(QueryRequest{}, "default", profile, false); got != "" {
+	if got := agentSessionModeForTurn(QueryRequest{}, "default", "", profile, false); got != "" {
 		t.Fatalf("child received parent write guidance: %s", got)
 	}
 }
