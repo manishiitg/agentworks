@@ -36,6 +36,14 @@ hide cycle, including across product remounts. The left-edge reopen target stays
 available. Replace the manual hide toast to keep the behavior consistent.
 Ticket: [PLAT-779](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-779.md).
 
+### 2026-10-09 — Muse's reasoning summaries are compact thinking, not assistant updates (PLAT-781)
+
+Muse's reasoning summaries are sent as plain reasoning chunks, the same as every other coding agent's: the compact
+muted thinking line. They were tagged `presentation=assistant_update`, which drew them as large message blocks that
+a reload then lost (Excellence, 2026-10-09). Reverses the earlier choice that Muse summaries render as assistant
+updates. Progress status from `muse exec` (`museStatusChunk`) stays an assistant update. Code:
+`musecli_transcript_stream.go` in multi-llm-provider-go (d18b55b).
+
 ### 2026-10-09 — Accounts are added by DevOps on the server only (PLAT-777)
 
 An account and its slot always go together, and only DevOps creates them, with
