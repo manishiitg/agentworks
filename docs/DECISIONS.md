@@ -49,6 +49,17 @@ Design references for the linked runtime decisions:
   mandatory: a scripted step that named none emailed the workspace default (on RTS, the account owner), five times in 11
   minutes. Owner decision, 2026-10-09. Ticket: PLAT-736.
 
+### 2026-10-09 — Local Code on Windows: no command sandbox
+
+- **Decided.** `agentworks start` and the local executor run on Windows (`windows/amd64` and `arm64` downloads, `install-agentworks.ps1`,
+  setup page commands). Commands run as the signed-in user through Git Bash with no operating-system sandbox (macOS keeps
+  Seatbelt, Linux Landlock); a Job Object ends everything a command started. The folder rules (`--block`, read-only paths) bind the
+  file tools only on Windows, and the setup page says so. The file tools refuse Windows-specific spellings of a path
+  (`workflowfiles.CleanRelative`: trailing dot or space, 8.3 short names, `:` streams, device names) because a textual
+  blocked-path rule did not recognise `blocked./file` or `blocked /file`.
+- **Why.** Most users are on Windows; a Windows sandbox (AppContainer) is days of work and the owner accepted the risk for
+  Windows users. Windows is tested on a Windows runner (`Verify-Windows-Test:` lines in a verify commit). Ticket: PLAT-739.
+
 ### 2026-10-08 — Local Code: one command in the project folder, always read and write
 
 - **Decided.** `agentworks start` (`agent_go/cmd/agentworks/share.go`) shares the folder you are in: read and write with

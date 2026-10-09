@@ -736,6 +736,14 @@ Install the CLI, `cd` into your project folder and run:
 agentworks start --server https://your-agentworks.example --workspace "My project"   # first time; later just: agentworks start
 ```
 
+**Windows.** `install-agentworks.ps1` (served beside the shell installer; the setup page shows the PowerShell command) installs
+`agentworks.exe` in `%LOCALAPPDATA%\agentworks` and adds it to your user PATH, no administrator rights. Everything above works the
+same (`start`, `stop`, `status`, `watch`, `debug`, background mode). Commands the agent runs on your computer go through **Git
+Bash** (install Git for Windows; file tools work without it). Unlike macOS (Seatbelt) and Linux (Landlock), **Windows has no
+command sandbox**: commands run with your account's permissions, and `--block` and read-only paths bind the file tools only. The
+file tools refuse paths Windows resolves differently from how they are spelled (a trailing dot or space, 8.3 short names, `:`
+streams, device names such as `CON` and `NUL`) and do not follow a junction out of the shared folder.
+
 `--workspace` is the name of the Code workspace (as shown in Settings) that uses this folder. It is required the first time
 (asked in a terminal) and remembered per folder. `start` signs you in the first time (a browser approval limited to sharing local
 folders), shares the current folder with read and write access and shell commands, and keeps the connection open. It asks once

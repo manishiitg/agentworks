@@ -63,6 +63,9 @@ func CleanRelative(p string) (string, error) {
 		if part == ".." {
 			return "", fmt.Errorf("parent traversal is not allowed")
 		}
+		if windowsRefusedPathPart(part) {
+			return "", fmt.Errorf("path component is not allowed on Windows")
+		}
 	}
 	return path.Clean(p), nil
 }

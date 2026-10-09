@@ -303,6 +303,10 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 var _ io.Writer = (*boundedOutput)(nil)
 
 func syncShellJournal(root *os.Root) error {
+	// Windows cannot flush a directory handle (Access is denied); each journal file is already synced on its own.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	dir, err := root.Open(".")
 	if err != nil {
 		return err
