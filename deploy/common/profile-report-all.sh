@@ -6,7 +6,11 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="$(python3 -c 'import json,sys;print(json.dumps(json.load(open(sys.argv[1]))))' "$HERE/runtime_profile.json")"
-HETZNER=(ssh -p 2299 -o ConnectTimeout=20 -o BatchMode=yes root@116.202.210.102)
+# The build host's address is private: the deployments repo's deploy.env (PLAT-719).
+DEPLOY_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$HERE/../../.." && pwd)/deployments}/deploy.env"
+# shellcheck source=/dev/null
+[[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
+HETZNER=(ssh -p "${BUILD_PORT:?set BUILD_PORT in deployments/deploy.env}" -o ConnectTimeout=20 -o BatchMode=yes "${BUILD_USER:-root}@${BUILD_HOST:?set BUILD_HOST in deployments/deploy.env}")
 # name account app data workspace-port
 SERVERS=(
   "excellence agents /srv/agents /srv/agents/state 24001"

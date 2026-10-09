@@ -13,11 +13,11 @@ describe('WelcomeHome', () => {
   afterEach(() => { document.body.innerHTML = ''; window.localStorage.clear(); delete (window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ })
 
   it('shows only the products this person may open, once', async () => {
-    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Citymall Agents', enabledProductSurfaces: ['agentworks', 'work', 'code'] }
+    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Acme Agents', enabledProductSurfaces: ['agentworks', 'work', 'code'] }
     useAuthStore.setState({ user: { allowed_products: ['code', 'work'] } } as never)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<WelcomeHome />))
-    expect(host.textContent).toContain('Welcome to Citymall Agents')
+    expect(host.textContent).toContain('Welcome to Acme Agents')
     expect(host.textContent).toContain('/api/external/v1/mcp')
     const cards = Array.from(host.querySelectorAll('section[aria-labelledby="welcome-products"] button')).map(b => b.textContent)
     expect(cards.some(t => t?.includes('Code'))).toBe(true)
@@ -31,7 +31,7 @@ describe('WelcomeHome', () => {
   })
 
   it('does not greet someone whose account opens a single product, but the menu can still open it', async () => {
-    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Citymall Agents', enabledProductSurfaces: ['agentworks', 'work', 'code'] }
+    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Acme Agents', enabledProductSurfaces: ['agentworks', 'work', 'code'] }
     useAuthStore.setState({ user: { allowed_products: ['code'] } } as never)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<WelcomeHome />))

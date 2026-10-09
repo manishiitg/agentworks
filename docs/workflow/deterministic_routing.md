@@ -18,7 +18,7 @@ decision is already fixed by a variable.
 ## Motivation
 
 An audit of all workflow plans found **12 routing steps across 5 workflows**
-(`upwork`, `linkedin`, `social-media`, `citymall-exploit-hacker`, `HRMS`). Of those:
+(`upwork`, `linkedin`, `social-media`, `security-review`, `HRMS`). Of those:
 
 | Category | Count | Notes |
 |----------|------:|-------|
@@ -145,7 +145,7 @@ else → error (not a valid route for this router)
 | execution controller / batch setup | Validates `route_selections` against each router's `routes[]`, then writes `route_selection.json` into each routing step's output dir after cleanup and before step execution. |
 | routing source resolution | Checks the router's own preseeded route file first, then `route_source_file`, then `context_dependencies` entries named `route_selection.json`, preserving folder ownership. |
 | `routing.md` guidance | Rewritten: routing is a deterministic switch; judgment goes in an upstream step or the caller; document the file contract and `route_selections`. |
-| active workflow plans | Migrated active `upwork`, `social-media`, `linkedin`, `HRMS`, and `citymall-exploit-hacker` plans away from routing-step LLM classification. Variable-mode routers now expect caller `route_selections`; judgment routers consume producer-owned `route_selection.json`. |
+| active workflow plans | Migrated active `upwork`, `social-media`, `linkedin`, `HRMS`, and `security-review` plans away from routing-step LLM classification. Variable-mode routers now expect caller `route_selections`; judgment routers consume producer-owned `route_selection.json`. |
 
 The old conditional-agent helper has been removed. Runtime workflow routing resolves
 only deterministic route files, explicit caller selections, or declared defaults.
@@ -174,7 +174,7 @@ Active `upwork` plan migration is applied.
   routing expects caller `route_selections`.
 - `linkedin`, `HRMS`: variable-driven dispatchers now expect caller
   `route_selections`.
-- `citymall/review-and-expand`: the upstream analysis step writes
+- `security-review/review-and-expand`: the upstream analysis step writes
   `{ "select_route": "..." }` in its own output folder, and the routing step reads
   that file through an explicit `route_selection.json` dependency.
 - Pure all-routes-to-`end` terminators: out of scope here, but they should be

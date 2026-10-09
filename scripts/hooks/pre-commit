@@ -87,6 +87,11 @@ if [ -n "$SENSITIVE_FILES" ]; then
 fi
 echo -e "${GREEN}✅ No sensitive file patterns detected.${NC}"
 
+# Company and customer specifics (private block list in the deployments repository; PLAT-719).
+if [ -x "$REPO_ROOT/scripts/check-public-specifics.sh" ]; then
+    "$REPO_ROOT/scripts/check-public-specifics.sh" --staged || exit 1
+fi
+
 # Schema drift — runs only when staged files plausibly affect generated
 # schemas/types. See scripts/check-schema-drift.sh for the exact paths.
 if [ -x "$REPO_ROOT/scripts/check-schema-drift.sh" ]; then

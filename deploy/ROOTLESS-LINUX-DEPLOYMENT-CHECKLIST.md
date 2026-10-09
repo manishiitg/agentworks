@@ -243,7 +243,7 @@ explicit AppArmor profile.
 **This is no longer a manual step.** The rootless activation (`build-and-activate.sh`) runs the real sandbox test as the service
 account before it switches `current`, so a host where the sandbox cannot work stops the deploy with the fix in the message, and
 `./deploy.sh` installs the path-scoped exception (`provision-slots.sh userns`) on every host it prepares (`HOST_SETUP_SCRIPT`).
-Citymall went live without it on 2026-10-09 and every shell command failed while the other checks passed. The commands below
+A host that goes live without it fails every shell command while the other checks pass. The commands below
 are for looking at a host by hand.
 
 ```bash

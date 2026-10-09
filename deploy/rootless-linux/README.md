@@ -79,7 +79,7 @@ By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no long
 DEPLOY_BUILD_MODE=server ./deploy.sh confida   # the original path: the server clones main and compiles (fallback)
 ```
 
-Build host settings: `BUILD_HOST` (116.202.210.102), `BUILD_PORT` (2299), `BUILD_USER` (root), `BUILD_SSH_KEY`, `BUILDS_DIR`
+Build host settings: `BUILD_HOST`, `BUILD_PORT`, `BUILD_USER` (default root; host and port in the private deployments/deploy.env), `BUILD_SSH_KEY`, `BUILDS_DIR`
 (/srv/_builds), `BUILD_CPU_QUOTA`, `BUILD_MEMORY_MAX`, `DEPLOY_FORCE_BUILD=1` (rebuild even if the revisions are already built).
 
 Rehearse the copy without touching a product: `build-and-activate.sh <build>/source <product> --prebuilt <build> --stage-only` with

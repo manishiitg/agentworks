@@ -1,0 +1,7 @@
+#!/bin/bash
+# Commit messages of this public repository must not carry company or customer specifics (PLAT-719).
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [ -x "$REPO_ROOT/scripts/check-public-specifics.sh" ]; then
+    "$REPO_ROOT/scripts/check-public-specifics.sh" --message "$1" || exit 1
+fi
+exit 0

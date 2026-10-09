@@ -810,7 +810,7 @@ func adminEmailError(dir *userDirectory, email, selfID string) string {
 }
 
 // allowedEmailDomains is AUTH_ALLOWED_EMAIL_DOMAINS (comma-separated, e.g.
-// "citymall.live"): when set, only addresses at those domains may sign in
+// "corp.example"): when set, only addresses at those domains may sign in
 // with SSO or be added as accounts, admins included. Unset allows any domain.
 func allowedEmailDomains() []string {
 	var domains []string

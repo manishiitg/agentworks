@@ -2910,13 +2910,13 @@ PLAT-405.
   `provision-slots.sh init`, so each host needs that re-run after the deploy that carries this.
 - **Tests.** `slots/exec_linux_test.go: TestRunExecStopSignalReachesTheWholeProcessGroup` (run on a Linux host).
 
-### 2026-10-01 — Citymall AI gateway works through Pi's existing Chat Completions transport
+### 2026-10-01 — A customer's AI gateway works through Pi's existing Chat Completions transport
 
 - Live gateway calls passed chat, streaming, inline vision and image generation;
   isolated installed Pi CLI calls returned a Hindi greeting and read a test file
   through the native tool with the explicit off-to-none mapping. Stage a non-secret
-  Pi custom-provider template (`products/citymall/pi-models.json`), with the key
-  supplied as `CITYMALL_API_KEY` from Citymall's own protected environment.
+  Pi custom-provider template (`products/<server>/pi-models.json` in the private
+  deployments repo), with the key supplied from the customer's own protected environment.
 - **Open:** function tools require `reasoning_effort=none`; the default fails.
   Map Pi's off thinking level explicitly to `none` in the template; without that
   mapping the CLI omits the field and native tool calls still fail.
@@ -2928,14 +2928,14 @@ PLAT-405.
   models are confirmed. Full key-accessible inventory needs the gateway's enabled
   deployment list/API specification, not guessed model names.
 
-### 2026-10-01 — Citymall dedicated host: prepare an isolated service account first
+### 2026-10-01 — A customer's dedicated host: prepare an isolated service account first
 
-- The supplied EC2 host (`52.66.201.227`, Ubuntu 26.04, 2 CPUs/4 GB RAM) is fresh.
-  Prepare `/srv/citymall` under an unprivileged `citymall` account with a persistent
+- The supplied host is a fresh Ubuntu 26.04 machine (details in the private deployments repo).
+  Prepare `/srv/<product>` under an unprivileged `<product>` account with a persistent
   user manager, workspace directories, native/Python/browser prerequisites and
   Confida's checksum-pinned Node runtime. Generate new persistent secrets; never
   borrow another customer's logins, credentials or data. Code:
-  `deploy/rootless-linux/setup-citymall-host.sh`; runbook: `citymall.md` beside it.
+  a host setup script and runbook kept in the private deployments repo.
 - **Open:** domain, enabled products, sign-in configuration and initial admin
   need to be chosen before adding a deploy target and activating the application.
   Base preparation does not start a public site or application services. Also

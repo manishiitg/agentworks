@@ -3759,7 +3759,7 @@ func TestDeriveStatusExtractsCursorAssistantPreview(t *testing.T) {
   User: list the workflows
 
   Assistant: There are 33 workflows in this workspace.
-  The largest groups are banking ops and CityMall.
+  The largest groups are banking ops and retail.
 
 
   → Add a follow-up

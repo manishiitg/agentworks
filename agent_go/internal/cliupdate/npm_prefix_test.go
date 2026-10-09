@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Citymall 2026-10-07: "codex update" installed into Node's own prefix, shadowing the managed CLI on PATH and failing
+// Regression: "codex update" installed into Node's own prefix, shadowing the managed CLI on PATH and failing
 // the next deploy. A self-update must stay in the prefix the CLI came from.
 func TestNPMPrefixEnvKeepsSelfUpdateInTheCLIPrefix(t *testing.T) {
 	prefix := t.TempDir()

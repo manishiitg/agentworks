@@ -186,13 +186,13 @@ Run these checks from a machine with the deploy SSH key. They show service
 status and secret names only—never secret values.
 
 ```bash
-ssh -i /Users/mipl/.ssh/id_ed25519 video-studio@44.253.29.127 \
+ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
   'systemctl --user is-active video-studio-agent video-studio-workspace video-studio-gateway'
 
-ssh -i /Users/mipl/.ssh/id_ed25519 video-studio@44.253.29.127 \
+ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
   'awk -F= "/^GLOBAL_SECRET_/ {print \$1}" /var/lib/video-studio/video-studio/.env | sort'
 
-ssh -i /Users/mipl/.ssh/id_ed25519 video-studio@44.253.29.127 \
+ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
   'grep -q "^MCP_API_URL=http://127.0.0.1:8000$" /var/lib/video-studio/video-studio/.env'
 
 curl -fsSI https://video.realtrainingsys.com/

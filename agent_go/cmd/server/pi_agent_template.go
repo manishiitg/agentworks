@@ -10,7 +10,7 @@ import (
 )
 
 // A deployment's own Pi providers (PI_CLI_AGENT_TEMPLATE_DIR, staged into
-// every Pi session by the adapter; Citymall's gateway is the first user).
+// every Pi session by the adapter; a customer's own AI gateway, for example).
 // Pi's --list-models cannot show them (it runs without the provider key), so
 // the picker and the server account's status read the template here.
 

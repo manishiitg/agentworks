@@ -23,7 +23,7 @@ var maxTokensFlexibilityCmd = &cobra.Command{
 
 func init() {
 	maxTokensFlexibilityCmd.Flags().String("provider", "bedrock", "LLM provider to test (bedrock, openai, anthropic)")
-	maxTokensFlexibilityCmd.Flags().String("servers", "citymall-aws-mcp", "Comma-separated list of MCP servers to test")
+	maxTokensFlexibilityCmd.Flags().String("servers", "example-aws-mcp", "Comma-separated list of MCP servers to test")
 	maxTokensFlexibilityCmd.Flags().Bool("verbose", false, "Enable verbose logging")
 	maxTokensFlexibilityCmd.Flags().String("log-file", "", "Log file path")
 }

@@ -407,7 +407,7 @@ The observability system features:
 The 3-agent orchestrator integrates with **12+ MCP servers** across multiple protocols (HTTP, SSE, stdio):
 
 ### **Production Servers (Orchestrator Ready)**
-- **AWS Services**: `citymall-aws-mcp` - Complete AWS ecosystem (EC2, S3, IAM, CloudWatch, etc.)
+- **AWS Services**: `example-aws-mcp` - Complete AWS ecosystem (EC2, S3, IAM, CloudWatch, etc.)
 - **GitHub Integration**: `mcp-github` - Repository analysis, security alerts, code review
 - **Database Security**: `mcp-database` - Multi-database security assessment and monitoring
 - **Kubernetes**: `mcp-kubernetes` - Cluster security, pod analysis, RBAC review
@@ -420,7 +420,7 @@ The 3-agent orchestrator integrates with **12+ MCP servers** across multiple pro
 - **File System**: `@modelcontextprotocol/server-filesystem` - File operations and management
 - **Memory**: `@modelcontextprotocol/server-memory` - Persistent knowledge graph
 - **Search**: `tavily-mcp` - External web search and fact-checking
-- **Scripts**: `citymall-scripts-mcp` - Custom script execution and automation
+- **Scripts**: `example-scripts-mcp` - Custom script execution and automation
 
 ### **Server Capabilities**
 - **🔒 Security Assessment**: AWS IAM, VPC, security groups, encryption

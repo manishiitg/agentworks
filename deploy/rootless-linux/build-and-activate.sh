@@ -308,8 +308,8 @@ PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRI
 chmod +x "$BUILD_DIR"/bin/*
 # The Linux sandbox must really work on this host for this release before it goes live. Shell commands run inside it, and a
 # policy that blocks a path inside a granted one needs a user namespace, which Ubuntu 23.10+ denies by default
-# (kernel.apparmor_restrict_unprivileged_userns=1): Citymall went live without it on 2026-10-09 and every shell command failed
-# while the deploy checks passed. This runs the real thing as the service account, so a host that is not prepared stops here.
+# (kernel.apparmor_restrict_unprivileged_userns=1): a host without it fails every shell command while the other deploy checks
+# pass. This runs the real thing as the service account, so a host that is not prepared stops here.
 if [[ ! -x "$BUILD_DIR/bin/workspace-security.test" ]]; then
   echo "ERROR: the release has no bin/workspace-security.test, so the sandbox cannot be proven on this host." >&2
   exit 1
@@ -587,7 +587,7 @@ wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
 echo "agent  /api/health: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health")"
 wait_for_url "http://127.0.0.1:$WORKSPACE_PORT/health"
 curl -fsS "http://127.0.0.1:$WORKSPACE_PORT/health"; echo
-# A local reverse proxy in front of the gateway (Citymall's nginx) must answer before the public name exists.
+# A local reverse proxy in front of the gateway (a host's own nginx) must answer before the public name exists.
 if [[ -n "${LOCAL_PROXY_CHECK_URL:-}" ]]; then
   wait_for_url "$LOCAL_PROXY_CHECK_URL"
   echo "local proxy $LOCAL_PROXY_CHECK_URL: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$LOCAL_PROXY_CHECK_URL")"

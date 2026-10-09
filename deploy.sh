@@ -11,12 +11,12 @@ usage() {
   cat <<'EOF'
 Usage: ./deploy.sh <server> [target]
 
-Servers:
-  rts, video-studio     video.realtrainingsys.com
-  confida               Confida rootless Linux deployment
-  citymall              agents.citymall.live (Citymall's own AWS host, reached through the Hetzner jump; Pi on Citymall's gateway)
-  sparkquill            SparkQuill rootless Linux deployment
-  excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
+Servers (each one's host, domain and settings live in the private deployments repo: products/<server>/product.env):
+  rts, video-studio     the AWS EC2 deployment
+  confida               rootless Linux deployment
+  citymall              rootless Linux deployment on its own host, reached through a jump host
+  sparkquill            rootless Linux deployment
+  excellence            rootless Linux deployment (Code only)
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
   dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
@@ -44,7 +44,7 @@ server only copies and activates it after verifying its manifest (architecture, 
                         command may reach, the Python helpers, and the refusals a workflow chat must get (PLAT-480). Runs on the
                         unassigned TEST slot only. Example: DEPLOY_SECURITY_CHECKS=basic ./deploy.sh confida
   DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
-  Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
+  Build host: BUILD_HOST, BUILD_PORT, BUILD_USER, BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds); defaults in the private deployments/deploy.env
 
 EOF
 }
@@ -66,6 +66,10 @@ esac
 
 # Build once, deploy everywhere (PLAT-426): helpers for the build host (see deploy/common/build-once.sh).
 # shellcheck disable=SC1091
+# Hosts, ports and addresses are private: the deployments repo's deploy.env (PLAT-719). Environment variables override it.
+DEPLOY_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}/deploy.env"
+# shellcheck source=/dev/null
+[[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
 source "$REPO_ROOT/deploy/common/build-once.sh"
 
 # --- RTS (video.realtrainingsys.com) -------------------------------------
@@ -204,10 +208,10 @@ for cmd in git scp ssh; do
 done
 
 # Offer only the named key when that file exists (a wrong key then fails with its real error instead of "Too many authentication failures"). When it
-# does not exist (Confida's default ~/.ssh/confida_deploy on a machine that logs in through the ssh agent) ssh must be free to use the agent's keys.
+# does not exist (a product's default key path on a machine that logs in through the ssh agent) ssh must be free to use the agent's keys.
 SSH_IDENTITY=(-i "$SSH_KEY_PATH")
 [[ -r "$SSH_KEY_PATH" ]] && SSH_IDENTITY+=(-o IdentitiesOnly=yes)
-# SSH_JUMP (product.env, e.g. Citymall): reach a host whose port 22 admits only the jump host. ProxyJump forwards the
+# SSH_JUMP (product.env): reach a host whose port 22 admits only the jump host. ProxyJump forwards the
 # connection; the key stays on this machine (never copy it to the jump host, never use agent forwarding).
 SSH_JUMP_OPTS=()
 [[ -z "${SSH_JUMP:-}" ]] || SSH_JUMP_OPTS=(-J "$SSH_JUMP")
@@ -403,12 +407,7 @@ deploy_notify() {
 
 deploy_label() {
   case "$SERVER" in
-    rts|video-studio) echo "RTS (video.realtrainingsys.com)" ;;
-    excellence) echo "Excellence (agents.excellencetechnologies.in)" ;;
-    all-hetzner) echo "Excellence, Confida and SparkQuill" ;;
-    confida) echo "Confida (confida.agentworkshq.com)" ;;
-    citymall) echo "Citymall (agents.citymall.live)" ;;
-    dominion) echo "Trader workflow host" ;;
+    all-hetzner) echo "excellence, confida and sparkquill" ;;
     *) echo "$SERVER" ;;
   esac
 }
@@ -417,9 +416,9 @@ deploy_label() {
 deploy_current_revision() {
   local release=""
   case "$SERVER" in
-    rts|video-studio) release="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@${RTS_HOST_IP:-44.253.29.127}" 'readlink /var/lib/video-studio/video-studio/current' 2>/dev/null)" ;;
-    excellence) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 'readlink -f /srv/agents/current' 2>/dev/null)" ;;
-    confida|sparkquill|dominion) release="$(ssh -p 2299 -o BatchMode=yes -o ConnectTimeout=15 root@116.202.210.102 "readlink -f /srv/$SERVER/current" 2>/dev/null)" ;;
+    rts|video-studio) release="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@${RTS_HOST_IP:?set RTS_HOST_IP in the private deployments/deploy.env}" 'readlink /var/lib/video-studio/video-studio/current' 2>/dev/null)" ;;
+    excellence) release="$(build_ssh 'readlink -f /srv/agents/current' 2>/dev/null)" ;;
+    confida|sparkquill|dominion) release="$(build_ssh "readlink -f /srv/$SERVER/current" 2>/dev/null)" ;;
   esac
   release="$(basename "${release:-}")"
   # Release folders are <sha>-<time> (RTS) or <product>-<sha>-<time> (Hetzner).
@@ -525,7 +524,7 @@ if [[ "$SERVER" == build ]]; then
   reject_extra_arguments "$@"
   [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "'build' makes a new build; --build selects an existing one for a deploy." >&2; exit 2; }
   name="$(build_release_remote)"
-  echo "Build ready: $name (on ${BUILD_HOST:-116.202.210.102}:$BUILDS_DIR/$name). Nothing was deployed."
+  echo "Build ready: $name (on ${BUILD_HOST:-the build host}:$BUILDS_DIR/$name). Nothing was deployed."
   exit 0
 fi
 
@@ -581,7 +580,7 @@ case "$SERVER" in
     ;;
   confida|sparkquill|dominion|citymall)
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
-    # Citymall too, on its own host: products/citymall/product.env (SSH_JUMP, HOST_SETUP_SCRIPT, PREBUILT_DELIVERY=fetch).
+    # A product on its own host sets SSH_JUMP, HOST_SETUP_SCRIPT and PREBUILT_DELIVERY=fetch in its private product.env.
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
     [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote

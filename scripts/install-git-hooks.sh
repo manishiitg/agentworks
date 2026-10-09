@@ -60,7 +60,7 @@ echo -e "${GREEN}✅ Gitleaks installed successfully${NC}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 HOOK_DIR="$(git rev-parse --path-format=absolute --git-path hooks)"
 mkdir -p "$HOOK_DIR"
-for hook in pre-commit post-commit; do
+for hook in pre-commit commit-msg post-commit; do
     cp "$REPO_ROOT/scripts/hooks/$hook" "$HOOK_DIR/$hook"
     chmod +x "$HOOK_DIR/$hook"
 done

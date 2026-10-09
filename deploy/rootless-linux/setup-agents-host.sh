@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# One-time root setup for agents.excellencetechnologies.in on the shared
+# One-time root setup for the agents product on the shared
 # rootless host (the part deploy/rootless-linux does not do: see its README,
 # "Requirements this template assumes"). Idempotent: re-running changes
 # nothing that is already in place. Run as root ON the host:
 #
-#   ssh -p 2299 root@116.202.210.102 'bash -s' < deploy/rootless-linux/setup-agents-host.sh
+#   ssh -p "$BUILD_PORT" root@"$BUILD_HOST" 'bash -s' < deploy/rootless-linux/setup-agents-host.sh   # values: deployments/deploy.env
 #
 # Already done by hand on 2026-09-28: the `agents` system account
 # (home /srv/agents, linger on, its directories) and /srv/agents/.env

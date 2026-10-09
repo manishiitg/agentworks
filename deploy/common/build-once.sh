@@ -9,8 +9,8 @@ BUILDS_DIR="${BUILDS_DIR:-/srv/_builds}"
 build_ssh() {
   local key=()
   [[ -z "${BUILD_SSH_KEY:-}" ]] || key=(-i "$BUILD_SSH_KEY")
-  ssh -p "${BUILD_PORT:-2299}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${key[@]+"${key[@]}"} \
-    "${BUILD_USER:-root}@${BUILD_HOST:-116.202.210.102}" "$@"
+  ssh -p "${BUILD_PORT:?set BUILD_PORT in the private deployments/deploy.env}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${key[@]+"${key[@]}"} \
+    "${BUILD_USER:-root}@${BUILD_HOST:?set BUILD_HOST in the private deployments/deploy.env}" "$@"
 }
 
 repo_dir() { # the local checkout of a repository: this one, or its sibling
@@ -49,7 +49,7 @@ build_release_remote() {
   [[ "${DEPLOY_FORCE_BUILD:-0}" != 1 ]] || args+=(--force)
   local quoted="" arg
   for arg in "${args[@]}"; do quoted+=" $(printf '%q' "$arg")"; done
-  echo "==> Building the release once on ${BUILD_HOST:-116.202.210.102} (reused when these revisions were already built)" >&2
+  echo "==> Building the release once on ${BUILD_HOST:-the build host} (reused when these revisions were already built)" >&2
   build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.build-release.sh' && chmod 0755 '$BUILDS_DIR/.build-release.sh'" < "$REPO_ROOT/deploy/common/build-release.sh"
   # CPU and memory limits keep the live products on this box responsive (override with BUILD_CPU_QUOTA / BUILD_MEMORY_MAX).
   out="$(build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)"
@@ -142,7 +142,7 @@ deliver_build_to_rts() { # name remote_job_dir manifest_sha256
   ship_build_to_rts "$name" "$job"
 }
 
-# Gets a build onto a product host that cannot read the build host's folder (PREBUILT_DELIVERY=fetch, e.g. Citymall) as
+# Gets a build onto a product host that cannot read the build host's folder (PREBUILT_DELIVERY=fetch) as
 # dest (<app>/prebuilt/<name>). The host downloads the published release from GitHub and checks the manifest hash read
 # from the build host; without a release (or when that fails) the build is streamed through this machine. Older copies
 # in the same folder are removed first: each release copies what it needs. Needs SSH (the ssh command line to the host).
