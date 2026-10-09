@@ -35,6 +35,12 @@ func externalProjectDefinitions(add func(string, string, bool, bool, map[string]
 var externalProjectFolderCleaner = regexp.MustCompile(`[^a-z0-9]+`)
 
 func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
+	// The connection must have been granted workflow access; a Crew-only
+	// connection may not act on the account's workflows.
+	if t := GetUserFromContext(r.Context()).AccessToken; t != nil && !t.Allows("workflows:read") && !t.Allows("runs:execute") {
+		externalError(w, 403, "insufficient_scope", "This connection was not granted workflow access.")
+		return
+	}
 	action := externalArg(args, "action")
 	root := workflow.WorkspacePath
 	respond := func(status int, body []byte) { externalScheduleRespond(w, status, body) }
@@ -153,24 +159,10 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 			externalError(w, 400, "invalid_arguments", "Unknown template_id; see the Crew Agent catalog.")
 			return
 		}
-		root := crew.Binding.WorkspacePath
-		// Files the owner already has (edited skills, setup progress) are kept.
-		for rel, content := range template.Files {
-			target := path.Join(root, rel)
-			if _, found, _ := readFileFromWorkspace(ctx, target); found {
-				continue
-			}
-			if err := writeFileToWorkspace(ctx, target, content); err != nil {
-				externalError(w, 502, "workspace_unavailable", "Could not write template file "+rel+".")
-				return
-			}
-		}
-		if err := updateProductSelectedSkills(ctx, "work", root, func(current []string) []string { return settingsWith(current, template.SelectedSkills...) }); err != nil {
-			externalError(w, 502, "workspace_unavailable", err.Error())
-			return
-		}
-		if err := applyCrewAgentTemplate(ctx, root, template); err != nil {
-			externalError(w, 502, "workspace_unavailable", err.Error())
+		// The shared installer keeps the owner's edited files, writes the
+		// missing ones, selects the skills and records the template.
+		if err := applyCrewAgentTemplateFiles(ctx, crew.Binding.WorkspacePath, template, true); err != nil {
+			externalError(w, 409, "template_not_installed", err.Error())
 			return
 		}
 		out, _ := json.Marshal(map[string]any{"crew_id": crewID, "installed": template.ID, "skills": template.SelectedSkills})

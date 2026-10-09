@@ -42,7 +42,8 @@ type needsYouPlace struct {
 // narrowed by an optional filter.
 func (api *StreamingAPI) needsYouPlaces(ctx context.Context, claims *UserClaims, visible []DiscoveredWorkflow, workflowID, crewID string) []needsYouPlace {
 	places := []needsYouPlace{}
-	if crewID == "" {
+	tokenWorkflows := claims.AccessToken == nil || claims.AccessToken.Allows("workflows:read") || claims.AccessToken.Allows("runs:execute")
+	if crewID == "" && tokenWorkflows {
 		for _, item := range visible {
 			if item.Manifest == nil || (workflowID != "" && item.Manifest.ID != workflowID) {
 				continue
@@ -103,7 +104,8 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 		if found, ok := byPath[workspace]; ok {
 			place = &found
 		}
-		if filtered && place == nil {
+		// A scoped connection sees only questions from places it may reach.
+		if (filtered || claims.AccessToken != nil) && place == nil {
 			continue
 		}
 		questions = append(questions, question{request: request, place: place})

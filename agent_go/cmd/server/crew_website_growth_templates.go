@@ -67,6 +67,14 @@ func loadCrewAgentTemplate(id string) (*crewAgentTemplate, error) {
 // file exists and the skill is selected. Existing user-edited files are never
 // overwritten by a retried creation call.
 func applyCrewAgentTemplate(ctx context.Context, workspacePath string, item *crewAgentTemplate) error {
+	return applyCrewAgentTemplateFiles(ctx, workspacePath, item, false)
+}
+
+// applyCrewAgentTemplateFiles installs a template. keepEdited installs into an
+// existing Crew: a file the owner already has is kept byte for byte instead of
+// failing the install; creation stays strict. The version check runs before
+// anything is written.
+func applyCrewAgentTemplateFiles(ctx context.Context, workspacePath string, item *crewAgentTemplate, keepEdited bool) error {
 	if item == nil {
 		return nil
 	}
@@ -99,7 +107,7 @@ func applyCrewAgentTemplate(ctx context.Context, workspacePath string, item *cre
 			return fmt.Errorf("read Crew template file %s: %w", relative, err)
 		}
 		if exists {
-			if current != content {
+			if current != content && !keepEdited {
 				return fmt.Errorf("Crew template file %s already has different content", relative)
 			}
 			continue

@@ -1,8 +1,16 @@
 package server
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 // manage_schedules follows the Schedules page: a reader cannot create one, and
@@ -46,5 +54,39 @@ func TestExternalManageProjectGuards(t *testing.T) {
 	}
 	if manifest, _, _ := ReadWorkflowManifest(t.Context(), "Workflow/invoices"); manifest == nil || manifest.Label != "Invoices v2" {
 		t.Fatalf("label not saved: %+v", manifest)
+	}
+}
+
+// A connection approved only for Crews may not act on the account's
+// workflows through manage_project, nor see their questions in the inbox
+// (2026-10-09 review of PLAT-738).
+func TestExternalCrewOnlyConnectionCannotReachWorkflows(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	crewOnly := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "crew-only", Name: "crews", Scopes: []string{"crews:read", "crews:run", "crews:write"}, AllWorkflows: true, AllCrews: true}}
+	call := func(name string, args map[string]any) *httptest.ResponseRecorder {
+		data, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
+		w := httptest.NewRecorder()
+		f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(data), crewOnly, nil))
+		return w
+	}
+	for _, args := range []map[string]any{
+		{"workflow_id": "invoices", "action": "get_access"},
+		{"workflow_id": "invoices", "action": "rename", "label": "Taken over"},
+	} {
+		if w := call("manage_project", args); w.Code != 403 {
+			t.Fatalf("Crew-only connection %v: %d %s", args["action"], w.Code, w.Body)
+		}
+	}
+	if manifest, _, _ := ReadWorkflowManifest(t.Context(), "Workflow/invoices"); manifest == nil || manifest.Label == "Taken over" {
+		t.Fatal("workflow changed through a Crew-only connection")
+	}
+	const session = "owner-invoices"
+	f.api.activeSessions = map[string]*ActiveSessionInfo{session: {SessionID: session, UserID: "owner", WorkspacePath: "Workflow/invoices"}}
+	id := "hf-" + uuid.NewString()
+	if err := virtualtools.GetHumanFeedbackStore().CreatePendingRequest(id, "Send?", "", session, []string{"Yes"}, false, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if w := call("list_needs_you", map[string]any{}); strings.Contains(w.Body.String(), id) {
+		t.Fatalf("Crew-only connection saw a workflow question: %s", w.Body)
 	}
 }
