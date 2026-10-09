@@ -7,6 +7,7 @@ already exported by build-and-activate.sh before this runs.
 import argparse
 import json
 import os
+import urllib.request
 from pathlib import Path
 import platform
 import pwd
@@ -119,6 +120,33 @@ def check_user_slots(env_path=ENV_FILE, users_path=None):
         )
 
 
+def check_private_tmp(env_path=ENV_FILE, restrict_path="/proc/sys/kernel/apparmor_restrict_unprivileged_userns", fetch=None):
+    """Where the host restricts unprivileged user namespaces, the workspace service must still get a private /tmp.
+
+    The service starts the launcher in namespaces it creates itself; AppArmor puts that child in its restricted profile unless the
+    service binary has a `userns` exception, and then private /tmp is unavailable and any command whose folder rules hide a path
+    inside a granted folder fails with SANDBOX_UNAVAILABLE (Citymall, 2026-10-09). The workspace health says so.
+    """
+    try:
+        restricted = Path(restrict_path).read_text().strip() == "1"
+    except OSError:
+        return
+    if not restricted:
+        return
+    values = env_file_values(env_path)
+    base = (values.get("WORKSPACE_API_URL") or [""])[-1].rstrip("/")
+    if not base:
+        return
+    health = json.loads((fetch or (lambda url: urllib.request.urlopen(url, timeout=10).read()))(base + "/health"))
+    detail = str(health.get("shell_sandbox", {}).get("detail", ""))
+    if "private /tmp unavailable" in detail:
+        raise ValueError(
+            "this host restricts unprivileged user namespaces and the workspace service cannot create one (private /tmp is "
+            "unavailable), so shell commands with hidden folders fail. Fix: as root run: "
+            f"PRODUCT={PRODUCT} bash -s -- userns < deploy/common/provision-slots.sh, then restart {PRODUCT}-workspace"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=["preflight", "running"])
@@ -139,6 +167,7 @@ def main():
         check_process_environment(environ)
         check_gog_keyring_process(environ)
         check_user_slots()
+        check_private_tmp()
     print(f"PASS {args.phase}: {PRODUCT} deployment configuration")
 
 

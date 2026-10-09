@@ -164,3 +164,16 @@ class UserSlotsDeploymentCheckTest(unittest.TestCase):
         self.checks.check_user_slots(env_path, users_path)
         self.checks.check_user_slots(env_path, self.tmp / "no-directory.json")
 
+    def test_private_tmp_is_required_only_where_the_host_restricts_user_namespaces(self):
+        restricted = self.tmp / "restrict"
+        restricted.write_text("1\n")
+        unrestricted = self.tmp / "unrestricted"
+        unrestricted.write_text("0\n")
+        env_path = self.tmp / "tmp-env"
+        env_path.write_text("WORKSPACE_API_URL=http://127.0.0.1:1\n")
+        health = lambda detail: (lambda url: self.json.dumps({"shell_sandbox": {"detail": detail}}).encode())
+        self.checks.check_private_tmp(env_path, restricted, health("filesystem ABI 8; launcher preflight passed; private /tmp available"))
+        self.checks.check_private_tmp(env_path, unrestricted, health("launcher preflight passed; private /tmp unavailable"))  # not restricted: fine
+        with self.assertRaisesRegex(ValueError, "private /tmp"):
+            self.checks.check_private_tmp(env_path, restricted, health("launcher preflight passed; private /tmp unavailable"))
+

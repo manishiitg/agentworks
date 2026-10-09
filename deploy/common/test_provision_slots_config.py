@@ -16,8 +16,8 @@ class ProvisionSlotsConfigTest(unittest.TestCase):
         # PLAT-480: both binaries need `userns`; nothing broader (no wildcard program, no network or capability rule).
         block = re.search(r"userns_profile\(\) \{\n  cat <<PROFILE\n(.*?)\nPROFILE", SCRIPT, re.S).group(1)
         profiles = re.findall(r"^(\S+) flags=\(unconfined\) \{\n  userns,\n\}", block, re.M)
-        self.assertEqual(profiles, ["$LIBEXEC/slotctl", "$HOME_DIR/releases/**/bin/video-studio-landlock-runner", "$HOME_DIR/releases/**/bin/slotcheck", "$HOME_DIR/releases/**/bin/workspace-security.test"])
-        self.assertEqual(block.count("userns,"), 4)
+        self.assertEqual(profiles, ["$LIBEXEC/slotctl", "$HOME_DIR/releases/**/bin/video-studio-landlock-runner", "$HOME_DIR/releases/**/bin/slotcheck", "$HOME_DIR/releases/**/bin/$PRODUCT-workspace", "$HOME_DIR/releases/**/bin/workspace-security.test"])
+        self.assertEqual(block.count("userns,"), 5)
 
     def test_allowed_cwd_contains_the_docs_root(self):
         match = re.search(r'"allowed_cwd":\s*\[([^\]]*)\]', SCRIPT)
