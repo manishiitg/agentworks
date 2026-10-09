@@ -5,6 +5,10 @@ import { nativeAgentToolsEnabled } from '../../utils/nativeAgentTools'
 
 export type ProductLocalFiles = { device_id: string; resource_id: string }
 
+/** Code project mode (product.json `mode`): dev (as before), cowork (a private assistant for business work) or local (files on the user's computer). */
+export type ProductMode = 'dev' | 'cowork' | 'local'
+export const PRODUCT_MODES: readonly ProductMode[] = ['dev', 'cowork', 'local']
+
 export type ProductProject<P extends string = string> = {
   schemaVersion: 1
   product: P
@@ -27,6 +31,8 @@ export type ProductProject<P extends string = string> = {
   nativeAgentTools?: boolean
   /** Code: the computer and folder this workspace works in (product.json `local_files`). Absent = the server's files. */
   localFiles?: ProductLocalFiles
+  /** Absent on projects made before modes: they are dev, or local when a folder is saved (productMode). */
+  mode?: ProductMode
   selectionConfigInitialized: boolean
   secretSelectionInitialized: boolean
   runtimeConfigInitialized: boolean
@@ -67,6 +73,7 @@ type ProductManifest = {
   capabilities?: unknown
   workflow_context_paths?: unknown
   local_files?: unknown
+  mode?: unknown
 }
 
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
@@ -96,6 +103,15 @@ function manifestLocalFiles(raw: ProductManifest): ProductLocalFiles | undefined
   const value = raw.local_files as { device_id?: unknown; resource_id?: unknown } | undefined
   return value && typeof value.device_id === 'string' && typeof value.resource_id === 'string' && localFileId.test(value.device_id) && localFileId.test(value.resource_id)
     ? { device_id: value.device_id, resource_id: value.resource_id } : undefined
+}
+
+function manifestMode(raw: ProductManifest): ProductMode | undefined {
+  return PRODUCT_MODES.find(mode => mode === raw.mode)
+}
+
+/** The mode a project works in: its saved mode, else local when a folder is saved, else dev. */
+export function productMode(project: Pick<ProductProject, 'mode' | 'localFiles'>): ProductMode {
+  return project.mode ?? (project.localFiles ? 'local' : 'dev')
 }
 
 function parseProductTemplates(raw: ProductManifest): Array<{ id: string; version: number }> {
@@ -182,6 +198,7 @@ export function parseProductProjectManifest<P extends string>(
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
     localFiles: manifestLocalFiles(raw),
+    mode: manifestMode(raw),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
     secretSelectionInitialized: manifestHasSecretSelection(raw),
     runtimeConfigInitialized: true,
@@ -286,6 +303,7 @@ export async function createProductProject<P extends string>(options: {
   selectedSkills?: readonly string[]
   initialFiles?: Readonly<Record<string, string>>
   runtimeManifestName?: string
+  mode?: ProductMode
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
@@ -319,6 +337,7 @@ export async function createProductProject<P extends string>(options: {
     updated_at: now,
     ...(options.identity ? { identity: options.identity } : {}),
     ...(options.templates?.length ? { templates: options.templates } : {}),
+    ...(options.mode ? { mode: options.mode } : {}),
   }
   if (!options.runtimeManifestName) manifest.capabilities = capabilities
   if (options.runtimeManifestName) {

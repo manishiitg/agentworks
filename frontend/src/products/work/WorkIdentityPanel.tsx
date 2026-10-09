@@ -29,6 +29,10 @@ import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
 
+import { useProjectMode } from './codeLocalFiles'
+import { CODE_MODE_CHOICES } from './CreateCodeWorkspaceDialog'
+import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
+
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
 export type WorkIdentityTab = 'general' | 'models' | 'location'
@@ -51,6 +55,28 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
 }
 
 // Code has a name only: rename and delete, no identity, purpose or templates.
+/** The mode this project was created in. It cannot change yet: "Switch mode" says so and offers a new project. */
+function ModeRow({ sessionId }: { sessionId: string }) {
+  const mode = useProjectMode(sessionId)
+  const [explain, setExplain] = useState(false)
+  const choice = CODE_MODE_CHOICES.find(item => item.mode === mode) ?? CODE_MODE_CHOICES[0]
+  return <SettingsCard icon={<choice.icon aria-hidden="true" className="h-4 w-4 text-primary" />} title={`Mode: ${choice.title}`} description={choice.text}
+    actions={<Button size="sm" variant="outline" onClick={() => setExplain(true)}>Switch mode</Button>}>
+    {null}
+    <ConfirmationDialog
+      isOpen={explain}
+      onClose={() => setExplain(false)}
+      onConfirm={() => { setExplain(false); window.dispatchEvent(new CustomEvent('agentworks:new-code-project')) }}
+      title="Switching mode is not available yet"
+      message="A project keeps the mode it was created in. To work in another mode, create a new project and choose the mode there."
+      confirmText="Create a new project"
+      cancelText="Close"
+      type="info"
+      ignoreWorkspaceAutoCollapse
+    />
+  </SettingsCard>
+}
+
 function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
   sessionId: string
   projectTitle: string
@@ -78,6 +104,7 @@ function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateId
   }
   return (
     <div className="space-y-4">
+      <ModeRow sessionId={sessionId} />
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}

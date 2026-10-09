@@ -33,7 +33,7 @@ import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, remov
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { clearPendingLocalLink, peekPendingLocalLink, registerLocalFilesPersister, setProjectLocalFiles, useCodeFilesPreference } from './codeLocalFiles'
+import { clearPendingLocalLink, peekPendingLocalLink, registerLocalFilesPersister, setProjectLocalFiles, setProjectMode, useCodeFilesPreference } from './codeLocalFiles'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -41,7 +41,7 @@ import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspa
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workChatTabShortcut, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
-import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
+import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
@@ -216,8 +216,8 @@ function useWorkSessions(product: ProjectProductConfig) {
     return () => { cancelled = true }
   }, [product, setSelectedId, updateSessions])
 
-  const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection) => {
-    const session = await createWorkSession(title, description, icon, templateId, product, runsOn)
+  const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode) => {
+    const session = await createWorkSession(title, description, icon, templateId, product, runsOn, mode)
     if (runsOn?.provider) rememberRunsOn(product.profileId, runsOn.provider)
     updateSessions((current) => [session, ...current])
     setSelectedId(session.id)
@@ -925,6 +925,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     // Someone else's workspace never shows its owner's computer: not theirs to use, and the server refuses it.
     setProjectLocalFiles(localFilesProjectId, selectedIsShared ? null : selectedLocalFiles ?? null)
   }, [product.profileId, localFilesProjectId, selectedLocalFiles, selectedIsShared])
+  const selectedMode = selected ? productMode(selected) : undefined
+  useEffect(() => {
+    if (product.profileId === 'code' && localFilesProjectId && selectedMode) setProjectMode(localFilesProjectId, selectedMode)
+  }, [product.profileId, localFilesProjectId, selectedMode])
   // An `agentworks start` link names the Code workspace that uses the folder: open that workspace and save the folder in it.
   // Only a workspace the user named is changed; no match (or several) says so and changes nothing.
   useEffect(() => {
@@ -997,6 +1001,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [projectConfigRefreshToken, refresh])
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createMode, setCreateMode] = useState<ProductMode>('dev')
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
@@ -1234,12 +1239,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     })
   }, [reportPreviewPreference, selected?.id, setSplitRatio, startSplitDrag])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode) => {
     if (creating) return
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await create(title, description, icon, templateId, runsOn)
+      const created = await create(title, description, icon, templateId, runsOn, mode)
       if (templateId) {
         setPanelOpen(true)
         setWorkspaceView('files')
@@ -1255,8 +1260,21 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   const openCreateProject = useCallback(() => {
     setCreateError(null)
+    setCreateMode('dev')
     setCreateOpen(true)
   }, [])
+  // "Switch mode" in a project's settings sends people here: a project keeps the mode it was created in, so they make a new one.
+  useEffect(() => {
+    if (product.profileId !== 'code') return
+    const open = (event: Event) => {
+      const mode = (event as CustomEvent<{ mode?: ProductMode }>).detail?.mode
+      setCreateError(null)
+      setCreateMode(mode ?? 'dev')
+      setCreateOpen(true)
+    }
+    window.addEventListener('agentworks:new-code-project', open)
+    return () => window.removeEventListener('agentworks:new-code-project', open)
+  }, [product.profileId])
 
   const deleteProject = useCallback(async () => {
     if (!deleteCandidate || deletingProjectId) return
@@ -1306,7 +1324,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       {createOpen && !product.hasIdentity ? (
         <CreateCodeWorkspaceDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={(title, runsOn) => createProject(title, '', undefined, undefined, runsOn)}
+          onCreate={(title, runsOn, mode) => createProject(title, '', undefined, undefined, runsOn, mode)}
+          initialMode={createMode}
           profileId={product.profileId}
           submitting={creating}
           error={createError}

@@ -1,4 +1,4 @@
-import { addProductProjectTemplate, removeProductProjectTemplate, createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
+import { addProductProjectTemplate, removeProductProjectTemplate, createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
@@ -69,7 +69,7 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
   }))
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection): Promise<WorkSession> {
+export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, mode?: ProductMode): Promise<WorkSession> {
   const template = templateId && product.hasTemplates ? getCrewTemplate(templateId) : undefined
   const options = await loadAgentProfileProviderOptions(product.profileId)
   // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
@@ -114,6 +114,7 @@ export async function createWorkSession(title: string, description: string, icon
     } : {}),
     llmConfig,
     runtimeManifestName: 'workflow.json',
+    ...(mode ? { mode } : {}),
   })
   await agentApi.createPlannerFolder(
     `${project.workspacePath}/code`,

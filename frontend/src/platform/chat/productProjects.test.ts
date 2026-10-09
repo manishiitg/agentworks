@@ -8,7 +8,7 @@ const listOwnSharedProjects = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects } }))
 
 import { agentApi } from '../../services/api'
-import { loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
+import { loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
 
 describe('parseProductProjectManifest', () => {
   it('loads the project bot identity and icon', () => {
@@ -32,6 +32,19 @@ describe('parseProductProjectManifest', () => {
       name: 'Nova',
       role: 'Launch partner',
     })
+  })
+})
+
+describe('Code project mode in product.json', () => {
+  const base = { schema_version: 1, product: 'code', id: 'code-1', title: 'App', session_id: 'code:1' }
+  const parse = (extra: object) => parseProductProjectManifest(JSON.stringify({ ...base, ...extra }), 'Chats/Code/app', 'code')!
+  it('reads the saved mode, ignores an unknown one, and defaults old projects (dev, or local when a folder is saved)', () => {
+    expect(productMode(parse({ mode: 'cowork' }))).toBe('cowork')
+    expect(productMode(parse({ mode: 'local' }))).toBe('local')
+    expect(productMode(parse({ mode: 'sandbox' }))).toBe('dev')
+    expect(productMode(parse({}))).toBe('dev')
+    expect(productMode(parse({ local_files: { device_id: 'laptop', resource_id: 'app' } }))).toBe('local')
+    expect(productMode(parse({ mode: 'dev', local_files: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
   })
 })
 

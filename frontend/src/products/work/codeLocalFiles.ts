@@ -70,10 +70,22 @@ export function setProjectLocalFiles(projectId: string, target: CodeLocalFileTar
   projectLocal.set(projectId, target)
   window.dispatchEvent(new Event(changed))
 }
+// A project made in Local mode has no folder until `agentworks start` links one: it is Local already, and says so.
+const projectModes = new Map<string, 'dev' | 'cowork' | 'local'>()
+export function setProjectMode(projectId: string, mode: 'dev' | 'cowork' | 'local') {
+  if (projectModes.get(projectId) === mode) return
+  projectModes.set(projectId, mode)
+  window.dispatchEvent(new Event(changed))
+}
+export function useProjectMode(sessionId: string): 'dev' | 'cowork' | 'local' {
+  const project = useChatStore(state => projectOf(state.chatTabs, sessionId))
+  return useSyncExternalStore(subscribe, () => (project && projectModes.get(project)) || 'dev', () => 'dev')
+}
 function resolveRaw(sessionId: string): string | null {
   const project = projectOf(useChatStore.getState().chatTabs, sessionId)
   if (project && projectLocal.has(project)) {
     const target = projectLocal.get(project)
+    if (!target && projectModes.get(project) === 'local') return JSON.stringify({ location: 'computer' })
     return JSON.stringify(target ? { location: 'computer', target } : { location: 'server' })
   }
   return stored(preferenceKey(sessionId))

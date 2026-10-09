@@ -13,7 +13,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: typeof workspace) => unknown) => selector(workspace), { getState: () => workspace }) }))
 import { CodeChatConnectionStatus } from './CodeChatConnectionStatus'
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
-import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, setPendingLocalLink, setProjectLocalFiles, takePendingLocalLink, writeCodeFilesPreference } from './codeLocalFiles'
+import { codeChatModeForChat, codeLocalFilesForChat, readCodeFilesPreference, registerLocalFilesPersister, setPendingLocalLink, setProjectLocalFiles, setProjectMode, takePendingLocalLink, writeCodeFilesPreference } from './codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const session = 'code-session-1'
@@ -249,6 +249,18 @@ it('the setup page also gives Windows commands, with the no-sandbox note', async
   expect(host.textContent).toContain('commands the agent runs are not sandboxed')
   await click(host, 'macOS / Linux')
   expect(host.textContent).not.toContain('agentworks.exe')
+})
+
+it('a project made in Local mode is Local before any folder is linked, and Dev or Cowork projects are not', () => {
+  const tab = (sessionId: string, project: string) => ({ sessionId, isStreaming: false, metadata: { agentProfileProjectId: project } })
+  chats.chatTabs = { a: tab('new-local-chat', 'proj-local'), b: tab('cowork-chat', 'proj-cowork') }
+  setProjectLocalFiles('proj-local', null); setProjectMode('proj-local', 'local')
+  setProjectLocalFiles('proj-cowork', null); setProjectMode('proj-cowork', 'cowork')
+  expect(codeChatModeForChat('new-local-chat')).toBe('local')
+  expect(codeLocalFilesForChat('new-local-chat')).toBeUndefined()
+  expect(codeChatModeForChat('cowork-chat')).toBe('server')
+  setProjectLocalFiles('proj-local', target)
+  expect(codeLocalFilesForChat('new-local-chat')).toEqual(target)
 })
 
 it('shows Downloads permission before switching and on the connected summary', async () => {
