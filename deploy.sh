@@ -223,6 +223,10 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   [[ ! -f "$PRODUCT_DIR/nginx-site.conf" ]] || nginx_site_b64="$(base64 < "$PRODUCT_DIR/nginx-site.conf" | tr -d '\n')"
   ssh "${SSH_OPTS[@]}" "${HOST_SETUP_USER:?HOST_SETUP_SCRIPT needs HOST_SETUP_USER}@$HOST_IP" \
     "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$([[ -f "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" ]] && echo "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" || echo "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT")"
+  # Every prepared host also gets the user-namespace exception the sandbox needs (a no-op where AppArmor does not restrict it),
+  # scoped to this product's own launcher and nothing else. The activation then proves the sandbox works, or stops the deploy.
+  echo "==> [$PRODUCT] Allowing the sandbox's user namespaces for this product's launcher only"
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
 fi
 
 echo "==> [$PRODUCT] Checking deployment configuration"

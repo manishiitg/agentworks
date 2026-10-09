@@ -219,9 +219,9 @@ class RtsShipmentTest(unittest.TestCase):
             ("video-studio", "agent workspace gateway browser", "update-coding-clis",
              {"video-studio-agent", "video-studio-workspace", "video-studio-gateway", "video-studio-browser", "slotctl", "workspace-security.test", "lib"},
              {"agent", "update-coding-clis"}),
-            ("example", "agent workspace gateway", "browser workspace-security.test update-coding-clis",
-             {"example-agent", "example-workspace", "example-gateway", "slotctl", "lib"},
-             {"agent", "browser", "workspace-security.test", "update-coding-clis"}),
+            ("example", "agent workspace gateway", "browser update-coding-clis",
+             {"example-agent", "example-workspace", "example-gateway", "slotctl", "workspace-security.test", "lib"},
+             {"agent", "browser", "update-coding-clis"}),
         ):
             with self.subTest(prefix=prefix):
                 dest = self.tmp / f"dest-{prefix}"

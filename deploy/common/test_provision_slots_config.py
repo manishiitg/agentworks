@@ -12,12 +12,12 @@ SCRIPT = (Path(__file__).resolve().parent / "provision-slots.sh").read_text()
 
 
 class ProvisionSlotsConfigTest(unittest.TestCase):
-    def test_userns_profile_covers_slotctl_the_launcher_and_the_self_test_only(self):
+    def test_userns_profile_covers_slotctl_the_launcher_and_the_self_tests_only(self):
         # PLAT-480: both binaries need `userns`; nothing broader (no wildcard program, no network or capability rule).
         block = re.search(r"userns_profile\(\) \{\n  cat <<PROFILE\n(.*?)\nPROFILE", SCRIPT, re.S).group(1)
         profiles = re.findall(r"^(\S+) flags=\(unconfined\) \{\n  userns,\n\}", block, re.M)
-        self.assertEqual(profiles, ["$LIBEXEC/slotctl", "$HOME_DIR/releases/**/bin/video-studio-landlock-runner", "$HOME_DIR/releases/**/bin/slotcheck"])
-        self.assertEqual(block.count("userns,"), 3)
+        self.assertEqual(profiles, ["$LIBEXEC/slotctl", "$HOME_DIR/releases/**/bin/video-studio-landlock-runner", "$HOME_DIR/releases/**/bin/slotcheck", "$HOME_DIR/releases/**/bin/workspace-security.test"])
+        self.assertEqual(block.count("userns,"), 4)
 
     def test_allowed_cwd_contains_the_docs_root(self):
         match = re.search(r'"allowed_cwd":\s*\[([^\]]*)\]', SCRIPT)

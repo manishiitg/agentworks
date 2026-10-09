@@ -134,8 +134,8 @@ echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no com
 cp "$PREBUILT/SOURCE_REVISIONS" "$BUILD_DIR/SOURCE_REVISIONS"
 mkdir -p "$BUILD_DIR/source" "$BUILD_DIR/downloads"
 cp -R "$PREBUILT/source/." "$BUILD_DIR/source/"
-# browser, workspace-security.test and update-coding-clis are used by the RTS host only.
-prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" "$PRODUCT" "agent workspace gateway" "browser workspace-security.test update-coding-clis"
+# browser and update-coding-clis are used by the RTS host only. workspace-security.test goes to every host: the activation runs it.
+prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" "$PRODUCT" "agent workspace gateway" "browser update-coding-clis"
 cp -R "$PREBUILT/downloads/." "$BUILD_DIR/downloads/"
 cli_build="$(cat "$BUILD_DIR/downloads/cli-build.txt" 2>/dev/null || true)"
 printf '{"version":"%s","cli_build":"%s","release":"%s"}\n' "$builder_revision" "$cli_build" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
@@ -174,6 +174,8 @@ mv "$BUILD_DIR/bin/video-studio-agent" "$BUILD_DIR/bin/$PRODUCT-agent"
 # Literal filename required: workspace/security/landlock_policy.go resolves
 # its sandbox launcher by this exact name regardless of which product runs.
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner")
+# The activation proves the sandbox works on this host with it (below).
+(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go test -c -o "$BUILD_DIR/bin/workspace-security.test" "$REPO_ROOT/workspace/security")
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the RTS build).
 source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$BUILD_DIR"
@@ -304,6 +306,21 @@ echo "==> [$RELEASE_ID] Activating release and restarting services"
 # Check again after the build, before switching current or restarting services.
 PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
 chmod +x "$BUILD_DIR"/bin/*
+# The Linux sandbox must really work on this host for this release before it goes live. Shell commands run inside it, and a
+# policy that blocks a path inside a granted one needs a user namespace, which Ubuntu 23.10+ denies by default
+# (kernel.apparmor_restrict_unprivileged_userns=1): Citymall went live without it on 2026-10-09 and every shell command failed
+# while the deploy checks passed. This runs the real thing as the service account, so a host that is not prepared stops here.
+if [[ ! -x "$BUILD_DIR/bin/workspace-security.test" ]]; then
+  echo "ERROR: the release has no bin/workspace-security.test, so the sandbox cannot be proven on this host." >&2
+  exit 1
+fi
+if ! sandbox_log="$("$BUILD_DIR/bin/workspace-security.test" -test.run '^TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy$' -test.v 2>&1)"; then
+  printf '%s\n' "$sandbox_log" | tail -20 >&2
+  echo "ERROR: the Linux sandbox does not work on this host, so shell commands would fail. kernel.apparmor_restrict_unprivileged_userns=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo n/a)." >&2
+  echo "Fix: as root on the host, run: PRODUCT=$PRODUCT bash -s -- userns < deploy/common/provision-slots.sh (HOST_SETUP products get this automatically)." >&2
+  exit 1
+fi
+echo "sandbox: proven on this host (mount-namespace fallback test passed)"
 # Slot accounts must reach this release's Landlock launcher (releases/ 0711; PLAT-478). No-op without slots.
 slots_release_traversal "$REMOTE_APP" "$BUILD_DIR"
 ln -sfn "$REMOTE_APP/logs" "$BUILD_DIR/logs"

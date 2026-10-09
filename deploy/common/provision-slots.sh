@@ -362,6 +362,11 @@ $HOME_DIR/releases/**/bin/video-studio-landlock-runner flags=(unconfined) {
 $HOME_DIR/releases/**/bin/slotcheck flags=(unconfined) {
   userns,
 }
+
+# The deploy proves the sandbox works on the host with this test before a release goes live (build-and-activate.sh).
+$HOME_DIR/releases/**/bin/workspace-security.test flags=(unconfined) {
+  userns,
+}
 PROFILE
 }
 
