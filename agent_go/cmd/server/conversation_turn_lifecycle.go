@@ -392,6 +392,9 @@ func (api *StreamingAPI) durableFailedWorkflowDescendant(ctx context.Context, ro
 	return "", "", false
 }
 
+// rootRegistrationGrace is how long a turn's execution may stay unregistered while its chat is idle before the wait fails.
+var rootRegistrationGrace = 5 * time.Second
+
 // waitForConversationTurnTree is the single completion waiter for scheduled
 // messages. Events only wake the loop; completion comes exclusively from the
 // exact query-rooted execution tree.
@@ -419,7 +422,14 @@ func (api *StreamingAPI) waitForConversationTurnTree(ctx context.Context, sessio
 	check := func() (bool, error) {
 		state := api.conversationTurnTreeSnapshot(rootExecutionID)
 		if !state.RootFound {
-			if time.Since(rootMissingSince) > 5*time.Second {
+			// A message sent while the chat is still answering an earlier one waits its turn: its execution is registered only
+			// when it starts. Eight quick asks to one Crew failed with "was not registered" after 5 s (Citymall acceptance run,
+			// 2026-10-09). While the chat is busy the clock does not run; the inactivity limit below still ends a stuck wait.
+			if api.isSessionBusy(sessionID) {
+				rootMissingSince = time.Now()
+				return false, nil
+			}
+			if time.Since(rootMissingSince) > rootRegistrationGrace {
 				return false, fmt.Errorf("execution lifecycle record %s was not registered", rootExecutionID)
 			}
 			return false, nil
