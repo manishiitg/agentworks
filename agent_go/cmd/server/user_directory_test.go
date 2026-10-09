@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -254,58 +252,30 @@ func adminRequest(method, path, body string, claims *UserClaims, vars map[string
 	return req
 }
 
-// Where every account needs a slot, the Users panel must not create one that has none (Excellence 2026-10-09).
-func TestAdminCreateUserNeedsASlotWhereSlotsAreOn(t *testing.T) {
+// Accounts are added by DevOps on the server (provision-slots.sh adduser: account and slot together), never from the
+// app: the API refuses for everyone, admins included (Excellence 2026-10-09, PLAT-777).
+func TestAdminCannotCreateUsersFromTheApp(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]}]}`)
-	table := filepath.Join(t.TempDir(), "slots.json")
-	t.Setenv("AGENTWORKS_SLOTS", "on")
-	t.Setenv("AGENTWORKS_SLOTS_FILE", table)
 	api := &StreamingAPI{}
-	alice := &UserClaims{UserID: "a1", Username: "alice"}
-	add := func(username string) *httptest.ResponseRecorder {
-		rec := httptest.NewRecorder()
-		requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", `{"username":"`+username+`","password":"davepass123"}`, alice, nil))
-		return rec
+	rec := httptest.NewRecorder()
+	requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", `{"username":"dave","password":"davepass123"}`, &UserClaims{UserID: "a1", Username: "alice"}, nil))
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "adduser") {
+		t.Fatalf("create from the app: %d %s", rec.Code, rec.Body.String())
 	}
-	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"someone-else"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if rec := add("dave"); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "slot") {
-		t.Fatalf("no slot: %d %s", rec.Code, rec.Body.String())
-	}
-	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"`+userIDForUsername("dave")+`"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if rec := add("dave"); rec.Code != http.StatusCreated {
-		t.Fatalf("with a slot: %d %s", rec.Code, rec.Body.String())
+	if dir, _ := readUserDirectoryFile(); len(dir.Users) != 1 {
+		t.Fatalf("an account was created: %+v", dir.Users)
 	}
 }
 
 func TestAdminUserCRUDAndGuards(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]}]}`)
+	daveID := userIDForUsername("dave")
+	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},{"id":"`+daveID+`","username":"dave","can_edit":true,"products":["video-studio"]}]}`)
 	api := &StreamingAPI{}
 	alice := &UserClaims{UserID: "a1", Username: "alice"}
-
-	// create
+	created := userAdminView{ID: daveID}
 	rec := httptest.NewRecorder()
-	requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users",
-		`{"username":"dave","password":"davepass123","can_create":false,"can_edit":true,"products":["Video-Studio","video-studio"]}`, alice, nil))
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
-	}
-	var created userAdminView
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.ID != userIDForUsername("dave") || created.Admin || created.CanCreate || !created.CanEdit || len(created.Products) != 1 || !created.HasPassword {
-		t.Fatalf("created view: %+v", created)
-	}
-	// duplicate
-	rec = httptest.NewRecorder()
-	requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", `{"username":"dave","password":"davepass123"}`, alice, nil))
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("duplicate: %d", rec.Code)
-	}
 	// dave (read-only) cannot use the admin API
 	dave := &UserClaims{UserID: created.ID, Username: "dave"}
 	rec = httptest.NewRecorder()
@@ -441,30 +411,38 @@ func TestAdminAddUserByEmail(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","email":"alice@example.com","admin":true,"can_create":true,"products":[]}]}`)
 	api := &StreamingAPI{}
 	alice := &UserClaims{UserID: "a1", Username: "alice"}
-	create := func(body string) *httptest.ResponseRecorder {
-		rec := httptest.NewRecorder()
-		requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", body, alice, nil))
-		return rec
+	// The add-user command is the only way accounts are created (DevOps, with the slot).
+	add := func(email, username, role string, products []string) (UserRecord, bool, error) {
+		dir, err := readUserDirectoryFile()
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec, created, err := addDirectoryUser(dir, email, username, role, products)
+		if err == nil && created {
+			if err := saveUserDirectory(dir); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec, created, err
 	}
 
-	rec := create(`{"username":"bob@example.com","email":"bob@example.com","role":"viewer","products":["code"]}`)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("add by email: %d %s", rec.Code, rec.Body.String())
+	bobRec, created, err := add("bob@example.com", "bob@example.com", "viewer", []string{"code"})
+	if err != nil || !created {
+		t.Fatalf("add by email: %v created=%v", err, created)
 	}
-	var bob userAdminView
-	_ = json.Unmarshal(rec.Body.Bytes(), &bob)
+	bob := viewOf(bobRec)
 	if !bob.Invited || bob.HasPassword || bob.Role != "viewer" || len(bob.Products) != 1 {
 		t.Fatalf("invited view: %+v", bob)
 	}
 
 	// SSO resolves the account by email, so an address belongs to one account.
-	if rec := create(`{"username":"bob2","email":"BOB@example.com"}`); rec.Code != http.StatusBadRequest {
-		t.Fatalf("duplicate email: %d %s", rec.Code, rec.Body.String())
+	if _, created, err := add("BOB@example.com", "bob2", "viewer", nil); err != nil || created {
+		t.Fatalf("duplicate email must return the existing account: created=%v err=%v", created, err)
 	}
-	if rec := create(`{"username":"carol","email":"Carol <carol@example.com>"}`); rec.Code != http.StatusBadRequest {
-		t.Fatalf("display-name email: %d %s", rec.Code, rec.Body.String())
+	if _, _, err := add("Carol <carol@example.com>", "carol", "viewer", nil); err == nil {
+		t.Fatal("display-name email was accepted")
 	}
-	rec = httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 	requireAdmin(api.handleAdminUpdateUser)(rec, adminRequest(http.MethodPut, "/api/admin/users/"+bob.ID, `{"email":"alice@example.com"}`, alice, map[string]string{"id": bob.ID}))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("update to another account's email: %d %s", rec.Code, rec.Body.String())
@@ -521,20 +499,15 @@ func TestSSOFirstLoginNeverLinksByDisplayName(t *testing.T) {
 // user-chosen display name.
 func TestAdminAddedEmailIsStoredLowercase(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[]}`)
-	api := &StreamingAPI{}
-	rec := httptest.NewRecorder()
-	api.handleAdminCreateUser(rec, adminRequest(http.MethodPost, "/x", `{"username":"Ana@Gmail.com","email":"Ana@Gmail.com","products":["code"]}`, &UserClaims{UserID: "adm"}, nil))
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s", rec.Code, rec.Body.String())
-	}
 	dir, _ := readUserDirectoryFile()
+	if _, created, err := addDirectoryUser(dir, "Ana@Gmail.com", "Ana@Gmail.com", "viewer", []string{"code"}); err != nil || !created {
+		t.Fatalf("create: %v created=%v", err, created)
+	}
 	if len(dir.Users) != 1 || dir.Users[0].Email != "ana@gmail.com" {
 		t.Fatalf("stored email = %+v", dir.Users)
 	}
-	// A second add differing only in case is a duplicate.
-	dup := httptest.NewRecorder()
-	api.handleAdminCreateUser(dup, adminRequest(http.MethodPost, "/x", `{"username":"ana2","email":"ANA@gmail.com"}`, &UserClaims{UserID: "adm"}, nil))
-	if dup.Code != http.StatusBadRequest {
-		t.Fatalf("case-different duplicate = %d", dup.Code)
+	// A second add differing only in case is the same account.
+	if _, created, err := addDirectoryUser(dir, "ANA@gmail.com", "ana2", "viewer", nil); err != nil || created || len(dir.Users) != 1 {
+		t.Fatalf("case-different duplicate: created=%v err=%v users=%d", created, err, len(dir.Users))
 	}
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, UserPlus, Mail, LockKeyhole } from 'lucide-react'
+import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, Mail } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
@@ -296,17 +296,6 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   const [resetPassword, setResetPassword] = useState('')
   const [deleteFor, setDeleteFor] = useState<AdminUser | null>(null)
 
-  // Add by email: no password; the person signs in with SSO using this
-  // address and the account keeps the role and products set here.
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<Role>('viewer')
-  const [inviteProducts, setInviteProducts] = useState<string[]>([])
-  const selectedInviteProducts = vaultOnly ? ['mcp-gateway'] : inviteProducts
-  const [inviting, setInviting] = useState(false)
-  // Shown after adding someone. Accounts are added here by an administrator: signing in never creates one.
-  const [addedNotice, setAddedNotice] = useState<string | null>(null)
-  const inviteEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim())
-
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -355,97 +344,15 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
     return patch
   }
 
-  const addByEmail = async () => {
-    const email = inviteEmail.trim()
-    setInviting(true)
-    setError(null)
-    try {
-      const created = await authApi.createAdminUser({
-        username: email,
-        email,
-        ...roleFields(vaultOnly ? 'viewer' : inviteRole),
-        // With one product there is nothing to choose: they get it.
-        products: vaultOnly ? ['mcp-gateway'] : inviteRole === 'admin' ? [] : [...new Set([...selectedInviteProducts, ...(products.length === 1 ? products : [])])],
-      })
-      setAddedNotice(`${created.email || email} was added. Ask them to sign in with Google using this address.`)
-      setInviteEmail('')
-      setInviteProducts([])
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setInviting(false)
-    }
-  }
-
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
 
   return (
     <div className="[container-type:inline-size] space-y-5">
       <SettingsCard
-        icon={<UserPlus className="h-4 w-4 text-primary" />}
-        title="Add a user"
-        description={vaultOnly ? 'Vault access only. Set MCP and secret permissions in groups.' : 'Invite by email. Users sign in with SSO.'}
-      >
-        <div className="flex flex-col gap-3">
-          <div className={`grid grid-cols-1 gap-3 ${vaultOnly ? '' : '[@container(min-width:360px)]:grid-cols-[minmax(0,1fr)_8rem]'}`}>
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Email</span>
-              <Input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && inviteEmailValid && !inviting) void addByEmail() }}
-                placeholder="name@example.com"
-                aria-label="Email"
-                className="text-sm"
-              />
-            </label>
-            {!vaultOnly && <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Role</span>
-              <RolePicker value={inviteRole} onChange={setInviteRole} label="Role" />
-            </div>}
-          </div>
-          {!vaultOnly && inviteRole !== 'admin' && products.length > 1 && (
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-xs font-medium text-muted-foreground">Product access</legend>
-              <div className="flex flex-wrap gap-2">
-                {products.map((p) => (
-                  <label key={p} className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs transition-colors ${selectedInviteProducts.includes(p) ? 'border-primary/40 bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/40'} cursor-pointer`}>
-                    <Checkbox
-                      checked={selectedInviteProducts.includes(p)}
-                      onCheckedChange={() => setInviteProducts((list) => toggleProduct(list, p))}
-                      aria-label={`${productLabel(p)} for the new user`}
-                    />
-                    {productLabel(p)}
-                  </label>
-                ))}
-              </div>
-              {selectedInviteProducts.length === 0 && <p className="text-xs text-muted-foreground">{inviteRole === 'creator' ? 'Access to all products.' : 'Select products this user can open.'}</p>}
-            </fieldset>
-          )}
-          {!vaultOnly && inviteRole === 'admin' && <p className="text-xs text-muted-foreground">Admins have access to all products.</p>}
-          <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-            {vaultOnly ? <Badge variant="outline"><LockKeyhole className="mr-1.5 h-3 w-3" />Vault only</Badge> : <span />}
-            <Button size="sm" disabled={!inviteEmailValid || inviting} onClick={() => { void addByEmail() }}>
-              {inviting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}
-              Add user
-            </Button>
-          </div>
-          {addedNotice && (
-            <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/40 p-2 text-xs text-emerald-700 dark:text-emerald-300">
-              <span className="min-w-0 flex-1">{addedNotice}</span>
-              <Button variant="ghost" size="sm" onClick={() => setAddedNotice(null)}>Dismiss</Button>
-            </div>
-          )}
-        </div>
-      </SettingsCard>
-
-      <SettingsCard
         icon={<Users className="h-4 w-4 text-primary" />}
         title="Accounts"
         count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
-        description={vaultOnly ? undefined : 'Manage roles and product access.'}
+        description={vaultOnly ? undefined : 'Manage roles and product access. People are added by DevOps on the server.'}
       >
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -459,7 +366,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
             <span>Loading accounts…</span>
           </div>
         ) : sorted.length === 0 ? (
-          <SettingsEmpty>No accounts yet. Add one above.</SettingsEmpty>
+          <SettingsEmpty>No accounts yet. DevOps adds people on the server.</SettingsEmpty>
         ) : (
           <table className="w-full text-sm">
             <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">

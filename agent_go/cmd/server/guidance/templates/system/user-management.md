@@ -12,7 +12,8 @@ directory; admins see account metadata. Ordinary readers/non-owners get an error
 existing members unless the user requested removal; retain at least one owner.
 Owners can manage their workflow; admins can manage other accessible workflows.
 
-Only admins can `create_user` or `update_user`. Use `user_id` for updates; omitted
+Only admins can `update_user`. Accounts are not created here: DevOps adds people on the server
+(`provision-slots.sh adduser`), which also gives each one a slot. Use `user_id` for updates; omitted
 fields remain unchanged. Do not invent passwords or echo user-supplied passwords.
 Do not make a user admin, broaden product access or disable users as an automatic
 workaround. Explain the specific mismatch and apply only user-authorized changes.

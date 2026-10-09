@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -956,96 +955,11 @@ func normalizeProducts(in []string) []string {
 	return out
 }
 
-// POST /api/admin/users
+// handleAdminCreateUser refuses: accounts are not created from the app any more. People are added by DevOps on the
+// server with `provision-slots.sh adduser <email>`, which creates the account and gives it a slot in one step; an
+// account without a slot cannot run a single command (Excellence 2026-10-09, PLAT-777), and only root can assign one.
 func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
-	var req userWriteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeUsersError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	username := strings.TrimSpace(req.Username)
-	if !validUsername(username) {
-		writeUsersError(w, http.StatusBadRequest, errUsernameInvalid.Error())
-		return
-	}
-	dir, err := readUserDirectoryFile()
-	if err != nil {
-		writeUsersError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if dir.byUsername(username) != nil {
-		writeUsersError(w, http.StatusConflict, "a user with that username already exists")
-		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	rec := UserRecord{ID: userIDForUsername(username), Username: username, Products: []string{}, CreatedAt: now, UpdatedAt: now}
-	if req.Email != nil {
-		rec.Email = strings.ToLower(strings.TrimSpace(*req.Email))
-	}
-	if msg := adminEmailError(dir, rec.Email, ""); msg != "" {
-		writeUsersError(w, http.StatusBadRequest, msg)
-		return
-	}
-	// Where every account needs a slot, an account without one cannot run a single command (Excellence 2026-10-09: a
-	// new person's Goal setup failed with "No account slot for this user"). Slots are assigned only by root on the
-	// host, never by this service, so the Users panel cannot give one: refuse unless the person already holds one.
-	if _, enabled, slotErr := slots.For(rec.ID); enabled && slotErr != nil {
-		log.Printf("[USERS] refused to add %q: no slot for %s: %v", username, rec.ID, slotErr)
-		writeUsersError(w, http.StatusConflict, fmt.Sprintf("This server gives every account its own slot and %s has none. Add the person on the server with `provision-slots.sh adduser <email>` (it creates the account and assigns the slot together), or assign a slot to user id %s first and then add them here.", username, rec.ID))
-		return
-	}
-	if req.Password != nil && *req.Password != "" {
-		if len(*req.Password) < 8 {
-			writeUsersError(w, http.StatusBadRequest, "password must be at least 8 characters")
-			return
-		}
-		hash, err := hashPassword(*req.Password)
-		if err != nil {
-			writeUsersError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		rec.PasswordHash = hash
-	}
-	if err := applyRoleWrite(&rec, req); err != nil {
-		writeUsersError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if req.Products != nil {
-		rec.Products = normalizeProducts(*req.Products)
-	}
-	if req.ClearCreateProducts {
-		rec.CreateProducts = nil
-	} else if req.CreateProducts != nil {
-		create := normalizeProducts(*req.CreateProducts)
-		if create == nil {
-			create = []string{}
-		}
-		rec.CreateProducts = &create
-	}
-	if req.CodeReviewer != nil {
-		rec.CodeReviewer = *req.CodeReviewer
-	}
-	if req.Disabled != nil {
-		rec.Disabled = *req.Disabled
-	}
-	if req.TokenLimits != nil {
-		rec.TokenLimits = req.TokenLimits.normalized()
-	}
-	if err := applyAccountTokenLimits(&rec, req.AccountTokenLimits); err != nil {
-		writeUsersError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := applyAccountAllowedModels(&rec, req.AccountAllowedModels); err != nil {
-		writeUsersError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	dir.Users = append(dir.Users, rec)
-	if err := saveUserDirectory(dir); err != nil {
-		writeUsersError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	log.Printf("[USERS] %s created user %s (role=%s products=%v code_reviewer=%v)", GetUserIDFromContext(r.Context()), rec.Username, roleForRecord(&rec), rec.Products, rec.CodeReviewer)
-	writeUsersJSON(w, http.StatusCreated, viewOf(rec))
+	writeUsersError(w, http.StatusForbidden, "Accounts are added by DevOps on the server, not from the app: run `provision-slots.sh adduser <email>`, which creates the account and its slot together.")
 }
 
 // PUT /api/admin/users/{id}

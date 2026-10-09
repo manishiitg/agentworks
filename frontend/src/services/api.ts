@@ -3063,10 +3063,6 @@ export const authApi = {
     const response = await api.get('/api/admin/users')
     return response.data
   },
-  createAdminUser: async (user: AdminUserWrite): Promise<AdminUser> => {
-    const response = await api.post('/api/admin/users', user)
-    return response.data
-  },
   updateAdminUser: async (id: string, patch: AdminUserWrite): Promise<AdminUser> => {
     const response = await api.put(`/api/admin/users/${encodeURIComponent(id)}`, patch)
     return response.data

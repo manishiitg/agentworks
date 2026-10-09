@@ -36,16 +36,16 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 	str := func(description string) map[string]interface{} {
 		return map[string]interface{}{"type": "string", "description": description}
 	}
-	return reg.RegisterCustomTool("manage_user_access", "Builder-only user and workflow access management. Inspect before changing. Workflow owners/admins may inspect/set a source workflow's owners/editors/readers and list the sharing directory. Only admins may list full accounts, create or update users. Every invocation checks current caller permissions and errors when unauthorized. Use source workspace_path to resolve cross-workflow sharing; never widen access without the user's request. Returns account metadata only, never passwords or hashes.", map[string]interface{}{
+	return reg.RegisterCustomTool("manage_user_access", "Builder-only user and workflow access management. Inspect before changing. Workflow owners/admins may inspect/set a source workflow's owners/editors/readers and list the sharing directory. Only admins may list full accounts or update users. Accounts are added by DevOps on the server, not here. Every invocation checks current caller permissions and errors when unauthorized. Use source workspace_path to resolve cross-workflow sharing; never widen access without the user's request. Returns account metadata only, never passwords or hashes.", map[string]interface{}{
 		"type": "object", "additionalProperties": false,
 		"properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"get_workflow_access", "set_workflow_access", "list_users", "create_user", "update_user"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"get_workflow_access", "set_workflow_access", "list_users", "update_user"}},
 			"workspace_path": str("Workflow/<folder>; defaults to the active workflow for access and owner directory operations."),
 			"owners":         map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete owner list, at least one.")},
 			"editors":        map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete editor list. Omit to preserve.")},
 			"readers":        map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete reader list.")},
 			"user_id":        str("Existing account ID for update_user."),
-			"username":       str("Account username for create_user."),
+			"username":       str("Account username (update_user may rename)."),
 			"email":          str("Account email."), "password": str("User-provided account password only; never echo it."),
 			"role":  map[string]interface{}{"type": "string", "enum": []string{"admin", "creator", "editor", "viewer"}, "description": "Standardized account role; wins over admin/can_create/can_edit."},
 			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"}, "code_reviewer": map[string]interface{}{"type": "boolean", "description": "May review every Code workspace's cost, chats and files, read-only and audited."},
@@ -107,14 +107,10 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 			if access.Admin {
 				handler = api.handleAdminListUsers
 			}
-		case "create_user", "update_user":
-			handler = api.handleAdminCreateUser
-			method = http.MethodPost
+		case "update_user":
+			handler = api.handleAdminUpdateUser
+			method = http.MethodPut
 			target = "/api/admin/users"
-			if action == "update_user" {
-				handler = api.handleAdminUpdateUser
-				method = http.MethodPut
-			}
 			for _, key := range []string{"username", "email", "password", "role", "admin", "can_create", "can_edit", "disabled", "code_reviewer", "products"} {
 				if v, ok := args[key]; ok {
 					payload[key] = v
