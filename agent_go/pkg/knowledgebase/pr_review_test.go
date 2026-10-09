@@ -80,6 +80,22 @@ func TestValidateCapsUsesLiveGrantsAndIdentity(t *testing.T) {
 	}
 }
 
+// Someone with no Brain folder opens Brain and is told so, not "Resource not found." (Excellence 2026-10-09).
+func TestListingBrainWithoutAnyFolderSaysSo(t *testing.T) {
+	s, admin, reader := fixture(t, false)
+	folder(t, s, admin, "", "Payments")
+	_, err := s.Call(context.Background(), reader, "list_knowledgebase_folders", map[string]any{})
+	failure, ok := err.(*Error)
+	if !ok || failure.Code != "NOT_FOUND" || !strings.Contains(failure.Message, "do not have access to any Brain folder") {
+		t.Fatalf("root listing without access: %v", err)
+	}
+	// A specific folder they cannot see keeps the uniform answer.
+	_, err = s.Call(context.Background(), reader, "list_knowledgebase_folders", map[string]any{"folder_path": "Payments"})
+	if failure, ok := err.(*Error); !ok || failure.Message != "Resource not found." {
+		t.Fatalf("hidden folder: %v", err)
+	}
+}
+
 func TestRevokedFolderGrantCannotPublishPreparedReceipt(t *testing.T) {
 	s, admin, writer := fixture(t, true)
 	folder(t, s, admin, "", "Payments")

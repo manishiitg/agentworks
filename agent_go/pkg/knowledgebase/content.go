@@ -758,6 +758,11 @@ func (s *Service) listingScope(p Principal, a map[string]any) (folderRegistry, [
 			}
 		}
 		if !visible {
+			// Listing Brain's top level with no folder to see is not a hidden resource: say so and what to do, instead of
+			// the bare "Resource not found." people got on Excellence (2026-10-09). Any other folder keeps the uniform answer.
+			if stringArg(a, "folder_path") == "" && stringArg(a, "folder_id") == "" {
+				return r, nil, kbErr("NOT_FOUND", "You do not have access to any Brain folder yet. Ask an administrator or a folder Owner to add you.")
+			}
 			return r, nil, kbErr("NOT_FOUND", "Resource not found.")
 		}
 	}
