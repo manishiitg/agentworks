@@ -113,6 +113,16 @@ it('preserves offline selections without rendering server files or silently wide
   expect(transport.post).not.toHaveBeenCalled()
 })
 
+it('when the saved folder is not connected but another one is, it offers that folder instead of saying not connected', async () => {
+  writeCodeFilesPreference(session, { location: 'computer', target })
+  transport.get.mockResolvedValue({ data: { devices: [{ device_id: 'laptop', resources: [{ id: 'other-folder', writable: true, shell: true, guard: {} }] }] } })
+  await render(true)
+  expect(document.body.textContent).toContain('A different folder is connected')
+  expect(document.body.textContent).not.toContain('Your computer is not connected')
+  await act(async () => [...document.body.querySelectorAll('button')].find(b => b.textContent === 'Use other-folder')!.click())
+  expect(codeLocalFilesForChat(session)).toEqual({ device_id: 'laptop', resource_id: 'other-folder' })
+})
+
 it('isolates file connections by account, server workspace and session', () => {
   writeCodeFilesPreference(session, { location: 'computer', target })
   expect(codeLocalFilesForChat(`${session}-other`)).toBeUndefined()

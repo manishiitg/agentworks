@@ -23,7 +23,7 @@ function CopyCommand({ command, label, disabled = false }: { command: string; la
     catch { setError(true) }
   }
   return <div>
-    <div className={`flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`flex items-start gap-2 rounded-md bg-muted/40 p-3 ${disabled ? 'opacity-50' : ''}`}>
       <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[11px] leading-5">{command}</code>
       <Button size="icon" variant="ghost" disabled={disabled} aria-label={`Copy ${label}`} title={copied ? 'Copied' : 'Copy'} onClick={() => void copy()}>{copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}</Button>
     </div>
@@ -41,7 +41,7 @@ function SetupStep({ number, title, children }: { number: number; title: string;
 function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: boolean; reconnecting: boolean; workspaceName?: string }) {
   const base = getApiBaseUrl() || window.location.origin
   const cli = '"$HOME/.local/bin/agentworks"'
-  return <details className="group rounded-xl border border-border bg-background" open={!connected && !reconnecting}>
+  return <details className="group" open={!connected && !reconnecting}>
     <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux</span></summary>
     <div className="space-y-5 border-t border-border px-4 py-4">
       <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer. Your model stays on this server; the CLI connects your project folder. Already installed? Start at step 2.</p>
@@ -78,6 +78,10 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   useEffect(() => { setDraftKey(selectedKey); setSetupOpen(false); setConfirmServer(false); setSettingError(null) }, [sessionId, selectedKey, local])
   const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
   const draftResource = devices.flatMap(device => device.resources.map(folder => ({ ...folder, deviceId: device.device_id }))).find(folder => JSON.stringify([folder.deviceId, folder.id]) === draftKey)
+  // The saved folder is not connected but exactly one other folder is (the user started the CLI somewhere else): offer it,
+  // instead of saying "not connected" while the computer is connected.
+  const connectedFolders = devices.flatMap(device => device.resources.map(folder => ({ device_id: device.device_id, resource_id: folder.id })))
+  const otherFolder = local && !!selected && checked && !resource && !error && connectedFolders.length === 1 ? connectedFolders[0] : undefined
   const savePreference = (pref: Parameters<typeof writeCodeFilesPreference>[1]) => {
     if (busy) return
     try { writeCodeFilesPreference(sessionId, pref); setSettingError(null) }
@@ -91,28 +95,30 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   const offlinePrompt = <ConfirmationDialog
     isOpen={!!sessionId && local && !!selected && checked && !resource && !error && !offlineDismissed}
     onClose={() => setOfflineDismissed(true)}
-    onConfirm={refresh}
-    title="Your computer is not connected"
-    message={`This workspace works on files on your computer${selected ? ` (${selected.device_id} / ${selected.resource_id})` : ''}, but the CLI is not running. Open a terminal in your project folder and run "agentworks start", then press Verify. File work and commands wait until it connects.`}
-    confirmText="Verify connection"
+    onConfirm={() => { if (otherFolder) savePreference({ location: 'computer', target: otherFolder }); else refresh() }}
+    title={otherFolder ? 'A different folder is connected' : 'Your computer is not connected'}
+    message={otherFolder
+      ? `This workspace is set to ${selected?.device_id} / ${selected?.resource_id}, but ${otherFolder.device_id} / ${otherFolder.resource_id} is connected now. Use ${otherFolder.resource_id} for this workspace?`
+      : `This workspace works on files on your computer${selected ? ` (${selected.device_id} / ${selected.resource_id})` : ''}, but the CLI is not running. Open a terminal in your project folder and run "agentworks start", then press Verify. File work and commands wait until it connects.`}
+    confirmText={otherFolder ? `Use ${otherFolder.resource_id}` : 'Verify connection'}
     cancelText="Not now"
     type="warning"
     ignoreWorkspaceAutoCollapse
   />
   // Connected in Local mode: a small card about the connection. Everything else (folder choice, setup steps) is under Details.
-  if (local && resource && !details && sessionId) return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="This workspace works with files on your computer. Your agent and model run on the server.">
+  if (local && resource && !details && sessionId) return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="This workspace works with files on your computer. Your agent and model run on the server.">
     <div className="space-y-3">
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><Laptop className="h-4 w-4" /></span>
         <div className="min-w-0"><p role="status" className="text-sm font-medium">Connected</p><p className="truncate text-xs text-muted-foreground">{selected?.device_id} · {resource.id}</p></div>
       </div>
-      <div className="flex flex-wrap gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}{resource.shell && <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5" />Shell commands enabled on this computer</span>}</div>
+      <div className="flex flex-wrap gap-2 rounded-md bg-emerald-500/5 px-3 py-2 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}{resource.shell && <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5" />Shell commands enabled on this computer</span>}</div>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button><Button size="sm" variant="ghost" onClick={() => setDetails(true)}>Details</Button></div>
       {busy && <p className="text-xs text-muted-foreground">Wait for the current turn to finish before changing the file connection.</p>}
       {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
     </div>
   </SettingsCard>
-  return <SettingsCard icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="Choose where this workspace works with files. Your agent and model always run on the server.">
+  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="Choose where this workspace works with files. Your agent and model always run on the server.">
     {offlinePrompt}
     {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : !local && !setupOpen ?
       <Button variant="outline" disabled={busy} onClick={() => setSetupOpen(true)}>Connect local files</Button> : <div className="space-y-3">
@@ -123,13 +129,13 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
           </div>
           {local ? <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmServer(true)}>Disconnect local files</Button> : <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setDraftKey('') }}>Cancel setup</Button>}
         </div>
-        {confirmServer && <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+        {confirmServer && <div className="space-y-3 rounded-md bg-muted/40 p-3">
           <p className="text-sm font-medium">Switch this workspace to server files?</p>
           <p className="text-xs leading-5 text-muted-foreground">This is not a quick toggle. Your project files are on your computer; the server workspace does not have them, so the agent would work in a different folder and your work will look missing. Switching does not move or sync anything. Earlier messages stay in the chat history. The CLI keeps running until you stop it with agentworks stop.</p>
           <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => savePreference({ location: 'server' })}>Switch to server files</Button><Button size="sm" variant="ghost" onClick={() => setConfirmServer(false)}>Keep local connection</Button></div>
         </div>}
-        {local && resource && <div className="flex flex-wrap gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}</div>}
-        {local && selected && checked && !resource && !error && <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3"><p className="text-xs font-medium">Reconnect your computer to continue file work</p><p className="text-xs leading-5 text-muted-foreground">Wake your computer, check its network and keep the CLI running. It reconnects automatically. Conversation can continue; files will not switch to the server.</p></div>}
+        {local && resource && <div className="flex flex-wrap gap-2 rounded-md bg-emerald-500/5 px-3 py-2 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}</div>}
+        {local && selected && checked && !resource && !error && <div className="space-y-1 rounded-md bg-muted/40 p-3"><p className="text-xs font-medium">{otherFolder ? `A different folder is connected: ${otherFolder.device_id} / ${otherFolder.resource_id}` : 'Reconnect your computer to continue file work'}</p>{otherFolder && <Button size="sm" variant="outline" disabled={busy} onClick={() => savePreference({ location: 'computer', target: otherFolder })}>Use {otherFolder.resource_id} for this workspace</Button>}<p className="text-xs leading-5 text-muted-foreground">Wake your computer, check its network and keep the CLI running. It reconnects automatically. Conversation can continue; files will not switch to the server.</p></div>}
         <ComputerSetup connected={devices.length > 0} reconnecting={!!selected} workspaceName={workspaceName} />
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{devices.length ? `${devices.length} computer${devices.length === 1 ? '' : 's'} available · updates automatically` : 'Connected computers appear here automatically.'}</p><Button size="sm" variant="outline" disabled={refreshing} onClick={() => { setVerified(true); refresh() }}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button></div>
@@ -141,7 +147,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
           {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
           {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.shell ? folder.writable ? 'Files and commands' : 'Read-only files and commands' : folder.writable ? 'Can edit' : 'Read only'}</option>))}
         </select>
-        {draftResource && draftKey !== selectedKey && <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+        {draftResource && draftKey !== selectedKey && <div className="space-y-3 rounded-md bg-muted/40 p-3">
           <p className="text-sm font-medium">{local ? 'Change this chat’s local folder' : 'Use local files for this chat'}</p>
           <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
             <li>File access and shell commands will use {draftResource.deviceId} / {draftResource.id}. {draftResource.writable ? 'The agent can change files and run builds, tests and git commands within your CLI permissions.' : 'This folder is read only: the agent can inspect files and run commands that do not change them.'}</li>
