@@ -399,6 +399,21 @@ func newProviderSetupManager() *providerSetupManager {
 }
 
 func (m *providerSetupManager) start(ownerID, provider, action string, cols, rows int, environment []string, cleanup func(), replaceRunning bool, connectionIDs ...string) (*providerSetupSession, error) {
+	return m.startWithArgs(ownerID, provider, action, cols, rows, environment, cleanup, replaceRunning, nil, connectionIDs...)
+}
+
+// providerSetupModelArgs is the model flag for an inspect or usage terminal: the account's first allowed model, so the CLI does not
+// open on its own default model (which the account may not allow) and a manager typing into it cannot reach a model the account
+// does not offer. Nothing is added when the account allows every model, or for a provider whose flag is not known.
+func providerSetupModelArgs(provider string, allowed []string) []string {
+	flag := map[string]string{"codex-cli": "-m", "claude-code": "--model"}[provider]
+	if flag == "" || len(allowed) == 0 {
+		return nil
+	}
+	return []string{flag, allowed[0]}
+}
+
+func (m *providerSetupManager) startWithArgs(ownerID, provider, action string, cols, rows int, environment []string, cleanup func(), replaceRunning bool, extraArgs []string, connectionIDs ...string) (*providerSetupSession, error) {
 	bindingID := provider
 	if len(connectionIDs) > 0 && connectionIDs[0] != "" {
 		bindingID = connectionIDs[0]
@@ -456,7 +471,7 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), providerSetupMaxDuration)
-	command := exec.CommandContext(ctx, spec.command, spec.args...)
+	command := exec.CommandContext(ctx, spec.command, append(append([]string{}, spec.args...), extraArgs...)...)
 	if bindingID != provider {
 		for _, entry := range environment {
 			if strings.HasPrefix(entry, "HOME=") {
@@ -832,7 +847,13 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	if request.Provider == "claude-code" {
 		seedClaudeTheme(setupHome(environment))
 	}
-	session, err := api.providerSetupManager().start(GetUserIDFromContext(r.Context()), request.Provider, request.Action, request.Cols, request.Rows, environment, cleanup, request.ReplaceRunning, request.ConnectionID)
+	var modelArgs []string
+	if request.Action == "usage" || request.Action == "inspect" {
+		if allowed, _, allowErr := accountAllowedModels(r.Context(), request.Provider, request.ConnectionID); allowErr == nil {
+			modelArgs = providerSetupModelArgs(request.Provider, allowed)
+		}
+	}
+	session, err := api.providerSetupManager().startWithArgs(GetUserIDFromContext(r.Context()), request.Provider, request.Action, request.Cols, request.Rows, environment, cleanup, request.ReplaceRunning, modelArgs, request.ConnectionID)
 	if err != nil {
 		status := http.StatusBadRequest
 		var conflict *providerSetupConflictError

@@ -360,3 +360,16 @@ func TestSeedClaudeThemeKeepsExistingSettings(t *testing.T) {
 		t.Fatalf("rewrote an unreadable file: %s", raw)
 	}
 }
+
+// The usage and inspect terminals start on the account's first allowed model, not the CLI's own default.
+func TestProviderSetupTerminalStartsOnAnAllowedModel(t *testing.T) {
+	if got := providerSetupModelArgs("codex-cli", []string{"gpt-6-luna", "gpt-6-sol"}); len(got) != 2 || got[0] != "-m" || got[1] != "gpt-6-luna" {
+		t.Fatalf("codex: %v", got)
+	}
+	if got := providerSetupModelArgs("claude-code", []string{"claude-haiku-5-5"}); len(got) != 2 || got[0] != "--model" || got[1] != "claude-haiku-5-5" {
+		t.Fatalf("claude: %v", got)
+	}
+	if providerSetupModelArgs("codex-cli", nil) != nil || providerSetupModelArgs("cursor-cli", []string{"x"}) != nil {
+		t.Fatal("no model flag when every model is allowed or the provider's flag is unknown")
+	}
+}
