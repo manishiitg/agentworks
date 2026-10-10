@@ -473,7 +473,7 @@ func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Re
 			CalendarItems: len(sched.CalendarItems), ConcurrencyMode: sched.ConcurrencyMode,
 		})
 	}
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedules": schedules})
+	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedules": schedules, "scheduler_state": readWorkflowSchedulerState(r.Context(), manifest, time.Now().UTC())})
 }
 
 func (api *StreamingAPI) externalScheduleRuns(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {

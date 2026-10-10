@@ -12202,13 +12202,22 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 		},
 		ListSchedules: func(ctx context.Context, workspacePath string) (string, error) {
 			manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-			if err != nil || !found {
-				return "No workflow manifest found.", nil
+			if err != nil {
+				return "", fmt.Errorf("current workflow schedules unavailable: %w", err)
 			}
-			if len(manifest.Schedules) == 0 {
-				return "No schedules found for this workflow.", nil
+			if !found || manifest == nil {
+				return "No workflow manifest found; current schedule state is unknown.", nil
+			}
+			current := readWorkflowSchedulerState(ctx, manifest, time.Now().UTC())
+			encoded, err := json.MarshalIndent(current, "", "  ")
+			if err != nil {
+				return "", err
 			}
 			var sb strings.Builder
+			sb.WriteString("## Current scheduler state\n\n```json\n" + string(encoded) + "\n```\n\n")
+			if len(manifest.Schedules) == 0 {
+				sb.WriteString("No schedules found for this workflow.\n")
+			}
 			sb.WriteString(fmt.Sprintf("## Schedules (%d found)\n\n", len(manifest.Schedules)))
 			for _, sched := range manifest.Schedules {
 				status := "disabled"
@@ -12241,7 +12250,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 						sb.WriteString(fmt.Sprintf("- **Last Run**: %v (status: %s)\n", state.LastRunAt, state.LastStatus))
 					}
 					if state.NextRunAt != nil {
-						sb.WriteString(fmt.Sprintf("- **Next Run**: %v\n", state.NextRunAt))
+						sb.WriteString(fmt.Sprintf("- **Nominal Next Run** (runtime projection; see current scheduler state for pause blockers): %v\n", state.NextRunAt))
 					}
 					sb.WriteString(fmt.Sprintf("- **Run Count**: %d\n", state.RunCount))
 				}

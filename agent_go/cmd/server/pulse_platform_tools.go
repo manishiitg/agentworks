@@ -30,6 +30,7 @@ var pulsePlatformAPI *StreamingAPI
 
 // pulsePlatformReadOperations never change anything anywhere.
 var pulsePlatformReadOperations = map[string]bool{
+	"list_schedules": true,
 	"list_workflows": true, "get_workflow": true, "get_plan": true,
 	"list_files": true, "search_files": true, "read_file": true,
 	"list_runs": true, "get_run": true, "get_logs": true,

@@ -155,7 +155,7 @@ func externalTools() ([]externalTool, error) {
 			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
 		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
-		addRun("list_schedules", "List the workflow's schedules: IDs, type, cron or calendar shape, timezone, enabled state, and groups.", false, nil)
+		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: global/product pause flags, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
 		p = page()
 		p["schedule_id"] = externalString("Schedule ID from list_schedules.")
 		p["offset"] = externalInteger(0, 1000000)

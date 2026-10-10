@@ -4949,6 +4949,10 @@ func findScheduleByID(ctx context.Context, scheduleID string) (string, *Workflow
 
 // getNextRunTime calculates the next scheduled run time.
 func getNextRunTime(cronExpr string, timezone string) *time.Time {
+	return getNextRunTimeAt(cronExpr, timezone, time.Now())
+}
+
+func getNextRunTimeAt(cronExpr string, timezone string, now time.Time) *time.Time {
 	loc, err := time.LoadLocation(scheduleTimezoneOrDefault(timezone))
 	if err != nil {
 		loc = time.UTC
@@ -4960,7 +4964,7 @@ func getNextRunTime(cronExpr string, timezone string) *time.Time {
 		return nil
 	}
 
-	next := schedule.Next(time.Now().In(loc)).UTC()
+	next := schedule.Next(now.In(loc)).UTC()
 	return &next
 }
 
@@ -4991,7 +4995,10 @@ func calendarItemRunTime(sched WorkflowSchedule, item CalendarScheduleItem) (tim
 }
 
 func getNextRunTimeForCalendar(sched WorkflowSchedule) *time.Time {
-	now := time.Now().UTC()
+	return getNextRunTimeForCalendarAt(sched, time.Now().UTC())
+}
+
+func getNextRunTimeForCalendarAt(sched WorkflowSchedule, now time.Time) *time.Time {
 	var next *time.Time
 	for _, item := range sched.CalendarItems {
 		runAt, err := calendarItemRunTime(sched, item)

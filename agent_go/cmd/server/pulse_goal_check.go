@@ -104,6 +104,7 @@ func nextGoalCheckDue(check *PulseGoalCheck) time.Time {
 
 // GoalStatusView is the goal status shown first to the agent and the owner.
 type GoalStatusView struct {
+	SchedulerState     WorkflowSchedulerState  `json:"scheduler_state"`
 	Facts              goalcheck.Facts         `json:"facts"`
 	LatestCheck        *PulseGoalCheck         `json:"latest_check,omitempty"`
 	Note               string                  `json:"note"`
@@ -312,9 +313,9 @@ func computeGoalStatus(ctx context.Context, workspacePath string, now time.Time)
 	if latest != nil {
 		in.ReportedPauseFingerprint = latest.PauseFingerprint
 	}
-	view := &GoalStatusView{Facts: goalcheck.Evaluate(in), LatestCheck: latest}
+	view := &GoalStatusView{Facts: goalcheck.Evaluate(in), LatestCheck: latest, SchedulerState: readWorkflowSchedulerState(ctx, manifest, now)}
 	view.MeasurementUpgrade = pulseMeasurementUpgrade(manifest, ledger.Metrics, view.Facts)
-	view.Note = "DB measurement facts: each active metric's source-backed history, current value, configured freshness and comparable numerical difference. Run recording coverage is separate and may lack attribution. Builder and Pulse agree measurement meaning and verify sources; Pulse judges progress and asks Builder to improve gaps. A numerical difference alone is not causal evidence or an on-track verdict. latest_check is the previous agent verdict."
+	view.Note = "DB measurement facts: each active metric's source-backed history, current value, configured freshness and comparable numerical difference. Run recording coverage is separate and may lack attribution. Builder and Pulse agree measurement meaning and verify sources; Pulse judges progress and asks Builder to improve gaps. A numerical difference alone is not causal evidence or an on-track verdict. latest_check is the previous agent verdict. facts.schedules_paused means all individual schedule flags are disabled, not a global or product pause; scheduler_state is the current pause/enabled view."
 	return view, nil
 }
 
@@ -494,7 +495,7 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 		// Paused schedules are the owner's choice, not a reason to stop
 		// working: Pulse keeps its permission levels and only leaves the
 		// schedules to the owner (owner, 2026-10-08: more autonomy).
-		pausedRule = "\n\nThe workflow's schedules are paused by the owner. Do not re-enable or trigger schedules without asking. Everything else follows your permission levels, including running a step yourself to measure or move the goal. Mention the pause once, not on every check."
+		pausedRule = "\n\nAll individual schedules in this workflow are disabled; this is separate from the global/product pause flags in scheduler_state. Do not re-enable or trigger schedules without asking. Everything else follows your permission levels, including running a step yourself to measure or move the goal. Mention the pause once, not on every check."
 	}
 	goalLead := "{}"
 	if encoded, err := json.Marshal(goalLeadAgentContext(ctx, workspacePath)); err == nil {
@@ -504,6 +505,8 @@ func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID 
 
 Code-computed goal facts (the silence alarm; already current, do not recompute them):
 %s
+
+Use scheduler_state for current pause/enabled flags, with observed_at. Past skipped_paused runs, latest_check and goal memory do not establish a current pause. Re-read list_schedules before claiming a pause or requesting a resume. Unknown is not paused or running; verify instead of asking the owner to lift an unverified pause. Never change pause flags or trigger schedules without the required owner authority.
 
 Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, answered decisions whose outcome is still to record, focus areas, QA results that came back, and run health (failed runs, steps' CONCERNS: lines, open issues since your last check):
 %s

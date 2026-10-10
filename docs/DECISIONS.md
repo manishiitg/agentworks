@@ -29,6 +29,17 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Agents read current scheduler flags before pause claims (PLAT-821)
+
+Builder's `list_schedules`, the external schedule API and Pulse's goal context
+share a read-only snapshot of current global/product pause flags and individual
+schedule blockers, with observation/configuration timestamps and relevant
+pause/resume history. Historical skipped runs and earlier goal verdicts never
+establish a current pause; failed reads remain unknown. All individual schedules
+disabled remains a separate goal fact. This changes neither owner pause authority
+nor execution policy and requires no workflow migration.
+[PLAT-821](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/schedules/pause/plat-821.md).
+
 ### 2026-10-10 — Connected email accounts precede incoming email fetch
 
 Show account connections and delivery settings first, then Incoming email and

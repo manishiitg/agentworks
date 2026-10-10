@@ -89,6 +89,7 @@ short turn.
 The context also carries code-collected facts since your last check. Judge
 them; do not recompute them.
 
+- **scheduler_state**: current global/product pause flags, individual disabled flags and blockers, configuration and observation timestamps, and recent relevant pause/resume events. `facts.schedules_paused` means all individual schedules are disabled, not a global/product pause. Past `skipped_paused` runs, old checks and memory cannot establish a current pause. Re-read `list_schedules` before claiming one or requesting resume; unknown reads require verification. Never change pause flags or trigger schedules without the required owner authority.
 - **plan_changes**: plan edits (step, reason, who, session). For one that
   touches a goal-driving step or how the metric is measured,
   ask the Builder chat with `ask_builder` what changed and why (pass its

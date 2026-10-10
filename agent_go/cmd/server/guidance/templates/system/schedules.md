@@ -4,6 +4,7 @@ For the operational cheat sheet on creating / editing / deleting schedules
 (cron syntax and workshop run payload shape), see this section.
 
 - **Tools**: `list_schedules`, `create_schedule`, `create_calendar_schedule`, `update_schedule`, `delete_schedule`, `trigger_schedule`, `get_schedule_runs`.
+- Before claiming a current pause or asking the owner to resume, call `list_schedules`. Its current `scheduler_state` separates global pause, this product's own pause and individual disabled flags, with `observed_at`, configuration timestamps, relevant pause/resume history and per-schedule blockers. `next_scheduled_at` is the next future timing allowed by these flags, not proof of execution; dependencies and capacity still apply. Global/product pauses hold timed runs; they do not authorize or forbid a manual/function call by themselves. Historical `skipped_paused` runs, old goal checks and memory do not establish a current pause. A failed current-state read is unknown, not paused or resumed. Respect existing authority to change flags or trigger schedules.
 - To view existing schedules, call `list_schedules`; it includes schedule IDs, type, mode, workshop mode, cron/calendar shape, timezone, enabled state, groups, recent runtime state, and the server-enforced delivery concurrency for webhook triggers. `get_workflow_config` also includes a Schedules section when you are already inspecting broader workflow settings.
 - **Entry shape**:
   ```
