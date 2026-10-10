@@ -29,6 +29,8 @@ export type ProductProject<P extends string = string> = {
   workflowContextPaths: string[]
   /** Crew "Native agent tools": capabilities.native_agent_tools in workflow.json, on unless explicitly false. */
   nativeAgentTools?: boolean
+  /** Crew "Free-text ask": capabilities.free_text_ask in workflow.json, on unless explicitly false. Off: programs reach the Crew by its functions only. */
+  freeTextAsk?: boolean
   /** Code: the computer and folder this workspace works in (product.json `local_files`). Absent = the server's files. */
   localFiles?: ProductLocalFiles
   /** Absent on projects made before modes: they are dev, or local when a folder is saved (productMode). */
@@ -197,6 +199,7 @@ export function parseProductProjectManifest<P extends string>(
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
+    freeTextAsk: manifestFreeTextAsk(raw),
     localFiles: manifestLocalFiles(raw),
     mode: manifestMode(raw),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
@@ -219,6 +222,14 @@ function manifestNativeAgentTools(raw: ProductManifest): boolean {
   return nativeAgentToolsEnabled(setting)
 }
 
+function manifestFreeTextAsk(raw: ProductManifest): boolean {
+  const capabilities = raw.capabilities
+  const setting = capabilities && typeof capabilities === 'object'
+    ? (capabilities as { free_text_ask?: unknown }).free_text_ask
+    : undefined
+  return setting !== false
+}
+
 function applyRuntimeManifest<P extends string>(project: ProductProject<P>, content: string): ProductProject<P> {
   let raw: ProductManifest
   try {
@@ -235,6 +246,7 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
+    freeTextAsk: manifestFreeTextAsk(raw),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
     secretSelectionInitialized: manifestHasSecretSelection(raw),
     runtimeConfigInitialized: true,
@@ -666,6 +678,33 @@ export async function updateProductProjectNativeAgentTools<P extends string>(
   manifest.updated_at = updatedAt
   await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
   return { ...project, nativeAgentTools: enabled, updatedAt }
+}
+
+/** Sets the Crew's "Free-text ask" switch (capabilities.free_text_ask): off means programs can call only its functions. */
+export async function updateProductProjectFreeTextAsk<P extends string>(
+  project: ProductProject<P>,
+  enabled: boolean,
+  commitLabel: string,
+  runtimeManifestName?: string,
+): Promise<ProductProject<P>> {
+  let manifestPath: string
+  let manifest: Record<string, unknown>
+  try {
+    ({ path: manifestPath, manifest } = await readProjectRuntimeManifest(project, runtimeManifestName))
+  } catch {
+    throw new Error('Project configuration is invalid JSON.')
+  }
+  const capabilities = manifest.capabilities && typeof manifest.capabilities === 'object'
+    ? { ...(manifest.capabilities as Record<string, unknown>) }
+    : {}
+  // Unset means on: only the off state is stored.
+  if (enabled) delete capabilities.free_text_ask
+  else capabilities.free_text_ask = false
+  const updatedAt = new Date().toISOString()
+  manifest.capabilities = capabilities
+  manifest.updated_at = updatedAt
+  await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
+  return { ...project, freeTextAsk: enabled, updatedAt }
 }
 
 export async function updateProductProjectSelections<P extends string>(

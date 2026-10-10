@@ -223,7 +223,9 @@ func crewFreeTextAskOff(ctx context.Context, target triggerTarget) bool {
 	if target.Kind != triggerCallerCrew {
 		return false
 	}
-	raw, found, err := readFileFromWorkspace(ctx, crewFunctionRoot(ctx, target)+"/product.json")
+	// The setting lives in the Crew's runtime manifest (workflow.json), the file its settings panels and the
+	// settings tool write; an older Crew keeps it in product.json, which the read falls back to.
+	raw, found, err := readProjectRuntimeManifest(ctx, "work", crewFunctionRoot(ctx, target))
 	if err != nil || !found {
 		return false
 	}

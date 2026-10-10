@@ -290,7 +290,7 @@ func TestCrewOwnerCanTurnOffFreeTextAsk(t *testing.T) {
 		t.Fatalf("a Crew offers the built-in ask by default, got %v", got)
 	}
 	env.mock.mu.Lock()
-	env.mock.files[linkBetaPath+"/product.json"] = `{"schema_version":1,"product":"work","id":"beta","title":"Beta","session_id":"sess-beta","triggers":[],"capabilities":{"free_text_ask":false}}`
+	env.mock.files[linkBetaPath+"/workflow.json"] = `{"schema_version":1,"capabilities":{"free_text_ask":false}}`
 	env.mock.mu.Unlock()
 	if got := names(); len(got) != 0 {
 		t.Fatalf("with free_text_ask off the Crew offers only its declared functions, got %v", got)

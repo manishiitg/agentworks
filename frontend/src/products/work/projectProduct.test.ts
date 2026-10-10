@@ -8,6 +8,11 @@ it('neither Crew nor Code shows a "Native agent tools" switch', () => {
   expect(CODE_PRODUCT.hasNativeAgentToolsSetting).toBe(false)
 })
 
+it('only a Crew shows the "Free-text ask" switch', () => {
+  expect(CREW_PRODUCT.hasFreeTextAskSetting).toBe(true)
+  expect(CODE_PRODUCT.hasFreeTextAskSetting).toBe(false)
+})
+
 describe('projectProductForPath at the shared root', () => {
   it('knows a Crew at Crew/<folder>, in any spelling of the folder, and nothing else under Crew', () => {
     expect(projectProductForPath('Crew/sde-1a2b3c4d')).toBe(CREW_PRODUCT)
