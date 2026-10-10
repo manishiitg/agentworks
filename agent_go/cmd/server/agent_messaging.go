@@ -884,7 +884,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"schedule_message_wakeup", "Explicitly schedule, reschedule or cancel one durable wakeup in your exact conversation. It does not resend messages or infer whether work finished. Scheduler resolution is one minute.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{"action": map[string]interface{}{"type": "string", "enum": []string{"schedule", "cancel"}}, "wakeup_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "after_seconds": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 604800}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+	}{"schedule_message_wakeup", "Explicitly schedule, reschedule or cancel one durable wakeup in your exact conversation. It does not resend messages or infer whether work finished. Scheduler resolution is one minute. A scheduler pause holds wakeups until it is lifted; the reply says held_by_scheduler_pause when that applies.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{"action": map[string]interface{}{"type": "string", "enum": []string{"schedule", "cancel"}}, "wakeup_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "after_seconds": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 604800}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		caller, err := callerFor(ctx)
 		if err != nil {

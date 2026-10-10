@@ -139,5 +139,16 @@ func (api *StreamingAPI) scheduleAgentMessageWakeup(ctx context.Context, userID 
 		return nil, err
 	}
 	w := s.Wakeups[index]
-	return map[string]interface{}{"wakeup_id": w.ID, "status": w.Status, "due_at": w.Due, "note": "One wakeup in this exact conversation, on the scheduler tick. Messages do not cancel it and no question is resent."}, nil
+	out := map[string]interface{}{"wakeup_id": w.ID, "status": w.Status, "due_at": w.Due, "note": "One wakeup in this exact conversation, on the scheduler tick. Messages do not cancel it and no question is resent."}
+	// A scheduler pause holds timed runs, wakeups included. Say so now rather
+	// than let the agent believe the wakeup will fire on time.
+	product := w.Endpoint.Profile
+	if w.Endpoint.Kind == triggerCallerWorkflow {
+		product = "agentworks"
+	}
+	if config, cfgErr := LoadSchedulerConfig(ctx); cfgErr == nil && w.Status == "scheduled" && config.ProductPaused(product) {
+		out["held_by_scheduler_pause"] = true
+		out["note"] = fmt.Sprintf("%v The scheduler is paused for this product, so this wakeup will not fire until the pause is lifted.", out["note"])
+	}
+	return out, nil
 }
