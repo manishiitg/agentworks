@@ -297,6 +297,17 @@ owner did not own its workflow. Now that conversation is the only Pulse of such 
 
 ## ask_builder and more goal facts (as built)
 
+- Delayed `ask_builder` and chat-origin `ask_pulse` replies use the shared
+  function-call notification queue. Inline replies need no second turn; joined
+  submissions share a watcher. A busy Pulse queues the result, then resumes its
+  own conversation through the normal Pulse turn bootstrap with current owner
+  authority and autonomy. It reconciles evidence, Goal Work, goal status and
+  memory; a reply saying a background run started remains pending verification.
+  Disabled, stopped or rotated conversations are not revived. Workflow steps
+  retain their own call result rather than redirecting it to a Builder chat.
+  Saved call records and `builder_asks` remain available when automatic
+  delivery is unavailable. This does not add arbitrary session discovery or
+  promise notification recovery across a server restart. PLAT-825.
 - **ask_builder.** The Pulse asks the workflow's Builder chat (the owner's most recently active one, or a named one
   of the owner's) by function call, as a normal turn there. `question` changes nothing (the chat's tools are held to
   ask for the turn); `fix` is sent only at `change=auto` (the chat may change, not run or send), otherwise it becomes

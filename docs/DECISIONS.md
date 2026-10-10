@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Delayed Pulse and Builder replies resume their caller (PLAT-825)
+
+Pulse uses the existing saved function-call protocol and notification queue for
+delayed chat replies in both directions. Inline replies do not create another
+turn; joined submissions share one watcher. Pulse completion turns use its
+normal bootstrap and current autonomy, serialize its permission lease, and
+reconcile actual evidence with goal records. Busy conversations queue results;
+stopped, disabled or rotated Pulse conversations are not revived. A chat reply
+saying work started is not a verified workflow result. Workflow steps retain
+their own call result; no reply is redirected to an unrelated parent chat. No
+new reviewer, polling protocol or arbitrary session discovery is introduced.
+[PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).
+
 ### 2026-10-10 — The one-shot Crew move command is removed (PLAT-836)
 
 No Crew remains at the old per-user location (owner), so `agentworks server migrate-crews-to-shared-root`, its

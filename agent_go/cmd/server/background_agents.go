@@ -2570,7 +2570,9 @@ func compactScheduledAutoNotificationResult(sessionID string, snap BackgroundAge
 		stepID = strings.TrimSpace(snap.Metadata["step_id"])
 	}
 	inspectHint := fmt.Sprintf("Inspect execution %q or its persisted run artifacts for the complete result.", snap.ID)
-	if stepID != "" {
+	if callID := strings.TrimSpace(snap.Metadata["call_id"]); callID != "" {
+		inspectHint = fmt.Sprintf("Use get_function_call(call_id=%q) for the complete saved result.", callID)
+	} else if stepID != "" {
 		inspectHint = fmt.Sprintf("Use query_step(step_id=%q, execution_id=%q) or inspect its persisted run artifacts for the complete result.", stepID, snap.ID)
 	}
 	// Large coding-agent results are often full terminal/tool transcripts rather
@@ -2589,6 +2591,9 @@ func autoNotificationInlineContext(meta map[string]string) string {
 		return ""
 	}
 	var fields []string
+	if callID := strings.TrimSpace(meta["call_id"]); callID != "" {
+		fields = append(fields, "call_id="+callID)
+	}
 	if iter := strings.TrimSpace(meta["iteration"]); iter != "" {
 		fields = append(fields, "iter="+iter)
 	}
@@ -2635,6 +2640,11 @@ func autoNotificationBracketContext(meta map[string]string) string {
 // NOT queue). Returns false on any failure so the caller falls back to the
 // existing queue + drain-on-idle backstop.
 func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID string) bool {
+	// Pulse reconciles results in a normal Pulse turn with current authority.
+	// Queue behind its active turn instead of injecting another task into it.
+	if isGoalLeadSessionID(sessionID) {
+		return false
+	}
 	if api.codeLocalSession(sessionID) {
 		return false
 	}
@@ -2888,6 +2898,9 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 	if api.autoNotificationSessionUnreachable(sessionID) {
 		log.Printf("[BG AGENT] Session %s is stopped/inactive, suppressing synthetic turn", sessionID)
 		return false
+	}
+	if isGoalLeadSessionID(sessionID) {
+		return api.executePulseResultTurn(sessionID, syntheticMsg, onComplete)
 	}
 	if api.botManager != nil {
 		api.botManager.PrepareSyntheticTurn(sessionID)

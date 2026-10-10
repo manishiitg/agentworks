@@ -364,6 +364,9 @@ type crewFunctionProgress struct {
 
 type crewFunctionCall struct {
 	mu sync.Mutex
+	// Joined submissions share one completion watcher per caller session.
+	notificationMu  sync.Mutex
+	notificationIDs map[string]string
 
 	ID              string `json:"call_id"`
 	Function        string `json:"function"`
@@ -1271,10 +1274,19 @@ func minDuration(a, b time.Duration) time.Duration {
 // through the auto-notification pipeline. A call that times out and later
 // gets its answer resumes the chat again with that late answer.
 func (api *StreamingAPI) startCrewFunctionWatch(parentReq QueryRequest, sessionID, userID string, call *crewFunctionCall, timeout time.Duration) (string, error) {
+	call.notificationMu.Lock()
+	defer call.notificationMu.Unlock()
+	if id := call.notificationIDs[sessionID]; id != "" {
+		return id, nil
+	}
 	notifier, executionID, name, runCtx, cancel, err := api.beginCrewFunctionNotification(parentReq, sessionID, userID, call, crewFunctionHardCap(timeout)+time.Minute)
 	if err != nil {
 		return "", err
 	}
+	if call.notificationIDs == nil {
+		call.notificationIDs = map[string]string{}
+	}
+	call.notificationIDs[sessionID] = executionID
 	call.mu.Lock()
 	call.onLate = func() {
 		lateNotifier, lateID, lateName, _, lateCancel, lateErr := api.beginCrewFunctionNotification(parentReq, sessionID, userID, call, time.Minute)
@@ -1341,7 +1353,7 @@ func completeCrewFunctionNotification(notifier *workshopExecutionBgNotifier, exe
 	snapshot := call.snapshot()
 	header := fmt.Sprintf("Function call %s (%s %q, %s)", call.ID, call.TargetKind, call.TargetLabel, call.Function)
 	if call.TargetChat != "" {
-		header = fmt.Sprintf("Function call %s (ask to chat %q of this Code)", call.ID, call.TargetLabel)
+		header = fmt.Sprintf("Function call %s (ask to chat %q)", call.ID, call.TargetLabel)
 	}
 	if late, _ := snapshot["late"].(bool); late {
 		header += " — late answer, after your wait had timed out"

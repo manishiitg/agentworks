@@ -60,6 +60,9 @@ func TestPulseTalksToTheBuilderChatWithinItsLevels(t *testing.T) {
 	if err != nil || out["status"] != "completed" || !strings.Contains(fmt.Sprint(out["result"]), "records the subscriber delta") {
 		t.Fatalf("ask_builder = %v, %v", out, err)
 	}
+	if out["auto_notify"] == true || out["execution_id"] != nil {
+		t.Fatalf("inline reply must not start a second Pulse turn: %v", out)
+	}
 	mu.Lock()
 	if len(turns) != 1 || turns[0].session != builderChat {
 		t.Fatalf("Builder turns = %+v", turns)

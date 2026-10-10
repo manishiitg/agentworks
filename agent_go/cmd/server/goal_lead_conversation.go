@@ -87,8 +87,26 @@ const (
 	goalLeadTurnAsk   = "ask"
 	goalLeadTurnSlack = "slack"
 	// goalLeadTurnRunFailed: a workflow run failed (goal_lead_owns_reviews.go).
-	goalLeadTurnRunFailed = "run_failed"
+	goalLeadTurnRunFailed      = "run_failed"
+	goalLeadTurnFunctionResult = "function_result"
 )
+
+var errPulseResultIneligible = errors.New("Pulse result continuation is no longer eligible")
+
+// Pulse permissions are a turn lease. Serialize its normal turns before
+// taking that lease, including completion turns queued behind owner input.
+var goalLeadTurnLocks sync.Map
+
+func lockGoalLeadTurn(ctx context.Context, workspacePath string) (func(), error) {
+	value, _ := goalLeadTurnLocks.LoadOrStore(workspacePath, make(chan struct{}, 1))
+	lane := value.(chan struct{})
+	select {
+	case lane <- struct{}{}:
+		return func() { <-lane }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
 
 type goalLeadConversation struct {
 	SessionID  string `json:"session_id"`
@@ -313,6 +331,9 @@ func workflowRunSetupView(ctx context.Context, workspacePath string) map[string]
 // goalLeadTurn is one turn of the Pulse conversation.
 type goalLeadTurn struct {
 	Kind string
+	// A result belongs to the conversation that made the call, never a
+	// newer generation created while its target was working.
+	ExpectedSessionID string
 	// From names who sent an owner, ask or Slack turn.
 	From string
 	// Body is the turn's own text: the composed check or Goal Work
@@ -432,6 +453,8 @@ func goalLeadTurnQuery(turn goalLeadTurn, overrideLevels string, now time.Time) 
 		return fmt.Sprintf("PULSE TURN: Goal Work, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnRunFailed:
 		return fmt.Sprintf("PULSE TURN: a run of this workflow failed, %s.\n\n%s%s", date, turn.Body, levels)
+	case goalLeadTurnFunctionResult:
+		return fmt.Sprintf("PULSE TURN: a requested result arrived, %s.\n\n%s\n\nReconcile this result with the associated Goal Work, latest goal check and goal memory using the existing record tools. Correct stale running claims and record actual evidence, blockers and pending verification. A completed chat reply saying work started does not mean that background work finished. Preserve intentional next-check times and measurement windows unless the evidence requires a change. Do not launch duplicate work or another reviewer; owner approval is still required by current permissions.%s", date, turn.Body, levels)
 	case goalLeadTurnAsk:
 		return firstNonEmptyTrimmed(turn.From, "a chat of this workflow") + ": " + strings.TrimSpace(turn.Body) + levels
 	default:
@@ -446,6 +469,11 @@ func goalLeadTurnQuery(turn goalLeadTurn, overrideLevels string, now time.Time) 
 // levels, and is logged for the Pulse tab.
 func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath string, turn goalLeadTurn) (string, string, error) {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
+	unlock, err := lockGoalLeadTurn(ctx, workspacePath)
+	if err != nil {
+		return "", "", err
+	}
+	defer unlock()
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil {
 		return "", "", err
@@ -453,12 +481,23 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	if !found || manifest == nil {
 		return "", "", fmt.Errorf("workflow %s not found", workspacePath)
 	}
+	if turn.Kind == goalLeadTurnFunctionResult && !manifest.PulseEnabled() {
+		return "", "", errPulseResultIneligible
+	}
 	now := goalLeadNow().UTC()
 	conv, err := ensureGoalLeadConversation(ctx, workspacePath, firstNonEmptyTrimmed(manifest.ID, workspacePath), now, turn.Rotate, api.conversationTurnOccupied)
 	if err != nil {
 		return "", "", fmt.Errorf("pulse conversation: %w", err)
 	}
 	sessionID := conv.SessionID
+	if turn.Kind == goalLeadTurnFunctionResult {
+		if sessionID != turn.ExpectedSessionID || api.autoNotificationSessionUnreachable(sessionID) {
+			return "", sessionID, errPulseResultIneligible
+		}
+		if api.conversationTurnOccupied(sessionID) {
+			return "", sessionID, fmt.Errorf("Pulse conversation is busy; retain its result for retry")
+		}
+	}
 	defer goalLeadTurnStarted(workspacePath)()
 
 	sched := api.scheduler
@@ -478,6 +517,9 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	// session key on every turn, so the native session is resumed, never
 	// relaunched for a role change.
 	markPulseLifecycleTurn(reqMap)
+	if turn.Kind == goalLeadTurnFunctionResult {
+		reqMap["is_auto_notification"] = true
+	}
 	reqMap["session_title"] = label + " Pulse"
 	reqMap["triggered_by_label"] = "Pulse"
 	if turn.Kind == goalLeadTurnOwner || turn.Kind == goalLeadTurnSlack || turn.Kind == goalLeadTurnAsk {
@@ -496,7 +538,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	reqMap["query"] = goalLeadTurnQuery(turn, overrideLevels, now)
 
 	switch turn.Kind {
-	case goalLeadTurnOwner, goalLeadTurnSlack, goalLeadTurnAsk:
+	case goalLeadTurnOwner, goalLeadTurnSlack, goalLeadTurnAsk, goalLeadTurnFunctionResult:
 		if !turn.Logged {
 			_ = appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: turn.Kind, Source: turn.From, Text: turn.Body, SessionID: sessionID})
 		}
@@ -505,8 +547,10 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	// A new turn is a deliberate start: a Stop on an earlier turn must not
 	// leave the conversation unable to resume (PLAT-130 guards continuations
 	// of the stopped turn, not the next one).
-	api.clearSessionStopped(sessionID)
-	mcpagent.ClearHTTPSessionStopped(sessionID)
+	if turn.Kind != goalLeadTurnFunctionResult {
+		api.clearSessionStopped(sessionID)
+		mcpagent.ClearHTTPSessionStopped(sessionID)
+	}
 	release := beginGoalWorkTurn(sessionID, perms)
 	defer release()
 

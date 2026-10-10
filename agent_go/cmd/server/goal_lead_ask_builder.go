@@ -165,8 +165,16 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 	}
 	out := call.snapshot()
 	out["builder_session_id"] = builderSession
-	if !call.settled() {
-		out["next"] = "The Builder chat is still replying. Its reply is saved and shown to you as builder_asks on your next goal check (or read it with get_function_call(call_id))."
+	if out["status"] != "completed" && out["status"] != "failed" {
+		id, watchErr := api.startCrewFunctionWatch(QueryRequest{SelectedFolder: req.WorkspacePath, PresetQueryID: manifest.ID}, req.PulseSession, req.UserID, call, triggerTargetDefaultTimeout)
+		if watchErr != nil {
+			out["auto_notify_error"] = watchErr.Error()
+			out["next"] = "The Builder chat is still replying. Automatic delivery is unavailable; read get_function_call(call_id). The saved reply also appears as builder_asks on your next goal check."
+		} else {
+			out["execution_id"] = id
+			out["auto_notify"] = true
+			out["next"] = "The Builder chat is still replying. Its result will resume this Pulse conversation once it is idle, using current Pulse permissions. A reply saying work started is not evidence that the work finished."
+		}
 	}
 	return out, nil
 }
@@ -367,7 +375,7 @@ func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[strin
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name: pulseBuilderAskToolName,
 		Description: "Talk to this workflow's Builder chat (the owner's most recently active one, where they can watch): ask what changed and why or what the owner decided, or ask it to make a change. It works within your own permission levels, and its reply comes back. " +
-			"Waits up to wait_seconds (default 90) for the reply; a later reply reaches your next goal check as builder_asks. Capped at 20 an hour per workflow.",
+			"Waits up to wait_seconds (default 90) for the reply; a later reply automatically resumes this Pulse conversation when idle, using current permissions. Reconcile its evidence with Goal Work, goal status and memory. A started background run is still pending until its actual result arrives. Replies are also saved as builder_asks. Capped at 20 an hour per workflow.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

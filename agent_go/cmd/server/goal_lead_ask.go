@@ -94,7 +94,7 @@ func (api *StreamingAPI) askGoalLead(ctx context.Context, userID, workspacePath,
 	// The caller is one chat (session) of the workflow, as a sibling chat is in
 	// ask_project_chat: the workflow and its Pulse are both participants
 	// of the call chain, so the chain guard does not read the ask as a loop.
-	callerChat := &codeChat{Key: "session:" + firstNonEmptyTrimmed(callerSession, "unknown"), Name: firstNonEmptyTrimmed(callerLabel, label+" chat")}
+	callerChat := &codeChat{Key: "session:" + firstNonEmptyTrimmed(callerSession, "unknown"), Name: firstNonEmptyTrimmed(callerLabel, label+" chat"), SessionID: callerSession}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: callerChat.Name, Path: workspacePath, Chat: callerChat}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: workspacePath, Label: label + " Pulse", Manifest: manifest,
 		Chat: &codeChat{Key: "goal-lead", ID: "goal-lead", Name: label + " Pulse", SessionID: conv.SessionID}}
@@ -114,8 +114,19 @@ func (api *StreamingAPI) askGoalLead(ctx context.Context, userID, workspacePath,
 	}
 	out := call.snapshot()
 	addFunctionCallPending(out, call)
-	if !call.settled() {
+	if out["status"] != "completed" && out["status"] != "failed" {
 		out["next"] = "Pulse is still replying. Read it later with get_function_call(call_id), or continue without it."
+		// A workflow step owns its execution, not a retained server chat. Do
+		// not redirect its reply to an unrelated Builder or parent session.
+		if _, step := stepworkflow.LookupWorkshopToolSession(callerSession); !step && callerSession != "" && !isScheduledSession(callerSession) {
+			id, watchErr := api.startCrewFunctionWatch(QueryRequest{SelectedFolder: workspacePath, PresetQueryID: manifest.ID}, callerSession, userID, call, triggerTargetDefaultTimeout)
+			if watchErr != nil {
+				out["auto_notify_error"] = watchErr.Error()
+			} else {
+				out["execution_id"], out["auto_notify"] = id, true
+				out["next"] = "Pulse is still replying. Its result will be delivered automatically to this chat."
+			}
+		}
 	}
 	return out, nil
 }
@@ -183,7 +194,7 @@ func createGoalLeadAskTools() []goalLeadAskTool {
 func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
 	description := "Talk to this workflow's Pulse, the agent that owns the workflow's goal. Your message goes into Pulse's conversation as a message from this chat, and Pulse's reply comes back. " +
 		"Use it for anything about the goal: how it is doing, what to prioritise, why Pulse did something, or to pass on the owner's direction. Pulse is the goal expert: act on what it says unless it says the owner must decide. " +
-		"Waits up to wait_seconds (default 60) for the reply; otherwise returns a call_id to read later with get_function_call. Capped per workflow per hour. Only for workflows with a goal."
+		"Waits up to wait_seconds (default 60) for the reply. A later reply is automatically delivered to this chat; workflow steps and scheduled execution sessions retain their own call_id to read with get_function_call. Capped per workflow per hour. Only for workflows with a goal."
 	if name == goalLeadAskToolAliasName {
 		description = "Old name of ask_pulse, kept for one release; use ask_pulse. " + description
 	}
