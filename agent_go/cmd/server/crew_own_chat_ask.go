@@ -84,7 +84,7 @@ func (api *StreamingAPI) runCrewOwnChatAsk(call *crewFunctionCall, target trigge
 		return
 	}
 	// One ask at a time per chat. A second ask sent while the chat answers the first was delivered into the running turn as live
-	// input, which records no execution of its own: its caller waited for one that never appeared ("was not registered", Citymall
+	// input, which records no execution of its own: its caller waited for one that never appeared ("was not registered";
 	// acceptance run, PLAT-796). Waiting here makes each ask its own turn.
 	release, ok := acquireCrewAskChat(ctx, sessionID)
 	if !ok {

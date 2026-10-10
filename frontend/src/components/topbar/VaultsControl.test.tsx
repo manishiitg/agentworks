@@ -18,7 +18,7 @@ async function render(user: unknown) {
   return host
 }
 
-// A Code-only account (products ["code"]) saw "My vaults" in the left menu because the entry only checked can_create (Citymall, 2026-10-09).
+// A Code-only account (products ["code"]) saw "My vaults" in the left menu because the entry only checked can_create (2026-10-09).
 describe('My vaults entry', () => {
   it('shows for an account that may open Vault', async () => {
     const host = await render({ id: 'a', can_create: true, allowed_products: ['code', 'mcp-gateway'] })

@@ -112,7 +112,7 @@ func TestExternalMergedFilesAreNarrowedForReaders(t *testing.T) {
 }
 
 // functions status for a Crew passes crew_id (to pick the crew member) and wait_seconds, which the crew status tool does not declare;
-// the call used to be refused with "additional properties 'crew_id', 'wait_seconds' not allowed" (Citymall acceptance run, 2026-10-09).
+// the call used to be refused with "additional properties 'crew_id', 'wait_seconds' not allowed" (acceptance run, 2026-10-09).
 func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 	catalog, err := externalTools()
 	if err != nil {

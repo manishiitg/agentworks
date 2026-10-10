@@ -368,7 +368,7 @@ $HOME_DIR/releases/**/bin/slotcheck flags=(unconfined) {
 
 # The product's own workspace service starts the launcher in namespaces it creates itself (the private /tmp probe and any policy
 # with a blocked path inside a granted one). Without this entry AppArmor puts that child in its restricted "unprivileged_userns"
-# profile, where mounts are denied: private /tmp is unavailable and such commands fail with SANDBOX_UNAVAILABLE (Citymall, 2026-10-09,
+# profile, where mounts are denied: private /tmp is unavailable and such commands fail with SANDBOX_UNAVAILABLE (a customer server, 2026-10-09,
 # kernel log: operation="mount" profile="unprivileged_userns" comm="video-studio-la").
 $HOME_DIR/releases/**/bin/$PRODUCT-workspace flags=(unconfined) {
   userns,

@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
 
 class UserSlotsDeploymentCheckTest(unittest.TestCase):
-    """A server with several accounts must give every one its own Linux slot, or the deploy fails (Citymall, 2026-10-09)."""
+    """A server with several accounts must give every one its own Linux slot, or the deploy fails (a customer server, 2026-10-09)."""
 
     def setUp(self):
         import importlib.util

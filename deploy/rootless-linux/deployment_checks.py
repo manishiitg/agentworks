@@ -88,7 +88,7 @@ def systemctl_value(property_name):
 def check_user_slots(env_path=ENV_FILE, users_path=None):
     """A server with more than one account runs every account in its own Linux slot.
 
-    Citymall went live on 2026-10-09 with five accounts and no slots at all (every person's commands ran as one Linux user, with
+    A customer server went live on 2026-10-09 with five accounts and no slots at all (every person's commands ran as one Linux user, with
     the server's secrets readable to it), and nothing failed: slotcheck skipped itself ("slots are not enabled on this host").
     So this check is part of every deploy. It needs the product's own env file and its user directory; a server with a single
     account is a personal install and needs no slots.
@@ -125,7 +125,7 @@ def check_private_tmp(env_path=ENV_FILE, restrict_path="/proc/sys/kernel/apparmo
 
     The service starts the launcher in namespaces it creates itself; AppArmor puts that child in its restricted profile unless the
     service binary has a `userns` exception, and then private /tmp is unavailable and any command whose folder rules hide a path
-    inside a granted folder fails with SANDBOX_UNAVAILABLE (Citymall, 2026-10-09). The workspace health says so.
+    inside a granted folder fails with SANDBOX_UNAVAILABLE (a customer server, 2026-10-09). The workspace health says so.
     """
     try:
         restricted = Path(restrict_path).read_text().strip() == "1"

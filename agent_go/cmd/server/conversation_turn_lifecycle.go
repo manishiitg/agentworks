@@ -423,7 +423,7 @@ func (api *StreamingAPI) waitForConversationTurnTree(ctx context.Context, sessio
 		state := api.conversationTurnTreeSnapshot(rootExecutionID)
 		if !state.RootFound {
 			// A message sent while the chat is still answering an earlier one waits its turn: its execution is registered only
-			// when it starts. Eight quick asks to one Crew failed with "was not registered" after 5 s (Citymall acceptance run,
+			// when it starts. Eight quick asks to one Crew failed with "was not registered" after 5 s (acceptance run,
 			// 2026-10-09). While the chat is busy the clock does not run; the inactivity limit below still ends a stuck wait.
 			if api.isSessionBusy(sessionID) {
 				rootMissingSince = time.Now()
