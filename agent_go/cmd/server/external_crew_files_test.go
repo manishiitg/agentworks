@@ -44,7 +44,7 @@ func TestExternalCrewFilesFindDeepFilesAndHidePrivateAreas(t *testing.T) {
 		t.Fatalf("find by name = %d %s", code, result(out))
 	}
 	code, out = externalCrewRequest(t, env, claims, "search_crew_files", map[string]any{"crew_id": "beta", "query": "forgot-email", "depth": 8})
-	if code != 200 || !strings.Contains(result(out), "ForgotPassword.razor") {
+	if code != 200 || !strings.Contains(result(out), "forgot-password.razor") {
 		t.Fatalf("search = %d %s", code, result(out))
 	}
 	code, out = externalCrewRequest(t, env, claims, "list_crew_files", map[string]any{"crew_id": "beta", "depth": 8})
