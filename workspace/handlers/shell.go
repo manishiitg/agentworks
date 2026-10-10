@@ -206,6 +206,12 @@ func ExecuteShellCommand(c *gin.Context) {
 				log.Printf("[SLOTS] Crew command for %s runs as the Crew owner's slot %s", resolvedUserID, ownerSlot)
 				userSlot = ownerSlot
 			}
+		} else if crewDir := sharedCrewDirForCommand(docsDir, workingDir, req.FolderGuard); crewDir != "" {
+			// The shared Crew/<id> root: no owner in the path, so the owner's slot is the one whose group owns the folder.
+			if ownerSlot := slotOwningGroup(crewDir); ownerSlot != "" && ownerSlot != userSlot {
+				log.Printf("[SLOTS] Crew command for %s runs as the Crew owner's slot %s", resolvedUserID, ownerSlot)
+				userSlot = ownerSlot
+			}
 		}
 	}
 	if slotsOn {
