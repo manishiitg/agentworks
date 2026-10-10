@@ -33,6 +33,20 @@ def call(server, tool, args, timeout=120):
         return process.returncode, {}, text
 
 
+def fill(value, crew, variables):
+    """Put the scratch Crew's id and values captured by earlier steps into a case's arguments."""
+    if isinstance(value, str):
+        value = value.replace("{crew}", crew or "")
+        for name, found in variables.items():
+            value = value.replace("{v.%s}" % name, found)
+        return value
+    if isinstance(value, dict):
+        return {k: fill(v, crew, variables) for k, v in value.items()}
+    if isinstance(value, list):
+        return [fill(v, crew, variables) for v in value]
+    return value
+
+
 def find_text(value):
     """All of a result's text, for matching: the answer's shape differs per tool."""
     return json.dumps(value, ensure_ascii=False)
@@ -78,6 +92,33 @@ def check(case, answer):
 
 
 def run_case(server, crew, case):
+    if case.get("steps"):
+        # Steps run in order and stop at the first that fails; steps marked cleanup always run at the end (they remove what the case made).
+        variables, verdict = {}, ("PASS", "")
+        for step in [x for x in case["steps"] if not x.get("cleanup")]:
+            if step.get("sleep"):
+                time.sleep(step["sleep"])
+            args = fill(step.get("args", {}), crew, variables)
+            code, result, text = call(server, step["tool"], args)
+            answer = find_text(result) or text
+            label = f"{step['tool']} {args.get('action', args.get('operation', ''))}".strip()
+            refused = code != 0 or (isinstance(result, dict) and bool(result.get("error")))
+            if refused and step.get("optional"):
+                verdict = ("SKIP", step.get("skip_reason") or "not available here: " + answer[:160])
+                break
+            if refused:
+                verdict = ("FAIL", f"{label} refused: {answer[:240]}")
+                break
+            if step.get("expect") and not re.search(step["expect"], answer, re.I | re.S):
+                verdict = ("FAIL", f"{label}: the answer lacks /{step['expect']}/: {answer[:240]}")
+                break
+            for name, pattern in (step.get("capture") or {}).items():
+                found = re.search(pattern, answer)
+                if found:
+                    variables[name] = found.group(1)
+        for step in [x for x in case["steps"] if x.get("cleanup")]:
+            call(server, step["tool"], fill(step.get("args", {}), crew, variables))
+        return verdict
     if case.get("tool") == "brain":
         title = "qa-" + uuid.uuid4().hex[:8]
         code, result, text = call(server, "brain_update", {"action": "create", "folder_path": "", "filename": title + ".md", "type": "note", "title": title, "content": "acceptance note " + title, "request_id": "qa-" + title})
@@ -86,8 +127,10 @@ def run_case(server, crew, case):
         code, result, text = call(server, "brain_read", {"action": "search", "query": title})
         return ("PASS", "") if title in text else ("FAIL", "saved note not found: " + text[:200])
     if case.get("tool"):
-        code, result, text = call(server, case["tool"], case.get("args", {}))
-        if code != 0:
+        code, result, text = call(server, case["tool"], fill(case.get("args", {}), crew, {}))
+        if code != 0 or (isinstance(result, dict) and result.get("error")):
+            if case.get("optional"):
+                return "SKIP", "not available: " + text[:160]
             return "FAIL", text[:240]
         return check(case, find_text(result) or text)
     if case.get("burst"):
@@ -120,6 +163,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--server", required=True, help="https://<server>")
     parser.add_argument("--area", help="only cases of this area (model, sandbox, isolation, brain, limits, access)")
+    parser.add_argument("--admin", action="store_true", help="the test user is an administrator: include the admin cases (users, Vault, Code review, schedules, Relays)")
     parser.add_argument("--slots", action="store_true", help="the server runs per-user Linux slots: include the cases that need them")
     parser.add_argument("--catalog", default=str(Path(__file__).with_name("catalog.json")))
     options = parser.parse_args()
@@ -132,8 +176,11 @@ def main():
         if case.get("needs") == "slots" and not options.slots:
             print(f"SKIP  {label}  (needs --slots)")
             continue
+        if case.get("needs") == "admin" and not options.admin:
+            print(f"SKIP  {label}  (needs --admin)")
+            continue
         try:
-            if crew is None and "message" in case:
+            if crew is None and ("message" in case or "{crew}" in json.dumps(case)):
                 crew = crew_id(options.server, catalog["crew"])
             status, why = run_case(options.server, crew, case)
         except subprocess.TimeoutExpired:

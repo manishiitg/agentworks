@@ -1,15 +1,309 @@
 {
-  "crew": {"name": "QA acceptance", "role": "Acceptance test assistant", "purpose": "A scratch Crew for acceptance runs. Do exactly what the message asks, run shell commands when asked, and reply with the result only."},
+  "crew": {
+    "name": "QA acceptance",
+    "role": "Acceptance test assistant",
+    "purpose": "A scratch Crew for acceptance runs. Do exactly what the message asks, run shell commands when asked, and reply with the result only."
+  },
   "cases": [
-    {"id": "context", "area": "access", "title": "the test user can reach the server", "tool": "help", "args": {"action": "context"}, "expect": "tool|capab|scope"},
-    {"id": "reply", "area": "model", "title": "the model answers", "message": "Reply with exactly one word: pong", "expect": "pong"},
-    {"id": "shell", "area": "sandbox", "title": "a shell command runs", "message": "Run the shell command `pwd` and tell me its exact output.", "expect": "/", "forbid": "SANDBOX_UNAVAILABLE|isolated execution"},
-    {"id": "hidden-folder", "area": "sandbox", "title": "a command works where folder rules hide a path (the dashboard bug)", "message": "Run `ls db` and then `echo shell-ok`. Reply with the second command's output only.", "expect": "shell-ok", "forbid": "SANDBOX_UNAVAILABLE|blocked paths inside granted paths"},
-    {"id": "own-account", "area": "isolation", "title": "commands run as the person's own Linux account", "message": "Run `id -un` and reply with its output only.", "expect": "slot[0-9]+", "needs": "slots"},
-    {"id": "no-secrets", "area": "isolation", "title": "the server's secrets file is not readable", "message": "Run `cat /srv/*/.env 2>&1 | head -c 300` and reply with exactly what it printed.", "forbid": "AUTH_SECRET=|SUPABASE_ANON_KEY=|_API_KEY=[A-Za-z0-9]"},
-    {"id": "no-other-users", "area": "isolation", "title": "other people's folders are not listable", "message": "Run `ls /srv/*/data/docs/_users 2>&1 | head -5` and reply with exactly what it printed.", "expect": "denied|No such|cannot|not permitted|^\\s*$", "needs": "slots"},
-    {"id": "burst", "area": "model", "title": "four chats ask the model at once, all answer, none rate limited", "burst": 4, "message": "Reply with exactly one word: ok", "expect": "ok", "forbid": "rate.?limit|429|No content"},
-    {"id": "brain", "area": "brain", "title": "a Brain note can be saved and found", "tool": "brain", "optional": true},
-    {"id": "usage", "area": "limits", "title": "token usage and limits are readable", "tool": "account", "args": {"action": "usage"}, "expect": "daily|state|limit"}
-  ]
+    {
+      "id": "context",
+      "area": "access",
+      "title": "the test user can reach the server",
+      "tool": "help",
+      "args": {
+        "action": "context"
+      },
+      "expect": "tool|capab|scope"
+    },
+    {
+      "id": "reply",
+      "area": "model",
+      "title": "the model answers",
+      "message": "Reply with exactly one word: pong",
+      "expect": "pong"
+    },
+    {
+      "id": "shell",
+      "area": "sandbox",
+      "title": "a shell command runs",
+      "message": "Run the shell command `pwd` and tell me its exact output.",
+      "expect": "/",
+      "forbid": "SANDBOX_UNAVAILABLE|isolated execution"
+    },
+    {
+      "id": "hidden-folder",
+      "area": "sandbox",
+      "title": "a command works where folder rules hide a path (the dashboard bug)",
+      "message": "Run `ls db` and then `echo shell-ok`. Reply with the second command's output only.",
+      "expect": "shell-ok",
+      "forbid": "SANDBOX_UNAVAILABLE|blocked paths inside granted paths"
+    },
+    {
+      "id": "own-account",
+      "area": "isolation",
+      "title": "commands run as the person's own Linux account",
+      "message": "Run `id -un` and reply with its output only.",
+      "expect": "slot[0-9]+",
+      "needs": "slots"
+    },
+    {
+      "id": "no-secrets",
+      "area": "isolation",
+      "title": "the server's secrets file is not readable",
+      "message": "Run `cat /srv/*/.env 2>&1 | head -c 300` and reply with exactly what it printed.",
+      "forbid": "AUTH_SECRET=|SUPABASE_ANON_KEY=|_API_KEY=[A-Za-z0-9]"
+    },
+    {
+      "id": "no-other-users",
+      "area": "isolation",
+      "title": "other people's folders are not listable",
+      "message": "Run `ls /srv/*/data/docs/_users 2>&1 | head -5` and reply with exactly what it printed.",
+      "expect": "denied|No such|cannot|not permitted|^\\s*$",
+      "needs": "slots"
+    },
+    {
+      "id": "burst",
+      "area": "model",
+      "title": "four chats ask the model at once, all answer, none rate limited",
+      "burst": 4,
+      "message": "Reply with exactly one word: ok",
+      "expect": "ok",
+      "forbid": "rate.?limit|429|No content"
+    },
+    {
+      "id": "brain",
+      "area": "brain",
+      "title": "a Brain note can be saved and found",
+      "tool": "brain",
+      "optional": true
+    },
+    {
+      "id": "usage",
+      "area": "limits",
+      "title": "token usage and limits are readable",
+      "tool": "account",
+      "args": {
+        "action": "usage"
+      },
+      "expect": "daily|state|limit"
+    },
+    {
+      "id": "admin-users",
+      "area": "admin",
+      "needs": "admin",
+      "title": "the user list is readable and has the accounts (API only)",
+      "tool": "manage_vault_access",
+      "args": {
+        "operation": "list_users",
+        "arguments": {}
+      },
+      "expect": "@"
+    },
+    {
+      "id": "admin-vault",
+      "area": "admin",
+      "needs": "admin",
+      "title": "Vault inventory, groups and audit log respond (API only)",
+      "steps": [
+        {
+          "tool": "manage_vault_access",
+          "args": {
+            "operation": "inspect_environment",
+            "arguments": {}
+          },
+          "expect": "groups"
+        },
+        {
+          "tool": "list_vault_mcp_servers",
+          "args": {},
+          "expect": "servers"
+        },
+        {
+          "tool": "read_vault_audit",
+          "args": {
+            "operation": "events",
+            "limit": 3
+          },
+          "expect": "events"
+        }
+      ]
+    },
+    {
+      "id": "admin-code-review",
+      "area": "admin",
+      "needs": "admin",
+      "title": "Code review lists every Code workspace (API only)",
+      "tool": "code_review",
+      "args": {
+        "action": "workspaces"
+      },
+      "expect": "workspaces"
+    },
+    {
+      "id": "admin-crew-info",
+      "area": "admin",
+      "needs": "admin",
+      "title": "Crew costs, settings, access, triggers and database are readable (API only)",
+      "steps": [
+        {
+          "tool": "crew",
+          "args": {
+            "action": "costs",
+            "crew_id": "{crew}"
+          },
+          "expect": "by_date|total|call_count"
+        },
+        {
+          "tool": "settings",
+          "args": {
+            "action": "get",
+            "crew_id": "{crew}"
+          },
+          "expect": "models"
+        },
+        {
+          "tool": "manage_project",
+          "args": {
+            "action": "get_access",
+            "crew_id": "{crew}"
+          },
+          "expect": "owner"
+        },
+        {
+          "tool": "manage_triggers",
+          "args": {
+            "action": "list",
+            "crew_id": "{crew}"
+          },
+          "expect": "triggers"
+        },
+        {
+          "tool": "query_database",
+          "args": {
+            "action": "describe",
+            "crew_id": "{crew}"
+          },
+          "expect": "columns"
+        }
+      ]
+    },
+    {
+      "id": "admin-schedule",
+      "area": "admin",
+      "needs": "admin",
+      "title": "a schedule can be created, listed and deleted on the scratch Crew (API only)",
+      "steps": [
+        {
+          "tool": "manage_schedules",
+          "args": {
+            "action": "create",
+            "crew_id": "{crew}",
+            "schedule": {
+              "name": "qa-acceptance-schedule",
+              "schedule_type": "cron",
+              "cron_expression": "0 3 * * *",
+              "timezone": "UTC",
+              "messages": [
+                "qa"
+              ],
+              "enabled": false
+            }
+          },
+          "expect": "qa-acceptance-schedule",
+          "capture": {
+            "sid": "\"id\"\\s*:\\s*\"(product-project:[^\"]+)\""
+          }
+        },
+        {
+          "tool": "manage_schedules",
+          "args": {
+            "action": "list",
+            "crew_id": "{crew}"
+          },
+          "expect": "qa-acceptance-schedule"
+        },
+        {
+          "tool": "manage_schedules",
+          "args": {
+            "action": "delete",
+            "crew_id": "{crew}",
+            "schedule_id": "{v.sid}"
+          },
+          "cleanup": true
+        }
+      ]
+    },
+    {
+      "id": "admin-dashboards",
+      "area": "admin",
+      "needs": "admin",
+      "title": "the dashboard list responds (API only)",
+      "tool": "dashboard",
+      "args": {
+        "action": "list"
+      },
+      "expect": "dashboards"
+    },
+    {
+      "id": "admin-relay",
+      "area": "admin",
+      "needs": "admin",
+      "slots_needed": true,
+      "title": "a Relay can be created, run as the account's slot and removed (the run goes through the sandbox and a slot)",
+      "steps": [
+        {
+          "tool": "relay",
+          "args": {
+            "action": "create",
+            "label": "QA acceptance relay",
+            "submission_id": "qa-relay-{crew}"
+          },
+          "expect": "created",
+          "capture": {
+            "rid": "\"manifest\":\\{[^}]*?\"id\":\"(wf_[^\"]+)\""
+          },
+          "optional": true,
+          "skip_reason": "Relays are not available to this account"
+        },
+        {
+          "tool": "relay",
+          "args": {
+            "action": "test",
+            "workflow_id": "{v.rid}",
+            "function": "process",
+            "idempotency_key": "qa-relay-run",
+            "input": {
+              "INPUT": {
+                "x": 1
+              }
+            }
+          },
+          "expect": "accepted",
+          "capture": {
+            "run": "\"run_id\":\"([^\"]+)\""
+          }
+        },
+        {
+          "tool": "relay",
+          "args": {
+            "action": "get_run",
+            "workflow_id": "{v.rid}",
+            "run_id": "{v.run}"
+          },
+          "sleep": 12,
+          "expect": "\"status\":\"completed\"|\"terminal\":true.*\"status\":\"completed\""
+        },
+        {
+          "tool": "manage_project",
+          "args": {
+            "action": "delete",
+            "workflow_id": "{v.rid}",
+            "confirm": "{v.rid}"
+          },
+          "cleanup": true
+        }
+      ]
+    }
+  ],
+  "note": "Cases with a message go through a real chat turn (the model, tmux, the sandbox, the slot). Cases marked '(API only)' call the server's admin tools directly: they check permissions and bookkeeping, not a chat. A Code chat cannot be driven through the API."
 }

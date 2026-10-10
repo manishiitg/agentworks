@@ -168,6 +168,11 @@ cmd_shared() {
     chgrp -R "$group" "$DOCS/$dir"
     chmod -R g+rwX "$DOCS/$dir"
     find "$DOCS/$dir" -type d -exec chmod g+s {} +
+    # What the service creates here later is not covered by the lines above: a Relay's run folder is made by the service with its
+    # own group and modes (runs 0710, .relay_ipc group of the service account), so a slot account could not open the runner it was
+    # asked to run ("python3: can't open file ... .relay_ipc/runner.py: Permission denied"). A default ACL gives the shared group
+    # access to everything created below, whatever group or mode the creating code picks (the mode still limits it, as before).
+    setfacl -R -m "g:$group:rwX" "$DOCS/$dir" && setfacl -R -d -m "g:$group:rwX" "$DOCS/$dir"
     echo "shared folder: $DOCS/$dir -> group $group"
   done
   print_group_refresh_notice
