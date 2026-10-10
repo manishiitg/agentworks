@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -23,6 +25,9 @@ var externalCodeRunTools = map[string]bool{
 	"list_my_code_chats":    true,
 	"ask_my_code":           true,
 	"get_my_code_state":     true,
+	"open_my_code_chat":     true,
+	"close_my_code_chat":    true,
+	"stop_my_code_chat":     true,
 }
 
 func isExternalCodeRunTool(name string) bool { return externalCodeRunTools[name] }
@@ -48,6 +53,10 @@ func externalCodeRunDefinitions(add func(name, description string, write, scoped
 		"call_id":       externalString("Poll a call started earlier instead of sending a new message."),
 		"submission_id": externalString("Stable id for this intended ask; reuse it after an uncertain retry to get the same call."),
 	})
+	chatArg := map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats.")}
+	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to 4), as the + in the app does; talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, project, "project_id")
+	add("close_my_code_chat", "Close one of your Code project's side chats (tab). The main chat cannot be closed, and a chat that is still working must be stopped first."+suffix, true, false, chatArg, "project_id", "chat_id")
+	add("stop_my_code_chat", "Stop the turn running in one of your Code project's chats (the main chat or a side chat)."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A chat id from code action=chats; default main.")}, "project_id")
 	add("get_my_code_state", "What the server knows about one of your Code projects right now: its mode, folder (the guard's read and write paths), the account slot commands run as, and each chat's working and Local flags. Read-only."+suffix, false, false, project, "project_id")
 }
 
@@ -180,6 +189,51 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			"folder_guard": map[string]any{"read_paths": guard.ReadPaths, "write_paths": guard.WritePaths, "blocked_write_paths": guard.BlockedWritePaths, "strict_allowlist": guard.StrictAllowlist},
 			"chats":        describe(),
 		})
+	case "open_my_code_chat":
+		if len(chats)-1 >= externalCrewMaxSideChats {
+			externalError(w, http.StatusConflict, "too_many_chats", "This project already has 4 side chats; close one first.")
+			return
+		}
+		raw := make([]byte, 4)
+		_, _ = rand.Read(raw)
+		id := hex.EncodeToString(raw)
+		status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/code/conversation", map[string]string{"id": codeproduct.ProfileID}, nil, AgentProfileConversationRequest{ConversationKey: projectID + codeChatSideMarker + id})
+		if status >= 400 {
+			externalScheduleRespond(w, status, body)
+			return
+		}
+		externalJSON(w, map[string]any{"project_id": projectID, "chat_id": id, "next": "Talk in it with code action=ask chat_id=" + id + "."})
+	case "close_my_code_chat", "stop_my_code_chat":
+		chatID := str("chat_id")
+		if name == "stop_my_code_chat" {
+			chatID = firstNonEmptyTrimmed(chatID, codeChatMainName)
+		}
+		var chat *codeChat
+		for i := range chats {
+			if chatID != "" && strings.EqualFold(chats[i].ID, chatID) {
+				chat = &chats[i]
+				break
+			}
+		}
+		if chat == nil || (name == "close_my_code_chat" && chat.ID == codeChatMainName) {
+			externalError(w, http.StatusNotFound, "chat_not_found", "Pass a chat_id from code action=chats (close: a side chat).")
+			return
+		}
+		if name == "close_my_code_chat" {
+			status, body := scheduleHandler(r, api.handleCloseAgentProfileSideChat, http.MethodPost, "/api/agent-profiles/code/conversation/close", map[string]string{"id": codeproduct.ProfileID}, nil, AgentProfileConversationRequest{ConversationKey: chat.Key})
+			externalScheduleRespond(w, status, body)
+			return
+		}
+		if !api.sessionStartedBy(chat.SessionID, claims.UserID) {
+			externalError(w, http.StatusConflict, "not_running", "Nothing is running in that chat.")
+			return
+		}
+		stop := func(w2 http.ResponseWriter, r2 *http.Request) {
+			r2.Header.Set("X-Session-ID", chat.SessionID)
+			api.handleStopSession(w2, r2)
+		}
+		status, body := scheduleHandler(r, stop, http.MethodPost, "/api/session/stop", nil, nil, map[string]any{})
+		externalScheduleRespond(w, status, body)
 	case "ask_my_code":
 		message := str("message")
 		if message == "" {

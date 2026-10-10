@@ -75,6 +75,7 @@ var externalToolMerges = []externalToolMerge{
 	}},
 	{"code", "Run your own Code from here (needs code:run): list your projects and their chats, ask a chat something and read the reply (commands, files and folder guards run in the real sandbox), and read a project's state (folder guard, slot, chats).", [][2]string{
 		{"projects", "list_my_code_projects"}, {"chats", "list_my_code_chats"}, {"ask", "ask_my_code"}, {"state", "get_my_code_state"},
+		{"open_chat", "open_my_code_chat"}, {"close_chat", "close_my_code_chat"}, {"stop", "stop_my_code_chat"},
 	}},
 }
 

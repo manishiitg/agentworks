@@ -470,6 +470,9 @@ chat:
       - list_my_code_chats
       - ask_my_code
       - get_my_code_state
+      - open_my_code_chat
+      - close_my_code_chat
+      - stop_my_code_chat
       # Shared-account token limits and allowed models (get: code:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
       - set_token_limits
