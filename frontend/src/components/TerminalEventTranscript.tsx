@@ -503,7 +503,7 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
     <article data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : 'py-1'}>
       {framed && <AssistantTurnHeader event={event} timestamp={timestamp} label={label} icon={icon} />}
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
-        <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" />
+        <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode />
       </div>
       {artifact && !full.text && (
         <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error} onLoad={() => { void full.load() }} label="Show full response" />
@@ -626,7 +626,7 @@ const InternalActivityEvent: React.FC<{ title: string; content: string; timestam
         // A <pre> showed the raw markup: "### Close-out", "**step-x**", stray
         // backticks. Render it the way the same text renders in a reply.
         <div className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 [&_li]:!text-[12px] [&_p]:!text-[12px]">
-          <ConversationMarkdownRenderer content={content} framed={false} maxHeight="none" />
+          <ConversationMarkdownRenderer content={content} framed={false} maxHeight="none" copyableCode />
         </div>
       )}
     </div>
@@ -803,7 +803,7 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
   if (item.assistantUpdate) {
     return (
       <div data-testid="terminal-assistant-update" className="my-2 text-foreground">
-        <ConversationMarkdownRenderer content={item.text} framed={false} maxHeight="none" />
+        <ConversationMarkdownRenderer content={item.text} framed={false} maxHeight="none" copyableCode />
       </div>
     )
   }
@@ -1245,7 +1245,7 @@ const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWrit
   text ? (
     <article data-testid="terminal-clear-live-assistant-message" className="py-1">
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
-        <ConversationMarkdownRenderer content={text} framed={false} maxHeight="none" />
+        <ConversationMarkdownRenderer content={text} framed={false} maxHeight="none" copyableCode />
       </div>
       {showWriting && <span aria-label="Writing" className="mt-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />}
     </article>

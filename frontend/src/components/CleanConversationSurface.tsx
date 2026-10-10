@@ -68,7 +68,7 @@ function ProgressUpdate({ content, isStreaming }: { content: string; isStreaming
         <span>Progress update</span>
       </summary>
       <div className="mt-2 border-l-2 border-slate-200 pl-3 text-sm leading-6 text-slate-600 dark:border-slate-700 dark:text-slate-300">
-        <ConversationMarkdownRenderer content={content} maxHeight="none" framed={false} />
+        <ConversationMarkdownRenderer content={content} maxHeight="none" framed={false} copyableCode />
       </div>
     </details>
   )
@@ -223,7 +223,7 @@ export function CleanConversationSurface({
                 paths, bullet lists when several steps land together), so render
                 it rather than printing the syntax literally. */}
             <div className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
-              <ConversationMarkdownRenderer content={item.content} maxHeight="none" framed={false} />
+              <ConversationMarkdownRenderer content={item.content} maxHeight="none" framed={false} copyableCode />
             </div>
           </details>
         ) : (
@@ -233,7 +233,7 @@ export function CleanConversationSurface({
             </span>
             <div className={`min-w-0 flex-1 rounded-2xl rounded-tl-md border px-4 py-3 shadow-sm ${item.role === 'error' ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'}`}>
               {item.role === 'assistant' ? (
-                <ConversationMarkdownRenderer content={item.content} maxHeight="none" framed={false} />
+                <ConversationMarkdownRenderer content={item.content} maxHeight="none" framed={false} copyableCode />
               ) : item.failure ? (
                 <div className="space-y-2">
                   <p className="text-sm font-semibold leading-5">{item.failure.title}</p>
@@ -312,7 +312,7 @@ export function CleanConversationSurface({
                 Preparing response
               </div>
               <div className="mt-2 text-sm leading-6 text-slate-200" data-testid="clean-streaming-text">
-                <ConversationMarkdownRenderer content={streamingText} maxHeight="none" framed={false} />
+                <ConversationMarkdownRenderer content={streamingText} maxHeight="none" framed={false} copyableCode />
               </div>
             </div>
           </article>
