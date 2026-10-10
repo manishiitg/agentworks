@@ -11,7 +11,7 @@ func TestAddDirectoryUserCreatesOnceAndIsSafeToRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, created, err := addDirectoryUser(dir, " Vaibhav@Gmail.com ", "", "editor", []string{"code"})
+	rec, created, err := addDirectoryUser(dir, " User@Example.com ", "", "editor", []string{"code"})
 	if err != nil || !created || rec.Email != "user@example.com" || rec.Username != "user@example.com" || len(rec.Products) != 1 {
 		t.Fatalf("created %v rec %+v err %v", created, rec, err)
 	}
