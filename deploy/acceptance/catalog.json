@@ -82,13 +82,14 @@
     },
     {
       "id": "usage",
-      "area": "limits",
+      "area": "admin",
       "title": "token usage and limits are readable",
       "tool": "account",
       "args": {
         "action": "usage"
       },
-      "expect": "daily|state|limit"
+      "expect": "daily|state|limit",
+      "needs": "admin"
     },
     {
       "id": "admin-users",

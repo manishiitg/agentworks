@@ -26,6 +26,8 @@ deploy/acceptance/run.py --server https://<server> [--slots] [--admin] [--area A
 | `--slots` | The server runs per-user Linux accounts: include the cases that need them (own account, no other users). |
 | `--admin` | The test account is an administrator: include the admin cases (users, Vault, Code review, Crew info, schedule, dashboards, Relay). |
 | `--area` | Only one area: `model`, `sandbox`, `isolation`, `brain`, `limits`, `access`, `admin`. |
+| `--config` | The test account's saved login (`agentworks --config PATH login`). Keep one file per account (admin, member) and both stay signed in side by side. |
+| `--code [TITLE]` | Send the message cases to the account's own Code project (tool `code`) instead of a Crew. Needs a login with `--scopes ...,code:run`. Names the project, else the first one. Local-mode projects are refused. Burst and the API cases are skipped. |
 | `--crew-name` | Name of the scratch Crew (default "QA acceptance"). **Use a different name for each test account.** A Crew's folder admits only its owner's slot, so another account's shell commands in it fail with "permission denied". |
 
 Sign-in scopes: the default CLI scopes do not include Brain or Relays. For the member run use
@@ -35,6 +37,20 @@ page does not ask), and check the server log's username afterwards.
 
 Exit code 1 means a case failed. A failure prints the answer that broke the rule. SKIP means a precondition is missing (for example the
 account has no Brain folder).
+
+## Two accounts side by side
+
+```
+agentworks --config ~/.config/agentworks/<server>/admin.json  --server https://<server> login
+agentworks --config ~/.config/agentworks/<server>/member.json --server https://<server> login --scopes <member scopes>,code:run
+deploy/acceptance/run.py --server https://<server> --config .../admin.json  --slots --admin
+deploy/acceptance/run.py --server https://<server> --config .../member.json --slots --crew-name "QA acceptance member"
+deploy/acceptance/run.py --server https://<server> --config .../member.json --slots --code <project title>
+```
+
+The browser sign-in uses whoever is signed in to the site, so sign out (or use a private window) before approving the member login, and check the
+server log's username. The same two accounts can be added to an agent as two MCP servers with different names.
+`code:run` is never in a default login (it lets a token run commands in the person's Code project).
 
 ## What a failure usually means
 
@@ -73,9 +89,8 @@ then sign in as the test user). Then tell it:
 
 ## What it does not cover
 
-- Code chats cannot be driven through the API (the external tools expose Crews, workflows, Relays, Brain and Vault; Code is read-only for
-  reviewers), so Code-specific checks (modes, Local, the toolbar) stay a browser checklist. A Crew shares the sandbox and slot path with
-  Code, which is why the shell and isolation cases use one.
+- Code chats are driven with `--code` (the `code` tool, scope `code:run`): the same shell and isolation cases run in a real Code project (Dev or
+  Cowork). Not covered: Local mode (runs on a laptop), the toolbar and modes UI, side chats of a Code project.
 - Browser flows (sign-in, the account menu, the new-project dialog), Gmail connect, and Local mode on a laptop.
-- Running as a Crew reader (an account that is not the Crew's owner). Today a reader's shell commands in someone else's Crew fail with
-  "permission denied" on a slot host (the command runs as the reader's slot; the folder admits only the owner's). Tracked as a ticket.
+- Running as a Crew reader (an account that is not the Crew's owner): checked by hand (a member asks the admin's scratch Crew to run a command;
+  it runs as the Crew owner's slot, PLAT-810), not in the catalog.

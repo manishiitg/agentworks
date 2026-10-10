@@ -21,9 +21,13 @@ import uuid
 from pathlib import Path
 
 
+CODE = {"on": False, "title": None}  # --code: message cases go to a Code project through the `code` tool instead of a Crew
+CONFIG = []  # ["--config", path] when the run uses a saved login other than the default
+
+
 def call(server, tool, args, timeout=120):
     process = subprocess.run(
-        ["agentworks", "--json", "--server", server, "tools", "call", tool, "--input", "-"],
+        ["agentworks", *CONFIG, "--json", "--server", server, "tools", "call", tool, "--input", "-"],
         input=json.dumps(args), capture_output=True, text=True, timeout=timeout,
     )
     text = (process.stdout or process.stderr or "").strip()
@@ -52,7 +56,18 @@ def find_text(value):
     return json.dumps(value, ensure_ascii=False)
 
 
+def code_project_id(server):
+    """The test account's own Code project to talk to: the one named by --code, else the first Dev/Cowork project (Local ones are refused)."""
+    code, result, text = call(server, "code", {"action": "projects"})
+    for project in result.get("projects") or []:
+        if not CODE["title"] or project.get("title") == CODE["title"]:
+            return project["project_id"]
+    raise SystemExit("no Code project to test with (create one, or name it with --code TITLE): " + text[:300])
+
+
 def crew_id(server, spec):
+    if CODE["on"]:
+        return code_project_id(server)
     code, result, text = call(server, "crew", {"action": "list", "query": spec["name"]})
     for crew in (result.get("crews") or result.get("items") or result.get("data") or []):
         if isinstance(crew, dict) and (crew.get("name") == spec["name"] or crew.get("title") == spec["name"]):
@@ -70,6 +85,14 @@ def crew_id(server, spec):
 def ask(server, crew, message, budget=150, chat_id=None):
     """Ask the Crew (in its main chat, or the side chat `chat_id`) and wait for its final reply (up to `budget` seconds)."""
     submission = "qa-" + uuid.uuid4().hex[:12]
+    if CODE["on"]:
+        code, result, text = call(server, "code", {"action": "ask", "project_id": crew, "message": message, "wait_seconds": 25, "submission_id": submission})
+        call_id = result.get("call_id")
+        deadline = time.time() + budget
+        while call_id and re.search(r'"status"\s*:\s*"(running|pending|queued)"', find_text(result)) and time.time() < deadline:
+            time.sleep(4)
+            code, result, text = call(server, "code", {"action": "ask", "project_id": crew, "call_id": call_id})
+        return find_text(result) if result else text
     arguments = {"crew_id": crew, "message": message, "wait_seconds": 25, "submission_id": submission}
     if chat_id:
         arguments["chat_id"] = chat_id
@@ -166,10 +189,19 @@ def main():
     parser.add_argument("--admin", action="store_true", help="the test user is an administrator: include the admin cases (users, Vault, Code review, schedules, Relays)")
     parser.add_argument("--slots", action="store_true", help="the server runs per-user Linux slots: include the cases that need them")
     parser.add_argument("--crew-name", help="name of the QA Crew to find or create (default: the catalog's). Use one per test account: a Crew's folder admits only its owner's slot, so another account's shell commands in it fail")
+    parser.add_argument("--config", help="the agentworks connection file of the test account (agentworks --config PATH login), so an admin and a member can stay signed in side by side")
+    parser.add_argument("--code", nargs="?", const="", metavar="TITLE", help="run the message cases through the account's own Code project (tool `code`, needs a login with --scopes code:run) instead of a Crew; optional project title")
     parser.add_argument("--catalog", default=str(Path(__file__).with_name("catalog.json")))
     options = parser.parse_args()
+    if options.code is not None:
+        CODE["on"], CODE["title"] = True, options.code or None
+    if options.config:
+        CONFIG[:] = ["--config", options.config]
     catalog = json.loads(Path(options.catalog).read_text())
     cases = [c for c in catalog["cases"] if (not options.area or c["area"] == options.area)]
+    if CODE["on"]:
+        # A Code project has no side chats and the API cases do not depend on where the chat runs: only the single-message cases apply.
+        cases = [c for c in cases if "message" in c and not c.get("burst") and c.get("needs") != "admin"]
     crew = None
     failures = 0
     for case in cases:
