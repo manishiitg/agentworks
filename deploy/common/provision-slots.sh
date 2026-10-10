@@ -392,9 +392,9 @@ $HOME_DIR/releases/**/bin/$PRODUCT-workspace flags=(unconfined) {
   userns,
 }
 
-# The agent service also starts the launcher in namespaces it creates itself (a shell command from a chat whose folder rules hide a
-# path): kernel log operation="mount" profile="unprivileged_userns" comm="video-studio-la" right after comm="<product>-agent" created
-# the namespace. Without this entry those commands fail "slotctl: could not start ... permission denied" for the accounts they run as.
+# The agent service also creates launcher namespaces for some chat shell commands. A kernel-log denial (operation="mount",
+# profile="unprivileged_userns", comm="video-studio-la") was seen once right after it did; no command failure has been traced to
+# it, so this is a precaution that matches the workspace entry above, not a proven fix.
 $HOME_DIR/releases/**/bin/$PRODUCT-agent flags=(unconfined) {
   userns,
 }

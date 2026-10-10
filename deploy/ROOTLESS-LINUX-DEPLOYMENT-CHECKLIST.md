@@ -24,6 +24,9 @@ some items below still mention was retired and its scripts removed on
 
 ## Checklist
 
+After a deploy to a slot host, also run the manual acceptance set as a test account (real chat turns through the sandbox and the
+person's slot): `deploy/acceptance/README.md`.
+
 ### Rootless Docker for Work builds
 
 Native Linux Work installations that offer Docker builds must use a daemon

@@ -165,6 +165,7 @@ def main():
     parser.add_argument("--area", help="only cases of this area (model, sandbox, isolation, brain, limits, access)")
     parser.add_argument("--admin", action="store_true", help="the test user is an administrator: include the admin cases (users, Vault, Code review, schedules, Relays)")
     parser.add_argument("--slots", action="store_true", help="the server runs per-user Linux slots: include the cases that need them")
+    parser.add_argument("--crew-name", help="name of the QA Crew to find or create (default: the catalog's). Use one per test account: a Crew's folder admits only its owner's slot, so another account's shell commands in it fail")
     parser.add_argument("--catalog", default=str(Path(__file__).with_name("catalog.json")))
     options = parser.parse_args()
     catalog = json.loads(Path(options.catalog).read_text())
@@ -181,7 +182,7 @@ def main():
             continue
         try:
             if crew is None and ("message" in case or "{crew}" in json.dumps(case)):
-                crew = crew_id(options.server, catalog["crew"])
+                crew = crew_id(options.server, {**catalog["crew"], **({"name": options.crew_name} if options.crew_name else {})})
             status, why = run_case(options.server, crew, case)
         except subprocess.TimeoutExpired:
             status, why = "FAIL", "timed out"
