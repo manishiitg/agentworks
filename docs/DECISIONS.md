@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Thinking is compact and finished thinking blocks survive a chat rebuild (PLAT-832)
+
+Pi's `thinking_delta` chunks are plain reasoning (the compact muted line), like Muse's (PLAT-781) and every other agent's; they were
+tagged `assistant_update` and drawn as large message blocks. Finished (non-streamed) `conversation_thinking` events are now on the
+durable chat allowlist (`internal/events/durable_chat.go`), so a reload or a terminal/chat switch keeps the thinking above an answer.
+Streamed fragments (`is_delta`, which is how Pi sends thinking) are still live-only, so Pi's thinking is still lost on a rebuild until
+fragments are joined before they are stored; that is open in the ticket.
+
 ### 2026-10-10 — New Crews are always created at `Crew/<slug>-<id8>`; the switch is gone
 
 `AGENTWORKS_CREW_SHARED_ROOT=on` is removed: every server creates new Crews in the shared root, and it is the only default (owner:

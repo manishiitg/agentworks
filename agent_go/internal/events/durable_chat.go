@@ -3,6 +3,8 @@ package events
 import (
 	"encoding/json"
 	"strings"
+
+	agentevents "github.com/manishiitg/mcpagent/events"
 )
 
 const maxDurableChatEventBytes = 64 * 1024
@@ -45,13 +47,36 @@ var durableChildSummaryTypes = map[string]bool{
 	"background_agent_terminated": true,
 }
 
+// isDurableThinking is a finished thinking block (or a CLI agent's commentary line) the person saw in the chat. Without it the
+// chat rebuilt after switching terminal and chat, or after a reload, showed the answer but none of the thinking above it
+// (PLAT-832). A streamed fragment (is_delta) is not stored: the fragments are many and the chat joins them live.
+func isDurableThinking(event Event) bool {
+	if event.Type != "conversation_thinking" || event.Data == nil {
+		return false
+	}
+	var thinking string
+	var delta bool
+	switch data := event.Data.Data.(type) {
+	case *agentevents.ConversationThinkingEvent:
+		if data == nil {
+			return false
+		}
+		thinking, delta = data.Thinking, data.IsDelta
+	default:
+		payload := eventPayloadMap(&event)
+		thinking, _ = payload["thinking"].(string)
+		delta, _ = payload["is_delta"].(bool)
+	}
+	return strings.TrimSpace(thinking) != "" && !delta
+}
+
 // IsDurableChatEvent mirrors the journal projector for transport filtering.
 // AddEventChecked publishes the projected row only after SQLite accepts it.
 func IsDurableChatEvent(event Event) bool {
 	if IsTranscriptMessage(event) {
 		return true
 	}
-	if !durableChatEventTypes[event.Type] {
+	if !durableChatEventTypes[event.Type] && !isDurableThinking(event) {
 		return false
 	}
 	kind := strings.ToLower(strings.TrimSpace(event.ExecutionKind))
