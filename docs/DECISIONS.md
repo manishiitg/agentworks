@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — The navigation shortcut hint expires after eight seconds
+
+After navigation hides, dismiss its Ctrl+K / Command+K badge automatically after
+eight seconds, or immediately when quick navigation opens. Carry the expiry and
+dismissal across product remounts and browser-session reloads; only a fresh hide
+cycle resets it. Keep the left-edge reopen target and the shortcut available.
+Owner request; ticket:
+[PLAT-835](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-835.md).
+
 ### 2026-10-10 — Thinking is compact and finished thinking blocks survive a chat rebuild (PLAT-832)
 
 Pi's `thinking_delta` chunks are plain reasoning (the compact muted line), like Muse's (PLAT-781) and every other agent's; they were

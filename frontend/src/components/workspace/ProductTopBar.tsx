@@ -5,6 +5,8 @@ import { usePersistentTab } from '../../hooks/usePersistentTab'
 const NAVIGATION_IDLE_MS = 10 * 60 * 1000
 const NAVIGATION_ACTIVITY_KEY = 'product_navigation_last_activity'
 const NAVIGATION_HINT_DISMISSED_KEY = 'product_navigation_hint_dismissed'
+const NAVIGATION_HINT_EXPIRES_KEY = 'product_navigation_hint_expires_at'
+const NAVIGATION_HINT_DURATION_MS = 8_000
 
 const ProductNavigationContext = createContext(false)
 export const useProductNavigationSidebar = () => useContext(ProductNavigationContext)
@@ -16,18 +18,48 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   )
   const autoHide = navigationMode === 'auto-hide'
   const [revealed, setRevealed] = useState(false)
+  const hintExpiresAt = useRef<number | null>(null)
   const [navigationHintDismissed, setNavigationHintDismissed] = useState(() => {
-    try { return window.sessionStorage.getItem(NAVIGATION_HINT_DISMISSED_KEY) === 'true' } catch { return false }
+    try {
+      const expiresAt = Number(window.sessionStorage.getItem(NAVIGATION_HINT_EXPIRES_KEY))
+      return window.sessionStorage.getItem(NAVIGATION_HINT_DISMISSED_KEY) === 'true' || (expiresAt > 0 && expiresAt <= Date.now())
+    } catch { return false }
   })
   const rememberHintDismissed = useCallback((dismissed: boolean) => {
+    if (!dismissed) hintExpiresAt.current = Date.now() + NAVIGATION_HINT_DURATION_MS
     setNavigationHintDismissed(dismissed)
-    try { window.sessionStorage.setItem(NAVIGATION_HINT_DISMISSED_KEY, String(dismissed)) } catch { /* Storage is optional. */ }
+    try {
+      window.sessionStorage.setItem(NAVIGATION_HINT_DISMISSED_KEY, String(dismissed))
+      if (!dismissed) window.sessionStorage.setItem(NAVIGATION_HINT_EXPIRES_KEY, String(hintExpiresAt.current))
+    } catch { /* Storage is optional. */ }
   }, [])
   useEffect(() => {
     const dismissHint = () => rememberHintDismissed(true)
     window.addEventListener('quick-switcher-opened', dismissHint)
     return () => window.removeEventListener('quick-switcher-opened', dismissHint)
   }, [rememberHintDismissed])
+  useEffect(() => {
+    if (!sidebar || !autoHide || navigationHintDismissed) return
+    if (hintExpiresAt.current === null) {
+      let stored = 0
+      try { stored = Number(window.sessionStorage.getItem(NAVIGATION_HINT_EXPIRES_KEY)) } catch { /* Storage is optional. */ }
+      hintExpiresAt.current = stored > 0 ? stored : Date.now() + NAVIGATION_HINT_DURATION_MS
+      try { window.sessionStorage.setItem(NAVIGATION_HINT_EXPIRES_KEY, String(hintExpiresAt.current)) } catch { /* Storage is optional. */ }
+    }
+    const dismissIfExpired = () => {
+      if (Date.now() >= hintExpiresAt.current!) rememberHintDismissed(true)
+    }
+    const remaining = hintExpiresAt.current - Date.now()
+    if (remaining <= 0) { rememberHintDismissed(true); return }
+    const timer = window.setTimeout(() => rememberHintDismissed(true), remaining)
+    window.addEventListener('focus', dismissIfExpired)
+    document.addEventListener('visibilitychange', dismissIfExpired)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('focus', dismissIfExpired)
+      document.removeEventListener('visibilitychange', dismissIfExpired)
+    }
+  }, [sidebar, autoHide, revealed, navigationHintDismissed, rememberHintDismissed])
   // Session storage carries the deadline across product remounts and reloads.
   const lastActivity = useRef<number | null>(null)
   const idleTimer = useRef<number | undefined>(undefined)
