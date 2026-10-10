@@ -97,6 +97,30 @@ case "$slots_mode" in
     ;;
 esac
 
+# The shared folders keep a default ACL for the shared slot group (PLAT-808), so what the service creates inside them later (a
+# Relay's run folder) can be opened by a slot. The root-run `provision-slots.sh shared` sets it, and a host whose deploy has no
+# root step never re-applies it: say so here. A warning, never a failure: a host that works without it is not broken. A host
+# without a shared slot group, or without getfacl, is skipped.
+check_shared_acl() {
+  local prefix="slot" line group dir missing=0
+  for line in ${ENV_LINES[@]+"${ENV_LINES[@]}"}; do
+    [[ "$line" == AGENTWORKS_SLOT_PREFIX=* ]] && prefix="${line#*=}"
+  done
+  group="${prefix}shared"
+  getent group "$group" >/dev/null 2>&1 || return 0
+  command -v getfacl >/dev/null 2>&1 || { echo "WARN shared-acl: getfacl is not installed, shared folder ACLs not checked"; return 0; }
+  for dir in Workflow Downloads skills subagents tmp; do
+    [[ -d "$DOCS/$dir" ]] || continue
+    if ! getfacl -p "$DOCS/$dir" 2>/dev/null | grep -q "^default:group:$group:"; then
+      echo "WARN shared-acl $DOCS/$dir has no default ACL for group $group -- fix: as root on the host, run: PRODUCT=$PRODUCT bash -s -- shared < deploy/common/provision-slots.sh"
+      missing=1
+    fi
+  done
+  [[ "$missing" == 0 ]] && echo "PASS shared-acl: shared folders carry the default ACL for group $group"
+  return 0
+}
+case "$slots_mode" in on|optin) check_shared_acl ;; esac
+
 echo "==> [$PRODUCT] secret admission scan (names only, warnings never fail the deploy)"
 if [[ -f "$RELEASE/admission_scan.py" ]]; then
   python3 "$RELEASE/admission_scan.py" --docs "$DOCS" --agent-pid "$(main_pid "$PRODUCT-agent")" --env-file "$APP/.env" || true
