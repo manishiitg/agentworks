@@ -162,3 +162,23 @@ func TestOnlyTheOwnerSeesTheCommandsACallRan(t *testing.T) {
 		t.Fatalf("another tool lists only its name: %v", commands[1])
 	}
 }
+
+// A poll with wait_seconds blocks until the call finishes and then returns at once; without it the poll answers
+// immediately. A workflow function's status poll waits the same way (PLAT-837).
+func TestFunctionCallPollWaitsUntilTheCallFinishes(t *testing.T) {
+	call := &crewFunctionCall{ID: "fn-wait", UserID: "owner", TargetKind: triggerCallerWorkflow, Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+	started := time.Now()
+	out := externalWorkflowCallResponse(context.Background(), call, 0)
+	if time.Since(started) > time.Second || out["status"] != "running" || out["next"] == nil {
+		t.Fatalf("a poll without wait answers at once: %v", out)
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		call.settle("completed", map[string]any{"answer": "done"}, "")
+	}()
+	started = time.Now()
+	out = externalWorkflowCallResponse(context.Background(), call, 5*time.Second)
+	if elapsed := time.Since(started); elapsed < 100*time.Millisecond || elapsed > 3*time.Second || out["status"] != "completed" {
+		t.Fatalf("a waiting poll returns when the call finishes (after %v): %v", elapsed, out)
+	}
+}

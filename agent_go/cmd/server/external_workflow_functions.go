@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -46,7 +47,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			replyFunctionCallInput(w, call, strings.TrimSpace(requestID), response)
 			return
 		}
-		out := externalWorkflowCallResponse(ctx, call, 0)
+		out := externalWorkflowCallResponse(ctx, call, externalCrewWait(args))
 		out["can_reply"] = access == WorkflowAccessOwner || access == WorkflowAccessWrite
 		externalJSON(w, out)
 	case "call_workflow_function":
@@ -77,7 +78,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 func externalWorkflowCallResponse(ctx context.Context, call *crewFunctionCall, wait time.Duration) map[string]interface{} {
 	out := externalCrewCallResponse(ctx, call, wait)
 	if _, running := out["next"]; running {
-		out["next"] = "Still running. Poll get_workflow_function_call with this call_id."
+		out["next"] = fmt.Sprintf("Still running. Call get_workflow_function_call with this call_id and wait_seconds=%d: it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", externalCrewMaxWaitSeconds)
 	}
 	return out
 }
