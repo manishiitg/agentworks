@@ -216,7 +216,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		for _, crew := range crews {
 			items = append(items, map[string]interface{}{
 				"crew_id": crew["id"], "name": crew["name"], "identity": crew["identity"],
-				"owner": crew["owner"], "access": crew["access"],
+				"owner": crew["owner"], "access": externalCrewAccessLabel(crew["access"]),
 			})
 		}
 		externalJSON(w, map[string]any{"crews": items})
@@ -326,4 +326,14 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	default:
 		externalError(w, 404, "unknown_tool", "Tool is not exposed by this API.")
 	}
+}
+
+// externalCrewAccessLabel names what the caller can do in a Crew. The shared listing marks another owner's Crew
+// "write" (Crew-to-Crew work); to an outside caller that overstates it: only the owner edits, everyone else runs it
+// in Run mode (reads it, writes only its output folder).
+func externalCrewAccessLabel(access interface{}) interface{} {
+	if access == "write" {
+		return "run"
+	}
+	return access
 }

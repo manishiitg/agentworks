@@ -70,3 +70,20 @@ func TestAdminDefaultScopesAreEveryScopeTheAccountMayHave(t *testing.T) {
 		t.Errorf("a client that names its scopes must get exactly those, got %v", named)
 	}
 }
+
+// A token never carries Crew scopes for an account without the Crew product (PLAT-820): every Crew tool is refused to it.
+func TestMCPOAuthCrewScopesFollowTheCrewProduct(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"codeonly","username":"codeonly","products":["code"]},
+		{"id":"both","username":"both","products":["code","work"]}
+	]}`)
+	asked := []string{"crews:read", "crews:run", "crews:write", "code:run"}
+	got := mcpOAuthScopesFor(&UserClaims{UserID: "codeonly", Username: "codeonly"}, asked)
+	if len(got) != 1 || got[0] != "code:run" {
+		t.Errorf("a Code-only account must keep only code:run, got %v", got)
+	}
+	if got := mcpOAuthScopesFor(&UserClaims{UserID: "both", Username: "both"}, asked); len(got) != 4 {
+		t.Errorf("an account with both products keeps every scope, got %v", got)
+	}
+}

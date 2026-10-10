@@ -161,6 +161,9 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return user == nil || vaultPersonLevel(user.UserID) == vaultNone
 		case "code:run":
 			return user == nil || !userAllowedProduct(user, "code")
+		case "crews:read", "crews:run", "crews:write":
+			// Every Crew tool is refused to an account without the Crew product, so a token should not carry these.
+			return user != nil && !userAllowedProduct(user, "work")
 		case "code:review":
 			return !canReview
 		case "users:manage":
