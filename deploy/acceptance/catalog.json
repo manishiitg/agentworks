@@ -260,7 +260,7 @@
           },
           "expect": "created",
           "capture": {
-            "rid": "\"manifest\":\\{[^}]*?\"id\":\"(wf_[^\"]+)\""
+            "rid": "\"manifest\":\\s*\\{[^}]*?\"id\":\\s*\"(wf_[^\"]+)\""
           },
           "optional": true,
           "skip_reason": "Relays are not available to this account"
@@ -280,7 +280,7 @@
           },
           "expect": "accepted",
           "capture": {
-            "run": "\"run_id\":\"([^\"]+)\""
+            "run": "\"run_id\":\\s*\"([^\"]+)\""
           }
         },
         {
@@ -291,7 +291,7 @@
             "run_id": "{v.run}"
           },
           "sleep": 12,
-          "expect": "\"status\":\"completed\"|\"terminal\":true.*\"status\":\"completed\""
+          "expect": "\"status\":\\s*\"completed\""
         },
         {
           "tool": "manage_project",
