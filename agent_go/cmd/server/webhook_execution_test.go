@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -107,5 +108,17 @@ func TestDirectWebhookCapacityResumeUsesRecordedFolder(t *testing.T) {
 	folders, err := os.ReadDir(filepath.Join(docs, workspace, "runs"))
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("replacement folder created: %v %v", folders, err)
+	}
+}
+
+// A function or webhook run executes the workflow directly and has no registered child to stretch the idle window,
+// so it must not get the chat window of 10 minutes (PLAT-839).
+func TestDirectWorkflowRunsGetTheLongInactivityWindow(t *testing.T) {
+	if got := turnInactivityLimit(context.Background()); got != schedulerWorkshopMaxInactivity {
+		t.Fatalf("a chat turn keeps the workshop window, got %v", got)
+	}
+	direct := context.WithValue(context.Background(), directWebhookExecutionKey{}, struct{}{})
+	if got := turnInactivityLimit(direct); got != schedulerWorkshopLiveChildCeiling || got <= schedulerWorkshopMaxInactivity {
+		t.Fatalf("a direct workflow run needs the long window, got %v", got)
 	}
 }

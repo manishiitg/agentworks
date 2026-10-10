@@ -14,6 +14,18 @@ import (
 // public /api/query request cannot set this context value or choose hook files.
 type directWebhookExecutionKey struct{}
 
+// turnInactivityLimit is how long a turn may show no progress before its wait gives up and cancels it. A chat or bot
+// turn gets the workshop window (10 minutes). A function or webhook run executes the workflow directly: its script
+// step is one long process that emits nothing while it works, and unlike a scheduled run it has no registered child
+// execution that stretches the window, so the 10 minutes killed runs that legitimately take 13 to 31 minutes
+// (PLAT-839). It gets the same ceiling a live child gets (3 hours), the backstop against a hang.
+func turnInactivityLimit(ctx context.Context) time.Duration {
+	if ctx != nil && ctx.Value(directWebhookExecutionKey{}) != nil {
+		return schedulerWorkshopLiveChildCeiling
+	}
+	return schedulerWorkshopMaxInactivity
+}
+
 func directWebhookPreflight(manifest *WorkflowManifest) error {
 	if isPythonRelay(manifest) {
 		return nil

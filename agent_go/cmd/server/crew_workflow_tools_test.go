@@ -155,7 +155,7 @@ func TestRunWorkflowTriggerRejectsBeforeStart(t *testing.T) {
 	}{
 		{"unattached", map[string]interface{}{"workspace_path": "Workflow/other", "trigger_id": "trig-crew-on"}, "not attached"},
 		{"unknown trigger", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "missing"}, "trigger not found"},
-		{"foreign binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-other"}, "no longer names this Crew"},
+		{"foreign binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-other"}, "no longer names this caller"},
 		{"disabled binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-off"}, "disabled"},
 		{"bad payload", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-on", "payload": "nope"}, "payload must be a JSON object"},
 	} {
@@ -269,7 +269,7 @@ func TestGetWorkflowTriggerRunPollsStore(t *testing.T) {
 	}
 	if _, err := tool.exec(ctx, map[string]interface{}{
 		"workspace_path": "Workflow/test", "trigger_id": "trig-other", "run_id": "run-1",
-	}); err == nil || !strings.Contains(err.Error(), "no longer names this Crew") {
+	}); err == nil || !strings.Contains(err.Error(), "no longer names this caller") {
 		t.Fatalf("foreign binding poll err = %v, want caller failure", err)
 	}
 }

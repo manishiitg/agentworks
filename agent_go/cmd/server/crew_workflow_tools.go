@@ -362,7 +362,7 @@ func crewWorkflowRunError(err error) error {
 	case err == nil:
 		return nil
 	case strings.Contains(err.Error(), ErrInternalCallerMismatch.Error()):
-		return fmt.Errorf("trigger binding no longer names this Crew; ask the workflow owner to rebind it")
+		return fmt.Errorf("trigger binding no longer names this caller; ask the workflow owner to rebind it")
 	case strings.Contains(err.Error(), ErrInternalTriggerDisabled.Error()):
 		return fmt.Errorf("trigger is disabled; ask the workflow owner to enable it")
 	case strings.Contains(err.Error(), ErrInternalTriggerNotFound.Error()):

@@ -350,7 +350,7 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	if strings.TrimSpace(queryResp.QueryID) == "" {
 		return internalSessionTurnResult{}, fmt.Errorf("handleQuery did not return a query execution id")
 	}
-	err = api.waitForConversationTurnTree(ctx, sessionID, queryResp.QueryID, schedulerWorkshopMaxInactivity)
+	err = api.waitForConversationTurnTree(ctx, sessionID, queryResp.QueryID, turnInactivityLimit(ctx))
 	if execution, ok := api.botExecutionForSession(sessionID); ok && execution.Request.PresetQueryID != "" {
 		if pruneErr := api.pruneSlackRuns(execution.Request.SelectedFolder); pruneErr != nil {
 			log.Printf("[SLACK_RETENTION] %v", pruneErr)
