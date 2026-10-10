@@ -393,6 +393,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			case <-time.After(250 * time.Millisecond):
 			}
 			if time.Now().After(deadline) {
+				api.resumeAgentMessagesThrottled()
 				return map[string]interface{}{"messages": []map[string]interface{}{}, "next_cursor": after, "inbox_id": inboxID}, nil
 			}
 			continue
@@ -437,10 +438,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			return nil, fmt.Errorf("conversation unavailable or access denied")
 		}
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
-			if now := time.Now().Unix(); now-agentMessageLastResume.Load() >= 5 {
-				agentMessageLastResume.Store(now)
-				api.resumeAgentMessages()
-			}
+			api.resumeAgentMessagesThrottled()
 			return map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}, nil
 		}
 		select {
@@ -933,4 +931,13 @@ func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMes
 		}
 	}
 	return e
+}
+
+// resumeAgentMessagesThrottled runs the wakeup check at most every 5 seconds
+// when many readers poll; the scheduler tick still runs it every minute.
+func (api *StreamingAPI) resumeAgentMessagesThrottled() {
+	if now := time.Now().Unix(); now-agentMessageLastResume.Load() >= 5 {
+		agentMessageLastResume.Store(now)
+		api.resumeAgentMessages()
+	}
 }

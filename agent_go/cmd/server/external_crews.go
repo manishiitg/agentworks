@@ -76,7 +76,11 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
 		// A poll that waits is cheap: it returns the moment the call finishes (PLAT-837).
-		out["next"] = fmt.Sprintf("Still running in the Crew's chat. Call get_crew_function_call with this call_id and wait_seconds=%d: it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", externalCrewMaxWaitSeconds)
+		where := "in the Crew's chat"
+		if call.IsolatedExecution {
+			where = "in its own isolated run"
+		}
+		out["next"] = fmt.Sprintf("Still running %s. Read the call again with this call_id and wait_seconds=%d (get_crew_function_call, or functions action=status): it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", where, externalCrewMaxWaitSeconds)
 	}
 	return out
 }

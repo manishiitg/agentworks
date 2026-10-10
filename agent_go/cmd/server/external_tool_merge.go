@@ -1,6 +1,7 @@
 package server
 
 import (
+	"reflect"
 	"fmt"
 	"sort"
 	"strings"
@@ -114,9 +115,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				}
 				member.hidden = true
 				for key, value := range member.InputSchema["properties"].(map[string]any) {
-					if _, seen := props[key]; !seen {
-						props[key] = value
-					}
+					externalMergeProperty(props, key, value)
 				}
 			}
 			if found {
@@ -213,9 +212,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 		lines = append(lines, line)
 		for _, member := range members {
 			for key, value := range member.InputSchema["properties"].(map[string]any) {
-				if _, seen := props[key]; !seen {
-					props[key] = value
-				}
+				externalMergeProperty(props, key, value)
 			}
 		}
 	}
@@ -299,4 +296,31 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		rest[key] = value
 	}
 	return member, rest, nil
+}
+
+// externalMergeProperty adds a member's argument to a merged tool. When two
+// actions use the same name with different shapes (create_crew takes functions
+// as an array, update_crew as {upsert, delete}), both stay visible as anyOf
+// instead of the first one hiding the other.
+func externalMergeProperty(props map[string]any, key string, value any) {
+	existing, seen := props[key]
+	if !seen {
+		props[key] = value
+		return
+	}
+	if reflect.DeepEqual(existing, value) {
+		return
+	}
+	if merged, ok := existing.(map[string]any); ok {
+		if options, isUnion := merged["anyOf"].([]any); isUnion && len(merged) == 1 {
+			for _, option := range options {
+				if reflect.DeepEqual(option, value) {
+					return
+				}
+			}
+			props[key] = map[string]any{"anyOf": append(append([]any{}, options...), value)}
+			return
+		}
+	}
+	props[key] = map[string]any{"anyOf": []any{existing, value}}
 }
