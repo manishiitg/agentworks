@@ -18,7 +18,7 @@ import (
 
 // PLAT-805: stopping a step drops the HTTP request that started its command, and the command must not outlive it. The
 // handler used to run every command on a context made from context.Background(), so a stopped step's Python script,
-// Chrome and ffmpeg kept running until the command's own timeout (RTS, 2026-10-09: over ten hours, on a 2-vCPU host).
+// Chrome and ffmpeg kept running until the command's own timeout (server A, 2026-10-09: over ten hours, on a 2-vCPU host).
 func TestExecuteShellCommandStopsWhenTheCallerDisconnects(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	viper.Set("docs-dir", t.TempDir())

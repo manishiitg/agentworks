@@ -209,7 +209,7 @@ func TestRunExecStopSignalReachesTheWholeProcessGroup(t *testing.T) {
 
 // PLAT-805: a program that leaves on SIGTERM can leave behind a child that ignores it (a script with a SIGTERM trap,
 // and the Chrome it started). The grace-period SIGKILL used to be a timer inside this process, which exits as soon as
-// the program does, so such a child ran on for hours (RTS, 2026-10-10). After a stop the whole group must be gone
+// the program does, so such a child ran on for hours (server A, 2026-10-10). After a stop the whole group must be gone
 // by the time RunExec returns.
 func TestRunExecStopKillsAChildThatIgnoresTheSignal(t *testing.T) {
 	cfg, root := testConfig(t)

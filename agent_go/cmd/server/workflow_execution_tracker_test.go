@@ -217,9 +217,9 @@ func TestInteractiveWorkflowBuilderTaskBlocksNewBuilderChat(t *testing.T) {
 	}
 
 	// The refusal names who holds the workflow (server A: two co-owners kept getting a bare 409).
-	withMemoryUserDirectory(t, `{"users":[{"id":"holder","username":"laxmi","can_create":false,"can_edit":true}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"holder","username":"sam","can_create":false,"can_edit":true}]}`)
 	exec.UserID = "holder"
-	if name, msg := workflowBusyMessage(exec, "other"); name != "laxmi" || !strings.Contains(msg, "laxmi is using the Builder") || !strings.Contains(msg, "Run mode") {
+	if name, msg := workflowBusyMessage(exec, "other"); name != "sam" || !strings.Contains(msg, "sam is using the Builder") || !strings.Contains(msg, "Run mode") {
 		t.Fatalf("busy message for another user = %q, %q", name, msg)
 	}
 	if name, msg := workflowBusyMessage(exec, "holder"); name != "" || !strings.Contains(msg, "You are already using the Builder") {
@@ -327,24 +327,24 @@ func TestOnlyFullWorkflowExecutionBlocksSchedule(t *testing.T) {
 // PLAT-766: when someone else is using the Builder on a workflow, another person's Builder message runs in Run mode
 // (told who has it) instead of being refused; the holder's own second chat is not handed over.
 func TestBuilderHeldByAnotherPersonMovesTheTurnToRunMode(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[{"id":"holder","username":"laxmi","can_edit":true},{"id":"other","username":"owner","can_create":true}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"holder","username":"sam","can_edit":true},{"id":"other","username":"owner","can_create":true}]}`)
 	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
 		"builder-1": {
 			ExecutionID: "builder-1", SessionID: "holder-session", Source: trackedExecutionSourceWorkshopBackground,
-			Kind: "workflow_builder_task", WorkspacePath: "Workflow/automationtesting", PhaseID: "workflow-builder",
+			Kind: "workflow_builder_task", WorkspacePath: "Workflow/example-workflow", PhaseID: "workflow-builder",
 			Status: trackedExecutionStatusRunning, UserID: "holder", TriggeredBy: "workflow_builder", StartedAt: time.Now().UTC(),
 		},
 	}}
-	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: workflowtypes.WorkflowStatusWorkflowBuilder, SelectedFolder: "Workflow/automationtesting",
+	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: workflowtypes.WorkflowStatusWorkflowBuilder, SelectedFolder: "Workflow/example-workflow",
 		ExecutionOptions: &ExecutionOptions{WorkshopMode: "builder"}}
-	if got := api.workflowBuilderHeldByOther("other-session", "other", req); got != "laxmi" {
-		t.Fatalf("another person's Builder message: holder = %q, want laxmi", got)
+	if got := api.workflowBuilderHeldByOther("other-session", "other", req); got != "sam" {
+		t.Fatalf("another person's Builder message: holder = %q, want sam", got)
 	}
 	if got := api.workflowBuilderHeldByOther("holder-session-2", "holder", req); got != "" {
 		t.Fatalf("the holder's own second chat was handed over to Run mode (holder %q)", got)
 	}
-	req.builderHeldBy = "laxmi"
-	if notice := agentSessionModeForTurn(req, "other", "other-session", nil, true); !strings.Contains(notice, "laxmi is using the Builder") || !strings.Contains(notice, "submit_workflow_suggestion") {
+	req.builderHeldBy = "sam"
+	if notice := agentSessionModeForTurn(req, "other", "other-session", nil, true); !strings.Contains(notice, "sam is using the Builder") || !strings.Contains(notice, "submit_workflow_suggestion") {
 		t.Fatalf("Run-mode notice = %q", notice)
 	}
 }
