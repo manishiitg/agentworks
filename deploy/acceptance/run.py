@@ -94,6 +94,11 @@ def run_case(server, crew, case):
         # One chat answers one message at a time (a second message typed while it works joins that turn), so a burst goes to
         # separate chats of the Crew: that is the load several people put on the model at once.
         chats = []
+        # The scratch Crew allows four side chats: close any an earlier run or a person left open.
+        code, result, text = call(server, "manage_crew_chats", {"action": "list", "crew_id": crew})
+        for old_chat in result.get("chats") or []:
+            if old_chat.get("chat_id") not in (None, "main"):
+                call(server, "manage_crew_chats", {"action": "side_close", "crew_id": crew, "chat_id": old_chat["chat_id"]})
         for _ in range(min(case["burst"], 4)):
             code, result, text = call(server, "manage_crew_chats", {"action": "side_open", "crew_id": crew})
             chat = result.get("chat_id") or (result.get("chat") or {}).get("chat_id")
