@@ -24,6 +24,14 @@ Design references for the linked runtime decisions:
 `agentworks server migrate-crews-to-shared-root`; Code and other products are unchanged. A leftover `AGENTWORKS_CREW_SHARED_ROOT` in a
 server's environment does nothing. Code: `crewCreationRoot` in `crew_shared_access.go`. PLAT-442 step 4, PLAT-810.
 
+### 2026-10-10 — Every deployment starts Brain with a shared folder
+
+- A new Brain has no folder, and access is granted per person per folder, so a member who is not an administrator could not save anything
+  (the acceptance run skipped its Brain case for that reason). Every server now creates a top-level `Shared` folder as an administrator and
+  offers every active person Editor on it. It is a default, not a setting: nothing to configure per server.
+- Each person is offered it once, recorded in Brain's private state; an Owner who later revokes someone is not overruled, and people added later
+  are offered it the next time identities sync. Administrators keep Owner. Folders can be renamed or removed by an Owner afterwards.
+
 ### 2026-10-10 — A reader's shell in someone else's Crew runs as the Crew owner's slot (PLAT-810)
 
 On a slot host a Crew folder belongs to its owner's slot group, so a reader's own slot could not enter it and every shell command

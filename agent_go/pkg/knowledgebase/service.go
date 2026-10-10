@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,10 @@ type Service struct {
 	db            *sql.DB
 	live, private string
 	disk          diskState
+
+	// EnsureDefaultFolder: what it last did, so a repeat with the same people is free.
+	defaultFolder          sync.Mutex
+	defaultFolderSignature string
 }
 type folderRegistry struct {
 	ID        string     `json:"id"`

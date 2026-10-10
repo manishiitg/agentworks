@@ -144,7 +144,32 @@ func knowledgebaseSyncIdentities(ctx context.Context, service *knowledgebase.Ser
 			identities = append(identities, knowledgebase.Identity{ID: user.ID, Name: firstNonEmptyTrimmed(user.Username, user.Email, user.ID), Type: "user", Disabled: user.Disabled})
 		}
 	}
-	return service.SyncPlatformIdentities(ctx, identities)
+	if err := service.SyncPlatformIdentities(ctx, identities); err != nil {
+		return err
+	}
+	return knowledgebaseEnsureDefaultFolder(ctx, service, directory, identities)
+}
+
+// Every deployment starts Brain with this top-level folder, and every active person is offered Editor on it (see EnsureDefaultFolder).
+// Without a folder a member who is not an administrator has nowhere to save. A failure is logged, never blocks the request that synced.
+const (
+	brainDefaultFolder = "Shared"
+	brainDefaultRole   = "Editor"
+)
+
+func knowledgebaseEnsureDefaultFolder(ctx context.Context, service *knowledgebase.Service, directory *userDirectory, identities []knowledgebase.Identity) error {
+	if directory == nil {
+		return nil
+	}
+	for _, user := range directory.Users {
+		if user.Admin && !user.Disabled {
+			if err := service.EnsureDefaultFolder(ctx, knowledgebase.Principal{IdentityID: user.ID, IsAdmin: true}, brainDefaultFolder, brainDefaultRole, identities); err != nil {
+				log.Printf("[BRAIN] default folder %q not ready: %v", brainDefaultFolder, err)
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 // knowledgebaseMCPAllowed is who may connect to Brain through the MCP: every active account on a server that runs
