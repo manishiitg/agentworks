@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Anyone who can run a Crew may leave files in its `shared/<their id>/` folder (PLAT-837)
+
+A Crew's files are written over MCP by `write_crew_file` (text or binary, up to 11 MiB; the CLI's `crews put` uploads
+a local file without pasting it into the call). The owner writes any editable path (outside `shared/<id>/` it needs
+`crews:write`). Everyone else who can run the Crew (`crews:run`) may write only under `shared/<their id>/`, so a person
+can give the Crew input files without owner rights: at most 5 MiB a file, 50 MiB and 200 files per person. Files there
+are readable by everyone with access to the Crew (it is a shared folder), so nothing private belongs in it. Manifests,
+`functions.json`, chats, databases and hidden folders stay refused to everyone. See `external_crew_authoring.go`.
+
 ### 2026-10-10 — Delayed Pulse and Builder replies resume their caller (PLAT-825)
 
 Pulse uses the existing saved function-call protocol and notification queue for
