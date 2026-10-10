@@ -196,6 +196,14 @@ func collectWebhookOutputs(root *os.Root) ([]webhookStepOutput, bool, error) {
 	groupFree := progressErr == nil
 	err := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, e error) error {
 		if e != nil {
+			// A step's own scratch folder (Playwright's temp artifacts, a slot's private files) can be unreadable
+			// to the server. It is not an output: skip it instead of failing the whole run's result (PLAT-812).
+			if errors.Is(e, fs.ErrPermission) && p != "." {
+				if d != nil && d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
 			return e
 		}
 		if d.Type()&os.ModeSymlink != 0 {
@@ -212,6 +220,9 @@ func collectWebhookOutputs(root *os.Root) ([]webhookStepOutput, bool, error) {
 		}
 		info, e := d.Info()
 		if e != nil {
+			if errors.Is(e, fs.ErrPermission) {
+				return nil
+			}
 			return e
 		}
 		if !info.Mode().IsRegular() {
@@ -241,6 +252,9 @@ func collectWebhookOutputs(root *os.Root) ([]webhookStepOutput, bool, error) {
 			if ext == ".json" || ext == ".txt" || ext == ".md" || ext == ".xml" || ext == ".csv" {
 				f, e := root.Open(p)
 				if e != nil {
+					if errors.Is(e, fs.ErrPermission) {
+						return nil
+					}
 					return e
 				}
 				b, e := io.ReadAll(io.LimitReader(f, 128*1024+1))

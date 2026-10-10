@@ -183,3 +183,36 @@ func TestWebhookCompletionHasNoBackupDirective(t *testing.T) {
 		t.Fatal("ordinary run lost backup")
 	}
 }
+
+// PLAT-812: a step's private scratch folder (Playwright's temp artifacts, written by the slot user) must not make the
+// whole run's result unavailable: a workflow function call would otherwise report "failed" while the run is healthy.
+func TestWebhookRunOutputsSkipUnreadableScratchFolders(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission denial cannot be shown as root")
+	}
+	dir := t.TempDir()
+	step := filepath.Join(dir, "dev", "execution", "smoke")
+	if err := os.MkdirAll(filepath.Join(step, "pwtmp", "playwright-artifacts-x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(step, "result.json"), []byte(`{"verdict":"PASS"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(step, "pwtmp")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	steps, _, err := collectWebhookOutputs(root)
+	if err != nil {
+		t.Fatalf("an unreadable scratch folder failed the result: %v", err)
+	}
+	if len(steps) != 1 || steps[0].Outputs["result.json"] == nil {
+		t.Fatalf("outputs = %+v, want the step's result.json", steps)
+	}
+}
