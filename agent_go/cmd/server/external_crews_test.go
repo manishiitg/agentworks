@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -268,5 +269,35 @@ func TestExternalCrewListIsEmptyWithoutTheCrewProduct(t *testing.T) {
 	_, out = externalCrewRequest(t, env, &UserClaims{UserID: "owner", Username: "owner", AccessToken: token}, "list_crews", map[string]any{})
 	if crews, _ := out["crews"].([]any); len(crews) == 0 {
 		t.Fatalf("an account with the Crew product must still list Crews: %v", out)
+	}
+}
+
+// An owner can turn off the built-in free-text ask (PLAT-833): programs then see and call only the declared
+// functions, and a call to ask says why it is gone.
+func TestCrewOwnerCanTurnOffFreeTextAsk(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	owner := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}}
+	names := func() []string {
+		_, out := externalCrewRequest(t, env, owner, "list_crew_functions", map[string]any{"crew_id": "beta"})
+		got := []string{}
+		for _, fn := range out["functions"].([]any) {
+			got = append(got, fn.(map[string]any)["name"].(string))
+		}
+		return got
+	}
+	if got := names(); len(got) != 1 || got[0] != "ask" {
+		t.Fatalf("a Crew offers the built-in ask by default, got %v", got)
+	}
+	env.mock.mu.Lock()
+	env.mock.files[linkBetaPath+"/product.json"] = `{"schema_version":1,"product":"work","id":"beta","title":"Beta","session_id":"sess-beta","triggers":[],"capabilities":{"free_text_ask":false}}`
+	env.mock.mu.Unlock()
+	if got := names(); len(got) != 0 {
+		t.Fatalf("with free_text_ask off the Crew offers only its declared functions, got %v", got)
+	}
+	code, out := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hello"})
+	errBody, _ := out["error"].(map[string]any)
+	if message, _ := errBody["message"].(string); code != 404 || !strings.Contains(message, "turned off free-text ask") {
+		t.Fatalf("ask_crew on a Crew with ask off = %d %v", code, out)
 	}
 }

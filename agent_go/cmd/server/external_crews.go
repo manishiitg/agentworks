@@ -147,7 +147,7 @@ func externalCrewFunctionSummaries(ctx context.Context, crew crewProjectBinding,
 		functions = nil
 	}
 	out := []map[string]interface{}{}
-	for _, fn := range withDefaultAskFunction(functions) {
+	for _, fn := range offeredCrewFunctions(ctx, target, functions) {
 		out = append(out, map[string]interface{}{
 			"name": fn.Name, "description": fn.Description, "instructions": fn.Instructions,
 			"input_schema": fn.InputSchema, "result_schema": fn.ResultSchema,
@@ -252,7 +252,11 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			fnName = str("function")
 			callArgs, _ = args["args"].(map[string]interface{})
 		}
-		fn, found := findCrewFunction(withDefaultAskFunction(functions), fnName)
+		fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), fnName)
+		if !found && fnName == crewFunctionAskName && crewFreeTextAskOff(ctx, target) {
+			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has turned off free-text ask; call one of its functions (list_crew_functions).", label))
+			return
+		}
 		if !found {
 			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see list_crew_functions.", label, fnName))
 			return

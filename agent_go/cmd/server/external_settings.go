@@ -60,6 +60,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"free_text_ask": map[string]any{"type": "boolean", "description": "Crews only: false turns off the built-in free-text ask, so programs (MCP, CLI, other Crews, workflows) can call only the Crew's declared functions; people chatting in the app are not affected. Default true."},
 		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
 			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},
 		}},
@@ -88,6 +89,8 @@ type externalSettingsState struct {
 	Secrets       []string                       `json:"selected_secrets,omitempty"`
 	GlobalSecrets *[]string                      `json:"selected_global_secret_names,omitempty"`
 	BrowserMode   string                         `json:"browser_mode,omitempty"`
+	// FreeTextAsk is a Crew's switch for the built-in ask; nil means on.
+	FreeTextAsk *bool `json:"free_text_ask,omitempty"`
 }
 
 func (s externalSettingsState) version() string {
@@ -132,6 +135,9 @@ func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string
 		"secrets": map[string]any{"stored": stored, "shared_selected": shared, "shared_available": available,
 			"note": "Values are never returned. Only owners may set or remove values."},
 		"browser_mode": s.BrowserMode,
+	}
+	if t.kind == "crew" {
+		view["free_text_ask"] = s.FreeTextAsk == nil || *s.FreeTextAsk
 	}
 	if notifications != nil {
 		view["notifications"] = notifications
@@ -351,6 +357,14 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		}
 		s.BrowserMode = mode
 		changed = append(changed, "browser_mode")
+	}
+	if raw, ok := args["free_text_ask"]; ok {
+		on, isBool := raw.(bool)
+		if t.kind != "crew" || !isBool {
+			return nil, nil, settingsInvalid("free_text_ask is a true/false setting of a Crew.")
+		}
+		s.FreeTextAsk = &on
+		changed = append(changed, "free_text_ask")
 	}
 	if len(values) > 0 || len(removeValues) > 0 {
 		log.Printf("[EXTERNAL_SETTINGS] user=%s path=%s secrets_set=%d secrets_removed=%d", userID, t.path, len(values), len(removeValues))
@@ -606,6 +620,12 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 			}
 		case "browser_mode":
 			capabilities["browser_mode"] = state.BrowserMode
+		case "free_text_ask":
+			if state.FreeTextAsk != nil && !*state.FreeTextAsk {
+				capabilities["free_text_ask"] = false
+			} else {
+				delete(capabilities, "free_text_ask")
+			}
 		}
 	}
 	manifest["capabilities"] = capabilities

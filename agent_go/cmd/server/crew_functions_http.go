@@ -110,7 +110,7 @@ func (s *ProductScheduleService) listCrewFunctionsHTTP(w http.ResponseWriter, r 
 		Implicit bool `json:"implicit,omitempty"`
 	}
 	views := []functionView{}
-	for _, fn := range withDefaultAskFunction(functions) {
+	for _, fn := range offeredCrewFunctions(r.Context(), target, functions) {
 		_, declared := findCrewFunction(functions, fn.Name)
 		views = append(views, functionView{crewFunction: fn, Implicit: !declared})
 	}

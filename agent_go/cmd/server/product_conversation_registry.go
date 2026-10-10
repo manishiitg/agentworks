@@ -803,6 +803,10 @@ type productProjectManifest struct {
 		// limited to the crew's folders. On by default: nil means on, only an
 		// explicit false turns it off.
 		NativeAgentTools *bool `json:"native_agent_tools,omitempty"`
+		// FreeTextAsk is the owner's switch for the built-in free-text ask (PLAT-833): nil means on, only an
+		// explicit false turns it off. Programs (MCP, CLI, other Crews, workflows) then reach the Crew by its
+		// declared functions only; people chatting in the app are not affected.
+		FreeTextAsk *bool `json:"free_text_ask,omitempty"`
 	} `json:"capabilities,omitempty"`
 }
 

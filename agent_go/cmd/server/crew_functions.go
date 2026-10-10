@@ -214,7 +214,37 @@ func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	if target.CrewProfile == codeproduct.ProfileID {
 		return functions, nil
 	}
-	return withDefaultAskFunction(functions), nil
+	return offeredCrewFunctions(ctx, target, functions), nil
+}
+
+// crewFreeTextAskOff reports whether the Crew's owner turned off the built-in free-text ask. A Crew whose manifest
+// cannot be read keeps it, as before.
+func crewFreeTextAskOff(ctx context.Context, target triggerTarget) bool {
+	if target.Kind != triggerCallerCrew {
+		return false
+	}
+	raw, found, err := readFileFromWorkspace(ctx, crewFunctionRoot(ctx, target)+"/product.json")
+	if err != nil || !found {
+		return false
+	}
+	var manifest struct {
+		Capabilities struct {
+			FreeTextAsk *bool `json:"free_text_ask"`
+		} `json:"capabilities"`
+	}
+	if json.Unmarshal([]byte(raw), &manifest) != nil {
+		return false
+	}
+	return manifest.Capabilities.FreeTextAsk != nil && !*manifest.Capabilities.FreeTextAsk
+}
+
+// offeredCrewFunctions is what a Crew offers callers: its declared functions plus the built-in ask, unless the
+// owner turned the built-in off. A declared function named ask stays: the owner wrote it.
+func offeredCrewFunctions(ctx context.Context, target triggerTarget, functions []crewFunction) []crewFunction {
+	if crewFreeTextAskOff(ctx, target) {
+		return functions
+	}
+	return withDefaultAskFunction(functions)
 }
 
 // errWorkflowFunctionsAreTriggers refuses define/delete_function on a
