@@ -52,7 +52,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"tools":            addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
 		"skills":           addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Stores the value (write-only, owner only) and selects the secret."},
+			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Stores the value (write-only, owner only) and selects the secret. To add it to Vault for other projects, then call manage_vault_secret_access operation=share (a Vault administrator)."},
 			"remove":      names,
 			"select":      names,
 			"unselect":    names,
