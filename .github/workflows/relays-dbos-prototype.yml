@@ -1,0 +1,48 @@
+name: Relays DBOS recovery
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - agent_go/pkg/relaypython/**
+      - agent_go/cmd/relay-dbos-demo/**
+      - agent_go/pkg/schedulerstate/**
+      - .github/workflows/relays-dbos-prototype.yml
+  push:
+    branches: [main]
+    paths:
+      - agent_go/pkg/relaypython/**
+      - agent_go/cmd/relay-dbos-demo/**
+      - agent_go/pkg/schedulerstate/**
+      - .github/workflows/relays-dbos-prototype.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: agent_go/pkg/relaypython/requirements-dbos.txt
+      - name: Install the pinned runtime
+        run: python -m pip install -r agent_go/pkg/relaypython/requirements-dbos.txt
+      - name: Exercise real process crash and recovery
+        working-directory: agent_go
+        env:
+          GOWORK: 'off'
+        run: |
+          RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/relaypython ./pkg/schedulerstate ./cmd/relay-dbos-demo -count=1 -v

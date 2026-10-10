@@ -3757,6 +3757,7 @@ export interface WorkflowManifest {
   id: string
   kind?: 'relay' | string
   relay_runtime?: 'python' | string
+  relay_durability?: 'dbos' | ''
   relay_output_step_id?: string
   version?: string
   label: string
@@ -3947,6 +3948,7 @@ export interface CreateWorkflowManifestRequest {
 export interface UpdateWorkflowManifestRequest {
   workspace_path: string
   relay_output_step_id?: string
+  relay_durability?: 'dbos' | ''
   label?: string
   icon?: string
   capabilities?: WorkflowCapabilities

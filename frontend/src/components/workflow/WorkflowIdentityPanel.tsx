@@ -13,6 +13,7 @@ import { AskAIButton } from './AskAIButton'
 import { SoulViewer } from './SoulViewer'
 import { StatusBanner } from './bots/StatusBanner'
 import { IconUploadField } from '../ui/IconUploadField'
+import { RelayDurabilitySetting } from './RelayDurabilitySetting'
 
 const SOUL_EDIT_MESSAGE = 'Review this workflow\'s purpose (soul/soul.md: Objective and Success Criteria) and help me update it. Read the file first, explain what it says in plain words, then ask what I want to change before changing anything.'
 
@@ -115,6 +116,7 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
         </div>
       </SettingsCard>
 
+      {relayMode && workflow?.manifest.relay_runtime === 'python' && <RelayDurabilitySetting workspacePath={workspacePath} />}
       {!relayMode && <SettingsCard
         icon={<Target aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Purpose"

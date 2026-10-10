@@ -3,7 +3,7 @@ import { Background, BaseEdge, Controls, Handle, MarkerType, Position, ReactFlow
 import dagre from 'dagre'
 import { Bot, Code2, GitBranch, LogIn, LogOut, X } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
-import { parseRelaySourceGraph, type RelaySourceNode } from './relayGraphAnnotations'
+import { parseRelaySourceGraph, type RelaySourceNode, type RelaySourceGraph as SourceGraph } from './relayGraphAnnotations'
 import { routeColorForIndex } from './routeColors'
 
 export interface RelayRecordedCall {
@@ -43,19 +43,21 @@ function Value({ value }: { value: unknown }) {
 }
 
 /** Reuses the workflow canvas's React Flow/Dagre stack, without a workflow plan. */
-export function RelaySourceGraph({ source, calls = noCalls, onBuild, onCode }: {
+export function RelaySourceGraph({ source, graph: suppliedGraph, calls = noCalls, onBuild, onCode }: {
   source: string
+  graph?: SourceGraph
   calls?: RelayRecordedCall[]
   onBuild: () => void
   onCode?: () => void
 }) {
-  const graph = useMemo(() => parseRelaySourceGraph(source), [source])
+  const graph = useMemo(() => suppliedGraph ?? parseRelaySourceGraph(source), [source, suppliedGraph])
   const [selectedID, setSelectedID] = useState<string | null>(null)
   const onSelectionChange = useCallback(({ nodes }: { nodes: Node[] }) => {
     setSelectedID(nodes[0]?.id ?? null)
   }, [])
   const selected = graph.nodes.find(node => node.id === selectedID)
-  const selectedCalls = selected?.type === 'agent' ? calls.filter(call => call.name === (selected.call || selected.id)) : []
+  const matches = (call: RelayRecordedCall, node: RelaySourceNode) => call.name === (node.call || node.id) || call.id === node.call
+  const selectedCalls = selected ? calls.filter(call => matches(call, selected)) : []
   const layout = useMemo(() => {
     const g = new dagre.graphlib.Graph({ multigraph: true })
     g.setGraph({ rankdir: 'TB', nodesep: 65, ranksep: 80 }); g.setDefaultEdgeLabel(() => ({}))
@@ -66,18 +68,18 @@ export function RelaySourceGraph({ source, calls = noCalls, onBuild, onCode }: {
     return {
       nodes: graph.nodes.map(annotation => {
         const position = g.node(annotation.id)
-        return { id: annotation.id, type: 'relay-source' as const, ariaLabel: annotation.label, position: { x: (position.x ?? 115) - 115, y: (position.y ?? 45) - 45 }, data: { annotation, calls: annotation.type === 'agent' ? calls.filter(call => call.name === (annotation.call || annotation.id)) : [] }, selected: annotation.id === selectedID }
+        return { id: annotation.id, type: 'relay-source' as const, ariaLabel: annotation.label, position: { x: (position.x ?? 115) - 115, y: (position.y ?? 45) - 45 }, data: { annotation, calls: calls.filter(call => matches(call, annotation)) }, selected: annotation.id === selectedID }
       }),
       edges: graph.edges.map((edge, index) => ({ id: `relay-edge-${index}`, source: edge.from, target: edge.to, label: edge.label, type: 'relay-source', data: g.edge({ v: edge.from, w: edge.to, name: String(index) }), markerEnd: { type: MarkerType.ArrowClosed, color: routeColorForIndex(index) }, style: { stroke: routeColorForIndex(index), strokeWidth: 2 }, labelStyle: { fill: 'hsl(var(--foreground))', fontSize: 11 }, labelBgStyle: { fill: 'hsl(var(--background))' } })),
     }
   }, [graph, calls, selectedID])
-  if (graph.errors.length) return <div className="p-5"><h3 className="text-sm font-semibold">Graph comments need a correction</h3><ul role="alert" className="mt-3 space-y-1 text-xs text-destructive">{graph.errors.map((error, i) => <li key={i}>{error}</li>)}</ul><p className="mt-3 text-xs text-muted-foreground">This affects the graph display. Python still controls execution.</p><button type="button" onClick={onBuild} className="mt-4 rounded border border-border px-3 py-2 text-sm">Fix in chat</button></div>
+  if (graph.errors.length) return <div className="p-5"><h3 className="text-sm font-semibold">{graph.native ? 'Python source needs a correction' : 'Graph comments need a correction'}</h3><ul role="alert" className="mt-3 space-y-1 text-xs text-destructive">{graph.errors.map((error, i) => <li key={i}>{error}</li>)}</ul><p className="mt-3 text-xs text-muted-foreground">This affects the graph display. Python still controls execution.</p><button type="button" onClick={onBuild} className="mt-4 rounded border border-border px-3 py-2 text-sm">Fix in chat</button></div>
   if (!graph.nodes.length) return <div className="mx-auto max-w-xl p-6"><h3 className="text-lg font-semibold">Show how your Relay works</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Ask the builder to add graph comments to this Relay. Its inputs, agents, tools, decisions and result will appear here.</p><button type="button" onClick={onBuild} className="mt-5 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">Add graph in chat</button></div>
   return <div className="flex min-h-[350px] flex-1 flex-col overflow-hidden">
     <div className="relative min-h-[300px] flex-1" aria-label="Relay graph"><div className="absolute inset-0"><ReactFlow nodes={layout.nodes} edges={layout.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} onNodeClick={(_, node) => setSelectedID(node.id)} onSelectionChange={onSelectionChange} onPaneClick={() => setSelectedID(null)} fitView fitViewOptions={{ padding: 0.15, maxZoom: 1 }} minZoom={0.1} maxZoom={1.5} colorMode="system" proOptions={{ hideAttribution: true }}><Background /><Controls showInteractive={false} /></ReactFlow></div></div>
-    {selected && <section className="max-h-[45%] shrink-0 overflow-auto border-t border-border p-4" aria-label="Relay node details"><header className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">{selected.label}</h3><button type="button" aria-label="Close node details" onClick={() => setSelectedID(null)}><X className="h-4 w-4" /></button></header><p className="mt-1 text-xs text-muted-foreground">{selected.type} · Source annotation at line {selected.line}</p>{selected.description && <p className="mt-2 text-sm">{selected.description}</p>}
+    {selected && <section className="max-h-[45%] shrink-0 overflow-auto border-t border-border p-4" aria-label="Relay node details"><header className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">{selected.label}</h3><button type="button" aria-label="Close node details" onClick={() => setSelectedID(null)}><X className="h-4 w-4" /></button></header><p className="mt-1 text-xs text-muted-foreground">{selected.type} · {graph.native ? selected.line ? `Python source at line ${selected.line}` : 'Recorded DBOS step' : `Source annotation at line ${selected.line}`}</p>{selected.description && <p className="mt-2 text-sm">{selected.description}</p>}
       <div className="mt-3 space-y-3">{([['Inputs', selected.input], ['Output', selected.output], ['System prompt', selected.system_prompt], ['User message', selected.user_message], ['Message sequence', selected.messages], ['Model', selected.model], ['Tools', selected.tools], ['Skills', selected.skills], ['MCP connections', selected.mcp]] as const).map(([label, value]) => value !== undefined && <details key={label}><summary className="cursor-pointer text-xs font-medium">{label}</summary><Value value={value} /></details>)}</div>
-      {selected.type === 'agent' && calls.length > 0 && <div className="mt-4"><h4 className="text-xs font-semibold">Recorded agent calls</h4>{selectedCalls.length === 0 ? <p className="mt-1 text-xs text-muted-foreground">No recorded call matches {selected.call || selected.id}.</p> : selectedCalls.map(call => <details key={call.id} className="mt-2"><summary className="cursor-pointer text-xs">{call.id} · {call.status}</summary>{call.model !== undefined && <Value value={call.model} />}{call.output !== undefined && <Value value={call.output} />}{call.error && <p className="text-xs text-destructive">{call.error}</p>}{call.tools?.map((tool, i) => <div key={i} className="mt-2 text-xs"><strong>Tool: {tool.name}</strong>{tool.result !== undefined && <Value value={tool.result} />}{tool.error && <p className="text-destructive">{tool.error}</p>}</div>)}</details>)}</div>}
+      {(selected.type === 'agent' || graph.native && selected.type === 'script') && calls.length > 0 && <div className="mt-4"><h4 className="text-xs font-semibold">Recorded {graph.native ? 'DBOS steps' : 'agent calls'}</h4>{selectedCalls.length === 0 ? <p className="mt-1 text-xs text-muted-foreground">No recorded call matches {selected.call || selected.id}.</p> : selectedCalls.map(call => <details key={call.id} className="mt-2"><summary className="cursor-pointer text-xs">{call.id} · {call.status}</summary>{call.model !== undefined && <Value value={call.model} />}{call.output !== undefined && <Value value={call.output} />}{call.error && <p className="text-xs text-destructive">{call.error}</p>}{call.tools?.map((tool, i) => <div key={i} className="mt-2 text-xs"><strong>Tool: {tool.name}</strong>{tool.result !== undefined && <Value value={tool.result} />}{tool.error && <p className="text-destructive">{tool.error}</p>}</div>)}</details>)}</div>}
       {onCode && <button type="button" onClick={onCode} className="mt-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><Code2 className="h-3.5 w-3.5" />View code</button>}
     </section>}
   </div>

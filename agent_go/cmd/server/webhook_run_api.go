@@ -388,10 +388,19 @@ func readWebhookRunResult(workspacePath string, run schedulerstate.Run) (webhook
 	if e == nil {
 		defer root.Close()
 		snapshot, readErr := root.ReadFile(".webhook-result.json")
-		if result.Terminal && readErr == nil {
-			if uErr := json.Unmarshal(snapshot, &result); uErr != nil {
+		var stored webhookRunResult
+		validSnapshot := result.Terminal && readErr == nil
+		if validSnapshot {
+			if uErr := json.Unmarshal(snapshot, &stored); uErr != nil {
 				return webhookRunResult{}, fmt.Errorf("%w: %w", errWebhookStoredResult, uErr)
 			}
+			// DBOS can reopen a restart-interrupted run. A poll during the
+			// recovery lease must not freeze that temporary terminal snapshot.
+			validSnapshot = stored.RunID == run.RunID && stored.Status == string(run.State) &&
+				stored.FinishedAt != nil && run.CompletedAt != nil && stored.FinishedAt.Equal(*run.CompletedAt)
+		}
+		if validSnapshot {
+			result = stored
 		} else {
 			result.Progress = collectWebhookProgress(root)
 			result.Steps, result.Truncated, e = collectWebhookOutputs(root)

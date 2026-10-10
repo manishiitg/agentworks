@@ -7,6 +7,8 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { VariablesSidebar } from './canvas/VariablesSidebar'
 import { RelaySourceGraph } from './RelaySourceGraph'
 import { workflowWebhooksApi, type RelayReleasesResponse } from '../../api/workflowWebhooks'
+import { useRelaySourceGraph } from './useRelaySourceGraph'
+import { graphFromDBOSHistory } from './relayDBOSGraph'
 
 interface RelayToolCall {
   name: string
@@ -19,6 +21,7 @@ interface RelayAgentCall {
   id: string
   name: string
   status: string
+  checkpoint_reused?: boolean
   provider?: string
   model?: string | { provider?: string; model_id?: string }
   started_at?: string | number
@@ -33,6 +36,10 @@ interface RelayTrace {
   status: string
   error?: string
   calls: RelayAgentCall[]
+  durability?: string
+  attempt_number?: number
+  execution_model?: string
+  workflow_id?: string
 }
 
 function missingFile(error: unknown): boolean {
@@ -81,6 +88,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   const releaseRequest = useRef(0)
   const selectedRelease = releases?.releases.find(release => release.version === version)
   const runWorkspace = version === 'draft' ? workspacePath : selectedRelease?.workspace_path
+  const sourceOverview = useRelaySourceGraph(relayID, source)
 
   const refreshSource = useCallback(async () => {
     if (!workspacePath) return
@@ -204,10 +212,10 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
     </div>
     {tab === 'graph' ? <div id="relay-python-graph" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div><h2 className="text-sm font-semibold">Your Relay</h2><p className="mt-1 text-xs text-muted-foreground">Draft graph · Describe changes in the builder chat.</p></div>
+        <div><h2 className="text-sm font-semibold">Your Relay</h2><p className="mt-1 text-xs text-muted-foreground">{sourceOverview.native ? 'Python source overview · Possible DBOS step calls. Runs show what executed.' : 'Draft graph · Describe changes in the builder chat.'}</p></div>
         <button type="button" onClick={onBuild} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"><Sparkles className="h-3.5 w-3.5" />Edit in chat</button>
       </div>
-      {loadingSource ? <p className="p-6 text-sm text-muted-foreground">Loading graph…</p> : sourceError ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError}</p> : <RelaySourceGraph key={workspacePath} source={source ?? ''} onBuild={onBuild} onCode={() => setTab('source')} />}
+      {loadingSource || sourceOverview.loading ? <p className="p-6 text-sm text-muted-foreground">Loading graph…</p> : sourceError || sourceOverview.error ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError || sourceOverview.error}</p> : <RelaySourceGraph key={workspacePath} source={source ?? ''} graph={sourceOverview.graph} onBuild={onBuild} onCode={() => setTab('source')} />}
 
     </div> : tab === 'source' ? <div id="relay-python-source" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground"><span>Draft code · Implementation managed by the builder.</span><button type="button" onClick={() => useWorkflowStore.getState().openWorkspaceView('files', 'relay.py')} className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted hover:text-foreground"><Code2 className="h-3.5 w-3.5" />Open in Files</button></div>
@@ -215,17 +223,18 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
     </div> : <div id="relay-python-calls" role="tabpanel" className="min-h-0 flex-1 overflow-auto p-4">
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs"><label htmlFor="relay-python-version">Version</label><select id="relay-python-version" value={version} onChange={event => setVersion(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5"><option value="draft">Draft tests</option>{releases?.releases.map(release => <option key={release.version} value={release.version}>{release.version}{release.version === releases.active_version ? ' (active)' : ''}</option>)}</select><label htmlFor="relay-python-run">Run</label><select id="relay-python-run" value={folder ?? ''} onChange={event => useWorkflowStore.getState().setSelectedRunFolder(event.target.value || null)} className="max-w-full rounded-md border border-border bg-background px-2 py-1.5"><option value="" disabled>{runs.length ? 'Select a run' : 'No runs yet'}</option>{runs.map(run => <option key={run.name} value={run.name}>{run.name}{run.metadata?.status ? ` · ${run.metadata.status}` : ''}</option>)}</select>{trace && <span role="status" className="rounded bg-muted px-2 py-1">{trace.status}</span>}</div>
       {(releaseError || selectedRelease?.error || releases?.active_error) && <p role="alert" className="mb-3 text-sm text-destructive">{releaseError || selectedRelease?.error || releases?.active_error}</p>}
+      {trace?.durability === 'dbos' && <p className="mb-3 text-xs text-muted-foreground" role="status">DBOS recovery enabled · Attempt {trace.attempt_number || 1} · {trace.calls.filter(call => call.checkpoint_reused).length} checkpoints reused</p>}
       <p className="mb-4 text-xs text-muted-foreground">Steps performed in this run. Expand a step to inspect its result and tool activity.</p>
       {runError && <p role="alert" className="mb-3 text-sm text-destructive">{runError}</p>}
       {loadingTrace ? <p className="text-sm text-muted-foreground">Loading run…</p> : traceError ? <p role="alert" className="text-sm text-muted-foreground">{traceError}</p> : !folder ? <p className="text-sm text-muted-foreground">Ask the Builder to test your Relay with sample JSON. Its steps and final result will appear here.</p> : null}
       {folder && <section className="mb-4 rounded-lg border border-border">
         <button type="button" onClick={() => setRunGraphOpen(open => !open)} aria-expanded={runGraphOpen} className="w-full px-3 py-2 text-left text-sm font-medium">{runGraphOpen ? 'Hide run graph' : 'View run graph'}</button>
-        {runGraphOpen && <><p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{version === 'draft' ? 'Current draft graph' : `${version} published graph`} · Recorded agent calls match by name. Scripts and decisions have no recorded status.</p>{runSourceError ? <p role="alert" className="p-3 text-xs text-destructive">{runSourceError}</p> : runSource !== null ? <div className="flex h-[540px] flex-col"><RelaySourceGraph key={`${runWorkspace}-${folder}`} source={runSource} calls={trace?.calls} onBuild={onBuild} /></div> : <p className="p-3 text-xs text-muted-foreground">Loading version source…</p>}</>}
+        {runGraphOpen && <><p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{trace?.execution_model === 'native-dbos' ? 'Recorded DBOS steps in execution order, including reused checkpoints.' : 'Published runs use their saved source graph. Recorded agent calls match by name; scripts and decisions have no recorded status.'}</p>{trace?.execution_model === 'native-dbos' ? <div className="flex h-[540px] flex-col"><RelaySourceGraph source="" graph={graphFromDBOSHistory(trace.calls)} calls={trace.calls} onBuild={onBuild} /></div> : runSourceError ? <p role="alert" className="p-3 text-xs text-destructive">{runSourceError}</p> : runSource !== null ? <div className="flex h-[540px] flex-col"><RelaySourceGraph key={`${runWorkspace}-${folder}`} source={runSource} calls={trace?.calls} onBuild={onBuild} /></div> : <p className="p-3 text-xs text-muted-foreground">Loading version source…</p>}</>}
       </section>}
       {trace?.error && <p role="alert" className="mb-3 text-sm text-destructive">{trace.error}</p>}
       {trace?.calls.map((call, index) => <div key={call.id || index}>
         {index > 0 && <ArrowDown aria-hidden="true" className="mx-auto my-2 h-4 w-4 text-muted-foreground" />}
-        <article className="rounded-lg border border-border p-3"><header className="flex flex-wrap items-center justify-between gap-2 text-sm"><strong>{call.name || call.id}</strong><span className="text-xs text-muted-foreground">{call.status}</span></header>{(call.provider || call.model) && <p className="mt-1 text-xs text-muted-foreground">{[call.provider, typeof call.model === 'object' ? [call.model?.provider, call.model?.model_id].filter(Boolean).join(':') : call.model].filter(Boolean).join(' · ')}</p>}{call.error && <p role="alert" className="mt-2 text-xs text-destructive">{call.error}</p>}{call.output !== undefined && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium">Output</summary><JSONValue value={call.output} /></details>}{call.tools?.map((tool, toolIndex) => <details key={`${tool.name}-${toolIndex}`} className="mt-2 text-xs"><summary className="cursor-pointer">Tool: {tool.name}</summary>{tool.args !== undefined && <JSONValue value={tool.args} />}{tool.result !== undefined && <JSONValue value={tool.result} />}{tool.error && <p className="text-destructive">{tool.error}</p>}</details>)}</article>
+        <article className="rounded-lg border border-border p-3"><header className="flex flex-wrap items-center justify-between gap-2 text-sm"><strong>{call.name || call.id}</strong><span className="text-xs text-muted-foreground">{call.checkpoint_reused ? "Reused checkpoint" : call.status}</span></header>{(call.provider || call.model) && <p className="mt-1 text-xs text-muted-foreground">{[call.provider, typeof call.model === 'object' ? [call.model?.provider, call.model?.model_id].filter(Boolean).join(':') : call.model].filter(Boolean).join(' · ')}</p>}{call.error && <p role="alert" className="mt-2 text-xs text-destructive">{call.error}</p>}{call.output !== undefined && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium">Output</summary><JSONValue value={call.output} /></details>}{call.tools?.map((tool, toolIndex) => <details key={`${tool.name}-${toolIndex}`} className="mt-2 text-xs"><summary className="cursor-pointer">Tool: {tool.name}</summary>{tool.args !== undefined && <JSONValue value={tool.args} />}{tool.result !== undefined && <JSONValue value={tool.result} />}{tool.error && <p className="text-destructive">{tool.error}</p>}</details>)}</article>
       </div>)}
       {trace && trace.calls.length === 0 && <p className="text-sm text-muted-foreground">No agent steps recorded in this run.</p>}
       {result !== undefined && <section className="mt-5"><h3 className="mb-2 text-sm font-semibold">Final result</h3><JSONValue value={result} /></section>}

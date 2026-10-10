@@ -55,6 +55,11 @@ ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 # Configure pip: allow installs when Python is "externally managed" (PEP 668)
 RUN pip3 install --break-system-packages pandas requests beautifulsoup4 lxml pyyaml python-dotenv Pillow openpyxl
 
+# Match agent_go/pkg/relaypython/requirements-dbos.txt. The workspace image has
+# its own build context, so it cannot COPY the agent module's requirements file.
+RUN python3 -m venv /opt/relay-dbos \
+    && /opt/relay-dbos/bin/python -m pip install --no-cache-dir dbos==3.2.0
+
 # Set working directory
 WORKDIR /app
 

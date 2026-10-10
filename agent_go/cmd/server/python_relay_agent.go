@@ -75,8 +75,18 @@ func pythonRelayCallModel(call relaypython.Call, caps WorkflowCapabilities) (pyt
 // The same mcpagent definition/session and CLI account admission used by the
 // workflow agents, with no PlanStep, workflow defaults or continuation handle.
 func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *ScheduleContext, parent, runPath string, call relaypython.Call, pythonTool relaypython.ToolCaller) (output interface{}, callErr error) {
+	if call.Recovery != "" && call.Recovery != "restart" {
+		return nil, fmt.Errorf("unknown agent recovery mode")
+	}
+	if call.Recovery == "restart" && (len(call.MCP) != 0 || len(call.Skills) != 0 || call.Kind != "") {
+		return nil, fmt.Errorf("restart recovery requires journaled Python tools only")
+	}
 	if call.Kind == "mcp" {
 		return api.pythonRelayMCP(ctx, sctx, call.Server, call.Tool, call.Arguments)
+	}
+	artifactID := call.ID
+	if call.AttemptID != "" {
+		artifactID = path.Join(call.AttemptID, call.ID)
 	}
 	if len(call.Messages) == 0 || len(call.Messages) > 100 || call.MaxTurns < 1 || call.MaxTurns > 100 {
 		return nil, fmt.Errorf("call_agent needs 1-100 messages and max_turns 1-100")
@@ -94,7 +104,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 		common.SetSessionSandbox(sessionID, true, false)
 	}
 	defer common.ClearSessionShellConfig(sessionID)
-	common.SetSessionFolderGuard(sessionID, []string{sctx.WorkspacePath}, []string{path.Join(runPath, "execution", call.ID)})
+	common.SetSessionFolderGuard(sessionID, []string{sctx.WorkspacePath}, []string{path.Join(runPath, "execution", artifactID)})
 	if api.eventStore != nil {
 		api.eventStore.SetSessionOwner(sessionID, sctx.OwnerUserID)
 	}
@@ -114,7 +124,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 			if err := schema.Validate(args); err != nil {
 				return "", fmt.Errorf("invalid tool arguments: %w", err)
 			}
-			return pythonTool(context.WithValue(toolCtx, common.ChatSessionIDKey, parent), name, args)
+			return callBoundPythonRelayTool(ctx, context.WithValue(toolCtx, common.ChatSessionIDKey, parent), pythonTool, name, args)
 		}})
 	}
 	var receipts []map[string]interface{}
@@ -178,7 +188,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 	if err != nil {
 		return nil, err
 	}
-	outputPath := path.Join(runPath, "execution", call.ID)
+	outputPath := path.Join(runPath, "execution", artifactID)
 	client := workspace.NewClient(getWorkspaceAPIURL())
 	client.UserID = sctx.OwnerUserID
 	if err := client.CreateFolder(ctx, outputPath); err != nil {
@@ -202,6 +212,12 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 		MCP:           mcpagent.MCPRuntimeConfig{SessionID: sessionID, APIBaseURL: api.GetCodeExecAPIURL(), BridgeAPIBaseURL: api.GetAPIURL(), APIToken: common.BridgeTokenForSession(sessionID)},
 		Workspace:     mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: filepath.Join(fsutil.WorkspaceDocsRoot(), outputPath), IsolatedSession: true, ReadPaths: []string{sctx.WorkspacePath}, WritePaths: []string{outputPath}},
 		Observability: mcpagent.ObservabilityRuntimeConfig{Logger: api.logger, Observers: []mcpagent.AgentEventListener{observer}, DirectToolExecutionEvents: true},
+	}
+	if call.Recovery == "restart" {
+		// Every effect must cross the Python tool journal. Do not expose generic
+		// code execution/discovery paths that can bypass its durable receipts.
+		runtime.Tools.CodeExecution = false
+		runtime.Tools.Discovery = false
 	}
 	for _, tool := range definition.Tools.Direct {
 		runtime.Tools.AdditionalBridge = append(runtime.Tools.AdditionalBridge, tool.Name)
@@ -239,6 +255,20 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 		}
 	}
 	return output, nil
+}
+
+// Bridge HTTP requests have their own context. Bind callbacks to the Relay
+// agent's lifetime as well, so an interrupted agent cannot leave a tool polling
+// an abandoned Python mailbox after recovery starts a new attempt.
+func callBoundPythonRelayTool(agentCtx, toolCtx context.Context, tool relaypython.ToolCaller, name string, args map[string]interface{}) (string, error) {
+	bound, cancel := context.WithCancel(toolCtx)
+	stop := context.AfterFunc(agentCtx, cancel)
+	defer stop()
+	defer cancel()
+	if agentCtx.Err() != nil {
+		cancel()
+	}
+	return tool(bound, name, args)
 }
 
 func compilePythonRelaySchema(value map[string]interface{}) (*jsonschema.Schema, error) {

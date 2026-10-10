@@ -97,6 +97,8 @@ type ScheduleContext struct {
 	CapacityResumeRunID     string
 	CapacityResumeRunFolder string
 	CapacityResumeFromStep  int
+	DBOSResumeRunID         string
+	DBOSResumeRunFolder     string
 	// ScheduledRunFolder is allocated and durably bound before a producing
 	// saved-schedule session starts. Pulse-only runs leave it empty.
 	ScheduledRunFolder string
@@ -397,6 +399,7 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		loaded, time.Now().Format(time.RFC3339), time.Now().Location().String())
 
 	// Wall-clock tick loop: every 60s, evaluate all registered schedules against current time.
+	s.recoverInterruptedDBOSRelays(ctx)
 	go s.tickLoop(ctx)
 
 	// Wait for context cancellation
@@ -2438,7 +2441,11 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	if sctx.WebhookInput != nil {
 		run.Webhook = webhookRunMetadata(sctx)
 	}
-	if sctx.CapacityResumeRunID != "" {
+	if sctx.DBOSResumeRunID != "" {
+		if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, sctx.DBOSResumeRunID, "running", "", nil, sctx.DBOSResumeRunFolder, ""); err != nil {
+			s.logf(sctx, "[RELAY] Failed to reopen DBOS run history: %v", err)
+		}
+	} else if sctx.CapacityResumeRunID != "" {
 		// A resumed run continues its own history row rather than opening a
 		// second one. Two rows would read as two runs, when what happened is one
 		// run that waited — and it would leave the first row reporting
@@ -4710,6 +4717,9 @@ func (s *SchedulerService) claimScheduleRun(ctx context.Context, sctx *ScheduleC
 			return errors.New("API trigger run store is unavailable")
 		}
 		return nil
+	}
+	if sctx.DBOSResumeRunID != "" {
+		return s.stateStore.ResumeInterruptedDBOSRun(ctx, sctx.DBOSResumeRunID, startedAt)
 	}
 	if sctx.CapacityResumeRunID != "" {
 		return s.stateStore.ResumeCapacityRun(ctx, sctx.CapacityResumeRunID, startedAt)

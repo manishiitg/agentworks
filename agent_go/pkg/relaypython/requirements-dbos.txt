@@ -1,0 +1,2 @@
+# Platform-owned dependency for DBOS-enabled Python Relays.
+dbos==3.2.0

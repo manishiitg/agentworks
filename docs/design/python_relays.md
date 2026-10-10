@@ -4,47 +4,80 @@ Tracked by PLAT-611.
 
 ## Product contract
 
-A Relay is an API callable Python program. Builder chat authors `relay.py` and
-helper files, and maintains structured graph comments in that same source file.
-The right pane opens on Graph, with Runs for actual execution records and an
-optional Code tab. Users describe behaviour in chat; they do not need to program.
-No `relay.md` is created, read or required. Existing copies remain unused.
-New Relays set
-`kind: relay` and `relay_runtime: python` in the shared `workflow.json` manifest.
-`async def run(INPUT, ctx)` accepts one JSON object and returns a JSON value.
-Python owns conditions, loops, transformations and agent chaining. Its returned
-value is the API result; returning intermediate results is an author choice.
-There is no plan translation or workflow step executor on this path.
+New Relays are API-callable native DBOS Python programs. Their manifest sets
+`kind: relay`, `relay_runtime: python` and `relay_durability: dbos`.
+The entrypoint is `@DBOS.workflow()` / `async def run(INPUT)`, returning JSON.
+Native `@DBOS.step()` functions own durable operations. The platform installs,
+launches and destroys DBOS; authored code does not do so.
 
-`ctx.call_agent` reuses the platform's `mcpagent.AgentDefinition` and session
-runtime, provider accounts and signed tool bridge. Each call creates a fresh
-agent. `messages=[...]` sends sequential user messages in that call's session;
-no session handle is exposed for later calls. Authored system instructions are
-passed directly, with no workflow goal, Pulse or learned instruction injection.
-There is no `resume_agent`, crash recovery, capacity retry or automatic replay.
+`agentworks` is a thin adapter exposing agent, mcp, tool, vault, variables, run_dir
+and async admit. Platform calls execute inside steps of the root workflow. There
+are no custom Relay workflow decorators. Existing `run(INPUT, ctx)` programs and
+legacy graph comments remain supported without automatic migration.
+
+The Graph derives a possible source flow using Python AST parsing, with no authored
+imports/execution. It resolves module-level DBOS functions, branches and loops;
+imported and dynamically dispatched helpers may be absent. Run graphs instead use
+actual DBOS history, with repeated steps rendered separately. No # @relay comments
+or relay.md are needed for native programs.
+
+Execution Logs defaults to DBOS history for durable runs: workflow/step IDs, status,
+timing, attempts and reused checkpoints. Agent/provider/tool receipts link by step
+ID. DBOS.logger events are recorded in dbos_events.jsonl with invocation, step and
+attempt metadata. Agent files remain accessible through a separate view.
+
+Completed native steps are reused after interruption. An in-flight native service
+step can replay; service writes require stable idempotency keys and deduplication.
+The adapter detects uncertain agent/MCP calls and stops for reconciliation unless
+explicitly replay_safe. Before custom external service operations, await admit()
+checks live invocation access. Secrets must stay out of persisted arguments,
+results and logs. Recovery currently uses a single-host SQLite DBOS database.
+
+Native `agent(..., recovery="restart")` opts into restarting the full agent after
+a process interruption while reusing durable Python tool results. This mode
+exposes declared Python action tools and read-only tool inventory helpers;
+skills, attached MCP servers and generic platform code execution are unavailable.
+Native CLI restrictions still depend on the provider. The journal protects the
+declared Python tools, not arbitrary actions outside that boundary. This mode
+cannot be combined with `replay_safe=True`.
+Within one agent call, a tool name and its normalized JSON arguments identify
+one operation. Repeated identical requests return the saved result, even within
+the same attempt. Include an explicit operation ID in the arguments when the
+same tool must perform distinct actions with otherwise identical inputs.
+
+Before calling a tool, the adapter durably records intent; before returning it,
+the adapter durably records its result. Completed results are reused across
+agent restarts. For a crash between the action and its saved result,
+`@tool(recover=lookup_receipt)` may provide a sync or async callback receiving the
+original arguments and returning the original JSON result. This callback must
+only query a durable service receipt, using a stable business operation ID. It
+must raise if the outcome cannot be established. Recovery resolves all pending
+tool calls before starting a fresh agent; missing or failed lookups stop for
+reconciliation. Exceptions from uncertain tool calls stop the agent rather than
+being handed back to the model to work around.
+
+This protects journaled operations with the same arguments. A restarted model
+can choose different arguments or new actions, and remote side effects cannot
+be made exactly once by a local journal alone. Service-side idempotency or an
+atomic transaction with the service remains necessary for those guarantees.
+Persisted tool arguments/results must not contain secrets.
 
 ```python
-import json
-from relay_sdk import tool
+from dbos import DBOS
+from agentworks import agent
 
-async def run(INPUT, ctx):
-    @tool
-    async def lookup(customer_id: str):
-        """Read one customer from the application's authorized API."""
-        # Implement the real service request using ctx.vault("CUSTOMER_KEY").
-        return {"id": customer_id}
+@DBOS.step(name="extract_invoice")
+async def extract_invoice(text):
+    return await agent(name="extract", system_prompt="Extract invoice fields as JSON.",
+                       user_message=text, output_schema={"type": "object"})
 
-    customer = await ctx.call_agent(
-        system_prompt="Use lookup to find the requested customer. Return JSON.",
-        user_message=json.dumps(INPUT),
-        tools=[lookup],
-        output_schema={"type": "object"},
-    )
-    return {"customer": customer}
+@DBOS.workflow(max_recovery_attempts=3)
+async def run(INPUT):
+    return {"invoice": await extract_invoice(INPUT["text"])}
 ```
 
-The example illustrates the boundary; the Builder must implement real service
-requests, rather than leave placeholder tool bodies in a working Relay.
+The following Context API descriptions apply to existing programs; the native
+adapter exposes the equivalent agent/mcp/tool/vault/variables capabilities.
 
 ## Capabilities
 
@@ -84,6 +117,9 @@ readable; writes are confined to its invocation folder. Each CLI agent gets its
 own isolated session and execution folder. Existing CLI account/sandbox rules
 remain responsible for process and credential admission.
 
+Native DBOS.logger events additionally live in `dbos_events.jsonl`; their workflow
+and step IDs correlate with `relay_trace.json`.
+
 Run files retain the existing `runs/iteration-N-hook/` convention:
 
 - `relay_result.json`: returned API JSON.
@@ -115,6 +151,138 @@ creating a new Relay is the supported authoring path. Python Relays have no
 workflow contract migration debt. Goals and legacy Relay execution remain
 unchanged.
 
+## DBOS crash recovery and legacy opt-in
+
+New native DBOS Relays enable `relay_durability: "dbos"` by default. Existing
+Context-based Python Relays can opt in through the manifest or
+**Identity → General → Crash recovery**. The server uses DBOS 3.2.0 through
+`relaypython.Config.DBOS`, the real Python SDK and the existing Go agent/MCP
+mailbox bridge. Existing Relays retain their current executor until explicitly
+enabled. Publish a new version to apply the setting to external API calls.
+This integration runs on Linux/macOS with one SQLite database and one supervised
+Python process per invocation. It does not introduce a shared database credential
+into authored Python, use Conductor, or implement distributed recovery.
+
+Each attempt gets a fresh mailbox under `.relay_ipc/attempt-UUID/`. DBOS state
+lives in the invocation's `.relay_dbos/` directory. Re-entering `Run` with the same
+run folder and identity recovers pending work, reuses completed operation
+results, and restores the returned JSON and trace. A file lock rejects concurrent
+executors. Errors remain terminal; a failed run is never silently restarted.
+
+The caller must supply `RunID`, the published `ReleaseHash`, and an `Authorize`
+callback that revalidates live invocation access and the **complete** frozen
+release checksum before each attempt and platform call. The adapter also binds
+input, variables, source bytes, SDK/runner bytes, Python version, DBOS version,
+and SQLAlchemy version to the original run. Changed bindings are rejected.
+Vault values remain live environment inputs, outside the saved binding. The
+existing agent/MCP adapter remains responsible for current connection and tool
+permissions. Published helpers must be verified by the admission callback.
+
+For legacy Context programs, `ctx.call_agent` and `ctx.call_mcp` are checkpointed at whole-call boundaries.
+`await ctx.step(name, function, arguments={...})` checkpoints a sync/async Python
+service operation; its closure can access the live credentials. Only JSON
+results and call receipts are checkpointed, not a live Context or tool closures.
+Arguments, outputs, receipts, and DBOS errors are stored in run history; authors
+must not include secret values in those records.
+
+A legacy operation or native platform bridge call interrupted before its checkpoint is **uncertain**. Recovery stops
+for reconciliation by default. `replay_safe=True` explicitly permits reattempting
+that operation and is only appropriate for reads or a service that deduplicates
+an idempotency key included in `arguments`. An agent call with this flag requires
+every possible tool effect to be safe to repeat; checkpointing an entire agent
+does not make its individual LLM turns or tool effects durable.
+
+Authored code must follow DBOS determinism: branches and loops are computed from
+input and saved step results; external I/O, time, randomness, and file effects
+belong inside steps. Top-level imports must be free of side effects. `replay_safe`
+is an author assertion, not proof. The integration does not statically enforce
+this contract or automatically migrate existing arbitrary Python programs.
+
+Run the real crash/recovery checks from the repository root:
+
+```sh
+python3 -m venv /tmp/relays-dbos-venv
+/tmp/relays-dbos-venv/bin/python -m pip install -r agent_go/pkg/relaypython/requirements-dbos.txt
+cd agent_go
+RELAY_DBOS_PYTHON=/tmp/relays-dbos-venv/bin/python go test ./pkg/relaypython ./pkg/schedulerstate -count=1 -v
+```
+
+Without `RELAY_DBOS_PYTHON`, DBOS integration tests explicitly skip and the normal
+runner regression still runs. The tests exercise actual process exits after a
+checkpoint and during a service effect, two agent calls, Python tool callbacks,
+an MCP call, service idempotency, original-result reuse, source/input/release
+binding, terminal errors, live authorization revocation, and concurrent executor
+rejection. Model and external service boundaries use deterministic fixtures;
+these tests do not certify a real LLM provider or external MCP server.
+
+### Browser recovery lab
+
+The standalone browser harness runs the same adapter without starting the main
+server or connecting an external account. After installing the interpreter as
+above, run from `agent_go`:
+
+```sh
+RELAY_DBOS_PYTHON=/tmp/relays-dbos-venv/bin/python go run ./cmd/relay-dbos-demo
+```
+
+Open <http://127.0.0.1:18769>. Select **Crash after a checkpoint**, click
+**Start new run**, wait for **Process interrupted**, then click **Recover same
+run**. The same invocation finishes with two reused checkpoints, one service
+attempt and one created order. Expand the trace to inspect actual saved receipts
+and Go bridge call counts.
+
+**Crash during a safe action** retries the service with the same idempotency key:
+two service attempts, one created order. **Crash during an uncertain action**
+stops recovery for reconciliation without repeating the service. To test live
+admission, revoke permission after a checkpoint crash; recovery is denied until
+permission is restored. **Complete without a crash** shows the ordinary path.
+
+The model, MCP and order-service boundaries are deterministic fixtures. Python
+tool callbacks, process exits, SQLite checkpoints and recovery use the real
+runtime. This is a local test harness, separate from the deployed Relays UI.
+It listens only on loopback, stores test runs in a private temporary folder, and
+removes that folder on Ctrl-C. Runs persist across Python crashes while the
+harness stays open; restarting the harness starts a fresh lab.
+
+### Actual app supervision and deployment
+
+The scheduler owns the original invocation ID, folder, input, release hash and
+execution owner in its durable ledger. A pending Python process exit triggers
+recovery; an ordinary application error remains terminal. Backend startup only
+re-admits DBOS invocations that its ledger marked interrupted by server restart.
+Admission rechecks the live caller, function, account and complete release hash.
+A lease watchdog terminates a workspace executor whose backend disappeared;
+startup waits 17 seconds before claiming it. Agent receipts use attempt-specific
+folders. Retries retain the first one-hour deadline and share a persisted budget
+of three process attempts. Stopped, failed and ordinary Python runs are never
+reopened by the DBOS recovery path.
+
+Install the pinned requirements in a platform-controlled path readable by the
+workspace sandbox and set `RELAY_DBOS_PYTHON` on the backend to that absolute
+interpreter path. Both Docker images provide `/opt/relay-dbos/bin/python`.
+Native macOS acceptance used `/opt/homebrew/share/agentworks/relays-dbos/bin/python`.
+An interpreter inside a host user's home directory is not a supported workspace
+sandbox executable. The backend ledger and workspace run directories must both
+survive restart. A missing runtime or ledger produces an explicit run error.
+
+Use native @DBOS.step functions for new service operations, with service-side
+idempotency. Legacy programs use ctx.step; arbitrary Python is not automatically
+replay-safe. In Runs, select the published version
+and inspect the attempt count, reused checkpoint badges, tool receipts and final
+JSON. `POST /api/relays/{id}/releases` publishes a version with existing write
+access checks; the existing run API invokes its enabled function.
+
+This is single-host recovery using per-invocation SQLite and a file lock, not
+multi-host failover. A distributed worker architecture and Postgres rollout are
+separate work. See [DBOS database configuration](https://docs.dbos.dev/python/tutorials/database-connection).
+
+Opt-in server/sandbox regression (requires the trusted interpreter path):
+
+```sh
+cd agent_go
+RELAY_DBOS_PYTHON=/opt/relay-dbos/bin/python go test ./cmd/server -run TestDBOS -count=1 -v
+```
+
 ## Verification
 
 - Real Python protocol chain: custom async closure, ordered messages, branch,
@@ -138,7 +306,10 @@ the tool callback; nested calls fail immediately. Put those calls in `run`, or
 attach an MCP tool directly to the agent. Tools can call their authorized
 external services using ordinary Python clients.
 
-## Graph annotations in Python source
+## Legacy graph annotations in Python source
+
+These annotations remain supported for existing run(INPUT, ctx) programs. Native
+DBOS programs derive their overview from Python AST and do not need annotations.
 
 PLAT-640 replaces the
 separate Markdown overview proposed in PLAT-637. Graph comments live beside the

@@ -3,12 +3,14 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
@@ -19,6 +21,18 @@ const defaultPythonRelaySource = `# @relay node {"id":"input","type":"input","la
 # @relay edge {"from":"greeting","to":"result"}
 async def run(INPUT, ctx):
     return {"hello": INPUT.get("name", "world")}
+`
+
+const defaultNativeDBOSRelaySource = `from dbos import DBOS
+
+@DBOS.step(name="create_greeting")
+async def create_greeting(name):
+    """Create a greeting from the supplied name."""
+    return {"hello": name}
+
+@DBOS.workflow(name="greeting", max_recovery_attempts=3)
+async def run(INPUT):
+    return await create_greeting(INPUT.get("name", "world"))
 `
 
 func isPythonRelay(manifest *WorkflowManifest) bool {
@@ -33,15 +47,39 @@ func validatePythonRelaySource(ctx context.Context, workspacePath string) error 
 	if err != nil {
 		return fmt.Errorf("read relay.py: %w", err)
 	}
-	if !exists || strings.TrimSpace(source) == "" {
-		return fmt.Errorf("Relay needs relay.py defining async def run(INPUT, ctx)")
+	if !exists {
+		return fmt.Errorf("Relay needs relay.py")
 	}
-	if len(source) > 64*1024 {
-		return fmt.Errorf("relay.py exceeds 64 KiB")
+	inspected, err := inspectPythonRelaySource(ctx, workspacePath, source)
+	if err != nil {
+		return err
+	}
+	var result struct {
+		Native          bool   `json:"native"`
+		ValidationError string `json:"validation_error"`
+	}
+	if err := json.Unmarshal(inspected, &result); err != nil {
+		return err
+	}
+	if result.ValidationError != "" {
+		return fmt.Errorf("invalid relay.py: %s", result.ValidationError)
+	}
+	if result.Native {
+		manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+		if err != nil || !found || !isDBOSRelay(manifest) {
+			return fmt.Errorf("native run(INPUT) requires DBOS recovery enabled")
+		}
+	}
+	return nil
+}
+
+func inspectPythonRelaySource(ctx context.Context, workspacePath, source string) (json.RawMessage, error) {
+	if strings.TrimSpace(source) == "" || len(source) > 64*1024 {
+		return nil, fmt.Errorf("relay.py must contain 1–65536 bytes")
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !found {
-		return fmt.Errorf("Relay manifest unavailable during source validation")
+		return nil, fmt.Errorf("Relay manifest unavailable during source validation")
 	}
 	sessionID := "relay-syntax-" + uuid.NewString()
 	common.SetSessionFolderGuard(sessionID, []string{workspacePath}, nil)
@@ -51,31 +89,47 @@ func validatePythonRelaySource(ctx context.Context, workspacePath string) error 
 	client := workspace.NewClient(getWorkspaceAPIURL())
 	client.UserID = workflowExecutionOwnerUserID(manifest)
 	if IsMultiUserMode() && client.UserID == "" {
-		return fmt.Errorf("Relay execution owner unavailable")
+		return nil, fmt.Errorf("Relay execution owner unavailable")
 	}
-	const check = `import ast,base64,os; s=base64.b64decode(os.environ["VAR_RELAY_CHECK_SOURCE"]).decode("utf-8"); tree=ast.parse(s,filename="relay.py"); compile(tree,"relay.py","exec"); runs=[n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=="run"]; assert len(runs)==1,"relay.py must define one async def run(INPUT, ctx)"; a=runs[0].args; assert [v.arg for v in a.posonlyargs+a.args]==["INPUT","ctx"] and not a.vararg and not a.kwarg and not a.kwonlyargs,"run must accept exactly INPUT and ctx"`
+	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_RELAY_INSPECTOR"]),"<platform-inspector>","exec"))`
 	timeout := 15
 	result, err := client.ExecuteShellCommand(validationCtx, workspace.ExecuteShellCommandParams{
 		Command: "python3 -I -c '" + check + "'", WorkingDirectory: workspacePath, Timeout: &timeout,
-		ExtraEnv: map[string]string{"VAR_RELAY_CHECK_SOURCE": base64.StdEncoding.EncodeToString([]byte(source))},
+		ExtraEnv: map[string]string{"VAR_RELAY_CHECK_SOURCE": base64.StdEncoding.EncodeToString([]byte(source)), "VAR_RELAY_INSPECTOR": base64.StdEncoding.EncodeToString([]byte(relaypython.SourceInspector))},
 	})
 	if err != nil {
-		return fmt.Errorf("validate relay.py: %w", err)
+		return nil, fmt.Errorf("inspect relay.py: %w", err)
 	}
 	if result.CommandFailed() {
-		return fmt.Errorf("invalid relay.py: %s", strings.TrimSpace(result.Stderr+" "+result.Error))
+		return nil, fmt.Errorf("invalid relay.py: %s", strings.TrimSpace(result.Stderr+" "+result.Error))
 	}
-	return nil
+	lines := strings.Split(strings.TrimSpace(result.Stdout), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if json.Valid([]byte(lines[i])) {
+			return json.RawMessage(lines[i]), nil
+		}
+	}
+	return nil, fmt.Errorf("source inspector returned no JSON")
 }
 
 func initializePythonRelayWorkspace(ctx context.Context, workspacePath string) error {
+	source := defaultPythonRelaySource
+	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err != nil {
+		return err
+	} else if found && isDBOSRelay(manifest) {
+		source = defaultNativeDBOSRelaySource
+	}
+	return initializePythonRelayWorkspaceWithSource(ctx, workspacePath, source)
+}
+
+func initializePythonRelayWorkspaceWithSource(ctx context.Context, workspacePath, source string) error {
 	if err := createWorkspaceFolder(ctx, path.Join(workspacePath, "variables")); err != nil {
 		return err
 	}
 	if _, exists, err := readFileFromWorkspace(ctx, path.Join(workspacePath, "relay.py")); err != nil {
 		return err
 	} else if !exists {
-		if err := writeFileToWorkspace(ctx, path.Join(workspacePath, "relay.py"), defaultPythonRelaySource); err != nil {
+		if err := writeFileToWorkspace(ctx, path.Join(workspacePath, "relay.py"), source); err != nil {
 			return err
 		}
 

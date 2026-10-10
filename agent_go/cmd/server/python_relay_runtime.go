@@ -95,10 +95,18 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 	}
 	common.SetSessionShellEnv(sessionID, env)
 	defer publishPlanChanged(path.Join(draft, "relay.py"))
-	return relaypython.Run(ctx, relaypython.Config{
+	cfg := relaypython.Config{
 		Client: client, SourcePath: path.Join(sctx.WorkspacePath, "relay.py"), RunPath: runPath, Input: input, Variables: config, Env: env,
 		CallAgent: func(callCtx context.Context, call relaypython.Call, tool relaypython.ToolCaller) (interface{}, error) {
 			return s.api.callPythonRelayAgent(callCtx, sctx, sessionID, runPath, call, tool)
 		},
-	})
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
+	if err != nil || !found {
+		return fmt.Errorf("Relay manifest unavailable during execution")
+	}
+	if isDBOSRelay(manifest) {
+		return s.executeDurablePythonRelay(ctx, sctx, runID, cfg)
+	}
+	return relaypython.Run(ctx, cfg)
 }
