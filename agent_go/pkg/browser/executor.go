@@ -750,7 +750,13 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		cloned := *opts
 		optionsChanged := false
 		var artifactErr error
-		artifactPlan, artifactErr = prepareBrowserArtifact(command, commandArgs, artifactOwner, session)
+		var stagingSession []string
+		if !isCdpMode && browserconfig.IsUserSession(folderGuard.BrowserSession) {
+			// The daemon retains its original private /tmp mount. Its scoped
+			// socket folder is shared across commands; the host temp root is not.
+			stagingSession = []string{folderGuard.BrowserSession}
+		}
+		artifactPlan, artifactErr = prepareBrowserArtifact(command, commandArgs, artifactOwner, session, stagingSession...)
 		if artifactErr != nil {
 			return "", artifactErr
 		}
