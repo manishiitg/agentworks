@@ -20,6 +20,7 @@ func crewAuthoringFile(t *testing.T, env triggerLinkEnv, path string) string {
 }
 
 func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
+	ensureProjectStateRoot(t)
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"viewer","username":"viewer","role":"viewer","products":["work"]}]}`)

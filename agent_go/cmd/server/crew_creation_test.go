@@ -42,6 +42,7 @@ func workCrewTestProfile(providerOptions []agentprofiles.ProviderOption) agentpr
 
 func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprofiles.ProviderOption) (*ProductScheduleService, *mockWorkspaceAPI, context.Context) {
 	t.Helper()
+	ensureProjectStateRoot(t)
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
 	registry := agentprofiles.NewRegistry()

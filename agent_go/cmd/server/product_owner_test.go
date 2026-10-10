@@ -19,6 +19,15 @@ func withProjectOwnerRegistry(t *testing.T) *projectOwnerRegistry {
 	return projectOwnersAt(root)
 }
 
+// ensureProjectStateRoot gives a test that creates Crews a state area for the owner registry (new Crews are always
+// registered at creation) without replacing one a test already set up with withProjectOwnerRegistry.
+func ensureProjectStateRoot(t *testing.T) {
+	t.Helper()
+	if strings.TrimSpace(os.Getenv("AGENTWORKS_STATE_ROOT")) == "" {
+		t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	}
+}
+
 func TestStampProductOwnerNeverOverwritesAndPreservesFields(t *testing.T) {
 	raw := `{"schema_version":1,"product":"work","id":"c1","title":"T","identity":{"name":"N"}}`
 	stamped, changed, err := stampProductOwner(raw, "alice")

@@ -254,6 +254,7 @@ func TestCrewAttachmentReadRootsSkipInvalidBindings(t *testing.T) {
 }
 
 func TestCreateCrewToolEndToEnd(t *testing.T) {
+	ensureProjectStateRoot(t)
 	tools, mock, _, svc := newCrewBuilderToolsTestEnv(t)
 	registerWorkCrewProfile(t, svc.registry)
 	// Creation reads and writes through the workspace API like production;
