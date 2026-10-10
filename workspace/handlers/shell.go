@@ -198,6 +198,16 @@ func ExecuteShellCommand(c *gin.Context) {
 		log.Printf("[SLOTS] Brain folder command for %s runs as the service account, not %s", resolvedUserID, userSlot)
 		userSlot = ""
 	}
+	// A reader's shell in someone else's Crew runs as the Crew owner's slot (PLAT-810): the reader's own slot cannot enter the
+	// owner's group-owned folder. Only when the server's guard grants that project; Landlock still confines the command.
+	if slotsOn && slotErr == nil && userSlot != "" {
+		if crewOwner := crewProjectOwnerForCommand(docsDir, workingDir, resolvedUserID, req.FolderGuard); crewOwner != "" {
+			if ownerSlot, ownerSlotsOn, ownerErr := slots.For(crewOwner); ownerErr == nil && ownerSlotsOn && ownerSlot != "" {
+				log.Printf("[SLOTS] Crew command for %s runs as the Crew owner's slot %s", resolvedUserID, ownerSlot)
+				userSlot = ownerSlot
+			}
+		}
+	}
 	if slotsOn {
 		if slotErr != nil {
 			c.JSON(http.StatusForbidden, models.APIResponse[any]{

@@ -17,6 +17,14 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — A reader's shell in someone else's Crew runs as the Crew owner's slot (PLAT-810)
+
+On a slot host a Crew folder belongs to its owner's slot group, so a reader's own slot could not enter it and every shell command
+failed with "permission denied". Decided (owner): the shell tool follows the 2026-10-04 rule for Crew turns and runs a reader's
+command in a Crew as the owner's slot. It applies only when the server's folder guard grants that exact Crew project and the
+command works inside it; Landlock still confines the command to the guard's paths. The owner's own call, a guard that does not
+name the project, and every other folder keep the caller's slot. Code: `workspace/handlers/crew_reader_slot.go`, used in `shell.go`.
+
 ### 2026-10-10 — Slot provisioning rejects another product's accounts
 
 Before provisioning any slot, validate every existing account in the requested
