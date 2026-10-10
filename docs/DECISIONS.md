@@ -24,7 +24,7 @@ range against this product's expected slot home. A collision refuses the entire
 operation before group, directory or sudo changes; the operator must choose an
 unused prefix. This prevents sharing a Linux identity between products on a
 shared host. Code: `deploy/common/provision-slots.sh`; ticket
-[PLAT-808](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/ops/deploys/plat-808.md).
+[PLAT-809](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/ops/deploys/plat-809.md).
 
 ### 2026-10-09 — Code has no functions: nothing shared reaches into a private space
 
