@@ -39,7 +39,7 @@ func TestExternalCrewFilesFindDeepFilesAndHidePrivateAreas(t *testing.T) {
 		return string(raw)
 	}
 
-	code, out := externalCrewRequest(t, env, claims, "list_crew_files", map[string]any{"crew_id": "beta", "glob": "**/*ForgotPassword*", "depth": 8})
+	code, out := externalCrewRequest(t, env, claims, "list_crew_files", map[string]any{"crew_id": "beta", "glob": "**/*forgot-password*", "depth": 8})
 	if code != 200 || !strings.Contains(result(out), "repos/customer-website/src/pages/account/forgot-password.razor") {
 		t.Fatalf("find by name = %d %s", code, result(out))
 	}

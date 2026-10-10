@@ -25,7 +25,7 @@ func TestValidateManifestFolderAccess(t *testing.T) {
 	}
 
 	manifest.FolderAccess = append(manifest.FolderAccess, workflowtypes.WorkflowFolderGrant{
-		ID: "grant-2", Alias: "project_source", Path: t.TempDir(), Access: workflowtypes.FolderAccessReadOnly,
+		ID: "grant-2", Alias: "docs_source", Path: t.TempDir(), Access: workflowtypes.FolderAccessReadOnly,
 	})
 	if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "environment key") {
 		t.Fatalf("environment-key alias collision should be rejected, got %v", err)
