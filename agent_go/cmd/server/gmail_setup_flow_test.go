@@ -28,6 +28,13 @@ func gmailSetupFixture(t *testing.T) (*StreamingAPI, context.Context) {
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
 	t.Setenv("PUBLIC_URL", "https://app.example.com")
 	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
+	// Storing the OAuth client runs `gog auth credentials set`; a stand-in on PATH keeps this test off the real binary,
+	// which a build machine does not have.
+	fakeBin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fakeBin, "gog"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if _, err := services.CreateOAuthClient(context.Background(), "app-project", []byte(`{"web":{"client_id":"123456-abcdef.apps.googleusercontent.com","client_secret":"SETUP-SECRET","project_id":"sample-project"}}`), false); err != nil {
 		t.Fatal(err)
 	}

@@ -1782,7 +1782,7 @@ func TestPostRunMonitorFinalStepsIncludesSplitNotificationRouting(t *testing.T) 
 		runSummaryChannels:   []string{"slack"},
 		pulseSummaryChannels: []string{"gmail"},
 	}), "finalize")
-	for _, required := range []string{"SPLIT NOTIFICATION ROUTING", `notification_kind="run_summary"`, `notification_kind="pulse_summary"`, "configured channels: slack", "configured channels: gmail"} {
+	for _, required := range []string{"SPLIT NOTIFICATION ROUTING", `kind="run_summary"`, `notification_kind="pulse_summary"`, "configured channels: slack", "configured channels: gmail"} {
 		if !strings.Contains(finalizer, required) {
 			t.Fatalf("finalizer missing split-route instruction %q: %s", required, finalizer)
 		}
@@ -1796,7 +1796,7 @@ func TestEveryRunFinalizerRequiresRichGmailWhenConfigured(t *testing.T) {
 	}
 	for name, prompt := range finalizers {
 		t.Run(name, func(t *testing.T) {
-			for _, required := range []string{"RICH GMAIL OUTPUT", "email_subject", "email_html", "message_for_user", "inline-styled"} {
+			for _, required := range []string{"RICH GMAIL OUTPUT", "email_subject", "email_html", "record_summary", "inline-styled"} {
 				if !strings.Contains(prompt, required) {
 					t.Fatalf("finalizer prompt missing rich Gmail requirement %q:\n%s", required, prompt)
 				}
@@ -2710,7 +2710,7 @@ func TestNoRunFinalizerSkipsEvidenceStagesAndReportsReason(t *testing.T) {
 	for _, want := range []string{
 		"WORKFLOW DID NOT RUN",
 		"Gate, reviewers, Fixer, dashboard, and publish were intentionally skipped",
-		`notification_kind="run_summary"`,
+		`kind="run_summary"`,
 		"dashboard has no record_pulse_result command and needs no receipt",
 		"mark publish skipped",
 		"source-hash-gated backup",
