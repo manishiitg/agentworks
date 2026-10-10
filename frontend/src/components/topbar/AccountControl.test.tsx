@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('Account menu availability', () => {
   it.each([false, true])('keeps token controls out of the account menu in multi-user mode %s', async (isMultiUserMode) => {
-    vi.mocked(useAuthStore).mockReturnValue({ user: { id: 'user', username: 'Alex' }, isMultiUserMode, logout: vi.fn() })
+    vi.mocked(useAuthStore).mockReturnValue({ user: { id: 'user', username: 'Alex' }, isMultiUserMode, logout: vi.fn(), providers: [{ name: 'simple', type: 'credentials' }] })
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<TooltipProvider><AccountControl /></TooltipProvider>))
@@ -69,5 +69,16 @@ describe('Account menu availability', () => {
       await act(async () => root.render(<TooltipProvider><AccountControl /></TooltipProvider>))
       expect(host.querySelector('button')).toBeNull()
     } finally { await act(async () => root.unmount()) }
+  })
+
+  it('offers no password change where everyone signs in with single sign-on', async () => {
+    vi.mocked(useAuthStore).mockReturnValue({ user: { id: 'user', username: 'Alex' }, isMultiUserMode: true, logout: vi.fn(), providers: [{ name: 'supabase-google', type: 'oauth' }] })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<TooltipProvider><AccountControl /></TooltipProvider>))
+      await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
+      expect(host.textContent?.includes('Sign out')).toBe(true)
+      expect(host.textContent?.includes('Change password')).toBe(false)
+    } finally { await act(async () => root.unmount()); host.remove() }
   })
 })

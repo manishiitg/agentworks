@@ -20,7 +20,9 @@ interface AccountControlProps {
 
 export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: AccountControlProps) {
   const sidebar = useProductNavigationSidebar()
-  const { user, logout, isMultiUserMode } = useAuthStore()
+  const { user, logout, isMultiUserMode, providers } = useAuthStore()
+  // A password can be changed only where people sign in with one: a server with single sign-on only (Google) has nothing to change.
+  const passwordSignIn = (providers ?? []).some(provider => provider.type === 'credentials')
   const [open, setOpen] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -96,7 +98,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
           </button>}
           {<NotificationsControl menuItem />}
           <div role="separator" className="my-1 border-t border-border" />
-          {isMultiUserMode && <button
+          {isMultiUserMode && passwordSignIn && <button
             type="button"
             role="menuitem"
             className={itemClass}
