@@ -1173,6 +1173,13 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		// it over a few checks; that made a stopped chat unclosable for a while (PLAT-815). Retire what is really gone.
 		api.retireMissingTerminalPanes(current.SessionID)
 	}
+	// A chat whose turn is over keeps its coding CLI pane alive between turns, which still counts as active work.
+	// The app stops such a chat before it closes the tab; the MCP tools only call this route, so an idle tab could
+	// not be closed without a separate stop (PLAT-819). With no turn running, close the idle CLI here.
+	if hasCurrent && api.sessionHasActiveWork(current.SessionID) && !api.sessionRunsATurn(current.SessionID) {
+		closeCodingCLIAndReleaseTurnMarkers(current.SessionID, "side chat closed")
+		api.retireMissingTerminalPanes(current.SessionID)
+	}
 	if hasCurrent && api.sessionHasActiveWork(current.SessionID) {
 		writeAgentProfileError(w, http.StatusConflict, "This chat is still working; stop it before closing the tab")
 		return

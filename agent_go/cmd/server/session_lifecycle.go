@@ -612,9 +612,18 @@ func (api *StreamingAPI) sessionHasActiveWork(sessionID string) bool {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
 		return false
 	}
-	if api.hasActiveTurnCancel(sessionID) || api.sessionHasLiveCodingTmux(sessionID) ||
-		api.hasRunningTrackedExecutionForSession(sessionID) || api.isSessionBusy(sessionID) ||
-		api.isSyntheticTurn(sessionID) {
+	return api.sessionHasLiveCodingTmux(sessionID) || api.sessionRunsATurn(sessionID)
+}
+
+// sessionRunsATurn reports whether a turn is really in flight in the session: an active turn, a tracked execution, a
+// busy or synthetic turn, or a running background agent. sessionHasActiveWork also counts a coding CLI pane that is
+// merely alive between turns; this does not.
+func (api *StreamingAPI) sessionRunsATurn(sessionID string) bool {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	if api.hasActiveTurnCancel(sessionID) || api.hasRunningTrackedExecutionForSession(sessionID) ||
+		api.isSessionBusy(sessionID) || api.isSyntheticTurn(sessionID) {
 		return true
 	}
 	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)
