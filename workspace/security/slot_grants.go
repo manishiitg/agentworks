@@ -40,11 +40,14 @@ func appPrivateRoots(keep ...string) []string {
 		// ProfilePathForSession's default when neither variable is set.
 		addProfile(filepath.Join(config, "agentworks", "browser-profile"))
 	}
-	roots = append(roots, browserconfig.SocketRoot)
+	socketRoots := []string{browserconfig.SocketRoot, browserconfig.ManagedSocketRoot()}
+	roots = append(roots, socketRoots...)
 	for _, key := range []string{"WORKSPACE_DOCS_PATH", "DOCS_DIR"} {
 		// The sandbox twin of the socket folders (<docs>/tmp/.agent-browser): other owners' browser daemons.
 		if docs := strings.TrimSpace(os.Getenv(key)); docs != "" && filepath.IsAbs(docs) {
-			roots = append(roots, filepath.Join(filepath.Clean(docs), "tmp", strings.TrimPrefix(browserconfig.SocketRoot, "/tmp/")))
+			for _, socketRoot := range socketRoots {
+				roots = append(roots, filepath.Join(filepath.Clean(docs), "tmp", strings.TrimPrefix(socketRoot, "/tmp/")))
+			}
 		}
 	}
 	if state := strings.TrimSpace(os.Getenv("AGENTWORKS_STATE_ROOT")); state != "" && filepath.IsAbs(state) && filepath.Clean(state) != string(filepath.Separator) {

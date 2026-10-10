@@ -387,6 +387,11 @@ browser daemon's original Linux mount namespace. The trusted workspace transfer
 checks that staging belongs to the current connection and publishes only into
 the calling session's allowed workspace output. No shared `/tmp` grant is added.
 See PLAT-575.
+Named headless outputs use the same scoped artifact transfer. When
+`AGENTWORKS_BROWSER_STAGING_NAMESPACE` is configured, managed socket folders
+live under a short deployment-specific `/tmp/.ab-<namespace-hash>/o/` parent,
+so another service account's private parent cannot block their creation.
+Unconfigured local paths retain `/tmp/.agent-browser/o/`. See PLAT-850.
 The trusted folder guard also marks the extension transport. Relay commands do
 not consume headless per-chat/global session limits despite their managed
 sandbox session names; ordinary headless commands retain those limits.

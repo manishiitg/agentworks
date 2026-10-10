@@ -2,6 +2,8 @@
 package browserconfig
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,6 +43,19 @@ func IsUserSession(session string) bool { return userSession.MatchString(session
 // managed browser got its own folder; the global shared browser still does.
 const SocketRoot = "/tmp/.agent-browser"
 
+// ManagedSocketRoot keeps each deployment's managed sockets private.
+// A shared host can run several service accounts. Each deployment must own
+// its parent directory; a global 0700 parent would lock out the other apps.
+// Keep the name short because Unix sockets include the full session name.
+func ManagedSocketRoot() string {
+	namespace := strings.TrimSpace(os.Getenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE"))
+	if namespace == "" {
+		return SocketRoot
+	}
+	sum := sha256.Sum256([]byte(namespace))
+	return filepath.Join("/tmp", ".ab-"+hex.EncodeToString(sum[:6]))
+}
+
 // SandboxSocketDir is where a managed browser's socket folder lands on the host when its daemon was started from
 // inside a coding CLI's sandbox: that sandbox's private /tmp is the workspace's shared tmp folder, so
 // /tmp/.agent-browser/o/<owner> there is <docs>/tmp/.agent-browser/o/<owner> here. Without it the live view and the
@@ -70,7 +85,7 @@ func SandboxSocketDirs() []string {
 	if docs == "" || !filepath.IsAbs(docs) {
 		return nil
 	}
-	owners, _ := filepath.Glob(filepath.Join(docs, "tmp", strings.TrimPrefix(SocketRoot, "/tmp/"), "o", "*"))
+	owners, _ := filepath.Glob(filepath.Join(docs, "tmp", strings.TrimPrefix(ManagedSocketRoot(), "/tmp/"), "o", "*"))
 	return owners
 }
 
@@ -86,7 +101,22 @@ func SocketDirForSession(session string) string {
 	if m == nil || !IsUserSession(session) {
 		return SocketRoot
 	}
-	return filepath.Join(SocketRoot, "o", m[1][:1]+m[2])
+	return filepath.Join(ManagedSocketRoot(), "o", m[1][:1]+m[2])
+}
+
+// ManagedSocketDirs includes the legacy owner folders so stale browser
+// processes can still be found when a deployment adopts its private root.
+func ManagedSocketDirs() []string {
+	roots := []string{SocketRoot}
+	if root := ManagedSocketRoot(); root != SocketRoot {
+		roots = append(roots, root)
+	}
+	var dirs []string
+	for _, root := range roots {
+		owners, _ := filepath.Glob(filepath.Join(root, "o", "*"))
+		dirs = append(dirs, owners...)
+	}
+	return dirs
 }
 
 // ArtifactDirForSession is inside the browser's already-granted socket folder.

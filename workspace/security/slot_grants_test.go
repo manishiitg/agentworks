@@ -56,6 +56,7 @@ func TestSlotCommandGetsNoBrowserFolders(t *testing.T) {
 }
 
 func TestSlotGrantsNeverIncludeAppPrivatePaths(t *testing.T) {
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", "slot-private-test")
 	root := t.TempDir()
 	docs := filepath.Join(root, "docs")
 	state := filepath.Join(root, "state")
@@ -73,6 +74,8 @@ func TestSlotGrantsNeverIncludeAppPrivatePaths(t *testing.T) {
 		filepath.Join(state, "cli-runtimes", "v1", "abc"),
 		filepath.Join(state, "ownership"),
 		filepath.Join(browserconfig.SocketRoot, "o", "p0123"),
+		filepath.Join(browserconfig.ManagedSocketRoot(), "o", "p0123"),
+		filepath.Join(docs, "tmp", strings.TrimPrefix(browserconfig.ManagedSocketRoot(), "/tmp/"), "o", "p0123"),
 		filepath.Join(docs, "tmp", ".agent-browser", "o", "p0123"),
 	}
 	grants := append([]string{project, filepath.Join(docs, "Workflow", "wf")}, private...)

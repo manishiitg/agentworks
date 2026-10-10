@@ -1740,9 +1740,7 @@ func sessionDirs() []string {
 	}
 	// Each managed browser keeps its sockets in its own folder
 	// (browserconfig.SocketDirForSession); the host side must find them all.
-	if owners, err := filepath.Glob(filepath.Join(browserconfig.SocketRoot, "o", "*")); err == nil {
-		dirs = append(dirs, owners...)
-	}
+	dirs = append(dirs, browserconfig.ManagedSocketDirs()...)
 	// A daemon started from a coding CLI's sandbox keeps them under the shared tmp folder (see
 	// browserconfig.SandboxSocketDir).
 	dirs = append(dirs, browserconfig.SandboxSocketDirs()...)

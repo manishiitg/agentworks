@@ -11,6 +11,15 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-10 — Managed browser socket parents belong to each deployment
+
+Deployments with a browser staging namespace use a short private socket root
+derived from that namespace, keeping each browser's existing owner boundary.
+This avoids one service account's 0700 parent blocking another deployment on
+the same host. Unconfigured local paths stay compatible. Named headless outputs
+use that browser's shared artifact folder across private temporary mounts.
+See [PLAT-850](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/browser/browser/plat-850.md).
+
 ### 2026-10-10 — Relay dashboard authoring is independent of execution stores
 
 Builder chat can author dashboard HTML/assets/scripts and use an optional managed
