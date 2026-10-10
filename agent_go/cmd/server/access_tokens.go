@@ -407,6 +407,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			return t.Allows("crews:run")
 		case "get_crew_function_call":
 			return t.Allows("crews:read") || t.Allows("crews:run")
+		case "write_crew_file":
+			// Anyone who runs a Crew may drop a file in their own shared/<id>/ folder (crews:run); writing anywhere else
+			// in the Crew is the owner's and needs crews:write (checked with the path).
+			return t.Allows("crews:write") || t.Allows("crews:run")
 		case "create_crew", "update_crew", "import_crew":
 			return t.Allows("crews:write")
 		}

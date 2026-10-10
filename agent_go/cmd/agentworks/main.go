@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/mark3labs/mcp-go/server"
@@ -48,7 +50,7 @@ var cliOperationGroups = []struct {
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
-	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"export", "export_crew"}, {"import", "import_crew"}}},
+	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
 func main() {
@@ -435,6 +437,9 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 			f.String("step-id", "", "Optional related step ID")
 		}
 	}
+	if tool == "write_crew_file" {
+		f.String("file", "", "Local file to upload: text or binary, at most 11 MiB. Read here by the CLI, so it is not pasted into the call")
+	}
 	if tool == "call_crew_function" || tool == "ask_crew" || tool == "call_workflow_function" {
 		f.Int("wait", 0, "Seconds to wait for the result (max 25) before returning a call_id to poll")
 	}
@@ -500,6 +505,12 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	}
 }
 
+// crewFileUploadMaxBytes and crewFileTextMaxBytes mirror the server: 11 MiB for a binary file, 2 MiB for text.
+const (
+	crewFileUploadMaxBytes = 11 << 20
+	crewFileTextMaxBytes   = 2 << 20
+)
+
 func readInput(path string, stdin io.Reader) ([]byte, error) {
 	var reader io.Reader = stdin
 	if path != "-" {
@@ -558,6 +569,25 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetInt(flagName)
 			arguments[field] = value
+		}
+	}
+	if cmd.Flags().Lookup("file") != nil && cmd.Flags().Changed("file") {
+		localFile, _ := cmd.Flags().GetString("file")
+		if input == "-" && localFile == "-" {
+			return nil, errors.New("stdin can only supply one input")
+		}
+		data, err := readInput(localFile, stdin)
+		if err != nil {
+			return nil, err
+		}
+		if len(data) > crewFileUploadMaxBytes {
+			return nil, fmt.Errorf("file exceeds the %d MiB upload limit", crewFileUploadMaxBytes>>20)
+		}
+		// Text goes as text, anything else (an image, PDF, spreadsheet) as base64.
+		if utf8.Valid(data) && !bytes.Contains(data, []byte{0}) && len(data) <= crewFileTextMaxBytes {
+			arguments["content"] = string(data)
+		} else {
+			arguments["content_base64"] = base64.StdEncoding.EncodeToString(data)
 		}
 	}
 	for flagName, field := range map[string]string{"content-file": "content", "diff-file": "diff"} {

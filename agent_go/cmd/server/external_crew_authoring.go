@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // External Crew authoring (crews:write): create a Crew from a local CLI,
@@ -28,7 +30,7 @@ import (
 // exactly as in the app; every other user with the Crew product runs it.
 // Read-only accounts and disabled accounts never write.
 
-var externalCrewWriteTools = map[string]bool{"create_crew": true, "update_crew": true, "import_crew": true}
+var externalCrewWriteTools = map[string]bool{"create_crew": true, "update_crew": true, "import_crew": true, "write_crew_file": true}
 
 const (
 	crewSpecKind          = "agentworks.crew"
@@ -354,6 +356,8 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 		}
 	}
 	switch name {
+	case "write_crew_file":
+		api.externalWriteCrewFile(w, r, claims, args)
 	case "create_crew", "import_crew":
 		if status, message := crewCreateGate(claims); status != 0 {
 			externalError(w, status, "forbidden", message)
@@ -987,4 +991,113 @@ func externalCrewUpdateReply(full map[string]any, update crewUpdate) map[string]
 		"files_written": files, "files_removed": update.RemoveFiles,
 		"note": "Compact reply. get_crew returns the full spec; pass return_spec=true to get it here.",
 	}
+}
+
+// externalWriteCrewFile writes one project file of a Crew its caller owns, text or binary (an image, PDF or spreadsheet),
+// through the same guarded, revision-checked writer as a workflow's write_file. The Crew's manifests, functions.json, its
+// chats (builder/), databases and hidden folders are refused. Everyone who can run the Crew may write under shared/<their id>/ (bounded in size); the owner writes anywhere editable. Without expected_revision the file's current revision is
+// read first, so the write replaces it (update_crew files does the same); a request_id makes a retry safe.
+func (api *StreamingAPI) externalWriteCrewFile(w http.ResponseWriter, r *http.Request, claims *UserClaims, args map[string]any) {
+	ctx := r.Context()
+	crew, _, _, ok := api.externalCrewResolve(ctx, claims, externalArg(args, "crew_id"))
+	if !ok {
+		externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
+		return
+	}
+	rel := externalArg(args, "path")
+	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
+	clean, err := wf.CleanRelative(rel)
+	// Everyone who can run the Crew has one place to put files: shared/<their id>/. The owner writes anywhere editable.
+	sharedFolder := "shared/" + sanitizeUserIDForPath(claims.UserID)
+	inOwnShared := err == nil && strings.HasPrefix(clean, sharedFolder+"/")
+	if !crew.OwnedByCaller && !inOwnShared {
+		externalError(w, http.StatusForbidden, "forbidden", "Only the Crew's owner can write its files; you can add files under "+sharedFolder+"/ .")
+		return
+	}
+	if crew.OwnedByCaller && !inOwnShared && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
+		externalError(w, http.StatusForbidden, "insufficient_scope", "Writing outside "+sharedFolder+"/ needs crews:write.")
+		return
+	}
+	if _, pathErr := crewSpecFilePath(root, rel); pathErr != nil || err != nil || wf.ProtectedWrite(clean) {
+		externalError(w, http.StatusForbidden, "protected_path", "That path is not an editable Crew file (manifests, functions.json, chats, databases and hidden folders are protected).")
+		return
+	}
+	_, hasText := args["content"]
+	_, hasBinary := args["content_base64"]
+	if hasText == hasBinary {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass content (UTF-8 text) or content_base64 (a binary file), exactly one.")
+		return
+	}
+	if !crew.OwnedByCaller {
+		if message := externalCrewSharedFolderRoom(ctx, root, sharedFolder, clean, args); message != "" {
+			externalError(w, http.StatusRequestEntityTooLarge, "quota_exceeded", message)
+			return
+		}
+	}
+	expected := externalArg(args, "expected_revision")
+	if expected == "" {
+		current, err := externalFileRequest(ctx, wf.Request{Root: root, Operation: "read", Path: clean})
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		expected = wf.MissingRevision
+		if current.Exists {
+			expected = current.Revision
+		}
+	}
+	requestID := externalArg(args, "request_id")
+	if requestID == "" {
+		requestID = uuid.NewString()
+	}
+	req := wf.WriteRequest{Root: root, Path: rel, Content: externalArg(args, "content"), ContentBase64: externalArg(args, "content_base64"), ExpectedRevision: expected, RequestID: requestID,
+		Actor: claims.UserID, Identity: wf.EditIdentity{UserID: claims.UserID, Username: claims.Username, Source: "public_mcp"}}
+	if claims.AccessToken != nil {
+		req.Identity.ConnectionID = claims.AccessToken.ID
+		req.Actor += "/" + claims.AccessToken.ID
+	}
+	externalPostSharedFileWrite(w, r, req)
+}
+
+// Limits for what a person who does not own the Crew may leave in their shared/<id>/ folder, so one account cannot fill
+// the disk: a file at most 5 MiB (decoded), the folder at most 50 MiB and 200 files.
+const (
+	crewSharedFileMaxBytes   = 5 << 20
+	crewSharedFolderMaxBytes = 50 << 20
+	crewSharedFolderMaxFiles = 200
+)
+
+// externalCrewSharedFolderRoom returns why a non-owner's write does not fit, or "" when it does. Replacing an existing
+// file counts only the growth.
+func externalCrewSharedFolderRoom(ctx context.Context, root, folder, clean string, args map[string]any) string {
+	size := len(externalArg(args, "content"))
+	if encoded := externalArg(args, "content_base64"); encoded != "" {
+		size = base64.StdEncoding.DecodedLen(len(encoded))
+	}
+	if size > crewSharedFileMaxBytes {
+		return fmt.Sprintf("A file in %s/ may be at most %d MiB.", folder, crewSharedFileMaxBytes>>20)
+	}
+	listing, err := externalFileRequest(ctx, wf.Request{Root: root, Operation: "list", Path: folder, Depth: 8, Limit: 1000})
+	if err != nil {
+		return ""
+	}
+	var total int64
+	files, replacing := 0, int64(0)
+	for _, entry := range listing.Entries {
+		if entry.Type != "file" {
+			continue
+		}
+		files++
+		total += entry.Size
+		if entry.Path == clean || strings.TrimPrefix(entry.Path, root+"/") == clean {
+			replacing = entry.Size
+		}
+	}
+	if replacing == 0 && files >= crewSharedFolderMaxFiles {
+		return fmt.Sprintf("%s/ already holds %d files, the most allowed.", folder, files)
+	}
+	if total-replacing+int64(size) > crewSharedFolderMaxBytes {
+		return fmt.Sprintf("%s/ would pass %d MiB.", folder, crewSharedFolderMaxBytes>>20)
+	}
+	return ""
 }

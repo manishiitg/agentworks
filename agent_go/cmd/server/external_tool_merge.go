@@ -46,9 +46,9 @@ var externalToolMerges = []externalToolMerge{
 		{"list", "list_crews"}, {"get", "get_crew"}, {"costs", "get_crew_costs"}, {"create", "create_crew"}, {"update", "update_crew"},
 		{"export", "export_crew"}, {"import", "import_crew"},
 	}},
-	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Relay (workflow_id) or a Crew (crew_id; read-only). action=code lists a step's saved code.", [][2]string{
+	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Relay (workflow_id), or a Crew you own (crew_id; read for anyone with access, write for its owner, text or binary). action=code lists a step's saved code.", [][2]string{
 		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
-		{"write", "write_file"}, {"code", "list_step_code"},
+		{"write", "write_file|write_crew_file"}, {"code", "list_step_code"},
 	}},
 	{"functions", "A workflow's or Crew's typed entry points (workflow_id or crew_id): list them, call one, check a call and answer its question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},

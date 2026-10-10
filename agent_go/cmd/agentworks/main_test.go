@@ -614,3 +614,36 @@ func TestCLIOperationsStayAdmitted(t *testing.T) {
 		}
 	}
 }
+
+// crews put reads the local file itself: text is sent as content, anything else as base64, so the file is never pasted
+// into the call (PLAT-837).
+func TestCrewsPutReadsTheLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	text, binary := filepath.Join(dir, "run.py"), filepath.Join(dir, "logo.png")
+	if err := os.WriteFile(text, []byte("print('hi')\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(binary, []byte{0x89, 'P', 'N', 'G', 0, 1, 2, 0xff}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newCommand(&options{stdin: strings.NewReader(""), stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, getenv: os.Getenv})
+	put, _, err := cmd.Find([]string{"crews", "put"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := put.ParseFlags([]string{"--crew", "c1", "--path", "scripts/run.py", "--file", text}); err != nil {
+		t.Fatal(err)
+	}
+	args, err := operationArguments(put, strings.NewReader(""))
+	if err != nil || args["content"] != "print('hi')\n" || args["crew_id"] != "c1" || args["path"] != "scripts/run.py" || args["content_base64"] != nil {
+		t.Fatalf("text file arguments = %v (%v)", args, err)
+	}
+	put2, _, _ := newCommand(&options{stdin: strings.NewReader(""), stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, getenv: os.Getenv}).Find([]string{"crews", "put"})
+	if err := put2.ParseFlags([]string{"--crew", "c1", "--path", "brand/logo.png", "--file", binary}); err != nil {
+		t.Fatal(err)
+	}
+	args, err = operationArguments(put2, strings.NewReader(""))
+	if err != nil || args["content"] != nil || args["content_base64"] != "iVBORwABAv8=" {
+		t.Fatalf("binary file arguments = %v (%v)", args, err)
+	}
+}

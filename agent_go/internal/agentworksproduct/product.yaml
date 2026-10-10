@@ -455,6 +455,7 @@ chat:
       # Crew authoring (crews:write; only the owner edits; export is crews:read).
       - create_crew
       - update_crew
+      - write_crew_file
       - export_crew
       - import_crew
       # Vault management: active administrators only, with vault:manage consent.

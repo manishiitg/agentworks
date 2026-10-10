@@ -33,6 +33,12 @@ func (api *StreamingAPI) externalWriteFile(w http.ResponseWriter, r *http.Reques
 		externalError(w, 403, "protected_path", "File is protected or outside write grants.")
 		return
 	}
+	externalPostSharedFileWrite(w, r, req)
+}
+
+// externalPostSharedFileWrite sends a checked write to the workspace's guarded, revision-checked writer and answers with
+// its receipt. A workflow's write_file and a Crew's write_crew_file share it.
+func externalPostSharedFileWrite(w http.ResponseWriter, r *http.Request, req wf.WriteRequest) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		externalFailure(w, err)
