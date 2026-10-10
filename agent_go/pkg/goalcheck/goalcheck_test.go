@@ -27,20 +27,23 @@ func TestSilenceAlarmOnSubstackData(t *testing.T) {
 	if err := json.Unmarshal(raw, &fx); err != nil {
 		t.Fatal(err)
 	}
+	// The historic fixture predates evidence fields in this pure-code input.
+	for i := range fx.Observations {
+		fx.Observations[i].Evidence = []string{"fixture source"}
+	}
 	in := Input{Now: fx.Now, Metrics: fx.Metrics, Observations: fx.Observations, Runs: fx.Runs, SchedulesPaused: fx.SchedulesPaused}
 	facts := Evaluate(in)
 
-	if facts.Status != StatusNotMeasured || facts.DaysSinceRunMeasured != 20 {
-		t.Fatalf("want not measured for 20 days, got %s / %d: %s", facts.Status, facts.DaysSinceRunMeasured, facts.Summary)
+	if facts.Status != StatusAtRisk || facts.DaysSinceRunMeasured != 20 {
+		t.Fatalf("want stale DB metric and separate run coverage for 20 days, got %s / %d: %s", facts.Status, facts.DaysSinceRunMeasured, facts.Summary)
 	}
 	byKind := map[string]Alarm{}
 	for _, a := range facts.Alarms {
 		byKind[a.Kind] = a
 	}
 	for _, want := range []struct{ kind, text string }{
-		{AlarmNotMeasured, "not been measured by a workflow run for 20 days (last reading 17 Sep)"},
-		{AlarmNotMeasured, "1 reading(s) since came from outside a run"},
-		{AlarmGoalWorkNotMeasuring, "ran 6 time(s) since 17 Sep without recording a reading"},
+		{AlarmMeasurementStale, "subscriber_delta measurement is stale: last reading 17 Sep"},
+		{AlarmGoalWorkNotMeasuring, "ran 6 time(s) since 17 Sep without a reading linked to that execution"},
 		{AlarmGoalWorkSkipped, "(growth_funnel) has not completed for 11 days (last on 26 Sep)"},
 		{AlarmGoalWorkSkipped, "publish_review ×6"},
 		{AlarmGoalWorkSkipped, "1 goal run(s) failed"},

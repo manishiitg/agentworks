@@ -40,6 +40,7 @@ it("leads with the primary metric, a real value, target and observation date", (
             unit: "followers",
             run_id: "run-1",
             value: 290,
+            evidence: ["source"],
             observed_at: "2026-09-09T00:00:00Z",
           },
         ],

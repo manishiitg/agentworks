@@ -88,6 +88,7 @@ function MetricCard({
             : `Target ${metric.direction === "decrease" ? "≤ " : metric.direction === "increase" ? "≥ " : ""}${format(metric.target)} ${metric.unit}${metric.target_date ? ` by ${metric.target_date}` : ""}`}
         </span>
       </div>
+      {p.current !== undefined && p.delta === undefined && <p className="mt-2 text-xs text-muted-foreground">Comparable change unknown; check the baseline and measurement periods.</p>}
       {p.numeric.length > 1 && (
         <svg
           viewBox="0 0 600 110"
@@ -100,13 +101,13 @@ function MetricCard({
             {metric.name}: {format(values[0])} to {format(values.at(-1)!)}{" "}
             {metric.unit}
           </title>
-          <polyline
+          {p.continuous ? <polyline
             points={points}
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
             vectorEffect="non-scaling-stroke"
-          />
+          /> : points.split(" ").map((point, index) => { const [cx, cy] = point.split(","); return <circle key={index} cx={cx} cy={cy} r="3" fill="currentColor" /> })}
         </svg>
       )}
       {p.numeric.length > 1 && (
@@ -171,12 +172,13 @@ function MetricCard({
         <div className="mt-3 max-h-56 overflow-auto">
           <table className="w-full text-left">
             <caption className="sr-only">
-              Recent comparable measurements
+              Recent measurements; comparability requires source and window review
             </caption>
             <thead>
               <tr>
                 <th className="py-2">Observed</th>
                 <th>Value</th>
+                <th>Period</th>
                 <th>Evidence</th>
               </tr>
             </thead>
@@ -191,6 +193,7 @@ function MetricCard({
                       ? `${format(o.value)} ${metric.unit}`
                       : o.status || "Unavailable"}
                   </td>
+                  <td className="pr-2">{o.window_start && o.window_end ? `${new Date(o.window_start).toLocaleString()} – ${new Date(o.window_end).toLocaleString()}` : metric.window === "instant" ? "Point in time" : "Not recorded"}</td>
                   <td className="break-all">
                     {o.evidence?.join(", ") || "Not recorded"}
                   </td>

@@ -78,7 +78,7 @@ func TestGoalMetricSnapshotsLatestFailureAndStaleness(t *testing.T) {
 	m := testGoalMetric()
 	m.Target = pulseImpactFloat(100)
 	ledger := &PulseImpactLedger{Metrics: []GoalMetric{m}, Observations: []PulseGoalObservation{
-		{Metric: m.ID, CriterionID: m.CriterionID, Unit: m.Unit, Value: pulseImpactFloat(290), ObservedAt: "2026-09-09T00:00:00Z"},
+		{Metric: m.ID, CriterionID: m.CriterionID, Unit: m.Unit, Value: pulseImpactFloat(290), Evidence: []string{"source"}, ObservedAt: "2026-09-09T00:00:00Z"},
 		{Metric: m.ID, CriterionID: m.CriterionID, Unit: m.Unit, Status: "blocked", ObservedAt: "2026-09-10T00:00:00Z"},
 	}}
 	now, _ := time.Parse(time.RFC3339, "2026-09-11T12:00:00Z")

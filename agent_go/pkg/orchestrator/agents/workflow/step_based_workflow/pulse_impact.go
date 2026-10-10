@@ -53,6 +53,8 @@ const pulseGoalObservationsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_obser
 	status TEXT NOT NULL DEFAULT '',
 	unit TEXT NOT NULL DEFAULT '',
 	observed_at TEXT NOT NULL,
+	window_start TEXT NOT NULL DEFAULT '',
+	window_end TEXT NOT NULL DEFAULT '',
 	evidence_json TEXT NOT NULL DEFAULT '[]',
 	recorded_at TEXT NOT NULL,
 	UNIQUE (criterion_id, metric, run_id, route, environment)
@@ -130,6 +132,8 @@ type PulseGoalObservation struct {
 	Status        string   `json:"status,omitempty"`
 	Unit          string   `json:"unit,omitempty"`
 	ObservedAt    string   `json:"observed_at"`
+	WindowStart   string   `json:"window_start,omitempty"`
+	WindowEnd     string   `json:"window_end,omitempty"`
 	Evidence      []string `json:"evidence,omitempty"`
 	RecordedAt    string   `json:"recorded_at,omitempty"`
 }
@@ -178,6 +182,9 @@ func ensurePulseImpactSchema(ctx context.Context, db pulseFindingLifecycleDB) er
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
 			return err
 		}
+	}
+	if err := ensurePulseTableColumns(ctx, db, "pulse_goal_observations", map[string]string{"window_start": "TEXT NOT NULL DEFAULT ''", "window_end": "TEXT NOT NULL DEFAULT ''"}); err != nil {
+		return err
 	}
 	if err := ensurePulseInterventionColumns(ctx, db); err != nil {
 		return err
@@ -521,6 +528,9 @@ func RecordPulseImpactUpdate(ctx context.Context, workspacePath string, update P
 			return nil, fmt.Errorf("observations[%d] (%s/%s) requires either value or status; use the numeric value when one was measured, otherwise a short qualitative status such as not_measured or unavailable",
 				index, observation.CriterionID, observation.Metric)
 		}
+		if err := validateObservationWindow(observation); err != nil {
+			return nil, fmt.Errorf("observations[%d]: %w", index, err)
+		}
 		observation.ObservationID = strings.TrimSpace(observation.ObservationID)
 		if observation.ObservationID == "" {
 			observation.ObservationID = "obs-" + pulseImpactID(observation.CriterionID, observation.Metric, observation.RunID, observation.Route, observation.Environment)
@@ -530,12 +540,12 @@ func RecordPulseImpactUpdate(ctx context.Context, workspacePath string, update P
 			value = *observation.Value
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO pulse_goal_observations
-			(observation_id, criterion_id, metric, run_id, route, environment, value, status, unit, observed_at, evidence_json, recorded_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(observation_id, criterion_id, metric, run_id, route, environment, value, status, unit, observed_at, window_start, window_end, evidence_json, recorded_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			observation.ObservationID, observation.CriterionID, observation.Metric, observation.RunID,
 			strings.TrimSpace(observation.Route), strings.TrimSpace(observation.Environment), value,
 			strings.TrimSpace(observation.Status), strings.TrimSpace(observation.Unit), observation.ObservedAt,
-			pulseImpactJSON(observation.Evidence), now); err != nil {
+			observation.WindowStart, observation.WindowEnd, pulseImpactJSON(observation.Evidence), now); err != nil {
 			return nil, err
 		}
 	}
@@ -763,17 +773,17 @@ func LoadPulseImpactLedger(ctx context.Context, workspacePath string, limit int)
 	rows.Close()
 
 	rows, err = db.QueryContext(ctx, `SELECT observation_id, criterion_id, metric, run_id, route, environment,
-		value, status, unit, observed_at, evidence_json, recorded_at
+		value, status, unit, observed_at, window_start, window_end, evidence_json, recorded_at
 		FROM pulse_goal_observations WHERE observation_id IN (
- SELECT observation_id FROM pulse_goal_observations ORDER BY observed_at DESC LIMIT ?
+ SELECT observation_id FROM pulse_goal_observations ORDER BY julianday(observed_at) DESC, recorded_at DESC LIMIT ?
  ) OR observation_id IN (
  SELECT observation_id FROM (
- SELECT o.observation_id, ROW_NUMBER() OVER (PARTITION BY o.metric,o.criterion_id,o.unit,o.route,o.environment ORDER BY o.observed_at DESC) AS position
+ SELECT o.observation_id, ROW_NUMBER() OVER (PARTITION BY o.metric,o.criterion_id,o.unit,o.route,o.environment ORDER BY julianday(o.observed_at) DESC, o.recorded_at DESC) AS position
  FROM pulse_goal_observations o JOIN workflow_goal_metrics m ON m.metric_id=o.metric AND m.active=1
  WHERE o.criterion_id=json_extract(m.definition_json,'$.criterion_id') AND o.unit=json_extract(m.definition_json,'$.unit')
  AND o.route=json_extract(m.definition_json,'$.route') AND o.environment=json_extract(m.definition_json,'$.environment')
  ) WHERE position<=120
- ) ORDER BY observed_at DESC`, limit)
+ ) ORDER BY julianday(observed_at) DESC, recorded_at DESC`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -782,7 +792,7 @@ func LoadPulseImpactLedger(ctx context.Context, workspacePath string, limit int)
 		var value sql.NullFloat64
 		var evidenceJSON string
 		if err := rows.Scan(&item.ObservationID, &item.CriterionID, &item.Metric, &item.RunID, &item.Route,
-			&item.Environment, &value, &item.Status, &item.Unit, &item.ObservedAt, &evidenceJSON, &item.RecordedAt); err != nil {
+			&item.Environment, &value, &item.Status, &item.Unit, &item.ObservedAt, &item.WindowStart, &item.WindowEnd, &evidenceJSON, &item.RecordedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}

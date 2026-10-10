@@ -378,6 +378,10 @@ func TestMeasurementPlanGuidanceCoversFlexibleContract(t *testing.T) {
 		"get_goal_metrics",
 		"no topology change",
 		"read-only history",
+		"Builder and Pulse share the measurement",
+		"window_start",
+		"window_end",
+		"an iteration folder is not required",
 	} {
 		if !strings.Contains(guidance, want) {
 			t.Fatalf("measurement guidance missing %q\n\nGuidance:\n%s", want, guidance)

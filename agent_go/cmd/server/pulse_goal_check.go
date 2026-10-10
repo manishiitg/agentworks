@@ -249,15 +249,7 @@ func computeGoalStatus(ctx context.Context, workspacePath string, now time.Time)
 	if err != nil {
 		return nil, err
 	}
-	in := goalcheck.Input{Now: now}
-	for _, m := range ledger.Metrics {
-		in.Metrics = append(in.Metrics, goalcheck.Metric{ID: m.ID, Name: m.Name, Role: m.Role, Route: m.Route, Unit: m.Unit})
-	}
-	for _, o := range ledger.Observations {
-		observed, _ := time.Parse(time.RFC3339Nano, o.ObservedAt)
-		recordedAt, _ := time.Parse(time.RFC3339Nano, o.RecordedAt)
-		in.Observations = append(in.Observations, goalcheck.Observation{Metric: o.Metric, RunID: o.RunID, Value: o.Value, Status: o.Status, ObservedAt: observed, RecordedAt: recordedAt})
-	}
+	in := stepworkflow.GoalCheckInput(ledger, now)
 	since := now.Add(-goalCheckHistoryWindow)
 	recorded, err := stepworkflow.LoadGoalRunFacts(ctx, workspacePath, since)
 	if err != nil {
@@ -277,7 +269,7 @@ func computeGoalStatus(ctx context.Context, workspacePath string, now time.Time)
 		in.ReportedPauseFingerprint = latest.PauseFingerprint
 	}
 	view := &GoalStatusView{Facts: goalcheck.Evaluate(in), LatestCheck: latest}
-	view.Note = "Code-computed goal facts (no AI): is the goal measured by the workflow's own runs, does the goal's route run, and the silence alarm (no run or no reading for 3+ days). Judge these first. latest_check is the last goal check's verdict."
+	view.Note = "DB measurement facts: each active metric's source-backed history, current value, configured freshness and comparable numerical difference. Run recording coverage is separate and may lack attribution. Builder and Pulse agree measurement meaning and verify sources; Pulse judges progress and asks Builder to improve gaps. A numerical difference alone is not causal evidence or an on-track verdict. latest_check is the previous agent verdict."
 	return view, nil
 }
 
@@ -471,7 +463,7 @@ Code-computed goal facts (the silence alarm; already current, do not recompute t
 Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, answered decisions whose outcome is still to record, focus areas, QA results that came back, and run health (failed runs, steps' CONCERNS: lines, open issues since your last check):
 %s
 
-1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Decide: is the goal measured, is it moving, is the work that drives it running?
+1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Use source-backed DB history and each metric's freshness independently of execution-folder attribution. Work with Builder to choose and verify meaningful measurements; unavailable or incompatible baselines remain unknown, and a numeric difference alone does not prove progress. Decide: is the goal measured, is it moving, is the work that drives it running?
 2. Every check, on track or not: for each pending decision in decisions_to_recommend with no current recommendation (or new evidence since), call record_pulse_recommendation once: the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the permission levels below. You never answer a decision; the owner accepts or changes your recommendation. For each item in outcomes_due, call record_pulse_decision_outcome with what happened after. Add a new dated result, lesson or open bet with record_pulse_goal_memory (one line, source marked); consolidate the memory when its note says so. For each active focus area in focus_areas, call record_pulse_focus_area(action="track") with moving, stuck (and the one clear ask) or done; close a done or expired one with action="close" and a one-line lesson (for an expired one, say why and propose extend, change or drop). Read run_health: no separate Technical review runs after this workflow's runs, so you are its safety net. For a failed run or step that blocks or threatens the goal, diagnose it and ask the Builder chat (ask_builder) to debug and fix it with your evidence; note the other failures and concerns in one line in your summary. If the goal has no metric yet, get one set up through the Builder chat first. Then read plan_changes, owner_answers, spend, error_rate, login_hints and builder_asks and act on each as its note says: ask the Builder chat (ask_builder) about a plan change that touches a goal-driving step or the metric and record the answer in goal memory (source builder_answer).
 3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary, next_check_in_hours, next_check_reason) and stop. No notification.
 4. Otherwise act within the permission levels below, smallest useful step first. You run and change nothing yourself: ask the Builder chat (ask_builder) to run the goal-driving step or route, or to make the change. At an auto level it does so without the owner; at ask, prepare it as a decision. Then, if something important needs the owner, ask the Builder chat to raise ONE decision for the owner that names the problem in one line, with the options; it tells you the decision id, and you attach your recommendation with record_pulse_recommendation (with a safe default by a time only when one is safe). Ask it to reuse a pending goal-check decision instead of raising another. Never guess the owner's preference: say you do not know it.

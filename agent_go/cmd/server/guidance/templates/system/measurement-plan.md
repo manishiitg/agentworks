@@ -1,9 +1,45 @@
 ## MEASUREMENT — run-scoped, evidence-backed outcomes
 
 Outcome measurement is produced by ordinary workflow steps, not a mandated
-route or table. Any normal step or scheduled collector may produce a
+route or table. Any normal step may produce a
 run-scoped, evidence-backed measurement. Pulse does not depend on which step
 or route produced it.
+
+### Builder and Pulse share the measurement
+
+Builder chooses a meaningful primary outcome and implements its measurement;
+Pulse checks whether that choice actually represents `soul.md`, inspects DB
+history and challenges weak sources, missing readings or incompatible comparisons.
+Use `get_goal_metrics` together. Agree the formula/definition, source method,
+unit, fixed dimension/environment scope, point-in-time or period window,
+collection cadence, freshness and evidence needed to verify the number.
+Builder asks Pulse for goal context when uncertain; Pulse uses `ask_builder`
+for implementation or repair within the existing autonomy level. Verify the
+result through real source-backed DB readings and history, then record the
+agreed meaning, baseline and remaining gaps in goal memory. Setup alone is not
+verified measurement. Do not invent a target or silently change goal meaning.
+
+### Shared DB format and history
+
+- Reuse `workflow_goal_metrics` definitions and `pulse_goal_observations` in
+  the workflow DB for generic goal history. No separate collector subsystem.
+- A stable metric ID fixes formula, source/method, unit, window, environment,
+  route and dimensions. A changed meaning uses a new ID; old history stays.
+- Each observation records metric/criterion, exact unit/scope, actual
+  `observed_at`, numeric `value` or an explicit unavailable `status`, source
+  `evidence` and `run_id` identifying the source batch/execution. Run IDs are
+  opaque provenance: an iteration folder is not required to measure a goal.
+- Period-based measurements also record actual RFC3339 `window_start` and
+  `window_end`. Do not fabricate boundaries when backfilling legacy readings.
+  Use window `instant`, `snapshot` or `point_in_time` for totals at an instant.
+- Preserve original capture times and append history; retries are idempotent,
+  conflicts are rejected. Use distinct source batch IDs for distinct readings.
+  Unavailable is never zero. A recovered old batch is not a new measurement.
+- Go supplies per-metric freshness, bounded history and numeric differences
+  only across matching scopes and mechanically comparable periods/snapshots.
+  Missing/incompatible baselines stay unknown. Agents verify source quality,
+  sampling, calendar effects and attribution before calling a difference
+  progress. A numeric comparison is not a causal claim.
 
 ### Placing measurement
 

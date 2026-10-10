@@ -26,21 +26,32 @@ const recentRunsShown = 10
 // Metric is one active goal metric definition. Only primary metrics measure
 // the goal; Route names the route whose runs drive and measure it, if any.
 type Metric struct {
-	ID    string `json:"id"`
-	Name  string `json:"name,omitempty"`
-	Role  string `json:"role"`
-	Route string `json:"route,omitempty"`
-	Unit  string `json:"unit,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name,omitempty"`
+	Role           string            `json:"role"`
+	Route          string            `json:"route,omitempty"`
+	Unit           string            `json:"unit,omitempty"`
+	Window         string            `json:"window,omitempty"`
+	FreshnessHours float64           `json:"freshness_hours,omitempty"`
+	CriterionID    string            `json:"criterion_id,omitempty"`
+	Definition     string            `json:"definition,omitempty"`
+	Source         string            `json:"source,omitempty"`
+	Environment    string            `json:"environment,omitempty"`
+	Dimensions     map[string]string `json:"dimensions,omitempty"`
 }
 
 // Observation is one pulse_goal_observations row.
 type Observation struct {
-	Metric     string    `json:"metric"`
-	RunID      string    `json:"run_id"`
-	Value      *float64  `json:"value,omitempty"`
-	Status     string    `json:"status,omitempty"`
-	ObservedAt time.Time `json:"observed_at"`
-	RecordedAt time.Time `json:"recorded_at"`
+	ID          string    `json:"observation_id,omitempty"`
+	Metric      string    `json:"metric"`
+	RunID       string    `json:"run_id"`
+	Value       *float64  `json:"value,omitempty"`
+	Status      string    `json:"status,omitempty"`
+	ObservedAt  time.Time `json:"observed_at"`
+	RecordedAt  time.Time `json:"recorded_at"`
+	WindowStart string    `json:"window_start,omitempty"`
+	WindowEnd   string    `json:"window_end,omitempty"`
+	Evidence    []string  `json:"evidence,omitempty"`
 }
 
 // Run is one finished workflow run (not a Pulse pass).
@@ -72,6 +83,7 @@ type Input struct {
 // Alarm kinds.
 const (
 	AlarmNotMeasured          = "not_measured"
+	AlarmMeasurementStale     = "measurement_stale"
 	AlarmNoRun                = "no_run"
 	AlarmGoalWorkSkipped      = "goal_work_skipped"
 	AlarmGoalWorkNotMeasuring = "goal_work_not_measuring"
@@ -106,15 +118,16 @@ const (
 
 // Facts is the result.
 type Facts struct {
-	Status            string   `json:"status"`
-	Summary           string   `json:"summary"`
-	HasGoal           bool     `json:"has_goal"`
-	PrimaryMetrics    []string `json:"primary_metrics,omitempty"`
-	GoalRoutes        []string `json:"goal_routes,omitempty"`
-	KeyMetric         string   `json:"key_metric,omitempty"`
-	KeyValue          *float64 `json:"key_value,omitempty"`
-	LastMeasuredAt    string   `json:"last_measured_at,omitempty"`
-	LastRunMeasuredAt string   `json:"last_run_measured_at,omitempty"`
+	Status            string        `json:"status"`
+	Summary           string        `json:"summary"`
+	HasGoal           bool          `json:"has_goal"`
+	PrimaryMetrics    []string      `json:"primary_metrics,omitempty"`
+	GoalRoutes        []string      `json:"goal_routes,omitempty"`
+	KeyMetric         string        `json:"key_metric,omitempty"`
+	KeyValue          *float64      `json:"key_value,omitempty"`
+	LastMeasuredAt    string        `json:"last_measured_at,omitempty"`
+	Measurements      []Measurement `json:"measurements"`
+	LastRunMeasuredAt string        `json:"last_run_measured_at,omitempty"`
 	// Days since the last reading a workflow run recorded; -1 when none.
 	DaysSinceRunMeasured int       `json:"days_since_run_measured"`
 	ReadingsOutsideRuns  int       `json:"readings_outside_runs_since,omitempty"`
@@ -134,7 +147,8 @@ type Facts struct {
 var runFolderPattern = regexp.MustCompile(`^iteration-\d+`)
 
 // runSegment is the run folder's top segment ("iteration-41-sched"), or ""
-// when the id is not a workflow run (a builder chat or a Pulse review).
+// when the id has no folder association. This is only run provenance,
+// never measurement validity or freshness.
 func runSegment(id string) string {
 	id = strings.Trim(strings.TrimSpace(id), "/")
 	top := id
@@ -204,10 +218,12 @@ func Evaluate(in Input) Facts {
 	}
 	facts.HasGoal = true
 
-	// Readings: a primary observation with a value.
+	// DB readings are independent of workflow execution attribution.
+	facts.Measurements = Measurements(in.Metrics, in.Observations, now, float64(in.SilenceDays*24))
+	// Readings: valid numeric primary observations.
 	readings := []Observation{}
 	for _, o := range in.Observations {
-		if _, ok := primary[o.Metric]; ok && o.Value != nil && !o.ObservedAt.IsZero() {
+		if _, ok := primary[o.Metric]; ok && Numeric(o) && !o.ObservedAt.IsZero() && !o.ObservedAt.After(now) {
 			readings = append(readings, o)
 		}
 	}
@@ -221,12 +237,21 @@ func Evaluate(in Input) Facts {
 		facts.KeyValue = &v
 	}
 	for _, o := range readings {
-		if runSegment(o.RunID) != "" && o.ObservedAt.After(lastRunReading) {
-			lastRunReading = o.ObservedAt
+		for _, r := range in.Runs {
+			if measuredBy(r, []Observation{o}) && o.ObservedAt.After(lastRunReading) {
+				lastRunReading = o.ObservedAt
+			}
 		}
 	}
 	for _, o := range readings {
-		if runSegment(o.RunID) == "" && o.ObservedAt.After(lastRunReading) {
+		linked := false
+		for _, r := range in.Runs {
+			if measuredBy(r, []Observation{o}) {
+				linked = true
+				break
+			}
+		}
+		if !linked && o.ObservedAt.After(lastRunReading) {
 			facts.ReadingsOutsideRuns++
 		}
 	}
@@ -275,16 +300,17 @@ func Evaluate(in Input) Facts {
 	facts.DaysSinceGoalWork = days(now, lastGoalWork)
 	n := in.SilenceDays
 
-	// 1. The goal is not measured by the workflow's own runs.
-	if lastRunReading.IsZero() || facts.DaysSinceRunMeasured >= n {
-		msg := "The goal has never been measured by a workflow run."
-		if !lastRunReading.IsZero() {
-			msg = fmt.Sprintf("The goal has not been measured by a workflow run for %d days (last reading %s).", facts.DaysSinceRunMeasured, dateLabel(lastRunReading))
+	// Every primary has its own DB measurement and freshness contract.
+	for _, m := range facts.Measurements {
+		if primary[m.Metric.ID].ID == "" {
+			continue
 		}
-		if facts.ReadingsOutsideRuns > 0 {
-			msg += fmt.Sprintf(" %d reading(s) since came from outside a run, the latest on %s; the runs themselves do not record it.", facts.ReadingsOutsideRuns, dateLabel(readings[len(readings)-1].ObservedAt))
+		switch m.State {
+		case "missing", "unavailable":
+			facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmNotMeasured, Message: fmt.Sprintf("%s has no current numeric measurement in the DB (%s).", m.Metric.ID, m.State)})
+		case "stale":
+			facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmMeasurementStale, Days: days(now, m.Latest.ObservedAt), Message: fmt.Sprintf("%s measurement is stale: last reading %s, freshness limit %g hours.", m.Metric.ID, dateLabel(m.Latest.ObservedAt), m.FreshnessHours)})
 		}
-		facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmNotMeasured, Days: facts.DaysSinceRunMeasured, Message: msg})
 	}
 
 	// 2. Goal work ran but recorded no reading.
@@ -299,7 +325,7 @@ func Evaluate(in Input) Facts {
 		if !lastRunReading.IsZero() {
 			since = "since " + dateLabel(lastRunReading)
 		}
-		facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmGoalWorkNotMeasuring, Message: fmt.Sprintf("The goal work (%s) ran %d time(s) %s without recording a reading.", strings.Join(facts.GoalRoutes, ", "), unmeasured, since)})
+		facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmGoalWorkNotMeasuring, Message: fmt.Sprintf("The goal work (%s) ran %d time(s) %s without a reading linked to that execution. DB measurements are checked separately.", strings.Join(facts.GoalRoutes, ", "), unmeasured, since)})
 	}
 
 	// 3. The goal work is skipped while other work runs.

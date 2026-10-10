@@ -67,6 +67,8 @@ func createRecordPulseImpactTool() (llmtypes.Tool, func(context.Context, map[str
 			"status":         map[string]interface{}{"type": "string", "description": "Qualitative state when no honest numeric value exists."},
 			"unit":           map[string]interface{}{"type": "string"},
 			"observed_at":    map[string]interface{}{"type": "string"},
+			"window_start":   map[string]interface{}{"type": "string"},
+			"window_end":     map[string]interface{}{"type": "string"},
 			"evidence":       stringArray,
 		},
 		"required": []string{"criterion_id", "metric", "run_id", "observed_at"},

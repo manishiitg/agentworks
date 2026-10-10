@@ -33,8 +33,9 @@ function statusOf(goal: PulseGoalStatus): { label: string; tone: Tone } {
   // A fresh code alarm outranks an older "on track" verdict.
   if (verdict === 'on_track' && goal.facts.alarms.length === 0) return { label: 'On track', tone: 'good' }
   if (verdict === 'off_track') return { label: 'Off track', tone: 'bad' }
-  if (verdict === 'not_measured' || factStatus === 'not_measured') return { label: 'Not measured', tone: 'bad' }
+  if (factStatus === 'not_measured') return { label: 'Not measured', tone: 'bad' }
   if (verdict === 'at_risk' || factStatus === 'at_risk' || verdict === 'on_track') return { label: 'At risk', tone: 'warn' }
+  if (verdict === 'not_measured' || !verdict) return { label: 'Awaiting goal review', tone: 'muted' }
   return { label: 'On track', tone: 'good' }
 }
 
@@ -46,8 +47,8 @@ export function GoalStatusCard({ goal, workspacePath }: { goal: PulseGoalStatus 
   const { label, tone } = statusOf(goal)
   const facts = goal.facts
   const check = goal.latest_check
-  const keyNumber = check?.key_number || (facts.key_value !== undefined && facts.key_metric ? `${facts.key_value} (${facts.key_metric})` : '')
-  const lastRunMeasured = formatDate(facts.last_run_measured_at)
+  const outdatedMeasurementVerdict = check?.status === 'not_measured' && facts.status !== 'not_measured'
+  const keyNumber = (!outdatedMeasurementVerdict && check?.key_number) || (facts.key_value !== undefined && facts.key_metric ? `${facts.key_value} (${facts.key_metric})` : '')
   const lastMeasured = formatDate(facts.last_measured_at)
   return (
     <section className={`mb-3 rounded-lg border p-3 ${TONE_CLASSES[tone]}`} aria-label="Goal status">
@@ -56,16 +57,15 @@ export function GoalStatusCard({ goal, workspacePath }: { goal: PulseGoalStatus 
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${BADGE_CLASSES[tone]}`}>{label}</span>
         {keyNumber && <span className="text-xs text-foreground">{keyNumber}</span>}
         <span className="text-[11px] text-muted-foreground">
-          {lastRunMeasured ? `Last measured by a run ${lastRunMeasured}` : 'Never measured by a run'}
-          {lastMeasured && lastMeasured !== lastRunMeasured ? ` · latest reading ${lastMeasured}` : ''}
+          {lastMeasured ? `Last measured ${lastMeasured}` : 'No measurement recorded'}
         </span>
       </div>
-      {check?.summary && <p className="mt-1.5 text-xs text-foreground">{check.summary}</p>}
+      {check?.summary && <p className="mt-1.5 text-xs text-foreground">{outdatedMeasurementVerdict ? "Measurement facts changed; the previous goal verdict awaits Pulse review." : check.summary}</p>}
       {check?.action_taken && <p className="mt-1 text-[11px] text-muted-foreground">Done: {check.action_taken}</p>}
       {facts.alarms.length > 0 && (
         <ul className="mt-2 space-y-1">
           {facts.alarms.map(alarm => (
-            <li key={alarm.kind} className="text-[11px] text-foreground">• {alarm.message}</li>
+            <li key={`${alarm.kind}:${alarm.message}`} className="text-[11px] text-foreground">• {alarm.message}</li>
           ))}
         </ul>
       )}

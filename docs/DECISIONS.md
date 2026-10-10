@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Builder and Pulse share DB measurement and history (PLAT-813)
+
+Builder defines meaningful goal measurements and implements recording in ordinary
+workflow steps. Pulse reviews source-backed DB history and works with Builder to
+improve gaps. Go validates format, computes per-metric freshness and numerical
+comparisons; agents judge relevance, source quality and goal progress. Execution
+folder names never gate measurement validity. Existing immutable definitions and
+observation history remain the contract, with optional actual period boundaries;
+incompatible periods and unavailable baselines produce no numeric change.
+History and retired definitions are preserved. Run attribution remains a separate
+fact. See `goalcheck/measurements.go`, `goal_metrics.go` and the shared
+`measurement-plan` guidance. [PLAT-813](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/metrics/plat-813.md).
+
 ### 2026-10-10 — The navigation shortcut hint expires after eight seconds
 
 After navigation hides, dismiss its Ctrl+K / Command+K badge automatically after
@@ -25,6 +38,7 @@ dismissal across product remounts and browser-session reloads; only a fresh hide
 cycle resets it. Keep the left-edge reopen target and the shortcut available.
 Owner request; ticket:
 [PLAT-835](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-835.md).
+
 
 ### 2026-10-10 — Thinking is compact and finished thinking blocks survive a chat rebuild (PLAT-832)
 

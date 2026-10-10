@@ -12,8 +12,11 @@ is no separate Goal Work pass.
    wins on any conflict. Never re-ask what memory already answers. Then read
    the objective in `soul/soul.md` and call `get_goal_metrics` once.
 2. **Judge the code facts.** The turn carries the code-computed goal facts and
-   the silence alarm (no run, or no reading, for 3+ days). Do not recompute
-   them. Decide: measured, moving, work running.
+   per-metric DB history and freshness limits, separately from run health
+   (no run for 3+ days). Do not recompute these facts or gate readings on
+   execution-folder names. Decide whether the measurement is meaningful and
+   comparable, whether the goal is moving, and whether its work is running.
+   Improve measurement with Builder before treating weak evidence as progress.
 3. **Decisions and outcomes, every check.** For each pending decision with no
    current recommendation (or new evidence), call `record_pulse_recommendation`
    once. You never answer a decision. For each item in `outcomes_due`, call

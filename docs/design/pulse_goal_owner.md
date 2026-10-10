@@ -186,7 +186,7 @@ Required first (both found 2026-10-07 on a0d687b63; the first two are done in ph
 | Daily goal check | one short turn per active workflow | measured? moving? work running? Act within autonomy or message the owner; "on track" ends the turn |
 | A question is raised | short turn, immediate | answer within authority, else ask the owner with recommendation + default |
 | The owner answers | short turn, immediate | apply, save to goal memory, resume the waiting work |
-| Silence alarm | code only | no run or no measurement for N days (default 3) raises it, even with schedules paused; a deliberate pause is reported once |
+| Silence alarm | code only | missing/unavailable primary DB measurements, stale readings beyond each metric's freshness, or no run for N days (default 3); execution attribution is separate; a deliberate pause is reported once |
 
 The full review (Drift, Technical, Architecture) keeps its own self-deciding schedule (at most daily, at least
 weekly).

@@ -744,7 +744,7 @@ export const DEFAULT_PULSE_AUTONOMY: PulseAutonomy = { level: 1, run: 'auto', ou
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
 export interface PulseGoalAlarm {
-  kind: 'not_measured' | 'no_run' | 'goal_work_skipped' | 'goal_work_not_measuring'
+  kind: 'not_measured' | 'measurement_stale' | 'no_run' | 'goal_work_skipped' | 'goal_work_not_measuring'
   days?: number
   message: string
 }
@@ -758,6 +758,17 @@ export interface PulseGoalStatus {
     key_metric?: string
     key_value?: number
     last_measured_at?: string
+    /** Source-backed DB facts, independently of execution-folder attribution. */
+    measurements?: {
+      metric: Pick<GoalMetric, 'id' | 'name' | 'role' | 'unit' | 'window' | 'freshness_hours'> & Partial<Pick<GoalMetric, 'criterion_id' | 'definition' | 'source' | 'route' | 'environment' | 'dimensions'>>
+      state: 'missing' | 'unavailable' | 'measured' | 'stale'
+      freshness_hours: number
+      latest?: Pick<PulseGoalObservation, 'metric' | 'run_id' | 'observed_at' | 'value' | 'status' | 'window_start' | 'window_end' | 'evidence'>
+      previous?: Pick<PulseGoalObservation, 'metric' | 'run_id' | 'observed_at' | 'value' | 'status' | 'window_start' | 'window_end' | 'evidence'>
+      change_from_previous?: number
+      comparison: string
+      history: Pick<PulseGoalObservation, 'metric' | 'run_id' | 'observed_at' | 'value' | 'status' | 'window_start' | 'window_end' | 'evidence'>[]
+    }[]
     last_run_measured_at?: string
     days_since_run_measured: number
     last_run_at?: string
@@ -852,6 +863,8 @@ export interface PulseGoalObservation {
   status?: string
   unit?: string
   observed_at: string
+  window_start?: string
+  window_end?: string
   evidence?: string[]
   recorded_at?: string
 }
