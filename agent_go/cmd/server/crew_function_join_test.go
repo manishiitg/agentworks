@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -109,5 +110,58 @@ func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 	args["args"] = map[string]interface{}{"build": "8"}
 	if _, err := env.alpha["call_function"].exec(context.Background(), args); err == nil {
 		t.Fatal("conflicting reuse of submission_id was accepted")
+	}
+}
+
+// PLAT-756: an owner can ask for a call to run in Run mode (MCP run_mode), to see how it behaves for anyone else. The
+// call records it and the delivery to the Crew carries no trace of the flag, so a function cannot see or depend on it.
+func TestCrewFunctionRunModeIsRecordedAndKeptOutOfTheDelivery(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller, err := crewTriggerLinkCaller(linkAlphaPath)(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	functions, err := callableFunctions(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, _ := findCrewFunction(functions, "run_login_flow")
+	plain, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, fn, map[string]interface{}{"build": "1"}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned, err := env.api.startCrewFunctionCall(withCrewRunMode(ctx), "owner", caller, target, fn, map[string]interface{}{"build": "2"}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.RunMode || !pinned.RunMode {
+		t.Fatalf("run mode recorded wrongly: plain=%v pinned=%v", plain.RunMode, pinned.RunMode)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		env.mock.mu.Lock()
+		delivered := false
+		for path, content := range env.mock.files {
+			if strings.Contains(path, "/triggers/deliveries/") && strings.Contains(content, pinned.ID) {
+				delivered = true
+				if strings.Contains(content, "run_mode") {
+					env.mock.mu.Unlock()
+					t.Fatalf("the delivery carries the run-mode flag: %s", content)
+				}
+			}
+		}
+		env.mock.mu.Unlock()
+		if delivered {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the pinned call was never delivered")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

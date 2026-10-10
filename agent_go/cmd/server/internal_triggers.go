@@ -196,6 +196,8 @@ type internalCrewTriggerCall struct {
 	Payload        []byte
 	// CallerLabel is the caller's display name for the turn's source note.
 	CallerLabel string
+	// PinRunMode runs the turn in Run mode even for the Crew's owner (a downgrade only; PLAT-756).
+	PinRunMode bool
 }
 
 // internalWorkflowTriggerCall invokes a workflow trigger from a Crew run.

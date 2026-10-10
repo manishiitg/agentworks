@@ -230,6 +230,9 @@ Ticket: [PLAT-759](https://github.com/runloop-workflows/deployments/blob/main/ti
   the run folder. The write allow-lists keep the root unwritable. If the folder cannot be made, the old rule applies.
 - Notices and refusals say Run mode, not read-only. Not covered yet: writing the Crew database from Run mode, and
   keeping one caller's run folder from other readers (run folders are readable like the Crew, as workflow runs are).
+- An owner can run a call in Run mode to see how it behaves for anyone else: `run_mode: true` on the MCP tools
+  `call_crew_function` and `ask_crew`. It only pins the turn (`pin_run_mode`, a downgrade) and cannot grant anything; a
+  function never sees the flag.
 - Code: `crew_run_folder.go`, `server.go` (Crew folder guard), `cli_landlock.go`, `crew_session_mode.go`.
   Ticket: [PLAT-756](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/crew/functions/plat-756.md).
 

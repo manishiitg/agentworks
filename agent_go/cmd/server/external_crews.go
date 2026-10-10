@@ -260,6 +260,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// The call outlives this request; the Crew works in this user's own
 		// conversation with it.
 		callCtx := context.WithoutCancel(ctx)
+		// An owner can run a call in Run mode to see how it behaves for anyone else (PLAT-756). It only narrows the turn.
+		if runMode, _ := args["run_mode"].(bool); runMode {
+			callCtx = withCrewRunMode(callCtx)
+		}
 		submissionID, _ := args["submission_id"].(string)
 		call, err := api.startCrewFunctionCall(callCtx, claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout, submissionID)
 		if err != nil {

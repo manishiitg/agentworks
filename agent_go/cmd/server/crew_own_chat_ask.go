@@ -83,6 +83,9 @@ func (api *StreamingAPI) runCrewOwnChatAsk(call *crewFunctionCall, target trigge
 		call.settle("failed", nil, err.Error())
 		return
 	}
+	if call.RunMode {
+		reqMap["pin_run_mode"] = true // an owner testing the ask as another caller would see it (PLAT-756)
+	}
 	// One ask at a time per chat. A second ask sent while the chat answers the first was delivered into the running turn as live
 	// input, which records no execution of its own: its caller waited for one that never appeared ("was not registered";
 	// acceptance run, PLAT-796). Waiting here makes each ask its own turn.

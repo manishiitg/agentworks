@@ -91,6 +91,7 @@ type productScheduleUserState struct {
 type productScheduleJob struct {
 	UserID            string
 	GuestCallerID     string // a non-owner's call: the turn runs as their guest
+	PinRunMode        bool   // the call asked for Run mode (an owner testing as another caller)
 	Profile           agentprofiles.Profile
 	Schedule          productschedule.Schedule
 	State             productScheduleUserState
@@ -1288,6 +1289,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		}
 		reqMap["triggered_by"] = firstNonEmptyTrimmed(triggerSource, "cron")
 		applyCrewGuestCaller(reqMap, job.GuestCallerID)
+		if job.PinRunMode {
+			reqMap["pin_run_mode"] = true
+		}
 		reqMap["triggered_by_label"] = automationTriggerLabel(firstNonEmptyTrimmed(triggerSource, "cron"), job.Schedule.Name)
 		applyAutomationCostSource(reqMap, job, runID)
 		reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, job.Profile.Name)

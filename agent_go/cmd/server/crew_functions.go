@@ -333,14 +333,16 @@ type crewFunctionProgress struct {
 type crewFunctionCall struct {
 	mu sync.Mutex
 
-	ID              string                 `json:"call_id"`
-	Function        string                 `json:"function"`
-	UserID          string                 `json:"-"`
-	CallerKind      string                 `json:"caller_kind"`
-	CallerID        string                 `json:"caller_id"`
-	CallerProfileID string                 `json:"caller_profile_id,omitempty"`
-	CallerPath      string                 `json:"-"`
-	CallerLabel     string                 `json:"caller_label"`
+	ID              string `json:"call_id"`
+	Function        string `json:"function"`
+	UserID          string `json:"-"`
+	CallerKind      string `json:"caller_kind"`
+	CallerID        string `json:"caller_id"`
+	CallerProfileID string `json:"caller_profile_id,omitempty"`
+	CallerPath      string `json:"-"`
+	CallerLabel     string `json:"caller_label"`
+	// RunMode: the owner asked for this call to run in Run mode, to test it as another caller would see it.
+	RunMode         bool                   `json:"run_mode,omitempty"`
 	TargetKind      string                 `json:"target_kind"`
 	TargetID        string                 `json:"target_id"`
 	TargetProfileID string                 `json:"target_profile_id,omitempty"`
@@ -762,8 +764,22 @@ func crewFunctionChainCalls(root string) int {
 
 // --- dispatch ---
 
+type crewRunModeKey struct{}
+
+// withCrewRunMode marks a Crew call to run its turn in Run mode, as a guest's would, whoever calls (PLAT-756).
+func withCrewRunMode(ctx context.Context) context.Context {
+	return context.WithValue(ctx, crewRunModeKey{}, true)
+}
+
+func crewRunModeFromContext(ctx context.Context) bool {
+	on, _ := ctx.Value(crewRunModeKey{}).(bool)
+	return on
+}
+
 // dispatchTargetTrigger fires one internal trigger delivery on target.
 func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, deliveryID, event string, body map[string]interface{}) (internalTriggerDeliveryResult, error) {
+	runMode, _ := body["run_mode"].(bool)
+	delete(body, "run_mode")
 	data, err := json.Marshal(body)
 	if err != nil {
 		return internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
@@ -774,7 +790,7 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
-			CallerPath: caller.Path,
+			CallerPath: caller.Path, PinRunMode: runMode,
 		})
 	case triggerCallerWorkflow:
 		delivery, err = api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
@@ -927,6 +943,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		CallerChat: callerChat, CallerChatSession: callerChatSession, TargetChat: targetChat, TargetChatSession: targetChatSession,
 		target: target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
 		argsKey: argsKey,
+		RunMode: crewRunModeFromContext(ctx),
 	}
 	fromPath := caller.Path
 	if caller.Stamp.ProfileID == codeproduct.ProfileID {
@@ -936,6 +953,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		"task":    crewFunctionTaskText(call, fn, args),
 		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": fromPath},
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
+	}
+	if call.RunMode {
+		body["run_mode"] = true // read, and removed, by dispatchTargetTrigger
 	}
 	crewFunctionCalls.Lock()
 	if submissionID != "" {
