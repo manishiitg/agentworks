@@ -1305,7 +1305,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 //
 // It used to return an error and DISCARD the output, which cost the step a full
 // round trip and left it choosing a narrower --selector/--depth without ever
-// having seen the tree. Measured live 2026-08-17 (confida-login): 4 snapshots at
+// having seen the tree. Measured live 2026-08-17 (customer-login): 4 snapshots at
 // ~30.4k runes against the 24k cap, each one a blind retry.
 //
 // The original rationale is kept intact -- a snapshot must never be SILENTLY

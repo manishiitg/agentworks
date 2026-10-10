@@ -57,7 +57,7 @@ func TestResolveWorkflowWorkspaceFolderKnowledgebaseOnlyAndRealConflicts(t *test
 func TestResolveWorkflowWorkspaceFolderWorkingDirWinsOverWritableAttachedCrews(t *testing.T) {
 	got, err := resolveWorkflowWorkspaceFolder("s", &common.SessionShellConfig{
 		WorkingDir: "/data/docs/_users/u/Chats/Work/projects/gptlive1-cef0edb2",
-		WritePaths: []string{"_users/u/Chats/Work/projects/gptlive1-cef0edb2/", "_users/u/Chats/Work/projects/rts-flow-tester-5090fe7e", "_users/u/Chats/Work/projects/new-project-2271585c"},
+		WritePaths: []string{"_users/u/Chats/Work/projects/gptlive1-cef0edb2/", "_users/u/Chats/Work/projects/project-a-flow-tester-5090fe7e", "_users/u/Chats/Work/projects/new-project-2271585c"},
 		ReadPaths:  []string{"Workflow/rtsprreviweer"},
 	})
 	if err != nil || got != "Chats/Work/projects/gptlive1-cef0edb2" {

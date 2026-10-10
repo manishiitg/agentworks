@@ -357,7 +357,7 @@ func TestMessageSequenceItemUsesManagedDBToolsWithoutRawDBFilesystemAccess(t *te
 	}
 }
 
-// PLAT-175. confida-login's survey-app-and-refresh-knowledge step is a
+// PLAT-175. customer-login's survey-app-and-refresh-knowledge step is a
 // message_sequence step instructed, in its own plan description, to sync
 // db/assets/business-context/ via shell every cycle -- read the existing
 // .source_sha to compare, then add/overwrite/remove files and rewrite

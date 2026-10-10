@@ -1509,7 +1509,7 @@ func TestListWorkflowHistoryRepairsMissingTitleFromOlderDatedEntry(t *testing.T)
 	}
 }
 
-// Reproduces the confida-login/apollo-mcp incident: a session's first save
+// Reproduces the customer-login/apollo-mcp incident: a session's first save
 // wrote user_id="default" (real attribution not resolved yet), every later
 // save correctly rewrote the conversation file with the real user, but the
 // index entry stayed frozen at "default"/"System / legacy" because
@@ -1523,8 +1523,8 @@ func TestRepairStaleChatHistoryAttributionFixesFrozenDefaultFromRealConversation
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 
-	conversationPath := "Workflow/confida-login/builder/conversation/2026-09-09/session-d5419bb4-conversation.json"
-	indexPath := "Workflow/confida-login/builder/conversation/" + chatHistoryIndexFileName
+	conversationPath := "Workflow/customer-login/builder/conversation/2026-09-09/session-d5419bb4-conversation.json"
+	indexPath := "Workflow/customer-login/builder/conversation/" + chatHistoryIndexFileName
 
 	workspace.mu.Lock()
 	workspace.files[conversationPath] = `{"session_id":"d5419bb4","user_id":"e697742fc7eab8bc1cf3b7658885b8c2","username":"saurabh","conversation_history":[]}`
@@ -2372,7 +2372,7 @@ func TestReadChatHistoryRuntimeForSessionReadsWorkflowScopedRuntime(t *testing.T
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 
-	convDir := filepath.Join(root, "Workflow", "rtslatency", "builder", "conversation", "2026-05-20")
+	convDir := filepath.Join(root, "Workflow", "latency-report", "builder", "conversation", "2026-05-20")
 	if err := os.MkdirAll(convDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -2392,7 +2392,7 @@ func TestReadChatHistoryRuntimeForSessionReadsWorkflowScopedRuntime(t *testing.T
 		t.Fatal(err)
 	}
 
-	runtime, ok, err := ReadChatHistoryRuntimeForSession("default", "chat-1", "Workflow/rtslatency")
+	runtime, ok, err := ReadChatHistoryRuntimeForSession("default", "chat-1", "Workflow/latency-report")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2409,7 +2409,7 @@ func TestFindChatHistoryConversationPathForSessionReadsWorkflowScopedPath(t *tes
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 
-	convDir := filepath.Join(root, "Workflow", "rtslatency", "builder", "conversation", "2026-05-20")
+	convDir := filepath.Join(root, "Workflow", "latency-report", "builder", "conversation", "2026-05-20")
 	if err := os.MkdirAll(convDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -2424,14 +2424,14 @@ func TestFindChatHistoryConversationPathForSessionReadsWorkflowScopedPath(t *tes
 		t.Fatal(err)
 	}
 
-	got, ok, err := FindChatHistoryConversationPathForSession("default", "chat-1", "Workflow/rtslatency")
+	got, ok, err := FindChatHistoryConversationPathForSession("default", "chat-1", "Workflow/latency-report")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("expected conversation path")
 	}
-	want := "Workflow/rtslatency/builder/conversation/2026-05-20/session-chat-1-conversation.json"
+	want := "Workflow/latency-report/builder/conversation/2026-05-20/session-chat-1-conversation.json"
 	if got != want {
 		t.Fatalf("conversation path = %q, want %q", got, want)
 	}
@@ -2463,7 +2463,7 @@ func TestSeedCodingAgentRuntimeFromCurrentConversationRestoresClaude(t *testing.
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 
-	convDir := filepath.Join(root, "Workflow", "rtslatency", "builder", "conversation", "2026-05-20")
+	convDir := filepath.Join(root, "Workflow", "latency-report", "builder", "conversation", "2026-05-20")
 	if err := os.MkdirAll(convDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -2485,7 +2485,7 @@ func TestSeedCodingAgentRuntimeFromCurrentConversationRestoresClaude(t *testing.
 	api := &StreamingAPI{}
 	agent := &mcpagent.Agent{}
 
-	seeded, recoveredRuntime := api.seedCodingAgentRuntimeFromCurrentConversation("existing-chat", "default", "claude-code", "builder", "Workflow/rtslatency", agent)
+	seeded, recoveredRuntime := api.seedCodingAgentRuntimeFromCurrentConversation("existing-chat", "default", "claude-code", "builder", "Workflow/latency-report", agent)
 	if !seeded {
 		t.Fatal("expected current conversation runtime to seed native resume state")
 	}

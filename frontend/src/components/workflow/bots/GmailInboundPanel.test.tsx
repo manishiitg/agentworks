@@ -83,16 +83,16 @@ describe('Gmail incoming email settings', () => {
   it('shows the administrator review and progress without exposing configuration editors', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [], setup: {
       oauth_clients: [], can_connect_account: true,
-      provisioning: { available: true, can_prepare: true, oauth_clients: [{ name: 'rts-app', project_id: 'rts-project' }], job: {
+      provisioning: { available: true, can_prepare: true, oauth_clients: [{ name: 'app-project', project_id: 'sample-project' }], job: {
         id: 'review', stage: 'Waiting for administrator review and Google consent', expires_at: '2026-10-04T18:00:00Z', review_url: 'https://video.realtrainingsys.com/api/gmail-inbound/setup/start?plan_id=review',
-        plan: { client_name: 'rts-app', project_id: 'rts-project', delivery_project_id: 'rts-project', push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', topic: 'projects/rts-project/topics/mail', subscription: 'projects/rts-project/subscriptions/mail', push_service_account: 'push@rts-project.iam.gserviceaccount.com' },
+        plan: { client_name: 'app-project', project_id: 'sample-project', delivery_project_id: 'sample-project', push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', topic: 'projects/sample-project/topics/mail', subscription: 'projects/sample-project/subscriptions/mail', push_service_account: 'push@sample-project.iam.gserviceaccount.com' },
       } },
     } })
     const onAsk = vi.fn()
     await render('Chats/Code/projects/code-1', onAsk)
     const section = host.querySelector('[aria-label="Incoming email server setup"]')!
     expect(section.textContent).toContain('Waiting for administrator review')
-    expect(section.textContent).toContain('rts-project')
+    expect(section.textContent).toContain('sample-project')
     expect(section.querySelector('a')?.href).toContain('/api/gmail-inbound/setup/start?plan_id=review')
     expect(section.querySelector('input, select, button')).toBeNull()
     await ask()
@@ -102,10 +102,10 @@ describe('Gmail incoming email settings', () => {
 
   it('reports setup failures independently from mailbox delivery readiness', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, setup: {
-      oauth_clients: ['rts-app'], can_connect_account: true,
+      oauth_clients: ['app-project'], can_connect_account: true,
       provisioning: { available: true, can_prepare: true, oauth_clients: [], job: {
         id: 'review', stage: 'Setup failed', error: 'Google Cloud permissions are missing. Retry setup after fixing access.', expires_at: '2026-10-04T18:00:00Z',
-        plan: { client_name: 'rts-app', project_id: 'rts-project', delivery_project_id: 'rts-project', push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', topic: '', subscription: '', push_service_account: '' },
+        plan: { client_name: 'app-project', project_id: 'sample-project', delivery_project_id: 'sample-project', push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', topic: '', subscription: '', push_service_account: '' },
       } },
     } })
     await render()
@@ -216,7 +216,7 @@ describe('Gmail incoming email settings', () => {
   })
 
   it('shows combined filters read-only, including an explicit no-attachments condition', async () => {
-    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { subject_contains: ['invoice', 'RTS'], body_contains: ['approved'], has_attachments: false, new_threads_only: true } }, deliveries: [{ id: 'skipped', status: 'filtered', session_id: '', error: 'Body does not match the required keywords' }] })
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { subject_contains: ['invoice', 'project-a'], body_contains: ['approved'], has_attachments: false, new_threads_only: true } }, deliveries: [{ id: 'skipped', status: 'filtered', session_id: '', error: 'Body does not match the required keywords' }] })
     await render()
     expect(host.textContent).toContain('Subject contains “invoice”')
     expect(host.textContent).toContain('Body contains “approved”')
@@ -230,9 +230,9 @@ describe('Gmail incoming email settings', () => {
 
   it('shows ordered project rules, saved messages, paused state and matched activity read-only', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, rules: [
-      { id: 'rts', name: 'Training requests', filters: { sender_allowlist: ['@realtrainingsys.com'], subject_contains_any: ['Real Training', 'RTS'] }, instruction: 'Send X message' },
+      { id: 'project-a', name: 'Training requests', filters: { sender_allowlist: ['@realtrainingsys.com'], subject_contains_any: ['Real Training', 'project-a'] }, instruction: 'Send X message' },
       { id: 'notion', name: 'Notion updates', enabled: false, filters: { sender_allowlist: ['updates@vendor.example'], allow_automatic: true }, instruction: 'Send Y message' },
-    ] }, deliveries: [{ id: 'delivery', status: 'completed', session_id: 'chat', rule_id: 'rts', rule_name: 'Training requests' }] })
+    ] }, deliveries: [{ id: 'delivery', status: 'completed', session_id: 'chat', rule_id: 'project-a', rule_name: 'Training requests' }] })
     const onAsk = vi.fn()
     await render('Chats/Code/projects/code-1', onAsk)
     const cards = [...host.querySelectorAll('[aria-label="Email rules"] ol > li')]

@@ -1,6 +1,6 @@
 # Default productivity MCP connections
 
-The shared local catalog and the RTS/Confida release catalogs include the
+The shared local catalog and the server A/server C release catalogs include the
 following direct-provider integrations. Catalog presence makes a connection
 available to configure; it does not authorize an account or select it for every
 workflow. Existing user overlays remain separate.

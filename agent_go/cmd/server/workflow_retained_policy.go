@@ -138,7 +138,7 @@ func requestedProviderOf(req QueryRequest) string {
 // effectiveProviderOf is the coding provider this request will actually run on, resolved in the order handleQuery applies: the manifest's LLM for a Builder chat
 // (unless the request's LLM config comes from a product profile), then the server's locked default (a locked server honours the request only for a product profile
 // or a published model), then the request's own choice. Comparing the retained CLI with the raw request provider called every send a provider change whenever the
-// request named a provider that is never used (local Codex chat that answered "queued", RTS-style locked servers, 2026-10-04).
+// request named a provider that is never used (local Codex chat that answered "queued", server A-style locked servers, 2026-10-04).
 func (api *StreamingAPI) effectiveProviderOf(ctx context.Context, req QueryRequest) string {
 	if req.AgentMode == "workflow_phase" && !requestLLMConfigOverridesManifest(req) {
 		folder := strings.TrimSpace(req.SelectedFolder)

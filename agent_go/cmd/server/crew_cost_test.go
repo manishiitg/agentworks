@@ -88,22 +88,22 @@ func TestUpdateScheduleRunTokenUsage(t *testing.T) {
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	ctx := context.Background()
-	if err := AppendScheduleRun(ctx, "Crew/rts", &ScheduleRunEntry{ID: "run-1", ScheduleID: "sched-1", Status: "success"}); err != nil {
+	if err := AppendScheduleRun(ctx, "Crew/project-a", &ScheduleRunEntry{ID: "run-1", ScheduleID: "sched-1", Status: "success"}); err != nil {
 		t.Fatal(err)
 	}
 	usage := &workflowtypes.CrewRunTokenUsage{}
 	usage.AddModel("model-a", "prov", 10, 5, 0, 0, 0, 0.1, 1)
-	if err := UpdateScheduleRunTokenUsage(ctx, "Crew/rts", "run-1", usage); err != nil {
+	if err := UpdateScheduleRunTokenUsage(ctx, "Crew/project-a", "run-1", usage); err != nil {
 		t.Fatal(err)
 	}
-	entry, err := FindScheduleRun(ctx, "Crew/rts", "run-1")
+	entry, err := FindScheduleRun(ctx, "Crew/project-a", "run-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if entry.Usage == nil || entry.Usage.PromptTokens != 10 || entry.Usage.ByModel["model-a"] == nil {
 		t.Fatalf("entry usage = %+v", entry.Usage)
 	}
-	if err := UpdateScheduleRunTokenUsage(ctx, "Crew/rts", "missing", usage); err == nil {
+	if err := UpdateScheduleRunTokenUsage(ctx, "Crew/project-a", "missing", usage); err == nil {
 		t.Fatal("missing run must fail")
 	}
 }
@@ -115,14 +115,14 @@ func TestUpdateScheduleRunResultSingleWrite(t *testing.T) {
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	ctx := context.Background()
-	if err := AppendScheduleRun(ctx, "Crew/rts", &ScheduleRunEntry{ID: "run-1", ScheduleID: "sched-1", Status: "running"}); err != nil {
+	if err := AppendScheduleRun(ctx, "Crew/project-a", &ScheduleRunEntry{ID: "run-1", ScheduleID: "sched-1", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
 	atomic.StoreInt32(&puts, 0)
 	duration := int64(1200)
 	usage := &workflowtypes.CrewRunTokenUsage{}
 	usage.AddModel("model-a", "prov", 10, 5, 0, 0, 0, 0.1, 1)
-	if err := UpdateScheduleRunResult(ctx, "Crew/rts", "run-1", ScheduleRunCompletion{
+	if err := UpdateScheduleRunResult(ctx, "Crew/project-a", "run-1", ScheduleRunCompletion{
 		Status: "success", DurationMs: &duration, SessionID: "sess-1",
 		FinalResponse: "done", Usage: usage,
 	}); err != nil {
@@ -131,7 +131,7 @@ func TestUpdateScheduleRunResultSingleWrite(t *testing.T) {
 	if got := atomic.LoadInt32(&puts); got != 1 {
 		t.Fatalf("completion took %d schedule-runs.json writes, want 1", got)
 	}
-	entry, err := FindScheduleRun(ctx, "Crew/rts", "run-1")
+	entry, err := FindScheduleRun(ctx, "Crew/project-a", "run-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestUpdateScheduleRunResultSingleWrite(t *testing.T) {
 	if entry.Usage == nil || entry.Usage.PromptTokens != 10 || entry.CompletedAt == nil {
 		t.Fatalf("entry usage/completion = %+v", entry)
 	}
-	if err := UpdateScheduleRunResult(ctx, "Crew/rts", "missing", ScheduleRunCompletion{Status: "success"}); err == nil {
+	if err := UpdateScheduleRunResult(ctx, "Crew/project-a", "missing", ScheduleRunCompletion{Status: "success"}); err == nil {
 		t.Fatal("missing run must fail")
 	}
 }
@@ -152,7 +152,7 @@ func TestUpdateScheduleRunResultAtomicity(t *testing.T) {
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	ctx := context.Background()
-	if err := AppendScheduleRun(ctx, "Crew/rts", &ScheduleRunEntry{ID: "run-1", ScheduleID: "sched-1", Status: "running"}); err != nil {
+	if err := AppendScheduleRun(ctx, "Crew/project-a", &ScheduleRunEntry{ID: "run-1", ScheduleID: "sched-1", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
 	usageA := &workflowtypes.CrewRunTokenUsage{}
@@ -175,7 +175,7 @@ func TestUpdateScheduleRunResultAtomicity(t *testing.T) {
 					return
 				default:
 				}
-				entry, err := FindScheduleRun(ctx, "Crew/rts", "run-1")
+				entry, err := FindScheduleRun(ctx, "Crew/project-a", "run-1")
 				if err != nil {
 					continue
 				}
@@ -196,7 +196,7 @@ func TestUpdateScheduleRunResultAtomicity(t *testing.T) {
 		if i%2 == 1 {
 			state = stateB
 		}
-		if err := UpdateScheduleRunResult(ctx, "Crew/rts", "run-1", state); err != nil {
+		if err := UpdateScheduleRunResult(ctx, "Crew/project-a", "run-1", state); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -209,10 +209,10 @@ func TestUpdateScheduleRunResultAtomicity(t *testing.T) {
 
 func TestDispatchInternalProductTriggerStampsCaller(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, internalDispatchCrewTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	result, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:         triggerCaller{Type: "workflow", ID: "wf-1"},
 		WorkflowRunID:  "iteration-0",
 		WorkflowStepID: "crew-1",
@@ -221,7 +221,7 @@ func TestDispatchInternalProductTriggerStampsCaller(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 	entry, err := FindScheduleRun(ctx, runsWorkspace, result.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -233,19 +233,19 @@ func TestDispatchInternalProductTriggerStampsCaller(t *testing.T) {
 
 func TestRunCrewStepAdoptsRunUsage(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
-	runID := webhookDeliveryRunID("rts", "trig-1", crewRunnerDeliveryBase(req))
+	runID := webhookDeliveryRunID("project-a", "trig-1", crewRunnerDeliveryBase(req))
 	first, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: crewRunnerDeliveryBase(req), Payload: []byte(`{}`),
 	})
 	if err != nil || first.RunID != runID {
 		t.Fatalf("seed dispatch = %+v err=%v", first, err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 	if err := UpdateScheduleRun(ctx, runsWorkspace, runID, "success", "", nil, "", "sess-9"); err != nil {
 		t.Fatal(err)
 	}

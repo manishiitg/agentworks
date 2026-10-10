@@ -212,7 +212,7 @@ Read-only users see neither.
    Env tiers still honoured underneath for identities the directory does not know.
 2. **Video Studio as real users** (built): gateway password gate off, the
    gateway verifies the app JWT itself and stamps `X-User-ID`, login rate
-   limited, `deploy/aws-ec2/migrate-to-user-accounts.sh` (one-time; removed 2026-09-23 after RTS migrated) moved the `default`
+   limited, `deploy/aws-ec2/migrate-to-user-accounts.sh` (one-time; removed 2026-09-23 after server A migrated) moved the `default`
    tree to the admin.
 3. **Workflow ownership and sharing** (built): `access` block
    (`workflow_access.go`), `created_by` alone still names the owner on older
@@ -267,7 +267,7 @@ account keeps the role and products the admin set.
 - **Per-deployment switch:** `USER_INVITE_EMAILS=off` turns invitation emails
   off for a deployment even when it has the key (status `disabled`; the panel
   hides Resend and offers Copy invitation). Server B sends; server A
-  (`video-studio-agent.service`) and Confida (`product.env` EXTRA_ENV) are off
+  (`video-studio-agent.service`) and server C (`product.env` EXTRA_ENV) are off
   (user, 2026-09-29).
 - **Shared project.** Server B signs in through server C's Supabase project,
   so SMTP settings and templates apply to server C's own auth emails too, and

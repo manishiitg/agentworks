@@ -12,10 +12,10 @@ import (
 func TestBrainNotesMoveIntoDocumentsOnceAndStayAdminOnly(t *testing.T) {
 	root := t.TempDir()
 	old := filepath.Join(root, "state", "live")
-	if err := os.MkdirAll(filepath.Join(old, "RTS", "Latency"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(old, "project-a", "Latency"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(old, "RTS", "Latency", "notes.md"), []byte("kept"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(old, "project-a", "Latency", "notes.md"), []byte("kept"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	docs := filepath.Join(root, "docs", brainFolderName)
@@ -24,7 +24,7 @@ func TestBrainNotesMoveIntoDocumentsOnceAndStayAdminOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if b, err := os.ReadFile(filepath.Join(docs, "RTS", "Latency", "notes.md")); err != nil || string(b) != "kept" {
+	if b, err := os.ReadFile(filepath.Join(docs, "project-a", "Latency", "notes.md")); err != nil || string(b) != "kept" {
 		t.Fatalf("note not moved: %q %v", b, err)
 	}
 	if moved, _ := filepath.Glob(old + ".moved-*"); len(moved) != 1 {
@@ -32,11 +32,11 @@ func TestBrainNotesMoveIntoDocumentsOnceAndStayAdminOnly(t *testing.T) {
 	}
 
 	policy := workspaceProxyPolicy{ctx: context.Background(), claims: &UserClaims{UserID: "priya"}}
-	if policy.denies("filepath", "Brain/RTS/Latency/notes.md") == "" {
+	if policy.denies("filepath", "Brain/project-a/Latency/notes.md") == "" {
 		t.Fatal("a non-admin read Brain's raw files through the Files proxy")
 	}
 	policy.admin = true
-	if policy.denies("filepath", "Brain/RTS/Latency/notes.md") != "" {
+	if policy.denies("filepath", "Brain/project-a/Latency/notes.md") != "" {
 		t.Fatal("an administrator must reach Brain's folder")
 	}
 }

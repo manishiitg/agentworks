@@ -16,8 +16,8 @@ func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWor
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
 
 	svc, files := newInternalTriggerTestCrew(t)
-	productJSON := `{"schema_version":1,"product":"crewx","id":"rts","title":"RTS","session_id":"sess-1","triggers":[]}`
-	files["_users/owner/Chats/Work/projects/rts/product.json"] = productJSON
+	productJSON := `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1","triggers":[]}`
+	files["_users/owner/Chats/Work/projects/project-a/product.json"] = productJSON
 
 	manifest := NewWorkflowManifest("Builder test")
 	manifest.CreatedBy = "owner"
@@ -27,10 +27,10 @@ func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWor
 		t.Fatal(err)
 	}
 	mock := &mockWorkspaceAPI{files: map[string]string{
-		manifestPath("Workflow/test"):                       string(raw),
-		"Workflow/test/planning/plan.json":                  `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
-		"Workflow/test/variables/variables.json":            `{"variables":[],"groups":[{"name":"default"}]}`,
-		"_users/owner/Chats/Work/projects/rts/product.json": productJSON,
+		manifestPath("Workflow/test"):                             string(raw),
+		"Workflow/test/planning/plan.json":                        `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/variables/variables.json":                  `{"variables":[],"groups":[{"name":"default"}]}`,
+		"_users/owner/Chats/Work/projects/project-a/product.json": productJSON,
 	}}
 	ws := httptest.NewServer(mock)
 	t.Cleanup(ws.Close)
@@ -50,7 +50,7 @@ func TestManageCrewTriggerInternalDefaultsCaller(t *testing.T) {
 	ctx := context.Background()
 
 	createdRaw, err := tool.exec(ctx, map[string]interface{}{
-		"action": "create", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "create", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 		"name": "Release reviewer", "message": "Review the delivery",
 		"kind": "internal", "enabled": true,
 	})
@@ -69,7 +69,7 @@ func TestManageCrewTriggerInternalDefaultsCaller(t *testing.T) {
 	}
 
 	updatedRaw, err := tool.exec(ctx, map[string]interface{}{
-		"action": "update", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "update", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 		"id": created.ID, "enabled": false,
 	})
 	if err != nil {
@@ -87,12 +87,12 @@ func TestManageCrewTriggerInternalDefaultsCaller(t *testing.T) {
 	}
 
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"action": "delete", "crew_project_id": "rts", "crew_profile_id": "crewx", "id": created.ID,
+		"action": "delete", "crew_project_id": "project-a", "crew_profile_id": "crewx", "id": created.ID,
 	}); err != nil {
 		t.Fatalf("delete failed: %v", err)
 	}
 	listedRaw, err := tool.exec(ctx, map[string]interface{}{
-		"action": "list", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "list", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	})
 	if err != nil {
 		t.Fatalf("list failed: %v", err)
@@ -112,7 +112,7 @@ func TestManageCrewTriggerRejectsUnknownCallerWorkflow(t *testing.T) {
 	tools, _, _, _ := newCrewBuilderToolsTestEnv(t)
 	tool := tools["manage_crew_trigger"]
 	if _, err := tool.exec(context.Background(), map[string]interface{}{
-		"action": "create", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "create", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 		"name": "Ghost", "message": "Review", "kind": "internal", "enabled": true,
 		"caller": map[string]interface{}{"type": "workflow", "id": "ghost-pipeline"},
 	}); err == nil {
@@ -149,7 +149,7 @@ func TestDetachCrewAttachmentRevokesLiveSessionGrant(t *testing.T) {
 	tool := tools["manage_crew_attachment"]
 	ctx := context.Background()
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"action": "attach", "alias": "rts", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "attach", "alias": "project-a", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	}); err != nil {
 		t.Fatalf("attach failed: %v", err)
 	}
@@ -168,10 +168,10 @@ func TestDetachCrewAttachmentRevokesLiveSessionGrant(t *testing.T) {
 	t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })
 	common.ApplySessionWorkflowFolderAccess(sessionID, "Workflow/test",
 		[]string{"Workflow/test/runs"}, nil, nil,
-		map[string]string{"WORKFLOW_CREW_RTS": root})
+		map[string]string{"WORKFLOW_CREW_project-a": root})
 	common.GrantSessionCrewAttachmentReads(sessionID, []string{root})
 
-	if _, err := tool.exec(ctx, map[string]interface{}{"action": "detach", "alias": "rts"}); err != nil {
+	if _, err := tool.exec(ctx, map[string]interface{}{"action": "detach", "alias": "project-a"}); err != nil {
 		t.Fatalf("detach failed: %v", err)
 	}
 	cfg := common.GetSessionShellConfig(sessionID)
@@ -206,7 +206,7 @@ func TestCrewAttachmentReadRootsSkipInvalidBindings(t *testing.T) {
 	ctx := context.Background()
 	// Attach through the tool so the stored root equals the resolved binding.
 	if _, err := tools["manage_crew_attachment"].exec(ctx, map[string]interface{}{
-		"action": "attach", "alias": "rts", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "attach", "alias": "project-a", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	}); err != nil {
 		t.Fatalf("attach failed: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestManageCrewTriggerRejectsInaccessibleCallerWorkflow(t *testing.T) {
 	mock.files[manifestPath("Workflow/foreign")] = string(foreignRaw)
 	tool := tools["manage_crew_trigger"]
 	if _, err := tool.exec(context.Background(), map[string]interface{}{
-		"action": "create", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "create", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 		"name": "Squat", "message": "Review", "kind": "internal", "enabled": true,
 		"caller": map[string]interface{}{"type": "workflow", "id": "wf-foreign"},
 	}); err == nil || !strings.Contains(err.Error(), "access denied") {
@@ -360,7 +360,7 @@ func TestManageCrewAttachmentRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"action": "attach", "alias": "rts", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "attach", "alias": "project-a", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	}); err != nil {
 		t.Fatalf("attach failed: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestManageCrewAttachmentRoundTrip(t *testing.T) {
 	if err := json.Unmarshal([]byte(mock.files[manifestPath("Workflow/test")]), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.CrewAttachments) != 1 || manifest.CrewAttachments[0].Alias != "rts" {
+	if len(manifest.CrewAttachments) != 1 || manifest.CrewAttachments[0].Alias != "project-a" {
 		t.Fatalf("attachment not persisted: %+v", manifest.CrewAttachments)
 	}
 	if !strings.HasPrefix(manifest.CrewAttachments[0].CrewWorkspacePath, "_users/owner/") {
@@ -376,22 +376,22 @@ func TestManageCrewAttachmentRoundTrip(t *testing.T) {
 	}
 
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"action": "attach", "alias": "rts", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "attach", "alias": "project-a", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	}); err == nil {
 		t.Fatal("duplicate alias must fail")
 	}
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"action": "attach", "alias": "rts-again", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "attach", "alias": "project-again", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	}); err == nil {
 		t.Fatal("duplicate crew project must fail")
 	}
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"action": "attach", "alias": "Bad Alias!", "crew_project_id": "rts", "crew_profile_id": "crewx",
+		"action": "attach", "alias": "Bad Alias!", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 	}); err == nil {
 		t.Fatal("invalid alias must fail")
 	}
 
-	if _, err := tool.exec(ctx, map[string]interface{}{"action": "detach", "alias": "rts"}); err != nil {
+	if _, err := tool.exec(ctx, map[string]interface{}{"action": "detach", "alias": "project-a"}); err != nil {
 		t.Fatalf("detach failed: %v", err)
 	}
 	manifest = WorkflowManifest{}
@@ -401,7 +401,7 @@ func TestManageCrewAttachmentRoundTrip(t *testing.T) {
 	if len(manifest.CrewAttachments) != 0 {
 		t.Fatalf("detach did not persist: %+v", manifest.CrewAttachments)
 	}
-	if _, err := tool.exec(ctx, map[string]interface{}{"action": "detach", "alias": "rts"}); err == nil {
+	if _, err := tool.exec(ctx, map[string]interface{}{"action": "detach", "alias": "project-a"}); err == nil {
 		t.Fatal("detaching a missing alias must fail")
 	}
 }

@@ -13,7 +13,7 @@ vi.hoisted(() => {
 
 vi.mock('../products/work/workSessions', () => ({
   loadWorkSessionsIncludingShared: vi.fn(async () => [
-    { id: 'crew-own', title: 'rts-flow-tester', identity: { name: 'RTS Flow Tester' } },
+    { id: 'crew-own', title: 'project-a-flow-tester', identity: { name: 'project-a Flow Tester' } },
     { id: 'crew-shared', title: 'qa', identity: { name: 'QA Bot' }, shared: { ownerId: 'u2', ownerUsername: 'yoav' } },
   ]),
 }))
@@ -39,13 +39,13 @@ const now = new Date().toISOString()
 const crewRun: ActiveSessionInfo = {
   session_id: 'work:project:crew-own:trigger:abc', observer_id: '', agent_mode: 'multi-agent', status: 'running',
   last_activity: now, created_at: now,
-  title: 'SDE · Called by RTS Flow Tester', triggered_by: 'webhook', triggered_by_label: 'Called by RTS Flow Tester',
+  title: 'SDE · Called by project-a Flow Tester', triggered_by: 'webhook', triggered_by_label: 'Called by project-a Flow Tester',
   workspace_path: 'Chats/Work/projects/gptlive1-cef0edb2',
 }
 
 it('@active lists every running session with what started it, even one with an open tab', async () => {
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
-  const tabId = await useChatStore.getState().createChatTab('SDE · Called by RTS Flow Tester', {
+  const tabId = await useChatStore.getState().createChatTab('SDE · Called by project-a Flow Tester', {
     agentProfileId: 'work', agentProfileProjectId: 'crew-own', isViewOnly: true, isScheduledRun: true,
   } as never, crewRun.session_id)
   useChatStore.setState({ activeSessionsCache: [crewRun] } as never)
@@ -55,6 +55,6 @@ it('@active lists every running session with what started it, even one with an o
   await act(async () => { root.render(<QuickSwitcher isOpen onClose={vi.fn()} initialQuery="@active " />) })
   await act(async () => { await Promise.resolve() })
   expect(host.textContent).toContain('SDE')
-  expect(host.textContent).toContain('Called by RTS Flow Tester')
-  expect(host.textContent).not.toContain('SDE · Called by RTS Flow Tester')
+  expect(host.textContent).toContain('Called by project-a Flow Tester')
+  expect(host.textContent).not.toContain('SDE · Called by project-a Flow Tester')
 })

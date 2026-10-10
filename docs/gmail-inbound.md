@@ -3,8 +3,8 @@
 Crew, Workflow, and Code owners can link a connected Gmail account in the
 Builder chat using `get_gmail_trigger` and `manage_gmail_trigger`. The Email
 and Triggers panels show read-only state. Configuring incoming email creates a stable address such
-as `manish+agent-<route-id>@rts.com`. Google delivers it to the existing
-`manish@rts.com` mailbox; no SMTP server, separate Google user, or MX change
+as `manish+agent-<route-id>@customer.example`. Google delivers it to the existing
+`manish@customer.example` mailbox; no SMTP server, separate Google user, or MX change
 is needed. This works with personal Gmail and Google Workspace accounts
 whose mail is hosted by Gmail. Google Workspace administrators can restrict
 OAuth apps or tagged delivery; test receipt in the real mailbox first.
@@ -117,7 +117,7 @@ and expire after 15 minutes; a server restart requires a fresh review, while
 successfully saved receiving configuration survives it. Concurrent provisioning
 is refused. Cloud resource charges remain subject to Google pricing.
 
-For RTS, the event URL is `https://video.realtrainingsys.com/api/hooks/gmail/events`.
+For server A, the event URL is `https://video.realtrainingsys.com/api/hooks/gmail/events`.
 For other deployments it comes from their trusted `PUBLIC_URL` or existing
 validated audience. Local development must set `PUBLIC_URL` to its existing
 public HTTPS Cloudflare tunnel and route the callback/event paths to this backend.
@@ -171,7 +171,7 @@ as the push service account when creating the subscription.
 
 ```bash
 GMAIL_PROJECT_ID=YOUR_GOOGLE_PROJECT_ID
-GMAIL_DEPLOYMENT=rts
+GMAIL_DEPLOYMENT=server A
 GMAIL_PUSH_URL=https://video.realtrainingsys.com/api/hooks/gmail/events
 GMAIL_PUSH_ACCOUNT=agentworks-gmail-${GMAIL_DEPLOYMENT}@${GMAIL_PROJECT_ID}.iam.gserviceaccount.com
 
@@ -202,13 +202,13 @@ exception for Google's Gmail publisher account.
 
 ## Server A first, then other deployments
 
-RTS is the AWS deployment at `video.realtrainingsys.com`, reached by
-`./deploy.sh rts`. Its active rootless service reads
+server A is the AWS deployment at `video.realtrainingsys.com`, reached by
+`./deploy.sh server A`. Its active rootless service reads
 `/var/lib/video-studio/video-studio/.env`. The old system service template's
-`/opt/video-studio/.env` is not the current RTS release path. The release
+`/opt/video-studio/.env` is not the current server A release path. The release
 script preserves the Gmail settings and already installs checksum-verified
 gog. Set the audience to
-`https://video.realtrainingsys.com/api/hooks/gmail/events` when testing RTS.
+`https://video.realtrainingsys.com/api/hooks/gmail/events` when testing server A.
 Verify that the CloudFront behavior forwards POST and Authorization to the
 origin without caching this endpoint. A proxy stripping Google's token
 causes a 401 and Pub/Sub retries.
@@ -235,7 +235,7 @@ After the operator configures and deploys a release:
    reader cannot configure it, the UI has no configuration controls, and asking
    Builder to disable the route prevents new turns.
 6. Inspect Recent email activity and `[GMAIL-INBOUND]` logs for errors. This
-   local implementation has no live Google/RTS end-to-end certification yet.
+   local implementation has no live Google/server A end-to-end certification yet.
 
 ## Reliability and operational limits
 

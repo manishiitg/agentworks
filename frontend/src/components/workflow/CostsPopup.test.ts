@@ -67,8 +67,8 @@ const daily = (group: string, cost: number): RunDailyCostInput => ({
 describe('buildDailyStepCostsByDate', () => {
   it('keeps the same step separate by group and includes executed zero-cost steps', () => {
     const result = buildDailyStepCostsByDate(
-      [run('excellence'), run('mahima')],
-      [daily('excellence', 0.65), daily('mahima', 0.39)],
+      [run('customer-b'), run('mahima')],
+      [daily('customer-b', 0.65), daily('mahima', 0.39)],
       []
     )
 
@@ -77,7 +77,7 @@ describe('buildDailyStepCostsByDate', () => {
     const scriptedRows = rows.filter(row => row.stepID === 'scripted')
 
     expect(loginRows).toHaveLength(2)
-    expect(loginRows.map(row => row.groupLabel).sort()).toEqual(['excellence', 'mahima'])
+    expect(loginRows.map(row => row.groupLabel).sort()).toEqual(['customer-b', 'mahima'])
     expect(loginRows.reduce((sum, row) => sum + row.totalCost, 0)).toBeCloseTo(1.04)
     expect(scriptedRows).toHaveLength(2)
     expect(scriptedRows.every(row => row.totalCost === 0 && row.models.length === 0)).toBe(true)
@@ -104,8 +104,8 @@ describe('buildDailyStepCostsByDate', () => {
     const entry: RunDailyCostInput = {
       date: '2026-07-18',
       scope: 'execution',
-      groupFolder: 'excellence',
-      runFolder: 'iteration-0/excellence',
+      groupFolder: 'customer-b',
+      runFolder: 'iteration-0/customer-b',
       tokenUsage: tokenFile(2, {
         'execution_only:login': { model: usage(1.25) },
       }),

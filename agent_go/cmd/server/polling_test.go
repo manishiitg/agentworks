@@ -359,9 +359,9 @@ func TestAutoNotificationDoesNotClearStaleBusyWhenCodingTmuxLooksBusy(t *testing
 // background execution legitimately carries none of those, so all three were
 // erased while WorkflowName — guarded by `if active.PresetName != ""` — stayed.
 //
-// The live rtslatency session showed exactly that asymmetry:
+// The live latency-report session showed exactly that asymmetry:
 //
-//	workflow_name: "rtslatency"   (survived)
+//	workflow_name: "latency-report"   (survived)
 //	workspace_path: absent        (erased)
 //	preset_query_id: absent       (erased)
 //
@@ -369,7 +369,7 @@ func TestAutoNotificationDoesNotClearStaleBusyWhenCodingTmuxLooksBusy(t *testing
 // workspace_path (findWorkflowPresetForSession). With both erased, resolution
 // returned undefined, the canonical workflow-navigation path was skipped, and
 // clicking the activity pill opened a Schedule tab under whichever workflow
-// was already on screen instead of switching to rtslatency.
+// was already on screen instead of switching to latency-report.
 func TestBuildActiveSessionInfoSummaryKeepsSessionIdentityWhenTrackedExecutionOmitsIt(t *testing.T) {
 	const sessionID = "schedule-cron--identity_1787009443095002000"
 
@@ -392,23 +392,23 @@ func TestBuildActiveSessionInfoSummaryKeepsSessionIdentityWhenTrackedExecutionOm
 		Status:        "running",
 		CreatedAt:     time.Now(),
 		AgentMode:     "workflow_phase",
-		WorkspacePath: "Workflow/rtslatency",
-		PresetQueryID: "wf_rtslatency",
-		PresetName:    "rtslatency",
-		WorkflowName:  "rtslatency",
-		WorkflowLabel: "rtslatency",
+		WorkspacePath: "Workflow/latency-report",
+		PresetQueryID: "wf_latency-report",
+		PresetName:    "latency-report",
+		WorkflowName:  "latency-report",
+		WorkflowLabel: "latency-report",
 	})
 
-	if summary.WorkspacePath != "Workflow/rtslatency" {
+	if summary.WorkspacePath != "Workflow/latency-report" {
 		t.Fatalf("workspace_path = %q, want it preserved: the frontend cannot resolve the workflow without it", summary.WorkspacePath)
 	}
-	if summary.PresetQueryID != "wf_rtslatency" {
+	if summary.PresetQueryID != "wf_latency-report" {
 		t.Fatalf("preset_query_id = %q, want it preserved: it is the primary preset-resolution key", summary.PresetQueryID)
 	}
-	if summary.PresetName != "rtslatency" {
+	if summary.PresetName != "latency-report" {
 		t.Fatalf("preset_name = %q, want it preserved", summary.PresetName)
 	}
-	if summary.WorkflowName != "rtslatency" {
+	if summary.WorkflowName != "latency-report" {
 		t.Fatalf("workflow_name = %q, want it preserved", summary.WorkflowName)
 	}
 }

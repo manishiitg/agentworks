@@ -5,7 +5,7 @@ live production IdP/client acceptance is claimed.
 
 ## Service layout
 
-RTS and Excellence use `deploy/common/vault.sh` and
+server A and server B use `deploy/common/vault.sh` and
 `deploy/common/install-vault-service.py` from their existing build/activation
 scripts. These build the Linux binary, configure persistent paths, bootstrap
 Platform, install a user systemd service, start it and check `/healthz`.
@@ -19,8 +19,8 @@ missing either executable before initializing persistent state or stopping servi
 
 | Deployment | Private Vault listener | Configuration project | Private credential state |
 |---|---|---|---|
-| RTS | `127.0.0.1:8083` | `/data/video-studio/docs/Chats/CapLayer` | `/var/lib/video-studio/video-studio/state/vault` |
-| Excellence agents | `127.0.0.1:24003` | Deployment `data/docs/Chats/CapLayer` | Deployment `state/vault` |
+| server A | `127.0.0.1:8083` | `/data/video-studio/docs/Chats/CapLayer` | `/var/lib/video-studio/video-studio/state/vault` |
+| server B agents | `127.0.0.1:24003` | Deployment `data/docs/Chats/CapLayer` | Deployment `state/vault` |
 
 The configuration database is `<project>/db/gateway.sqlite`. Its encryption key
 is in private state, outside agent workspace documents. The generated persistent

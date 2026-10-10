@@ -10,7 +10,7 @@ processes' environment, `.env`, systemd units, releases and health endpoints).
 
 ## Today: three deploy paths
 
-| | Excellence / Confida / SparkQuill | RTS | Dominion |
+| | server B / server C / SparkQuill | server A | Dominion |
 |---|---|---|---|
 | Script | `deploy/rootless-linux/build-and-activate.sh` | `deploy/aws-ec2/server/build-and-activate.sh` | `deploy/dedicated-vm/deploy-dominion.sh` |
 | Secrets | hand-kept `.env` | AWS Secrets Manager → `.env` (`GLOBAL_SECRET_*`) | hand-kept `.env` |
@@ -19,16 +19,16 @@ processes' environment, `.env`, systemd units, releases and health endpoints).
 | Drain | yes (`DEPLOY_DRAIN_SECONDS`, default 0 for now) | none | none |
 | Health check | env check + `deployment_checks running` + URL wait | `is-active` + log tail | `is-active` + 120 s health wait |
 | Rollback | none | none | **automatic** |
-| Kept releases | 1 on Excellence (no rollback target) | 2 | 2 |
+| Kept releases | 1 on server B (no rollback target) | 2 | 2 |
 
 ## Today: runtime differences that change behaviour
 
-| Setting | Excellence | Confida | SparkQuill | Dominion | RTS |
+| Setting | server B | server C | SparkQuill | Dominion | server A |
 |---|---|---|---|---|---|
 | `NATIVE_WORKSPACE` | true | true | true | true | **unset** |
 | `MULTI_USER_MODE` | true | true | **unset** | true | true |
 | `AGENTWORKS_SLOTS` | on | optin | unset | unset | optin |
-| Slot table path | unprefixed `/etc/agentworks/slots.json` | `/etc/agentworks/confida/…` | — | — | default |
+| Slot table path | unprefixed `/etc/agentworks/slots.json` | `/etc/agentworks/server C/…` | — | — | default |
 | `AGENTWORKS_CLI_LANDLOCK` / `CLI_FULL` | on/on | on/on | unset | unset | unset |
 | Private `/tmp` for sandboxes | yes | yes | yes | **no** (no `STATE_ROOT`/`TMPDIR`) | yes |
 | `AGENT_BROWSER_SHARED_PROFILE` | unset | unset | `state/browser-profile` | unset (ephemeral Chrome) | `/data/video-studio/browser-profile` |
@@ -41,7 +41,7 @@ with native mode on and no shared profile left `AGENT_BROWSER_SOCKET_DIR` unset.
 ## Target
 
 **One script**: `deploy/rootless-linux/build-and-activate.sh`, parameterised (app dir, data dir, bind address), used by every server.
-RTS keeps a small pre-step that turns Secrets Manager into `.env`; Dominion's hand-kept `runtime-config.js` and `configs/` move into
+server A keeps a small pre-step that turns Secrets Manager into `.env`; Dominion's hand-kept `runtime-config.js` and `configs/` move into
 `products/dominion/` (private deployments repository).
 
 **One profile, the same everywhere:**
@@ -64,16 +64,16 @@ per-server list. A post-deploy check runs the same tests on every server (shell 
 
 1. Settings report + guard in the rootless-linux path (changes nothing, shows drift).
 2. Add rollback and parameterised dirs/bind address to the rootless-linux path.
-3. Bring Excellence, Confida, SparkQuill to the profile (Dominion and RTS untouched): browser profile on, `MULTI_USER_MODE` on SparkQuill,
+3. Bring server B, server C, SparkQuill to the profile (Dominion and server A untouched): browser profile on, `MULTI_USER_MODE` on SparkQuill,
    prefixed slot table on server B, units from the repo.
 4. Dominion: products/dominion directory, then switch paths in a quiet window (Saturday, no trading), agreed with its owning session.
    Adds private `/tmp` (trading code must use `$TMPDIR`) and the cgo build.
-5. RTS: Secrets Manager pre-step, browser service and Chrome wrapper ported, keep the live profile at `/data/video-studio/browser-profile`,
+5. server A: Secrets Manager pre-step, browser service and Chrome wrapper ported, keep the live profile at `/data/video-studio/browser-profile`,
    `NATIVE_WORKSPACE=true`, remove the stale `/etc/systemd/system/video-studio-*` units; dry run first, quiet window.
 
 ## Risks
 
-- RTS layout (`/var/lib/video-studio`, `/data` mount, 0.0.0.0 behind Caddy) differs from `/srv/<product>`; moving it needs parameters, not
+- server A layout (`/var/lib/video-studio`, `/data` mount, 0.0.0.0 behind Caddy) differs from `/srv/<product>`; moving it needs parameters, not
   a data move. Its 144 MB browser profile holds sign-ins and must stay where it is.
 - Switching server A to native mode changes HOME and env for every sandboxed command; test on server C first.
 - Dominion runs a live trading workflow on weekdays; its first switch also changes the agent build (cgo) and adds private `/tmp`.

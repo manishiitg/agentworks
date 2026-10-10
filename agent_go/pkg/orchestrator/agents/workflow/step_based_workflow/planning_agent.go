@@ -2553,7 +2553,7 @@ func getUpdateHumanInputStepSchema() string {
 //
 // A refusal that says only "use its type-specific update tool" tells an agent it
 // was wrong without telling it what is right, and the reasonable next conclusion
-// is that the step cannot be edited at all. rtslatency shows the cost: a fixer
+// is that the step cannot be edited at all. latency-report shows the cost: a fixer
 // tried update_scripted_step on two message_sequence collectors, was correctly
 // refused, and recorded "legacy agentic regular step, not editable" as a blocked
 // finding. It re-reported that for days while update_message_sequence_step sat in

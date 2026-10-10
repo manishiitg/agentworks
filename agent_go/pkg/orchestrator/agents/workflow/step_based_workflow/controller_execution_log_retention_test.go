@@ -22,7 +22,7 @@ import (
 // silently overwrites the previous dispatch's result, conversation, timing, and
 // prompts.
 //
-// Confirmed live on confida-login (2026-08-22): the browser-capture step was
+// Confirmed live on customer-login (2026-08-22): the browser-capture step was
 // dispatched 5 times in one run, and every dispatch clobbered the last. Reading
 // the same timing file minutes apart returned two different runs (2675000ms /
 // 21 tool calls, then 104248ms / 14 tool calls). The run's own logs could not

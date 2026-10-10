@@ -189,7 +189,7 @@ func TestFixedLayoutPassesEveryCheck(t *testing.T) {
 }
 
 // Every failure seen on server A 2026-10-04 (PLAT-476, PLAT-478 layers 2 and 3, the root:root table) must be reported.
-func TestEachRTSFailureIsDetected(t *testing.T) {
+func TestEachKnownFailureIsDetected(t *testing.T) {
 	cases := []struct {
 		name   string
 		break_ func(t *testing.T, l *layout)

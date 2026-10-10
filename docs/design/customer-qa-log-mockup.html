@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>confida-qa · pulse</title>
+<title>customer-qa · pulse</title>
 <style>
   :root{
     --bg:#f7f7f5; --surface:#ffffff; --surface-2:#fbfbfa;
@@ -117,7 +117,7 @@
 <body><div class="wrap">
 
   <div class="top">
-    <div><div class="eyebrow">workflow · pulse</div><h1>confida-qa</h1></div>
+    <div><div class="eyebrow">workflow · pulse</div><h1>customer-qa</h1></div>
     <div class="verdicts">
       <div class="pill bad"><span class="lbl">Bug</span><span class="dot"></span>Broken</div>
       <div class="pill warn"><span class="lbl">Goal</span><span class="dot"></span>Short of goal</div>
@@ -131,7 +131,7 @@
   </div>
 
   <div class="goalcard">
-    <div class="obj"><span class="l">What this workflow is for</span>Automatically catch <b>real regressions</b> in Confida's critical user journeys on staging <b>before they reach production</b> — and only flag what a human would call a genuine break.</div>
+    <div class="obj"><span class="l">What this workflow is for</span>Automatically catch <b>real regressions</b> in server C's critical user journeys on staging <b>before they reach production</b> — and only flag what a human would call a genuine break.</div>
     <div class="crit"><span class="cs met">✓ Met</span><span class="ct">No false passes; never test a journey already logged as an open Linear bug.<span class="m">audit-finalizer enforces both</span></span></div>
     <div class="crit"><span class="cs short">↑ Short</span><span class="ct">Tests fail when the <b>user-facing behaviour</b> is wrong, not merely when the page changes.<span class="m">assertion accuracy 0.71 · want ≥ 0.85</span></span></div>
     <div class="crit"><span class="cs risk">! At risk</span><span class="ct">Cover <b>every</b> critical journey each run (login, reset-password, checkout, account).<span class="m">login &amp; reset-password skipped 2 runs</span></span></div>
@@ -168,7 +168,7 @@
 
   <div class="entry open" id="of-2026-06-09-assertion-accuracy">
     <div class="ehead"><span class="tag open">Open finding</span><span class="kind goal">Goal</span><span class="etitle">Tests pass without verifying the error message</span><span class="when">today 08:14</span></div>
-    <p>Assertion-accuracy dropped 0.83 → 0.71. Several generated tests assert only that the page changed, not that the <i>correct</i> validation message appeared — they'd pass even if Confida showed the wrong error. Coverage looks fine; the tests just aren't checking what the success criteria care about. Operationally green, but it misses the goal. → candidate for rubric refine, not harden.</p>
+    <p>Assertion-accuracy dropped 0.83 → 0.71. Several generated tests assert only that the page changed, not that the <i>correct</i> validation message appeared — they'd pass even if server C showed the wrong error. Coverage looks fine; the tests just aren't checking what the success criteria care about. Operationally green, but it misses the goal. → candidate for rubric refine, not harden.</p>
     <div class="meta">status <b style="color:var(--bad)">open</b> · first seen run #40 · soul.md “tests must fail when the user-facing behaviour is wrong, not just when the page changes”</div>
   </div>
 
@@ -185,7 +185,7 @@
 
   <div class="entry note">
     <div class="ehead"><span class="tag note">Note</span><span class="etitle">Staging login screen is mid-redesign — selector churn expected</span><span class="when">2 days ago</span></div>
-    <p>Confida is reworking the staging login UI this sprint; expect <code>[data-testid]</code> churn and flakiness through ~June 20. Not a workflow bug — hold off aggressive selector hardening until it settles.</p>
+    <p>server C is reworking the staging login UI this sprint; expect <code>[data-testid]</code> churn and flakiness through ~June 20. Not a workflow bug — hold off aggressive selector hardening until it settles.</p>
   </div>
 
   <div class="seclabel">Archive</div>

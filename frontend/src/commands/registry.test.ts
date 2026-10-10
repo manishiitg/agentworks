@@ -76,11 +76,11 @@ describe('Pulse slash commands', () => {
   it('uses the chat workflow even when the file browser points elsewhere', async () => {
     runPulseMock.mockClear().mockResolvedValueOnce({ run_id: 'pulse-chat' })
     await findCommand('pulse', 'workflow')?.execute({
-      workflowWorkspacePath: 'Workflow/rts-latency',
+      workflowWorkspacePath: 'Workflow/latency-report',
       getWorkspaceStore: () => ({ activeFolder: 'Workflow/other' }),
       addToast: vi.fn(),
     } as unknown as CommandContext)
-    expect(runPulseMock).toHaveBeenCalledExactlyOnceWith('Workflow/rts-latency')
+    expect(runPulseMock).toHaveBeenCalledExactlyOnceWith('Workflow/latency-report')
   })
 
   it('does not run Pulse against a file browser folder when no workflow is open', async () => {

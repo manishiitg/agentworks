@@ -12,7 +12,7 @@ import (
 
 func TestGetFileLinkToolCreatesAuthenticatedFileAndFolderLinks(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example/")
+	t.Setenv("PUBLIC_URL", "https://customer.example/")
 	reg := &recordingRegistrar{}
 	if err := f.api.registerShareLinkTools(reg, "owner", "Workflow/invoices"); err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestGetFileLinkToolCreatesAuthenticatedFileAndFolderLinks(t *testing.T) {
 
 func TestGetReportLinkToolCreatesAuthenticatedDashboardLink(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example/")
+	t.Setenv("PUBLIC_URL", "https://customer.example/")
 	f.write(t, "Workflow/invoices/db/reports/index.html", "<html><title>Invoices</title></html>")
 	reg := &recordingRegistrar{}
 	if err := f.api.registerShareLinkTools(reg, "owner", "Workflow/invoices"); err != nil {
@@ -98,7 +98,7 @@ func TestGetReportLinkToolCreatesAuthenticatedDashboardLink(t *testing.T) {
 
 func TestGetReportLinkToolTargetsNamedReportDocument(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example")
+	t.Setenv("PUBLIC_URL", "https://customer.example")
 	f.write(t, "Workflow/invoices/db/reports/tasks.html", "<html><title>Tasks</title></html>")
 	reg := &recordingRegistrar{}
 	if err := f.api.registerShareLinkTools(reg, "owner", "Workflow/invoices"); err != nil {
@@ -120,7 +120,7 @@ func TestGetReportLinkToolTargetsNamedReportDocument(t *testing.T) {
 
 func TestGetReportLinkToolRejectsUnauthorizedOrMissingReport(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example")
+	t.Setenv("PUBLIC_URL", "https://customer.example")
 
 	denied := &recordingRegistrar{}
 	if err := f.api.registerShareLinkTools(denied, "outsider", "Workflow/invoices"); err != nil {
@@ -177,7 +177,7 @@ func TestAddShareabilityMetadataClassifiesDeploymentHosts(t *testing.T) {
 		{publicURL: "http://app.localhost:3000", shareable: false, scope: "local_machine"},
 		{publicURL: "http://127.8.9.10:3000", shareable: false, scope: "local_machine"},
 		{publicURL: "http://[::1]:3000", shareable: false, scope: "local_machine"},
-		{publicURL: "https://confida.agentworkshq.com", shareable: true, scope: "deployment"},
+		{publicURL: "https://customer.agentworkshq.com", shareable: true, scope: "deployment"},
 	} {
 		result := map[string]interface{}{}
 		addShareabilityMetadata(result, tc.publicURL)
@@ -193,7 +193,7 @@ func TestAddShareabilityMetadataClassifiesDeploymentHosts(t *testing.T) {
 
 func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example")
+	t.Setenv("PUBLIC_URL", "https://customer.example")
 	const userID = "work-user"
 	f.write(t, "_users/"+userID+"/Chats/Work/projects/demo/output/report.txt", "ready")
 	reg := &recordingRegistrar{}
@@ -276,7 +276,7 @@ func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
 
 func TestGetReportLinkToolScopesWorkDashboardToProjectOwner(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example")
+	t.Setenv("PUBLIC_URL", "https://customer.example")
 	const userID = "work-user"
 	f.write(t, "_users/"+userID+"/Chats/Work/projects/demo/db/reports/index.html", "<html><title>Work dashboard</title></html>")
 
@@ -317,7 +317,7 @@ func TestGetReportLinkToolScopesWorkDashboardToProjectOwner(t *testing.T) {
 
 func TestGetFileLinkToolRejectsUnauthorizedPrivateAndMissingPaths(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	t.Setenv("PUBLIC_URL", "https://confida.example")
+	t.Setenv("PUBLIC_URL", "https://customer.example")
 
 	denied := &recordingRegistrar{}
 	if err := f.api.registerShareLinkTools(denied, "outsider", "Workflow/invoices"); err != nil {

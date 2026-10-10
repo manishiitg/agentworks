@@ -1161,7 +1161,7 @@ func (s *SchedulerService) reconciledScheduleRunStatus(run *ScheduleRunEntry, no
 		// done, the next has not started. Finalizing here called the whole run
 		// a success while it was on turn 1 of 10.
 		//
-		// rtslatency's 2026-07-31 02:30 run was recorded success/84,599 ms with
+		// latency-report's 2026-07-31 02:30 run was recorded success/84,599 ms with
 		// completed_at 84 seconds after start, while the log shows turns 2-5
 		// running for another hour and turn 6 still going when the process shut
 		// down. Once stamped, the record never corrected itself, so every run
@@ -1186,7 +1186,7 @@ func (s *SchedulerService) reconciledScheduleRunStatus(run *ScheduleRunEntry, no
 }
 
 // scheduleRunAbandonedAfter bounds how long a run may sit between turns before
-// the reconciler treats it as abandoned. It must exceed a real run: rtslatency's
+// the reconciler treats it as abandoned. It must exceed a real run: latency-report's
 // healthy runs take 45 minutes to 2.5 hours, so a shorter window would finalize
 // live work as interrupted.
 var scheduleRunAbandonedAfter = 6 * time.Hour
@@ -1276,7 +1276,7 @@ func (s *SchedulerService) GetWorkspaceForSchedule(scheduleID string) string {
 // actual runs, so a schedule that looks silent for days there can be a
 // scheduler correctly honoring a pause the whole time, not a defect —
 // this is the only read path that can tell the two apart (found live on
-// confida-login: four Technical Review passes theorized a missing
+// customer-login: four Technical Review passes theorized a missing
 // misfire-recovery mechanism instead of reading this durable, already-logged
 // decision trail).
 func (s *SchedulerService) ListFireDecisions(ctx context.Context, workspacePath, scheduleID string, limit int) ([]schedulerstate.FireDecision, error) {
@@ -2728,7 +2728,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	// rung per turn and re-reads the manifest to verify that exact target before
 	// advancing, while this path concatenated every outstanding rung into a
 	// single review turn with no verification or ordering between them. Observed
-	// on confida-login 2026-08-12, where a failed-open preflight left four
+	// on customer-login 2026-08-12, where a failed-open preflight left four
 	// migrations (1.0.21/22/23/25) bundled into one dispatch. The preflight owns
 	// migrations; it retries on the next trigger.
 	//
@@ -3358,7 +3358,7 @@ func notificationRecipients(config *WorkflowNotificationConfig, run bool) []stri
 // pulseSafeRunFailureReason tells the finalizer why the workflow did not run
 // without handing it the upgrade instruction a second time.
 //
-// The finalizer shares the scheduler's session. On confida-login 2026-08-12 it
+// The finalizer shares the scheduler's session. On customer-login 2026-08-12 it
 // was told `did not stamp required version "1.0.21"` three seconds after the
 // turn that owed that stamp had been adjudicated and closed — and ten minutes
 // later something in that session stamped 1.0.21, which the next preflight
@@ -4150,7 +4150,7 @@ func (s *SchedulerService) scheduledWorkflowExecutionProducedEvidence(sessionID 
 //
 // The since-based fallback matters because a workflow that reuses the same
 // run-folder name every cycle (e.g. iteration-0/<group>, confirmed live on
-// confida-login — see PLAT-182) never appears "new" by name after its first
+// customer-login — see PLAT-182) never appears "new" by name after its first
 // cycle: before[folder.Name] is already true every time, so a name-only check
 // would skip inspecting that folder's metadata on every single subsequent
 // invocation, regardless of what it actually recorded. workshopRunProducedEvidence,

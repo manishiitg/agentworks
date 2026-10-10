@@ -11,12 +11,12 @@ import (
 // Upgrade instructions are visible to the operator who starts the migration;
 // schedules neither own nor execute them.
 func TestContractUpgradeStatusShowsWhatIsOwedAndTheActualInstruction(t *testing.T) {
-	const workspacePath = "Workflow/confida-login"
+	const workspacePath = "Workflow/customer-login"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
-		"id":             "wf_confida",
+		"id":             "wf_customer",
 		"version":        "1.0.20",
-		"label":          "confida-qa-testing",
+		"label":          "customer-qa-testing",
 		"capabilities":   map[string]interface{}{},
 		"schedules":      []interface{}{},
 	})

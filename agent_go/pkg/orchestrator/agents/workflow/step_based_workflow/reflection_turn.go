@@ -116,7 +116,7 @@ func BuildStepReflectionTurn(in StepReflectionTurnInput) string {
 	}
 
 	// PUL-D0BAC922: reflection narration contradicted the artifacts the step had
-	// just written (6 cases on rtslatency) because it restated results from
+	// just written (6 cases on latency-report) because it restated results from
 	// conversation memory. Results must come from the files or database.
 	b.WriteString("**State results only from what the step actually produced.** Before you mention any count, status or outcome of this run, re-read the output files the step wrote or query the database. Never restate results from memory of the conversation; if the files and your memory disagree, the files are right.\n\n")
 
@@ -262,7 +262,7 @@ func buildReflectionKBSection(in StepReflectionTurnInput) string {
 	// ---- Anti-append (PLAT-173). ----
 	// The learnings half of this same turn states these duties at length; the KB
 	// half stated none of them, and the omission produced exactly the failure
-	// they prevent. confida-login's app-structure.md passed every stated
+	// they prevent. customer-login's app-structure.md passed every stated
 	// threshold because each survey cycle appended a fresh dated section rather
 	// than correcting the existing one — the step's own flag named the pattern:
 	// "each appending a new dated per-cycle section instead of updating in

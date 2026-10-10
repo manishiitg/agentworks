@@ -11,7 +11,7 @@ func TestScriptedTerminalStopReportsOnlyExplicitRefusal(t *testing.T) {
 		name, output string
 		explicit     bool
 	}{
-		{"rts diagnostic output", "[preflight] Python bundle syntax, top-level imports and configuration OK\n{\"WORKFLOW_CODE_DEPS\":\"/data/deps\"}", false},
+		{"project-a diagnostic output", "[preflight] Python bundle syntax, top-level imports and configuration OK\n{\"WORKFLOW_CODE_DEPS\":\"/data/deps\"}", false},
 		{"command line error", "usage: main.py --env ENV\nmain.py: error: --env is required", false},
 		{"empty", "", false},
 		{"legacy prose", "ABORT: refusing to overwrite history", false},

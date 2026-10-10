@@ -34,8 +34,8 @@ func refWrite(id, alias string) workflowtypes.KnowledgebaseSource {
 
 func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 	root := t.TempDir()
-	a := fixture(t, root, "consumer", "a", "owner", []workflowtypes.KnowledgebaseSource{ref("b", "rts"), ref("c", "security")})
-	b := fixture(t, root, "rts", "b", "owner", []workflowtypes.KnowledgebaseSource{ref("d", "private")})
+	a := fixture(t, root, "consumer", "a", "owner", []workflowtypes.KnowledgebaseSource{ref("b", "project-a"), ref("c", "security")})
+	b := fixture(t, root, "project-a", "b", "owner", []workflowtypes.KnowledgebaseSource{ref("d", "private")})
 	fixture(t, root, "security", "c", "owner", nil)
 	fixture(t, root, "private", "d", "owner", nil)
 	sources, err := Resolve(root, a, nil)
@@ -48,7 +48,7 @@ func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 		}
 	}
 	data, err := ReadFile(sources[0], "notes/fact.md")
-	if err != nil || string(data) != "rts" {
+	if err != nil || string(data) != "project-a" {
 		t.Fatal(string(data), err)
 	}
 	os.WriteFile(filepath.Join(root, b, "knowledgebase", "notes", "fact.md"), []byte("updated"), 0644)
@@ -75,25 +75,25 @@ func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 
 func TestSourcesOwnershipRevocationAndMissing(t *testing.T) {
 	root := t.TempDir()
-	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{ref("b", "rts")})
-	fixture(t, root, "rts", "b", "bob", nil)
+	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{ref("b", "project-a")})
+	fixture(t, root, "project-a", "b", "bob", nil)
 	sources, err := Resolve(root, a, nil)
 	if err != nil || sources[0].Available {
 		t.Fatal("private source exposed", err)
 	}
 	raw := []byte(`{"id":"b","access":{"owners":["bob"],"readers":["alice"]}}`)
-	os.WriteFile(filepath.Join(root, "Workflow/rts/workflow.json"), raw, 0644)
+	os.WriteFile(filepath.Join(root, "Workflow/project-a/workflow.json"), raw, 0644)
 	sources, err = Resolve(root, a, nil)
 	if err != nil || !sources[0].Available {
 		t.Fatal("shared reader denied", err)
 	}
-	fixture(t, root, "rts", "b", "bob", nil)
+	fixture(t, root, "project-a", "b", "bob", nil)
 	sources, err = Resolve(root, a, nil)
 	if err != nil || sources[0].Available {
 		t.Fatal("source revocation ignored", err)
 	}
-	fixture(t, root, "rts", "b", "alice", nil)
-	os.RemoveAll(filepath.Join(root, "Workflow/rts/knowledgebase"))
+	fixture(t, root, "project-a", "b", "alice", nil)
+	os.RemoveAll(filepath.Join(root, "Workflow/project-a/knowledgebase"))
 	sources, err = Resolve(root, a, nil)
 	if err != nil || sources[0].Available || sources[0].Reason == "" {
 		t.Fatal("missing source not surfaced", err)
@@ -102,8 +102,8 @@ func TestSourcesOwnershipRevocationAndMissing(t *testing.T) {
 
 func TestSourcesWriteAccessRequiresExplicitGrant(t *testing.T) {
 	root := t.TempDir()
-	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{refWrite("b", "rts")})
-	fixture(t, root, "rts", "b", "bob", nil)
+	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{refWrite("b", "project-a")})
+	fixture(t, root, "project-a", "b", "bob", nil)
 
 	// No access block at all on the source: legacy AudienceCanRead treats
 	// this as account-visible, but write must never inherit that laxity.
@@ -115,7 +115,7 @@ func TestSourcesWriteAccessRequiresExplicitGrant(t *testing.T) {
 	// Source lists alice as a reader (read-audience overlap satisfied) but
 	// does not name "a" in allowed_kb_writers: still no write.
 	raw := []byte(`{"id":"b","access":{"owners":["bob"],"readers":["alice"]}}`)
-	os.WriteFile(filepath.Join(root, "Workflow/rts/workflow.json"), raw, 0644)
+	os.WriteFile(filepath.Join(root, "Workflow/project-a/workflow.json"), raw, 0644)
 	sources, err = Resolve(root, a, nil)
 	if err != nil || sources[0].Available {
 		t.Fatal("write granted without allowed_kb_writers entry", sources, err)
@@ -123,7 +123,7 @@ func TestSourcesWriteAccessRequiresExplicitGrant(t *testing.T) {
 
 	// Source explicitly allowlists "a": write is now granted.
 	raw = []byte(`{"id":"b","access":{"owners":["bob"],"readers":["alice"],"allowed_kb_writers":["a"]}}`)
-	os.WriteFile(filepath.Join(root, "Workflow/rts/workflow.json"), raw, 0644)
+	os.WriteFile(filepath.Join(root, "Workflow/project-a/workflow.json"), raw, 0644)
 	sources, err = Resolve(root, a, nil)
 	if err != nil || !sources[0].Available {
 		t.Fatal("explicit write grant denied", sources, err)
@@ -132,7 +132,7 @@ func TestSourcesWriteAccessRequiresExplicitGrant(t *testing.T) {
 	// Revoking the allowlist entry revokes write even though audience
 	// overlap (and therefore read) is still intact.
 	raw = []byte(`{"id":"b","access":{"owners":["bob"],"readers":["alice"]}}`)
-	os.WriteFile(filepath.Join(root, "Workflow/rts/workflow.json"), raw, 0644)
+	os.WriteFile(filepath.Join(root, "Workflow/project-a/workflow.json"), raw, 0644)
 	sources, err = Resolve(root, a, nil)
 	if err != nil || sources[0].Available {
 		t.Fatal("write access survived allowlist revocation", sources, err)
@@ -142,7 +142,7 @@ func TestSourcesWriteAccessRequiresExplicitGrant(t *testing.T) {
 func TestSourcesRejectInvalidReferencesAndSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	a := fixture(t, root, "consumer", "a", "", nil)
-	b := fixture(t, root, "rts", "b", "", nil)
+	b := fixture(t, root, "project-a", "b", "", nil)
 	for _, refs := range [][]workflowtypes.KnowledgebaseSource{
 		{ref("a", "self")}, {ref("b", "../escape")}, {ref("b", "access")}, {ref("b", "x"), ref("b", "y")}, {ref("b", "x"), ref("c", "x")}, {{WorkflowID: "b", Alias: "x", Access: "write"}},
 	} {
@@ -153,7 +153,7 @@ func TestSourcesRejectInvalidReferencesAndSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, b, "workflow.json"), filepath.Join(root, b, "knowledgebase", "leak")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Validate(root, a, []workflowtypes.KnowledgebaseSource{ref("b", "rts")}); err == nil {
+	if err := Validate(root, a, []workflowtypes.KnowledgebaseSource{ref("b", "project-a")}); err == nil {
 		t.Fatal("escaping symlink accepted")
 	}
 	if _, err := Resolve(root, "../outside", nil); err == nil {

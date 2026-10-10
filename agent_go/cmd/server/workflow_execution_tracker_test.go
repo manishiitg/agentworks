@@ -21,7 +21,7 @@ func TestRunningWorkflowListIncludesWorkflowBuilderTask(t *testing.T) {
 				Name:          "Review plan drift",
 				Title:         "Review plan drift",
 				PresetQueryID: "preset-1",
-				WorkspacePath: "Workflow/rts-video",
+				WorkspacePath: "Workflow/video-project",
 				PhaseID:       "workflow-builder",
 				PhaseName:     "Workflow Builder",
 				Status:        trackedExecutionStatusRunning,
@@ -67,7 +67,7 @@ func TestRunningWorkflowListCarriesTheCollapsedDisplayStatus(t *testing.T) {
 				SessionID:     "session-busy",
 				Source:        trackedExecutionSourceWorkshopBackground,
 				Kind:          "workflow_builder_task",
-				WorkspacePath: "Workflow/rts-video",
+				WorkspacePath: "Workflow/video-project",
 				Status:        trackedExecutionStatusRunning,
 				UserID:        "user-1",
 				StartedAt:     startedAt,
@@ -97,14 +97,14 @@ func TestWorkspaceRunningWorkflowUsesSameLifecycleProjectionAsGlobalMonitor(t *t
 	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
 		"exec-workspace": {
 			ExecutionID: "exec-workspace", SessionID: "session-workspace", Source: trackedExecutionSourceConversationTurn,
-			Kind: "workflow_builder_task", WorkspacePath: "Workflow/rts-video",
+			Kind: "workflow_builder_task", WorkspacePath: "Workflow/video-project",
 			Status: trackedExecutionStatusRunning, UserID: "user-1", StartedAt: startedAt,
 		},
 	}}
 	api.setSessionBusy("session-workspace", true)
 
 	global := api.listRunningWorkflowExecutions("user-1")
-	workspace := api.listRunningWorkflowExecutionsForWorkspace("Workflow/rts-video")
+	workspace := api.listRunningWorkflowExecutionsForWorkspace("Workflow/video-project")
 	if len(global) != 1 || len(workspace) != 1 {
 		t.Fatalf("global=%d workspace=%d, want one lifecycle projection in both", len(global), len(workspace))
 	}
@@ -122,7 +122,7 @@ func TestRunningWorkflowListKeepsInternalWorkflowStepsOut(t *testing.T) {
 				Source:        trackedExecutionSourceWorkshopBackground,
 				Kind:          "workflow_step",
 				Name:          "Step -> collect data",
-				WorkspacePath: "Workflow/rts-video",
+				WorkspacePath: "Workflow/video-project",
 				PhaseID:       "workflow-builder",
 				Status:        trackedExecutionStatusRunning,
 				UserID:        "user-1",

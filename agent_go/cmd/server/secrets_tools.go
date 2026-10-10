@@ -45,7 +45,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"source_workflow_path": map[string]interface{}{"type": "string", "description": "Admin-only optional source workspace path, e.g. Workflow/rts-latency or an exact Crew project path. Defaults to the active project/workflow. Returns names only."},
+				"source_workflow_path": map[string]interface{}{"type": "string", "description": "Admin-only optional source workspace path, e.g. Workflow/latency-report or an exact Crew project path. Defaults to the active project/workflow. Returns names only."},
 			},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {

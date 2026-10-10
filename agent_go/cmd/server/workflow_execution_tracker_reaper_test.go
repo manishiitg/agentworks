@@ -15,7 +15,7 @@ func TestPruneReapsRunningExecutionThatNeverCompleted(t *testing.T) {
 		trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
 			"stuck": {
 				ExecutionID:   "stuck",
-				WorkspacePath: "Workflow/confida-login",
+				WorkspacePath: "Workflow/customer-login",
 				SessionID:     "s1",
 				Status:        trackedExecutionStatusRunning,
 				StartedAt:     now.Add(-(trackedExecutionRunningMaxAge + time.Hour)),

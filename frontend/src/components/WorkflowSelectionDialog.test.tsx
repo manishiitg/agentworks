@@ -42,18 +42,18 @@ it('does not reuse stale results when checking permissions fails', async () => {
 
 it('moves one row per arrow key in the search input and closes once', async () => {
   vi.mocked(loadProductProjects).mockResolvedValue([])
-  const workflows = ['rts-latency', 'rts-aws', 'automation-testing'].map(label => ({ workspace_path: `Workflow/${label}`, manifest: { id: label, label } }))
+  const workflows = ['latency-report', 'aws-project', 'automation-testing'].map(label => ({ workspace_path: `Workflow/${label}`, manifest: { id: label, label } }))
   vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValueOnce({ success: true, total: 3, workflows } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
   const onSelect = vi.fn(); const onClose = vi.fn()
   const { host } = await mount(onSelect, onClose)
   const input = host.querySelector('input')!
   const press = async (key: string) => { await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) }) }
   await press('ArrowDown'); await press('Enter')
-  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'rts-aws' }))
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'aws-project' }))
   await press('ArrowDown'); await press('Enter')
   expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'automation-testing' }))
   await press('ArrowUp'); await press('Enter')
-  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'rts-aws' }))
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'aws-project' }))
   await press('Escape')
   expect(onClose).toHaveBeenCalledTimes(1)
 })

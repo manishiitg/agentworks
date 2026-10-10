@@ -977,7 +977,7 @@ func TestFindingBacklogLeadsWithTheLargestCluster(t *testing.T) {
 }
 
 // TestAwaitingUserRequiresARealPendingQuestion closes the gap that left
-// rtslatency with five findings marked awaiting_user and zero pending
+// latency-report with five findings marked awaiting_user and zero pending
 // questions: the operator was told five things needed their decision and had
 // nothing to answer, with no way to discover why.
 func TestAwaitingUserRequiresARealPendingQuestion(t *testing.T) {
@@ -1263,7 +1263,7 @@ func TestAdvisorAwaitingUserRequiresOwnedDecision(t *testing.T) {
 	}
 }
 
-// TestAwaitingRunSeparatesWaitingFromBlocked covers the distinction rtslatency
+// TestAwaitingRunSeparatesWaitingFromBlocked covers the distinction latency-report
 // had no way to express.
 //
 // Four of its nine "blocked" findings were only waiting for data: security rows

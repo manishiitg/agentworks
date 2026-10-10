@@ -19,7 +19,7 @@ type sqliteProbeDB interface {
 // INSERT..SELECT that matches zero rows still takes SQLite's single write lock,
 // so an idempotent "already migrated" statement turned every one of those reads
 // into a writer. That is what made get_pulse_state(view=module) fail with
-// SQLITE_BUSY on confida-login (2026-08-31, PUL-7774A6D0): the view is opened
+// SQLITE_BUSY on customer-login (2026-08-31, PUL-7774A6D0): the view is opened
 // five times per call, each open ran ~8 no-op write transactions, and any real
 // writer holding the lock for longer than busy_timeout failed the whole Gate.
 // Probing with a SELECT first keeps the read paths off the write lock entirely;

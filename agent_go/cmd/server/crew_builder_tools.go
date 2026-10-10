@@ -170,7 +170,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 	if err := reg.RegisterCustomTool("manage_crew_attachment", "Attach a Crew project's workspace to this workflow read-only so downstream steps can read crew files as <alias>/<crew-relative path>. First discover crews with list_accessible_workflows. Attach validates crew access and alias uniqueness, then records the fixed crew workspace path; reads re-resolve through the alias on every access while run-start and per-step checks fail fast on revoked access. Detach removes the alias immediately.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "attach", "detach"}},
-			"alias":           map[string]interface{}{"type": "string", "description": "Short lowercase alias for crew file reads, for example rts-reviewer."},
+			"alias":           map[string]interface{}{"type": "string", "description": "Short lowercase alias for crew file reads, for example reviewer-crew."},
 			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
 			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -359,8 +359,8 @@ func authorizeTriggerCallerWorkflow(ctx context.Context, userID string, caller *
 // crewAttachmentReadRoots returns the crew workspace roots attached to a
 // workflow, for session read grants. Each root is granted only when the
 // stored attachment still equals the freshly authorized project binding:
-// shape checks alone cannot tell `_users/owner/.../projects/rts` from
-// `_users/other/.../projects/rts`, so the grant is derived from the
+// shape checks alone cannot tell `_users/owner/.../projects/server A` from
+// `_users/other/.../projects/server A`, so the grant is derived from the
 // binding the access check just authorized, never from the stored path.
 // Missing manifests, revoked crews, and retargeted roots yield no grant.
 // A nil service or empty user grants nothing; crew features require a user.

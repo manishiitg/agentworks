@@ -309,7 +309,7 @@ Ticket: [PLAT-740](https://github.com/runloop-workflows/deployments/blob/main/ti
   and its tests are deleted, and the live CLI tool prompt now names `record_summary` and `send_email`. No tool for a
   plain message to the owner is added: only workflow chats could call `notify_user`, and a summary covers them.
 - **Still open.** `notify_user` remains (deprecated) until the live scripted steps that call it through the custom tool
-  endpoint, such as rts-data-reports, have moved to `record_summary` or `send_email`; then it is removed.
+  endpoint, such as server A-data-reports, have moved to `record_summary` or `send_email`; then it is removed.
 
 ### 2026-10-09 — send_email: emailing named people is its own tool; notify_user tells the owner
 
@@ -876,7 +876,7 @@ A workflow, Crew or Code project's Brain access is Off, Read or Read & write, al
 limited by its owner's and every output reader's folder roles. "Only chosen folders"
 and project folder bindings (`bind_project`, `binding_alias`) are removed; an old
 `folders` value reads as Read & write. Which notes a step reads, what it writes and
-any limit ("never outside RTS/Latency") go in its description (Inputs/Guides as
+any limit ("never outside server A/Latency") go in its description (Inputs/Guides as
 `brain:<folder>/<note>`, Output, Rules); the per-step none/read switch and read-only
 sessions stay. Why: owner, 2026-10-06: bindings were set by imports without anyone
 choosing them, and they disagreed with Brain's own roles once Brain was reorganized;
@@ -1641,7 +1641,7 @@ Users run things through Docker in Code, so where a host enables Docker for slot
 
 ### 2026-10-04 — A slot command cannot see its slot's tmux socket; a host that cannot hide it refuses the command
 
-Landlock does not govern connect() on pathname Unix sockets below ABI 9 (RTS kernel 7.0 is ABI 8, Hetzner 6.8 is ABI 4), and a slot's tmux server runs as the same account as the commands it confines, so a confined command could reach an unconfined server (verified live on RTS, PLAT-480 F1). A slot command's policy now hides the slot run root behind an empty folder in the command's own namespaces. A host that cannot give the command those namespaces refuses it (`SANDBOX_UNAVAILABLE`) instead of running it with the socket in view. RTS needs a path-scoped AppArmor `userns` exception for slotctl and the launcher (`provision-slots.sh userns`). Code: `workspace/security/isolator_linux.go`. Ticket: PLAT-480.
+Landlock does not govern connect() on pathname Unix sockets below ABI 9 (server A kernel 7.0 is ABI 8, Hetzner 6.8 is ABI 4), and a slot's tmux server runs as the same account as the commands it confines, so a confined command could reach an unconfined server (verified live on server A, PLAT-480 F1). A slot command's policy now hides the slot run root behind an empty folder in the command's own namespaces. A host that cannot give the command those namespaces refuses it (`SANDBOX_UNAVAILABLE`) instead of running it with the socket in view. server A needs a path-scoped AppArmor `userns` exception for slotctl and the launcher (`provision-slots.sh userns`). Code: `workspace/security/isolator_linux.go`. Ticket: PLAT-480.
 ### 2026-10-04 — An MCP added to a workflow, Relay, Crew or Code is shared with everyone who has access to it — PLAT-482
 
 - **Decided (owner).** There are two kinds of MCP connection: Vault (global, governed by groups) and a connection specific to a place. One added to a
@@ -1664,7 +1664,7 @@ grant its account may not even stat (EACCES only: it grants less); every other l
 and a slot command never falls back to running unconfined or as the app account (PLAT-451 unchanged). A slot uses its
 project's browser through the platform (`agent_browser`, a standalone `agent-browser` command runs as the service account).
 Why: a project chat's shell command named its project's browser, the profile landed in the slot's write grants, and the
-launcher, running as the slot, refused every Crew/Code command on RTS (`SANDBOX_UNAVAILABLE: inspect Landlock path`).
+launcher, running as the slot, refused every Crew/Code command on server A (`SANDBOX_UNAVAILABLE: inspect Landlock path`).
 Deploys of slot hosts set `releases/` 0711 and run a read-only self-test (`deploy/common/slotcheck.sh`, `./deploy.sh
 slotcheck <server>`) that fails the deploy loudly when a real slotted `pwd` does not start. Code: `workspace/security/
 slot_grants.go`, `landlock_runner_linux.go`, `workspace/slotcheck`. Ticket: PLAT-478.
@@ -1877,9 +1877,9 @@ Ticket: PLAT-432.
 
 ### 2026-10-04 — Builds are published to a public GitHub repo; servers download and verify them
 
-The build box publishes each build to `github.com/manishiitg/agentworks-builds` (releases only, newest 8 kept, no source) and RTS downloads its trimmed copy itself,
+The build box publishes each build to `github.com/manishiitg/agentworks-builds` (releases only, newest 8 kept, no source) and server A downloads its trimmed copy itself,
 accepting it only if `manifest.json` hashes to the value `deploy.sh` read on the box (then the normal manifest verify). The repo is public so servers need no credential; only
-the box holds a write token (Contents read+write on that one repo, root-only 0600 file). Streaming through the owner's Mac took 5+ minutes. Without a token or a release, `./deploy.sh rts`
+the box holds a write token (Contents read+write on that one repo, root-only 0600 file). Streaming through the owner's Mac took 5+ minutes. Without a token or a release, `./deploy.sh server A`
 falls back to the old stream (`DEPLOY_BUILD_TRANSPORT=auto|github|stream`). Hetzner products still copy from `/srv/_builds`. Ticket: PLAT-426.
 
 ### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
@@ -1907,7 +1907,7 @@ a build that should outlive the next one is pinned (`./deploy.sh pin`). Deploys 
 
 ### 2026-10-04 — Build a release once; every server copies and activates it, and refuses a build that does not match — PLAT-426
 
-`./deploy.sh excellence|confida|sparkquill|all-hetzner|rts` builds the three repositories once on the Hetzner box
+`./deploy.sh server B|server C|sparkquill|all-hetzner|server A` builds the three repositories once on the Hetzner box
 (`deploy/common/build-release.sh` into `/srv/_builds/<sha>-<time>/`, with `manifest.json`) and each server only copies that build and runs
 its usual activation. Before touching anything the target verifies the manifest and refuses on another CPU architecture, a glibc older than
 the build's, or any missing, changed or unlisted file. Before, every server cloned and compiled the same commit (5 min each, server A 7 min), and
@@ -2421,7 +2421,7 @@ PLAT-404.
   Trusted viewer control and scoped service calls remain required for these marks.
 - **Verified.** Real Chrome recording and repeated replay across the manual
   address change, tabs, popup and close; browser control proxy checks.
-- **RTS finding.** The service's `.config` is root-owned and its private
+- **server A finding.** The service's `.config` is root-owned and its private
   `agentworks/gog` directory was absent. Sandbox setup tried to create this
   prerequisite before every trusted command and failed, including browser
   startup. Create only the missing private child directories as video-studio,
@@ -2666,7 +2666,7 @@ PLAT-388.
   (1) the strict profile did not allow terminal devices, so tmux could not create its pty and its server exited ("fork failed: Operation not
   permitted" when run by hand); (2) `/tmp` is a link to `/private/tmp`, the strict profile grants the real folder and will not follow the link,
   so a socket named through `/tmp` was refused. Now the profile allows pseudo-ttys only when a terminal is requested (`AllowPTY`), and the
-  shells folder is named by its real path (`interactiveShellRootPath`). Linux is unaffected (its tests pass on Excellence).
+  shells folder is named by its real path (`interactiveShellRootPath`). Linux is unaffected (its tests pass on server B).
 - **Test:** `interactive_shell_darwin_test.go` (strict guard, real socket path, stop). The earlier Linux attach/escape checks also pass on
   a Mac with the strict guard when the test's other project is outside `/var/folders` (which the strict profile grants as scratch).
 
@@ -2800,7 +2800,7 @@ rather than a shell as the service account. Ticket: PLAT-403.
 
 ### 2026-10-03 — Re-running the slot setup for server B took server C's slot table away again — PLAT-404
 
-`provision-slots.sh init` sets `o+x` on `/etc/agentworks` unconditionally. Why: init for the default product reset it to 0750 and Confida's service,
+`provision-slots.sh init` sets `o+x` on `/etc/agentworks` unconditionally. Why: init for the default product reset it to 0750 and server C's service,
 which reads its slot table through that folder, would fail with "slot table unavailable". Ticket:
 PLAT-404.
 
@@ -2814,7 +2814,7 @@ PLAT-404.
 - **Server B diagnosis and configuration.** The live agent's Google app was
   absent under its current HOME `/srv/agents/home`; Gmail inbound environment
   settings were also absent. Imported the matching downloaded web OAuth client
-  (project `excellence-jobs-b45cc`, callback on the Excellence domain) using the
+  (project `server B-jobs-b45cc`, callback on the server B domain) using the
   running binary's `server set-mcp-app` command and the live service environment,
   as the service account. Verified the sealed file is service-owned and 0600.
   No code deployment or restart. Google account consent remains a human step.
@@ -2909,7 +2909,7 @@ PLAT-405.
   live view's socket closed and the page reconnected forever. The browser itself ran fine (port listening, daemon up).
 - **Done.** `browserconfig.SandboxSocketDir/SandboxSocketDirs` and their use in the live-stream lookup and the
   session cleanup / pid lookup (`WORKSPACE_DOCS_PATH`/`DOCS_DIR`). Test: `browserconfig/sandbox_socket_test.go`.
-- **Not verified in a browser** until deployed to RTS; the `.stream` file and listening port were seen on the host.
+- **Not verified in a browser** until deployed to server A; the `.stream` file and listening port were seen on the host.
 
 ### 2026-10-01 — Builder configures Gmail triggers; panes show read-only state
 
@@ -2928,7 +2928,7 @@ PLAT-405.
   reference teach account/read-consent setup, route selection, operator Pub/Sub
   prerequisites and verification. Route changes require an interactive owner;
   email, bot, scheduled and external-token callers cannot configure their routing.
-- **Open.** Live RTS/Google testing still requires operator provisioning and deployment;
+- **Open.** Live server A/Google testing still requires operator provisioning and deployment;
   none is performed here. This retains the private single-server SQLite queue and
   owner-only sender policy. Workflow trigger replies start new runs rather than
   continuing a conversational assistant, because the owner chose deterministic routing.
@@ -2964,10 +2964,10 @@ PLAT-405.
   Agent execution uses the existing internal conversation dispatcher, project bindings and access checks.
 - **Rollout.** Configuration maps named OAuth clients to topics, plus an exact HTTPS audience and verified
   Pub/Sub service-account email. One topic per OAuth project and one subscription per deployment lets a
-  mailbox serve multiple deployments. RTS is first (AWS `./deploy.sh rts`); Hetzner uses the same gateway
+  mailbox serve multiple deployments. server A is first (AWS `./deploy.sh server A`); Hetzner uses the same gateway
   code. No cloud provisioning, deployment, or service restart is included in this change. Operator guide:
   `docs/gmail-inbound.md`.
-- **Open.** Live Google/RTS testing still needs the actual OAuth project ID, topic/IAM/subscription setup,
+- **Open.** Live Google/server A testing still needs the actual OAuth project ID, topic/IAM/subscription setup,
   reconnect/read consent and real incoming mail. External senders/delegated sender policies, arbitrary
   vanity addresses, distributed worker leases, manual delivery replay UI and guaranteed exactly-once tool
   side effects are outside V1. Queue limits and 30-day body retention are documented in the operator guide.
@@ -2995,7 +2995,7 @@ PLAT-405.
 
 ### 2026-10-01 — Preserve MCP images through the coding CLI bridge
 
-- RTS/Manish's `sde private` Code chat used Claude and Jam's video tools;
+- server A/Manish's `sde private` Code chat used Claude and Jam's video tools;
   the agent reported text describing frames but could not see their pixels.
   The executor's text-only conversion discarded MCP image blocks and the
   stdio bridge reconstructed only a text result. Native file tools cannot
@@ -3091,7 +3091,7 @@ PLAT-405.
   command's environment *after* the isolator had wrapped it for the slot, and the wrap writes the environment into
   the request at that moment. Fix: `security.Isolator.ExtraEnv` carries the filtered per-call values and they are merged
   (`MergeExtraEnv`) before `WrapCommand`; non-slot commands are unchanged. Tests: `security/extra_env_test.go`,
-  `security/isolator_slot_env_linux_test.go`. Affects every slotted workflow shell on any host (excellence, RTS,
+  `security/isolator_slot_env_linux_test.go`. Affects every slotted workflow shell on any host (server B, server A,
   Server C) until deployed.
 - **By design.** `planning/` is mounted read-only in a workflow shell so plan changes go through the authenticated tools.
 - **Browser (server A "Browser restarted - reconnecting" loop; server C "Permission denied ... google-chrome").** The
@@ -3108,16 +3108,16 @@ PLAT-405.
 
 ### 2026-10-01 — server A resized to t3.medium (2 vCPU / 4 GB) for performance testing
 
-- **Decided and done.** The RTS instance went from `t3.large` to `t3.medium` through the stack (change set
-  `rts-resize-t3-medium`, in place, same disks and Elastic IP; a few minutes of downtime). `t3.medium` was added to the
+- **Decided and done.** The server A instance went from `t3.large` to `t3.medium` through the stack (change set
+  `server A-resize-t3-medium`, in place, same disks and Elastic IP; a few minutes of downtime). `t3.medium` was added to the
   template's allowed sizes. The stack said `t3.xlarge` while the instance had been resized by hand to `t3.large`
   earlier, so the stack parameter now matches reality again. The template's first-boot script differs from the deployed
   one (rootless Docker was added later); it only runs on a new instance, so nothing re-ran.
 - **Why not c5.large.** `t3` is burstable: once CPU credits run out it is throttled, so sustained performance numbers
   drift. A fixed-performance size (`c5.large`, also 2 vCPU / 4 GB) gives steadier results if the tests run long; the
   template does not list it yet.
-- **Deploys.** The on-box build cap was 6 GB; it is now `${RTS_BUILD_MEMORY_MAX:-3G}` (`deploy.sh`), with swap
-  (4 GB) absorbing the rest, so deploys are slower rather than killed. Set `RTS_BUILD_MEMORY_MAX=6G` after a larger resize.
+- **Deploys.** The on-box build cap was 6 GB; it is now `${server A_BUILD_MEMORY_MAX:-3G}` (`deploy.sh`), with swap
+  (4 GB) absorbing the rest, so deploys are slower rather than killed. Set `server A_BUILD_MEMORY_MAX=6G` after a larger resize.
 
 ### 2026-10-01 — Slots: shared folders need a shared group (workflow shell was failing for slotted users)
 
@@ -3128,7 +3128,7 @@ PLAT-405.
   Server A (scheduled workflows run as the admin, who has a slot) and server B (Relays/Crew) had the same gap. This is
   the "shared folders are not slot-writable yet" item flagged when opt-in mode was introduced; assigning every
   Server C user a slot made it bite.
-- **Decided and done.** One group per product (`<prefix>shared`: `cfshared` on Confida, `slotshared` on RTS and
+- **Decided and done.** One group per product (`<prefix>shared`: `cfshared` on server C, `slotshared` on server A and
   Server B) holds the service account and every slot; the shared folders get that group, group read/write and
   setgid, so files either side creates stay reachable by both. Private trees stay closed to other slots (checked: one
   slot cannot list another's tree). Apps still decide who may open which workflow; this only restores what the
@@ -3142,24 +3142,24 @@ PLAT-405.
 
 - **Correction.** Which products a deployment's switcher lists is the frontend `runtime-config.js`
   (`enabledProductSurfaces`), narrowed per account by `allowed_products` (administrators: all enabled; others:
-  their `users.json` products plus `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL`). Excellence's file said
+  their `users.json` products plus `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL`). server B's file said
   `["code"]`, so Crew and Relays never appeared even for administrators. Earlier notes that `AGENT_PRODUCTS`
   controls this were wrong: that setting is not passed to these services.
-- **Decided.** `enabledProductSurfaces: ["code", "work", "relays"]` on excellence (default stays `code`). Visible to
+- **Decided.** `enabledProductSurfaces: ["code", "work", "relays"]` on server B (default stays `code`). Visible to
   Manish and Aayush (administrators) and Vaibhav (`work`, `relays` in his list); every other account stays on
   Code because its own list does not include them.
 
-### 2026-10-01 — Relays (profile id `relays`) opened on Confida for everyone to test; excellence per person
+### 2026-10-01 — Relays (profile id `relays`) opened on server C for everyone to test; server B per person
 
-- **Decided.** Confida: `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL=work,code,relays`, so every account can open Relays
-  for testing (the feature landed on `main` today; it was not in any live build before this deploy). Excellence:
+- **Decided.** server C: `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL=work,code,relays`, so every account can open Relays
+  for testing (the feature landed on `main` today; it was not in any live build before this deploy). server B:
   Relays only for Aayush (administrator, every product) and Vaibhav (`relays` added to his `users.json` products);
-  excellence's available-to-all list stays `code`. RTS is unchanged. To close it again on Confida, remove `relays` from
+  server B's available-to-all list stays `code`. server A is unchanged. To close it again on server C, remove `relays` from
   that list and redeploy.
 
 ### 2026-10-01 — read_image over the CLI bridge runs on the session's own account
 
-- **Found (Confida, Vaibhav).** `read_image` called by a coding CLI arrives through the tool bridge as a plain HTTP
+- **Found (server C, Vaibhav).** `read_image` called by a coding CLI arrives through the tool bridge as a plain HTTP
   request, with none of the turn's provider accounts in its context. The analysis fell back to "the agent's own
   model" (claude-code/claude-sonnet-5-5) but, with no account in hand, started Claude under the **server's**
   account: Server C has no server Claude login, so Claude stopped on "Select login method" and timed out
@@ -3176,26 +3176,26 @@ PLAT-405.
 ### 2026-10-01 — server C slot table unreachable (incident), and image analysis login
 
 - **Incident.** After server C's slots went live (12:00), its service could not read
-  `/etc/agentworks/confida/slots.json`: `/etc/agentworks` was `root:agents 0750` (excellence's group), so Confida's
+  `/etc/agentworks/server C/slots.json`: `/etc/agentworks` was `root:agents 0750` (server B's group), so server C's
   service could not traverse it. In opt-in mode a table that cannot be read is an error, so every shell and
   browser call failed for every server C user ("No account slot for this user ... permission denied"), about
   13 calls until it was fixed (`chmod 0751 /etc/agentworks`, search-only; the tables and per-product folders stay
   closed to the other product, verified both ways). `provision-slots.sh` now sets that for any non-default
   prefix. My earlier probe ran as the server C account but never read the table, so it missed this; the probe
   must read the slot table through the service's own path.
-- **Not from slots.** Image analysis (`read_image`) on Confida uses the workflow's chosen model
+- **Not from slots.** Image analysis (`read_image`) on server C uses the workflow's chosen model
   (claude-code/claude-sonnet-5-5); server C has no Claude login (no token, no credentials file), so Claude shows
   its login screen and the call times out. Fix by connecting a Claude account (Providers) or choosing a model
   with a login for image analysis.
 
-### 2026-10-01 — Excellence: Docker for users runs rootless; `agents` left the root `docker` group
+### 2026-10-01 — server B: Docker for users runs rootless; `agents` left the root `docker` group
 
 - **Found.** `agents` (the platform account, which also runs every non-canary user's coding CLI) was in the host's
   `docker` group, i.e. root-equivalent: any user's Code session could `docker run -v /:/host` and own the box.
   Users really did use it (invoicing, hrms, injuryconnect stacks ran on the root daemon).
 - **Decided and done.** `agents` is out of the `docker` group and has its own rootless Docker daemon (user unit
   `docker.service`, data under `/srv/agents/.local/share/docker`, socket `/run/user/990/docker.sock`);
-  `DOCKER_HOST` points the services at it (`product.env`, `/srv/agents/.env`). Containers of excellence users on
+  `DOCKER_HOST` points the services at it (`product.env`, `/srv/agents/.env`). Containers of server B users on
   the root daemon (7: invoicing x3, hrms_db, injuryconnect x3) were stopped; their named volumes were backed
   up to `/root/docker-backups-20261001/` on the host and kept, so users re-create their stacks (`docker compose
   up`) in the new daemon and can ask for a restore. The other 33 containers on the root daemon belong to other
@@ -3274,29 +3274,29 @@ PLAT-405.
   Server C's service read server B users' folders). The prefix, config path, launcher and table path are
   settings (`AGENTWORKS_SLOT_PREFIX`, `_SLOTCTL_CONFIG`, `_SLOTCTL`, `_SLOTS_FILE`; `slot_prefix` in the
   slotctl config for programs that run without the service environment). The default (`slot`,
-  `/usr/local/libexec/agentworks/`, `/etc/agentworks/`) is unchanged, so excellence needs no migration.
+  `/usr/local/libexec/agentworks/`, `/etc/agentworks/`) is unchanged, so server B needs no migration.
   `provision-slots.sh` takes `SLOT_PREFIX`; a non-default prefix puts everything under a per-product name
   (`/usr/local/libexec/agentworks/<product>/`, `/etc/agentworks/<product>/`,
   `/etc/sudoers.d/agentworks-slots-<product>`, its own sudoers alias).
-- **Decided.** Confida: `SLOT_PREFIX=cf SLOT_COUNT=15`, opt-in mode (it runs Workflows and Crews). It has 12 users.
+- **Decided.** server C: `SLOT_PREFIX=cf SLOT_COUNT=15`, opt-in mode (it runs Workflows and Crews). It has 12 users.
 - **Decided.** In opt-in mode a host with no slot table yet is unchanged (nobody holds a slot) instead of
   refusing shell commands, so a product can deploy with the slot settings first and be provisioned after.
   A damaged or unreadable table is still an error; `on` mode still refuses without a table.
 
 ### 2026-10-01 — Crew offered on server B (Code + Crew); Code keeps its own-login rule
 
-- **Decided.** Crew (`work`) on excellence is given per person, not to everyone: administrators (every
+- **Decided.** Crew (`work`) on server B is given per person, not to everyone: administrators (every
   product) and anyone whose `users.json` `products` lists it. Vaibhav now has `code` and `work`; the other
   accounts stay on `code`. `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL` stays `code`. (`AGENT_PRODUCTS` in
   `product.env` is not passed to this deployment's services, so it gates nothing; an earlier edit of it to
   `code,work` had no effect and was reverted.) Crew projects are private to their owner (project sharing is off).
 - **Decided.** A single-product deployment refuses a Claude turn with no token by itself
-  (`isSingleProductServerDeployment`); a multi-product or unset `AGENT_PRODUCTS` (excellence, Confida) never had
+  (`isSingleProductServerDeployment`); a multi-product or unset `AGENT_PRODUCTS` (server B, server C) never had
   that safety net. Code is private to
   each person and signs in with their own CLI login, so on a multi-user server a Code turn with no token
   is still refused (`claudeCodeTokenMissingForSingleProductDeployment`), instead of falling back to the
   platform account's own CLI login. Other products on the server keep the shared-server behavior.
-- **Open.** Excellence keeps `COPY_PLAYBOOKS=false` and `RUN_WORKFLOW_BUILDER_MIGRATION=false`; check
+- **Open.** server B keeps `COPY_PLAYBOOKS=false` and `RUN_WORKFLOW_BUILDER_MIGRATION=false`; check
   Crew templates and any playbook-backed feature in a first Crew test.
 
 
@@ -3312,13 +3312,13 @@ PLAT-405.
   Tests exercise the real store/hook/rendered header through repeated idle
   polls, delayed older completion and the new completion. Code:
   `foregroundTurnActivity`, `chatRuntimeActivity`, `useChatRuntimeActivity`.
-- During the RTS investigation, Manish's `automationtesting` request at
+- During the server A investigation, Manish's `automationtesting` request at
   14:31:30 IST ended at 14:33:14 with Cursor `quota_exhausted` / "cursor usage
   limit reached". This is a provider failure separate from the loading race;
   changing the indicator does not resolve account quota.
 
 ### 2026-10-01 — Identical chat replies remain visible in separate user turns
-- Excellence/Ashutosh's 14:24–14:26 IST Code messages reached Codex and each
+- customer-b/user's 14:24–14:26 IST Code messages reached Codex and each
   received an answer. Native transcripts, server observer events and browser
   receipt telemetry confirmed delivery. The shared transcript filter hid later
   identical answers because it compared across the whole conversation and the
@@ -3349,7 +3349,7 @@ PLAT-405.
   after deploying.
 
 ### 2026-10-01 — Files bulk deletion preserves its project container
-- Excellence/Vaibhav's Files selection deleted the entire Code project folder;
+- server B/Vaibhav's Files selection deleted the entire Code project folder;
   its cached project row remained, and the later project-delete request returned
   "project not found". A scoped pane's Select all now selects its displayed
   contents, preserving the root and `product.json`/`workflow.json`. Protected
@@ -3378,7 +3378,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   come back. Why: with per-user Linux accounts (slots) a non-owner's commands run as their own account and
   cannot work in the owner's folder, and the platform's own mediated reads were the only thing that made
   shared projects work; private projects need no shared folders.
-- **Effect on RTS.** All existing Video Studio, Work and Code projects live under the admin account, so only
+- **Effect on server A.** All existing Video Studio, Work and Code projects live under the admin account, so only
   admin sees them after the next deploy; other accounts start with none. Workflow co-owners and public share
   links are separate features and are unchanged.
 - **Tests.** The existing reader-flow tests run with sharing switched on (`project_sharing_testmain_test.go`);
@@ -3391,17 +3391,17 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   (build `slotctl` and `slottmux`; install the tmux front-end outside the releases), called from both
   `deploy/rootless-linux/build-and-activate.sh` and `deploy/aws-ec2/server/build-and-activate.sh`. The
   provisioning script moved to `deploy/common/provision-slots.sh` and takes `APP_DIR`, `DOCS` and
-  `SERVICE_HOME`, so the same script serves `/srv/<product>` hosts and RTS. The two build scripts themselves
+  `SERVICE_HOME`, so the same script serves `/srv/<product>` hosts and server A. The two build scripts themselves
   are still separate (server A has its own Docker, CloudFront and AppArmor steps); merging them is a larger
   change and is not done.
 - **Decided.** `AGENTWORKS_SLOTS=optin` (new): a user who holds a slot runs shell commands as it; a user without
-  one is unchanged (`on` still refuses them). RTS runs Video Studio and Workflow/Crew runs that write into
+  one is unchanged (`on` still refuses them). server A runs Video Studio and Workflow/Crew runs that write into
   shared folders a slot account cannot write yet (the per-slot state roots item below), so it rolls out per
-  user. The RTS build writes `optin` only when `/etc/agentworks/slots.json` exists, i.e. after an administrator
+  user. The server A build writes `optin` only when `/etc/agentworks/slots.json` exists, i.e. after an administrator
   ran `deploy/aws-ec2/slots-admin.sh init`.
 - **Decided.** Server A has no sudo and SSH is deploy-only, so root steps go through SSM Run Command
   (`deploy/aws-ec2/slots-admin.sh`, like `install-system-tools.sh`). `init` also installs `acl` (setfacl).
-- **Open.** CLIs as the user's own account (`AGENTWORKS_SLOT_CLI*`) are not enabled on RTS; shared Workflow and
+- **Open.** CLIs as the user's own account (`AGENTWORKS_SLOT_CLI*`) are not enabled on server A; shared Workflow and
   Crew folders still need slot-writable state roots before shell-as-slot can cover those runs.
 
 ### 2026-10-01 — Foreground completion clears chat header loading despite stale status
@@ -3422,8 +3422,8 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   that carries a path from one user's tree into another's, or from a shared folder into a user's tree: a
   link planted in your own folder can no longer read someone else's. Checked first on server B and server A:
   no existing link does either. Regression tests in `workspace/utils/path_cross_user_test.go`.
-- **Reversed the same day (RTS outage).** The first version also refused any `_users/<id>/` path whose id was
-  not the requester's. That broke RTS: the agent could not load `_users/_system_global_secrets/secrets.json`
+- **Reversed the same day (server A outage).** The first version also refused any `_users/<id>/` path whose id was
+  not the requester's. That broke server A: the agent could not load `_users/_system_global_secrets/secrets.json`
   at startup, never listened, and server A was down for about 8 minutes until the release was rolled back. The
   workspace API has no authorization of its own by design; the app server authorizes the caller and stamps
   `X-User-ID`, and shared Code collaborators, Crew owners and administrators legitimately read another
@@ -3433,7 +3433,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   its nearest *existing* parent, so a path that does not exist yet (`_users/_system_global_secrets/...`, or
   a new user's first file, whose nearest parent is `_users` itself) was refused and the agent could not
   start; server B went down until its release was rolled back. Fixed: the comparison applies only once the
-  resolved path has reached a user's own folder, and a link to `_users` itself stays refused. RTS was only
+  resolved path has reached a user's own folder, and a link to `_users` itself stays refused. server A was only
   unaffected because those folders already existed. Checked against the real service with a data layout
   that has no `_system_global_secrets` folder and a brand-new user's first write, not only unit tests.
 - **Decided.** Shell commands (`security.buildNativeEnvironment`) and CLI launches
@@ -3559,7 +3559,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 - Why: per-user accounts ("slots", private plan) need an administrator-provisioned user before
   anyone can sign in. Existing users already have records and are unaffected. Anyone who was only
   in `AUTH_ALLOWED_EMAILS` and never signed in must now be added by an administrator.
-- Left: `SUPABASE_SERVICE_ROLE_KEY` on excellence was only needed for the invite email and can be
+- Left: `SUPABASE_SERVICE_ROLE_KEY` on server B was only needed for the invite email and can be
   dropped from its `.env` later; the password and bot-route sign-in paths are unchanged. Not deployed.
 
 ### 2026-10-01 — Keep prompt contracts upfront and load procedures through skills
@@ -3605,7 +3605,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 ### 2026-10-01 — A skill with an invalid YAML header stopped the server at startup
 - `e05c52f23` made `RegisterEmbeddedSkillsRendered` parse every skill header as YAML, and
   `server.go` stops the process on any error. The Video Studio `google-ai` skill had an unquoted
-  `: ` inside its description, so the agent exited at start (excellence, 2026-10-01, status 1,
+  `: ` inside its description, so the agent exited at start (server B, 2026-10-01, status 1,
   502 for about 30 minutes) because AGENT_PRODUCTS was unset there and every product registers.
   Every deploy of that `main` would have failed the same way.
 - Quoted the description, and added `TestEverySkillFrontmatterIsValidYAML` which checks every
@@ -3777,8 +3777,8 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 ### 2026-09-30 — Each rootless release keeps the source it was built from
 - `deploy/rootless-linux/build-and-activate.sh` copies the three repos into
   `<release>/source/<repo>` (no `.git`, `node_modules` or `dist`) right after writing
-  `SOURCE_REVISIONS`. Confida, SparkQuill and excellence get it; RTS uses
-  `deploy/aws-ec2/` and is unchanged. Requested by the owner after the excellence
+  `SOURCE_REVISIONS`. server C, SparkQuill and server B get it; server A uses
+  `deploy/aws-ec2/` and is unchanged. Requested by the owner after the server B
   release folders were deleted on 2026-09-30.
 - It lives inside the release, so it is pruned with it and is **not** a backup: a wipe of
   `/srv/<product>` removes it too (only `data` and `state` survived). It is owned by the
@@ -4069,7 +4069,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 ### 2026-09-30 — Code agents are told to keep to their own project on the shared server
 - A Code project's agent can install and run things on a server that other people's projects
   share. One project's chat installed a browser IDE, exposed it to the internet through a
-  forwarder and browsed the server's folders (excellence). A prompt section, `code-host-safety`
+  forwarder and browsed the server's folders (server B). A prompt section, `code-host-safety`
   (`prompt_sections.go`, Code product only), now tells the agent to: work inside its working
   folder and never in `~` (a hidden private folder, so files created there are invisible to the
   user); not look at folders or files outside it; not read environment variables or credentials
@@ -4083,7 +4083,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 - Slash commands change the CLI's own settings or run large commands, both of which the app
   offers itself. The session-switching ones (`/new`, `/clear`, `/resume`, `/fork`) leave the chat
   reading a session the CLI has left, and any slash command leaves a draft the CLI never records
-  (Vaibhav, Confida: `/new`, then every chat send refused). So typing them is blocked, except
+  (Vaibhav, server C: `/new`, then every chat send refused). So typing them is blocked, except
   `/usage`, which people need.
 - The CLI's slash menu can be driven without typing a name ("/", arrow keys, Enter), so
   `terminal_slash_guard.go` follows the line as typed: once a line starts with `/` it forwards
@@ -4107,7 +4107,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   that arrive after their turn ended (Cursor's late transcript chunks, native
   transcript catch-up) marked it mid-answer with nothing left to end it, so
   Cursor's first reply line to a message landed above that message (server A
-  rts-pr-reviewer: the line looked missing; it was above the message).
+  pr-reviewer: the line looked missing; it was above the message).
 - Now a session is mid-answer only if an answer row arrived in the last 15 s
   (`deferredSteerQuietWindow`) or a tool call is still running. Past that it is
   idle and the reply is held. Trade-off: a CLI silent for over 15 s mid-answer
@@ -4138,7 +4138,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   rest of the home, and keeps a copy that already exists. Muse, Codex and
   Cursor use it; Claude has its own (`claudeAdoptResumedConversation`).
 - Cursor chats live under the account's `XDG_CONFIG_HOME` (the server sets one
-  on RTS) or `~/.cursor/chats`, and go to `.config/cursor/chats` in the private
+  on server A) or `~/.cursor/chats`, and go to `.config/cursor/chats` in the private
   home, where the confined Cursor reads them.
 
 ### 2026-09-30 — Cursor reads the confined chat's own store first
@@ -4197,8 +4197,8 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 - Code: `frontend/src/components/ModePresetBar.tsx`.
 
 ### 2026-09-30 — Coding CLIs run under the Landlock lock for everyone, everywhere
-- `AGENTWORKS_CLI_LANDLOCK=on` and `AGENTWORKS_CLI_FULL=on` on RTS, excellence,
-  Confida and SparkQuill (service unit / `product.env`). No staged rollout, no
+- `AGENTWORKS_CLI_LANDLOCK=on` and `AGENTWORKS_CLI_FULL=on` on server A, server B,
+  server C and SparkQuill (service unit / `product.env`). No staged rollout, no
   per-user lists.
 - A CLI that fails under the lock is fixed, never exempted (an exemption for
   Muse was built and reverted the same day).
@@ -4247,7 +4247,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 - The private home gets a link to the account's login file, never a copy
   (refresh tokens rotate). The source follows the account's own
   `XDG_CONFIG_HOME` / `CODEX_HOME` / `CLAUDE_CONFIG_DIR`; for the server account,
-  the server process's environment (RTS sets `XDG_CONFIG_HOME`, so its Cursor
+  the server process's environment (server A sets `XDG_CONFIG_HOME`, so its Cursor
   login was never found before). `CLISecurityPolicy.CredentialEnv`.
 - On server A Cursor runs on an API key, so it does not depend on the login file.
 
@@ -4274,7 +4274,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
 
 ## Deploy state (2026-09-30, deploys on hold)
 
-- **Live:** RTS `fa635b8` (Cursor store order); Confida (Pi launch folder,
+- **Live:** server A `fa635b8` (Cursor store order); server C (Pi launch folder,
   extension cache, bridge; Pi confirmed working); server B (Muse hooks,
   resume adoption).
 - **On main, not deployed:** the steer-ordering fix (`e8340db68`).
@@ -4302,7 +4302,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   was modified in this investigation.
 
 ### 2026-10-01 — Generated model names can disagree with the actual runtime
-- Excellence/Ashutosh's 14:15 IST Code turn used `gpt-6.1-sol`: both the app's
+- customer-b/user's 14:15 IST Code turn used `gpt-6.1-sol`: both the app's
   generation records and Codex's native rollout `turn_context.model` confirmed
   it. The earlier 13:07 turn used `gpt-6-sol`. The later response saying
   "GPT-6 (Codex)" was generated prose, not an additional catalog entry or proof
@@ -4316,7 +4316,7 @@ Superseded 2026-10-08: sharing is on by default again (PLAT-725).
   the Codex adapter's native transcript.
 
 ### 2026-10-01 — Model selection is pending while typing directly into a retained terminal
-- Excellence/Ashutosh's Code saved `gpt-6.1-sol` in its project manifest, while
+- customer-b/user's Code saved `gpt-6.1-sol` in its project manifest, while
   its retained Codex runtime still had `gpt-6-sol`. The model was saved after
   that runtime's last chat turn. Saving is working; model/account reconciliation
   and relaunch happen in the next project chat request, and native terminal

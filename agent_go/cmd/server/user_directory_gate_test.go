@@ -96,7 +96,7 @@ func TestAuthMiddlewareCanonicalizesLinkedSSOIdentityWithoutMergingAnotherAccoun
 	if got := requestID("old-supabase-id", "Manish Prakash", "OWNER@example.com"); got != "owner-id" {
 		t.Fatalf("linked owner id = %q, want owner-id", got)
 	}
-	if got := requestID("reader-supabase-id", "Manish Confida", "reader@example.com"); got != "reader-id" {
+	if got := requestID("reader-supabase-id", "Manish customer", "reader@example.com"); got != "reader-id" {
 		t.Fatalf("reader id = %q, want reader-id", got)
 	}
 }

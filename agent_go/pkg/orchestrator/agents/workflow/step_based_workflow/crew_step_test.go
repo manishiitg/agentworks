@@ -21,10 +21,10 @@ func testCrewStepJSON() string {
 	return `{
 		"type": "crew",
 		"id": "crew-review",
-		"title": "Review with RTS crew",
+		"title": "Review with project-a crew",
 		"description": "Ask the maintained reviewer crew",
 		"crew_profile_id": "work",
-		"crew_project_id": "rts",
+		"crew_project_id": "project-a",
 		"trigger_id": "trig-1",
 		"instruction": "Review PR {{pr}}",
 		"context_dependencies": ["pr.json"],
@@ -45,7 +45,7 @@ func TestCrewPlanStepJSONRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatalf("parsed type = %T, want *CrewPlanStep", parsed)
 	}
-	if crew.CrewProfileID != "work" || crew.CrewProjectID != "rts" || crew.TriggerID != "trig-1" ||
+	if crew.CrewProfileID != "work" || crew.CrewProjectID != "project-a" || crew.TriggerID != "trig-1" ||
 		crew.Instruction != "Review PR {{pr}}" || crew.TimeoutSeconds != 600 || crew.NextStepID != "ship" {
 		t.Fatalf("parsed crew step = %+v", crew)
 	}
@@ -88,7 +88,7 @@ func TestCrewPlanStepJSONRoundTrip(t *testing.T) {
 func TestValidateCrewStepFieldsTyped(t *testing.T) {
 	valid := &CrewPlanStep{
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-		CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1",
+		CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1",
 		Instruction: "Review it",
 	}
 	if err := validateCrewStepFieldsTyped(valid); err != nil {
@@ -127,7 +127,7 @@ func TestCrewStepNextStepIDReferenceValidation(t *testing.T) {
 		&CrewPlanStep{
 			Type:             StepTypeCrew,
 			CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-			CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1",
+			CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1",
 			Instruction: "Review it", NextStepID: "ship",
 		},
 		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "ship", Title: "Ship"}},
@@ -139,7 +139,7 @@ func TestCrewStepNextStepIDReferenceValidation(t *testing.T) {
 		&CrewPlanStep{
 			Type:             StepTypeCrew,
 			CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-			CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1",
+			CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1",
 			Instruction: "Review it", NextStepID: "ghost",
 		},
 	}}
@@ -196,7 +196,7 @@ func TestAddCrewStepTool(t *testing.T) {
 	add := createAddCrewStepExecutor("Workflow/test", loggerv2.NewNoop(), readFile, writeFile, moveFile)
 	out, err := add(context.Background(), map[string]interface{}{
 		"id": "crew-1", "title": "Review", "crew_profile_id": "work",
-		"crew_project_id": "rts", "trigger_id": "trig-1", "instruction": "Review it",
+		"crew_project_id": "project-a", "trigger_id": "trig-1", "instruction": "Review it",
 		"context_dependencies": []interface{}{}, "insert_after_step_id": "first", "reason": "test",
 	})
 	if err != nil {
@@ -222,7 +222,7 @@ func TestAddCrewStepTool(t *testing.T) {
 	if !ok {
 		t.Fatalf("step type = %T, want *CrewPlanStep", plan.Steps[1])
 	}
-	if crew.CrewProjectID != "rts" || crew.TriggerID != "trig-1" || crew.Instruction != "Review it" {
+	if crew.CrewProjectID != "project-a" || crew.TriggerID != "trig-1" || crew.Instruction != "Review it" {
 		t.Fatalf("crew step = %+v", crew)
 	}
 }
@@ -234,7 +234,7 @@ func TestAddCrewStepToolRejectsInvalid(t *testing.T) {
 	add := createAddCrewStepExecutor("Workflow/test", loggerv2.NewNoop(), readFile, writeFile, moveFile)
 	_, err := add(context.Background(), map[string]interface{}{
 		"id": "crew-1", "title": "Review", "crew_profile_id": "work",
-		"crew_project_id": "rts", "instruction": "Review it",
+		"crew_project_id": "project-a", "instruction": "Review it",
 		"context_dependencies": []interface{}{}, "insert_after_step_id": "first", "reason": "test",
 	})
 	if err == nil || !strings.Contains(err.Error(), "trigger_id") {
@@ -244,8 +244,8 @@ func TestAddCrewStepToolRejectsInvalid(t *testing.T) {
 
 func TestUpdateCrewStepTool(t *testing.T) {
 	seed := `{"objective": "test", "steps": [{
-		"type": "crew", "id": "crew-review", "title": "Review with RTS crew",
-		"crew_profile_id": "work", "crew_project_id": "rts", "trigger_id": "trig-1",
+		"type": "crew", "id": "crew-review", "title": "Review with project-a crew",
+		"crew_profile_id": "work", "crew_project_id": "project-a", "trigger_id": "trig-1",
 		"instruction": "Review it", "context_dependencies": []
 	}]}`
 	files, readFile, writeFile := testCrewToolFiles(seed)
@@ -430,7 +430,7 @@ func TestExecuteCrewStep(t *testing.T) {
 		Type:             StepTypeCrew,
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review", ContextDependencies: []string{"pr.json"}},
 		CrewProfileID:    "work",
-		CrewProjectID:    "rts",
+		CrewProjectID:    "project-a",
 		TriggerID:        "trig-1",
 		Instruction:      "Review PR {{pr}}",
 	}
@@ -487,7 +487,7 @@ func TestExecuteCrewStepStampsManifestWorkflowID(t *testing.T) {
 	crew := &CrewPlanStep{
 		Type:             StepTypeCrew,
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-		CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1", Instruction: "x",
+		CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1", Instruction: "x",
 	}
 	_, _, err := hcpo.executeCrewStep(context.Background(), crew, 0, &StepProgress{}, nil, &ExecutionContext{}, []PlanStepInterface{crew})
 	if err != nil {
@@ -505,7 +505,7 @@ func TestExecuteCrewStepRejectsWithoutRunner(t *testing.T) {
 	}
 	crew := &CrewPlanStep{
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-		CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1", Instruction: "x",
+		CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1", Instruction: "x",
 	}
 	_, _, err := hcpo.executeCrewStep(context.Background(), crew, 0, &StepProgress{}, nil, &ExecutionContext{}, []PlanStepInterface{crew})
 	if err == nil || !strings.Contains(err.Error(), "does not bind a Crew runner") {
@@ -522,7 +522,7 @@ func TestExecuteCrewStepFailsMissingInput(t *testing.T) {
 	}
 	crew := &CrewPlanStep{
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review", ContextDependencies: []string{"ghost.json"}},
-		CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1", Instruction: "x",
+		CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1", Instruction: "x",
 	}
 	_, _, err := hcpo.executeCrewStep(context.Background(), crew, 0, &StepProgress{}, nil, &ExecutionContext{}, []PlanStepInterface{crew})
 	if err == nil || !strings.Contains(err.Error(), "crew input file not found") {
@@ -542,7 +542,7 @@ func TestExecuteCrewStepSurfacesRunnerError(t *testing.T) {
 	}
 	crew := &CrewPlanStep{
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-		CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1", Instruction: "x",
+		CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1", Instruction: "x",
 	}
 	_, _, err := hcpo.executeCrewStep(context.Background(), crew, 0, &StepProgress{}, nil, &ExecutionContext{}, []PlanStepInterface{crew})
 	if err == nil || !strings.Contains(err.Error(), "crew step") {
@@ -564,7 +564,7 @@ func TestExecuteCrewStepRecordsFailedRun(t *testing.T) {
 	}
 	crew := &CrewPlanStep{
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"},
-		CrewProfileID:    "work", CrewProjectID: "rts", TriggerID: "trig-1", Instruction: "x",
+		CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1", Instruction: "x",
 	}
 	_, _, err := hcpo.executeCrewStep(context.Background(), crew, 0, &StepProgress{}, nil, &ExecutionContext{}, []PlanStepInterface{crew})
 	if err == nil {

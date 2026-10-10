@@ -193,27 +193,27 @@ func TestBootstrapImportsAuthUsersAndAdmins(t *testing.T) {
 
 func TestExternalAuthIdentityApprovedOnlyForProvisionedAccountsAndConfiguredAdmins(t *testing.T) {
 	// AUTH_ALLOWED_EMAILS no longer admits anyone: accounts are added by an administrator.
-	t.Setenv("AUTH_ALLOWED_EMAILS", "existing@confida.ai")
-	t.Setenv("ADMIN_USERS", "boss@confida.ai")
-	withMemoryUserDirectory(t, `{"users":[{"id":"invited-user","username":"invitee","email":"invited@confida.ai","admin":false,"can_create":false,"products":["agentworks"]}]}`)
+	t.Setenv("AUTH_ALLOWED_EMAILS", "existing@customer.example")
+	t.Setenv("ADMIN_USERS", "boss@customer.example")
+	withMemoryUserDirectory(t, `{"users":[{"id":"invited-user","username":"invitee","email":"invited@customer.example","admin":false,"can_create":false,"products":["agentworks"]}]}`)
 
-	if !externalAuthIdentityApproved("Invited@Confida.ai") {
+	if !externalAuthIdentityApproved("Invited@customer.example") {
 		t.Fatal("an administrator-added account must be allowed to complete its first SSO login")
 	}
-	if !externalAuthIdentityApproved("boss@confida.ai") {
+	if !externalAuthIdentityApproved("boss@customer.example") {
 		t.Fatal("a configured administrator must be able to bootstrap their own record")
 	}
-	if externalAuthIdentityApproved("existing@confida.ai") {
+	if externalAuthIdentityApproved("existing@customer.example") {
 		t.Fatal("an AUTH_ALLOWED_EMAILS entry alone must no longer be approved")
 	}
-	if externalAuthIdentityApproved("unknown@confida.ai") || externalAuthIdentityApproved("") {
+	if externalAuthIdentityApproved("unknown@customer.example") || externalAuthIdentityApproved("") {
 		t.Fatal("a stranger or an empty email must be refused")
 	}
 }
 
 func TestSSOSignInNeverCreatesAnAccountForAStranger(t *testing.T) {
-	t.Setenv("ADMIN_USERS", "boss@confida.ai")
-	content := withMemoryUserDirectory(t, `{"users":[{"id":"u1","username":"alice","email":"alice@confida.ai","products":[]}]}`)
+	t.Setenv("ADMIN_USERS", "boss@customer.example")
+	content := withMemoryUserDirectory(t, `{"users":[{"id":"u1","username":"alice","email":"alice@customer.example","products":[]}]}`)
 
 	if rec := ensureDirectoryUserForExternal("g-stranger", &ExternalUser{ExternalID: "g-stranger", Email: "stranger@gmail.com", Username: "Stranger", Provider: "supabase-google"}); rec != nil {
 		t.Fatalf("a stranger got an account: %+v", rec)
@@ -223,7 +223,7 @@ func TestSSOSignInNeverCreatesAnAccountForAStranger(t *testing.T) {
 		t.Fatalf("a refused sign-in changed the directory: err=%v users=%+v", err, saved.Users)
 	}
 
-	boss := ensureDirectoryUserForExternal("g-boss", &ExternalUser{ExternalID: "g-boss", Email: "Boss@Confida.ai", Username: "Boss", Provider: "supabase-google"})
+	boss := ensureDirectoryUserForExternal("g-boss", &ExternalUser{ExternalID: "g-boss", Email: "Boss@customer.example", Username: "Boss", Provider: "supabase-google"})
 	if boss == nil || !boss.Admin || !boss.CanCreate {
 		t.Fatalf("a configured administrator could not bootstrap: %+v", boss)
 	}

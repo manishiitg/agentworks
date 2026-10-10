@@ -210,7 +210,7 @@ configure a fixed outer route plus mapped group and inner branch like this:
   "enabled": true,
   "auth_mode": "bearer",
   "input_mode": "raw",
-  "group_names": ["confida-prod", "confida-staging"],
+  "group_names": ["customer-prod", "customer-staging"],
   "route_selections": {
     "MAIN_ROUTING_STEP_ID": "regression"
   },
@@ -218,8 +218,8 @@ configure a fixed outer route plus mapped group and inner branch like this:
     "group": {
       "source": "env",
       "values": {
-        "prod": "confida-prod",
-        "staging": "confida-staging"
+        "prod": "customer-prod",
+        "staging": "customer-staging"
       }
     },
     "routes": {

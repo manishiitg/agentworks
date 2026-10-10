@@ -10,7 +10,7 @@ import (
 // anything else keeps running as the caller.
 func TestOnlyGrantedBrainFolderCommandsRunAsTheService(t *testing.T) {
 	granted := &models.FolderGuardConfig{Enabled: true, WritePaths: []string{"_users/u/Chats/Knowledgebase/", "Brain/"}}
-	if !isBrainFolderCommand("/docs", "/docs/Brain", granted) || !isBrainFolderCommand("/docs", "/docs/Brain/RTS", granted) {
+	if !isBrainFolderCommand("/docs", "/docs/Brain", granted) || !isBrainFolderCommand("/docs", "/docs/Brain/project-a", granted) {
 		t.Fatal("the granted Brain chat must run in Brain's folder")
 	}
 	for name, c := range map[string]struct {

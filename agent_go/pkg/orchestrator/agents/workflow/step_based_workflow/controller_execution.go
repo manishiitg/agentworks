@@ -146,7 +146,7 @@ const (
 //
 // PLAT-055 / K. Before this, unset silently meant KBAccessNone — no read, no
 // write — which is a genuine trap distinct from an operator's deliberate
-// KBAccessNone: rtslatency's two worst-offending steps had no other legitimate
+// KBAccessNone: latency-report's two worst-offending steps had no other legitimate
 // destination for their infra-terrain and cost-baseline findings during
 // execution, because nothing was ever configured either way. This does not
 // touch that case (kb_access:"none" is an explicit value and always wins) — it
@@ -3021,7 +3021,7 @@ var executionLogEvidenceSuffixes = []string{"", "-conversation", "-timing", "-pr
 // operator re-run, a gate sending work back -- recomputes the identical path and
 // overwrites the earlier run in place.
 //
-// Confirmed live on confida-login (2026-08-22): `execute-browser-and-capture-apis`
+// Confirmed live on customer-login (2026-08-22): `execute-browser-and-capture-apis`
 // was dispatched 5 times in one run and every dispatch clobbered the last.
 // Reading one timing file minutes apart returned two different runs entirely
 // (2675000ms/21 tool calls, then 104248ms/14 tool calls). The run's own logs

@@ -9,7 +9,7 @@ import (
 // SetWorkspaceEnvRef replaces the env map wholesale. Secrets were already
 // backfilled after that swap; variables were not, so a workflow that resolved
 // its variables early lost every VAR_* as soon as any later initialization
-// stored a fresh map. Observed on confida-login: 28 variables synced, absent
+// stored a fresh map. Observed on customer-login: 28 variables synced, absent
 // from every env ref afterwards, and the agent re-derived SITE_URL from
 // variables/variables.json by hand.
 func TestWorkspaceVariablesSurviveEnvRefReplacement(t *testing.T) {
@@ -55,7 +55,7 @@ func TestWorkspaceVariablesRecordedBeforeAnyEnvMap(t *testing.T) {
 func TestWorkspaceVariablesMergeRatherThanReplace(t *testing.T) {
 	bo := &BaseOrchestrator{logger: loggerv2.NewNoop()}
 	bo.SetWorkspaceVariables(map[string]string{"SITE_URL": "https://staging.example"})
-	bo.SetWorkspaceVariables(map[string]string{"GROUP_NAME": "confida-staging"})
+	bo.SetWorkspaceVariables(map[string]string{"GROUP_NAME": "customer-staging"})
 	bo.SetWorkspaceEnvRef(map[string]string{})
 	env := bo.GetWorkspaceEnvRef()
 	if env["VAR_SITE_URL"] == "" || env["VAR_GROUP_NAME"] == "" {

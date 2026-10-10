@@ -7,12 +7,12 @@ import (
 
 func TestFormatWhatsAppSlugChoicesSortsConfiguredRoutes(t *testing.T) {
 	message := formatWhatsAppSlugChoices(WhatsAppRouting{
-		"testing":    {WorkflowID: "wf-testing"},
-		"confida":    {WorkflowID: "wf-confida"},
-		"Confida-QA": {WorkflowID: "wf-confida-qa"},
+		"testing":     {WorkflowID: "wf-testing"},
+		"customer":    {WorkflowID: "wf-customer"},
+		"customer-qa": {WorkflowID: "wf-customer-qa"},
 	})
 
-	wantOrder := []string{"1. @confida", "2. @confida-qa", "3. @testing"}
+	wantOrder := []string{"1. @customer", "2. @customer-qa", "3. @testing"}
 	last := -1
 	for _, want := range wantOrder {
 		at := strings.Index(message, want)

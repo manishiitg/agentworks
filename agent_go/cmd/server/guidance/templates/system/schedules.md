@@ -12,7 +12,7 @@ For the operational cheat sheet on creating / editing / deleting schedules
     "enabled": true, "trigger_payload": {},
     "after_run": {"backup": true, "publish": true, "notify": true},
     "concurrency_mode": "sequential", "parallel_risk_acknowledged": false,
-    "group_names": ["confida-prod"],
+    "group_names": ["customer-prod"],
     "mode": "workshop", "workshop_mode": "workshop" }
   ```
   Fields: `id` (auto-assigned), `name` (display label), `description` (optional), `cron_expression` (standard 5-field cron), `timezone` (IANA tz e.g. `America/New_York`), `enabled` (bool), `trigger_payload` (arbitrary JSON passed to the run), `group_names` (required array of one or more explicit group names from `variables/variables.json`), `mode` (`workshop` for workflow schedules), `workshop_mode` (`workshop` for writable scheduled sessions; the server derives `run` only for read-only access), `concurrency_mode` (`sequential` default or `parallel`), and `parallel_risk_acknowledged`.

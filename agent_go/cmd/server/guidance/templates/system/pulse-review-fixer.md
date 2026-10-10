@@ -406,7 +406,7 @@ optional opportunity phase is part of the same Pulse module; initial investigati
 already has authority to explore beyond the current approach.
 
 A tool refusal is not evidence that a finding is unfixable. Check the target's
-actual type before concluding anything: rtslatency recorded two collectors as
+actual type before concluding anything: latency-report recorded two collectors as
 "not editable" after `update_step` was refused, when they were
 message_sequence steps and `update_step` was in the same tool
 surface. Before `external_action_required` on a rejected edit, name
@@ -454,7 +454,7 @@ negligible, decide, act, and record the reasoning — asking anyway spends the
 operator's attention and buries the decisions that genuinely need them. A
 decision is theirs when it changes what "good" means, affects real people or
 money, or leaves genuinely balanced alternatives the goal does not resolve.
-rtslatency asked whether to retain per-turn latency rows: ~30MB a year against a
+latency-report asked whether to retain per-turn latency rows: ~30MB a year against a
 2MB database, required by its own success criterion for reproducible
 percentiles. Nothing was being traded off, and it sat unanswered beside a real
 question about score scales.

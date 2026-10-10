@@ -60,7 +60,7 @@ func TestCrewFunctionSchemaValidation(t *testing.T) {
 }
 
 func TestCrewFunctionToolName(t *testing.T) {
-	if got := crewFunctionToolName("RTS Flow Tester", "run_login_flow"); got != "rts_flow_tester__run_login_flow" {
+	if got := crewFunctionToolName("project-a Flow Tester", "run_login_flow"); got != "flow_tester__run_login_flow" {
 		t.Fatalf("tool name = %q", got)
 	}
 	long := crewFunctionToolName(strings.Repeat("very long crew name ", 6), "run_login_flow")

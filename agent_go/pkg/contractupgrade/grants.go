@@ -2,7 +2,7 @@
 // Scheduled runs may execute an older saved contract, but they never own or
 // authorize migrations; those remain operator-started work in workflow chat.
 //
-// Observed on confida-login 2026-08-12: the scheduler adjudicated the 1.0.21
+// Observed on customer-login 2026-08-12: the scheduler adjudicated the 1.0.21
 // turn as failed at 08:01:35 (the agent had correctly declined — the improve
 // archive held 19 finding IDs absent from the pulse_* tables). At 08:11:10 the
 // same session, by then running an unrelated Pulse finalizer turn, wrote the

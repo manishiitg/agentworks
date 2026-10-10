@@ -57,14 +57,14 @@ it('shows endpoint, saved route, authentication and group', async () => {
 it('shows payload mappings configured by the builder', async () => {
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({
     triggers: [{ ...trigger, payload_mappings: {
-      group: { source: 'env', values: { prod: 'confida-prod' } },
+      group: { source: 'env', values: { prod: 'customer-prod' } },
       routes: { 'component-branch': { source: 'component', values: { 'service/review': 'review' } } },
     } }],
-    groups: ['confida-prod'],
+    groups: ['customer-prod'],
     routes: [{ step_id: 'router', step_title: 'Choose work', route_id: 'issues', route_name: 'Process issues' }],
   })
   const host = await mount()
-  expect(host.textContent).toContain('Payload env → group (prod → confida-prod)')
+  expect(host.textContent).toContain('Payload env → group (prod → customer-prod)')
   expect(host.textContent).toContain('Payload component → component-branch branch (service/review → review)')
 })
 it('disables a trigger while retaining its route binding', async () => {

@@ -71,14 +71,14 @@ it('offers separate user, workflow, crew and project summaries with cross naviga
 it('labels unpriced workflow cost as unknown instead of zero', async () => {
   vi.mocked(agentApi.getCostOverview).mockResolvedValue({
     total: { ...usage({ call_count: 472, unpriced_call_count: 472 }) }, by_provider: {}, by_model: {},
-    items: [{ id: 'Workflow/rts', kind: 'workflow', name: 'rts', ...usage({ call_count: 472, unpriced_call_count: 472 }) }],
+    items: [{ id: 'Workflow/project-a', kind: 'workflow', name: 'project-a', ...usage({ call_count: 472, unpriced_call_count: 472 }) }],
     by_user: [], includes_other: false,
   } as CostOverview)
   const container = await render()
   await click(button(container, 'Workflows'))
   expect(container.textContent).toContain('Tracked costNot priced')
   expect(container.textContent).toContain('472 calls have tokens but no price')
-  expect(button(container, 'rts')?.textContent).toContain('Not priced')
+  expect(button(container, 'project-a')?.textContent).toContain('Not priced')
 })
 
 it('shows cost by account with the split by work and person', async () => {

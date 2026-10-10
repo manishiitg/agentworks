@@ -27,7 +27,7 @@ func TestExternalCrewFilesFindDeepFilesAndHidePrivateAreas(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("repos/rts-website/src/Pages/Account/ForgotPassword.razor", `<input data-testid="forgot-email" />`)
+	write("repos/customer-website/src/pages/account/forgot-password.razor", `<input data-testid="forgot-email" />`)
 	write("notes/plan.md", "plan")
 	write("db/db.sqlite", "secret rows")
 	write("product.json", `{"id":"beta"}`)
@@ -40,7 +40,7 @@ func TestExternalCrewFilesFindDeepFilesAndHidePrivateAreas(t *testing.T) {
 	}
 
 	code, out := externalCrewRequest(t, env, claims, "list_crew_files", map[string]any{"crew_id": "beta", "glob": "**/*ForgotPassword*", "depth": 8})
-	if code != 200 || !strings.Contains(result(out), "repos/rts-website/src/Pages/Account/ForgotPassword.razor") {
+	if code != 200 || !strings.Contains(result(out), "repos/customer-website/src/pages/account/forgot-password.razor") {
 		t.Fatalf("find by name = %d %s", code, result(out))
 	}
 	code, out = externalCrewRequest(t, env, claims, "search_crew_files", map[string]any{"crew_id": "beta", "query": "forgot-email", "depth": 8})

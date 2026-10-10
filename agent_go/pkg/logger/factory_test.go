@@ -17,7 +17,7 @@ func TestCreateLoggerAlwaysAddsDiagnosticIdentity(t *testing.T) {
 	}
 	base.Info("startup")
 
-	ctx := context.WithValue(context.Background(), common.UsernameKey, "confida")
+	ctx := context.WithValue(context.Background(), common.UsernameKey, "customer")
 	ctx = context.WithValue(ctx, common.WorkflowNameKey, "testing")
 	child := WithContext(base, ctx)
 	if err := child.Close(); err != nil {
@@ -42,7 +42,7 @@ func TestCreateLoggerAlwaysAddsDiagnosticIdentity(t *testing.T) {
 			t.Fatalf("startup log = %q, missing %q", lines[0], want)
 		}
 	}
-	for _, want := range []string{`username=confida`, `workflow=testing`, `msg=request`} {
+	for _, want := range []string{`username=customer`, `workflow=testing`, `msg=request`} {
 		if !strings.Contains(lines[1], want) {
 			t.Fatalf("request log = %q, missing %q", lines[1], want)
 		}

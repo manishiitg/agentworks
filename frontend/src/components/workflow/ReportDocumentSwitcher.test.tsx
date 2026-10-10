@@ -46,7 +46,7 @@ beforeEach(() => {
   getPlannerFileContent.mockImplementation(async (path: string) => {
     if (path.endsWith('index.html')) return html('Company')
     if (path.endsWith('investments.html')) return html('Investments')
-    if (path.endsWith('excellence-2627.html')) return html('Excellence 26-27')
+    if (path.endsWith('customer-b-2627.html')) return html('customer-b 26-27')
     return { content: '' }
   })
 })
@@ -81,12 +81,12 @@ describe('ReportDocumentSwitcher', () => {
       await act(async () => root.render(<ReportDocumentSwitcher workspacePath={WORKSPACE} active={false} onOpen={() => {}} />))
       // The agent adds a report while the menu is closed; the mounted catalog
       // is now stale.
-      getPlannerFiles.mockResolvedValue(listing(['index.html', 'investments.html', 'excellence-2627.html']))
+      getPlannerFiles.mockResolvedValue(listing(['index.html', 'investments.html', 'customer-b-2627.html']))
 
       click(host.querySelector('button[aria-label^="Dashboard"]'))
       await flushLoads()
 
-      expect(host.querySelector('[role="menu"]')?.textContent).toContain('Excellence 26-27')
+      expect(host.querySelector('[role="menu"]')?.textContent).toContain('customer-b 26-27')
     } finally {
       await act(async () => root.unmount())
       host.remove()

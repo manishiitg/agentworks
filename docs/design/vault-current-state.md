@@ -168,7 +168,7 @@ it does not provision a Linux execution slot. The root-run
 `deploy/common/provision-slots.sh adduser` explicitly performs both steps:
 the platform `server add-user` command, followed by slot assignment, filesystem
 ownership and isolation configuration. Server B's deployment sets
-`AGENTWORKS_SLOTS=on`; unassigned identities fail slot-aware execution. RTS's
+`AGENTWORKS_SLOTS=on`; unassigned identities fail slot-aware execution. server A's
 build sets `optin` when slots are installed, retaining legacy execution for
 unassigned users. These statements describe checked deployment source, not a
 fresh inspection of the running remote hosts.

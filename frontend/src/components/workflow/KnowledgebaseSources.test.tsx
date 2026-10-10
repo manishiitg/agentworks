@@ -48,9 +48,9 @@ async function mount(node: React.ReactNode) {
 }
 const source = {
   workflow_id: "source",
-  alias: "rts",
+  alias: "project-a",
   access: "read" as const,
-  label: "RTS",
+  label: "project-a",
   available: true,
 };
 it("shows several sources and detaches only the selected attachment", async () => {
@@ -73,7 +73,7 @@ it("shows several sources and detaches only the selected attachment", async () =
   const host = await mount(
     <KnowledgebaseSources
       workspacePath="Workflow/consumer"
-      selected="rts"
+      selected="project-a"
       onSelect={select}
       variant="folders"
     />,
@@ -104,7 +104,7 @@ it("keeps management controls unavailable to readers", async () => {
   const host = await mount(
     <KnowledgebaseSources
       workspacePath="Workflow/consumer"
-      selected="rts"
+      selected="project-a"
       onSelect={() => {}}
     />,
   );
@@ -114,7 +114,7 @@ it("keeps management controls unavailable to readers", async () => {
   expect(options).toHaveLength(2);
   expect(options[0].textContent).toContain("Local knowledge");
   expect(options[0].getAttribute("aria-pressed")).toBe("false");
-  expect(options[1].textContent).toContain("RTS");
+  expect(options[1].textContent).toContain("project-a");
   expect(options[1].getAttribute("aria-pressed")).toBe("true");
 });
 it("reads shared notes through the consumer-scoped API and surfaces failed collection", async () => {
@@ -145,11 +145,11 @@ it("reads shared notes through the consumer-scoped API and surfaces failed colle
       b.textContent?.includes(label),
     )! as HTMLElement;
   await act(async () => {
-    pickSource("RTS").click();
+    pickSource("project-a").click();
   });
   expect(workflowManifestApi.readKnowledgebaseSource).toHaveBeenCalledWith(
     "Workflow/consumer",
-    "rts",
+    "project-a",
     "notes/_index.json",
   );
   await act(async () => {
@@ -166,7 +166,7 @@ it("reads shared notes through the consumer-scoped API and surfaces failed colle
   });
   // Re-selecting always remounts the source, discarding cached notes.
   await act(async () => {
-    pickSource("RTS").click();
+    pickSource("project-a").click();
   });
   expect(host.textContent).toContain("Source permission revoked");
 });
@@ -184,14 +184,14 @@ it("offers no manual attach in the folders variant; adding goes through Ask AI",
   );
   expect(host.textContent).not.toContain("Attach knowledge");
   expect(host.querySelector("form")).toBeNull();
-  expect(host.textContent).toContain("RTS");
+  expect(host.textContent).toContain("project-a");
   expect(
-    host.querySelector('button[aria-label="Detach RTS knowledge base"]'),
+    host.querySelector('button[aria-label="Detach project-a knowledge base"]'),
   ).not.toBeNull();
 });
 
 it("shows shared KB access in Attached folders and refreshes the KB view after detach", async () => {
-  let sources = [{ ...source, workspace_path: "Workflow/rts" }];
+  let sources = [{ ...source, workspace_path: "Workflow/project-a" }];
   vi.mocked(workflowManifestApi.getKnowledgebaseSources).mockImplementation(
     async () => ({ success: true, sources }),
   );
@@ -211,7 +211,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
       <WorkflowFolderAccessView workspacePath="Workflow/consumer" />
       <KnowledgebaseSources
         workspacePath="Workflow/consumer"
-        selected="rts"
+        selected="project-a"
         onSelect={select}
       />
     </>,
@@ -221,8 +221,8 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   );
   expect(panels).toHaveLength(2);
   expect(panels[0].textContent).toContain("1 attached");
-  expect(panels[0].textContent).toContain("Workflow/rts/knowledgebase/");
-  expect(panels[0].textContent).toContain("$WORKFLOW_KB_RTS");
+  expect(panels[0].textContent).toContain("Workflow/project-a/knowledgebase/");
+  expect(panels[0].textContent).toContain("$WORKFLOW_KB_project-a");
   expect(panels[0].textContent).toContain("Read only");
   expect(panels[1].querySelector("ul")).toBeNull();
   expect(panels[1].textContent).not.toContain("Attach knowledge");
@@ -233,7 +233,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   await act(async () => {
     (
       panels[0].querySelector(
-        'button[aria-label="Detach RTS knowledge base"]',
+        'button[aria-label="Detach project-a knowledge base"]',
       ) as HTMLButtonElement
     ).click();
   });

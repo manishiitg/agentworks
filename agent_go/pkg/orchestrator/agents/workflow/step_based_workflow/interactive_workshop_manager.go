@@ -4500,7 +4500,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"alias":  map[string]interface{}{"type": "string", "description": "Suggested short alias, for example rts-source."},
+				"alias":  map[string]interface{}{"type": "string", "description": "Suggested short alias, for example docs-source."},
 				"path":   map[string]interface{}{"type": "string", "description": "Optional exact absolute folder path explicitly supplied by the user. Never infer or invent this value."},
 				"access": map[string]interface{}{"type": "string", "enum": []string{"read_only", "read_write"}},
 				"reason": map[string]interface{}{"type": "string", "description": "Why the workflow needs this folder and what it will do there."},

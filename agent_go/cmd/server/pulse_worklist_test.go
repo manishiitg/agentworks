@@ -1019,7 +1019,7 @@ func TestMarkPulseModuleResultStoresMinimalDurableAudit(t *testing.T) {
 // retry path only accepted a second call whose result string matched the
 // first exactly, so the Fixer's genuinely different "changed" call was
 // rejected outright as "already terminal or belongs to another run" --
-// confirmed live on confida-login: three real repairs stayed forever
+// confirmed live on customer-login: three real repairs stayed forever
 // mislabelled queued_for_engineering because the Fixer had no channel to
 // record their disposition and fell back to record_pulse_finding
 // (evidence-only, no status mutation).
@@ -1129,7 +1129,7 @@ func TestRecordPulseResultAcceptsFixerSupplementalDispositionsAfterReviewerTermi
 	}
 
 	// The repaired finding is no longer stuck at queued_for_engineering --
-	// this is the exact confida-login symptom this fix closes. Its own
+	// this is the exact customer-login symptom this fix closes. Its own
 	// lifecycle (unlike the module audit row above) preserves both the
 	// reviewer's original finding and the Fixer's resolving attempt.
 	lifecycles, err := step_based_workflow.LoadPulseFindingLifecycles(ctx, workspacePath, pulseModuleTechnicalReview, 10)

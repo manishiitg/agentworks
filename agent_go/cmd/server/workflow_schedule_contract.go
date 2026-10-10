@@ -13,7 +13,7 @@ var scheduleProcedureSubstrings = []string{
 }
 
 // Bare SQL and shell verbs cannot be told from prose by the verb alone.
-// confida-login's reconciliation schedule became unsavable because a message
+// customer-login's reconciliation schedule became unsavable because a message
 // read "...update the issue status..." and tripped the marker "update ";
 // "git " also matches inside "digit ", and an imperative sentence opens with
 // its verb, so anchoring to the start of a line does not separate them either.

@@ -33,13 +33,13 @@ func TestCapacityWaitOnlyClassifiesQuotaExhaustion(t *testing.T) {
 		errors.New("step blew up"),
 		&llmerrors.Error{Kind: llmerrors.KindRateLimit, Err: errors.New("slow down")},
 	} {
-		if got := newWorkflowCapacityWait(err, "Workflow/rts", "iteration-0", 4, 7, "s4", "step-4", "collect", now); got != nil {
+		if got := newWorkflowCapacityWait(err, "Workflow/project-a", "iteration-0", 4, 7, "s4", "step-4", "collect", now); got != nil {
 			t.Errorf("err %v classified as a capacity wait: %+v", err, got)
 		}
 	}
 
 	got := newWorkflowCapacityWait(quotaErr(now.Add(2*time.Hour), "five_hour"),
-		"Workflow/rts", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
+		"Workflow/project-a", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
 	if got == nil {
 		t.Fatal("quota exhaustion was not classified as a capacity wait")
 	}
@@ -59,7 +59,7 @@ func TestCapacityWaitOnlyClassifiesQuotaExhaustion(t *testing.T) {
 // remaining steps a second time. An unknown reset waits for a person.
 func TestCapacityWaitWithNoStatedResetIsNeverAutomaticallyDue(t *testing.T) {
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	wait := newWorkflowCapacityWait(quotaErr(time.Time{}, ""), "Workflow/rts", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
+	wait := newWorkflowCapacityWait(quotaErr(time.Time{}, ""), "Workflow/project-a", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
 	if wait == nil {
 		t.Fatal("expected a capacity wait")
 	}
@@ -79,7 +79,7 @@ func TestCapacityWaitWithNoStatedResetIsNeverAutomaticallyDue(t *testing.T) {
 func TestCapacityWaitBecomesDueAtItsStatedReset(t *testing.T) {
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	reset := now.Add(2 * time.Hour)
-	wait := newWorkflowCapacityWait(quotaErr(reset, "five_hour"), "Workflow/rts", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
+	wait := newWorkflowCapacityWait(quotaErr(reset, "five_hour"), "Workflow/project-a", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
 
 	if wait.ResumeDue(reset.Add(-time.Second)) {
 		t.Error("resumed a second before the window reopened")
@@ -97,7 +97,7 @@ func TestCapacityWaitBecomesDueAtItsStatedReset(t *testing.T) {
 // how much of the run had completed or when it would continue.
 func TestCapacityWaitDescribesWhatAReaderNeeds(t *testing.T) {
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	wait := newWorkflowCapacityWait(quotaErr(now.Add(2*time.Hour), "five_hour"), "Workflow/rts", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
+	wait := newWorkflowCapacityWait(quotaErr(now.Add(2*time.Hour), "five_hour"), "Workflow/project-a", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
 
 	desc := wait.Describe()
 	for _, want := range []string{"five_hour", "step 4 of 7", "2026-08-18T14:00:00Z"} {
@@ -111,7 +111,7 @@ func TestCapacityWaitDescribesWhatAReaderNeeds(t *testing.T) {
 // different package after a restart, so the on-disk shape has to survive.
 func TestCapacityWaitRoundTripsThroughItsFile(t *testing.T) {
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	original := newWorkflowCapacityWait(quotaErr(now.Add(2*time.Hour), "five_hour"), "Workflow/rts", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
+	original := newWorkflowCapacityWait(quotaErr(now.Add(2*time.Hour), "five_hour"), "Workflow/project-a", "iteration-0", 4, 7, "s4", "step-4", "collect", now)
 
 	encoded, err := jsonMarshalIndentForTest(original)
 	if err != nil {
@@ -136,8 +136,8 @@ func TestCapacityWaitRoundTripsThroughItsFile(t *testing.T) {
 // TestCapacityWaitPathIsRunScoped keeps the record beside the run it describes,
 // so two runs of the same workflow cannot overwrite each other's resume point.
 func TestCapacityWaitPathIsRunScoped(t *testing.T) {
-	got := WorkflowCapacityWaitPath("Workflow/rts", "iteration-3")
-	want := "Workflow/rts/runs/iteration-3/" + WorkflowCapacityWaitFilename
+	got := WorkflowCapacityWaitPath("Workflow/project-a", "iteration-3")
+	want := "Workflow/project-a/runs/iteration-3/" + WorkflowCapacityWaitFilename
 	if got != want {
 		t.Errorf("path = %q, want %q", got, want)
 	}

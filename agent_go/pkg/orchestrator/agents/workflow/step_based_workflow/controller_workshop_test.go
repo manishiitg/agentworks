@@ -191,7 +191,7 @@ func TestApplyWorkshopExecuteOptionsPropagatesGroupName(t *testing.T) {
 		workshopGroupLastUsed:    make(map[string]time.Time),
 		variablesManifest: &VariablesManifest{
 			Groups: []VariableGroup{
-				{Name: "excellence", Values: map[string]string{"acct": "excellence"}},
+				{Name: "customer-b", Values: map[string]string{"acct": "customer-b"}},
 				{Name: "xspaces", Values: map[string]string{"acct": "xspaces"}},
 			},
 		},

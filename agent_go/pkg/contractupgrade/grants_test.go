@@ -17,7 +17,7 @@ func TestConsumeRequiresAGrant(t *testing.T) {
 	}
 }
 
-// The confida-login 2026-08-12 case: the scheduler adjudicated the turn, and
+// The customer-login 2026-08-12 case: the scheduler adjudicated the turn, and
 // ten minutes later the same session stamped from an unrelated Pulse turn.
 func TestStampAfterAdjudicationIsRefused(t *testing.T) {
 	t.Cleanup(func() { Revoke("session-a") })

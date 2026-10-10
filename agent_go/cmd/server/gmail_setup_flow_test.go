@@ -28,7 +28,7 @@ func gmailSetupFixture(t *testing.T) (*StreamingAPI, context.Context) {
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
 	t.Setenv("PUBLIC_URL", "https://video.realtrainingsys.com")
 	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
-	if _, err := services.CreateOAuthClient(context.Background(), "rts-app", []byte(`{"web":{"client_id":"123456-abcdef.apps.googleusercontent.com","client_secret":"SETUP-SECRET","project_id":"rts-project"}}`), false); err != nil {
+	if _, err := services.CreateOAuthClient(context.Background(), "app-project", []byte(`{"web":{"client_id":"123456-abcdef.apps.googleusercontent.com","client_secret":"SETUP-SECRET","project_id":"sample-project"}}`), false); err != nil {
 		t.Fatal(err)
 	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","email":"admin@example.com","admin":true},{"id":"owner","email":"owner@example.com"}]}`)
@@ -45,7 +45,7 @@ func TestGmailSetupConsentCompletesProvisioningAndOnlyActivatesAfterVerification
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "success", true: "permission-failure"}[fail], func(t *testing.T) {
 			api, ctx := gmailSetupFixture(t)
-			job, err := api.prepareGmailSetup(ctx, "rts-app", "")
+			job, err := api.prepareGmailSetup(ctx, "app-project", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,7 +114,7 @@ func TestGmailSetupConsentCompletesProvisioningAndOnlyActivatesAfterVerification
 					t.Fatalf("failed Cloud setup activated: %+v %s", c, status)
 				}
 			} else {
-				if c.Topics["rts-app"] != job.Plan.Topic || !strings.Contains(string(status), "Receiving infrastructure ready") {
+				if c.Topics["app-project"] != job.Plan.Topic || !strings.Contains(string(status), "Receiving infrastructure ready") {
 					t.Fatalf("successful setup did not activate: %+v %s", c, status)
 				}
 				path, _ := gmailSetupConfigPath()
@@ -129,11 +129,11 @@ func TestGmailSetupConsentCompletesProvisioningAndOnlyActivatesAfterVerification
 
 func TestGmailSetupRefusesAnOAuthAppChangedAfterReview(t *testing.T) {
 	api, ctx := gmailSetupFixture(t)
-	job, err := api.prepareGmailSetup(ctx, "rts-app", "")
+	job, err := api.prepareGmailSetup(ctx, "app-project", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = services.DeleteOAuthClient("rts-app")
+	_ = services.DeleteOAuthClient("app-project")
 	if err = gmailSetupPlanCurrent(job); err == nil {
 		t.Fatal("stale OAuth app plan accepted")
 	}
@@ -146,7 +146,7 @@ func TestGmailSetupToolRequiresInteractiveAdminAndDoesNotProvisionOnPrepare(t *t
 		t.Fatal(err)
 	}
 	tool := reg.tools["setup_gmail_inbound"].exec
-	out, err := tool(ctx, map[string]interface{}{"action": "prepare", "client_name": "rts-app"})
+	out, err := tool(ctx, map[string]interface{}{"action": "prepare", "client_name": "app-project"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestGmailSetupToolRequiresInteractiveAdminAndDoesNotProvisionOnPrepare(t *t
 		t.Fatalf("credentials leaked: %s", out)
 	}
 	var job gmailSetupJob
-	if json.Unmarshal([]byte(out), &job) != nil || job.Plan.ProjectID != "rts-project" || job.ReviewURL == "" {
+	if json.Unmarshal([]byte(out), &job) != nil || job.Plan.ProjectID != "sample-project" || job.ReviewURL == "" {
 		t.Fatalf("bad plan: %s", out)
 	}
 	if c, e := readGmailInboundConfig(); e != nil || len(c.Topics) != 0 {
@@ -167,20 +167,20 @@ func TestGmailSetupToolRequiresInteractiveAdminAndDoesNotProvisionOnPrepare(t *t
 		"scoped-token":     {UserID: "admin", Scope: "report-preview"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := tool(context.WithValue(ctx, UserContextKey, claims), map[string]interface{}{"action": "prepare", "client_name": "rts-app"}); err == nil {
+			if _, err := tool(context.WithValue(ctx, UserContextKey, claims), map[string]interface{}{"action": "prepare", "client_name": "app-project"}); err == nil {
 				t.Fatal("unauthorized infrastructure setup")
 			}
 		})
 	}
 	status, _ := json.Marshal(api.gmailSetupStatus(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"})))
-	if strings.Contains(string(status), job.ID) || strings.Contains(string(status), "rts-project") {
+	if strings.Contains(string(status), job.ID) || strings.Contains(string(status), "sample-project") {
 		t.Fatalf("another user's pending review leaked: %s", status)
 	}
 }
 
 func TestGmailSetupReviewRequiresHumanGoogleConsentUsesExistingCallbackAndPKCE(t *testing.T) {
 	api, ctx := gmailSetupFixture(t)
-	job, err := api.prepareGmailSetup(ctx, "rts-app", "")
+	job, err := api.prepareGmailSetup(ctx, "app-project", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestGmailSetupReviewRequiresHumanGoogleConsentUsesExistingCallbackAndPKCE(t
 
 func TestGmailSetupReviewExpiryAndAdminRevocation(t *testing.T) {
 	api, ctx := gmailSetupFixture(t)
-	job, err := api.prepareGmailSetup(ctx, "rts-app", "")
+	job, err := api.prepareGmailSetup(ctx, "app-project", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestGmailSetupReviewExpiryAndAdminRevocation(t *testing.T) {
 	if expired.Code != 410 {
 		t.Fatal("expired plan remained usable")
 	}
-	job, err = api.prepareGmailSetup(ctx, "rts-app", "")
+	job, err = api.prepareGmailSetup(ctx, "app-project", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestGmailSetupPrivateConfigSurvivesRestartAndRejectsEnvironmentConflicts(t 
 	t.Setenv("GMAIL_INBOUND_TOPICS", "")
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
-	p, err := gmailsetup.NewPlan("rts-app", "123456-abcdef.apps.googleusercontent.com", "rts-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
+	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestGmailSetupActivatesExistingServiceWithoutRestartButIngressStillRequires
 	if request().Code != 503 {
 		t.Fatal("accepted ingress before setup")
 	}
-	p, err := gmailsetup.NewPlan("rts-app", "123456-abcdef.apps.googleusercontent.com", "rts-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
+	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

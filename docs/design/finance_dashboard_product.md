@@ -323,7 +323,7 @@ type ActivityEvent = {
 ```
 
 Not every workflow in the workspace is a finance source despite the
-name/location — `ICICI-BANK-PARSING-v2` and `confida-login` turned out to be
+name/location — `ICICI-BANK-PARSING-v2` and `customer-login` turned out to be
 unrelated QA/verification workflows on inspection. **The source list is
 curated by hand, never auto-discovered** — no naming convention is reliable
 enough to infer it, and silently pulling in the wrong data is a real risk.

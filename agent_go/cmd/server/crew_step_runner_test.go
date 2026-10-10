@@ -20,7 +20,7 @@ const crewRunnerTriggers = `[
 func testCrewStepRequest() stepworkflow.CrewStepRequest {
 	return stepworkflow.CrewStepRequest{
 		WorkflowID: "wf-1", WorkflowRunFolder: "iteration-0", ExecutionID: "exec-1", StepID: "crew-1",
-		Group: "production", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		Group: "production", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Instruction: "Review it", Inputs: map[string]interface{}{"pr": map[string]interface{}{"n": float64(87)}},
 		TimeoutSeconds: 30,
 	}
@@ -51,23 +51,23 @@ func TestCrewStepDeliveryBaseVariesWithTrigger(t *testing.T) {
 
 func TestRunCrewStepAdoptsSuccessfulDuplicate(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
-	runID := webhookDeliveryRunID("rts", "trig-1", crewRunnerDeliveryBase(req))
+	runID := webhookDeliveryRunID("project-a", "trig-1", crewRunnerDeliveryBase(req))
 
 	// A prior attempt already completed this delivery; the step must adopt
 	// it without invoking the trigger again.
 	first, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: crewRunnerDeliveryBase(req), Payload: []byte(`{}`),
 	})
 	if err != nil || first.RunID != runID {
 		t.Fatalf("seed dispatch = %+v err=%v", first, err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 	if err := UpdateScheduleRun(ctx, runsWorkspace, runID, "success", "", nil, "", "sess-9"); err != nil {
 		t.Fatal(err)
 	}
@@ -94,10 +94,10 @@ func TestRunCrewStepAdoptsSuccessfulDuplicate(t *testing.T) {
 
 func TestRunCrewStepIsolatesExecutionsSharingRunFolder(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 
 	// Execution A completes the step. Execution B runs the same step in
 	// the same run folder: it must dispatch its own delivery (which never
@@ -106,9 +106,9 @@ func TestRunCrewStepIsolatesExecutionsSharingRunFolder(t *testing.T) {
 	// run and returns verdict-A with no error.
 	reqA := testCrewStepRequest()
 	reqA.ExecutionID = "exec-A"
-	runA := webhookDeliveryRunID("rts", "trig-1", crewRunnerDeliveryBase(reqA))
+	runA := webhookDeliveryRunID("project-a", "trig-1", crewRunnerDeliveryBase(reqA))
 	if _, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: crewRunnerDeliveryBase(reqA), Payload: []byte(`{}`),
 	}); err != nil {
@@ -148,10 +148,10 @@ func TestRunCrewStepIsolatesExecutionsSharingRunFolder(t *testing.T) {
 
 func TestRunCrewStepGroupsDoNotShareDelivery(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 
 	// Groups share one execution identity but render their own instruction
 	// and inputs. The production group completes first; the staging group
@@ -161,9 +161,9 @@ func TestRunCrewStepGroupsDoNotShareDelivery(t *testing.T) {
 	prod := testCrewStepRequest()
 	prod.ExecutionID = "exec-groups"
 	prod.Group = "production"
-	runProd := webhookDeliveryRunID("rts", "trig-1", crewRunnerDeliveryBase(prod))
+	runProd := webhookDeliveryRunID("project-a", "trig-1", crewRunnerDeliveryBase(prod))
 	if _, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: crewRunnerDeliveryBase(prod), Payload: []byte(`{}`),
 	}); err != nil {
@@ -201,19 +201,19 @@ func TestRunCrewStepGroupsDoNotShareDelivery(t *testing.T) {
 
 func TestRunCrewStepRetryAdoptsSameExecutionDelivery(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
-	runID := webhookDeliveryRunID("rts", "trig-1", crewRunnerDeliveryBase(req))
+	runID := webhookDeliveryRunID("project-a", "trig-1", crewRunnerDeliveryBase(req))
 	if _, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: crewRunnerDeliveryBase(req), Payload: []byte(`{}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 	duration := int64(100)
 	if err := UpdateScheduleRunResult(ctx, runsWorkspace, runID, ScheduleRunCompletion{
 		Status: "success", DurationMs: &duration, FinalResponse: "the verdict",
@@ -242,22 +242,22 @@ func TestRunCrewStepRetryAdoptsSameExecutionDelivery(t *testing.T) {
 
 func TestRunCrewStepReinvokesPastFailedDuplicate(t *testing.T) {
 	svc, files := newInternalDispatchCrew(t, crewRunnerTriggers)
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
 	base := crewRunnerDeliveryBase(req)
-	runID := webhookDeliveryRunID("rts", "trig-1", base)
+	runID := webhookDeliveryRunID("project-a", "trig-1", base)
 
 	first, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: base, Payload: []byte(`{}`),
 	})
 	if err != nil || first.RunID != runID {
 		t.Fatalf("seed dispatch = %+v err=%v", first, err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 	if err := UpdateScheduleRun(ctx, runsWorkspace, runID, "error", "crew exploded", nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -270,12 +270,12 @@ func TestRunCrewStepReinvokesPastFailedDuplicate(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("re-invoked run err = %v, want timeout", err)
 	}
-	retryRunID := webhookDeliveryRunID("rts", "trig-1", base+"#retry-1")
+	retryRunID := webhookDeliveryRunID("project-a", "trig-1", base+"#retry-1")
 	entry, err := FindScheduleRun(ctx, runsWorkspace, retryRunID)
 	if err != nil || entry.Status != "queued" {
 		t.Fatalf("retry run = %+v err=%v, want queued", entry, err)
 	}
-	payloadPath := "_users/owner/Chats/Work/projects/rts/triggers/deliveries/" + retryRunID + ".json"
+	payloadPath := "_users/owner/Chats/Work/projects/project-a/triggers/deliveries/" + retryRunID + ".json"
 	var payload map[string]interface{}
 	if err := json.Unmarshal([]byte(files[payloadPath]), &payload); err != nil {
 		t.Fatalf("payload: %v", err)
@@ -292,7 +292,7 @@ func TestRunCrewStepReinvokesPastFailedDuplicate(t *testing.T) {
 
 func TestRunCrewStepRevokedAccess(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
 	req.TriggerID = "trig-off"
@@ -301,15 +301,15 @@ func TestRunCrewStepRevokedAccess(t *testing.T) {
 	if !errors.Is(err, ErrInternalTriggerDisabled) {
 		t.Fatalf("disabled trigger err = %v, want ErrInternalTriggerDisabled", err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
-	if _, err := FindScheduleRun(ctx, runsWorkspace, webhookDeliveryRunID("rts", "trig-off", crewRunnerDeliveryBase(req))); err == nil {
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
+	if _, err := FindScheduleRun(ctx, runsWorkspace, webhookDeliveryRunID("project-a", "trig-off", crewRunnerDeliveryBase(req))); err == nil {
 		t.Fatal("revoked access must not dispatch")
 	}
 }
 
 func TestRunCrewStepCanceled(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		time.Sleep(20 * time.Millisecond)
@@ -325,18 +325,18 @@ func TestRunCrewStepCanceled(t *testing.T) {
 
 func TestPollCrewStepReturnsPartialOnFailure(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
-	runID := webhookDeliveryRunID("rts", "trig-1", "poll-failure")
+	runID := webhookDeliveryRunID("project-a", "trig-1", "poll-failure")
 	if _, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: "poll-failure", Payload: []byte(`{}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 	if err := UpdateScheduleRun(ctx, runsWorkspace, runID, "error", "crew exploded", nil, "", "sess-9"); err != nil {
 		t.Fatal(err)
 	}
@@ -356,12 +356,12 @@ func TestPollCrewStepReturnsPartialOnFailure(t *testing.T) {
 
 func TestPollCrewStepTimeoutKeepsRunID(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	req := testCrewStepRequest()
-	runID := webhookDeliveryRunID("rts", "trig-1", "poll-timeout")
+	runID := webhookDeliveryRunID("project-a", "trig-1", "poll-timeout")
 	if _, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: "poll-timeout", Payload: []byte(`{}`),
 	}); err != nil {
@@ -384,25 +384,25 @@ func TestCheckInternalCrewAccess(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
 	ctx := context.Background()
 	caller := triggerCaller{Type: "workflow", ID: "wf-1"}
-	if err := svc.checkInternalCrewAccess(ctx, "owner", "crewx", "rts", "trig-1", caller); err != nil {
+	if err := svc.checkInternalCrewAccess(ctx, "owner", "crewx", "project-a", "trig-1", caller); err != nil {
 		t.Fatalf("bound access rejected: %v", err)
 	}
-	if err := svc.checkInternalCrewAccess(ctx, "owner", "crewx", "rts", "trig-1", triggerCaller{Type: "workflow", ID: "intruder"}); !errors.Is(err, ErrInternalCallerMismatch) {
+	if err := svc.checkInternalCrewAccess(ctx, "owner", "crewx", "project-a", "trig-1", triggerCaller{Type: "workflow", ID: "intruder"}); !errors.Is(err, ErrInternalCallerMismatch) {
 		t.Fatalf("wrong caller err = %v", err)
 	}
-	if err := svc.checkInternalCrewAccess(ctx, "owner", "crewx", "rts", "trig-off", caller); !errors.Is(err, ErrInternalTriggerDisabled) {
+	if err := svc.checkInternalCrewAccess(ctx, "owner", "crewx", "project-a", "trig-off", caller); !errors.Is(err, ErrInternalTriggerDisabled) {
 		t.Fatalf("disabled trigger err = %v", err)
 	}
 }
 
-const testPreflightManifestAttached = `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"rts","crew_profile_id":"crewx","crew_project_id":"rts","crew_workspace_path":"_users/owner/Chats/Work/projects/rts"}]}`
+const testPreflightManifestAttached = `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"project-a","crew_profile_id":"crewx","crew_project_id":"project-a","crew_workspace_path":"_users/owner/Chats/Work/projects/project-a"}]}`
 
 func testPreflightWorkspace(t *testing.T, plan string, manifestJSON string) *ProductScheduleService {
 	t.Helper()
 	svc, files := newInternalTriggerTestCrew(t)
 	svc.api = &StreamingAPI{}
-	crewPath := "_users/owner/Chats/Work/projects/rts/product.json"
-	crewProduct := `{"schema_version":1,"product":"crewx","id":"rts","title":"RTS","session_id":"sess-1","triggers":` + crewRunnerTriggers + `}`
+	crewPath := "_users/owner/Chats/Work/projects/project-a/product.json"
+	crewProduct := `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1","triggers":` + crewRunnerTriggers + `}`
 	files[crewPath] = crewProduct
 	mockFiles := map[string]string{crewPath: crewProduct}
 	if plan != "" {
@@ -420,7 +420,7 @@ func testPreflightWorkspace(t *testing.T, plan string, manifestJSON string) *Pro
 
 func TestPreflightCrewSteps(t *testing.T) {
 	ctx := context.Background()
-	bound := `{"objective":"t","steps":[{"type":"crew","id":"crew-1","title":"Review","crew_profile_id":"work","crew_project_id":"rts","trigger_id":"trig-1","instruction":"x"}]}`
+	bound := `{"objective":"t","steps":[{"type":"crew","id":"crew-1","title":"Review","crew_profile_id":"work","crew_project_id":"project-a","trigger_id":"trig-1","instruction":"x"}]}`
 	// NOTE: the crew profile in the fixture registry is "crewx", so the
 	// bound plan uses it; a wrong profile fails the lookup.
 	bound = strings.Replace(bound, `"work"`, `"crewx"`, 1)
@@ -458,20 +458,20 @@ func TestPreflightCrewAttachmentsWithoutCrewSteps(t *testing.T) {
 	// A revoked crew fails the run before any step executes, even with
 	// no crew step in the plan: ordinary steps could read the alias.
 	revoked := testPreflightWorkspaceWithoutCrew(t, plain, testPreflightManifestAttached)
-	if err := preflightCrewSteps(ctx, revoked, "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), `"rts"`) {
+	if err := preflightCrewSteps(ctx, revoked, "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), `"project-a"`) {
 		t.Fatalf("revoked attachment err = %v, want failure naming the alias", err)
 	}
 	// A retargeted binding fails even though the crew itself exists.
-	retargeted := `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"rts","crew_profile_id":"crewx","crew_project_id":"rts","crew_workspace_path":"_users/owner/secrets"}]}`
-	if err := preflightCrewSteps(ctx, testPreflightWorkspace(t, plain, retargeted), "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), `"rts"`) {
+	retargeted := `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"project-a","crew_profile_id":"crewx","crew_project_id":"project-a","crew_workspace_path":"_users/owner/secrets"}]}`
+	if err := preflightCrewSteps(ctx, testPreflightWorkspace(t, plain, retargeted), "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), `"project-a"`) {
 		t.Fatalf("retargeted attachment err = %v, want failure naming the alias", err)
 	}
 	// Same project-name suffix under another owner: shape-valid, and the
 	// named crew exists for this user, but the stored root is not the
 	// freshly authorized binding. Authorizing the project without comparing
 	// roots would grant a workspace the check never authorized.
-	wrongOwner := `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"rts","crew_profile_id":"crewx","crew_project_id":"rts","crew_workspace_path":"_users/other/Chats/Work/projects/rts"}]}`
-	if err := preflightCrewSteps(ctx, testPreflightWorkspace(t, plain, wrongOwner), "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), `"rts"`) {
+	wrongOwner := `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"project-a","crew_profile_id":"crewx","crew_project_id":"project-a","crew_workspace_path":"_users/other/Chats/Work/projects/project-a"}]}`
+	if err := preflightCrewSteps(ctx, testPreflightWorkspace(t, plain, wrongOwner), "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), `"project-a"`) {
 		t.Fatalf("wrong-owner attachment err = %v, want failure naming the alias", err)
 	}
 }
@@ -546,17 +546,17 @@ func TestAppendCrewPollTransition(t *testing.T) {
 // because both share the run folder.
 func TestRunCrewStepWithoutExecutionIDNeverAdoptsPreviousRun(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/rts")
+	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
 
 	first := testCrewStepRequest()
 	first.ExecutionID = ""
 	folderKey := crewStepDeliveryBase(first.WorkflowID, first.WorkflowRunFolder, first.Group, first.StepID, first.TriggerID, runDestinationIsolated)
-	staleRun := webhookDeliveryRunID("rts", "trig-1", folderKey)
+	staleRun := webhookDeliveryRunID("project-a", "trig-1", folderKey)
 	if _, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller: triggerCaller{Type: "workflow", ID: "wf-1"}, DeliveryID: folderKey, Payload: []byte(`{}`),
 	}); err != nil {
 		t.Fatal(err)

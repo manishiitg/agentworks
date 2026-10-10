@@ -26,15 +26,15 @@ func TestFinalizeBrowserArtifactPublishesAuthorizedScreenshot(t *testing.T) {
 }
 
 func TestBrowserStagingDirectoriesAreDeploymentNamespaced(t *testing.T) {
-	t.Setenv(browserStagingNamespaceEnv, "Confida Production")
+	t.Setenv(browserStagingNamespaceEnv, "customer Production")
 	t.Cleanup(func() {
 		_ = os.RemoveAll(BrowserArtifactStagingDir())
 		_ = os.RemoveAll(BrowserUploadStagingDir())
 	})
-	if got := BrowserArtifactStagingDir(); got != "/tmp/agentworks-browser-artifacts-confida-production" {
+	if got := BrowserArtifactStagingDir(); got != "/tmp/agentworks-browser-artifacts-customer-production" {
 		t.Fatalf("artifact staging directory = %q", got)
 	}
-	if got := BrowserUploadStagingDir(); got != "/tmp/agentworks-browser-uploads-confida-production" {
+	if got := BrowserUploadStagingDir(); got != "/tmp/agentworks-browser-uploads-customer-production" {
 		t.Fatalf("upload staging directory = %q", got)
 	}
 }

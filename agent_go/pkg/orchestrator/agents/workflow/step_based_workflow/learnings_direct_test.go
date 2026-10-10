@@ -209,7 +209,7 @@ func TestMessageSequenceStepFullWriteAccessGrantsLearningsForRWStep(t *testing.T
 	if err != nil {
 		t.Fatalf("NewBaseOrchestrator: %v", err)
 	}
-	base.SetWorkspacePath("Workflow/confida-qa-testing")
+	base.SetWorkspacePath("Workflow/customer-qa-testing")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 
 	rwStep := &MessageSequencePlanStep{

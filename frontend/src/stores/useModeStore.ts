@@ -54,7 +54,7 @@ export const useModeStore = create<ModeState>()(
 
             // On mode switch, clear the workspace activeFolder AND force a root
             // re-fetch. Otherwise the cached files from the previous category
-            // (e.g. a workflow scope like "Workflow/confida-login/...") stay in
+            // (e.g. a workflow scope like "Workflow/customer-login/...") stay in
             // the store, and multi-agent's whitelist filter drops all of them →
             // "No files found".
             import('./useWorkspaceStore').then(({ useWorkspaceStore }) => {

@@ -2572,7 +2572,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       // pointed elsewhere while the chat itself is scoped to a workflow, which
       // silently dropped pasted screenshots into the shared Workflow/ root
       // instead of the workflow's own folder (confirmed live: a pasted image
-      // from the confida-login chat landed at Workflow/pasted-image-*.png).
+      // from the customer-login chat landed at Workflow/pasted-image-*.png).
       return activeWorkflowWorkspacePath || workspaceActiveFolder || 'Workflow'
     }
     return 'Chats'

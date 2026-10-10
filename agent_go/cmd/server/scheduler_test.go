@@ -423,7 +423,7 @@ func TestPulseAndWorkflowScheduleUseSeparateDurableLanes(t *testing.T) {
 }
 
 // TestListFireDecisionsSurfacesSkippedOccurrences is the regression test for
-// the confida-login live finding: four Technical Review passes theorized a
+// the customer-login live finding: four Technical Review passes theorized a
 // missing scheduler misfire-recovery mechanism because get_schedule_runs
 // only shows actual runs, and a global-pause skip never creates one. This
 // proves the fix — ListFireDecisions must return the skip decision with its
@@ -2193,7 +2193,7 @@ func TestMaybeResumeLatestWorkflowThreadUsesPreviousScheduledSessionOnly(t *test
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 
-	workspacePath := "Workflow/rtslatency"
+	workspacePath := "Workflow/latency-report"
 	scheduleID := "schedule-1"
 	writeWorkflowChatRuntime(t, root, workspacePath, "normal-user-chat", "claude-code", "run", true)
 	writeWorkflowChatRuntime(t, root, workspacePath, "previous-schedule-chat", "claude-code", "workshop", true)
@@ -2228,7 +2228,7 @@ func TestMaybeResumeLatestWorkflowThreadIgnoresNormalUserChat(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 
-	workspacePath := "Workflow/rtslatency"
+	workspacePath := "Workflow/latency-report"
 	scheduleID := "schedule-1"
 	writeWorkflowChatRuntime(t, root, workspacePath, "normal-user-chat", "claude-code", "run", true)
 	writeScheduleRunsForTest(t, root, workspacePath, []ScheduleRunEntry{
@@ -2255,7 +2255,7 @@ func TestMaybeResumeLatestWorkflowThreadDoesNotCrossModeBoundary(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 
-	workspacePath := "Workflow/rtslatency"
+	workspacePath := "Workflow/latency-report"
 	scheduleID := "schedule-1"
 	writeWorkflowChatRuntime(t, root, workspacePath, "previous-run-chat", "claude-code", "run", true)
 	writeScheduleRunsForTest(t, root, workspacePath, []ScheduleRunEntry{{
@@ -2399,7 +2399,7 @@ func TestWorkshopRunRotationDoesNotAttributeHistoricalFailure(t *testing.T) {
 }
 
 // TestReconcileWorkshopRunOutcomeDetectsFailureInAReusedFolderName reproduces
-// the confida-login schedule_run_status:aggregation harness finding: a
+// the customer-login schedule_run_status:aggregation harness finding: a
 // workflow whose runs always land in the same folder name (iteration-0/<group>)
 // never looks "new" by name after its first cycle, so a name-only check
 // would silently skip every subsequent cycle's own metadata regardless of
@@ -2409,10 +2409,10 @@ func TestWorkshopRunRotationDoesNotAttributeHistoricalFailure(t *testing.T) {
 // fallback, which this function previously lacked.
 func TestReconcileWorkshopRunOutcomeDetectsFailureInAReusedFolderName(t *testing.T) {
 	invocationStart := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	before := map[string]bool{"iteration-0/confida-staging": true} // same folder, prior cycle
+	before := map[string]bool{"iteration-0/customer-staging": true} // same folder, prior cycle
 	after := []RunFolderInfo{
 		{
-			Name: "iteration-0/confida-staging",
+			Name: "iteration-0/customer-staging",
 			Metadata: &RunMetadata{
 				Status:    "failed",
 				StartedAt: invocationStart.Add(1 * time.Minute), // (re)started during THIS invocation
@@ -2423,8 +2423,8 @@ func TestReconcileWorkshopRunOutcomeDetectsFailureInAReusedFolderName(t *testing
 	if !found {
 		t.Fatal("expected this invocation's own failure in the reused folder to be found")
 	}
-	if failedFolder != "iteration-0/confida-staging" {
-		t.Fatalf("failedFolder = %q, want iteration-0/confida-staging", failedFolder)
+	if failedFolder != "iteration-0/customer-staging" {
+		t.Fatalf("failedFolder = %q, want iteration-0/customer-staging", failedFolder)
 	}
 }
 
@@ -2558,7 +2558,7 @@ func pulseStepQueryByLabel(t *testing.T, steps []pulseLifecycleStep, label strin
 
 // The dashboard stage used to say "mark command=dashboard done" without naming
 // a tool, unlike the finalize stage right below it, which spells out
-// record_pulse_result(command=...) explicitly. On 2026-08-04 rtslatency's
+// record_pulse_result(command=...) explicitly. On 2026-08-04 latency-report's
 // dashboard stage rendered builder/improve.html correctly, then reached for
 // mutate_workflow_db to write pulse_final_command_state directly — a
 // reasonable guess for "mark this row," and the wrong one: that table is
@@ -2725,7 +2725,7 @@ func TestNoRunFinalizerSkipsEvidenceStagesAndReportsReason(t *testing.T) {
 		}
 	}
 	// The finalizer shares the scheduler's session. Restating the stamp
-	// instruction here is what invited the confida-login 2026-08-12 out-of-turn
+	// instruction here is what invited the customer-login 2026-08-12 out-of-turn
 	// stamp, so the target version and the verb must not reach this turn.
 	for _, forbidden := range []string{"did not stamp", `"1.0.18"`} {
 		if strings.Contains(steps[0].query, forbidden) {

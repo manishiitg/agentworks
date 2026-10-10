@@ -18,8 +18,8 @@ function minimalSession(overrides: Partial<ActiveSessionInfo> = {}): ActiveSessi
     agent_mode: 'workflow',
     status: 'running',
     display_status: 'busy',
-    workspace_path: 'Workflow/rtslatency',
-    workflow_name: 'rtslatency',
+    workspace_path: 'Workflow/latency-report',
+    workflow_name: 'latency-report',
     has_retained_tmux_session: false,
     has_running_background_agents: false,
     running_background_agent_count: 0,
@@ -31,20 +31,20 @@ function minimalSession(overrides: Partial<ActiveSessionInfo> = {}): ActiveSessi
 
 function retainedWorkflowWithRuntime(phase: 'running' | 'completed'): ActiveSessionInfo {
   return {
-    session_id: 'rtslatency-session',
+    session_id: 'latency-report-session',
     observer_id: '',
     agent_mode: 'workflow',
     status: 'completed',
     display_status: 'stopped',
-    workspace_path: 'Workflow/rtslatency',
-    workflow_name: 'rtslatency',
+    workspace_path: 'Workflow/latency-report',
+    workflow_name: 'latency-report',
     has_retained_tmux_session: true,
     has_running_background_agents: false,
     running_background_agent_count: 0,
     created_at: new Date().toISOString(),
     last_activity: new Date().toISOString(),
     runtime_state: {
-      session_id: 'rtslatency-session',
+      session_id: 'latency-report-session',
       generation: 2,
       revision: 922,
       phase,
@@ -74,7 +74,7 @@ describe('global activity monitor status', () => {
     expect(GLOBAL_ACTIVITY_REFRESH_MS).toBeLessThanOrEqual(10_000)
   })
 
-  it('shows a clock for the completed rtslatency session with a retained idle CLI', () => {
+  it('shows a clock for the completed latency-report session with a retained idle CLI', () => {
     const session = retainedWorkflowWithRuntime('completed')
 
     expect(headerStatusLabel(session)).toBe('idle')
@@ -174,10 +174,10 @@ describe('currentActiveSession', () => {
 
 describe('visibleActivitySessions', () => {
   it('keeps a concurrent schedule distinct from the current chat in the same workflow', () => {
-    const currentTabSession = minimalSession({ session_id: 'chat-tab-session', workflow_name: 'rtslatency' })
+    const currentTabSession = minimalSession({ session_id: 'chat-tab-session', workflow_name: 'latency-report' })
     const backgroundPulseSession = minimalSession({
       session_id: 'pulse-schedule-session',
-      workflow_name: 'rtslatency',
+      workflow_name: 'latency-report',
       triggered_by: 'cron',
     })
     const otherWorkflowSession = minimalSession({ session_id: 'other-session', workflow_name: 'upwork' })

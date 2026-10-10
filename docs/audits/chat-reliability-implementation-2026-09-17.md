@@ -1,6 +1,6 @@
 # Chat reliability implementation — 2026-09-17
 
-Implemented in commit `1979a25ef` and deployed to RTS as `1979a25-20260917063441`; service health and frontend HTTP checks passed. User live chat acceptance remains pending. This supersedes the failure status in the two earlier architecture/isolation reviews; it does not claim production verification.
+Implemented in commit `1979a25ef` and deployed to server A as `1979a25-20260917063441`; service health and frontend HTTP checks passed. User live chat acceptance remains pending. This supersedes the failure status in the two earlier architecture/isolation reviews; it does not claim production verification.
 
 ## Underlying problem
 

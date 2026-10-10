@@ -10,7 +10,7 @@ import (
 )
 
 // TestPulseLifecycleReadsDoNotTakeWriteLock is the lifecycle-package half of
-// PUL-7774A6D0 (confida-login, 2026-08-31): every open of db.sqlite runs the
+// PUL-7774A6D0 (customer-login, 2026-08-31): every open of db.sqlite runs the
 // lifecycle and review-log schema ensures, whose idempotent migration
 // UPDATE/INSERT..SELECT statements take SQLite's write lock even when they
 // match nothing. Holding a write transaction elsewhere must not block the

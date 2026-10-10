@@ -58,7 +58,7 @@ At the baseline, the header opened `CodingProvidersPanel`, filtered to coding ag
 
 Availability then combined runtime installation with environment/stored authentication at provider level. Workflow configuration saved a provider profile or explicit role models; Crew stored its project agent/model in `capabilities.llm_config.builder_llm`. The current ready-account rule is described above.
 
-At this historical baseline, workflow credential support handled Claude OAuth tokens and Cursor API keys; it was groundwork for account support. Those product-scoped input fields have since been removed in favor of Providers account setup. The baseline RTS deployment supplied installation credentials with `LLM_CONFIG_LOCKED=true`; the later account policy is described under Core account implementation.
+At this historical baseline, workflow credential support handled Claude OAuth tokens and Cursor API keys; it was groundwork for account support. Those product-scoped input fields have since been removed in favor of Providers account setup. The baseline server A deployment supplied installation credentials with `LLM_CONFIG_LOCKED=true`; the later account policy is described under Core account implementation.
 
 Important source locations:
 
@@ -323,7 +323,7 @@ Represent current environment credentials as administrator-managed connections w
 
 Backfill existing workflow/project bindings to their previous connection after verifying the provider/account mapping. Do not assign a new default merely because another connection is ready. Missing or ambiguous mappings require attention. Rollout must preserve existing retained conversations and their storage paths until migration completes.
 
-Replace or supplement `LLM_CONFIG_LOCKED` with explicit controls for allowed providers, personal connections, permitted global connections and account/model selection. Preserve locked behavior by default for existing restricted installations. RTS must deliberately enable personal connections; do not silently remove its installation policy.
+Replace or supplement `LLM_CONFIG_LOCKED` with explicit controls for allowed providers, personal connections, permitted global connections and account/model selection. Preserve locked behavior by default for existing restricted installations. server A must deliberately enable personal connections; do not silently remove its installation policy.
 
 ## Suggested implementation stages
 
@@ -344,7 +344,7 @@ Replace or supplement `LLM_CONFIG_LOCKED` with explicit controls for allowed pro
 - Pi/Muse exclusive MCP settings survive account selection without cross-run settings races.
 - Shared-workflow viewers, background agents and schedules cannot use private connections without authorization.
 - Revocation/rotation, expired login, missing binary and unavailable connections fail clearly without account fallback.
-- Existing RTS/global deployments retain their previous account and policy after migration.
+- Existing server A/global deployments retain their previous account and policy after migration.
 
 ## Evidence and remaining provider verification
 

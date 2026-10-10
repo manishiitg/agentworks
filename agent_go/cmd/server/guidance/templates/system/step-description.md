@@ -85,9 +85,9 @@ Brain use is part of the charter, in plain words; there is no folder binding
 to configure. The workflow's Brain access (Off, Read, Read & write) and the
 owner's folder roles bound what is possible; the step's sections say what this
 step does within that. Name what it reads under Inputs or Guides
-(`brain:RTS/Latency/runbooks/deploy.md`, delivered read-only), what it writes
-under Output ("add one line per incident to `brain:RTS/Latency/Incidents/`"),
-and any limit under Rules ("never write to Brain outside `RTS/Latency/`").
+(`brain:server A/Latency/runbooks/deploy.md`, delivered read-only), what it writes
+under Output ("add one line per incident to `brain:server A/Latency/Incidents/`"),
+and any limit under Rules ("never write to Brain outside `server A/Latency/`").
 Look up real folder paths with `brain_browse` before writing them. A step that
 must not write gets `knowledgebase_access: read`; one with no Brain use,
 `none`.

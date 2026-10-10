@@ -250,7 +250,7 @@ func crewFunctionNames(functions []crewFunction) []string {
 }
 
 // crewFunctionToolName is the generated tool name for one function, e.g.
-// "rts_flow_tester__run_login_flow" (tool-name charset, at most 64 chars).
+// "flow_tester__run_login_flow" (tool-name charset, at most 64 chars).
 func crewFunctionToolName(targetLabel, function string) string {
 	var b strings.Builder
 	lastUnderscore := true

@@ -18,14 +18,14 @@ import (
 func TestValidateManifestFolderAccess(t *testing.T) {
 	manifest := NewWorkflowManifest("Attached folders")
 	manifest.FolderAccess = []workflowtypes.WorkflowFolderGrant{{
-		ID: "grant-1", Alias: "rts-source", Path: t.TempDir(), Access: workflowtypes.FolderAccessReadWrite,
+		ID: "grant-1", Alias: "docs-source", Path: t.TempDir(), Access: workflowtypes.FolderAccessReadWrite,
 	}}
 	if err := ValidateManifest(manifest); err != nil {
 		t.Fatalf("valid folder grant rejected: %v", err)
 	}
 
 	manifest.FolderAccess = append(manifest.FolderAccess, workflowtypes.WorkflowFolderGrant{
-		ID: "grant-2", Alias: "rts_source", Path: t.TempDir(), Access: workflowtypes.FolderAccessReadOnly,
+		ID: "grant-2", Alias: "project_source", Path: t.TempDir(), Access: workflowtypes.FolderAccessReadOnly,
 	})
 	if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "environment key") {
 		t.Fatalf("environment-key alias collision should be rejected, got %v", err)

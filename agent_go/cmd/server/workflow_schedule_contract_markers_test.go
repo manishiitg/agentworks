@@ -7,13 +7,13 @@ import (
 
 // The markers exist to spot SQL and shell embedded in a schedule message. As
 // bare substrings they also matched ordinary English, which made legitimate
-// schedules unsavable: confida-login's reconciliation schedule was rejected for
+// schedules unsavable: customer-login's reconciliation schedule was rejected for
 // "contains procedure marker \"update \"" over a sentence about updating issue
 // status.
 func TestScheduleProseIsNotMistakenForProcedure(t *testing.T) {
 	prose := []string{
 		"Update the GitHub issue status once the run finishes.",
-		"Select the confida-staging group and wait for it to complete.",
+		"Select the customer-staging group and wait for it to complete.",
 		"Insert a short summary into the run notes.",
 		"Delete nothing; leave prior results in place.",
 		// "git " is a substring of "digit ".

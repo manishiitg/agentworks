@@ -127,7 +127,7 @@ cp "$policy" /tmp/policy-old.json && chmod 0644 /tmp/policy-old.json
 if [[ -x "$APP/releases/r0/bin/video-studio-landlock-runner" && -z "${E2E_OLD_IS_ENV_SCRUB_BASELINE:-}" ]]; then
   out="$(sudo -u slot01 "$APP/releases/r0/bin/video-studio-landlock-runner" --config /tmp/policy-old.json -- /bin/sh -c 'pwd' 2>&1 || true)"
   echo "old launcher: $out"
-  [[ "$out" == *"SANDBOX_UNAVAILABLE: inspect Landlock path: stat $PROFILE: permission denied"* ]] && echo "OK   old launcher refuses the command (the RTS failure)" || { echo "BAD  old launcher did not reproduce the RTS failure"; fails=$((fails + 1)); }
+  [[ "$out" == *"SANDBOX_UNAVAILABLE: inspect Landlock path: stat $PROFILE: permission denied"* ]] && echo "OK   old launcher refuses the command (the server A failure)" || { echo "BAD  old launcher did not reproduce the server A failure"; fails=$((fails + 1)); }
 fi
 out="$(sudo -u slot01 "$REL/bin/video-studio-landlock-runner" --config "$policy" -- /bin/sh -c 'pwd; cat '"$PROFILE"'/Cookies' 2>&1 || true)"
 echo "new launcher: $out"
@@ -152,7 +152,7 @@ if [[ -x "$APP/releases/r0/bin/video-studio-landlock-runner" ]]; then
   [[ "$out" == *"FAIL  cli-launcher-env-scrub"* ]] && echo "OK   old launcher: the env-scrub row FAILS (it can detect a leak)" || { echo "BAD  the env-scrub row did not fail on the old launcher"; fails=$((fails + 1)); }
 fi
 
-echo "==> 3. self-test, releases/ 0700 (RTS layer 2)"
+echo "==> 3. self-test, releases/ 0700 (server A layer 2)"
 chmod 0700 "$APP/releases"
 expect 1 "self-test fails when releases/ is 0700" -- as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP"
 as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" | grep '^FAIL' | head -3 || true
@@ -199,7 +199,7 @@ echo "==> the new code created nothing under the browser profile roots"
 
 if [[ -x "$APP/releases/r0/bin/slotcheck" && -z "${E2E_OLD_IS_ENV_SCRUB_BASELINE:-}" ]]; then
   # Last: the old grant builder creates profile folders as it goes (scopeBrowser's MkdirAll), the new one does not.
-  echo "==> 4. self-test on the OLD grant builder and launcher (RTS layer 3)"
+  echo "==> 4. self-test on the OLD grant builder and launcher (server A layer 3)"
   expect 1 "self-test fails on the old code" -- as_vs "$APP/releases/r0/bin/slotcheck" --docs "$DOCS" --app "$APP"
   as_vs "$APP/releases/r0/bin/slotcheck" --docs "$DOCS" --app "$APP" | grep -E '^(FAIL|slot self-test)' || true
 fi

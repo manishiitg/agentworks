@@ -297,7 +297,7 @@ func (s *Service) require(p Principal, folder string, role int) error {
 // explainProjectLimit says why a project (workflow, Crew, Code) cannot use a
 // folder its own principal can: Brain limits a project to folders every
 // person who sees its output can read, and Read access is read-only. A bare
-// NOT_FOUND made a workflow agent call RTS/Engineering "an empty shell" when
+// NOT_FOUND made a workflow agent call server A/Engineering "an empty shell" when
 // the workflow's two readers had no access to it (server A 2026-10-07, PLAT-681).
 // Nil when the principal itself lacks the access: the uniform NOT_FOUND stays.
 func (s *Service) explainProjectLimit(p Principal, folder string, role int) error {
@@ -654,7 +654,7 @@ func (s *Service) accessDiscovery(p Principal, a map[string]any) (any, error) {
 // the nearest existing folder above the missing one: then the folder is
 // simply absent, and saying so reveals nothing it could not list itself. A
 // bare "Resource not found." left a weekly refresh step retrying
-// create_folder under RTS/Engineering, which did not exist (server A 2026-10-07).
+// create_folder under server A/Engineering, which did not exist (server A 2026-10-07).
 func (s *Service) explainMissingFolder(p Principal, folder, id string, err error) error {
 	if id != "" || folder == "" || validatePath(folder, false) != nil {
 		return err

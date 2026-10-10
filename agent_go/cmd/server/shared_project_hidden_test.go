@@ -11,7 +11,7 @@ func TestSharedProjectReadersNeverSeeDotPaths(t *testing.T) {
 		".sandbox-cache/home/.config/gh/hosts.yml",
 		".sandbox-cache/home/.ssh/id_ed25519",
 		".git/config",
-		"code/rts-website/.git/config",
+		"code/project-a-website/.git/config",
 		"code/app/.env",
 		".claude/settings.json",
 		"builder/conversation/x.json",

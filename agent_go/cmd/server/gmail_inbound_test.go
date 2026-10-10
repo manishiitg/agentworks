@@ -9,9 +9,9 @@ import (
 )
 
 func TestGmailInboundDeploymentConfiguration(t *testing.T) {
-	t.Setenv("GMAIL_INBOUND_TOPICS", `{"rts-client":"projects/rts-test/topics/agentworks-gmail","another-client":"projects/another-project/topics/agentworks-gmail"}`)
+	t.Setenv("GMAIL_INBOUND_TOPICS", `{"project-a-client":"projects/project-a-test/topics/agentworks-gmail","another-client":"projects/another-project/topics/agentworks-gmail"}`)
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://video.realtrainingsys.com/api/hooks/gmail/events")
-	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "gmail-rts@rts-test.iam.gserviceaccount.com")
+	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "gmail-project-a@project-a-test.iam.gserviceaccount.com")
 	c, e := readGmailInboundConfig()
 	if e != nil || len(c.Topics) != 2 {
 		t.Fatalf("config %+v %v", c, e)
@@ -27,8 +27,8 @@ func TestGmailInboundDeploymentConfiguration(t *testing.T) {
 	}
 }
 func TestGmailInboundAddressAndConversationIdentity(t *testing.T) {
-	address, e := inboundAddress("Manish+existing@RTS.com", "1234-5678")
-	if e != nil || address != "manish+agent-12345678@rts.com" {
+	address, e := inboundAddress("Manish+existing@customer.example", "1234-5678")
+	if e != nil || address != "manish+agent-12345678@customer.example" {
 		t.Fatalf("address %q %v", address, e)
 	}
 	if _, e = inboundAddress(strings.Repeat("x", 64)+"@example.com", "1234"); e == nil {

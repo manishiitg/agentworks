@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PulseReviewFocus } from '../../services/api-types'
 import { mergePulseReviewCoverage, reviewCoverageForArea, TECHNICAL_REVIEW_AREAS } from './pulseReviewCoverage'
-const row = (scope: string, at: string): PulseReviewFocus => ({ workspace_path: 'Workflow/rtslatency', module: 'technical_review', focus_key: 'store_integrity', route_scope: scope, last_reviewed_at: at, updated_at: at })
+const row = (scope: string, at: string): PulseReviewFocus => ({ workspace_path: 'Workflow/latency-report', module: 'technical_review', focus_key: 'store_integrity', route_scope: scope, last_reviewed_at: at, updated_at: at })
 describe('technical review coverage', () => {
   it('keeps old learnings evidence when newer store reviews checked another scope', () => {
     const learning = { ...row('workflow/learnings', '2026-08-31'), evidence: ['References verified'] }

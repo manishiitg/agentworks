@@ -25,15 +25,15 @@ afterAll(() => vi.unstubAllGlobals())
 const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
 describe('collapsible product navigation', () => {
   it('preserves deployment title and favicon when entering Vault', async () => {
-    Object.assign(window.__APP_RUNTIME_CONFIG__!, { appName: 'Confida', faviconUrl: '/brand/icon.svg' })
+    Object.assign(window.__APP_RUNTIME_CONFIG__!, { appName: 'customer', faviconUrl: '/brand/icon.svg' })
     const icon = document.createElement('link'); icon.rel = 'icon'; document.head.append(icon)
     try {
       await render()
       await act(async () => useProductSurfaceStore.setState({ productSurface: 'mcp-gateway' }))
-      expect(document.title).toBe('Confida')
+      expect(document.title).toBe('customer')
       expect(icon.getAttribute('href')).toBe('/brand/icon.svg')
       await act(async () => useProductSurfaceStore.setState({ productSurface: 'work' }))
-      expect(document.title).toBe('Confida')
+      expect(document.title).toBe('customer')
       expect(icon.getAttribute('href')).toBe('/brand/icon.svg')
     } finally { icon.remove() }
   })

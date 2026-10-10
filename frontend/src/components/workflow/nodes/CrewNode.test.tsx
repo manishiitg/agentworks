@@ -19,9 +19,9 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const crewStep = {
   type: 'crew',
   id: 'crew-1',
-  title: 'Review with RTS',
+  title: 'Review with project-a',
   crew_profile_id: 'work',
-  crew_project_id: 'rts',
+  crew_project_id: 'project-a',
   trigger_id: 'trig-1',
   instruction: 'Review the PR',
   context_output: 'review.md',
@@ -29,9 +29,9 @@ const crewStep = {
 
 const data = (overrides: Partial<CrewStepNodeData> = {}): CrewStepNodeData => ({
   id: 'crew-1',
-  title: 'Review with RTS',
+  title: 'Review with project-a',
   crew_profile_id: 'work',
-  crew_project_id: 'rts',
+  crew_project_id: 'project-a',
   trigger_id: 'trig-1',
   status: 'pending',
   stepIndex: 0,
@@ -51,8 +51,8 @@ it('shows the crew project, trigger, and response file', async () => {
   lookups.alias = null
   const { host, unmount } = await renderNode(data())
   try {
-    expect(host.textContent).toContain('Review with RTS')
-    expect(host.textContent).toContain('rts')
+    expect(host.textContent).toContain('Review with project-a')
+    expect(host.textContent).toContain('project-a')
     expect(host.textContent).toContain('trig-1')
     expect(host.textContent).toContain('review.md')
   } finally {

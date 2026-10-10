@@ -59,11 +59,11 @@ An illustrative `plan.json` entry is:
 ```json
 {
   "type": "crew",
-  "id": "review-with-rts",
+  "id": "review-with-server A",
   "title": "Review with server A Crew",
   "description": "Ask the maintained server A reviewer to review this pull request.",
   "crew_profile_id": "work",
-  "crew_project_id": "rts-pr-reviewer",
+  "crew_project_id": "pr-reviewer",
   "trigger_id": "5f16e1fa-7ddd-4ee5-8311-63b34745ad46",
   "instruction": "Read your memory and review skills. Review the pull request supplied in the workflow input. Update your dashboard with the outcome. Return a concise result; if the supporting report is large, save it under reports/ and include its Crew-relative path in the response.",
   "context_dependencies": [
@@ -148,7 +148,7 @@ Executing a Crew step consists of four core operations:
 For example, with variable groups enabled:
 
 ```text
-Workflow/example/runs/iteration-0/production/execution/review-with-rts/response.md
+Workflow/example/runs/iteration-0/production/execution/review-with-server A/response.md
 ```
 
 Active runs execute in `iteration-0` (older numbered folders are archives);
@@ -174,7 +174,7 @@ The delivery payload should include at least:
   "source": "workflow_step",
   "workflow_id": "release-pipeline",
   "workflow_run_id": "9f3c2e1a-7b4d-4c8e-a1f2-3d5b7c9e1a4f",
-  "workflow_step_id": "review-with-rts",
+  "workflow_step_id": "review-with-server A",
   "group": "production",
   "instruction": "Rendered workflow-specific instruction",
   "inputs": {
@@ -281,10 +281,10 @@ If the Crew returns:
 The detailed review is in reports/pr-87.md.
 ```
 
-and the attachment alias is `rts-reviewer`, a downstream step can read:
+and the attachment alias is `reviewer-crew`, a downstream step can read:
 
 ```text
-rts-reviewer/reports/pr-87.md
+reviewer-crew/reports/pr-87.md
 ```
 
 The workflow can read the file but cannot modify it. The file remains owned by
@@ -794,10 +794,10 @@ authorizes that project, but discards its resolved workspace binding instead
 of comparing it with the stored root. A path belonging to another owner can
 therefore pass validation when its final project-name segment matches.
 
-Reproduction: start with an accessible `rts` Crew belonging to `owner`, then
+Reproduction: start with an accessible `server A` Crew belonging to `owner`, then
 change only the saved attachment root from
-`_users/owner/Chats/Work/projects/rts` to
-`_users/other/Chats/Work/projects/rts`. Preflight succeeds and
+`_users/owner/Chats/Work/projects/server A` to
+`_users/other/Chats/Work/projects/server A`. Preflight succeeds and
 `crewAttachmentReadRoots` returns the other owner's path as a read grant.
 `TestReviewCrewPreflightRejectsWrongOwnerRoot` reproduced both failures.
 This violates the intended separation between a stored attachment path and

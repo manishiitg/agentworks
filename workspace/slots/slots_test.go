@@ -97,7 +97,7 @@ func TestSlotPrefixMakesAProductsOwnAccountsTheOnlyValidOnes(t *testing.T) {
 	// the programs that run without the service's environment learn it from their config
 	t.Setenv(EnvPrefix, "")
 	cfg := filepath.Join(t.TempDir(), "slotctl.json")
-	if err := os.WriteFile(cfg, []byte(`{"slot_prefix":"confida","slot_run_root":"/x/run"}`), 0o644); err != nil {
+	if err := os.WriteFile(cfg, []byte(`{"slot_prefix":"customer","slot_run_root":"/x/run"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadExecConfig(cfg); err != nil {

@@ -13,11 +13,11 @@ import (
 func boolFilter(value bool) *bool { return &value }
 
 func TestFiltersCombineKeywordsAndAttachmentConditions(t *testing.T) {
-	f, err := NormalizeFilters(&Filters{SubjectContains: []string{" Invoice ", "invoice", "RTS"}, BodyContains: []string{"approved"}, HasAttachments: boolFilter(true)})
+	f, err := NormalizeFilters(&Filters{SubjectContains: []string{" Invoice ", "invoice", "project-a"}, BodyContains: []string{"approved"}, HasAttachments: boolFilter(true)})
 	if err != nil || len(f.SubjectContains) != 2 {
 		t.Fatalf("normalize: %+v %v", f, err)
 	}
-	m := Message{Subject: "RTS INVOICE", Body: "Approved for payment", Attachments: []Attachment{{Name: "invoice.pdf"}}}
+	m := Message{Subject: "project-a INVOICE", Body: "Approved for payment", Attachments: []Attachment{{Name: "invoice.pdf"}}}
 	if reason := f.Mismatch(m); reason != "" {
 		t.Fatal(reason)
 	}

@@ -60,8 +60,8 @@ func TestManagedHeadlessMediaFlags(t *testing.T) {
 
 func TestUserBrowserProfilesDoNotShareCookies(t *testing.T) {
 	t.Setenv(ProfileEnv, "/data/profile")
-	a := "confida--user-0123456789abcdef--browser"
-	b := "confida--user-fedcba9876543210--browser"
+	a := "customer--user-0123456789abcdef--browser"
+	b := "customer--user-fedcba9876543210--browser"
 	for _, session := range []string{a, b} {
 		args := HeadlessArgsForSession(session)
 		if !IsUserSession(session) || args[1] != "/data/profile-users/"+session {

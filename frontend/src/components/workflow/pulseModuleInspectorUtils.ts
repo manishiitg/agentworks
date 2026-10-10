@@ -49,7 +49,7 @@ export type PulseModuleSummary = {
  * can be acknowledged demand opposite responses: blocked means Pulse cannot
  * act, awaiting_user means only you can, and a recorded proposal means neither
  * is urgent. The status column flattens all three, so counting them as one
- * number made rtslatency read as "25 need action" when 12 were blocked, 4 were
+ * number made latency-report read as "25 need action" when 12 were blocked, 4 were
  * questions for the operator, and only 6 were work Pulse could pick up.
  *
  * The reason lives in the finding's events rather than its status, so the most

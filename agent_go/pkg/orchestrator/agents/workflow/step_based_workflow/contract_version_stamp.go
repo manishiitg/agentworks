@@ -94,7 +94,7 @@ func validateContractVersionStampPrerequisites(version string, manifest map[stri
 // reports permission; the first is the refusal to hand back when it does not.
 //
 // This bound lives in the executor rather than in the upgrade prompt because
-// the stamp does not only arrive as a native tool call. On confida-login
+// the stamp does not only arrive as a native tool call. On customer-login
 // 2026-08-12 it arrived as
 //
 //	curl -X POST -d '{"version":"1.0.21"}' -H "$MCP_AUTH" "$MCP_CUSTOM/set_workflow_contract_version"

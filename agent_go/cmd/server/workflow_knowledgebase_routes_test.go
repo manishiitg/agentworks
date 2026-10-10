@@ -45,7 +45,7 @@ func TestKnowledgebaseSourceAPIConfigurationReadAndDetach(t *testing.T) {
 		}
 		return rec
 	}
-	rec := update(`{"workspace_path":"Workflow/consumer","knowledgebase_sources":[{"workflow_id":"source","alias":"rts","access":"read"}]}`)
+	rec := update(`{"workspace_path":"Workflow/consumer","knowledgebase_sources":[{"workflow_id":"source","alias":"project-a","access":"read"}]}`)
 	if rec.Code != 200 {
 		t.Fatal(rec.Code, rec.Body.String())
 	}
@@ -58,17 +58,17 @@ func TestKnowledgebaseSourceAPIConfigurationReadAndDetach(t *testing.T) {
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"available":true`) || strings.Contains(rec.Body.String(), root) {
 		t.Fatal("source list invalid", rec.Body.String())
 	}
-	rec = read("&alias=rts&path=notes/fact.md")
+	rec = read("&alias=project-a&path=notes/fact.md")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "verified source") {
 		t.Fatal(rec.Code, rec.Body.String())
 	}
-	if rec = read("&alias=rts&path=../workflow.json"); rec.Code == 200 {
+	if rec = read("&alias=project-a&path=../workflow.json"); rec.Code == 200 {
 		t.Fatal("source sibling exposed")
 	}
 	if rec = read("&alias=unattached&path=notes/fact.md"); rec.Code != 404 {
 		t.Fatal("unattached alias accepted")
 	}
-	rec = update(`{"workspace_path":"Workflow/consumer","knowledgebase_sources":[{"workflow_id":"source","alias":"rts","access":"write"}]}`)
+	rec = update(`{"workspace_path":"Workflow/consumer","knowledgebase_sources":[{"workflow_id":"source","alias":"project-a","access":"write"}]}`)
 	if rec.Code != 400 {
 		t.Fatal("write mode accepted", rec.Body.String())
 	}
@@ -76,7 +76,7 @@ func TestKnowledgebaseSourceAPIConfigurationReadAndDetach(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatal(rec.Body.String())
 	}
-	if rec = read("&alias=rts&path=notes/fact.md"); rec.Code != 404 {
+	if rec = read("&alias=project-a&path=notes/fact.md"); rec.Code != 404 {
 		t.Fatal("detached source still readable")
 	}
 	persisted, _, err := ReadWorkflowManifest(context.Background(), "Workflow/consumer")
@@ -87,7 +87,7 @@ func TestKnowledgebaseSourceAPIConfigurationReadAndDetach(t *testing.T) {
 
 func TestKnowledgebaseSourceManifestValidation(t *testing.T) {
 	m := NewWorkflowManifest("test")
-	m.KnowledgebaseSources = []workflowtypes.KnowledgebaseSource{{WorkflowID: "other", Alias: "rts", Access: "read"}}
+	m.KnowledgebaseSources = []workflowtypes.KnowledgebaseSource{{WorkflowID: "other", Alias: "project-a", Access: "read"}}
 	if err := ValidateManifest(m); err != nil {
 		t.Fatal(err)
 	}

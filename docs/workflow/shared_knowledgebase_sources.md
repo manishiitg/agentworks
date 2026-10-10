@@ -41,7 +41,7 @@ Configure `workflow.json` through the workflow configuration API or builder tool
 {
   "knowledgebase_sources": [
     {
-      "workflow_id": "wf_rts",
+      "workflow_id": "wf_server A",
       "alias": "server A",
       "access": "read"
     },
@@ -134,15 +134,15 @@ kept out of write grants entirely. Expose one environment variable per
 attachment:
 
 ```text
-WORKFLOW_KB_RTS=<resolved server A workflow>/knowledgebase
+WORKFLOW_KB_server A=<resolved server A workflow>/knowledgebase
 WORKFLOW_KB_SECURITY=<resolved security workflow>/knowledgebase
 ```
 
 Then the agent can use the shell normally:
 
 ```bash
-cat "$WORKFLOW_KB_RTS/notes/_index.json"
-rg -n "livekit" "$WORKFLOW_KB_RTS/notes"
+cat "$WORKFLOW_KB_server A/notes/_index.json"
+rg -n "livekit" "$WORKFLOW_KB_server A/notes"
 ```
 
 The runtime applies these grants to the command path guard, session shell

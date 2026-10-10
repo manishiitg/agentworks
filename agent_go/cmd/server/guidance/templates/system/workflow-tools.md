@@ -51,14 +51,14 @@ HTTP URL.
 
 Use `get_workflow_config` to inspect attached KBs and discover eligible source
 workflow IDs. `update_workflow_config(knowledgebase_sources=[{"workflow_id":"<id>",
-"alias":"rts","access":"read"}])` replaces the entire attachment list: preserve
+"alias":"server A","access":"read"}])` replaces the entire attachment list: preserve
 existing entries when adding a source; pass `[]` to detach all. Up to 20 sources
 are supported on the same host. Aliases must start with a lowercase letter and
 contain only lowercase letters, digits, and underscores (maximum 48 characters;
 `access` is reserved). IDs and aliases must be unique; self-reference is rejected.
 
 The source must be readable by the consuming workflow's owners and readers.
-After saving, builders can immediately shell-read `$WORKFLOW_KB_RTS/notes/_index.json`
+After saving, builders can immediately shell-read `$WORKFLOW_KB_server A/notes/_index.json`
 and relevant files. Eligible execution and review sessions get the same read-only
 source grants. Source updates are live; detach or permission changes remove access
 on subsequent commands, but do not revoke an already-running subprocess's sandbox.
@@ -142,7 +142,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
     "cron_expression": "0 9 * * 1-5", "timezone": "UTC",
     "enabled": true, "trigger_payload": {},
     "after_run": {"backup": true, "publish": true, "notify": true},
-    "group_names": ["confida-prod"],
+    "group_names": ["customer-prod"],
     "mode": "workshop", "workshop_mode": "workshop" }
   ```
   Fields: `id` (auto-assigned), `name` (display label), `description` (optional), `cron_expression` (standard 5-field cron), `timezone` (IANA tz e.g. `America/New_York`), `enabled` (bool), `trigger_payload` (arbitrary JSON passed to the run), `group_names` (required array of one or more explicit group names from `variables/variables.json`), `mode` (`workshop` for workflow schedules), `workshop_mode` (`workshop` for writable scheduled sessions; the server derives `run` only for read-only access).

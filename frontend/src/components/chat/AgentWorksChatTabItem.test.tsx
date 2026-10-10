@@ -31,9 +31,9 @@ async function renderTab(name: string, displayName?: string, productSurface?: Pr
 }
 
 it("shows the full chat name on hover when the tab truncates it", async () => {
-  const host = await renderTab("RTS Flow Tester — sprint regression checks");
-  const label = Array.from(host.querySelectorAll("span")).find(el => el.textContent === "RTS Flow Tester — sprint regression checks");
-  expect(label?.getAttribute("title")).toBe("RTS Flow Tester — sprint regression checks");
+  const host = await renderTab("project-a Flow Tester — sprint regression checks");
+  const label = Array.from(host.querySelectorAll("span")).find(el => el.textContent === "project-a Flow Tester — sprint regression checks");
+  expect(label?.getAttribute("title")).toBe("project-a Flow Tester — sprint regression checks");
 });
 
 it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurface[])('shows the %s product mark while retaining the status dot and name', async surface => {

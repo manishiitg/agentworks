@@ -36,7 +36,7 @@ func selectionManifest(t *testing.T, docs, workspace, file string, local, global
 
 func TestSecretSelectionMigrationDryRunAndOneTimeApply(t *testing.T) {
 	opts, store := selectionMigrationFixture(t)
-	workspace := "Workflow/confida-login"
+	workspace := "Workflow/customer-login"
 	raw := selectionManifest(t, opts.DocsRoot, workspace, "workflow.json", []string{"ADMIN_EMAIL", "MISSING_PROJECT"}, []string{"ADMIN_EMAIL", "ADMIN_USER", "LOGIN_PASSWORD", "MEMBER_USER", "DENIED_GLOBAL", "ENV_TOKEN"})
 	seedPersonalSecret(t, store, managedGlobalSecretsUserID, "DENIED_GLOBAL", "preserve-existing-ciphertext")
 	// Deliberately corrupt ciphertext must remain selected: this migration must

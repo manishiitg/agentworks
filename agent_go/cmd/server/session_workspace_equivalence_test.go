@@ -16,7 +16,7 @@ func TestCanonicalSessionWorkspaceMatchesServer(t *testing.T) {
 		"Workflow/trading",
 		"Workflow/trading/code",
 		"Workflow",
-		"Chats/Work/projects/confida-qa-480b6936",
+		"Chats/Work/projects/customer-qa-480b6936",
 		"Chats/Work/projects/demo/db/reports",
 		"Chats/Work/projects/",
 		"Chats/Work",

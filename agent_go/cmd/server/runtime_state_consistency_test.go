@@ -302,7 +302,7 @@ func TestRuntimeEndpointsUseSameDisplayStatus(t *testing.T) {
 //
 // A scheduled run is many sequential turns sharing one session, and between
 // them the session reads "completed". Finalizing on that stamped the whole run
-// success while it was on turn 1 of 10: rtslatency's 2026-07-31 02:30 run was
+// success while it was on turn 1 of 10: latency-report's 2026-07-31 02:30 run was
 // recorded success/84,599 ms while its log shows turns running for another hour.
 // Because the record never corrected itself, runs later killed by a restart also
 // read as successful, and the workflow looked healthy while its digest had not
@@ -315,7 +315,7 @@ func TestReconcilerDoesNotCallAnInFlightRunSuccessful(t *testing.T) {
 		},
 	}}
 
-	// 84 seconds in — exactly where rtslatency was stamped success.
+	// 84 seconds in — exactly where latency-report was stamped success.
 	status, _, terminal := svc.reconciledScheduleRunStatus(&ScheduleRunEntry{
 		SessionID: "run-session",
 		StartedAt: now.Add(-84 * time.Second),
@@ -324,7 +324,7 @@ func TestReconcilerDoesNotCallAnInFlightRunSuccessful(t *testing.T) {
 		t.Fatalf("a run between turns was finalized as %q; the scheduler had not recorded a result yet", status)
 	}
 
-	// A long real run must also survive: healthy rtslatency runs reach 2.5 hours.
+	// A long real run must also survive: healthy latency-report runs reach 2.5 hours.
 	if _, _, terminal := svc.reconciledScheduleRunStatus(&ScheduleRunEntry{
 		SessionID: "run-session",
 		StartedAt: now.Add(-150 * time.Minute),

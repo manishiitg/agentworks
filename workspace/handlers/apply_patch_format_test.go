@@ -33,7 +33,7 @@ def run(page):
 
 func TestApplyPatchFormatUpdatesByContextAndAnchor(t *testing.T) {
 	patch := `*** Begin Patch
-*** Update File: Workflow/automationtesting/code/shared/rts_pw_lib.py
+*** Update File: Workflow/automationtesting/code/shared/pw_lib.py
 @@ def open_assets(page):
 -    page.click("#assets")
 +    page.click("[data-testid=assets]")

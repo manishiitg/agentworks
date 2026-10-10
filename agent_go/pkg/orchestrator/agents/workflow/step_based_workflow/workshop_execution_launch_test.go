@@ -78,7 +78,7 @@ func isExecutionRegistrationCall(node ast.Node) bool {
 // ordering, which is where the bug actually lived: registration used to happen
 // inside the launched goroutine, so a scheduled parent turn could go idle before
 // the child entered the registry. The scheduler then advanced and stamped a
-// truncated run "success" — observed on rtslatency's 2026-07-31 dev cron run,
+// truncated run "success" — observed on latency-report's 2026-07-31 dev cron run,
 // recorded as success/84.6s while the pipeline stopped at step 5 of 9.
 //
 // TestRegisterWorkshopExecutionBeforeLaunchIsSynchronous only covers the helper,

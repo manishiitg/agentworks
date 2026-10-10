@@ -6,7 +6,7 @@
 
 
 Scope: checked-in local installer, gateway bootstrap/storage/policy, product MCP
-and secret runtime integration, and RTS/Excellence deployment scripts. Reviewed
+and secret runtime integration, and project-a/customer-b deployment scripts. Reviewed
 the current working tree, including ongoing Vault changes. No remote host was
 inspected, no live permissions changed, and no server deployment was performed.
 
@@ -18,7 +18,7 @@ not confirmation of a deployed server or live IdP/client rollout.
 
 ### P1 — Standard server deployment did not install Vault — resolved locally
 
-RTS and Excellence now use `deploy/common/vault.sh` and the shared service
+server A and server B now use `deploy/common/vault.sh` and the shared service
 renderer. They build the Linux executable, configure a persistent private state
 location and project database, install a systemd service and product credential
 drop-in, stop the single writer for bootstrap, initialize Platform and start/
@@ -63,7 +63,7 @@ mechanisms and are not accepted or advertised by the platform endpoint.
   Membership is automatic; HTTP/validated-SQL operations cannot remove a person
   from Platform, rename it or delete it.
 - Platform grants apply to all of its users. They are shared access within one
-  installation/workspace, not across independent RTS/Excellence installations.
+  installation/workspace, not across independent project-a/customer-b installations.
   Resources meant for a subset of people belong in a separate group.
 - Ordinary product users consume grants without requiring Vault management
   access. The product API validates active identity and supplies the actor to

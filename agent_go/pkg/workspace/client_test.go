@@ -267,7 +267,7 @@ func TestValidatePathAgainstGuard_BlockedPathsStillDeniesBoth(t *testing.T) {
 func TestValidatePathAgainstGuard_ExactFileWritePathIsNotPrefix(t *testing.T) {
 	guard := &FolderGuardConfig{
 		Enabled:    true,
-		WritePaths: []string{"Workflow/rtslatency/builder/improve.html"},
+		WritePaths: []string{"Workflow/latency-report/builder/improve.html"},
 	}
 
 	cases := []struct {
@@ -277,16 +277,16 @@ func TestValidatePathAgainstGuard_ExactFileWritePathIsNotPrefix(t *testing.T) {
 	}{
 		{
 			name: "exact improve log is writable",
-			path: "Workflow/rtslatency/builder/improve.html",
+			path: "Workflow/latency-report/builder/improve.html",
 		},
 		{
 			name:      "sibling builder file is not writable",
-			path:      "Workflow/rtslatency/builder/other.html",
+			path:      "Workflow/latency-report/builder/other.html",
 			wantError: true,
 		},
 		{
 			name:      "file path is not treated as writable directory prefix",
-			path:      "Workflow/rtslatency/builder/improve.html/child.html",
+			path:      "Workflow/latency-report/builder/improve.html/child.html",
 			wantError: true,
 		},
 	}

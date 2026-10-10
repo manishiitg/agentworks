@@ -255,7 +255,7 @@ func isBrainChatWorkspace(userID, workspace string) bool {
 // bindKnowledgebaseStepIdentity gives a workflow's Brain tools the identity of the authenticated request that set the
 // session up, for calls arriving through that session's (or one of its registered step sessions') token-authenticated
 // bridge with no user attached: a step on a coding CLI reaches its tools that way, and every Brain call from a
-// Workshop-started or scheduled step failed with "Brain tool requires its authenticated caller" (server A rtslatency,
+// Workshop-started or scheduled step failed with "Brain tool requires its authenticated caller" (server A latency-report,
 // 2026-10-07). This is the same server-owned binding delegated sub-agents get (bindToolExecutionContextForSession);
 // the tools' own executor still refuses a call that brings no identity and is not bound here.
 func bindKnowledgebaseStepIdentity(requestCtx context.Context, rootSession string, executors map[string]interface{}, categories map[string]string) {

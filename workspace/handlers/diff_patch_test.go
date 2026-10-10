@@ -657,7 +657,7 @@ func TestCountContentLines(t *testing.T) {
 }
 
 // TestVerifyDiffAppliedCatchesSilentPartialApply reproduces the shape of the
-// confida-login live finding: a two-hunk patch where the first hunk (net +1
+// customer-login live finding: a two-hunk patch where the first hunk (net +1
 // line) applied correctly, but the second hunk's own changes were silently
 // dropped and an unrelated trailing line was deleted too (net -1) — so the
 // file's real net change (0) does not match what the diff's own +/- lines

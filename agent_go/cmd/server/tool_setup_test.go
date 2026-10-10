@@ -422,7 +422,7 @@ func TestPlanFolderGuardWriteDeniedSuggestsThePrefixedPath(t *testing.T) {
 
 func TestExternalRecommendationWriteAccessIsImproveLogOnly(t *testing.T) {
 	const chatsFolder = "_users/default/Chats"
-	const workflowRoot = "Workflow/rtslatency"
+	const workflowRoot = "Workflow/latency-report"
 	const improveLog = workflowRoot + "/builder/improve.html"
 
 	noop := func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -476,7 +476,7 @@ func TestExternalRecommendationWriteAccessIsImproveLogOnly(t *testing.T) {
 }
 
 func TestWorkflowPhaseFolderGuardDoesNotAllowChatsByDefault(t *testing.T) {
-	const workflowRoot = "Workflow/rtslatency"
+	const workflowRoot = "Workflow/latency-report"
 
 	noop := func(ctx context.Context, args map[string]interface{}) (string, error) {
 		return "OK", nil
@@ -518,7 +518,7 @@ func TestWorkflowPhaseFolderGuardDoesNotAllowChatsByDefault(t *testing.T) {
 		t.Fatalf("workflow write should be allowed, got: %v", err)
 	}
 
-	_, err := executor(context.Background(), map[string]interface{}{"filepath": "_users/default/Chats/rts-architecture-latency-map.md"})
+	_, err := executor(context.Background(), map[string]interface{}{"filepath": "_users/default/Chats/project-a-architecture-latency-map.md"})
 	if err == nil {
 		t.Fatal("expected Chats write to be denied in workflow phase guard")
 	}
@@ -536,11 +536,11 @@ func TestWorkflowPhaseFolderGuardDoesNotAllowChatsByDefault(t *testing.T) {
 }
 
 func TestWorkflowPhaseToolDescriptionDoesNotSayChatsOnly(t *testing.T) {
-	desc := enhanceToolDescriptionForWorkflowPhase("diff_patch_workspace_file", "Patch files.", "Workflow/rtslatency")
+	desc := enhanceToolDescriptionForWorkflowPhase("diff_patch_workspace_file", "Patch files.", "Workflow/latency-report")
 
 	for _, want := range []string{
 		"DIRECTORY ACCESS RESTRICTIONS (WORKFLOW BUILDER)",
-		"Workflow/rtslatency/",
+		"Workflow/latency-report/",
 		"Do NOT write workflow artifacts",
 	} {
 		if !strings.Contains(desc, want) {

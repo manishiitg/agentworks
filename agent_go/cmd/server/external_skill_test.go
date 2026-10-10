@@ -27,7 +27,7 @@ func TestExternalSkillRequiresIdentity(t *testing.T) {
 }
 
 func TestExternalPluginPackagesSkillAndOAuthConnector(t *testing.T) {
-	t.Setenv("PUBLIC_URL", "https://confida.example.com")
+	t.Setenv("PUBLIC_URL", "https://customer.example.com")
 	api := &StreamingAPI{}
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
 	w := httptest.NewRecorder()
@@ -74,10 +74,10 @@ func TestExternalPluginPackagesSkillAndOAuthConnector(t *testing.T) {
 	if err := json.Unmarshal([]byte(entries[".mcp.json"]), &connector); err != nil {
 		t.Fatal(err)
 	}
-	if server := connector.MCPServers["agentworks"]; server.Type != "http" || server.URL != "https://confida.example.com/api/external/v1/mcp" {
+	if server := connector.MCPServers["agentworks"]; server.Type != "http" || server.URL != "https://customer.example.com/api/external/v1/mcp" {
 		t.Fatalf("invalid MCP connector: %+v", server)
 	}
-	if entries["skills/agentworks/SKILL.md"] != buildHostedSkillMarkdown("https://confida.example.com") {
+	if entries["skills/agentworks/SKILL.md"] != buildHostedSkillMarkdown("https://customer.example.com") {
 		t.Fatal("plugin skill differs from hosted skill")
 	}
 	if !strings.Contains(entries["README.md"], "OAuth") {

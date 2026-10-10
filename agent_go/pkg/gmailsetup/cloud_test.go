@@ -94,7 +94,7 @@ func (f *fakeCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func plan(t *testing.T) Plan {
 	t.Helper()
-	p, err := NewPlan("company", "123456-abcdef.apps.googleusercontent.com", "rts-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
+	p, err := NewPlan("company", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestProvisionRetryReusesResourcesAndNarrowIAMGrants(t *testing.T) {
 }
 
 func TestProvisionCrossProjectUsesExistingDeliveryIdentity(t *testing.T) {
-	p, err := NewPlan("second", "123456-abcdef.apps.googleusercontent.com", "rts-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "existing-push@delivery-project.iam.gserviceaccount.com")
+	p, err := NewPlan("second", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "existing-push@delivery-project.iam.gserviceaccount.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestCloudErrorsDoNotReturnCredentialBearingBody(t *testing.T) {
 
 func TestProvisionEscapesExistingTopicNameAsLiteralResource(t *testing.T) {
 	p := plan(t)
-	p.Topic = "projects/rts-project/topics/mail%2Btopic"
+	p.Topic = "projects/sample-project/topics/mail%2Btopic"
 	f := &fakeCloud{}
 	if err := cloud(f).Provision(context.Background(), p, func(string) {}); err != nil {
 		t.Fatal(err)

@@ -36,7 +36,7 @@ func saveKBSources(t *testing.T, root, ws string, attach bool, folder bool) {
 	t.Helper()
 	m := map[string]interface{}{"id": "consumer", "created_by": "owner"}
 	if attach {
-		m["knowledgebase_sources"] = []workflowtypes.KnowledgebaseSource{{WorkflowID: "source", Alias: "rts", Access: "read"}}
+		m["knowledgebase_sources"] = []workflowtypes.KnowledgebaseSource{{WorkflowID: "source", Alias: "project-a", Access: "read"}}
 	}
 	if folder {
 		m["folder_access"] = []workflowtypes.WorkflowFolderGrant{{ID: "independent", Alias: "independent", Path: filepath.Join(root, "Workflow/source/knowledgebase"), Access: workflowtypes.FolderAccessReadWrite}}
@@ -55,7 +55,7 @@ func TestKBSourcesSessionRefreshDetachAndIndependentGrants(t *testing.T) {
 	common.SetSessionFolderGuard(session, []string{ws}, []string{ws})
 	RefreshWorkflowFolderAccessSession(session, ws)
 	cfg := common.GetSessionShellConfig(session)
-	if cfg.Env["WORKFLOW_KB_RTS"] != kb || !containsString(cfg.ReadPaths, kb) || !containsString(cfg.BlockedWritePaths, kb) {
+	if cfg.Env["WORKFLOW_KB_project-a"] != kb || !containsString(cfg.ReadPaths, kb) || !containsString(cfg.BlockedWritePaths, kb) {
 		t.Fatal("builder did not receive read-only source", cfg)
 	}
 	child := "kb-copy"
@@ -65,11 +65,11 @@ func TestKBSourcesSessionRefreshDetachAndIndependentGrants(t *testing.T) {
 	}
 	saveKBSources(t, root, ws, false, false)
 	RefreshWorkflowFolderAccessSession(session, ws)
-	if copied := common.GetSessionShellConfig(child); containsString(copied.ReadPaths, kb) || copied.Env["WORKFLOW_KB_RTS"] != "" {
+	if copied := common.GetSessionShellConfig(child); containsString(copied.ReadPaths, kb) || copied.Env["WORKFLOW_KB_project-a"] != "" {
 		t.Fatal("copied session retained source after detach")
 	}
 	cfg = common.GetSessionShellConfig(session)
-	if cfg.Env["WORKFLOW_KB_RTS"] != "" || containsString(cfg.ReadPaths, kb) || containsString(cfg.BlockedWritePaths, kb) {
+	if cfg.Env["WORKFLOW_KB_project-a"] != "" || containsString(cfg.ReadPaths, kb) || containsString(cfg.BlockedWritePaths, kb) {
 		t.Fatal("detach retained grants", cfg)
 	}
 	saveKBSources(t, root, ws, true, true)
@@ -105,7 +105,7 @@ func TestKBSourcesStepOptOutAndOwnershipRevocation(t *testing.T) {
 	RefreshWorkflowFolderAccessSession(session, ws)
 	os.WriteFile(filepath.Join(root, "Workflow/source/workflow.json"), []byte(`{"id":"source","created_by":"someone-else"}`), 0644)
 	cfg := common.GetSessionShellConfig(session)
-	if containsString(cfg.ReadPaths, kb) || common.GetSessionShellEnv(session)["WORKFLOW_KB_RTS"] != "" {
+	if containsString(cfg.ReadPaths, kb) || common.GetSessionShellEnv(session)["WORKFLOW_KB_project-a"] != "" {
 		t.Fatal("ownership revocation retained access", cfg)
 	}
 }
@@ -135,11 +135,11 @@ func TestKBSourcesActualShellReadOnlyAndDetach(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
-	out, err := run(`cat "$WORKFLOW_KB_RTS/notes/fact.md" | tr a-z A-Z`)
+	out, err := run(`cat "$WORKFLOW_KB_project-a/notes/fact.md" | tr a-z A-Z`)
 	if err != nil || !strings.Contains(out, "VERIFIED ARCHITECTURE") {
 		t.Fatal(out, err)
 	}
-	if out, err := run(`printf changed > "$WORKFLOW_KB_RTS/notes/fact.md"`); err == nil {
+	if out, err := run(`printf changed > "$WORKFLOW_KB_project-a/notes/fact.md"`); err == nil {
 		t.Fatal("source write succeeded", out)
 	}
 	if out, err := run(`cat ../source/workflow.json`); err == nil {
@@ -154,7 +154,7 @@ func TestKBSourcesActualShellReadOnlyAndDetach(t *testing.T) {
 func TestKBSourcesWriteGrantAppliesToAllThreeFolderGuards(t *testing.T) {
 	root, ws, kb := kbSessionFixture(t)
 	notesPath := filepath.Join(kb, "notes")
-	m := map[string]interface{}{"id": "consumer", "created_by": "owner", "knowledgebase_sources": []workflowtypes.KnowledgebaseSource{{WorkflowID: "source", Alias: "rts", Access: "write"}}}
+	m := map[string]interface{}{"id": "consumer", "created_by": "owner", "knowledgebase_sources": []workflowtypes.KnowledgebaseSource{{WorkflowID: "source", Alias: "project-a", Access: "write"}}}
 	raw, _ := json.Marshal(m)
 	if err := os.WriteFile(filepath.Join(root, ws, "workflow.json"), raw, 0644); err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestKBSourcesBuilderPromptAndExecutionScope(t *testing.T) {
 	root, ws, kb := kbSessionFixture(t)
 	saveKBSources(t, root, ws, true, false)
 	prompt := PhaseChatSystemPrompt("workflow-builder", map[string]string{"WorkspacePath": ws})
-	if !strings.Contains(prompt, "WORKFLOW_KB_RTS") || !strings.Contains(prompt, "Attached knowledge bases") {
+	if !strings.Contains(prompt, "WORKFLOW_KB_project-a") || !strings.Contains(prompt, "Attached knowledge bases") {
 		t.Fatal("builder source discovery not injected")
 	}
 	hcpo := newAgentFactoryTestOrchestrator(t)

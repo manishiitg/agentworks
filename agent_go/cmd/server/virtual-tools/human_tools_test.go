@@ -872,7 +872,7 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 
 	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
 		UserID:       "user-1",
-		WorkflowName: "rtslatency",
+		WorkflowName: "latency-report",
 	})
 	if _, err := handleNotifyUser(ctx, map[string]interface{}{
 		"message_for_user":  "Pulse completed",
@@ -893,10 +893,10 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 			t.Fatalf("destination = %#v, want rich Gmail content", dest)
 		}
 		gmail := dest.Content.Gmail
-		if gmail.Subject != "rtslatency · Pulse summary" {
+		if gmail.Subject != "latency-report · Pulse summary" {
 			t.Fatalf("subject = %q", gmail.Subject)
 		}
-		if !strings.Contains(gmail.HTMLBody, "Workflow: <strong") || !strings.Contains(gmail.HTMLBody, "rtslatency</strong>") {
+		if !strings.Contains(gmail.HTMLBody, "Workflow: <strong") || !strings.Contains(gmail.HTMLBody, "latency-report</strong>") {
 			t.Fatalf("email body missing workflow header: %s", gmail.HTMLBody)
 		}
 		if strings.Contains(gmail.HTMLBody, "route facts already rendered") || strings.Count(gmail.HTMLBody, "Three findings remain pending.") != 1 {

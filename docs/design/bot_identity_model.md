@@ -150,7 +150,7 @@ found. They apply to channel turns (Run mode) and DM turns alike:
    `list_mcp_servers` (only `mcp_management` registered it), and the crew's
    `work-mcp` skill forbids claiming a server before checking it. New
    capability `mcp_inspection` (Run and Builder) registers only
-   `list_mcp_servers`. Confirm on RTS with `[CHAT_POLICY] MCP management
+   `list_mcp_servers`. Confirm on server A with `[CHAT_POLICY] MCP management
    admission: ... inspect=true` on a Slack turn.
 4. **Who is asking** (shipped). Every Slack turn starts with
    `From: <name> <email> (Slack)` (`withBotSender`), and a thread's session

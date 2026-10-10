@@ -9,7 +9,7 @@ describe('composer triggers', () => {
   })
   it.each([
     ['/', '/', ''], ['/pulse', '/', 'pulse'], ['@file.md now /pulse', '/', 'pulse'],
-    ['@Workflow/rtslatency', '@', 'Workflow/rtslatency'], ['Compare @报告.md', '@', '报告.md'],
+    ['@Workflow/latency-report', '@', 'Workflow/latency-report'], ['Compare @报告.md', '@', '报告.md'],
     ['Compare @"My Report', '@', 'My Report'], ['#workflow', '#', 'workflow'],
   ])('recognizes only the current token in %s', (text, kind, query) => {
     expect(triggerAtEnd(text)).toMatchObject({ kind, query, end: text.length })

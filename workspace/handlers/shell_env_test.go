@@ -6,7 +6,7 @@ func TestIsAllowedShellExtraEnvKey(t *testing.T) {
 	allowed := []string{
 		"MCP_API_URL",
 		"SECRET_TOKEN",
-		"WORKFLOW_FOLDER_RTS_SOURCE",
+		"WORKFLOW_FOLDER_project_source",
 		"WORK_FOLDER_FINANCE",
 		"VAR_GROUP_NAME",
 		"STEP_OUTPUT_DIR",

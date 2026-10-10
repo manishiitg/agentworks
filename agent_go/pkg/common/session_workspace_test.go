@@ -13,7 +13,7 @@ func TestClassifySessionWorkspace(t *testing.T) {
 		{"workflow root", "u1", "Workflow/trading", SessionWorkspaceWorkflow, "Workflow/trading"},
 		{"workflow deep working dir collapses", "u1", "Workflow/trading/code", SessionWorkspaceWorkflow, "Workflow/trading"},
 		{"workflow bare", "u1", "Workflow", SessionWorkspaceUnknown, ""},
-		{"crew public", "u1", "Chats/Work/projects/confida-qa-480b6936", SessionWorkspaceCrewProject, "Chats/Work/projects/confida-qa-480b6936"},
+		{"crew public", "u1", "Chats/Work/projects/customer-qa-480b6936", SessionWorkspaceCrewProject, "Chats/Work/projects/customer-qa-480b6936"},
 		{"crew physical", "2a0aea4e", "_users/2a0aea4e/Chats/Work/projects/rooks-8a14b84a", SessionWorkspaceCrewProject, "Chats/Work/projects/rooks-8a14b84a"},
 		{"crew deep collapses", "u1", "Chats/Work/projects/demo/db/reports", SessionWorkspaceCrewProject, "Chats/Work/projects/demo"},
 		{"crew landing is not a project", "u1", "Chats/Work/projects/", SessionWorkspaceUnknown, ""},

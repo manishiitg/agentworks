@@ -8,7 +8,7 @@ import (
 // PLAT-055 / K. Unset knowledgebase_access used to silently resolve to
 // KBAccessNone regardless of whether a contribution was already staged — a
 // genuine trap, distinct from an operator deliberately writing "none".
-// rtslatency's two worst-offending steps had no legitimate KB destination
+// latency-report's two worst-offending steps had no legitimate KB destination
 // during execution because nothing was configured either way, not because
 // anyone decided against it. The fix mirrors resolveLearningsAccess's
 // already-safe pattern: read by default, auto-promoted to read-write only when
@@ -52,7 +52,7 @@ func TestResolveKnowledgebaseAccessNeverPromotesWithoutPresetEnabled(t *testing.
 }
 
 func TestResolveKnowledgebaseAccessExplicitNoneAlwaysWins(t *testing.T) {
-	// This is the case this change deliberately does NOT touch: rtslatency's
+	// This is the case this change deliberately does NOT touch: latency-report's
 	// steps had kb_access explicitly set to "none", which is an operator
 	// decision (however undocumented) and must keep winning over any default.
 	got := resolveKnowledgebaseAccess(&AgentConfigs{

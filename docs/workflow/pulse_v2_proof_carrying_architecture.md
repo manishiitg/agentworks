@@ -2111,7 +2111,7 @@ something real.
 ### What the split costs
 
 Cross-module deduplication and conflict resolution. Both modules can find the
-same defect and neither fixer can see the other. rtslatency closed a
+same defect and neither fixer can see the other. latency-report closed a
 `stores_health` finding with:
 
 > "Duplicate of bug_review F2 — same attempted fix, same tool rejection."
@@ -2171,7 +2171,7 @@ per-module Fixers are blind to each other. Both workflows say otherwise:
 
 ```
                        fix attempts   findings fix-attempted by >1 module
-rtslatency                  16                      0
+latency-report                  16                      0
 social-media                12                      0
 ```
 
@@ -2264,7 +2264,7 @@ current design has the Fixer record its own pass/fail verdicts.
 
 ```
                         fixed_verified   of those, reopened
-rtslatency                    7                 0
+latency-report                    7                 0
 social-media                  3                 0
 
 reopened from findings the Fixer marked unverified:  13
@@ -2339,7 +2339,7 @@ confirming past work and describing fresh symptoms.
 
 This is what the 13 reopens were asking for. They were not evidence that
 verification is weak; they were fixes waiting on runs that then completed with
-nobody assigned to check them, so each pass repaired them again. rtslatency
+nobody assigned to check them, so each pass repaired them again. latency-report
 carried one finding at `seen_count` 4 for exactly this reason.
 
 ### Decision: one public issue identity and semantic backlog consolidation (2026-08-08)
@@ -2452,7 +2452,7 @@ valid, but do not erase an expensive completed analysis. The current all-or-
 nothing rejection loses both the human review and the evidence needed to debug
 the contract failure.
 
-The same boundary failed in a different form on the 2026-08-03 `rtslatency`
+The same boundary failed in a different form on the 2026-08-03 `latency-report`
 pass (`schedule-cron--42eca39a_1785724255409111000`). The Fixer process stopped,
 but `artifact_review` was durably terminal as `failed`: result submission first
 referred to fix attempt `fix-8b7c7f2747672088`, which belongs to `eval_health`,
@@ -2567,7 +2567,7 @@ one workflow or one review window:
 4. **How do we measure that across multiple Pulse passes over time?**
 
 The evidence set should span workflows with different shapes and failure modes,
-including `build-in-public`, `rtslatency`, `instagram`, `upwork`, and the
+including `build-in-public`, `latency-report`, `instagram`, `upwork`, and the
 existing LinkedIn audit. For each pass retain reviewer selection, relevance and
 duplication, runtime/token/cost, contract failures, findings, attempts,
 verification, finalizer outcome, and later goal observations. Compare like with

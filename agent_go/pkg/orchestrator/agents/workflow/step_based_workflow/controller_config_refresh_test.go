@@ -18,7 +18,7 @@ import (
 // disk correctly but a step that had not started yet still ran with the
 // snapshot taken at run start, because "before this step started" was the
 // wrong boundary — "before the run started" was the one that mattered.
-// Confirmed live: confida-login pinned execute-browser-and-capture-apis to
+// Confirmed live: customer-login pinned execute-browser-and-capture-apis to
 // pi-cli/gemini-3.7-flash 16 minutes before that step began; it ran three
 // times in that run and used claude-code/claude-sonnet-5-5 every time.
 

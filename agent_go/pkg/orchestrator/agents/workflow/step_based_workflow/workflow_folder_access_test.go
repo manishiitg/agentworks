@@ -81,7 +81,7 @@ func TestAppendWorkflowFolderAccessPreservesModesAndAliases(t *testing.T) {
 	}
 	manifest := workflowFolderAccessManifest{FolderAccess: []workflowtypes.WorkflowFolderGrant{
 		{ID: "read", Alias: "reference-data", Path: readOnly, Access: workflowtypes.FolderAccessReadOnly},
-		{ID: "write", Alias: "rts-source", Path: readWrite, Access: workflowtypes.FolderAccessReadWrite},
+		{ID: "write", Alias: "docs-source", Path: readWrite, Access: workflowtypes.FolderAccessReadWrite},
 		{ID: "missing", Alias: "missing", Path: filepath.Join(t.TempDir(), "gone"), Access: workflowtypes.FolderAccessReadWrite},
 	}}
 	raw, err := json.Marshal(manifest)
@@ -102,7 +102,7 @@ func TestAppendWorkflowFolderAccessPreservesModesAndAliases(t *testing.T) {
 	if !containsString(readOnlyPaths, readOnly) || containsString(readOnlyPaths, readWrite) {
 		t.Fatalf("read-only write-deny roots not preserved: %v", readOnlyPaths)
 	}
-	if env["WORKFLOW_FOLDER_REFERENCE_DATA"] != readOnly || env["WORKFLOW_FOLDER_RTS_SOURCE"] != readWrite {
+	if env["WORKFLOW_FOLDER_REFERENCE_DATA"] != readOnly || env["WORKFLOW_FOLDER_project_source"] != readWrite {
 		t.Fatalf("alias environment incorrect: %#v", env)
 	}
 	if _, exists := env["WORKFLOW_FOLDER_MISSING"]; exists {
@@ -164,12 +164,12 @@ func TestRefreshWorkflowFolderAccessSessionReconcilesCrewGrants(t *testing.T) {
 	if err := os.MkdirAll(workflowDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	crewRoot := "_users/owner/Chats/Work/projects/rts"
+	crewRoot := "_users/owner/Chats/Work/projects/project-a"
 	if err := os.MkdirAll(filepath.Join(docsRoot, filepath.FromSlash(crewRoot)), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifestPath := filepath.Join(workflowDir, "workflow.json")
-	attached := `{"id":"wf-1","crew_attachments":[{"id":"a1","alias":"rts","crew_profile_id":"work","crew_project_id":"rts","crew_workspace_path":"` + crewRoot + `"}]}`
+	attached := `{"id":"wf-1","crew_attachments":[{"id":"a1","alias":"project-a","crew_profile_id":"work","crew_project_id":"project-a","crew_workspace_path":"` + crewRoot + `"}]}`
 	if err := os.WriteFile(manifestPath, []byte(attached), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestRefreshWorkflowFolderAccessSessionReconcilesCrewGrants(t *testing.T) {
 	if cfg == nil || !containsString(cfg.ReadPaths, crewRoot) || !containsString(cfg.BlockedWritePaths, crewRoot) {
 		t.Fatalf("live crew root not granted readable: %#v", cfg)
 	}
-	if cfg.Env["WORKFLOW_CREW_RTS"] != crewRoot {
+	if cfg.Env["WORKFLOW_CREW_project-a"] != crewRoot {
 		t.Fatalf("live crew alias env missing: %#v", cfg.Env)
 	}
 
@@ -217,27 +217,27 @@ func TestLiveCrewAttachmentGrantsSkipInvalidAttachments(t *testing.T) {
 	}
 	// Only the server A crew workspace exists: the gone crew is deleted and
 	// the evil alias is retargeted at an arbitrary path.
-	if err := os.MkdirAll(filepath.Join(docsRoot, "_users", "owner", "Chats", "Work", "projects", "rts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(docsRoot, "_users", "owner", "Chats", "Work", "projects", "project-a"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := `{"id":"wf-1","crew_attachments":[` +
-		`{"id":"a1","alias":"rts","crew_profile_id":"work","crew_project_id":"rts","crew_workspace_path":"_users/owner/Chats/Work/projects/rts"},` +
+		`{"id":"a1","alias":"project-a","crew_profile_id":"work","crew_project_id":"project-a","crew_workspace_path":"_users/owner/Chats/Work/projects/project-a"},` +
 		`{"id":"a2","alias":"gone","crew_profile_id":"work","crew_project_id":"gone","crew_workspace_path":"_users/owner/Chats/Work/projects/gone"},` +
-		`{"id":"a3","alias":"evil","crew_profile_id":"work","crew_project_id":"rts","crew_workspace_path":"_users/owner/secrets"}` +
+		`{"id":"a3","alias":"evil","crew_profile_id":"work","crew_project_id":"project-a","crew_workspace_path":"_users/owner/secrets"}` +
 		`]}`
 	if err := os.WriteFile(filepath.Join(workflowDir, "workflow.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	live := liveCrewAttachmentGrants(workspacePath)
-	if len(live) != 1 || live[0].Alias != "rts" {
-		t.Fatalf("live grants = %+v, want only the rts attachment", live)
+	if len(live) != 1 || live[0].Alias != "project-a" {
+		t.Fatalf("live grants = %+v, want only the project-a attachment", live)
 	}
 	read, _, readOnly, env := appendWorkflowFolderAccess(workspacePath, nil, nil)
-	crewRoot := "_users/owner/Chats/Work/projects/rts"
+	crewRoot := "_users/owner/Chats/Work/projects/project-a"
 	if !containsString(read, crewRoot) || !containsString(readOnly, crewRoot) {
 		t.Fatalf("crew root missing from guard paths: read=%v readOnly=%v", read, readOnly)
 	}
-	if env["WORKFLOW_CREW_RTS"] != crewRoot {
+	if env["WORKFLOW_CREW_project-a"] != crewRoot {
 		t.Fatalf("crew alias env = %v", env)
 	}
 	for _, paths := range [][]string{read, readOnly} {

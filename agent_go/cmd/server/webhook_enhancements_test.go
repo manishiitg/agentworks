@@ -39,10 +39,10 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 
 func TestWebhookRawPayloadMappingsSelectGroupAndNestedBranch(t *testing.T) {
 	s := WorkflowSchedule{
-		GroupNames:      []string{"confida-prod", "confida-staging"},
+		GroupNames:      []string{"customer-prod", "customer-staging"},
 		RouteSelections: map[string]string{"workflow-route": "regression"},
 		Webhook: &WorkflowWebhookConfig{InputMode: "raw", PayloadMappings: &WorkflowWebhookPayloadMappings{
-			Group: &WorkflowWebhookValueMapping{Source: "$.env", Values: map[string]string{"prod": "confida-prod", "staging": "confida-staging"}},
+			Group: &WorkflowWebhookValueMapping{Source: "$.env", Values: map[string]string{"prod": "customer-prod", "staging": "customer-staging"}},
 			Routes: map[string]WorkflowWebhookValueMapping{
 				"regression-component-branch": {Source: "component", Values: map[string]string{"service/review": "review"}},
 			},
@@ -53,8 +53,8 @@ func TestWebhookRawPayloadMappingsSelectGroupAndNestedBranch(t *testing.T) {
 	if err := resolveWebhookDeliveryOptions(s, delivery); err != nil {
 		t.Fatal(err)
 	}
-	if delivery.Group != "confida-prod" {
-		t.Fatalf("group = %q, want confida-prod", delivery.Group)
+	if delivery.Group != "customer-prod" {
+		t.Fatalf("group = %q, want customer-prod", delivery.Group)
 	}
 	if got := delivery.RouteSelections["regression-component-branch"]; got != "review" {
 		t.Fatalf("mapped branch = %q, want review", got)
@@ -84,7 +84,7 @@ func TestWebhookRawPayloadMappingsCanSelectSingleStep(t *testing.T) {
 
 func TestWebhookRawPayloadMappingsRejectUnknownOrMissingValues(t *testing.T) {
 	s := WorkflowSchedule{Webhook: &WorkflowWebhookConfig{InputMode: "raw", PayloadMappings: &WorkflowWebhookPayloadMappings{
-		Group: &WorkflowWebhookValueMapping{Source: "env", Values: map[string]string{"prod": "confida-prod"}},
+		Group: &WorkflowWebhookValueMapping{Source: "env", Values: map[string]string{"prod": "customer-prod"}},
 	}}}
 	for _, payload := range []string{`{"env":"qa"}`, `{"component":"service/review"}`} {
 		delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(payload)}

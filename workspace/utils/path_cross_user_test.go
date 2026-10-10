@@ -84,7 +84,7 @@ func TestResolveUserPathStillAllowsOwnAndSharedFiles(t *testing.T) {
 }
 
 // A path whose leaf (or whole user folder) does not exist yet resolves no further than its nearest existing
-// parent; that must not be mistaken for a hop into another tree (RTS/excellence startup, 2026-10-01).
+// parent; that must not be mistaken for a hop into another tree (project-a/customer-b startup, 2026-10-01).
 func TestIsValidFilePathAllowsPathsThatDoNotExistYet(t *testing.T) {
 	docs := crossUserFixture(t)
 	for _, p := range []string{

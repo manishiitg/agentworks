@@ -50,7 +50,7 @@ func TestValidateTriggerCaller(t *testing.T) {
 	if err := validateTriggerCaller(&triggerCaller{Type: "workflow", ID: "release-pipeline"}, triggerCallerWorkflow); err != nil {
 		t.Fatalf("valid caller rejected: %v", err)
 	}
-	if err := validateTriggerCaller(&triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}, triggerCallerCrew); err != nil {
+	if err := validateTriggerCaller(&triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}, triggerCallerCrew); err != nil {
 		t.Fatalf("valid crew caller rejected: %v", err)
 	}
 }
@@ -59,8 +59,8 @@ func TestTriggerCallerFromArgs(t *testing.T) {
 	if got := triggerCallerFromArgs(map[string]interface{}{}); got != nil {
 		t.Fatalf("absent caller = %+v, want nil", got)
 	}
-	got := triggerCallerFromArgs(map[string]interface{}{"caller": map[string]interface{}{"type": "crew", "id": "rts", "profile_id": "work"}})
-	if got == nil || got.Type != "crew" || got.ID != "rts" || got.ProfileID != "work" {
+	got := triggerCallerFromArgs(map[string]interface{}{"caller": map[string]interface{}{"type": "crew", "id": "project-a", "profile_id": "work"}})
+	if got == nil || got.Type != "crew" || got.ID != "project-a" || got.ProfileID != "work" {
 		t.Fatalf("caller = %+v", got)
 	}
 	if got := triggerCallerFromArgs(map[string]interface{}{"caller": map[string]interface{}{"type": "", "id": ""}}); got != nil {
@@ -127,7 +127,7 @@ func TestValidateWebhookScheduleInternal(t *testing.T) {
 		Enabled: true, WorkshopMode: "run",
 		Webhook: &WorkflowWebhookConfig{StepID: "work"},
 		Kind:    triggerKindInternal,
-		Caller:  &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"},
+		Caller:  &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"},
 	}
 	if err := validateWebhookSchedule(base); err != nil {
 		t.Fatalf("internal schedule rejected: %v", err)
@@ -172,7 +172,7 @@ func TestWorkflowWebhookDTOInternalHasNoPath(t *testing.T) {
 		ID: "trigger-1", Name: "Crew smoke", ScheduleType: "webhook",
 		Enabled: true, Webhook: &WorkflowWebhookConfig{StepID: "work"},
 		Kind:   triggerKindInternal,
-		Caller: &triggerCaller{Type: "crew", ID: "rts"},
+		Caller: &triggerCaller{Type: "crew", ID: "project-a"},
 	})
 	if dto.Path != "" || dto.AuthMode != "" || dto.Secret != "" {
 		t.Fatalf("internal dto exposed endpoint material: %+v", dto)
@@ -223,19 +223,19 @@ func TestSaveWorkflowWebhookInternalBindsCrewWithoutSecret(t *testing.T) {
 	manifest.CreatedBy = "owner"
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	raw, _ := json.Marshal(manifest)
-	crewProduct := `{"schema_version":1,"product":"crewx","id":"rts","title":"RTS","session_id":"sess-1"}`
+	crewProduct := `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1"}`
 	mock := &mockWorkspaceAPI{files: map[string]string{
-		manifestPath("Workflow/test"):                       string(raw),
-		"Workflow/test/planning/plan.json":                  `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
-		"Workflow/test/variables/variables.json":            `{"variables":[],"groups":[{"name":"default"}]}`,
-		"_users/owner/Chats/Work/projects/rts/product.json": crewProduct,
+		manifestPath("Workflow/test"):                             string(raw),
+		"Workflow/test/planning/plan.json":                        `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/variables/variables.json":                  `{"variables":[],"groups":[{"name":"default"}]}`,
+		"_users/owner/Chats/Work/projects/project-a/product.json": crewProduct,
 	}}
 	ws := httptest.NewServer(mock)
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 
 	crewSvc, crewFiles := newInternalTriggerTestCrew(t)
-	crewFiles["_users/owner/Chats/Work/projects/rts/product.json"] = crewProduct
+	crewFiles["_users/owner/Chats/Work/projects/project-a/product.json"] = crewProduct
 
 	api := &StreamingAPI{productSchedules: crewSvc}
 	svc := NewSchedulerService(api)
@@ -248,7 +248,7 @@ func TestSaveWorkflowWebhookInternalBindsCrewWithoutSecret(t *testing.T) {
 	tool := reg.tools["manage_workflow_webhook"]
 	output, err := tool.exec(context.Background(), map[string]interface{}{
 		"action": "create", "name": "Crew smoke", "enabled": true,
-		"kind": "internal", "caller": map[string]interface{}{"type": "crew", "id": "rts", "profile_id": "crewx"},
+		"kind": "internal", "caller": map[string]interface{}{"type": "crew", "id": "project-a", "profile_id": "crewx"},
 		"route_selections": map[string]string{}, "group_names": []string{"default"},
 	})
 	if err != nil {
@@ -261,7 +261,7 @@ func TestSaveWorkflowWebhookInternalBindsCrewWithoutSecret(t *testing.T) {
 	if created.Secret != "" || created.Path != "" || created.AuthMode != "" {
 		t.Fatalf("internal trigger exposed endpoint material: %+v", created)
 	}
-	if created.Kind != triggerKindInternal || created.Caller == nil || created.Caller.ID != "rts" {
+	if created.Kind != triggerKindInternal || created.Caller == nil || created.Caller.ID != "project-a" {
 		t.Fatalf("internal binding lost: %+v", created)
 	}
 	if _, err := tool.exec(context.Background(), map[string]interface{}{
@@ -284,14 +284,14 @@ func TestSaveProductWebhookConfigInternalBindsWorkflowWithoutSecret(t *testing.T
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 
 	svc, files := newInternalTriggerTestCrew(t)
-	productJSON := `{"schema_version":1,"product":"crewx","id":"rts","title":"RTS","session_id":"sess-1","triggers":[]}`
+	productJSON := `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1","triggers":[]}`
 	// The binding resolves the project workspace through the shared store, then
 	// reads the manifest through the service file funcs.
-	files["_users/owner/Chats/Work/projects/rts/product.json"] = productJSON
-	mock.files["_users/owner/Chats/Work/projects/rts/product.json"] = productJSON
+	files["_users/owner/Chats/Work/projects/project-a/product.json"] = productJSON
+	mock.files["_users/owner/Chats/Work/projects/project-a/product.json"] = productJSON
 
 	response, created, err := svc.saveProductWebhookConfig(context.Background(), "owner", productWebhookRequest{
-		ProfileID: "crewx", ProjectID: "rts", Name: "Release reviewer", Enabled: true,
+		ProfileID: "crewx", ProjectID: "project-a", Name: "Release reviewer", Enabled: true,
 		Message: "Review the delivery", Kind: triggerKindInternal,
 		Caller: &triggerCaller{Type: "workflow", ID: "release-pipeline"},
 	}, "")
@@ -304,12 +304,12 @@ func TestSaveProductWebhookConfigInternalBindsWorkflowWithoutSecret(t *testing.T
 	if response.Kind != triggerKindInternal || response.Caller == nil || response.Caller.ID != "release-pipeline" {
 		t.Fatalf("internal binding lost: %+v", response)
 	}
-	persisted, err := svc.projectWebhookConfigs(context.Background(), "owner", "crewx", "rts")
+	persisted, err := svc.projectWebhookConfigs(context.Background(), "owner", "crewx", "project-a")
 	if err != nil || len(persisted) != 1 || !persisted[0].IsInternal() || persisted[0].Webhook != nil {
 		t.Fatalf("persisted triggers = %+v err=%v", persisted, err)
 	}
 	if _, _, err := svc.saveProductWebhookConfig(context.Background(), "owner", productWebhookRequest{
-		ProfileID: "crewx", ProjectID: "rts", Name: "Ghost", Enabled: true,
+		ProfileID: "crewx", ProjectID: "project-a", Name: "Ghost", Enabled: true,
 		Message: "Review", Kind: triggerKindInternal,
 		Caller: &triggerCaller{Type: "workflow", ID: "ghost-pipeline"},
 	}, ""); err == nil {
@@ -318,7 +318,7 @@ func TestSaveProductWebhookConfigInternalBindsWorkflowWithoutSecret(t *testing.T
 }
 
 func TestTriggerCallerMatchesPresented(t *testing.T) {
-	binding := &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}
+	binding := &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}
 	for _, tt := range []struct {
 		name      string
 		binding   *triggerCaller
@@ -326,13 +326,13 @@ func TestTriggerCallerMatchesPresented(t *testing.T) {
 		presented triggerCaller
 		match     bool
 	}{
-		{"crew match", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}, true},
-		{"type case-insensitive", binding, triggerCallerCrew, triggerCaller{Type: "Crew", ID: "rts", ProfileID: "work"}, true},
-		{"id trims", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: " rts ", ProfileID: "work"}, true},
+		{"crew match", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}, true},
+		{"type case-insensitive", binding, triggerCallerCrew, triggerCaller{Type: "Crew", ID: "project-a", ProfileID: "work"}, true},
+		{"id trims", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: " project-a ", ProfileID: "work"}, true},
 		{"wrong id", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: "other", ProfileID: "work"}, false},
-		{"wrong profile", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: "rts", ProfileID: "other"}, false},
-		{"wrong presented type", binding, triggerCallerCrew, triggerCaller{Type: "workflow", ID: "rts", ProfileID: "work"}, false},
-		{"nil binding", nil, triggerCallerCrew, triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}, false},
+		{"wrong profile", binding, triggerCallerCrew, triggerCaller{Type: "crew", ID: "project-a", ProfileID: "other"}, false},
+		{"wrong presented type", binding, triggerCallerCrew, triggerCaller{Type: "workflow", ID: "project-a", ProfileID: "work"}, false},
+		{"nil binding", nil, triggerCallerCrew, triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}, false},
 		{"workflow ignores profile", &triggerCaller{Type: "workflow", ID: "wf"}, triggerCallerWorkflow, triggerCaller{Type: "workflow", ID: "wf", ProfileID: "anything"}, true},
 		{"binding type must agree", &triggerCaller{Type: "crew", ID: "wf"}, triggerCallerWorkflow, triggerCaller{Type: "workflow", ID: "wf"}, false},
 	} {
@@ -377,8 +377,8 @@ func TestSelectInternalProductTrigger(t *testing.T) {
 
 func TestFindInternalWorkflowTrigger(t *testing.T) {
 	manifest := &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{
-		{ID: "t-internal", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}},
-		{ID: "t-disabled", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "rts"}},
+		{ID: "t-internal", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}},
+		{ID: "t-disabled", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a"}},
 		{ID: "t-public", ScheduleType: "webhook", Enabled: true, Webhook: &WorkflowWebhookConfig{}},
 		{ID: "t-cron", ScheduleType: "cron", Enabled: true},
 	}}
@@ -409,8 +409,8 @@ func newInternalDispatchCrew(t *testing.T, triggersJSON string) (*ProductSchedul
 	t.Helper()
 	svc, files := newInternalTriggerTestCrew(t)
 	svc.api = &StreamingAPI{}
-	manifestPath := "_users/owner/Chats/Work/projects/rts/product.json"
-	crewProduct := `{"schema_version":1,"product":"crewx","id":"rts","title":"RTS","session_id":"sess-1","triggers":` + triggersJSON + `}`
+	manifestPath := "_users/owner/Chats/Work/projects/project-a/product.json"
+	crewProduct := `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1","triggers":` + triggersJSON + `}`
 	mock := &mockWorkspaceAPI{files: map[string]string{manifestPath: crewProduct}}
 	ws := httptest.NewServer(mock)
 	t.Cleanup(ws.Close)
@@ -429,11 +429,11 @@ func TestDispatchInternalProductTriggerQueuedAndDuplicate(t *testing.T) {
 	svc, files := newInternalDispatchCrew(t, internalDispatchCrewTriggers)
 	// Hold the conversation so dispatch queues instead of starting a live
 	// agent turn; the claim, payload, and queue wiring is what this pins.
-	convKey := "owner\x1fproduct-project:crewx:rts:trig-1"
+	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"
 	svc.conversations = map[string]bool{convKey: true}
 	ctx := context.Background()
 	call := internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: "d1", Payload: []byte(`{"a":1}`),
 	}
@@ -441,11 +441,11 @@ func TestDispatchInternalProductTriggerQueuedAndDuplicate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch err = %v", err)
 	}
-	wantRun := webhookDeliveryRunID("rts", "trig-1", "d1")
+	wantRun := webhookDeliveryRunID("project-a", "trig-1", "d1")
 	if result.RunID != wantRun || result.Status != "queued" || result.Duplicate {
 		t.Fatalf("result = %+v, want queued run %s", result, wantRun)
 	}
-	payloadPath := "_users/owner/Chats/Work/projects/rts/triggers/deliveries/" + wantRun + ".json"
+	payloadPath := "_users/owner/Chats/Work/projects/project-a/triggers/deliveries/" + wantRun + ".json"
 	if files[payloadPath] != "{\"a\":1}\n" {
 		t.Fatalf("payload file = %q", files[payloadPath])
 	}
@@ -466,10 +466,10 @@ func TestDispatchInternalProductTriggerQueuedAndDuplicate(t *testing.T) {
 
 func TestDispatchInternalProductTriggerRejects(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, internalDispatchCrewTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	base := internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: "d-reject", Payload: []byte(`{}`),
 	}
@@ -496,10 +496,10 @@ func TestDispatchInternalProductTriggerRejects(t *testing.T) {
 
 func TestGetInternalProductTriggerRun(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, internalDispatchCrewTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:rts:trig-1": true}
+	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
 	ctx := context.Background()
 	call := internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "rts", TriggerID: "trig-1",
+		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
 		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
 		DeliveryID: "d-poll", Payload: []byte(`{}`),
 	}
@@ -508,20 +508,20 @@ func TestGetInternalProductTriggerRun(t *testing.T) {
 		t.Fatalf("dispatch err = %v", err)
 	}
 	caller := triggerCaller{Type: "workflow", ID: "wf-1"}
-	got, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "rts", "trig-1", result.RunID, caller)
+	got, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "project-a", "trig-1", result.RunID, caller)
 	if err != nil {
 		t.Fatalf("get run err = %v", err)
 	}
 	if got.RunID != result.RunID || got.Status != "queued" || got.Terminal {
 		t.Fatalf("run status = %+v", got)
 	}
-	if _, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "rts", "trig-1", "missing", caller); !errors.Is(err, ErrInternalTriggerRunGone) {
+	if _, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "project-a", "trig-1", "missing", caller); !errors.Is(err, ErrInternalTriggerRunGone) {
 		t.Fatalf("missing run err = %v, want ErrInternalTriggerRunGone", err)
 	}
-	if _, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "rts", "trig-1", result.RunID, triggerCaller{Type: "workflow", ID: "intruder"}); !errors.Is(err, ErrInternalCallerMismatch) {
+	if _, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "project-a", "trig-1", result.RunID, triggerCaller{Type: "workflow", ID: "intruder"}); !errors.Is(err, ErrInternalCallerMismatch) {
 		t.Fatalf("wrong caller err = %v, want ErrInternalCallerMismatch", err)
 	}
-	if _, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "rts", "trig-off", result.RunID, caller); !errors.Is(err, ErrInternalTriggerDisabled) {
+	if _, err := svc.getInternalProductTriggerRun(ctx, "owner", "crewx", "project-a", "trig-off", result.RunID, caller); !errors.Is(err, ErrInternalTriggerDisabled) {
 		t.Fatalf("disabled trigger err = %v, want ErrInternalTriggerDisabled", err)
 	}
 }
@@ -534,15 +534,15 @@ func TestDeliverProductTriggerPayloadFailure(t *testing.T) {
 	ctx := context.Background()
 	match := &productWebhookMatch{
 		UserID: "owner", Profile: agentprofiles.Profile{ID: "crewx"},
-		Binding:  productConversationBinding{WorkspacePath: "Chats/owner/rts", ManifestPath: "Chats/owner/rts/product.json"},
-		Manifest: productProjectManifest{ID: "rts", Title: "RTS"},
+		Binding:  productConversationBinding{WorkspacePath: "Chats/owner/project-a", ManifestPath: "Chats/owner/project-a/product.json"},
+		Manifest: productProjectManifest{ID: "project-a", Title: "project-a"},
 		Trigger:  productWebhookTrigger{ID: "trig-1", Name: "Review", Enabled: true, Kind: "internal"},
 	}
 	_, err := svc.deliverProductTrigger(ctx, match, "d-fail", "", []byte(`{}`), "note", nil)
 	if !errors.Is(err, ErrProductTriggerNotPersist) {
 		t.Fatalf("err = %v, want ErrProductTriggerNotPersist", err)
 	}
-	entry, err := FindScheduleRun(ctx, agentProfileRuntimeWorkspace("owner", match.Binding.WorkspacePath), webhookDeliveryRunID("rts", "trig-1", "d-fail"))
+	entry, err := FindScheduleRun(ctx, agentProfileRuntimeWorkspace("owner", match.Binding.WorkspacePath), webhookDeliveryRunID("project-a", "trig-1", "d-fail"))
 	if err != nil || entry.Status != "error" {
 		t.Fatalf("record = %+v err=%v, want error status", entry, err)
 	}
@@ -550,8 +550,8 @@ func TestDeliverProductTriggerPayloadFailure(t *testing.T) {
 
 func testInternalWorkflowManifest() *WorkflowManifest {
 	return &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{
-		{ID: "trig-1", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}},
-		{ID: "trig-off", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}},
+		{ID: "trig-1", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}},
+		{ID: "trig-off", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}},
 		{ID: "trig-pub", ScheduleType: "webhook", Enabled: true, Webhook: &WorkflowWebhookConfig{}},
 	}}
 }
@@ -570,7 +570,7 @@ func TestDispatchInternalWorkflowTriggerAccepted(t *testing.T) {
 	}
 	call := internalWorkflowTriggerCall{
 		WorkflowID: "wf-1", TriggerID: "trig-1",
-		Caller:     triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"},
+		Caller:     triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"},
 		DeliveryID: "d1", Payload: []byte(`{"k":"v"}`),
 	}
 	result, err := receiver.dispatchInternal(ctx, "Workflow/test", testInternalWorkflowManifest(), "trig-1", call)
@@ -591,7 +591,7 @@ func TestDispatchInternalWorkflowTriggerDuplicateAndStoreError(t *testing.T) {
 	manifest := testInternalWorkflowManifest()
 	call := internalWorkflowTriggerCall{
 		WorkflowID: "wf-1", TriggerID: "trig-1",
-		Caller:     triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"},
+		Caller:     triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"},
 		DeliveryID: "d1", Payload: []byte(`{}`),
 	}
 	wantRun := webhookDeliveryRunID("wf-1", "trig-1", "d1")
@@ -639,7 +639,7 @@ func TestDispatchInternalWorkflowTriggerRejects(t *testing.T) {
 	}
 	base := internalWorkflowTriggerCall{
 		WorkflowID: "wf-1", TriggerID: "trig-1",
-		Caller:     triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"},
+		Caller:     triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"},
 		DeliveryID: "d-reject", Payload: []byte(`{}`),
 	}
 	for _, tt := range []struct {
@@ -686,7 +686,7 @@ func TestDispatchInternalWorkflowTriggerBusyPassthrough(t *testing.T) {
 	}
 	call := internalWorkflowTriggerCall{
 		WorkflowID: "wf-1", TriggerID: "trig-1",
-		Caller:     triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"},
+		Caller:     triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"},
 		DeliveryID: "d-busy", Payload: []byte(`{}`),
 	}
 	_, err := receiver.dispatchInternal(ctx, "Workflow/test", testInternalWorkflowManifest(), "trig-1", call)
@@ -703,7 +703,7 @@ func TestReadInternalWorkflowTriggerRun(t *testing.T) {
 	}
 	defer store.Close()
 	svc := &SchedulerService{stateStore: store}
-	sched := WorkflowSchedule{ID: "trig-1", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}}
+	sched := WorkflowSchedule{ID: "trig-1", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}}
 	manifest := &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{sched}}
 	scope, scopeID, _ := scheduleStateScope(buildScheduleContext("Workflow/test", manifest, sched))
 	if err := store.BeginRun(ctx, schedulerstate.Run{RunID: "run-1", LockKey: "k1", ScheduleID: "trig-1", ScopeType: scope, ScopeID: scopeID, TriggerSource: "webhook", State: schedulerstate.State("running")}); err != nil {
@@ -712,7 +712,7 @@ func TestReadInternalWorkflowTriggerRun(t *testing.T) {
 	if err := store.BeginRun(ctx, schedulerstate.Run{RunID: "run-2", LockKey: "k2", ScheduleID: "other", ScopeType: scope, ScopeID: scopeID, TriggerSource: "webhook"}); err != nil {
 		t.Fatal(err)
 	}
-	caller := triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}
+	caller := triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}
 	got, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", manifest, "trig-1", "run-1", caller)
 	if err != nil {
 		t.Fatalf("read run err = %v", err)
@@ -726,7 +726,7 @@ func TestReadInternalWorkflowTriggerRun(t *testing.T) {
 	if _, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", manifest, "trig-1", "missing", caller); !errors.Is(err, ErrInternalTriggerRunGone) {
 		t.Fatalf("missing run err = %v, want ErrInternalTriggerRunGone", err)
 	}
-	off := &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{{ID: "trig-1", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "rts", ProfileID: "work"}}}}
+	off := &WorkflowManifest{ID: "wf-1", Schedules: []WorkflowSchedule{{ID: "trig-1", ScheduleType: "webhook", Enabled: false, Kind: "internal", Caller: &triggerCaller{Type: "crew", ID: "project-a", ProfileID: "work"}}}}
 	if _, err := svc.readInternalWorkflowTriggerRun(ctx, "Workflow/test", off, "trig-1", "run-1", caller); !errors.Is(err, ErrInternalTriggerDisabled) {
 		t.Fatalf("disabled trigger err = %v, want ErrInternalTriggerDisabled", err)
 	}
@@ -783,8 +783,8 @@ func TestSaveProductWebhookRejectsInaccessibleCallerWorkflow(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
 	svc, files := newInternalTriggerTestCrew(t)
-	crewPath := "_users/owner/Chats/Work/projects/rts/product.json"
-	files[crewPath] = `{"schema_version":1,"product":"crewx","id":"rts","title":"RTS","session_id":"sess-1","triggers":[]}`
+	crewPath := "_users/owner/Chats/Work/projects/project-a/product.json"
+	files[crewPath] = `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1","triggers":[]}`
 	own := NewWorkflowManifest("Own pipeline")
 	own.CreatedBy = "owner"
 	own.Access = &WorkflowAccess{Owners: []string{"owner"}}
@@ -805,7 +805,7 @@ func TestSaveProductWebhookRejectsInaccessibleCallerWorkflow(t *testing.T) {
 
 	post := func(callerID string) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(map[string]interface{}{
-			"profile_id": "crewx", "project_id": "rts",
+			"profile_id": "crewx", "project_id": "project-a",
 			"name": "Bound", "message": "hi", "enabled": true,
 			"kind":   triggerKindInternal,
 			"caller": map[string]interface{}{"type": "workflow", "id": callerID},
@@ -834,11 +834,11 @@ func TestSaveProductWebhookRejectsInaccessibleCallerWorkflow(t *testing.T) {
 func TestExecuteAutomationRunSetupFailureBecomesTerminal(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, internalDispatchCrewTriggers)
 	ctx := context.Background()
-	crewWS := "_users/owner/Chats/Work/projects/rts"
+	crewWS := "_users/owner/Chats/Work/projects/project-a"
 	runsWorkspace := agentProfileRuntimeWorkspace("owner", crewWS)
 	runID := "run-setup-fail"
 	if _, claimed, err := ClaimScheduleRun(ctx, runsWorkspace, &ScheduleRunEntry{
-		ID: runID, ScheduleID: "crewx:rts:trig-1", TriggerSource: "webhook",
+		ID: runID, ScheduleID: "crewx:project-a:trig-1", TriggerSource: "webhook",
 		Status: "queued", StartedAt: time.Now().UTC(),
 	}); err != nil || !claimed {
 		t.Fatalf("pre-claim = claimed=%v err=%v", claimed, err)
@@ -847,7 +847,7 @@ func TestExecuteAutomationRunSetupFailureBecomesTerminal(t *testing.T) {
 	// before the worker touches the conversation registry or run store.
 	job := productScheduleJob{
 		UserID: "owner", Profile: agentprofiles.Profile{ID: "crewx"},
-		ProjectID: "rts", ProjectTitle: "RTS", WorkspacePath: crewWS,
+		ProjectID: "project-a", ProjectTitle: "project-a", WorkspacePath: crewWS,
 		Schedule: productschedule.Schedule{ID: "trig-1", Name: "Review", Enabled: true},
 	}
 	runCtx, cancel := context.WithCancel(ctx)

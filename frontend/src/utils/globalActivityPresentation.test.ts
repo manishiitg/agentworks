@@ -3,7 +3,7 @@ import { sessionOriginLabel, titleWithoutOrigin } from './globalActivityPresenta
 
 describe('sessionOriginLabel', () => {
   it('prefers the server label, then names the trigger kind', () => {
-    expect(sessionOriginLabel({ session_id: 's', triggered_by: 'webhook', triggered_by_label: 'Called by RTS Flow Tester' })).toBe('Called by RTS Flow Tester')
+    expect(sessionOriginLabel({ session_id: 's', triggered_by: 'webhook', triggered_by_label: 'Called by project-a Flow Tester' })).toBe('Called by project-a Flow Tester')
     expect(sessionOriginLabel({ session_id: 's', triggered_by: 'webhook' })).toBe('Webhook')
     expect(sessionOriginLabel({ session_id: 's', triggered_by: 'cron' })).toBe('Schedule')
     expect(sessionOriginLabel({ session_id: 's', triggered_by: 'bot:slack', bot_platform: 'slack' })).toBe('Slack message')

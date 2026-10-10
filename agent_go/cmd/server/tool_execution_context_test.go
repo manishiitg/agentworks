@@ -375,7 +375,7 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 		t.Fatalf("owner read failed: %s %v", out, err)
 	}
 	// A workflow step on a coding CLI calls through its bridge session with no user attached; the workflow's
-	// server-side setup binds the session's authenticated caller (server A rtslatency, 2026-10-07).
+	// server-side setup binds the session's authenticated caller (server A latency-report, 2026-10-07).
 	stepTools, stepExecutors, stepCategories := createKnowledgebaseTools("admin", session, workspace)
 	_ = stepTools
 	bindKnowledgebaseStepIdentity(knowledgeTestCaller(t.Context(), "admin"), session, stepExecutors, stepCategories)

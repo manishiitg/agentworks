@@ -35,23 +35,23 @@ describe('workflow session restore classification', () => {
   it('keeps the Pulse parent selected instead of its newer internal reviewer', () => {
     const parent = session({
       session_id: 'pulse-root-1',
-      preset_query_id: 'rtslatency',
-      workspace_path: 'Workflow/rtslatency',
+      preset_query_id: 'latency-report',
+      workspace_path: 'Workflow/latency-report',
       last_activity: '2026-08-03T09:00:00Z',
     })
     const child = session({
       session_id: 'pulse-reviewer-1',
       parent_session_id: parent.session_id,
       session_kind: 'pulse_reviewer',
-      preset_query_id: 'rtslatency',
-      workspace_path: 'Workflow/rtslatency',
+      preset_query_id: 'latency-report',
+      workspace_path: 'Workflow/latency-report',
       has_retained_tmux_session: true,
       last_activity: '2026-08-03T09:05:00Z',
     })
     const preset = {
-      id: 'rtslatency',
-      label: 'RTS latency',
-      selectedFolder: { filepath: 'Workflow/rtslatency' },
+      id: 'latency-report',
+      label: 'project-a latency',
+      selectedFolder: { filepath: 'Workflow/latency-report' },
     } as Parameters<typeof pickWorkflowActiveSession>[1]
 
     expect(pickWorkflowActiveSession([child, parent], preset, {})?.session_id).toBe(parent.session_id)
@@ -64,15 +64,15 @@ describe('workflow session restore classification', () => {
     // live background agents) still selects.
     const retained = session({
       status: 'completed',
-      preset_query_id: 'rtslatency',
-      workspace_path: 'Workflow/rtslatency',
+      preset_query_id: 'latency-report',
+      workspace_path: 'Workflow/latency-report',
       has_retained_tmux_session: true,
       last_activity: new Date().toISOString(),
     })
     const preset = {
-      id: 'rtslatency',
-      label: 'RTS latency',
-      selectedFolder: { filepath: 'Workflow/rtslatency' },
+      id: 'latency-report',
+      label: 'project-a latency',
+      selectedFolder: { filepath: 'Workflow/latency-report' },
     } as Parameters<typeof pickWorkflowActiveSession>[1]
 
     expect(pickWorkflowActiveSession([retained], preset, {})).toBeUndefined()

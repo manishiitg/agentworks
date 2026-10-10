@@ -16,8 +16,8 @@ func TestServerLogContextAlwaysIncludesUsernameAndWorkflow(t *testing.T) {
 		t.Fatalf("fallback prefix = %q, want stable username/workflow fields", fallback)
 	}
 
-	actual := newServerLogContext("Workflow/confida support", "", "workflow_phase", "user-1", "confida", "session-1").Prefix()
-	for _, want := range []string{`username=confida`, `workflow="confida support"`, `user=confida`, `user_id=user-1`, `session=session-1`} {
+	actual := newServerLogContext("Workflow/customer support", "", "workflow_phase", "user-1", "customer", "session-1").Prefix()
+	for _, want := range []string{`username=customer`, `workflow="customer support"`, `user=customer`, `user_id=user-1`, `session=session-1`} {
 		if !strings.Contains(actual, want) {
 			t.Fatalf("prefix = %q, missing %q", actual, want)
 		}
@@ -25,9 +25,9 @@ func TestServerLogContextAlwaysIncludesUsernameAndWorkflow(t *testing.T) {
 }
 
 func TestServerLogContextCarriesDiagnosticMetadata(t *testing.T) {
-	ctx := newServerLogContext("Workflow/testing", "", "workflow", "u1", "confida", "s1").Context(context.Background())
-	if got := ctx.Value(common.UsernameKey); got != "confida" {
-		t.Fatalf("username context = %v, want confida", got)
+	ctx := newServerLogContext("Workflow/testing", "", "workflow", "u1", "customer", "s1").Context(context.Background())
+	if got := ctx.Value(common.UsernameKey); got != "customer" {
+		t.Fatalf("username context = %v, want customer", got)
 	}
 	if got := ctx.Value(common.WorkflowNameKey); got != "testing" {
 		t.Fatalf("workflow context = %v, want testing", got)
@@ -35,7 +35,7 @@ func TestServerLogContextCarriesDiagnosticMetadata(t *testing.T) {
 }
 
 func TestServerLogContextWriterEnrichesSessionAndChildLines(t *testing.T) {
-	logCtx := newServerLogContext("Workflow/testing", "", "workflow", "u1", "confida", "session-1")
+	logCtx := newServerLogContext("Workflow/testing", "", "workflow", "u1", "customer", "session-1")
 	registerServerLogContext(logCtx, "log-context-test-session-1", "log-context-test-query-1")
 
 	var output bytes.Buffer
@@ -53,7 +53,7 @@ func TestServerLogContextWriterEnrichesSessionAndChildLines(t *testing.T) {
 		t.Fatalf("output lines = %d, want 2: %q", len(lines), output.String())
 	}
 	for _, line := range lines {
-		if !strings.Contains(line, "username=confida") || !strings.Contains(line, "workflow=testing") {
+		if !strings.Contains(line, "username=customer") || !strings.Contains(line, "workflow=testing") {
 			t.Fatalf("enriched line = %q", line)
 		}
 	}
@@ -63,11 +63,11 @@ func TestServerLogContextWriterUsesFallbackAndAvoidsDuplicates(t *testing.T) {
 	if got := enrichServerLogLine("[STARTUP] ready"); got != "[STARTUP] ready username=- workflow=-" {
 		t.Fatalf("fallback enrichment = %q", got)
 	}
-	legacy := enrichServerLogLine("[QUERY] user=confida session=log-context-test-unknown")
-	if !strings.Contains(legacy, "username=confida") || !strings.Contains(legacy, "workflow=-") {
+	legacy := enrichServerLogLine("[QUERY] user=customer session=log-context-test-unknown")
+	if !strings.Contains(legacy, "username=customer") || !strings.Contains(legacy, "workflow=-") {
 		t.Fatalf("legacy enrichment = %q", legacy)
 	}
-	alreadyScoped := "[username=confida workflow=testing] complete"
+	alreadyScoped := "[username=customer workflow=testing] complete"
 	if got := enrichServerLogLine(alreadyScoped); got != alreadyScoped {
 		t.Fatalf("already-scoped line = %q, want unchanged", got)
 	}
@@ -78,16 +78,16 @@ func TestHTTPRequestLogContextUsesAuthenticatedUserAndActiveWorkflow(t *testing.
 		"session-1": {
 			SessionID:     "session-1",
 			UserID:        "u1",
-			Username:      "confida",
+			Username:      "customer",
 			WorkspacePath: "Workflow/testing",
 			AgentMode:     "workflow_phase",
 		},
 	}}
 	req := httptest.NewRequest("GET", "/api/events?session_id=session-1", nil)
-	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "u1", Username: "confida"}))
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "u1", Username: "customer"}))
 
 	logCtx := api.httpRequestLogContext(req)
-	if logCtx.Username != "confida" || logCtx.Workflow != "testing" || logCtx.Session != "session-1" {
+	if logCtx.Username != "customer" || logCtx.Workflow != "testing" || logCtx.Session != "session-1" {
 		t.Fatalf("http log context = %+v", logCtx)
 	}
 }

@@ -201,7 +201,7 @@ func liveEvents(store *EventStore, sessionID string) map[string]Event {
 	return byID
 }
 
-// server A rtslatency, Cursor: the whole reply was one transcript chunk produced at
+// server A latency-report, Cursor: the whole reply was one transcript chunk produced at
 // 12:11:20.96, the durable ack wrote the question at 12:11:21.55. Journal order
 // was right (question, reply), but the chat orders the main conversation by
 // timestamp, so the reply rendered above its own question and never as the

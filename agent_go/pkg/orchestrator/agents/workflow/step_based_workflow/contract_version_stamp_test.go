@@ -49,7 +49,7 @@ func TestStampIsAllowedInsideItsOwnUpgradeTurn(t *testing.T) {
 	}
 }
 
-// The confida-login 2026-08-12 case: the scheduler adjudicated the 1.0.21 turn
+// The customer-login 2026-08-12 case: the scheduler adjudicated the 1.0.21 turn
 // as failed at 08:01:35 and the same session stamped 1.0.21 at 08:11:10 from an
 // unrelated Pulse turn, via a shell curl to the MCP bridge.
 func TestStampFromAClosedTurnIsRefused(t *testing.T) {
@@ -74,7 +74,7 @@ func TestStampFromAClosedTurnIsRefused(t *testing.T) {
 // An operator working in the workflow builder is the authorization: they asked
 // for the migration and can see what the agent does. Binding them too removed
 // the only way a person could unblock a workflow that keeps declining its own
-// upgrade — which is the state confida-login was left in.
+// upgrade — which is the state customer-login was left in.
 func TestOperatorSessionMayStampTheNextPendingMigration(t *testing.T) {
 	next := func() (string, string, error) { return "1.0.21", "upgrade-current-artifact-contract", nil }
 	if _, ok := authorizeContractVersionStamp("workflow-builder-chat", "1.0.21", next); !ok {

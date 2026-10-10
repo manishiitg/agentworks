@@ -223,7 +223,7 @@ type PulseFindingDisposition struct {
 	ReopenCondition string   `json:"reopen_condition,omitempty"`
 	// HumanInputID links an awaiting_user finding to the question actually put
 	// to the operator. Without it "waiting on the user" is recordable while the
-	// user is never asked, which is exactly what happened: rtslatency held five
+	// user is never asked, which is exactly what happened: latency-report held five
 	// findings marked awaiting_user and zero pending questions, so the operator
 	// had nothing to answer and no way to discover that.
 	HumanInputID string                     `json:"human_input_id,omitempty"`

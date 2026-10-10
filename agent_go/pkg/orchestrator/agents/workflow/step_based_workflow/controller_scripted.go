@@ -988,7 +988,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
 
 	// RUN_FOLDER: the workspace-relative "iteration-N/<group>" segment under
-	// runs/, e.g. "iteration-85/confida-staging". PLAT-185: a script that needs
+	// runs/, e.g. "iteration-85/customer-staging". PLAT-185: a script that needs
 	// to read a SIBLING step's runs/.../logs/<other-step>/... had no reliable
 	// way to know the current run's own folder name, so it either had to
 	// hardcode a guess (wrong the moment the platform advances past that

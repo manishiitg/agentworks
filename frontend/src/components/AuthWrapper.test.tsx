@@ -89,8 +89,8 @@ describe("Shared asset sign in", () => {
   });
 
   it("upgrades an old report file URL to the dedicated report runtime", async () => {
-    const encodedFile = btoa("Workflow/confida-login/db/reports/index.html");
-    const encodedWorkspace = btoa("Workflow/confida-login");
+    const encodedFile = btoa("Workflow/customer-login/db/reports/index.html");
+    const encodedWorkspace = btoa("Workflow/customer-login");
     window.history.replaceState({}, "", `/file/${encodeURIComponent(encodedFile)}`);
     vi.mocked(useAuthStore).mockReturnValue({
       user: { id: "owner", username: "owner" },

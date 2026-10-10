@@ -6,7 +6,7 @@ Chrome/Edge extension designs, including extension installation and deployment.
 The extension policy includes PLAT-569–574 (2026-10-06); other browser
 runtime behavior below retains its implementation and local verification from
 2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
-deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
+deployed and verified on server A in `7e2ea79-20261003164344`; other servers require
 their own release verification. See PLAT-393.
 The teaching recorder was qualified against `agent-browser 0.38.2`; older runtimes
 must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
@@ -278,7 +278,7 @@ requests concurrently within a call, as CDP expects. A stalled renderer's
 acknowledgements; replies from a disconnected logical client are discarded
 instead of reaching a new client that reuses its request IDs; callers await actions whose results they depend on. A failed
 native initialization releases its connection rather than leaving later calls
-blocked by HTTP 409. RTS configures `AGENT_BROWSER_CLI_DIR` to the managed
+blocked by HTTP 409. server A configures `AGENT_BROWSER_CLI_DIR` to the managed
 installation, including only its tools/package in read-only sandbox grants.
 Deployment runs `agent-browser --version` inside the restricted path and checks
 it matches the qualified host version (at least 0.38.2). Pairing credentials and
@@ -1487,7 +1487,7 @@ they do not prevent a caller from selecting another listed tab on the same port.
 
 The former live guide contained server A releases and rollout observations from
 2026-09-09 (`0b9593dd0`, `504c35a5e`, `34a9b1d17`, `66c9a7e07`), including a
-legacy global shared-profile deployment and then-pending Dominion/Confida work.
+legacy global shared-profile deployment and then-pending Dominion/server C work.
 Those are historical evidence in Git history, not statements of current server
 status. Deployment work must inspect the actual host and verify the current
 per-workspace identity, streaming/control and recording before reporting success.

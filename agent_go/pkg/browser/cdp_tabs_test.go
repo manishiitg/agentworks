@@ -121,7 +121,7 @@ func TestNormalizeAgentBrowserCommandArgs(t *testing.T) {
 
 // An oversized snapshot used to return an error and discard the tree entirely,
 // costing a round trip and forcing the agent to pick a narrower --selector
-// without having seen the page (measured live 2026-08-17 on confida-login: 4
+// without having seen the page (measured live 2026-08-17 on customer-login: 4
 // blind retries at ~30.4k runes against the 24k cap). It now returns the head
 // with an explicit incompleteness banner. The banner is the load-bearing part:
 // a silently truncated accessibility tree is indistinguishable from a page
@@ -153,7 +153,7 @@ func TestOversizedSnapshotReturnsTruncatedHeadWithIncompletenessBanner(t *testin
 		// one -- live-reproduced (a 500-sibling flat page returned a
 		// byte-identical snapshot at --depth 2 vs. unlimited). The guidance
 		// must warn the agent instead of listing --depth as an equal-weight
-		// option, or it burns a retry on a no-op exactly as the confida-login
+		// option, or it burns a retry on a no-op exactly as the customer-login
 		// harness finding observed (byte-identical 30365-rune retries).
 		"WIDE/FLAT page", "byte-identical result and", "only helps if the head below looks deeply nested, not wide",
 	} {

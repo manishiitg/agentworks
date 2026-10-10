@@ -119,7 +119,7 @@ type BaseOrchestrator struct {
 	// Secrets already had that backfill. Variables did not, so a workflow that
 	// loaded its variables early — a single-group workflow auto-loads all of
 	// them at workshop start — lost every VAR_* the moment any later
-	// initialization stored a fresh env map. Observed on confida-login: 28
+	// initialization stored a fresh env map. Observed on customer-login: 28
 	// variables synced at 12:16:15, absent from every env ref afterwards, and
 	// the agent re-derived SITE_URL from variables/variables.json with jq.
 	// Guarded by workspaceEnvMu.

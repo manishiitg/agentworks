@@ -175,7 +175,7 @@ func TestReflectionTurnRequiresCleanupJudgmentOnEveryFileItTouches(t *testing.T)
 
 // PLAT-173. The KB half of this same turn had none of the anti-append guidance
 // the learnings half above carries, and the omission produced exactly the
-// failure it would have prevented: confida-login's app-structure.md grew past
+// failure it would have prevented: customer-login's app-structure.md grew past
 // every stated threshold because each survey cycle appended a fresh dated
 // section instead of correcting the existing one. A step cannot be faulted for
 // stacking sections when the only KB instruction it received was where to write

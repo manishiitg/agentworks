@@ -14,7 +14,7 @@ func TestBackgroundAgentSetMetadataMergesRatherThanReplaces(t *testing.T) {
 	agent := &BackgroundAgent{
 		Metadata: map[string]string{
 			"execution_type":             "workflow-step",
-			"workflow_path":              "Workflow/rtslatency",
+			"workflow_path":              "Workflow/latency-report",
 			"suppress_auto_notification": "true",
 		},
 	}
@@ -28,7 +28,7 @@ func TestBackgroundAgentSetMetadataMergesRatherThanReplaces(t *testing.T) {
 	if got["execution_type"] != "workflow-step" {
 		t.Fatalf("execution_type was wiped by a completion-time SetMetadata call: %+v", got)
 	}
-	if got["workflow_path"] != "Workflow/rtslatency" {
+	if got["workflow_path"] != "Workflow/latency-report" {
 		t.Fatalf("workflow_path was wiped by a completion-time SetMetadata call: %+v", got)
 	}
 	if got["suppress_auto_notification"] != "true" {

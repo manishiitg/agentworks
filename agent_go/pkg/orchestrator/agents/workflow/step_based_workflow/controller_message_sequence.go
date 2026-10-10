@@ -1564,7 +1564,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupMessageSequenceFolderGuard(stepP
 		// snapshot. setupExecutionFolderGuard has granted this since PLAT-073
 		// cluster F; this parallel message_sequence builder never did, so a
 		// message_sequence step told "full output saved to <path>" had no legal
-		// way to read it back. Confirmed live 2026-08-17 (confida-login
+		// way to read it back. Confirmed live 2026-08-17 (customer-login
 		// step-5-execute-browser-and-capture-apis): its read paths carried no
 		// tool_output_folder, and a spilled agent_browser result came back as
 		// "access denied ... outside every workspace root" with no recoverable

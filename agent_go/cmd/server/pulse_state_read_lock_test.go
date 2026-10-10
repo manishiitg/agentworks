@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 )
 
-// TestPulseStateReadsDoNotTakeWriteLock reproduces PUL-7774A6D0 (confida-login,
+// TestPulseStateReadsDoNotTakeWriteLock reproduces PUL-7774A6D0 (customer-login,
 // 2026-08-31): get_pulse_state(view=module) and the scheduler's fast-Pulse poll
 // returned SQLITE_BUSY for ten minutes while view=backlog and query_workflow_db
 // succeeded against the same file. The reads were not reads -- every open ran

@@ -8,7 +8,7 @@ import (
 )
 
 func TestValidateCrewAttachmentAlias(t *testing.T) {
-	for _, alias := range []string{"rts-reviewer", "rts_reviewer", "r1", "a"} {
+	for _, alias := range []string{"reviewer-crew", "project-a_reviewer", "r1", "a"} {
 		if err := ValidateCrewAttachmentAlias(alias); err != nil {
 			t.Fatalf("alias %q rejected: %v", alias, err)
 		}
@@ -18,9 +18,9 @@ func TestValidateCrewAttachmentAlias(t *testing.T) {
 		want  string
 	}{
 		{"", "required"},
-		{"RTS", "lowercase"},
-		{"rts reviewer", "lowercase"},
-		{"rts/reviewer", "lowercase"},
+		{"project-a", "lowercase"},
+		{"project-a reviewer", "lowercase"},
+		{"project-a/reviewer", "lowercase"},
 		{"runs", "shadow"},
 		{"planning", "shadow"},
 		{"workflow.json", "shadow"},
@@ -34,16 +34,16 @@ func TestValidateCrewAttachmentAlias(t *testing.T) {
 
 func TestCanonicalCrewAttachmentRoot(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{
-		{"_users/owner/Chats/Work/projects/rts", "_users/owner/Chats/Work/projects/rts"},
-		{"/_users/owner/Chats/Work/projects/rts/", "_users/owner/Chats/Work/projects/rts"},
-		{"  _users/owner/Chats/Work/projects/rts  ", "_users/owner/Chats/Work/projects/rts"},
+		{"_users/owner/Chats/Work/projects/project-a", "_users/owner/Chats/Work/projects/project-a"},
+		{"/_users/owner/Chats/Work/projects/project-a/", "_users/owner/Chats/Work/projects/project-a"},
+		{"  _users/owner/Chats/Work/projects/project-a  ", "_users/owner/Chats/Work/projects/project-a"},
 		{"", ""},
 	} {
 		if got := CanonicalCrewAttachmentRoot(tt.in); got != tt.want {
 			t.Fatalf("canonical(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
-	if CanonicalCrewAttachmentRoot("_users/owner/Chats/Work/projects/rts") == CanonicalCrewAttachmentRoot("_users/other/Chats/Work/projects/rts") {
+	if CanonicalCrewAttachmentRoot("_users/owner/Chats/Work/projects/project-a") == CanonicalCrewAttachmentRoot("_users/other/Chats/Work/projects/project-a") {
 		t.Fatal("different owners canonicalized equal")
 	}
 }
@@ -52,7 +52,7 @@ func TestValidateCrewAttachmentBinding(t *testing.T) {
 	// Binding validation is filesystem-free: a well-shaped attachment
 	// passes even when its crew directory does not exist here. Server
 	// paths pair it with a live crew access check instead.
-	valid := CrewAttachment{Alias: "rts", CrewProfileID: "work", CrewProjectID: "rts", CrewWorkspacePath: "_users/owner/Chats/Work/projects/rts"}
+	valid := CrewAttachment{Alias: "project-a", CrewProfileID: "work", CrewProjectID: "project-a", CrewWorkspacePath: "_users/owner/Chats/Work/projects/project-a"}
 	if err := ValidateCrewAttachmentBinding(valid); err != nil {
 		t.Fatalf("valid binding rejected: %v", err)
 	}
@@ -86,11 +86,11 @@ func TestValidateCrewAttachmentBinding(t *testing.T) {
 
 func TestValidateCrewAttachmentRoot(t *testing.T) {
 	root := t.TempDir()
-	crewDir := filepath.Join(root, "_users", "owner", "Chats", "Work", "projects", "rts")
+	crewDir := filepath.Join(root, "_users", "owner", "Chats", "Work", "projects", "project-a")
 	if err := os.MkdirAll(crewDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	valid := CrewAttachment{Alias: "rts", CrewProfileID: "work", CrewProjectID: "rts", CrewWorkspacePath: "_users/owner/Chats/Work/projects/rts"}
+	valid := CrewAttachment{Alias: "project-a", CrewProfileID: "work", CrewProjectID: "project-a", CrewWorkspacePath: "_users/owner/Chats/Work/projects/project-a"}
 	if err := ValidateCrewAttachmentRoot(valid, root); err != nil {
 		t.Fatalf("valid attachment rejected: %v", err)
 	}
@@ -114,11 +114,11 @@ func TestValidateCrewAttachmentRoot(t *testing.T) {
 
 func TestCrewAttachmentEnvKeys(t *testing.T) {
 	env := CrewAttachmentEnvKeys([]CrewAttachment{
-		{Alias: "rts", CrewWorkspacePath: "_users/owner/Chats/Work/projects/rts"},
-		{Alias: "rts-again", CrewWorkspacePath: "_users/owner/Chats/Work/projects/rts2"},
-		{Alias: "rts_again", CrewWorkspacePath: "_users/owner/Chats/Work/projects/rts3"},
+		{Alias: "project-a", CrewWorkspacePath: "_users/owner/Chats/Work/projects/project-a"},
+		{Alias: "project-again", CrewWorkspacePath: "_users/owner/Chats/Work/projects/project-a2"},
+		{Alias: "project-a_again", CrewWorkspacePath: "_users/owner/Chats/Work/projects/project-a3"},
 	})
-	if env["WORKFLOW_CREW_RTS"] != "_users/owner/Chats/Work/projects/rts" {
+	if env["WORKFLOW_CREW_project-a"] != "_users/owner/Chats/Work/projects/project-a" {
 		t.Fatalf("env = %v", env)
 	}
 	if len(env) != 3 {
@@ -135,21 +135,21 @@ func TestCrewAttachmentEnvKeys(t *testing.T) {
 
 func TestResolveCrewAttachmentPath(t *testing.T) {
 	attachments := []CrewAttachment{
-		{ID: "a1", Alias: "rts-reviewer", CrewProfileID: "work", CrewProjectID: "rts", CrewWorkspacePath: "_users/owner/Chats/Work/projects/rts"},
+		{ID: "a1", Alias: "reviewer-crew", CrewProfileID: "work", CrewProjectID: "project-a", CrewWorkspacePath: "_users/owner/Chats/Work/projects/project-a"},
 	}
-	if got, ok := ResolveCrewAttachmentPath(attachments, "rts-reviewer/reports/pr-87.md"); !ok || got != "_users/owner/Chats/Work/projects/rts/reports/pr-87.md" {
+	if got, ok := ResolveCrewAttachmentPath(attachments, "reviewer-crew/reports/pr-87.md"); !ok || got != "_users/owner/Chats/Work/projects/project-a/reports/pr-87.md" {
 		t.Fatalf("nested = %q ok=%v", got, ok)
 	}
-	if got, ok := ResolveCrewAttachmentPath(attachments, "rts-reviewer"); !ok || got != "_users/owner/Chats/Work/projects/rts" {
+	if got, ok := ResolveCrewAttachmentPath(attachments, "reviewer-crew"); !ok || got != "_users/owner/Chats/Work/projects/project-a" {
 		t.Fatalf("alias-only = %q ok=%v", got, ok)
 	}
 	if _, ok := ResolveCrewAttachmentPath(attachments, "other/file.md"); ok {
 		t.Fatal("unknown alias resolved")
 	}
-	if _, ok := ResolveCrewAttachmentPath(attachments, "rts-reviewer/../../escape.md"); ok {
+	if _, ok := ResolveCrewAttachmentPath(attachments, "reviewer-crew/../../escape.md"); ok {
 		t.Fatal("path escape resolved")
 	}
-	if _, ok := ResolveCrewAttachmentPath(nil, "rts-reviewer/file.md"); ok {
+	if _, ok := ResolveCrewAttachmentPath(nil, "reviewer-crew/file.md"); ok {
 		t.Fatal("empty attachments resolved")
 	}
 	if _, ok := ResolveCrewAttachmentPath([]CrewAttachment{{Alias: "broken"}}, "broken/file.md"); ok {
@@ -163,11 +163,11 @@ func TestReadCrewAttachments(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "workflow.json"), []byte(`{"id":"wf-1","crew_attachments":[{"id":"a1","alias":"rts","crew_profile_id":"work","crew_project_id":"rts","crew_workspace_path":"_users/owner/Chats/Work/projects/rts"}]}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "workflow.json"), []byte(`{"id":"wf-1","crew_attachments":[{"id":"a1","alias":"project-a","crew_profile_id":"work","crew_project_id":"project-a","crew_workspace_path":"_users/owner/Chats/Work/projects/project-a"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, found := ReadCrewAttachments(root, "Workflow/demo")
-	if !found || len(got) != 1 || got[0].Alias != "rts" {
+	if !found || len(got) != 1 || got[0].Alias != "project-a" {
 		t.Fatalf("attachments = %+v found=%v", got, found)
 	}
 	if _, found := ReadCrewAttachments(root, "Workflow/missing"); found {

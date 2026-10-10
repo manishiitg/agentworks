@@ -13,7 +13,7 @@ vi.hoisted(() => {
 
 vi.mock('../products/work/workSessions', () => ({
   loadWorkSessionsIncludingShared: vi.fn(async () => [
-    { id: 'crew-own', title: 'rts-flow-tester', identity: { name: 'RTS Flow Tester' } },
+    { id: 'crew-own', title: 'project-a-flow-tester', identity: { name: 'project-a Flow Tester' } },
     { id: 'crew-shared', title: 'qa', identity: { name: 'QA Bot' }, shared: { ownerId: 'u2', ownerUsername: 'yoav' } },
   ]),
 }))
@@ -41,7 +41,7 @@ it('lists every accessible Crew, not only open or running ones, and opens one', 
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => { root.render(<QuickSwitcher isOpen onClose={onClose} />) })
   await act(async () => { await Promise.resolve() })
-  expect(host.textContent).toContain('RTS Flow Tester')
+  expect(host.textContent).toContain('project-a Flow Tester')
   expect(host.textContent).toContain('QA Bot')
   expect(host.textContent).toContain('shared by yoav')
   const row = [...host.querySelectorAll('div')].find(div => div.textContent?.startsWith('QA Bot') && div.getAttribute('class')?.includes('cursor-pointer'))

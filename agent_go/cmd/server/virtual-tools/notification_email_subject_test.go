@@ -18,7 +18,7 @@ func TestRequiredNotificationEmailSubject(t *testing.T) {
 	if validateNotificationEmailSubject(args, true, []string{"gmail"}) != nil {
 		t.Fatal("excluded Gmail requires subject")
 	}
-	if validateNotificationEmailSubject(map[string]interface{}{"email_subject": "RTS — daily update"}, true, nil) != nil {
+	if validateNotificationEmailSubject(map[string]interface{}{"email_subject": "project-a — daily update"}, true, nil) != nil {
 		t.Fatal("valid Unicode subject rejected")
 	}
 }

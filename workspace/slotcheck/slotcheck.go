@@ -107,7 +107,7 @@ func Check(ctx context.Context, opts Options) []Row {
 	docs := canonical(opts.DocsRoot)
 	cfg, err := slots.LoadExecConfig(opts.SlotctlConfig)
 	if err != nil {
-		add(Row{Fail, "slotctl-config", "-", fmt.Sprintf("%s is missing or unreadable: %v", opts.SlotctlConfig, shortErr(err)), "run provision-slots.sh init on the host as root (RTS: deploy/aws-ec2/slots-admin.sh init)"})
+		add(Row{Fail, "slotctl-config", "-", fmt.Sprintf("%s is missing or unreadable: %v", opts.SlotctlConfig, shortErr(err)), "run provision-slots.sh init on the host as root (server A: deploy/aws-ec2/slots-admin.sh init)"})
 		return rows
 	}
 	add(Row{Pass, "slotctl-config", "-", opts.SlotctlConfig + " readable", ""})
@@ -208,7 +208,7 @@ func checkTable(opts Options) (*slots.Table, []Row) {
 	}
 	if st != nil && !containsInt(opts.ServiceGIDs, int(st.Gid)) {
 		ok = false
-		rows = append(rows, Row{Fail, "slot-table-group", "-", fmt.Sprintf("%s has group gid %d, which the service account is not in (RTS 2026-10-04: root:root refused every slot user)", opts.SlotTable, st.Gid), "chgrp <service group> " + opts.SlotTable + " (as root)"})
+		rows = append(rows, Row{Fail, "slot-table-group", "-", fmt.Sprintf("%s has group gid %d, which the service account is not in (server A 2026-10-04: root:root refused every slot user)", opts.SlotTable, st.Gid), "chgrp <service group> " + opts.SlotTable + " (as root)"})
 	}
 	if perm := info.Mode().Perm(); perm != 0o640 {
 		ok = false

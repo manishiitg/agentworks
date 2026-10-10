@@ -942,7 +942,7 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workflow-relative path, for example Workflow/rtslatency."},
+					"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workflow-relative path, for example Workflow/latency-report."},
 					"input_id":       map[string]interface{}{"type": "string", "description": "Exact decision id supplied by the scheduler, Pulse state, or chat context."},
 				},
 				"required": []string{"workspace_path", "input_id"},

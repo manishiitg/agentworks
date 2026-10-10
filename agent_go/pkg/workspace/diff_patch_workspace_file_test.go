@@ -24,17 +24,17 @@ func TestResolveLinkedFolderPathUsesTrustedSessionAlias(t *testing.T) {
 	sessionID := "linked-folder-test"
 	root := t.TempDir()
 	common.SetSessionFolderGuard(sessionID, []string{root}, []string{root})
-	common.SetSessionShellEnv(sessionID, map[string]string{"WORKFLOW_FOLDER_RTS_SOURCE": root})
+	common.SetSessionShellEnv(sessionID, map[string]string{"WORKFLOW_FOLDER_project_source": root})
 	t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })
 
 	client := NewClient("http://unused")
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
-	got := client.resolveLinkedFolderPath(ctx, "linked://rts-source/docs/readme.md")
+	got := client.resolveLinkedFolderPath(ctx, "linked://docs-source/docs/readme.md")
 	want := filepath.Join(root, "docs", "readme.md")
 	if got != want {
 		t.Fatalf("resolved path = %q, want %q", got, want)
 	}
-	if escaped := client.resolveLinkedFolderPath(ctx, "linked://rts-source/../secret"); escaped != "linked://rts-source/../secret" {
+	if escaped := client.resolveLinkedFolderPath(ctx, "linked://docs-source/../secret"); escaped != "linked://docs-source/../secret" {
 		t.Fatalf("traversal alias unexpectedly resolved to %q", escaped)
 	}
 }

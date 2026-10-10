@@ -54,7 +54,7 @@ func (api *StreamingAPI) recoverToolResult(sessionID, toolCallID, toolName strin
 	// rather than the workflow's workspace. The tool events, however, are
 	// recorded against the PARENT schedule session. Resolving only that parent's
 	// handle therefore looks in the workflow's own transcript and misses every
-	// step-issued call — measured on rtslatency, 10 of 10 settled calls lived in
+	// step-issued call — measured on latency-report, 10 of 10 settled calls lived in
 	// a temp directory the parent handle does not name.
 	//
 	// Tool-call ids are unique, so trying each live handle is safe: a hit can

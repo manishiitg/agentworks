@@ -27,7 +27,7 @@ describe('activity session helpers', () => {
     expect(isProductProjectSession({ session_id: 'chat-123' })).toBe(false)
     expect(isProductProjectSession({
       session_id: 'workflow-session',
-      workspace_path: 'Workflow/confida-login',
+      workspace_path: 'Workflow/customer-login',
     })).toBe(false)
   })
 

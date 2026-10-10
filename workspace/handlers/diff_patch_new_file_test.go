@@ -181,7 +181,7 @@ func TestDiffPatchDocumentErrorDoesNotEchoFullDiff(t *testing.T) {
 	}
 }
 
-// PUL-4AD362CD (rtslatency): a degraded rerun "created" a report that already
+// PUL-4AD362CD (latency-report): a degraded rerun "created" a report that already
 // existed with ordinary --- a/ headers and a @@ -0,0 @@ hunk; patch(1)
 // prepended it, leaving two concatenated JSON documents.
 func TestDiffPatchRejectsLineZeroInsertionIntoExistingFile(t *testing.T) {

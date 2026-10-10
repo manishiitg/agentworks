@@ -86,7 +86,7 @@ describe('receipts', () => {
   })
 })
 
-describe('store ordering (RTS A/B incident)', () => {
+describe('store ordering (project-a A/B incident)', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.stubGlobal('localStorage', createMemoryStorage())

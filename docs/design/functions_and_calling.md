@@ -78,7 +78,7 @@ Kept minimal, around 40–60 tokens per agent:
 {
   "agents": [
     {
-      "name": "rts-pr-reviweer",
+      "name": "server A-pr-reviweer",
       "id": "wf_fc1adcb0",
       "kind": "workflow",
       "about": "Reviews pull requests on runloop-works/app and posts findings.",
@@ -213,9 +213,9 @@ tool names, which stay as aliases (see Compatibility above).
 ### Generated tools per function (in-platform chats)
 
 Crew chats already get one tool per function of each attached Crew or
-workflow (for example `rts_pr_reviewer__review_pr`). They keep them. Over
+workflow (for example `server A_pr_reviewer__review_pr`). They keep them. Over
 MCP, the same generated names are listed by `get_api_spec` under a
-`functions` section. `call_tool("rts_pr_reviewer__review_pr", {...})` then
+`functions` section. `call_tool("server A_pr_reviewer__review_pr", {...})` then
 works directly, with no list-then-call step. MCP still exposes only its two
 fixed tools; the generated names are call targets, not new MCP tools.
 

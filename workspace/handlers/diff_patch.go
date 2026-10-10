@@ -187,7 +187,7 @@ func DiffPatchDocument(c *gin.Context) {
 	// Apply-path-agnostic safety net: every strategy above (strict patch,
 	// corrected-diff retry, the agent-generated-diff fallback) can return
 	// successfully while still silently dropping part of a multi-hunk patch —
-	// confirmed live on confida-login: applied:true was reported while a
+	// confirmed live on customer-login: applied:true was reported while a
 	// hunk's changes were left unapplied and unrelated trailing content was
 	// deleted. Refuse to report success, and refuse to write, if the actual
 	// line-count change doesn't match what the diff's own +/- lines claim.

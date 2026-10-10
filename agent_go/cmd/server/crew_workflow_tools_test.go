@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-const crewWorkflowTestCrewPath = "_users/owner/Chats/Work/projects/rts"
+const crewWorkflowTestCrewPath = "_users/owner/Chats/Work/projects/project-a"
 
 func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWorkspaceAPI, *StreamingAPI) {
 	t.Helper()
@@ -44,16 +44,16 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 		return nil
 	}
 
-	crewProduct := `{"schema_version":1,"product":"work","id":"rts","title":"RTS","session_id":"sess-1"}`
+	crewProduct := `{"schema_version":1,"product":"work","id":"project-a","title":"project-a","session_id":"sess-1"}`
 	files[crewWorkflowTestCrewPath+"/product.json"] = crewProduct
-	crewRuntime := `{"schema_version":1,"product":"work","id":"rts","workflow_context_paths":["Workflow/test"]}`
+	crewRuntime := `{"schema_version":1,"product":"work","id":"project-a","workflow_context_paths":["Workflow/test"]}`
 
 	manifest := NewWorkflowManifest("Hook target")
 	manifest.CreatedBy = "owner"
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	manifest.Schedules = []WorkflowSchedule{
-		{ID: "trig-crew-on", Name: "Crew bound", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "rts", ProfileID: "work"}},
-		{ID: "trig-crew-off", Name: "Crew disabled", ScheduleType: "webhook", Enabled: false, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "rts", ProfileID: "work"}},
+		{ID: "trig-crew-on", Name: "Crew bound", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
+		{ID: "trig-crew-off", Name: "Crew disabled", ScheduleType: "webhook", Enabled: false, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
 		{ID: "trig-other", Name: "Other crew", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "other", ProfileID: "work"}},
 	}
 	raw, err := json.Marshal(manifest)
@@ -180,7 +180,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	crew := triggerCaller{Type: triggerCallerCrew, ID: "rts", ProfileID: "work"}
+	crew := triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}
 	reused, err := crewWorkflowTriggerBinding(ctx, api, "Workflow/test", manifest, crew)
 	if err != nil {
 		t.Fatalf("reuse failed: %v", err)
@@ -196,7 +196,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	mock.files[manifestPath("Workflow/plain")] = string(plainRaw)
 	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`
 	mock.files["Workflow/plain/variables/variables.json"] = `{"variables":[],"groups":[{"name":"default"}]}`
-	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"rts","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
+	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"project-a","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
 	createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 		t.Fatalf("binding not persisted: %+v", saved.Schedules)
 	}
 	binding := saved.Schedules[0]
-	if !isInternalTriggerKind(binding.Kind) || binding.Caller == nil || binding.Caller.ID != "rts" || binding.Webhook == nil || binding.Webhook.EncryptedSecret != "" {
+	if !isInternalTriggerKind(binding.Kind) || binding.Caller == nil || binding.Caller.ID != "project-a" || binding.Webhook == nil || binding.Webhook.EncryptedSecret != "" {
 		t.Fatalf("binding is not secretless internal: %+v", binding)
 	}
 	deniedCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "reader"})

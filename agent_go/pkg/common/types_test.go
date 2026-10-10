@@ -113,13 +113,13 @@ func TestProjectBrowserSessionNamespaceIsPerProjectNotPerUser(t *testing.T) {
 }
 
 func TestBrowserSessionIsolationComposesWithDeploymentPrefix(t *testing.T) {
-	t.Setenv("AGENTWORKS_BROWSER_SESSION_PREFIX", "confida")
+	t.Setenv("AGENTWORKS_BROWSER_SESSION_PREFIX", "customer")
 	sessionID := "browser-isolation-prefix"
 	t.Cleanup(func() { ClearSessionShellConfig(sessionID) })
 	BindSessionBrowserIsolationForSession(sessionID)
 
 	got := ResolveBrowserSessionID(sessionID, "default")
-	if !strings.HasPrefix(got, "confida--session-") {
+	if !strings.HasPrefix(got, "customer--session-") {
 		t.Fatalf("deployment prefix was not applied to isolated browser: %q", got)
 	}
 }
@@ -412,7 +412,7 @@ func TestCopySessionFolderGuardPreservesDenyOnlyGuard(t *testing.T) {
 }
 
 func TestUserBrowserAliasesAndChildSessions(t *testing.T) {
-	t.Setenv("AGENTWORKS_BROWSER_SESSION_PREFIX", "confida")
+	t.Setenv("AGENTWORKS_BROWSER_SESSION_PREFIX", "customer")
 	BindSessionBrowserIsolationForWorkflow("parent", "Workflow/research")
 	SetSessionBrowserNamespace("child", GetSessionShellConfig("parent").BrowserSessionNamespace)
 	SetSessionBrowserSessionID("child", "obsolete-workflow-browser")

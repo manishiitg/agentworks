@@ -851,7 +851,7 @@ func TestSetupExecutionFolderGuardGivesGenericReviewerWorkflowWideReadOnlyView(t
 //
 // setupExecutionFolderGuard has granted it since PLAT-073 cluster F, but the two
 // parallel builders never did, and nothing pinned the parity. Confirmed live
-// 2026-08-17 (confida-login step-5-execute-browser-and-capture-apis, a
+// 2026-08-17 (customer-login step-5-execute-browser-and-capture-apis, a
 // message_sequence step): its read paths carried no tool_output_folder, and a
 // spilled agent_browser result came back "outside every workspace root" with no
 // recoverable path — a dead end that cost the step a full round trip.
