@@ -21,6 +21,8 @@ interface VaultConnection {
   status: string
   /** Why the last sign-in did not finish, e.g. it timed out or the app's tools could not be loaded. */
   sign_in_error?: string
+  /** The sign-in finished and the app's tools are being loaded; this can take a minute or two. */
+  sign_in_syncing?: boolean
 }
 
 interface VaultView {
@@ -325,6 +327,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
                 const name = connection.label || connection.provider || connection.id
                 const needsSignIn = connection.status === 'authentication_required'
                 const signInFailed = needsSignIn && !!connection.sign_in_error
+                const loadingTools = needsSignIn && !signInFailed && !!connection.sign_in_syncing
                 return (
                   <Row
                     key={connection.id}
@@ -339,14 +342,15 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
                     <Plug aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate font-medium text-foreground">{name}</span>
                     {connection.provider && connection.provider.toLowerCase() !== name.toLowerCase() && <span className="truncate text-muted-foreground">{connection.provider}</span>}
-                    {connection.status && <Badge variant={needsSignIn ? 'outline' : 'secondary'} className={needsSignIn ? 'border-warning/30 bg-warning/10 text-warning' : ''} title={connection.sign_in_error}>{signInFailed ? 'Sign-in failed' : needsSignIn ? 'Needs sign-in' : connection.status === 'active' ? 'Signed in' : connection.status}</Badge>}
+                    {connection.status && <Badge variant={needsSignIn ? 'outline' : 'secondary'} className={needsSignIn && !loadingTools ? 'border-warning/30 bg-warning/10 text-warning' : ''} title={connection.sign_in_error}>{signInFailed ? 'Sign-in failed' : loadingTools ? 'Signed in, loading tools' : needsSignIn ? 'Needs sign-in' : connection.status === 'active' ? 'Signed in' : connection.status}</Badge>}
                     {signInFailed && <span className="min-w-0 truncate text-xs text-warning" title={connection.sign_in_error}>{connection.sign_in_error}</span>}
+                    {loadingTools && <span className="min-w-0 truncate text-xs text-muted-foreground">Loading its tools. This can take a minute or two; no need to sign in again.</span>}
                   </Row>
                 )
               })}
             </ul>
           )}
-          {signIn.url && !pendingDone && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn.url} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
+          {signIn.url && !pendingDone && !pendingStatus?.sign_in_syncing && <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-info">Finish connecting: <a className="underline" href={signIn.url} target="_blank" rel="noreferrer">open the sign-in page</a>. Come back here when you are done.</p>}
           {signIn.text && <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-warning">{signIn.text}</p>}
           {owner && open === 'connection' && (
             <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void addConnection() }}>

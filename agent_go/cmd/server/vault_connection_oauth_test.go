@@ -315,3 +315,18 @@ func TestVaultConnectionChatRechecksAdministratorAccess(t *testing.T) {
 		t.Fatal("revoked admin retained sign-in authority")
 	}
 }
+
+// While the tool sync after a sign-in runs, the list says so; once the app is active, or the sync is over, it does not (PLAT-722).
+func TestVaultListSaysWhenToolsAreStillLoading(t *testing.T) {
+	vaultSyncing.Store("c-55555555", time.Now())
+	defer vaultSyncing.Delete("c-55555555")
+	if shown := string(withVaultSignInErrors([]byte(`{"connections":[{"id":"c-55555555","status":"authentication_required"}]}`))); !strings.Contains(shown, `"sign_in_syncing":true`) {
+		t.Fatal("a connection whose tools are loading was not marked:", shown)
+	}
+	if shown := string(withVaultSignInErrors([]byte(`{"connections":[{"id":"c-55555555","status":"active"}]}`))); strings.Contains(shown, "sign_in_syncing") {
+		t.Fatal("an active connection must not be marked as loading:", shown)
+	}
+	if shown := string(withVaultSignInErrors([]byte(`{"connections":[{"id":"c-66666666","status":"authentication_required"}]}`))); strings.Contains(shown, "sign_in_syncing") {
+		t.Fatal("a connection that is not syncing must not be marked:", shown)
+	}
+}

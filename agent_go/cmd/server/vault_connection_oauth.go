@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -237,6 +237,10 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			// Sync runs outside the credential mutex: upstream discovery calls
 			// the broker, which uses that same mutex to serialize refresh.
 			syncStarted := time.Now()
+			// The tool sync after a sign-in can take a minute or two (ClickUp: 88 s on one server), and the app only turns active once it ends.
+			// Say so in the list meanwhile, instead of "Needs sign-in" (PLAT-722).
+			vaultSyncing.Store(id, syncStarted)
+			defer vaultSyncing.Delete(id)
 			_, syncErr := vaultServiceRequest(context.Background(), userID, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil)
 			log.Printf("[VAULT_SIGNIN] connection=%s app=%s tool sync after sign-in took %s ok=%t err=%v", id, name, time.Since(syncStarted).Round(time.Millisecond), syncErr == nil, syncErr)
 			if err := syncErr; err != nil {
@@ -278,6 +282,7 @@ type vaultSignInOutcome struct {
 }
 
 var vaultSignInOutcomes sync.Map // connection ID -> vaultSignInOutcome
+var vaultSyncing sync.Map        // connection ID -> time.Time the post-sign-in tool sync started; present only while it runs
 var vaultSignInStarts sync.Map   // connection ID -> time.Time of the newest sign-in start
 
 // noteVaultSignInStarted marks a new attempt: an earlier failure no longer describes the connection.
@@ -325,6 +330,10 @@ func withVaultSignInErrors(data []byte) []byte {
 					}
 					id, _ := c["id"].(string)
 					status, _ := c["status"].(string)
+					if _, syncing := vaultSyncing.Load(id); syncing && status != "active" {
+						c["sign_in_syncing"] = true
+						changed = true
+					}
 					if outcome, ok := vaultSignInOutcomes.Load(id); ok {
 						if o := outcome.(vaultSignInOutcome); !o.ok && o.reason != "" && status != "active" {
 							c["sign_in_error"] = o.reason
