@@ -49,7 +49,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	if access["can_edit"] != true || access["your_access"] != "owner" {
 		t.Fatalf("creator must own the new Crew: %v", access)
 	}
-	root := "_users/owner/Chats/Work/projects/support-triage-" + crewID[:8]
+	root := "Crew/support-triage-" + crewID[:8]
 	var product map[string]any
 	if err := json.Unmarshal([]byte(crewAuthoringFile(t, env, root+"/product.json")), &product); err != nil {
 		t.Fatalf("product.json at the UI layout path: %v", err)

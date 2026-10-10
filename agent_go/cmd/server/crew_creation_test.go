@@ -99,7 +99,7 @@ func TestCreateCrewProjectWritesUILayout(t *testing.T) {
 	if created.CrewID == "" || created.SessionID != "work:project:"+created.CrewID {
 		t.Fatalf("crew identity = %+v", created)
 	}
-	if !strings.HasPrefix(created.WorkspacePath, "_users/owner/Chats/Work/projects/release-reviewer-") {
+	if !strings.HasPrefix(created.WorkspacePath, "Crew/release-reviewer-") {
 		t.Fatalf("workspace = %q", created.WorkspacePath)
 	}
 	productRaw, ok := mock.files[created.WorkspacePath+"/product.json"]
@@ -825,7 +825,7 @@ func TestCreateCrewRejectsProductDeniedBeforeWriting(t *testing.T) {
 func TestCreateCrewProjectAvoidsOccupiedPath(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	slug := slugifyCrewTitle("Release Reviewer")
-	occupied := "_users/owner/Chats/Work/projects/" + slug + "-" + crewCreationSuffix("proposal-1")
+	occupied := "Crew/" + slug + "-" + crewCreationSuffix("proposal-1")
 	mock.files[occupied+"/product.json"] = `{"schema_version":1,"product":"work","id":"someone-else","title":"Other","session_id":"work:project:someone-else"}`
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
@@ -1138,7 +1138,7 @@ func TestCreateCrewProjectRejectsChangedPayload(t *testing.T) {
 	}
 	crews := map[string]bool{}
 	for path := range mock.files {
-		if strings.HasSuffix(path, "/product.json") && strings.HasPrefix(path, "_users/owner/Chats/Work/projects/") {
+		if strings.HasSuffix(path, "/product.json") && strings.HasPrefix(path, "Crew/") {
 			crews[strings.TrimSuffix(path, "/product.json")] = true
 		}
 	}
@@ -1162,7 +1162,7 @@ func TestCreateCrewProjectRejectsChangedPayload(t *testing.T) {
 func TestCreateCrewProjectAdoptsOccupiedFallback(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	slug := slugifyCrewTitle("Release Reviewer")
-	occupied := "_users/owner/Chats/Work/projects/" + slug + "-" + crewCreationSuffix("proposal-1")
+	occupied := "Crew/" + slug + "-" + crewCreationSuffix("proposal-1")
 	mock.files[occupied+"/product.json"] = `{"schema_version":1,"product":"work","id":"someone-else","title":"Other","session_id":"work:project:someone-else"}`
 	first, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",

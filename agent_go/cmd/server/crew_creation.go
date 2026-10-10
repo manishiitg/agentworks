@@ -198,7 +198,7 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if err != nil {
 		return CreatedCrew{}, fmt.Errorf("invalid product projects root: %w", err)
 	}
-	// New Crews are created at the shared root only when the server's switch is on (crewSharedRootEnabled).
+	// New Crews are always created at the shared root (crewCreationRoot).
 	runtimeRoot := crewCreationRoot(profileID, agentProfileRuntimeWorkspace(userID, projectsRoot))
 	// Every reference is validated before anything is created: unknown
 	// names fail here, never as half-written crews.

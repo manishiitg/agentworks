@@ -7,51 +7,19 @@ import (
 	"testing"
 )
 
-// The switch decides where NEW Crews are created; it defaults to off, so shipping the code changes nothing.
-func TestCrewSharedRootSwitchDefaultsOff(t *testing.T) {
-	t.Setenv("AGENTWORKS_CREW_SHARED_ROOT", "")
-	if crewSharedRootEnabled() {
-		t.Fatal("the shared-root switch is on by default")
-	}
-	for _, v := range []string{"off", "0", "true", "yes", "1"} {
-		t.Setenv("AGENTWORKS_CREW_SHARED_ROOT", v)
-		if crewSharedRootEnabled() {
-			t.Fatalf("AGENTWORKS_CREW_SHARED_ROOT=%q turned the switch on; only \"on\" does", v)
-		}
-	}
-	t.Setenv("AGENTWORKS_CREW_SHARED_ROOT", "ON")
-	if !crewSharedRootEnabled() {
-		t.Fatal("\"on\" does not turn the switch on")
-	}
+// Every new Crew goes to the shared root; other products keep the owner's projects root.
+func TestCrewCreationRootIsTheSharedRoot(t *testing.T) {
 	if got := crewCreationRoot("work", "_users/a/Chats/Work/projects"); got != "Crew" {
-		t.Fatalf("Crew creation root with the switch on = %q", got)
+		t.Fatalf("Crew creation root = %q", got)
 	}
 	if got := crewCreationRoot("code", "_users/a/Chats/Code/projects"); got != "_users/a/Chats/Code/projects" {
-		t.Fatalf("Code creation root moved with the Crew switch: %q", got)
+		t.Fatalf("Code creation root moved: %q", got)
 	}
 }
 
-func TestCreateCrewProjectLocationFollowsTheSwitch(t *testing.T) {
+func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 	registry := withProjectOwnerRegistry(t)
-	t.Run("off: in the owner's tree, as today", func(t *testing.T) {
-		t.Setenv("AGENTWORKS_CREW_SHARED_ROOT", "")
-		svc, mock, ctx := newCrewCreationTestEnv(t)
-		created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer", Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review.", IdempotencyKey: "off-1"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.HasPrefix(created.WorkspacePath, "_users/owner/Chats/Work/projects/release-reviewer-") {
-			t.Fatalf("workspace = %q", created.WorkspacePath)
-		}
-		if _, ok := mock.files[created.WorkspacePath+"/product.json"]; !ok {
-			t.Fatal("product.json was not written")
-		}
-		if rec, ok := registry.Lookup("work", filepath.Base(created.WorkspacePath)); !ok || rec.OwnerID != "owner" || rec.Shared {
-			t.Fatalf("registry entry = %+v ok=%v", rec, ok)
-		}
-	})
-	t.Run("on: at Crew/<folder>, registered to its creator", func(t *testing.T) {
-		t.Setenv("AGENTWORKS_CREW_SHARED_ROOT", "on")
+	t.Run("at Crew/<folder>, registered to its creator", func(t *testing.T) {
 		svc, mock, ctx := newCrewCreationTestEnv(t)
 		created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Two", Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review.", IdempotencyKey: "on-1"})
 		if err != nil {

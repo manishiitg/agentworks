@@ -258,7 +258,7 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		writeAgentProfileError(w, http.StatusForbidden, "This account cannot create new projects in this product. An administrator can allow it under the account's create permissions.")
 		return
 	}
-	if !isCrew || !crewSharedRootEnabled() {
+	if !isCrew {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false})
 		return
 	}

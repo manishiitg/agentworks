@@ -13,18 +13,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
-// crewSharedRootEnabled is the server-side switch for where NEW crews are created (PLAT-442 step 4):
-// AGENTWORKS_CREW_SHARED_ROOT=on creates them at Crew/<slug>-<id8>; anything else (the default) keeps creating them in
-// the owner's tree. Reading and resolving Crew/<id> never depends on it: a server is safe half-migrated, flag on or
-// off. Turn it on only after the server's migration has been applied and verified.
-func crewSharedRootEnabled() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_CREW_SHARED_ROOT")), "on")
-}
-
-// crewCreationRoot is the folder new Crews of a profile are created in: the shared root when the switch is on and the
-// profile is the Crew product, else the owner's projects root (runtimeRoot, as before).
+// crewCreationRoot is the folder new projects of a profile are created in: every new Crew goes to the shared root,
+// Crew/<slug>-<id8> (owner decision 2026-10-10: it is the only place; there is no switch any more). Other products keep
+// the owner's projects root (runtimeRoot). Crews that still sit in an owner's tree keep resolving there until moved
+// (`agentworks server migrate-crews-to-shared-root`).
 func crewCreationRoot(profileID, runtimeRoot string) string {
-	if strings.EqualFold(strings.TrimSpace(profileID), crewProfileID) && crewSharedRootEnabled() {
+	if strings.EqualFold(strings.TrimSpace(profileID), crewProfileID) {
 		return workspaceref.SharedCrewRoot
 	}
 	return runtimeRoot

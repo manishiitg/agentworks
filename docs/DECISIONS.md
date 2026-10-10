@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — New Crews are always created at `Crew/<slug>-<id8>`; the switch is gone
+
+`AGENTWORKS_CREW_SHARED_ROOT=on` is removed: every server creates new Crews in the shared root, and it is the only default (owner:
+"crew/ is the only default way, without env"). Crews that still sit in an owner's tree keep resolving there until moved with
+`agentworks server migrate-crews-to-shared-root`; Code and other products are unchanged. A leftover `AGENTWORKS_CREW_SHARED_ROOT` in a
+server's environment does nothing. Code: `crewCreationRoot` in `crew_shared_access.go`. PLAT-442 step 4, PLAT-810.
+
 ### 2026-10-10 — A reader's shell in someone else's Crew runs as the Crew owner's slot (PLAT-810)
 
 On a slot host a Crew folder belongs to its owner's slot group, so a reader's own slot could not enter it and every shell command

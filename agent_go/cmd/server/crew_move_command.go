@@ -25,7 +25,7 @@ Without --apply this is a dry run: it prints every Crew with its owner, source, 
 
 --rollback <folder> puts a Crew back (its current folder, with anything written since the move; --from-backup restores the backed-up copy instead). --finalize removes the kept old folders of finished moves. --crew limits a run to the named folders or project ids (repeatable): move one Crew first.
 
-New Crews are created at Crew/<folder> only when the server runs with AGENTWORKS_CREW_SHARED_ROOT=on; turn it on after the migration has been applied and verified.`,
+New Crews are always created at Crew/<folder>; run this command to move the Crews that still sit in an owner's tree. The old AGENTWORKS_CREW_SHARED_ROOT switch is gone.`,
 	RunE: runMigrateCrewsToSharedRoot,
 }
 
