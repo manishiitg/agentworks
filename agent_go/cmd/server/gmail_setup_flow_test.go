@@ -28,10 +28,10 @@ func gmailSetupFixture(t *testing.T) (*StreamingAPI, context.Context) {
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
 	t.Setenv("PUBLIC_URL", "https://app.example.com")
 	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
-	// Storing the OAuth client runs `gog auth credentials set`; a stand-in on PATH writes the credentials file the way gog
-	// does and keeps this test off the real binary, which a build machine does not have.
+	// Storing the OAuth client runs `gog auth credentials set`; a stand-in on PATH writes the credentials file in gog's format
+	// (for the client below) and keeps this test off the real binary, which a build machine does not have.
 	fakeBin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(fakeBin, "gog"), []byte("#!/bin/sh\n# gog --home HOME auth credentials set FILE --client NAME ...\nif [ \"$3 $4 $5\" = \"auth credentials set\" ]; then mkdir -p \"$2/data\" && cp \"$6\" \"$2/data/credentials-$8.json\"; fi\nexit 0\n"), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(fakeBin, "gog"), []byte("#!/bin/sh\n# gog --home HOME auth credentials set FILE --client NAME ...: gog keeps the client as {client_id, client_secret}\nif [ \"$3 $4 $5\" = \"auth credentials set\" ]; then mkdir -p \"$2/data\" && printf '{\"client_id\":\"123456-abcdef.apps.googleusercontent.com\",\"client_secret\":\"SETUP-SECRET\"}' > \"$2/data/credentials-$8.json\"; fi\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
