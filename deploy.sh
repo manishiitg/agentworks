@@ -199,8 +199,8 @@ REMOTE_APP="/srv/$PRODUCT"
 REMOTE_TOOLS="$REMOTE_APP/tools"
 REMOTE_RUNTIME_PATH="$REMOTE_TOOLS/node/bin:$REMOTE_TOOLS/bin:$REMOTE_APP/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-test -d "$LOCAL_WORKSPACE_ROOT/mcpagent/.git" || { echo "Expected sibling checkout: $LOCAL_WORKSPACE_ROOT/mcpagent" >&2; exit 1; }
-test -d "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go/.git" || { echo "Expected sibling checkout: $LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" >&2; exit 1; }
+git -C "$LOCAL_WORKSPACE_ROOT/mcpagent" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Expected sibling checkout: $LOCAL_WORKSPACE_ROOT/mcpagent" >&2; exit 1; }
+git -C "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Expected sibling checkout: $LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" >&2; exit 1; }
 
 # The triggering machine no longer builds anything, so it no longer needs
 # go/node/npm -- only enough to talk to git remotes and to the server.
