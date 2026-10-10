@@ -392,6 +392,13 @@ $HOME_DIR/releases/**/bin/$PRODUCT-workspace flags=(unconfined) {
   userns,
 }
 
+# The agent service also starts the launcher in namespaces it creates itself (a shell command from a chat whose folder rules hide a
+# path): kernel log operation="mount" profile="unprivileged_userns" comm="video-studio-la" right after comm="<product>-agent" created
+# the namespace. Without this entry those commands fail "slotctl: could not start ... permission denied" for the accounts they run as.
+$HOME_DIR/releases/**/bin/$PRODUCT-agent flags=(unconfined) {
+  userns,
+}
+
 # The deploy proves the sandbox works on the host with this test before a release goes live (build-and-activate.sh).
 $HOME_DIR/releases/**/bin/workspace-security.test flags=(unconfined) {
   userns,

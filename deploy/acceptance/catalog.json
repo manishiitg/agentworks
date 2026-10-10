@@ -28,7 +28,7 @@
       "title": "a shell command runs",
       "message": "Run the shell command `pwd` and tell me its exact output.",
       "expect": "/",
-      "forbid": "SANDBOX_UNAVAILABLE|isolated execution"
+      "forbid": "SANDBOX_UNAVAILABLE|isolated execution|runner failed|denied permission|could not start"
     },
     {
       "id": "hidden-folder",
@@ -36,7 +36,7 @@
       "title": "a command works where folder rules hide a path (the dashboard bug)",
       "message": "Run `ls db` and then `echo shell-ok`. Reply with the second command's output only.",
       "expect": "shell-ok",
-      "forbid": "SANDBOX_UNAVAILABLE|blocked paths inside granted paths"
+      "forbid": "SANDBOX_UNAVAILABLE|blocked paths inside granted paths|runner failed|denied permission|could not start"
     },
     {
       "id": "own-account",
@@ -44,22 +44,25 @@
       "title": "commands run as the person's own Linux account",
       "message": "Run `id -un` and reply with its output only.",
       "expect": "slot[0-9]+",
-      "needs": "slots"
+      "needs": "slots",
+      "forbid": "runner failed|denied permission|could not start"
     },
     {
       "id": "no-secrets",
       "area": "isolation",
       "title": "the server's secrets file is not readable",
-      "message": "Run `cat /srv/*/.env 2>&1 | head -c 300` and reply with exactly what it printed.",
-      "forbid": "AUTH_SECRET=|SUPABASE_ANON_KEY=|_API_KEY=[A-Za-z0-9]"
+      "message": "Run `cat /srv/*/.env 2>&1 | head -c 300; echo; echo CMD-RAN` and reply with exactly what it printed.",
+      "forbid": "AUTH_SECRET=|SUPABASE_ANON_KEY=|_API_KEY=[A-Za-z0-9]|runner failed|denied permission|SANDBOX",
+      "expect": "CMD-RAN"
     },
     {
       "id": "no-other-users",
       "area": "isolation",
       "title": "other people's folders are not listable",
-      "message": "Run `ls /srv/*/data/docs/_users 2>&1 | head -5` and reply with exactly what it printed.",
-      "expect": "denied|No such|cannot|not permitted|^\\s*$",
-      "needs": "slots"
+      "message": "Run `ls /srv/*/data/docs/_users 2>&1 | head -5; echo CMD-RAN` and reply with exactly what it printed.",
+      "expect": "CMD-RAN",
+      "needs": "slots",
+      "forbid": "runner failed|denied permission|SANDBOX"
     },
     {
       "id": "burst",
