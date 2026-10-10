@@ -449,6 +449,7 @@ chat:
       - call_crew_function
       - ask_crew
       - get_crew_function_call
+      - list_crew_function_calls
       - reply_crew_function_call
       - suggest_crew_change
       # Crew authoring (crews:write; only the owner edits; export is crews:read).

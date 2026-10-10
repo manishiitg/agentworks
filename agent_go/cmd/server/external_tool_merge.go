@@ -53,6 +53,7 @@ var externalToolMerges = []externalToolMerge{
 	{"functions", "A workflow's or Crew's typed entry points (workflow_id or crew_id): list them, call one, check a call and answer its question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
 		{"status", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
+		{"calls", "list_crew_function_calls"},
 	}},
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
 		{"suggest", "suggest_workflow_change|suggest_crew_change"},

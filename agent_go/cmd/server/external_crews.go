@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -18,7 +20,7 @@ import (
 
 var externalCrewTools = map[string]bool{
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
-	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "reply_crew_function_call": true, "suggest_crew_change": true,
+	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "reply_crew_function_call": true, "list_crew_function_calls": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 	// Costs of a Crew you own (external_crew_costs.go).
@@ -284,6 +286,8 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			return
 		}
 		externalJSON(w, externalCrewCallResponse(ctx, call, externalCrewWait(args)))
+	case "list_crew_function_calls":
+		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(manifest.ID, claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
 	case "list_crew_functions":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
 	case "list_crew_files", "search_crew_files":
@@ -337,4 +341,63 @@ func externalCrewAccessLabel(access interface{}) interface{} {
 		return "run"
 	}
 	return access
+}
+
+// externalCrewFunctionCalls lists recent calls to one Crew, newest first. The Crew's owner sees every call (who made it,
+// which function, when, how it ended) but not the arguments or results of other people's calls; anyone else sees only the
+// calls they made themselves, in full. The record is kept in memory, so it starts empty after a server restart.
+func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []map[string]any {
+	if limit <= 0 || limit > crewFunctionRecentCallsLimit {
+		limit = crewFunctionRecentCallsLimit
+	}
+	crewFunctionCalls.Lock()
+	calls := make([]*crewFunctionCall, 0, len(crewFunctionCalls.m))
+	for _, call := range crewFunctionCalls.m {
+		calls = append(calls, call)
+	}
+	crewFunctionCalls.Unlock()
+	type row struct {
+		started time.Time
+		entry   map[string]any
+	}
+	rows := []row{}
+	for _, call := range calls {
+		call.mu.Lock()
+		if call.TargetKind != triggerCallerCrew || call.TargetID != strings.TrimSpace(crewID) || call.TargetProfileID == codeproduct.ProfileID {
+			call.mu.Unlock()
+			continue
+		}
+		mine := call.UserID == userID
+		if !mine && !owner {
+			call.mu.Unlock()
+			continue
+		}
+		entry := map[string]any{
+			"call_id": call.ID, "function": call.Function, "status": call.Status, "started_at": call.CreatedAt,
+			"caller": map[string]any{"kind": call.CallerKind, "name": call.CallerLabel, "you": mine},
+		}
+		if call.terminalLocked() {
+			entry["finished_at"] = call.UpdatedAt
+		}
+		if mine {
+			if call.Result != nil {
+				entry["result"] = call.Result
+			}
+		}
+		if call.Error != "" {
+			entry["error"] = call.Error
+		}
+		started := call.CreatedAt
+		call.mu.Unlock()
+		rows = append(rows, row{started, entry})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].started.After(rows[j].started) })
+	if len(rows) > limit {
+		rows = rows[:limit]
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.entry)
+	}
+	return out
 }

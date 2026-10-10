@@ -89,3 +89,46 @@ func TestCrewFunctionQuestionIsBoundToCallAndRunScope(t *testing.T) {
 		t.Fatalf("duplicate answer must be refused, got %d", code)
 	}
 }
+
+// A Crew's owner sees every call to it (who, which function, how it ended) without other people's results; anyone else
+// sees only their own calls, in full (PLAT-837).
+func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	seed := func(id, user string) {
+		call := &crewFunctionCall{ID: id, UserID: user, CallerKind: triggerCallerUser, CallerLabel: user + " connection", Function: "ask", TargetKind: triggerCallerCrew, TargetID: "beta",
+			Status: "completed", Result: map[string]any{"answer": "answer-for-" + user}, CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+		crewFunctionCalls.Lock()
+		crewFunctionCalls.m[id] = call
+		crewFunctionCalls.Unlock()
+		t.Cleanup(func() {
+			crewFunctionCalls.Lock()
+			delete(crewFunctionCalls.m, id)
+			crewFunctionCalls.Unlock()
+		})
+	}
+	seed("fn-list-owner", "owner")
+	seed("fn-list-someone", "someone")
+	token := func(user string) *UserClaims {
+		return &UserClaims{UserID: user, AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
+	}
+
+	code, out := externalCrewRequest(t, env, token("owner"), "list_crew_function_calls", map[string]any{"crew_id": "beta"})
+	calls, _ := out["calls"].([]any)
+	if code != 200 || len(calls) != 2 {
+		t.Fatalf("the owner sees every call: %d %v", code, out)
+	}
+	for _, raw := range calls {
+		call := raw.(map[string]any)
+		_, hasResult := call["result"]
+		mine := call["caller"].(map[string]any)["you"] == true
+		if hasResult != mine {
+			t.Fatalf("the owner sees a result only on their own call, got %v", call)
+		}
+	}
+	code, out = externalCrewRequest(t, env, token("someone"), "list_crew_function_calls", map[string]any{"crew_id": "beta"})
+	calls, _ = out["calls"].([]any)
+	if code != 200 || len(calls) != 1 || calls[0].(map[string]any)["call_id"] != "fn-list-someone" || calls[0].(map[string]any)["result"] == nil {
+		t.Fatalf("another user sees only their own call, in full: %d %v", code, out)
+	}
+}
