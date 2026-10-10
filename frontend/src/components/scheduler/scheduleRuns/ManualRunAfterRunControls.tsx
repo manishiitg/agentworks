@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react'
 import { workflowManifestApi } from '../../../services/api'
 import type { ScheduleAfterRun, WorkflowManifest } from '../../../services/api-types'
-
-const LABELS: { key: keyof ScheduleAfterRun; label: string }[] = [
-  { key: 'backup', label: 'Backup' },
-  { key: 'publish', label: 'Publish' },
-  { key: 'notify', label: 'Notify' },
-]
+import { AfterRunActions } from './AfterRunActions'
 
 function manualAfterRun(manifest: WorkflowManifest): ScheduleAfterRun {
   if (manifest.after_manual_run) return manifest.after_manual_run
@@ -41,17 +36,8 @@ export function ManualRunAfterRunControls({ workspacePath, disabled }: { workspa
       setSaving(false)
     }
   }
-  return <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6" role="group" aria-label="After each manual run">
-    <span>After a manual run:</span>
-    {LABELS.map(option => <label key={option.key} className="inline-flex items-center gap-1">
-      <input
-        type="checkbox"
-        className="h-3 w-3"
-        checked={options[option.key]}
-        disabled={disabled || saving}
-        onChange={event => void save({ ...options, [option.key]: event.target.checked })}
-      />
-      {option.label}
-    </label>)}
+  return <div className="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+    <span className="shrink-0">Manual runs</span>
+    <AfterRunActions options={options} scope="manual runs" disabled={disabled} saving={saving} onChange={save} />
   </div>
 }

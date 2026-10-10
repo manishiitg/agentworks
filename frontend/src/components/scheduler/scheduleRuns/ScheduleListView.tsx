@@ -189,7 +189,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                       </select>
                     </label>
                   )}
-                  <ScheduleAfterRunControls job={job} disabled={isReadOnlyUser} onChange={(target, next) => void handleAfterRun(target, next)} />
+                  <ScheduleAfterRunControls job={job} disabled={isReadOnlyUser} onChange={handleAfterRun} />
                 </div>
                 {dependencyNames.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pr-28 text-xs text-info">
