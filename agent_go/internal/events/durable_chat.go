@@ -47,27 +47,66 @@ var durableChildSummaryTypes = map[string]bool{
 	"background_agent_terminated": true,
 }
 
-// isDurableThinking is a finished thinking block (or a CLI agent's commentary line) the person saw in the chat. Without it the
-// chat rebuilt after switching terminal and chat, or after a reload, showed the answer but none of the thinking above it
-// (PLAT-832). A streamed fragment (is_delta) is not stored: the fragments are many and the chat joins them live.
-func isDurableThinking(event Event) bool {
+// thinkingText reads a thinking event: its text, whether it is a streamed fragment (is_delta), and the Turn it belongs to.
+func thinkingText(event Event) (text string, delta bool, turn int, ok bool) {
 	if event.Type != "conversation_thinking" || event.Data == nil {
-		return false
+		return "", false, 0, false
 	}
-	var thinking string
-	var delta bool
 	switch data := event.Data.Data.(type) {
 	case *agentevents.ConversationThinkingEvent:
 		if data == nil {
-			return false
+			return "", false, 0, false
 		}
-		thinking, delta = data.Thinking, data.IsDelta
+		return data.Thinking, data.IsDelta, data.Turn, true
 	default:
 		payload := eventPayloadMap(&event)
-		thinking, _ = payload["thinking"].(string)
+		text, _ = payload["thinking"].(string)
 		delta, _ = payload["is_delta"].(bool)
+		if n, isNumber := payload["turn"].(float64); isNumber {
+			turn = int(n)
+		}
+		return text, delta, turn, true
 	}
-	return strings.TrimSpace(thinking) != "" && !delta
+}
+
+// isDurableThinking is a finished thinking block (or a CLI agent's commentary line) the person saw in the chat. Without it the chat
+// rebuilt after switching terminal and chat, or after a reload, showed the answer but none of the thinking above it (PLAT-832). A
+// streamed fragment (is_delta) is not stored one by one: addEventUnheld joins a run of fragments and stores them as one block.
+func isDurableThinking(event Event) bool {
+	text, delta, _, ok := thinkingText(event)
+	return ok && strings.TrimSpace(text) != "" && !delta
+}
+
+// maxThinkingRunBytes bounds one joined thinking block; a longer run is stored as several blocks.
+const maxThinkingRunBytes = 32 * 1024
+
+// thinkingRun is the streamed thinking fragments of one session since the last stored event, joined verbatim (a fragment is appended to
+// the preceding thinking, as the chat does live).
+type thinkingRun struct {
+	first Event
+	turn  int
+	text  strings.Builder
+}
+
+// joinedThinkingEvent is the single finished block a run is stored as.
+func (r *thinkingRun) joinedThinkingEvent() Event {
+	metadata := map[string]interface{}(nil)
+	if r.first.Data != nil {
+		if payload := eventPayloadMap(&r.first); payload != nil {
+			if meta, ok := payload["metadata"].(map[string]interface{}); ok && meta["presentation"] == "assistant_update" {
+				metadata = map[string]interface{}{"presentation": "assistant_update"}
+			}
+		}
+	}
+	joined := r.first
+	joined.ID = r.first.ID + ":joined"
+	joined.Sequence = 0 // the journal assigns the next stored sequence; this row is never published live
+	joined.Data = agentevents.NewAgentEvent(&agentevents.ConversationThinkingEvent{
+		BaseEventData: agentevents.BaseEventData{Timestamp: r.first.Timestamp, Metadata: metadata},
+		Thinking:      r.text.String(),
+		Turn:          r.turn,
+	})
+	return joined
 }
 
 // IsDurableChatEvent mirrors the journal projector for transport filtering.

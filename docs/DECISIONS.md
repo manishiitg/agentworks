@@ -68,8 +68,9 @@ Owner request; ticket:
 Pi's `thinking_delta` chunks are plain reasoning (the compact muted line), like Muse's (PLAT-781) and every other agent's; they were
 tagged `assistant_update` and drawn as large message blocks. Finished (non-streamed) `conversation_thinking` events are now on the
 durable chat allowlist (`internal/events/durable_chat.go`), so a reload or a terminal/chat switch keeps the thinking above an answer.
-Streamed fragments (`is_delta`, which is how Pi sends thinking) are still live-only, so Pi's thinking is still lost on a rebuild until
-fragments are joined before they are stored; that is open in the ticket.
+Streamed fragments (`is_delta`, which is how Pi sends thinking) are published live as before and joined per session in the event store
+(`addEventUnheld`): the run is stored as one finished block, never published, just before the next event that is stored (a block over
+32 KiB is stored as several).
 
 ### 2026-10-10 — New Crews are always created at `Crew/<slug>-<id8>`; the switch is gone
 

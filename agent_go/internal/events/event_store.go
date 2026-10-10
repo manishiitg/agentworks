@@ -659,6 +659,7 @@ type EventStore struct {
 	sessionStartIndices map[string]int    // sessionID -> startIndex (offset for events in memory)
 	sessionOwners       map[string]string // sessionID -> userID
 	persistenceClasses  map[string]SessionPersistenceClass
+	thinkingRuns        map[string]*thinkingRun // sessionID -> streamed thinking not yet stored (PLAT-832)
 	// expectedClientMessages: sessionID -> client identity for the next
 	// main-agent user_message (see ExpectClientUserMessage). Guarded by mu.
 	expectedClientMessages map[string]expectedClientMessage
@@ -710,6 +711,7 @@ func NewEventStoreWithActivityCallback(maxEvents int, activityCallback ActivityC
 		sessionStartIndices: make(map[string]int),
 		sessionOwners:       make(map[string]string),
 		persistenceClasses:  make(map[string]SessionPersistenceClass),
+		thinkingRuns:        make(map[string]*thinkingRun),
 		maxEvents:           maxEvents,
 		cleanupTicker:       time.NewTicker(5 * time.Minute), // Cleanup every 5 minutes
 		stopCh:              make(chan struct{}),
@@ -936,6 +938,17 @@ func (es *EventStore) adoptJournaledSession(sessionID string) {
 	}
 }
 
+// storeThinkingRun writes a joined thinking run to the journal as one finished block. It is never published: the live subscribers
+// already have the fragments. A failure is logged and the thinking is lost from history, never from the live chat.
+func (es *EventStore) storeThinkingRun(sessionID string, journal DurableEventJournal, run *thinkingRun) {
+	if run == nil || strings.TrimSpace(run.text.String()) == "" {
+		return
+	}
+	if _, _, err := journal.Append(sessionID, run.joinedThinkingEvent()); err != nil {
+		log.Printf("[EventStore] could not store joined thinking session=%s: %v", sessionID, err)
+	}
+}
+
 // AddEvent adds an event for a specific session. Legacy callers that cannot
 // propagate an observer error retain this compatibility entry point; durable
 // failures are logged and the event is not published.
@@ -996,7 +1009,35 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	}
 	projected, durable := projectDurableChatEvent(event)
 	journal := es.durableJournal
-	if journal != nil && es.persistenceClasses[sessionID] == SessionPersistenceInteractiveChat && durable {
+	storesChat := journal != nil && es.persistenceClasses[sessionID] == SessionPersistenceInteractiveChat
+	if storesChat {
+		// Streamed thinking fragments are published live as they are, and joined here so a reload or a terminal/chat switch still
+		// shows them: the run is stored as one block just before the next event that is stored (PLAT-832).
+		if text, delta, turn, ok := thinkingText(event); ok && delta && strings.TrimSpace(text) != "" {
+			run := es.thinkingRuns[sessionID]
+			if run != nil && run.text.Len()+len(text) > maxThinkingRunBytes {
+				es.mu.Unlock()
+				es.storeThinkingRun(sessionID, journal, run)
+				es.mu.Lock()
+				run = nil
+			}
+			if run == nil {
+				run = &thinkingRun{first: event, turn: turn}
+				if es.thinkingRuns == nil {
+					es.thinkingRuns = make(map[string]*thinkingRun)
+				}
+				es.thinkingRuns[sessionID] = run
+			}
+			run.text.WriteString(text)
+		} else if durable && es.thinkingRuns[sessionID] != nil {
+			run := es.thinkingRuns[sessionID]
+			delete(es.thinkingRuns, sessionID)
+			es.mu.Unlock()
+			es.storeThinkingRun(sessionID, journal, run)
+			es.mu.Lock()
+		}
+	}
+	if storesChat && durable {
 		es.mu.Unlock()
 		started := time.Now()
 		persisted, inserted, err := journal.Append(sessionID, projected)
@@ -1562,6 +1603,7 @@ func (es *EventStore) RemoveSession(sessionID string) {
 	delete(es.sessionStartIndices, sessionID)
 	delete(es.sessionOwners, sessionID)
 	delete(es.persistenceClasses, sessionID)
+	delete(es.thinkingRuns, sessionID)
 	delete(es.journalProbed, sessionID)
 	// Explicit removal is an in-process tombstone. A later read or new event
 	// must not resurrect the old durable tail; a new process may restore it.
