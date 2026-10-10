@@ -199,15 +199,9 @@ func ExecuteShellCommand(c *gin.Context) {
 		userSlot = ""
 	}
 	// A reader's shell in someone else's Crew runs as the Crew owner's slot (PLAT-810): the reader's own slot cannot enter the
-	// owner's group-owned folder. Only when the server's guard grants that project; Landlock still confines the command.
+	// owner's group-owned folder. Only when the server's guard grants that Crew; Landlock still confines the command.
 	if slotsOn && slotErr == nil && userSlot != "" {
-		if crewOwner := crewProjectOwnerForCommand(docsDir, workingDir, resolvedUserID, req.FolderGuard); crewOwner != "" {
-			if ownerSlot, ownerSlotsOn, ownerErr := slots.For(crewOwner); ownerErr == nil && ownerSlotsOn && ownerSlot != "" {
-				log.Printf("[SLOTS] Crew command for %s runs as the Crew owner's slot %s", resolvedUserID, ownerSlot)
-				userSlot = ownerSlot
-			}
-		} else if crewDir := sharedCrewDirForCommand(docsDir, workingDir, req.FolderGuard); crewDir != "" {
-			// The shared Crew/<id> root: no owner in the path, so the owner's slot is the one whose group owns the folder.
+		if crewDir := sharedCrewDirForCommand(docsDir, workingDir, req.FolderGuard); crewDir != "" {
 			if ownerSlot := slotOwningGroup(crewDir); ownerSlot != "" && ownerSlot != userSlot {
 				log.Printf("[SLOTS] Crew command for %s runs as the Crew owner's slot %s", resolvedUserID, ownerSlot)
 				userSlot = ownerSlot

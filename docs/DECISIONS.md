@@ -38,7 +38,7 @@ On a slot host a Crew folder belongs to its owner's slot group, so a reader's ow
 failed with "permission denied". Decided (owner): the shell tool follows the 2026-10-04 rule for Crew turns and runs a reader's
 command in a Crew as the owner's slot. It applies only when the server's folder guard grants that exact Crew project and the
 command works inside it; Landlock still confines the command to the guard's paths. The owner's own call, a guard that does not
-name the project, and every other folder keep the caller's slot. A Crew in the shared `Crew/<id>` root has no owner in its path, so its
+name the project, and every other folder keep the caller's slot. Every Crew lives in the shared `Crew/<id>` root (no Crew is left in an owner's tree), which has no owner in its path, so the
 owner's slot is the one whose group owns the folder (mode 2770). Code: `workspace/handlers/crew_reader_slot.go`, `crew_slot_group_unix.go`, used in `shell.go`.
 
 ### 2026-10-10 — Slot provisioning rejects another product's accounts
