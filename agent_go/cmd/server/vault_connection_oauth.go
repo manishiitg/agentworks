@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"io"
 	"net/http"
 	"os"
@@ -235,7 +236,10 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			}
 			// Sync runs outside the credential mutex: upstream discovery calls
 			// the broker, which uses that same mutex to serialize refresh.
-			if _, err := vaultServiceRequest(context.Background(), userID, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil); err != nil {
+			syncStarted := time.Now()
+			_, syncErr := vaultServiceRequest(context.Background(), userID, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil)
+			log.Printf("[VAULT_SIGNIN] connection=%s app=%s tool sync after sign-in took %s ok=%t err=%v", id, name, time.Since(syncStarted).Round(time.Millisecond), syncErr == nil, syncErr)
+			if err := syncErr; err != nil {
 				return fmt.Errorf("signed in to %s, but Vault could not load its tools (%w); use Refresh to retry", name, err)
 			}
 			return nil
@@ -245,6 +249,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			if strings.Contains(detail, "did not complete authorization") {
 				shown = "the sign-in page was not finished within 5 minutes; sign in again"
 			}
+			log.Printf("[VAULT_SIGNIN] connection=%s app=%s sign-in finished after %s ok=%t detail=%q", id, name, time.Since(started).Round(time.Second), success, shown)
 			recordVaultSignInOutcome(id, started, success, shown)
 			if sessionID == "" {
 				return
