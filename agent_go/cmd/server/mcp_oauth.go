@@ -139,6 +139,12 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 // only for an admin or Code reviewer. Everyone else neither sees nor grants it
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
+	// An administrator who asks for nothing in particular (the default scopes) gets every supported scope: the CLI sign-in and a
+	// client taking the advertised default would otherwise leave an admin without Brain, Builder, Relays or dashboards. What the
+	// server or the account refuses is still removed below, and a client that names its scopes gets exactly those.
+	if user != nil && claimsIsAdmin(user) && sameMCPOAuthScopeSet(scopes, mcpOAuthDefaultScopes) {
+		scopes = mcpOAuthScopes
+	}
 	canReview, builderOn := claimsCanReviewCode(user), externalBuilderEnabled()
 	// Relay authoring needs the server switch AND an account that may edit and has the Relays product (the same rule
 	// validateMCPOAuthBuilderSelection enforces); Builder editing needs the server switch. A connection never asks for,
@@ -166,6 +172,23 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 		}
 		return false
 	})
+}
+
+// sameMCPOAuthScopeSet reports whether a and b hold the same scopes, in any order.
+func sameMCPOAuthScopeSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	have := make(map[string]bool, len(a))
+	for _, scope := range a {
+		have[scope] = true
+	}
+	for _, scope := range b {
+		if !have[scope] {
+			return false
+		}
+	}
+	return true
 }
 
 func validMCPOAuthScopes(raw string) ([]string, bool) {

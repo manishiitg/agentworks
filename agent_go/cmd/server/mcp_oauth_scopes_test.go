@@ -43,3 +43,30 @@ func TestMCPOAuthRelayScopeFollowsTheAccount(t *testing.T) {
 		t.Errorf("an account without the Relays product was offered relays:write: %v", got)
 	}
 }
+
+// An administrator who takes the default scopes gets every supported scope the server and account allow (Brain, Builder, Relays,
+// dashboards, file writes); an ordinary account keeps the default set, and a client that names its scopes gets exactly those.
+func TestAdminDefaultScopesAreEveryScopeTheAccountMayHave(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"root","username":"root","admin":true,"can_create":true,"products":[]},{"id":"member","username":"member","can_create":true,"products":["code"]}]}`)
+	admin := &UserClaims{UserID: "root", Username: "root"}
+	member := &UserClaims{UserID: "member", Username: "member"}
+
+	adminDefault := mcpOAuthScopesFor(admin, slices.Clone(mcpOAuthDefaultScopes))
+	for _, scope := range []string{"builder:chat", "files:write", "dashboards:read", "dashboards:write", "knowledgebase:read", "knowledgebase:write"} {
+		if !slices.Contains(adminDefault, scope) {
+			t.Errorf("an administrator on the default scopes lacks %s: %v", scope, adminDefault)
+		}
+	}
+	memberDefault := mcpOAuthScopesFor(member, slices.Clone(mcpOAuthDefaultScopes))
+	for _, scope := range []string{"builder:chat", "dashboards:write", "users:manage", "code:review"} {
+		if slices.Contains(memberDefault, scope) {
+			t.Errorf("an ordinary account on the default scopes was given %s: %v", scope, memberDefault)
+		}
+	}
+	named := mcpOAuthScopesFor(admin, []string{"workflows:read"})
+	if !slices.Equal(named, []string{"workflows:read"}) {
+		t.Errorf("a client that names its scopes must get exactly those, got %v", named)
+	}
+}
