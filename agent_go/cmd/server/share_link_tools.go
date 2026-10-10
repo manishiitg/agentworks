@@ -86,7 +86,8 @@ func (api *StreamingAPI) registerShareLinkTools(reg definitionToolRegistrar, use
 //
 // A Code link resolves through the ordinary personal-file rules, which admit
 // only the owner: crewReaderSharedAsset opens other owners' Crews, never Codes.
-func (api *StreamingAPI) registerWorkShareLinkTool(reg definitionToolRegistrar, userID, workspace string) error {
+func (api *StreamingAPI) registerWorkShareLinkTool(reg definitionToolRegistrar, userID, workspace string, onlyUnder ...string) error {
+	only := strings.Join(onlyUnder, "")
 	cleanWorkspace, err := cleanAgentProfileWorkspace(workspace, userID)
 	if err != nil || cleanWorkspace != workspace || !isActiveWorkProjectWorkspace(userID, cleanWorkspace) {
 		return fmt.Errorf("share links require an active project")
@@ -95,12 +96,18 @@ func (api *StreamingAPI) registerWorkShareLinkTool(reg definitionToolRegistrar, 
 	// (profile.name), so tool text says Crew or Code without hardcoding it.
 	name := api.projectProductName(userID, cleanWorkspace)
 	noun := name + " project"
+	if only != "" {
+		// A Run-mode turn links only what it produced, in the Crew's output folder (PLAT-812); nobody gets more than
+		// read-only access, and no report link.
+		return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun, only,
+			"Recipients must sign in to AgentWorks and have access to this "+noun+" (the owner, or anyone with "+name+" access), and they get read-only access to that file or folder.", "")
+	}
 	if isCodeProjectPath(cleanWorkspace) {
-		return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun,
+		return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun, "",
 			"Only you (the owner of this "+noun+") can open it after signing in; it is private to you.",
 			"Only you (the owner of this "+noun+") can open this dashboard after signing in.")
 	}
-	return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun,
+	return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun, "",
 		"Recipients must sign in to AgentWorks and have access to this "+noun+" (the owner, or anyone with "+name+" access), and they get read-only access to that file or folder only.",
 		"Recipients must sign in and have current "+name+" access. Dashboard scripts use the viewer's permissions for selected data sources.")
 }
@@ -108,7 +115,7 @@ func (api *StreamingAPI) registerWorkShareLinkTool(reg definitionToolRegistrar, 
 // registerProjectShareLinkTools registers get_file_link and get_report_link
 // for one project; noun names the project in tool text, and the two access
 // sentences say who can open each kind of link.
-func registerProjectShareLinkTools(reg definitionToolRegistrar, userID, cleanWorkspace, noun, fileAccess, reportAccess string) error {
+func registerProjectShareLinkTools(reg definitionToolRegistrar, userID, cleanWorkspace, noun, only, fileAccess, reportAccess string) error {
 	canonicalWorkspace := canonicalChatHistoryWorkspacePath(userID, cleanWorkspace)
 	physicalRoot := agentProfileRuntimeWorkspace(userID, canonicalWorkspace)
 	if err := reg.RegisterCustomTool("get_file_link", "Create an authenticated preview link for an existing file or folder in the active "+noun+". Pass a canonical project-relative path; the server validates existence, protected-path rules, and whether the target is a file or folder. Present the returned url value verbatim; never manually build, rewrite, or Base64-encode a /file or /folder URL. Inspect shareable and warning in the result: when PUBLIC_URL is localhost or another loopback host, the URL is a same-machine preview only and must not be described as shareable. The URL contains no credential. "+fileAccess+" The builder/ transcripts, db/ databases and root product.json/workflow.json stay private to the owner even when linked. This is not public publishing and cannot share arbitrary web URLs or files outside this project.", map[string]interface{}{
@@ -132,9 +139,15 @@ func registerProjectShareLinkTools(reg definitionToolRegistrar, userID, cleanWor
 		if wf.Private(clean) {
 			return "", fmt.Errorf("private workspace files are not shareable")
 		}
+		if only != "" && !strings.HasPrefix(clean+"/", only) {
+			return "", fmt.Errorf("in Run mode a link can point only into %s", strings.TrimSuffix(only, "/"))
+		}
 		return createSecureShareLink(ctx, physicalRoot, canonicalWorkspace, clean, userID, fileAccess+" The link contains no credential.")
 	}, "work_files"); err != nil {
 		return err
+	}
+	if only != "" {
+		return nil
 	}
 
 	return reg.RegisterCustomTool("get_report_link", "Create an authenticated dashboard link for an HTML document under the "+noun+"'s db/reports/. document_path defaults to db/reports/index.html. The link contains no credential. "+reportAccess, map[string]interface{}{

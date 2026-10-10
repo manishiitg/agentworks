@@ -337,3 +337,26 @@ func TestGetFileLinkToolRejectsUnauthorizedPrivateAndMissingPaths(t *testing.T) 
 		}
 	}
 }
+
+// PLAT-812: a Run-mode turn gets get_file_link for what it saved in the output folder and nothing else, and no report link.
+func TestRunModeFileLinkIsLimitedToTheOutputFolder(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("PUBLIC_URL", "https://customer.example")
+	const userID = "work-user"
+	f.write(t, "_users/"+userID+"/Chats/Work/projects/demo/outputs/result.json", "{}")
+	f.write(t, "_users/"+userID+"/Chats/Work/projects/demo/notes.md", "owner notes")
+	reg := &recordingRegistrar{}
+	if err := f.api.registerWorkShareLinkTool(reg, userID, "Chats/Work/projects/demo", "outputs/"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reg.tools["get_report_link"]; ok {
+		t.Fatal("a Run-mode turn must not get a report link")
+	}
+	link := reg.tools["get_file_link"]
+	if _, err := link.exec(context.Background(), map[string]interface{}{"path": "outputs/result.json"}); err != nil {
+		t.Fatalf("link to an output file refused: %v", err)
+	}
+	if _, err := link.exec(context.Background(), map[string]interface{}{"path": "notes.md"}); err == nil {
+		t.Fatal("a Run-mode link outside the output folder was created")
+	}
+}

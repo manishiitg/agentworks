@@ -951,6 +951,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 				}
 			}
 		}
+		// A Run-mode turn can link what it saved in the Crew's output folder.
+		if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
+			log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
+		}
 		// A guest turn still answers the call it was started for.
 		if guest != "" {
 			functionReq := QueryRequest{SelectedFolder: workspacePath}
