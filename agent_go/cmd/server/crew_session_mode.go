@@ -51,7 +51,7 @@ func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
 		"Inspect freely (files, briefs, configuration, schedules, triggers, run history), and run the Crew's functions, scripts and attached workflow triggers when asked. " +
 		output +
 		"If the user wants something changed, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
-		scope + "Never print secret values.\n" + sessionModeClose
+		scope + "Never reveal a secret's value, any part of it or its length, in any form (printed, encoded, transformed, written to a file or sent on), and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }
 
 // withSessionMode puts the notice in front of a message. It is idempotent for
