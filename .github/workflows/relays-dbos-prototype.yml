@@ -68,4 +68,7 @@ jobs:
           GOWORK: 'off'
         run: |
           RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/relaypython ./pkg/schedulerstate ./cmd/relay-dbos-demo -count=1 -v
-          RELAY_DBOS_PYTHON="$(command -v python)" go test ./cmd/server -run '^(TestDBOSRelayServerRecoversPublishedCheckpoint|TestDBOSNativeRelayServerRecoversPublishedCheckpoint|TestCreateRelayManifestUsesNativeStarter|TestRelayPublishRequiresWriterAndTokenScope)$' -count=1 -v
+          dbos_python="$(command -v python)"
+          # Source inspection uses the host Python, as on native deployments;
+          # only the admitted DBOS executor reads setup-python's toolchain.
+          PATH="/usr/bin:/bin:$PATH" RELAY_DBOS_PYTHON="$dbos_python" go test ./cmd/server -run '^(TestDBOSRelayServerRecoversPublishedCheckpoint|TestDBOSNativeRelayServerRecoversPublishedCheckpoint|TestCreateRelayManifestUsesNativeStarter|TestRelayPublishRequiresWriterAndTokenScope)$' -count=1 -v
