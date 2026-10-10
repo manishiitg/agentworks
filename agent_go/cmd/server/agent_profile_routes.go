@@ -1169,6 +1169,11 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		return
 	}
 	if hasCurrent && api.sessionHasActiveWork(current.SessionID) {
+		// A stopped chat's pane is gone, but the terminal store keeps listing it as live until the watchdog confirms
+		// it over a few checks; that made a stopped chat unclosable for a while (PLAT-815). Retire what is really gone.
+		api.retireMissingTerminalPanes(current.SessionID)
+	}
+	if hasCurrent && api.sessionHasActiveWork(current.SessionID) {
 		writeAgentProfileError(w, http.StatusConflict, "This chat is still working; stop it before closing the tab")
 		return
 	}
