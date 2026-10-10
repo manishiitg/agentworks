@@ -103,10 +103,6 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 	if write && serverOwnedWrite(clean) {
 		return "this file is written only by the server"
 	}
-	// A Crew being moved by the Crew move command is not written by anyone else meanwhile.
-	if write && crewMoveBlocksPath(clean) {
-		return errCrewBeingMoved.Error()
-	}
 	// Relay releases are server-owned snapshots. Their nested path has no
 	// manifest at Workflow/.relay_releases, so normal workflow path lookup
 	// cannot safely authorize access to them.

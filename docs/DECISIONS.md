@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — The one-shot Crew move command is removed (PLAT-836)
+
+No Crew remains at the old per-user location (owner), so `agentworks server migrate-crews-to-shared-root`, its
+journal, backup, lock and in-progress guards (about 3,800 lines, `crew_move*.go`) are deleted. What stays: new Crews
+are created only at `Crew/<slug>-<id8>`, the owner registry, and the legacy path aliases (`crew_ref.go`), which
+still resolve an old spelling kept in a stored schedule, trigger or bot.
+
 ### 2026-10-10 — Builder and Pulse share DB measurement and history (PLAT-813)
 
 Builder defines meaningful goal measurements and implements recording in ordinary
@@ -1586,6 +1593,7 @@ actions rather than switching browsers. Collaborators cannot inherit personal
 Chrome access. Why: hosted agents need existing local logins without exposing
 a debugging port or sharing one person’s browser profile. Ticket:
 PLAT-510.
+
 
 ## 2026-10-05: `search_web_llm` is removed; coding agents use their own web search
 

@@ -938,10 +938,6 @@ func resolveProductProjectBindingInRoot(
 		if ownerOK != nil && !ownerOK(strings.TrimSuffix(strings.TrimPrefix(candidate, rootPrefix), "/product.json")) {
 			continue
 		}
-		// While the Crew move command copies this Crew the server binds nothing to it (turns, schedules, webhooks, bots).
-		if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) && crewMoveInProgress(filepath.Base(filepath.Dir(filepath.FromSlash(candidate)))) {
-			return productConversationBinding{}, errCrewBeingMoved
-		}
 		if strings.TrimSpace(manifest.Title) == "" || strings.TrimSpace(manifest.SessionID) == "" {
 			return productConversationBinding{}, fmt.Errorf("project %q has an incomplete product manifest", resourceProjectID)
 		}

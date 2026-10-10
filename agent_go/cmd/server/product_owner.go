@@ -530,3 +530,28 @@ func listRealDirs(root *os.Root) ([]string, error) {
 	sort.Strings(names)
 	return names, nil
 }
+
+// dirNames lists the real directories directly below docs/rel (symlinks are not followed or listed).
+func dirNames(docs *os.Root, rel string) []string {
+	info, err := docs.Lstat(rel)
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+	handle, err := docs.Open(rel)
+	if err != nil {
+		return nil
+	}
+	defer handle.Close()
+	names, err := handle.Readdirnames(-1)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, name := range names {
+		if info, err := docs.Lstat(rel + "/" + name); err == nil && info.IsDir() && !strings.HasPrefix(name, ".") {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}

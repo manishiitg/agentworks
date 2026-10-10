@@ -4,7 +4,7 @@
 
 Status: **superseded by PLAT-442 step 4** (built 2026-10-04, not yet run on a server). Where this document differs, the ticket
 wins: the owner is the server's registry (PLAT-449), not `product.json`; old paths resolve through the registry's alias list, not `_system/crew-path-aliases.json`; stored
-references are not rewritten; the move is an explicit, backed-up, journaled command (`agentworks server migrate-crews-to-shared-root`), not a startup migration; the CLI runtime
+references are not rewritten; the move was an explicit, backed-up, journaled one-shot command, since removed (PLAT-836); the CLI runtime
 folder and browser profile key are kept by recording the old path, not by copying native session files. Original design, 2026-09-26, kept below.
 
 ## Problem

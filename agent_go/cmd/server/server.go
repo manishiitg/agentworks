@@ -1752,7 +1752,6 @@ func init() {
 	ServerCmd.AddCommand(migrateSecretSelectionsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)
 	ServerCmd.AddCommand(migrateDurableChatsCmd)
-	ServerCmd.AddCommand(migrateCrewsToSharedRootCmd)
 	ServerCmd.AddCommand(dedupeChatHistoryCmd)
 }
 
