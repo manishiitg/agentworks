@@ -62,3 +62,16 @@ Run-folder association remains an execution diagnostic. Its absence cannot
 erase a DB reading or classify a measured goal as unmeasured. A source capture
 time is not the time a recovery step re-recorded an old reading. Code `ok`
 means no mechanical alarm, not an agent verdict that the goal is on track.
+
+### Pulse-enabled workflows only
+
+Automatic measurement upgrades apply only when this workflow's Pulse is enabled.
+The backend exposes `measurement_upgrade` only for enabled workflows. On the next
+Pulse check, Builder and Pulse review the indicated gaps, migrate the necessary
+ordinary producing steps within existing autonomy, preserve history and verify
+new DB readings. Reuse any pending migration conversation/work; do not start
+duplicate repair runs. Disabled workflows keep their steps and metric definitions
+untouched. Enabling Pulse later makes this check eligible then; a prior disabled
+state is not a completed measurement migration. This is a targeted measurement
+migration, not a global workflow-version bump or a reason to block normal runs.
+A valid unavailable outcome needs source recovery, not a format rewrite.

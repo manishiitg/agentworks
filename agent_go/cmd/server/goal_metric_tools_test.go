@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,10 @@ import (
 func TestGoalMeasurementDBHistoryAndPulseFacts(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	host := httptest.NewServer(workspace)
+	defer host.Close()
+	t.Setenv("WORKSPACE_API_URL", host.URL)
 	ws := "Workflow/measurement"
 	dir := filepath.Join(root, ws, "db")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -83,6 +88,30 @@ func TestGoalMeasurementDBHistoryAndPulseFacts(t *testing.T) {
 		}
 		return v
 	}
+	setPulse := func(enabled bool) {
+		raw, err := json.Marshal(map[string]interface{}{"id": "measurement", "label": "Measurement", "pulse": map[string]interface{}{"enabled": enabled}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ws, "workflow.json"), raw, 0644); err != nil {
+			t.Fatal(err)
+		}
+		workspace.mu.Lock()
+		workspace.files[ws+"/workflow.json"] = string(raw)
+		workspace.mu.Unlock()
+		manifest, found, err := ReadWorkflowManifest(context.Background(), ws)
+		if err != nil || !found || manifest.PulseEnabled() != enabled {
+			t.Fatalf("manifest toggle: found=%v err=%v manifest=%+v", found, err, manifest)
+		}
+	}
+	setPulse(false)
+	if viewAt("2026-09-10T01:00:00Z").MeasurementUpgrade != nil {
+		t.Fatal("disabled Pulse requested a measurement migration")
+	}
+	setPulse(true)
+	if upgrade := viewAt("2026-09-10T01:00:00Z").MeasurementUpgrade; upgrade == nil || !upgrade.Required {
+		t.Fatal("enabling Pulse failed to detect the old period format")
+	}
 	first := reading("source-batch-1", "2026-09-11T00:00:00Z", "2026-09-10T00:00:00Z", "2026-09-11T00:00:00Z", 0)
 	if err = record(first); err != nil {
 		t.Fatal(err)
@@ -105,6 +134,14 @@ func TestGoalMeasurementDBHistoryAndPulseFacts(t *testing.T) {
 	if v.Facts.Status == goalcheck.StatusNotMeasured || fact.State != "measured" || fact.Change == nil || *fact.Change != 4 || fact.Previous.Value == nil || *fact.Previous.Value != 0 || len(fact.History) != 3 || v.Facts.LastRunMeasuredAt != "" {
 		t.Fatalf("DB comparison depended on a folder or lost zero/history: %+v", v)
 	}
+	if v.MeasurementUpgrade == nil || v.MeasurementUpgrade.Required {
+		t.Fatal("verified current period kept requesting migration", v.MeasurementUpgrade)
+	}
+	setPulse(false)
+	if viewAt("2026-09-12T01:00:00Z").MeasurementUpgrade != nil {
+		t.Fatal("disabled workflow kept migration work")
+	}
+	setPulse(true)
 	second["window_start"] = "2026-09-10T00:00:00Z"
 	if record(second) == nil {
 		t.Fatal("accepted conflicting historical period")

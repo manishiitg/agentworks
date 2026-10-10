@@ -778,6 +778,8 @@ export interface PulseGoalStatus {
   }
   /** The workflow has a goal, so its Pulse conversation owns QA and architecture (PLAT-697): no separate review panels. */
   goal_lead?: boolean
+  /** Only enabled Pulse workflows receive this targeted migration check. */
+  measurement_upgrade?: { required: boolean; reasons: string[] }
   latest_check?: {
     checked_at: string
     status: 'on_track' | 'at_risk' | 'off_track' | 'not_measured'

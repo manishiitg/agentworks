@@ -104,12 +104,56 @@ func nextGoalCheckDue(check *PulseGoalCheck) time.Time {
 
 // GoalStatusView is the goal status shown first to the agent and the owner.
 type GoalStatusView struct {
-	Facts       goalcheck.Facts `json:"facts"`
-	LatestCheck *PulseGoalCheck `json:"latest_check,omitempty"`
-	Note        string          `json:"note"`
+	Facts              goalcheck.Facts         `json:"facts"`
+	LatestCheck        *PulseGoalCheck         `json:"latest_check,omitempty"`
+	Note               string                  `json:"note"`
+	MeasurementUpgrade *goalMeasurementUpgrade `json:"measurement_upgrade,omitempty"`
 	// GoalLead: the workflow's Pulse conversation owns QA and architecture
 	// (set for the Pulse tab only).
 	GoalLead bool `json:"goal_lead,omitempty"`
+}
+
+// This is a targeted workflow migration, not a mandatory version upgrade for
+// workflows that do not use Pulse. No files or business data are changed here.
+type goalMeasurementUpgrade struct {
+	Required bool     `json:"required"`
+	Reasons  []string `json:"reasons"`
+}
+
+func pulseMeasurementUpgrade(manifest *WorkflowManifest, metrics []stepworkflow.GoalMetric, facts goalcheck.Facts) *goalMeasurementUpgrade {
+	if manifest == nil || !manifest.PulseEnabled() {
+		return nil
+	}
+	u := &goalMeasurementUpgrade{Reasons: []string{}}
+	if !facts.HasGoal {
+		u.Reasons = append(u.Reasons, "Agree meaningful primary metrics and their recording steps with Builder.")
+	}
+	for i, m := range metrics {
+		if m.CriterionID == "" || m.Unit == "" || m.Definition == "" || m.Source == "" || m.Window == "" || m.CollectionFrequency == "" || m.FreshnessHours <= 0 {
+			u.Reasons = append(u.Reasons, m.ID+": complete the measurement definition with Builder; changed meaning requires a new ID.")
+		}
+		if i >= len(facts.Measurements) {
+			continue
+		}
+		f := facts.Measurements[i]
+		if f.Latest == nil {
+			u.Reasons = append(u.Reasons, m.ID+": verify that an ordinary producing step records source-backed DB observations.")
+			continue
+		}
+		// A valid unavailable outcome needs source recovery, not a format rewrite.
+		if !goalcheck.Numeric(*f.Latest) {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(m.Window)) {
+		case "instant", "snapshot", "point_in_time":
+			continue
+		}
+		if f.Latest.WindowStart == "" || f.Latest.WindowEnd == "" {
+			u.Reasons = append(u.Reasons, m.ID+": update the existing period-producing step to record actual window_start/window_end for future readings; preserve old unknown periods.")
+		}
+	}
+	u.Required = len(u.Reasons) > 0
+	return u
 }
 
 func ensurePulseGoalCheckSchema(ctx context.Context, db *sql.DB) error {
@@ -269,6 +313,7 @@ func computeGoalStatus(ctx context.Context, workspacePath string, now time.Time)
 		in.ReportedPauseFingerprint = latest.PauseFingerprint
 	}
 	view := &GoalStatusView{Facts: goalcheck.Evaluate(in), LatestCheck: latest}
+	view.MeasurementUpgrade = pulseMeasurementUpgrade(manifest, ledger.Metrics, view.Facts)
 	view.Note = "DB measurement facts: each active metric's source-backed history, current value, configured freshness and comparable numerical difference. Run recording coverage is separate and may lack attribution. Builder and Pulse agree measurement meaning and verify sources; Pulse judges progress and asks Builder to improve gaps. A numerical difference alone is not causal evidence or an on-track verdict. latest_check is the previous agent verdict."
 	return view, nil
 }
@@ -463,7 +508,7 @@ Code-computed goal facts (the silence alarm; already current, do not recompute t
 Pulse context: goal memory (memory/goal.md), pending decisions to recommend on, answered decisions whose outcome is still to record, focus areas, QA results that came back, and run health (failed runs, steps' CONCERNS: lines, open issues since your last check):
 %s
 
-1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Use source-backed DB history and each metric's freshness independently of execution-folder attribution. Work with Builder to choose and verify meaningful measurements; unavailable or incompatible baselines remain unknown, and a numeric difference alone does not prove progress. Decide: is the goal measured, is it moving, is the work that drives it running?
+1. Read the goal memory above first: what the owner already answered, decisions and outcomes, lessons, open bets. soul/soul.md wins on any conflict; never re-ask what memory already answers. Then read soul/soul.md's objective and get_goal_metrics once. Use source-backed DB history and each metric's freshness independently of execution-folder attribution. When measurement_upgrade.required is true, work with Builder on that targeted measurement migration within your permission levels: review existing definitions and ordinary producer steps, update only the necessary recording fields, preserve history and verify the new DB readings. Reuse pending migration work/asks instead of starting duplicates; missing baseline history is not permission to rerun business actions or invent old periods. This upgrade applies only while workflow Pulse is enabled; do not migrate disabled workflows or advance their general workflow contract version for it. Work with Builder to choose and verify meaningful measurements; unavailable or incompatible baselines remain unknown, and a numeric difference alone does not prove progress. Decide: is the goal measured, is it moving, is the work that drives it running?
 2. Every check, on track or not: for each pending decision in decisions_to_recommend with no current recommendation (or new evidence since), call record_pulse_recommendation once: the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the permission levels below. You never answer a decision; the owner accepts or changes your recommendation. For each item in outcomes_due, call record_pulse_decision_outcome with what happened after. Add a new dated result, lesson or open bet with record_pulse_goal_memory (one line, source marked); consolidate the memory when its note says so. For each active focus area in focus_areas, call record_pulse_focus_area(action="track") with moving, stuck (and the one clear ask) or done; close a done or expired one with action="close" and a one-line lesson (for an expired one, say why and propose extend, change or drop). Read run_health: no separate Technical review runs after this workflow's runs, so you are its safety net. For a failed run or step that blocks or threatens the goal, diagnose it and ask the Builder chat (ask_builder) to debug and fix it with your evidence; note the other failures and concerns in one line in your summary. If the goal has no metric yet, get one set up through the Builder chat first. Then read plan_changes, owner_answers, spend, error_rate, login_hints and builder_asks and act on each as its note says: ask the Builder chat (ask_builder) about a plan change that touches a goal-driving step or the metric and record the answer in goal memory (source builder_answer).
 3. On track (measured recently, moving or holding as expected, goal work running, no alarm): call record_pulse_goal_check(status="on_track", key_number, summary, next_check_in_hours, next_check_reason) and stop. No notification.
 4. Otherwise act within the permission levels below, smallest useful step first. You run and change nothing yourself: ask the Builder chat (ask_builder) to run the goal-driving step or route, or to make the change. At an auto level it does so without the owner; at ask, prepare it as a decision. Then, if something important needs the owner, ask the Builder chat to raise ONE decision for the owner that names the problem in one line, with the options; it tells you the decision id, and you attach your recommendation with record_pulse_recommendation (with a safe default by a time only when one is safe). Ask it to reuse a pending goal-check decision instead of raising another. Never guess the owner's preference: say you do not know it.

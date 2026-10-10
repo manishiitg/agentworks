@@ -33,8 +33,11 @@ comparisons; agents judge relevance, source quality and goal progress. Execution
 folder names never gate measurement validity. Existing immutable definitions and
 observation history remain the contract, with optional actual period boundaries;
 incompatible periods and unavailable baselines produce no numeric change.
-History and retired definitions are preserved. Run attribution remains a separate
-fact. See `goalcheck/measurements.go`, `goal_metrics.go` and the shared
+History and retired definitions are preserved. Automatic targeted measurement
+migration applies only while workflow Pulse is enabled; disabled workflows owe
+no migration, and enabling later checks their actual format. No general workflow
+version bump blocks ordinary execution. Run attribution remains a separate fact.
+See `goalcheck/measurements.go`, `goal_metrics.go` and the shared
 `measurement-plan` guidance. [PLAT-813](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/metrics/plat-813.md).
 
 ### 2026-10-10 — The navigation shortcut hint expires after eight seconds
