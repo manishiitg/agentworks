@@ -211,17 +211,24 @@ func (api *StreamingAPI) codeLocalFilePolicyKey(claims *UserClaims, target *code
 
 func (device *localDeviceConnection) authorized(ctx context.Context) bool {
 	t := device.claims.AccessToken
-	if t == nil || !t.Allows("devices:connect") || !t.ExpiresAt.After(time.Now()) {
+	if t == nil || !t.Allows("devices:connect") {
+		return false
+	}
+	// The socket authenticated once, with an access token that lasts an hour, and the CLI never renews it on a live socket.
+	// An OAuth connection therefore lives as long as its grant does (sign-out, revocation or a lost role closes it at the next
+	// check, within 25 s); cutting it at the access token's expiry dropped every Local connection once an hour (PLAT-826).
+	oauth := strings.HasPrefix(t.ID, "oauth-")
+	if !oauth && !t.ExpiresAt.After(time.Now()) {
 		return false
 	}
 	var current accesstokens.Token
-	if strings.HasPrefix(t.ID, "oauth-") {
+	if oauth {
 		store, err := openMCPOAuthStore()
 		if err != nil {
 			return false
 		}
 		defer store.Close()
-		grant, err := store.ActiveFamily(ctx, strings.TrimPrefix(t.ID, "oauth-"))
+		grant, err := store.LiveFamily(ctx, strings.TrimPrefix(t.ID, "oauth-"))
 		if err != nil {
 			return false
 		}

@@ -388,3 +388,35 @@ func localWorkspaceTestSession(api *StreamingAPI, claims *UserClaims, target *co
 	api.lastQueryRequests["local-code"] = QueryRequest{userID: claims.UserID, AgentProfileID: "code", CodeChatMode: "local", CodeLocalFiles: target}
 	return "local-code"
 }
+
+// An OAuth device connection lives as long as its grant, not as long as the hour-long access token it connected with: the CLI never
+// renews that token on a live socket, and cutting it at expiry dropped every Local connection once an hour (PLAT-826). Sign-out still ends it.
+func TestLocalDeviceOAuthConnectionOutlivesItsAccessTokenButNotSignOut(t *testing.T) {
+	tokenTestSetup(t)
+	store, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	owner := GetDefaultUserID()
+	insert := func(hash, kind string, expires time.Time) {
+		t.Helper()
+		if _, err := store.db.Exec(`INSERT INTO tokens (hash,kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			hash, kind, "fam1", cliOAuthClientID, "res", `["devices:connect"]`, owner, "owner", "owner@example.com", "local", expires.Unix(), `[]`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("expired-access", "access", time.Now().Add(-time.Minute))
+	insert("live-refresh", "refresh", time.Now().Add(24*time.Hour))
+	token := accesstokens.Token{ID: "oauth-fam1", UserID: owner, Scopes: []string{"devices:connect"}, ExpiresAt: time.Now().Add(-time.Minute)}
+	device := &localDeviceConnection{owner: owner, claims: &UserClaims{UserID: owner, AccessToken: &token}}
+	if !device.authorized(context.Background()) {
+		t.Fatal("a connection whose access token expired but whose grant is still signed in must stay authorized")
+	}
+	if _, err := store.db.Exec(`UPDATE tokens SET revoked_at=? WHERE family_id='fam1'`, time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if device.authorized(context.Background()) {
+		t.Fatal("signing the grant out must end the connection")
+	}
+}

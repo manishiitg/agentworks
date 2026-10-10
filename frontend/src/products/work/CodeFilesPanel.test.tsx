@@ -101,9 +101,13 @@ it('disconnects only this session in Settings without a server runtime mutation'
 it('preserves offline selections without rendering server files or silently widening chat', async () => {
   writeCodeFilesPreference(session, { location: 'computer', target })
   transport.get.mockResolvedValue({ data: { devices: [] } })
+  vi.useFakeTimers()
   const { host } = await render()
   expect(host.textContent).toContain('Offline')
-  // Every time this opens in Local mode with the CLI not running, the user is asked.
+  // A short gap (the CLI renewing its sign-in) does not ask; a folder that stays missing does.
+  expect(document.body.textContent).not.toContain('Your computer is not connected')
+  await act(async () => { await vi.advanceTimersByTimeAsync(21_000) })
+  vi.useRealTimers()
   expect(document.body.textContent).toContain('Your computer is not connected')
   expect(document.body.textContent).toContain('agentworks start')
   expect(host.textContent).toContain('agentworks start --server')

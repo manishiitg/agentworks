@@ -371,6 +371,13 @@ func (s *mcpOAuthStore) ActiveFamily(ctx context.Context, family string) (mcpOAu
 	return scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE family_id=? AND kind='access' AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
 }
 
+// LiveFamily is the grant of a family that is still signed in: not revoked, with an access or refresh token that has not expired.
+// ActiveFamily needs an unexpired access token; a connection that outlives its access token (a CLI device socket, which never
+// renews it) asks this instead, so only a sign-out, a revoked grant or an expired refresh token ends it.
+func (s *mcpOAuthStore) LiveFamily(ctx context.Context, family string) (mcpOAuthGrant, error) {
+	return scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE family_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
+}
+
 func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource string) (mcpOAuthGrant, string, string, error) {
 	var grant mcpOAuthGrant
 	if !(strings.HasPrefix(raw, mcpOAuthRefreshPrefix) || strings.HasPrefix(raw, cliOAuthRefreshPrefix)) {

@@ -76,6 +76,9 @@ function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: 
   </details>
 }
 
+// A reconnect after the hourly sign-in renewal takes about 10 s; the offline question waits twice that.
+const OFFLINE_PROMPT_DELAY_MS = 20_000
+
 /** The connection belongs to this Code session's files, not its runtime. */
 export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId: string; workspaceName?: string }) {
   const preference = useCodeFilesPreference(sessionId)
@@ -105,6 +108,15 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   // instead of saying "not connected" while the computer is connected.
   const connectedFolders = devices.flatMap(device => device.resources.map(folder => ({ device_id: device.device_id, resource_id: folder.id })))
   const otherFolder = local && !!selected && checked && !resource && !error && connectedFolders.length === 1 ? connectedFolders[0] : undefined
+  // The CLI drops its connection for a few seconds when it renews its sign-in (about every hour): that is not "not connected". Ask
+  // only once the folder has stayed missing for longer than a reconnect takes (PLAT-826).
+  const folderMissing = local && !!selected && checked && !resource && !error
+  const [missingLong, setMissingLong] = useState(false)
+  useEffect(() => {
+    if (!folderMissing) { setMissingLong(false); return }
+    const timer = window.setTimeout(() => setMissingLong(true), OFFLINE_PROMPT_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [folderMissing])
   const savePreference = (pref: Parameters<typeof writeCodeFilesPreference>[1]) => {
     if (busy) return
     try { writeCodeFilesPreference(sessionId, pref); setSettingError(null) }
@@ -116,7 +128,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
   }
   // Every time this opens in Local mode and the CLI is not running, ask: files are on the computer, so work cannot continue until it is.
   const offlinePrompt = <ConfirmationDialog
-    isOpen={!!sessionId && local && !!selected && checked && !resource && !error && !offlineDismissed}
+    isOpen={!!sessionId && (missingLong || (folderMissing && !!otherFolder)) && !offlineDismissed}
     onClose={() => setOfflineDismissed(true)}
     onConfirm={() => { if (otherFolder) savePreference({ location: 'computer', target: otherFolder }); else refresh() }}
     title={otherFolder ? 'A different folder is connected' : 'Your computer is not connected'}
