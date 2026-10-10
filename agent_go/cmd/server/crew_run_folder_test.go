@@ -7,14 +7,18 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-// PLAT-756: a Run-mode Crew turn (a Slack channel, a guest function call) may write its run folder and nothing else of
-// the Crew, so an owner's function that saves evidence works for every caller while the Crew stays unchanged.
-func TestCrewRunModeWritesOnlyItsRunFolder(t *testing.T) {
+// PLAT-756, PLAT-812: a Run-mode Crew turn (a Slack channel, a guest function call) may write the Crew's output folder
+// and nothing else of the Crew, so an owner's function that saves evidence works for every caller while the Crew stays
+// unchanged. The owner's turns name the same folder.
+func TestCrewRunModeWritesOnlyTheOutputFolder(t *testing.T) {
 	const sid = "product-6cc15a4e"
 	t.Cleanup(func() { common.ClearSessionShellConfig(sid) })
-	folder := crewRunFolder("Crew/c-1/", sid)
-	if folder != "Crew/c-1/runs/product-6cc15a4e/" || crewRunFolder("Crew/c-1", "../../etc") != "Crew/c-1/runs/etc/" {
-		t.Fatalf("run folder = %q", folder)
+	folder := crewOutputFolder("Crew/c-1/")
+	if folder != "Crew/c-1/outputs/" || crewOutputFolder("Crew/c-1") != folder || crewOutputFolder("") != "" {
+		t.Fatalf("output folder = %q", folder)
+	}
+	if env := crewOutputFolderEnv(folder); env[crewOutputDirEnv] == "" || env[crewOutputDirEnv] != env[crewRunDirEnv] {
+		t.Fatalf("output folder env = %v", env)
 	}
 
 	common.SetSessionCrewReader(sid, true)
@@ -31,7 +35,7 @@ func TestCrewRunModeWritesOnlyItsRunFolder(t *testing.T) {
 		}
 	}
 
-	if notice := crewSessionModeNotice("Crew/c-1", folder, true); !strings.Contains(notice, "Run mode") || !strings.Contains(notice, folder) || !strings.Contains(notice, crewRunDirEnv) {
+	if notice := crewSessionModeNotice("Crew/c-1", folder, true); !strings.Contains(notice, "Run mode") || !strings.Contains(notice, folder) || !strings.Contains(notice, crewOutputDirEnv) {
 		t.Fatalf("notice does not name the run folder: %s", notice)
 	}
 }

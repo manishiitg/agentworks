@@ -149,7 +149,7 @@ func TestCrewFunctionRunModeIsRecordedAndKeptOutOfTheDelivery(t *testing.T) {
 		for path, content := range env.mock.files {
 			if strings.Contains(path, "/triggers/deliveries/") && strings.Contains(content, pinned.ID) {
 				delivered = true
-				if strings.Contains(content, "run_mode") {
+				if strings.Contains(content, "run_mode") || strings.Contains(content, "run_as_owner") {
 					env.mock.mu.Unlock()
 					t.Fatalf("the delivery carries the run-mode flag: %s", content)
 				}

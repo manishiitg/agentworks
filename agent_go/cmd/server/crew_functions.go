@@ -780,6 +780,8 @@ func crewRunModeFromContext(ctx context.Context) bool {
 func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, deliveryID, event string, body map[string]interface{}) (internalTriggerDeliveryResult, error) {
 	runMode, _ := body["run_mode"].(bool)
 	delete(body, "run_mode")
+	runAsOwner, _ := body["run_as_owner"].(bool)
+	delete(body, "run_as_owner")
 	data, err := json.Marshal(body)
 	if err != nil {
 		return internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
@@ -790,7 +792,7 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
-			CallerPath: caller.Path, PinRunMode: runMode,
+			CallerPath: caller.Path, PinRunMode: runMode, RunAsOwner: runAsOwner,
 		})
 	case triggerCallerWorkflow:
 		delivery, err = api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
@@ -835,6 +837,7 @@ Arguments (validated against the function's input schema):
 %[6]s
 
 Report progress at meaningful milestones with report_function_progress(call_id=%[1]q, message=..., percent=...), so the caller can follow along without interrupting you.
+A single shell call can be cut off after about a minute. Start anything that may take longer in the background (nohup, its output to a file in the output folder, then poll that file with short calls) instead of waiting on it in one call, so the call finishes the first time.
 When you are done you MUST call return_function_result(call_id=%[1]q, result=<%[7]s>). If you cannot do it, call return_function_result(call_id=%[1]q, error="<why>"). The caller receives exactly that result, not your chat reply.`,
 		call.ID, call.CallerKind, call.CallerLabel, fn.Name, instructions, string(encodedArgs), resultShape)
 }
@@ -956,6 +959,10 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	if call.RunMode {
 		body["run_mode"] = true // read, and removed, by dispatchTargetTrigger
+	} else if !call.FreeText {
+		// A function is the owner's code: it runs with the owner's authority for every caller, so it behaves the same
+		// whoever calls it (PLAT-812). Only the free-text ask stays a Run-mode turn.
+		body["run_as_owner"] = true // read, and removed, by dispatchTargetTrigger
 	}
 	crewFunctionCalls.Lock()
 	if submissionID != "" {

@@ -639,6 +639,7 @@ func isAllowedShellExtraEnvKey(key string) bool {
 		// A Run-mode Crew turn's run folder, the one place it may write (PLAT-756). Dropped here, a Crew's scripts never
 		// learned where to save their output and the agent had to find the folder from its notice each time.
 		key == "CREW_RUN_DIR" ||
+		key == "CREW_OUTPUT_DIR" ||
 		// Brain's chat runs git in Brain's folder (PLAT-633): the token its credential helper reads, and the person as
 		// the commit author.
 		strings.HasPrefix(key, "BRAIN_GIT_") ||

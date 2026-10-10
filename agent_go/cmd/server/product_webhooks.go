@@ -507,6 +507,8 @@ type productWebhookMatch struct {
 	GuestCallerID string
 	// PinRunMode: the call asked for Run mode (the owner testing as another caller); never widens anything.
 	PinRunMode bool
+	// RunAsOwner: the turn is not a guest's, although another person called (a typed function; PLAT-812).
+	RunAsOwner bool
 	// SharedProjectOwner comes from the source and target ownership records.
 	SharedProjectOwner bool
 	ProjectCallerPath  string
@@ -701,7 +703,7 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
 	}
 	message = triggerTurnMessage(match.Trigger.Message, sourceNote, relativePayloadPath)
-	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, PinRunMode: match.PinRunMode, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
+	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, PinRunMode: match.PinRunMode, RunAsOwner: match.RunAsOwner, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
 	// Workflow, Crew and Code calls all compare project ownership. The
 	// executing person's guest capabilities remain independent of routing.
 	if projectCallConversation(match) {
@@ -777,6 +779,7 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 	// namespace but as their guest, so it cannot change the Crew for them.
 	match.GuestCallerID = crewGuestCaller(call.UserID, matchUserID)
 	match.PinRunMode = call.PinRunMode
+	match.RunAsOwner = call.RunAsOwner && !call.PinRunMode
 	if projectCallConversation(match) {
 		match.ProjectCallerPath = call.CallerPath
 		source := s.projectCallerOwners(ctx, call.UserID, triggerLinkCaller{Stamp: call.Caller, Path: call.CallerPath})

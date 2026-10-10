@@ -43,8 +43,8 @@ func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
 		if abs := cliPolicyPath(runFolder); abs != "" {
 			where += " (absolute path `" + abs + "`)"
 		}
-		output = "Save everything a run produces (evidence, recordings, reports, results, scratch files) in this conversation's run folder " + where + ", " +
-			"also in the environment variable " + crewRunDirEnv + ". It exists already and is the only place you can write; when a script writes elsewhere, point it there with an argument or environment variable rather than editing it. " +
+		output = "Save everything a run produces (evidence, recordings, reports, results, scratch files) in the Crew's output folder " + where + ", " +
+			"also in the environment variable " + crewOutputDirEnv + ". It exists already and is the only place you can write; when a script writes elsewhere, point it there with an argument or environment variable rather than editing it. " +
 			"Change nothing else: not the Crew's files, code, memory, skills, functions, database, schedules, triggers, selections, identity, folders or bots; those tools are not available, so do not work around that. "
 	}
 	return sessionModeOpen + "\nYou are in Run mode on " + who + " Crew: you run what its owner built and cannot change the Crew. " +
@@ -121,7 +121,7 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 		return ""
 	}
 	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
-		runFolder := crewRunFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder), sessionID)
+		runFolder := crewOutputFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
 		return crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
 	}
 	return ""
@@ -244,7 +244,7 @@ func readOnlyRefusalHint(ctx context.Context) string {
 	}
 	where := ""
 	if cfg.RunOutputPath != "" {
-		where = " Outputs belong in the run folder `" + cfg.RunOutputPath + "`."
+		where = " Outputs belong in the output folder `" + cfg.RunOutputPath + "`."
 	}
 	return ". This session is in Run mode, which cannot change the Crew or workflow, so this change is not possible: do not work around it." + where + " Offer the change to the owner with `" + tool + "` (the user's request in their words)"
 }

@@ -226,6 +226,20 @@ advanced settings. Why: equal browser-choice cards and Idle hid the next step
 from users unfamiliar with browser automation.
 Ticket: [PLAT-759](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/browser/experience/plat-759.md).
 
+### 2026-10-10 — One Crew output folder; typed functions run with the owner's authority (PLAT-812)
+- A Crew has one output folder, `<crew>/outputs/`, for every turn: the owner's and everyone else's. `CREW_OUTPUT_DIR`
+  names it (`CREW_RUN_DIR` stays as the older name). It replaces the per-conversation run folder of PLAT-756, so a
+  function saves its output in the same place whoever calls it and results are found in one place. Run mode may write
+  only there; the rest of the Crew stays unwritable.
+- A function is the owner's code, so a typed function call runs with the owner's authority for any caller (read and
+  write, no per-function marker): what an owner builds and shares behaves the same for everyone. The caller still has
+  their own conversation and supplies only validated arguments. The built-in free-text `ask` and every chat (Slack,
+  WhatsApp, the app) stay Run mode. `run_mode: true` on an MCP call still pins a call to Run mode.
+- Every function call's task tells the agent that one shell call can be cut off after about a minute and to run
+  longer work in the background and poll it, so a call finishes the first time.
+- Why: found testing a shared Crew as a guest; a function that needs to write could not be shared.
+Ticket: PLAT-812.
+
 ### 2026-10-09 — Crew Run mode saves outputs in a run folder (PLAT-756)
 - Run mode is not read-only. It runs what the Crew's owner built (functions, scripts, attached workflow triggers) and
   cannot change the Crew. It now matches workflows, whose Run chat cannot author but whose runs write `runs/<run>/`.

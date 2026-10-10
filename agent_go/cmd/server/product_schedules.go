@@ -91,6 +91,7 @@ type productScheduleUserState struct {
 type productScheduleJob struct {
 	UserID            string
 	GuestCallerID     string // a non-owner's call: the turn runs as their guest
+	RunAsOwner        bool   // a typed function: the turn keeps the owner's authority although another person called
 	PinRunMode        bool   // the call asked for Run mode (an owner testing as another caller)
 	Profile           agentprofiles.Profile
 	Schedule          productschedule.Schedule
@@ -1288,7 +1289,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			break
 		}
 		reqMap["triggered_by"] = firstNonEmptyTrimmed(triggerSource, "cron")
-		applyCrewGuestCaller(reqMap, job.GuestCallerID)
+		if !job.RunAsOwner {
+			applyCrewGuestCaller(reqMap, job.GuestCallerID)
+		}
 		if job.PinRunMode {
 			// An owner's call in Run mode works as that owner's own guest: the same restrictions and the same tools to answer
 			// the call as a real guest's turn (PLAT-756).

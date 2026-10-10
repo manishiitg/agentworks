@@ -2,42 +2,32 @@ package server
 
 import "strings"
 
-// crewRunDirEnv names a Run-mode Crew turn's run folder in its shell.
-const crewRunDirEnv = "CREW_RUN_DIR"
+// crewOutputDirEnv names a Crew's output folder in a turn's shell: the same variable and the same folder for the owner
+// and for everyone running the Crew. crewRunDirEnv is its earlier name, kept so scripts written for it keep working.
+const (
+	crewOutputDirEnv = "CREW_OUTPUT_DIR"
+	crewRunDirEnv    = "CREW_RUN_DIR"
+)
 
-// crewRunFolder is the run folder of a Run-mode Crew conversation: <crew>/runs/<conversation>/, the one place the turn
-// may write (PLAT-756). Run mode runs what the Crew's owner built and saves what that produces here, as a workflow run
-// writes its runs/<run>/ folder; it never changes the Crew itself. A Slack thread or a caller's function conversation is
-// one conversation, so follow-up turns find what earlier turns made. "" when there is no Crew or no session.
-func crewRunFolder(crewRoot, sessionID string) string {
+// crewOutputFolder is a Crew's output folder, <crew>/outputs/ (PLAT-812): where a function or script saves what it
+// produces (evidence, recordings, reports, results). It is the one place a Run-mode turn may write, so an owner's
+// function behaves the same for every caller and the owner finds the results in one place. "" when there is no Crew.
+func crewOutputFolder(crewRoot string) string {
 	root := strings.Trim(strings.TrimSpace(crewRoot), "/")
-	var id strings.Builder
-	for _, r := range strings.TrimSpace(sessionID) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
-			id.WriteRune(r)
-		default:
-			id.WriteRune('_')
-		}
-	}
-	name := strings.Trim(id.String(), "_")
-	if root == "" || name == "" {
+	if root == "" {
 		return ""
 	}
-	if len(name) > 96 {
-		name = name[:96]
-	}
-	return root + "/runs/" + name + "/"
+	return root + "/outputs/"
 }
 
-// crewRunFolderEnv is the shell environment naming a run folder, empty when the turn has none.
-func crewRunFolderEnv(runFolder string) map[string]string {
-	if runFolder == "" {
+// crewOutputFolderEnv is the shell environment naming the output folder, empty when the turn has none.
+func crewOutputFolderEnv(folder string) map[string]string {
+	if folder == "" {
 		return nil
 	}
-	path := cliPolicyPath(runFolder)
+	path := cliPolicyPath(folder)
 	if path == "" {
-		path = runFolder
+		path = folder
 	}
-	return map[string]string{crewRunDirEnv: path}
+	return map[string]string{crewOutputDirEnv: path, crewRunDirEnv: path}
 }

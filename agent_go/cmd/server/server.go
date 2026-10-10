@@ -6369,17 +6369,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					guardReadOnly := profileReadOnly
 					guardWrite := []string{profileWrite}
 					guardBlocked := []string(nil)
-					crewRunOutput := ""
+					crewRunOutput, ownerOutput := "", ""
 					if crewReadOnlyTurn {
 						guardWriteRoot = ""
 						guardReadOnly = append([]string{profileWrite}, profileReadOnly...)
 						guardWrite = nil
-						// Run mode runs what the owner built and saves what it produces in this conversation's run
-						// folder, made here; the rest of the Crew stays unwritable (PLAT-756). The project root is then
+						// Run mode runs what the owner built and saves what it produces in the Crew's output folder,
+						// made here; the rest of the Crew stays unwritable (PLAT-756, PLAT-812). The project root is then
 						// not a blocked-write root: blocked writes win in every layer and would close the folder.
-						if folder := crewRunFolder(profileRoot, sessionID); folder != "" {
+						if folder := crewOutputFolder(profileRoot); folder != "" {
 							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
-								log.Printf("[AGENT PROFILE FOLDER GUARD] Run folder %s not created: %v", folder, err)
+								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
 							} else {
 								crewRunOutput = folder
 								guardWrite = []string{folder}
@@ -6388,9 +6388,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						if crewRunOutput == "" {
 							guardBlocked = append(guardBlocked, profileWrite)
 						}
+					} else if isCrewProjectPath(profileRoot) {
+						// The owner's turn names the same folder, so a function saves its output in one place for everyone.
+						if folder := crewOutputFolder(profileRoot); folder != "" {
+							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
+								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
+							} else {
+								ownerOutput = folder
+							}
+						}
 					}
 					common.SetSessionRunOutputPath(sessionID, crewRunOutput)
-					common.ReplaceSessionShellEnvPrefix(sessionID, crewRunDirEnv, crewRunFolderEnv(crewRunOutput))
+					common.ReplaceSessionShellEnvPrefix(sessionID, crewOutputDirEnv, crewOutputFolderEnv(firstNonEmptyString(crewRunOutput, ownerOutput)))
+					common.ReplaceSessionShellEnvPrefix(sessionID, crewRunDirEnv, crewOutputFolderEnv(firstNonEmptyString(crewRunOutput, ownerOutput)))
 					// Brain's chat: a person who owns the whole Brain also works in Brain's folder with a shell and git,
 					// like any product's folder (PLAT-633); everyone else stays in their own Brain chat folder.
 					brainGrant := ""

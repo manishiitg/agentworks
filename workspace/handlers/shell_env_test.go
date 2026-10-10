@@ -22,6 +22,7 @@ func TestIsAllowedShellExtraEnvKey(t *testing.T) {
 		"WORKFLOW_DB_ACCESS",
 		// PLAT-756: where a Run-mode Crew turn saves its output.
 		"CREW_RUN_DIR",
+		"CREW_OUTPUT_DIR",
 	}
 	for _, key := range allowed {
 		if !isAllowedShellExtraEnvKey(key) {

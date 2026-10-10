@@ -198,6 +198,9 @@ type internalCrewTriggerCall struct {
 	CallerLabel string
 	// PinRunMode runs the turn in Run mode even for the Crew's owner (a downgrade only; PLAT-756).
 	PinRunMode bool
+	// RunAsOwner runs the turn with the Crew owner's authority although another person called: a typed function is the
+	// owner's code (PLAT-812). The caller still gets their own conversation; PinRunMode wins over it.
+	RunAsOwner bool
 }
 
 // internalWorkflowTriggerCall invokes a workflow trigger from a Crew run.
