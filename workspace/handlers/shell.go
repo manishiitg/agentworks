@@ -151,6 +151,13 @@ func ExecuteShellCommand(c *gin.Context) {
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
+	// A caller that goes away (a stopped step, a cancelled tool call) takes its command with it. The command used to run
+	// on a context of its own, so it outlived the request that started it until its timeout (PLAT-805). Cancelling here
+	// ends it the way a timeout does: for a slot, SIGTERM to sudo, passed on to slotctl, which signals the whole group.
+	if c.Request != nil {
+		stopWatching := context.AfterFunc(c.Request.Context(), cancel)
+		defer stopWatching()
+	}
 
 	// Read-only scripted steps cannot safely open the live db.sqlite through a
 	// sandbox that denies creation of its WAL/SHM sidecars. Materialize a
