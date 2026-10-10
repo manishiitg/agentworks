@@ -330,7 +330,9 @@ func crewGuestCallerForTurn(req QueryRequest, currentUserID string) string {
 	if !isCrewProjectPath(folder) || !crewProjectOwnedByCaller(currentUserID, folder) {
 		return ""
 	}
-	if sanitizeUserIDForPath(guest) == sanitizeUserIDForPath(currentUserID) {
+	// The owner naming themselves is no guest, unless the turn was explicitly pinned to Run mode: an owner testing a call as
+	// another caller would see it (run_mode, PLAT-756) must get the same function tools a real guest's turn gets.
+	if sanitizeUserIDForPath(guest) == sanitizeUserIDForPath(currentUserID) && !req.PinRunMode {
 		return ""
 	}
 	return guest

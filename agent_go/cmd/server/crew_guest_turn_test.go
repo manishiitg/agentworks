@@ -43,6 +43,12 @@ func TestCrewGuestCallerForTurnOnlyNarrowsTheOwnersTurn(t *testing.T) {
 	if got := crewGuestCallerForTurn(self, "alice"); got != "" {
 		t.Fatalf("naming the owner is not a guest: %q", got)
 	}
+	// An owner's call in Run mode (run_mode) is their own guest: the turn must get a guest's tools to answer the call.
+	pinned := self
+	pinned.PinRunMode = true
+	if got := crewGuestCallerForTurn(pinned, "alice"); got != "alice" {
+		t.Fatalf("an owner's pinned run-mode turn is not treated as a guest: %q", got)
+	}
 	workflow := QueryRequest{SelectedFolder: "Workflow/x", CrewGuestCaller: "bob"}
 	if got := crewGuestCallerForTurn(workflow, "alice"); got != "" {
 		t.Fatalf("non-Crew turn = %q", got)

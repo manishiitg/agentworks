@@ -1290,6 +1290,11 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		reqMap["triggered_by"] = firstNonEmptyTrimmed(triggerSource, "cron")
 		applyCrewGuestCaller(reqMap, job.GuestCallerID)
 		if job.PinRunMode {
+			// An owner's call in Run mode works as that owner's own guest: the same restrictions and the same tools to answer
+			// the call as a real guest's turn (PLAT-756).
+			if job.GuestCallerID == "" {
+				applyCrewGuestCaller(reqMap, job.UserID)
+			}
 			reqMap["pin_run_mode"] = true
 		}
 		reqMap["triggered_by_label"] = automationTriggerLabel(firstNonEmptyTrimmed(triggerSource, "cron"), job.Schedule.Name)
