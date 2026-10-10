@@ -248,3 +248,25 @@ func TestExternalCrewCostsAreOwnerOnly(t *testing.T) {
 		t.Fatalf("a Crew outside the token's bound must be not-found, got %d", code)
 	}
 }
+
+// An account without the Crew product lists no Crews, whatever its token says (PLAT-820): a Code-only member
+// listed every Crew with its owner's email and "write" access, while asking any of them was refused.
+func TestExternalCrewListIsEmptyWithoutTheCrewProduct(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"owner","username":"owner","admin":true,"can_create":true,"products":[]},
+		{"id":"codeonly","username":"codeonly","products":["code"]}
+	]}`)
+	token := &accesstokens.Token{Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}
+
+	code, out := externalCrewRequest(t, env, &UserClaims{UserID: "codeonly", Username: "codeonly", AccessToken: token}, "list_crews", map[string]any{})
+	if crews, _ := out["crews"].([]any); code != 200 || len(crews) != 0 {
+		t.Fatalf("a Code-only account must list no Crews, got %d %v", code, out)
+	}
+	_, out = externalCrewRequest(t, env, &UserClaims{UserID: "owner", Username: "owner", AccessToken: token}, "list_crews", map[string]any{})
+	if crews, _ := out["crews"].([]any); len(crews) == 0 {
+		t.Fatalf("an account with the Crew product must still list Crews: %v", out)
+	}
+}

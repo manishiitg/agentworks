@@ -80,6 +80,14 @@ func isExternalCrewTool(name string) bool { return externalCrewTools[name] }
 
 // externalCrewsVisible lists the Crews this connection may use.
 func (api *StreamingAPI) externalCrewsVisible(ctx context.Context, claims *UserClaims, query string) ([]map[string]interface{}, error) {
+	// An account without the Crew product sees no Crews: names, owners' emails and access levels are not for it
+	// (a Code-only member listed all of them; PLAT-820).
+	if api == nil || api.agentProfiles == nil {
+		return nil, nil
+	}
+	if profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID); err != nil || !userAllowedProduct(claims, profile.Product) {
+		return []map[string]interface{}{}, nil
+	}
 	crews, err := listAccessibleCrewProjects(ctx, claims.UserID, strings.ToLower(strings.TrimSpace(query)))
 	if err != nil {
 		return nil, err
