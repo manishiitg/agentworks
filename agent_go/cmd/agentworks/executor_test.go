@@ -396,3 +396,20 @@ func TestStartSaysWhenTheServerHasANewerCLI(t *testing.T) {
 		})
 	}
 }
+
+// A computer holds one live connection, so a share of another folder on the same device id is named before a second start tries and
+// times out (PLAT-834); the same folder, and shares of another device, are not in the way.
+func TestOtherSharesOnDeviceNamesWhatIsInTheWay(t *testing.T) {
+	running := map[string]shareState{
+		"same":   {Device: "laptop", Alias: "same", Folder: "/work/same", PID: 10},
+		"older":  {Device: "laptop", Alias: "older", Folder: "/work/older", PID: 11},
+		"remote": {Device: "other-laptop", Alias: "x", Folder: "/work/x", PID: 12},
+	}
+	got := otherSharesOnDevice(running, "same", "laptop")
+	if len(got) != 1 || !strings.Contains(got[0], "/work/older") || !strings.Contains(got[0], "process 11") {
+		t.Fatalf("expected only the older share on this device, got %q", got)
+	}
+	if len(otherSharesOnDevice(running, "new", "brand-new-device")) != 0 {
+		t.Fatal("a share on another device must not be reported")
+	}
+}

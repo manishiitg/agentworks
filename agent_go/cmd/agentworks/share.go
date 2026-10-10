@@ -118,6 +118,19 @@ func readShareState(path string) (shareState, bool) {
 	return st, true
 }
 
+// otherSharesOnDevice describes the running shares, other than the one with this key, that use the same device id: the server keeps one
+// connection per device, so any of them would make a new share here fail to connect.
+func otherSharesOnDevice(running map[string]shareState, key, device string) []string {
+	var lines []string
+	for otherKey, other := range running {
+		if otherKey != key && other.Device == device {
+			lines = append(lines, fmt.Sprintf("  %s  (%s/%s, process %d)", other.Folder, other.Device, other.Alias, other.PID))
+		}
+	}
+	sort.Strings(lines)
+	return lines
+}
+
 // runningShares lists the shares whose process is alive; stale files are removed.
 func runningShares(dir string) map[string]shareState {
 	found := map[string]shareState{}
@@ -240,6 +253,11 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	if st, ok := runningShares(dir)[key]; ok {
 		fmt.Fprintf(o.stderr, "%s is already shared as %s/%s (process %d). Use `agentworks stop` to end it.\n", folder, st.Device, st.Alias, st.PID)
 		return nil
+	}
+	// A computer holds one live connection (its device id), so another folder that is still shared would refuse this one and `start`
+	// would only time out. Say so first and ask the person to stop it themselves (PLAT-834).
+	if others := otherSharesOnDevice(runningShares(dir), key, device); len(others) > 0 {
+		return fmt.Errorf("another folder on this computer is already being shared, and a computer shares one folder at a time:\n%s\nStop it first: run `agentworks stop` in that folder (or `agentworks stop --all`), then run `agentworks start` here again", strings.Join(others, "\n"))
 	}
 
 	in := bufio.NewReader(o.stdin)
