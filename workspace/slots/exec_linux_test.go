@@ -206,3 +206,43 @@ func TestRunExecStopSignalReachesTheWholeProcessGroup(t *testing.T) {
 	}
 	t.Fatalf("the program's child %d is still running after the stop", pid)
 }
+
+// PLAT-805: a program that leaves on SIGTERM can leave behind a child that ignores it (a script with a SIGTERM trap,
+// and the Chrome it started). The grace-period SIGKILL used to be a timer inside this process, which exits as soon as
+// the program does, so such a child ran on for hours (RTS, 2026-10-10). After a stop the whole group must be gone
+// by the time RunExec returns.
+func TestRunExecStopKillsAChildThatIgnoresTheSignal(t *testing.T) {
+	cfg, root := testConfig(t)
+	marker := filepath.Join(root, "stubborn.pid")
+	// The inner shell ignores SIGTERM and execs sleep, which keeps ignoring it; the outer shell dies on SIGTERM.
+	body := `{"argv":["/bin/sh","-c","/bin/sh -c 'trap \"\" TERM; echo $$ > ` + marker + `; exec sleep 3609' & wait"],"cwd":"` + root + `","env":["PATH=/usr/bin:/bin"]}`
+	done := make(chan int, 1)
+	go func() {
+		code, _, _ := runWith(t, cfg, body)
+		done <- code
+	}()
+	var childPID string
+	for i := 0; i < 50 && childPID == ""; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if data, err := os.ReadFile(marker); err == nil {
+			childPID = strings.TrimSpace(string(data))
+		}
+	}
+	if childPID == "" {
+		t.Fatal("the program did not start its child")
+	}
+	pid, _ := strconv.Atoi(childPID)
+	defer func() { _ = syscall.Kill(pid, syscall.SIGKILL) }()
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil { // handled by RunExec's signal forwarding
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(StopGrace + 6*time.Second):
+		t.Fatal("the program did not stop after the signal")
+	}
+	// RunExec has returned: nothing of the group may be left, with no further grace.
+	if syscall.Kill(pid, 0) == nil {
+		t.Fatalf("the child %d that ignores SIGTERM is still running after RunExec returned", pid)
+	}
+}

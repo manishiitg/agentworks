@@ -13,6 +13,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -184,8 +185,10 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 	}
 	signals := make(chan os.Signal, 4)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	var stopped atomic.Bool
 	go func() {
 		for sig := range signals {
+			stopped.Store(true)
 			pgid := cmd.Process.Pid
 			if sysSig, ok := sig.(syscall.Signal); ok {
 				_ = syscall.Kill(-pgid, sysSig)
@@ -198,6 +201,13 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 	waitErr := cmd.Wait()
 	signal.Stop(signals)
 	close(signals)
+	// The SIGKILL timer above lives in this process, which exits as soon as the program does. After a stop, a child that
+	// ignores SIGTERM (a script with a trap, and the Chrome it started) would then run on for hours: wait out the grace
+	// period here and kill what is left of the group before returning (PLAT-805). A program that was not stopped may
+	// leave background jobs behind on purpose, so a normal exit leaves the group alone.
+	if stopped.Load() {
+		endProcessGroup(cmd.Process.Pid)
+	}
 	if waitErr == nil {
 		return 0
 	}
@@ -210,4 +220,18 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 	}
 	fmt.Fprintf(stderr, "slotctl: %v\n", waitErr)
 	return 125
+}
+
+// endProcessGroup waits up to StopGrace for every member of the process group to leave, then kills the rest.
+func endProcessGroup(pgid int) {
+	gone := func() bool { return syscall.Kill(-pgid, 0) != nil } // ESRCH: no member left
+	for deadline := time.Now().Add(StopGrace); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if gone() {
+			return
+		}
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	for i := 0; i < 40 && !gone(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
 }
