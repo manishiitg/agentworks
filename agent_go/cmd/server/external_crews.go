@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -198,7 +200,8 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		// The caller must still be able to use that Crew now, not only when
 		// the call was made.
-		if _, _, _, ok := api.externalCrewResolve(ctx, claims, targetID); !ok {
+		callCrew, _, _, ok := api.externalCrewResolve(ctx, claims, targetID)
+		if !ok {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
@@ -206,7 +209,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			replyFunctionCallInput(w, call, str("request_id"), str("response"))
 			return
 		}
-		externalJSON(w, externalCrewCallResponse(ctx, call, externalCrewWait(args)))
+		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
+		api.addCrewCallCommands(ctx, callCrew.OwnedByCaller, call, out)
+		externalJSON(w, out)
 		return
 	}
 	if name == "list_crews" {
@@ -285,7 +290,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 400, "call_refused", err.Error())
 			return
 		}
-		externalJSON(w, externalCrewCallResponse(ctx, call, externalCrewWait(args)))
+		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
+		api.addCrewCallCommands(ctx, crew.OwnedByCaller, call, out)
+		externalJSON(w, out)
 	case "list_crew_function_calls":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(manifest.ID, claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
 	case "list_crew_functions":
@@ -400,4 +407,71 @@ func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []m
 		out = append(out, r.entry)
 	}
 	return out
+}
+
+const crewCallCommandsLimit = 40
+
+// addCrewCallCommands adds the commands the Crew's agent ran for a call to its reply, for the Crew's owner only: what the
+// agent says it did can then be checked. Callers who are not the owner never get it. Secret shapes are masked the way the
+// terminal view masks them, each command is cut to a few hundred characters, and only the latest ones are kept.
+func (api *StreamingAPI) addCrewCallCommands(ctx context.Context, owner bool, call *crewFunctionCall, out map[string]interface{}) {
+	if !owner || api == nil || call == nil {
+		return
+	}
+	call.mu.Lock()
+	sessionID, runID, caller, target, triggerID, userID := call.TargetChatSession, call.RunID, call.caller, call.target, call.TriggerID, call.UserID
+	call.mu.Unlock()
+	if sessionID == "" {
+		if runID == "" {
+			return
+		}
+		state, err := api.readTriggerTargetRun(ctx, userID, caller, target, triggerID, runID)
+		if err != nil {
+			return
+		}
+		sessionID = crewTargetRunSessionID(state)
+	}
+	if commands := api.crewSessionCommands(sessionID); len(commands) > 0 {
+		out["commands_run"] = commands
+	}
+}
+
+// crewSessionCommands lists the tools a session started, newest last: the shell command for a shell tool, only the name for
+// any other tool. It reads the session's recorded events, which are bounded, so a long session shows its latest part.
+func (api *StreamingAPI) crewSessionCommands(sessionID string) []map[string]interface{} {
+	if api == nil || api.eventStore == nil || strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	commands := []map[string]interface{}{}
+	for _, event := range api.eventStore.GetEvents(sessionID, storeGetEventsAll()).Events {
+		if event.Data == nil || !strings.Contains(strings.ToLower(string(event.Data.Type)), "tool_call_start") {
+			continue
+		}
+		fields := map[string]interface{}{}
+		if encoded, err := json.Marshal(event.Data.Data); err != nil || json.Unmarshal(encoded, &fields) != nil {
+			continue
+		}
+		tool, _ := fields["tool_name"].(string)
+		if tool == "" {
+			continue
+		}
+		entry := map[string]interface{}{"tool": tool, "at": event.Timestamp}
+		if params, _ := fields["tool_params"].(map[string]interface{}); params != nil {
+			var arguments struct {
+				Command string `json:"command"`
+			}
+			if raw, _ := params["arguments"].(string); raw != "" && json.Unmarshal([]byte(raw), &arguments) == nil && strings.TrimSpace(arguments.Command) != "" {
+				command := terminals.RedactSensitiveTerminalText(strings.TrimSpace(arguments.Command))
+				if runes := []rune(command); len(runes) > 400 {
+					command = string(runes[:400]) + "…"
+				}
+				entry["command"] = command
+			}
+		}
+		commands = append(commands, entry)
+	}
+	if len(commands) > crewCallCommandsLimit {
+		commands = commands[len(commands)-crewCallCommandsLimit:]
+	}
+	return commands
 }

@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
@@ -130,5 +133,32 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 	calls, _ = out["calls"].([]any)
 	if code != 200 || len(calls) != 1 || calls[0].(map[string]any)["call_id"] != "fn-list-someone" || calls[0].(map[string]any)["result"] == nil {
 		t.Fatalf("another user sees only their own call, in full: %d %v", code, out)
+	}
+}
+
+// Only the Crew's owner gets the commands the Crew's agent ran for a call, with secret shapes masked (PLAT-837).
+func TestOnlyTheOwnerSeesTheCommandsACallRan(t *testing.T) {
+	store := storeevents.NewEventStore(50)
+	store.AddEvent("sess-cmd", terminalRouteToolStartEvent("sess-cmd", "exec", "t1", "execute_shell_command", `{"command":"ls -la && echo API_KEY=supersecretvalue123"}`, nil))
+	store.AddEvent("sess-cmd", terminalRouteToolStartEvent("sess-cmd", "exec", "t2", "read_file", `{"path":"notes.md"}`, nil))
+	api := &StreamingAPI{eventStore: store}
+	call := &crewFunctionCall{ID: "fn-cmd", TargetChatSession: "sess-cmd"}
+
+	notOwner := map[string]interface{}{}
+	api.addCrewCallCommands(context.Background(), false, call, notOwner)
+	if _, leaked := notOwner["commands_run"]; leaked {
+		t.Fatalf("a caller who is not the owner must not see the commands: %v", notOwner)
+	}
+	owner := map[string]interface{}{}
+	api.addCrewCallCommands(context.Background(), true, call, owner)
+	commands, _ := owner["commands_run"].([]map[string]interface{})
+	if len(commands) != 2 || !strings.Contains(commands[0]["command"].(string), "ls -la") {
+		t.Fatalf("the owner sees the shell command and the other tool: %v", owner)
+	}
+	if strings.Contains(commands[0]["command"].(string), "supersecretvalue123") {
+		t.Fatalf("a secret in a command must be masked: %v", commands[0])
+	}
+	if _, hasCommand := commands[1]["command"]; hasCommand || commands[1]["tool"] != "read_file" {
+		t.Fatalf("another tool lists only its name: %v", commands[1])
 	}
 }
