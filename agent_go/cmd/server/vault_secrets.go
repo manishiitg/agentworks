@@ -17,10 +17,12 @@ import (
 )
 
 // vaultConfigured is false on servers without Vault (CAPLAYER_SERVICE_URL
-// unset). They behave as before Vault existed: every shared secret is usable
+// unset). Enabled installations behave as before Vault existed: every shared secret is usable
 // by every user, and nothing is registered or revoked anywhere. A URL that is set
 // but unusable stays fail-closed.
-func vaultConfigured() bool { return strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" }
+func vaultConfigured() bool {
+	return productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != ""
+}
 
 // The host holds encrypted values. Vault owns metadata and live group grants.
 // There is no fallback from a failed permission lookup to server-wide access.
@@ -110,6 +112,11 @@ func startVaultSecretRegistration() {
 	}()
 }
 func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretEntry, error) {
+	// Turning off a product must never turn off its authorization and thereby
+	// expose formerly group-scoped values as legacy unrestricted globals.
+	if !productEnabled("mcp-gateway") {
+		return []globalSecretEntry{}, nil
+	}
 	all := getGlobalSecrets()
 	if len(all) == 0 {
 		return []globalSecretEntry{}, nil

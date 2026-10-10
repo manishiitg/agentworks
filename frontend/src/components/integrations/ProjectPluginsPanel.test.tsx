@@ -10,7 +10,7 @@ vi.mock('../../services/api', () => ({ default: { get } }))
 vi.mock('./OpenVaultButton', () => ({ OpenVaultButton: () => null }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let cleanup = () => {}
-afterEach(() => { cleanup(); window.localStorage?.clear(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); window.localStorage?.clear(); vi.clearAllMocks(); vi.unstubAllEnvs() })
 const inventory = {
   groups: [{ id: 'eng', name: 'Engineering', description: 'Product team', servers: [{ id: 'n', label: 'Notion · Engineering', provider: 'notion', tools: [] }], secrets: [{ name: 'TEAM_KEY' }] }],
   servers: [{ id: 'n', label: 'Notion · Engineering', provider: 'notion', tools: [] }], secrets: [{ name: 'TEAM_KEY' }],
@@ -30,6 +30,13 @@ it('puts Connected MCPs, Available MCPs, Secrets, Skills and Vault in one row', 
   expect(host.textContent).not.toContain('connected content')
   await act(async () => { host.querySelector<HTMLButtonElement>('[title=Vault]')!.click() })
   expect(host.textContent).toContain('My groups')
+})
+it('rejects a saved Vault selection in the local integrations panel', async () => {
+  vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
+  const host = await mount(<ProjectPluginsPanel initialTab="vault" connections={view => <p>{view} content</p>} secrets={<p>Project secrets</p>} skills={<p>Project skills</p>} vault={<p>My groups</p>} />)
+  expect([...host.querySelectorAll('[role=tab]')].map(tab => tab.textContent)).toEqual(['Connected MCPs', 'Available MCPs', 'Secrets', 'Skills'])
+  expect(host.textContent).toContain('connected content')
+  expect(host.textContent).not.toContain('My groups')
 })
 it('uses the authenticated inventory, shows groups and selects exact resource references', async () => {
   get.mockResolvedValue({ data: inventory })

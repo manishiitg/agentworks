@@ -195,9 +195,9 @@ when the Dashboard must show the latest state of an outside system (the
 workflow's MCP servers or an API behind its secrets) rather than what the last
 run stored. Anyone who can open the workflow — owner or read-only — can
 trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
-variables (`$VAR_*`); the authenticated viewer's live MCP/Vault permissions
+variables (`$VAR_*`); the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions
 still govern access. Viewing a workspace does not grant credentials.
-The same runner supports Workflow/Goals, Relays, Crew and owner-only Code
+The same runner supports Workflow/Goals, <!-- product:relays -->Relays, <!-- /product -->Crew and owner-only Code
 project roots. Published static copies cannot run scripts.
 
 The script contract:

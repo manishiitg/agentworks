@@ -9,7 +9,7 @@ external operations use the authorized `workspace` returned by discovery.
 
 1. `list_dashboards` lists accessible documents, project roots and live URLs.
    Omit workspace for cross-project discovery; use limit/offset for pagination.
-   Goals, Relays and Crews use current project access. Code is owner-only.
+   Goals, <!-- product:relays -->Relays and <!-- /product -->Crews use current project access. Code is owner-only.
 2. `get_dashboard` returns source and revision. Existing HTML documents can be
    read using their returned document_path; adopt them by creating a new managed
    bundle from that source. Existing files are preserved.

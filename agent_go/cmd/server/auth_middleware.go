@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"net/http"
 	"os"
@@ -235,7 +236,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if !ok {
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
+			next.ServeHTTP(w, r.WithContext(productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))))
 			return
 		}
 		if strings.HasPrefix(tokenString, mcpOAuthAccessPrefix) {
@@ -243,7 +244,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if !ok {
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
+			next.ServeHTTP(w, r.WithContext(productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))))
 			return
 		}
 		if strings.HasPrefix(tokenString, accesstokens.Prefix) {
@@ -251,7 +252,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if !ok {
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
+			next.ServeHTTP(w, r.WithContext(productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))))
 			return
 		}
 		claims := &UserClaims{}
@@ -311,7 +312,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Token is valid, add claims to context
-		ctx := context.WithValue(r.Context(), UserContextKey, claims)
+		ctx := productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

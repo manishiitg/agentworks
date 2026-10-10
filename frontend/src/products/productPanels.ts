@@ -14,7 +14,7 @@ import {
 import type { WorkWorkspaceView } from './work/WorkWorkspacePane'
 import type { KnowledgebaseView } from './knowledgebase/KnowledgebaseWorkspacePane'
 import { PROJECT_INTEGRATION_SECTIONS } from '../components/integrations/integrationSections'
-import { PROJECT_PLUGIN_TABS } from '../components/integrations/ProjectPluginsPanel'
+import { projectPluginTabs } from '../components/integrations/ProjectPluginsPanel'
 
 export { WORKSPACE_VIEWS as WORKFLOW_PANELS } from '../components/workflow/workspaceViews'
 
@@ -69,10 +69,10 @@ export interface PanelSection { id: string; label: string; keywords?: string }
 /** Integrations (workflows, Relays, Crew and Code). The MCP sub-tabs live under "Tools & secrets". */
 export const INTEGRATION_SECTIONS: PanelSection[] = [
   ...PROJECT_INTEGRATION_SECTIONS.map(section => ({ id: section.value, label: section.label, keywords: section.description })),
-  ...PROJECT_PLUGIN_TABS.map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
+  ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]
 /** Integrations sections a Relay offers (its panel shows only these). */
-export const RELAY_INTEGRATION_SECTION_IDS = new Set(['apps', 'gmail', ...PROJECT_PLUGIN_TABS.map(tab => tab.value)])
+export const RELAY_INTEGRATION_SECTION_IDS = new Set(['apps', 'gmail', ...projectPluginTabs().map(tab => tab.value)])
 
 export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },

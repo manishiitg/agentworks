@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"io"
 	"net/http"
 	"sort"
@@ -41,9 +42,9 @@ const (
 // all (ChatGPT delivers tools only).
 const externalMCPRelayInstructions = " Relays: discover IDs with list_workflows and kind=relay. When authorized, use builder action=chat to edit, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Relays have Builder-only chat. Creation requires separate relays:write consent."
 
-const externalMCPInstructions = `You are connected to an AgentWorks server. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Tools read, and run-mode tools execute in pinned Run-mode sessions; source and documentation edits require files:write consent and revision checks; plans and workflow configuration require separately granted Builder tools. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With explicit dashboards:read/dashboards:write consent, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with list_crews. <!-- /product --><!-- product:code -->Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). <!-- /product --> Tools read, and run-mode tools execute in pinned Run-mode sessions; source and documentation edits require files:write consent and revision checks; plans and workflow configuration require separately granted Builder tools. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With explicit dashboards:read/dashboards:write consent, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog.`
 
-const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Answer from what you read; if the task needs a change, say so instead of attempting one.`
+const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with list_crews. <!-- /product --><!-- product:code -->Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). <!-- /product --> Every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one.`
 
 // Appended when the connection holds crews:write: the one authoring surface
 // available to separately authorized Crew connections.
@@ -155,6 +156,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			break
 		}
 	}
+	instructions = (productpolicy.Selection{}).Text(instructions)
 	index, fingerprint := externalMCPToolIndex(externalListedTools(claims, allowed))
 	mcpServer := server.NewMCPServer("AgentWorks", "1.0.0",
 		server.WithToolCapabilities(false),

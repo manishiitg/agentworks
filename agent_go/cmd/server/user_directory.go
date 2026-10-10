@@ -1185,7 +1185,7 @@ func knownProductIDs() []string {
 func registeredProductIDs() []string {
 	var out []string
 	// Relay shares the workflow runtime, but is a selectable product surface.
-	if productEnabled("agentworks") || productEnabled("relays") {
+	if productEnabled("relays") {
 		out = append(out, "relays")
 	}
 	if os.Getenv("CAPLAYER_SERVICE_URL") != "" && productEnabled("mcp-gateway") {

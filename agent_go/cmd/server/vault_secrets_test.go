@@ -74,6 +74,46 @@ func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
 	}
 }
 
+func TestDisabledVaultCannotExposeStoredGlobals(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("CAPLAYER_SERVICE_URL", "http://127.0.0.1:1")
+	managedGlobalsMu.Lock()
+	oldGlobals, oldManaged := globalSecrets, managedGlobals
+	globalSecrets = []globalSecretEntry{{Name: "SHARED", Value: "dummy"}}
+	managedGlobals = map[string]string{}
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() {
+		managedGlobalsMu.Lock()
+		globalSecrets, managedGlobals = oldGlobals, oldManaged
+		managedGlobalsMu.Unlock()
+	})
+	ctx := context.Background()
+	if rows, err := permittedGlobalSecrets(ctx, "default"); err != nil || len(rows) != 0 {
+		t.Fatalf("disabled Vault exposed shared names: %v %v", rows, err)
+	}
+	names := []string{"SHARED"}
+	api := &StreamingAPI{}
+	if rows := api.mergeGlobalSecretsFor(ctx, "default", nil, &names); len(rows) != 0 {
+		t.Fatal("disabled Vault injected stored values")
+	}
+	if err := validateVaultSecretSelection(ctx, "default", nil, &names); err == nil {
+		t.Fatal("stale selected Vault value authorized while disabled")
+	}
+	project := []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{{"SHARED", "project-dummy"}}
+	if err := validateVaultSecretSelection(ctx, "default", project, &names); err != nil {
+		t.Fatal("project copy stopped working", err)
+	}
+	if rows := api.mergeGlobalSecretsFor(ctx, "default", project, &names); len(rows) != 1 || rows[0].Value != "project-dummy" {
+		t.Fatal("project copy was replaced")
+	}
+}
+
 // Older runtime tests now model an explicit live group grant, rather than implicit global access.
 func withVaultSecretGrant(t *testing.T, userID string, names ...string) {
 	t.Helper()

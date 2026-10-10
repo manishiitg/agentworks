@@ -40,10 +40,6 @@
         "to": "workspace-server"
       },
       {
-        "from": "resources/vault-server",
-        "to": "vault-server"
-      },
-      {
         "from": "resources/lib",
         "to": "lib"
       },

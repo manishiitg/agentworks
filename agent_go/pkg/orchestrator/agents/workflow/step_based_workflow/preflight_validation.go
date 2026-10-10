@@ -10,6 +10,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
 // MissingDependency describes one workflow-required resource that isn't
@@ -140,8 +141,8 @@ func formatMissingDependencies(workflowID string, missing []MissingDependency, m
 	for _, m := range missing {
 		b.WriteString(fmt.Sprintf("  • %s %q (required by: %s)\n", m.Kind, m.Name, strings.Join(m.RequiredBy, ", ")))
 	}
-	b.WriteString("\nFix: open an interactive Workflow Builder with write access. Connect it in Integrations > Connections, or ask your administrator to assign a Vault group. Select the exact private or Vault connection name with update_workflow_config.\n")
-	b.WriteString("This check validates the run owner's permitted connections; it does not make a live upstream call. Retry after connecting or receiving Vault access; do not remove a required integration just to bypass this check.\n")
+	b.WriteString((productpolicy.Selection{}).Text("\nFix: open an interactive Workflow Builder with write access. Connect it in Integrations > Connections<!-- product:mcp-gateway -->, or ask your administrator to assign a Vault group<!-- /product -->. Select the exact connection name with update_workflow_config.\n"))
+	b.WriteString("This check validates the run owner's permitted connections; it does not make a live upstream call. Retry after receiving access; do not remove a required integration just to bypass this check.\n")
 	return b.String()
 }
 

@@ -22,6 +22,9 @@ import (
 // personVaultActive reports whether person may own and share vaults: an enabled account that can create things (not a
 // read-only one). It is not the platform Vault's administrator check.
 func personVaultActive(person string) bool {
+	if !productEnabled("mcp-gateway") {
+		return false
+	}
 	claims := &UserClaims{UserID: person}
 	access := userAccessForClaims(claims)
 	return person != "" && !access.Disabled && workflowAccessForClaims(claims) != WorkflowAccessRead

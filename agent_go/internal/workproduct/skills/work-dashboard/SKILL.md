@@ -69,10 +69,10 @@ presentation tools; check the active capabilities before offering an export.
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Supported in Goals/Workflow, Relays, Crew and Code project roots. Crew
+  - Supported in Goals/Workflow, <!-- product:relays -->Relays, <!-- /product -->Crew and Code project roots. Crew
     readers follow the existing project access rules; Code scripts are owner-only.
     Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
-    the authenticated viewer's live MCP/Vault permissions. Viewing a project does
+    the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions. Viewing a project does
     not grant access to its credentials. Published static copies cannot run scripts.
   - Args arrive as JSON in `$REPORT_ARGS` (`{}` when none). Treat them as
     untrusted and validate them.

@@ -83,7 +83,7 @@ describe('Workflow MCP panel layout', () => {
     expect(panel).toContain("const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'gmail')")
     expect(panel).toContain('const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS')
     expect(panel).toContain('tabs={section ===')
-    expect(panel).toContain('options: [...PROJECT_PLUGIN_TABS]')
+    expect(panel).toContain('options: projectPluginTabs()')
     expect(panel).toContain("ariaLabel: 'Integrations'")
     expect(panel).toContain('fixedChannel="slack"')
     expect(panel).toContain('fixedChannel="whatsapp"')
@@ -100,7 +100,7 @@ describe('Workflow MCP panel layout', () => {
 
     expect(chips).toContain('This route answers for another workflow')
     // One question per workflow; platform settings live with the admin panel.
-    expect(slack).toContain('Who answers for this')
+    expect(slack).toContain('Which bot answers')
     expect(slack).not.toContain('Save platform settings')
     expect(readFileSync('src/components/admin/SlackAdminPanel.tsx', 'utf8')).toContain('Shared bot enabled')
     const gmail = readFileSync('src/components/workflow/bots/GmailNotifications.tsx', 'utf8')

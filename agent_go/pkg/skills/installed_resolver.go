@@ -2,6 +2,7 @@ package skills
 
 import (
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"path"
 	"strings"
 	"unicode/utf8"
@@ -31,6 +32,9 @@ func NewInstalledSkillReader(workspaceAPIURL, workspacePath string) func(string,
 		name, err := ValidateSkillName(skillName)
 		if err != nil {
 			return InstalledSkillFile{}, err
+		}
+		if !(productpolicy.Selection{}).AllowsSkill(name) {
+			return InstalledSkillFile{}, fmt.Errorf("skill %s product is unavailable", name)
 		}
 		// The caller normalises the path, but this is a host boundary: re-check
 		// rather than trust that the only caller always will.

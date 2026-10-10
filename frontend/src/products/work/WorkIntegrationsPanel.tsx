@@ -8,7 +8,7 @@ import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel
 import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
 import { PROJECT_INTEGRATION_SECTIONS } from '../../components/integrations/integrationSections'
-import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
+import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
@@ -119,7 +119,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const [tabNonce, setTabNonce] = useState(0)
   const [integrationMenu, setIntegrationMenu] = useState(true)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
-  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
+  const pluginTabs = projectPluginTabs().filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
   // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets…).
   useWorkspaceViewTarget('mcp', target => {

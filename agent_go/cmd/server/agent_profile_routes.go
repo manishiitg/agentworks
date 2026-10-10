@@ -910,7 +910,7 @@ func listAgentProfilesHandler(registry *agentprofiles.Registry) http.HandlerFunc
 		visible := profiles[:0]
 		for _, profile := range profiles {
 			if userAllowedProduct(claims, profile.Product) && canUseCapLayerProfile(r.Context(), profile.ID) {
-				visible = append(visible, profileWithAvailableProviders(profile))
+				visible = append(visible, profileWithAvailableProviders(profile.ForProducts(builderProductSelection(claims))))
 			}
 		}
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{
@@ -963,7 +963,7 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return
 		}
-		writeAgentProfileJSON(w, http.StatusOK, profileWithAvailableProviders(profile))
+		writeAgentProfileJSON(w, http.StatusOK, profileWithAvailableProviders(profile.ForProducts(builderProductSelection(GetUserFromContext(r.Context())))))
 	}
 }
 

@@ -46,7 +46,7 @@ For each actionable finding:
      (`learnings/_global/references/<topic>.md`, correcting an existing topic in
      place) named in the step description's `## Guides`;
    - a business rule or decision goes to the knowledge layer (a local
-     `knowledgebase/` note, or Brain for shared facts) or to the description's
+     `knowledgebase/` note, <!-- product:knowledgebase -->or Brain for shared facts<!-- /product -->) or to the description's
      `## Rules` when it is that step's own constraint;
    - the evidence and history of the repair (dates, run ids, what failed) go to
      the change `reason`, never into the description or a guide.

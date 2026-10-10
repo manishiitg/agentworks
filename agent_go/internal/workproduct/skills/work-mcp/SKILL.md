@@ -1,6 +1,6 @@
 ---
 name: work-mcp
-description: Connect and manage this project's MCP connections and use automatically available Vault connections for {{product}} projects.
+description: Connect and manage this project's MCP connections for {{product}} projects.
 ---
 
 # {{product}} MCP
@@ -8,14 +8,15 @@ description: Connect and manage this project's MCP connections and use automatic
 Read this skill before acting on an MCP Connect request. Use the setup tools
 below; a new connection request does not require reading old conversations.
 
-Use `list_mcp_servers` to inspect this project's connections and the Vault
-servers their groups permit. Use `search_mcp_catalog` for connection templates.
+Use `list_mcp_servers` to inspect this project's connections. Use `search_mcp_catalog` for connection templates.
 
 - A new MCP connection belongs to the project it is added to: everyone with
   access to the project uses it, and no other project does. It acts as the
   connected account, so say whose login it is. Use `install_mcp_server` for a
   catalog server or a user-supplied remote MCP URL.
-- MCPs shared across projects belong in **Vault**. An administrator connects them there and
+- Use `update_project_mcp_server_selection` to select or deselect a private
+  connection for the active project.
+<!-- product:mcp-gateway -->- MCPs shared across projects belong in **Vault**. An administrator connects them there and
   assigns tools and resource conditions to groups. Connecting grants no access.
 - Use `update_project_mcp_server_selection` to select or deselect a
   private connection for the active project. Vault MCPs are available automatically
@@ -24,13 +25,13 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
   argument conditions and schema validation. Revoked permissions
   stop working on retained sessions too. Never suggest a direct upstream URL
   or another user's connection as a way around a denied call.
-- Use `trigger_mcp_discovery` to refresh an owned or permitted connection.
+<!-- /product -->- Use `trigger_mcp_discovery` to refresh an owned or permitted connection.
   Discover loaded tools with `search_tools(query="<provider or task>")`, then
   `get_api_spec(tool_name="<returned-name>")` for their argument schemas.
   Only use a runtime `server_name` returned by `search_tools` when filtering;
   public connection IDs and connection names are selection IDs.
 - Tools become available from the next user message. Confirm what was saved,
-  which connection belongs to this project or is shared through Vault, and any remaining sign-in step.
+  which connection was saved and any remaining sign-in step.
 - For a Connect request, inspect the current inventory first to avoid a duplicate.
   Install the requested catalog connection, return any real OAuth sign-in link,
   and select the connection for this project after sign-in. Refresh the inventory
@@ -58,7 +59,7 @@ To reconnect an existing account, omit label. Never replace another account or
 change its selection. Named connections do not share the legacy Google/provider
 group login. Code's `manage_my_mcp_servers` supports the same `catalog` and `label`
 arguments with `action="connect"`, and exact `name` for an existing connection.
-Select each returned connection separately for its project. Shared connections
-continue to be installed in Vault and governed through group grants.
-
+Select each returned private connection separately for its project.
+<!-- product:mcp-gateway -->
 Vault MCPs are available automatically through the executing user's current user/group permissions, independent of project MCP selections. Do not call select/deselect for Vault. Tool grants and regex rules are checked at the gateway on every call. Secrets still require explicit selection by name.
+<!-- /product -->

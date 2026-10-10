@@ -13,9 +13,51 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('product surface deployment configuration', () => {
+  it('excludes shared server products from local installations despite stale configuration', () => {
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
+      deploymentMode: 'local',
+      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
+      defaultProductSurface: 'mcp-gateway', gatewayUrl: 'http://127.0.0.1:18745', gatewaySso: true,
+    } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'code'])
+    expect(deploymentDefaultProductSurface()).toBe('agentworks')
+    expect(gatewayBaseUrl()).toBeNull()
+    expect(hasGatewaySSO()).toBe(false)
+    for (const product of ['relays', 'knowledgebase', 'mcp-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
+  })
+
+  it('uses local defaults and cannot opt into server products in a local build', () => {
+    vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['mcp-gateway', 'knowledgebase', 'relays'], gatewayUrl: 'http://127.0.0.1:18745' } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'code'])
+    expect(gatewayBaseUrl()).toBeNull()
+  })
+
+  it('enables server products for an explicit source-development opt-in', () => {
+    vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local-full')
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
+      deploymentMode: 'local', localServerProducts: true,
+      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
+      gatewayUrl: 'http://127.0.0.1:18745',
+    } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'])
+    expect(gatewayBaseUrl()).toBe('http://127.0.0.1:18745')
+  })
+
+  it('does not enable missing server assets in a packaged local build', () => {
+    vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
+      deploymentMode: 'local', localServerProducts: true,
+      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
+      gatewayUrl: 'http://127.0.0.1:18745',
+    } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'code'])
+    expect(gatewayBaseUrl()).toBeNull()
+  })
   it('ignores a retired product in saved deployment configuration', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
@@ -35,7 +77,7 @@ describe('product surface deployment configuration', () => {
     expect(hasGatewaySSO()).toBe(false)
   })
 
-  it('opts into Vault when a gateway URL is configured', () => {
+  it('exposes Vault when a shared gateway URL is configured', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18745' },
     })

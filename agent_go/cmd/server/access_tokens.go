@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"io"
 	"net/http"
 	"os"
@@ -347,7 +348,10 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
-	if c == nil {
+	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
+		return false
+	}
+	if isExternalCrewTool(tool.Name) && !productEnabled("work") || (isExternalCodeReviewTool(tool.Name) || isExternalCodeRunTool(tool.Name)) && !productEnabled("code") {
 		return false
 	}
 	if tool.actions != nil {

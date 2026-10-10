@@ -27,6 +27,9 @@ func brainSkillFolder(source string) (string, bool) {
 
 func brainSkillCall(ctx context.Context, args map[string]any) (map[string]any, error) {
 	claims := GetUserFromContext(ctx)
+	if !builderProductSelection(claims).Has("knowledgebase") {
+		return nil, fmt.Errorf("Brain is unavailable in this installation or to this account")
+	}
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 		return nil, fmt.Errorf("Brain skills need a signed-in caller")
 	}

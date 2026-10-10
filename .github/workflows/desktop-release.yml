@@ -73,6 +73,8 @@ jobs:
           npm test
 
       - name: Build Frontend Static Assets
+        env:
+          VITE_DEPLOYMENT_MODE: local
         run: |
           set -euo pipefail
           cd frontend
@@ -106,13 +108,6 @@ jobs:
           cd workspace
           go mod download
           GOOS=darwin GOARCH=arm64 go build -o ../desktop/resources/workspace-server .
-
-      - name: Build Vault Server (arm64)
-        run: |
-          set -euo pipefail
-          # Pure Go (modernc sqlite), so no cgo. Vault runs by default in the app.
-          cd mcp-gateway
-          GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o ../desktop/resources/vault-server ./cmd/server
 
       - name: Install Desktop Dependencies
         run: |
@@ -187,6 +182,8 @@ jobs:
           npm test
 
       - name: Build Frontend Static Assets
+        env:
+          VITE_DEPLOYMENT_MODE: local
         run: |
           set -euo pipefail
           cd frontend
@@ -220,13 +217,6 @@ jobs:
           cd workspace
           go mod download
           GOOS=darwin GOARCH=arm64 go build -o ../desktop/resources/workspace-server .
-
-      - name: Build Vault Server (arm64)
-        run: |
-          set -euo pipefail
-          # Pure Go (modernc sqlite), so no cgo. Vault runs by default in the app.
-          cd mcp-gateway
-          GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o ../desktop/resources/vault-server ./cmd/server
 
       - name: Install Desktop Dependencies
         run: |

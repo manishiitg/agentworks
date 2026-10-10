@@ -257,7 +257,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const user = useAuthStore(state => state.user)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
-  const navigationItems = useMemo(() => quickNavigationItems(user, productSurface, isMultiUserMode), [user, productSurface, isMultiUserMode])
+  const navigationItems = useMemo(() => quickNavigationItems(user, productSurface, isMultiUserMode), [user, productSurface, isMultiUserMode, isOpen])
   const footerItems = navigationItems.filter(item => item.type === 'menu' && item.action !== 'create')
   const codeAvailable = useMemo(
     () => isEnabledProductSurface('code') && intersectAllowedProductSurfaces(['code'], allowedProducts).includes('code'),

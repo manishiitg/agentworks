@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
+import { isLocalProductInstallation, visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
 
 /**
  * Navigation entry to "My vaults" (PLAT-507): any signed-in person can create vaults and share MCP connections and
@@ -16,7 +16,7 @@ export default function VaultsControl() {
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'vaults')
   const setAdminPage = useAppStore(state => state.setAdminPage)
-  if (!user || user.can_create === false) return null
+  if (isLocalProductInstallation() || !user || user.can_create === false) return null
   if (!visibleProductSurfaceIDs(user.allowed_products).includes('mcp-gateway')) return null
   return (
     <Tooltip>

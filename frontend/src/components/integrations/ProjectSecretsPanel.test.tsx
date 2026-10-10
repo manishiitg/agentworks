@@ -17,7 +17,7 @@ beforeEach(() => {
   api.getGlobalSecrets.mockResolvedValue([{ name: 'SAME_KEY', managed: true }])
   api.getVaultShareGroups.mockResolvedValue({ groups: [] })
 })
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 async function mount() {
   const local = vi.fn(), global = vi.fn()
   const host = document.createElement('div'); document.body.append(host)
@@ -51,4 +51,13 @@ it('shows Vault access even if the project secrets cannot load', async () => {
   expect(host.querySelector('section[aria-label="Workflow secrets"] [role="alert"]')?.textContent).toContain('Project secrets unavailable')
   expect(host.querySelector('section[aria-label="Vault secrets"]')?.textContent).toContain('SAME_KEY')
   expect(host.querySelector('section[aria-label="Vault secrets"] [role="alert"]')).toBeNull()
+})
+it('loads local project secrets without Vault lookups or sharing controls', async () => {
+  vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
+  const { host } = await mount()
+  expect(host.querySelector('section[aria-label="Workflow secrets"]')?.textContent).toContain('SAME_KEY')
+  expect(host.querySelector('section[aria-label="Vault secrets"]')).toBeNull()
+  expect(api.listWorkflowSecrets).toHaveBeenCalledOnce()
+  expect(api.getGlobalSecrets).not.toHaveBeenCalled()
+  expect(api.getVaultShareGroups).not.toHaveBeenCalled()
 })

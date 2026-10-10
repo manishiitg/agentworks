@@ -65,7 +65,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	// its description to read one, and stages must resolve installed skills the
 	// same way chat does or an agent behaves differently in a workflow.
 	if baseAgent != nil && baseAgent.Agent() != nil {
-		baseAgent.Agent().SetInstalledSkillResolver(installedWorkflowSkillResolver(hcpo.GetWorkspacePath()))
+		baseAgent.SetInstalledSkillResolver(installedWorkflowSkillResolver(hcpo.GetWorkspacePath()))
 	}
 	if len(effectiveSkills) > 0 {
 		if attached := skills.LoadAttachableIn(getWorkspaceAPIURL(), hcpo.GetWorkspacePath(), effectiveSkills); len(attached) > 0 {

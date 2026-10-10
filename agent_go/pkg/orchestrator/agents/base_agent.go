@@ -3,11 +3,13 @@ package agents
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	internalLLM "github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -107,18 +109,20 @@ type BaseAgent struct {
 	previousAgentOutput string
 
 	// Configuration
-	configPath   string
-	modelID      string
-	temperature  float64
-	toolChoice   string
-	maxTurns     int
-	provider     string
-	mcpSessionID string
-	definition   mcpagent.AgentDefinition
-	runtime      mcpagent.RuntimeConfig
-	lastHandle   *mcpagent.AgentSessionHandle
-	finalized    bool
-	session      *mcpagent.Session
+	configPath             string
+	modelID                string
+	temperature            float64
+	toolChoice             string
+	maxTurns               int
+	provider               string
+	mcpSessionID           string
+	productSelection       productpolicy.Selection
+	installedSkillResolver mcpagent.InstalledSkillResolver
+	definition             mcpagent.AgentDefinition
+	runtime                mcpagent.RuntimeConfig
+	lastHandle             *mcpagent.AgentSessionHandle
+	finalized              bool
+	session                *mcpagent.Session
 }
 
 // NewBaseAgent creates a new BaseAgent instance with comprehensive functionality
@@ -157,6 +161,9 @@ func NewBaseAgent(
 	cliSecurityPolicy *llmtypes.CLISecurityPolicy, // Server-resolved immutable CLI security policy
 	runtimeOverrides mcpclient.RuntimeOverrides, // Runtime config overrides for MCP servers (e.g., output directories)
 ) (*BaseAgent, error) {
+	if err := productpolicy.CleanupProjected(codingAgentWorkingDir); err != nil {
+		return nil, err
+	}
 	if common.ScopeAgentMCP != nil {
 		names, overrides, aliases, err := common.ScopeAgentMCP(ctx, mcpSessionID, serverNames, runtimeOverrides)
 		if err != nil {
@@ -240,6 +247,15 @@ func NewBaseAgent(
 	// Create the agent from one identity value. Runtime options remain on the
 	// compatibility path while sessions/events are migrated, but instructions,
 	// direct tools, and MCP sources are now fixed before construction.
+	selection := productpolicy.FromContext(ctx)
+	instructions = selection.Text(instructions)
+	admitted := make([]mcpagent.ToolDefinition, 0, len(directTools))
+	for _, tool := range directTools {
+		if projected, ok := projectProductTool(selection, tool); ok {
+			admitted = append(admitted, projected)
+		}
+	}
+	directTools = admitted
 	definition := mcpagent.AgentDefinition{
 		Instructions: instructions,
 		Tools: mcpagent.ToolSet{
@@ -264,6 +280,7 @@ func NewBaseAgent(
 			Offloading: enableContextOffloading, LargeOutputThreshold: largeOutputThreshold,
 		},
 		Coding: mcpagent.CodingRuntimeConfig{
+			BridgeToolAdmit:      selection.AllowsTool,
 			PersistentClaudeCode: codingAgentKeepAlive, PersistentCodex: codingAgentKeepAlive,
 			PersistentCursor: codingAgentKeepAlive, PersistentPi: codingAgentKeepAlive,
 			PersistentMuse:    codingAgentKeepAlive,
@@ -298,25 +315,26 @@ func NewBaseAgent(
 	}
 
 	return &BaseAgent{
-		agent:        agent,
-		name:         name,
-		agentType:    agentType,
-		logger:       logger,
-		tracer:       tracer,
-		traceID:      traceID,
-		instructions: instructions,
-		mode:         mode,
-		serverNames:  serverNames,
-		llm:          llm,
-		configPath:   configPath,
-		modelID:      modelID,
-		temperature:  temperature,
-		toolChoice:   toolChoice,
-		maxTurns:     maxTurns,
-		provider:     provider,
-		mcpSessionID: mcpSessionID,
-		definition:   definition,
-		runtime:      runtime,
+		agent:            agent,
+		name:             name,
+		agentType:        agentType,
+		logger:           logger,
+		tracer:           tracer,
+		traceID:          traceID,
+		instructions:     instructions,
+		mode:             mode,
+		serverNames:      serverNames,
+		llm:              llm,
+		configPath:       configPath,
+		modelID:          modelID,
+		temperature:      temperature,
+		toolChoice:       toolChoice,
+		maxTurns:         maxTurns,
+		provider:         provider,
+		mcpSessionID:     mcpSessionID,
+		definition:       definition,
+		productSelection: selection,
+		runtime:          runtime,
 	}, nil
 }
 
@@ -366,6 +384,7 @@ func (ba *BaseAgent) Execute(ctx context.Context, userMessage string, conversati
 // a different prompt. Provider continuation is carried through the opaque
 // handle; the existing Agent is never mutated in place.
 func (ba *BaseAgent) ApplyInstructions(ctx context.Context, systemPrompt string, overwrite bool) error {
+	systemPrompt = ba.productSelection.Text(systemPrompt)
 	if strings.TrimSpace(systemPrompt) == "" {
 		return nil
 	}
@@ -396,6 +415,20 @@ func (ba *BaseAgent) ApplyInstructions(ctx context.Context, systemPrompt string,
 // and prompt supplements. It exists for workflow factories that resolve these
 // inputs after their base configuration is loaded but before the first turn.
 func (ba *BaseAgent) ApplyIdentity(ctx context.Context, skills []*llmtypes.Skill, supplements ...string) error {
+	projected := make([]*llmtypes.Skill, 0, len(skills))
+	for _, skill := range skills {
+		if skill == nil {
+			return fmt.Errorf("assemble agent skill: skill cannot be nil")
+		}
+		if skill = ba.productSelection.Skill(skill); skill != nil {
+			projected = append(projected, skill)
+		}
+	}
+	skills = projected
+	supplements = append([]string(nil), supplements...)
+	for i, text := range supplements {
+		supplements[i] = ba.productSelection.Text(text)
+	}
 	if !ba.finalized {
 		for _, skill := range skills {
 			if skill == nil {
@@ -430,6 +463,11 @@ func (ba *BaseAgent) ApplyIdentity(ctx context.Context, skills []*llmtypes.Skill
 // first turn; a later contract change rebuilds the definition rather than
 // mutating the live Agent registry.
 func (ba *BaseAgent) ApplyTool(ctx context.Context, tool mcpagent.ToolDefinition) error {
+	var admitted bool
+	tool, admitted = projectProductTool(ba.productSelection, tool)
+	if !admitted {
+		return nil
+	}
 	for _, existing := range ba.definition.Tools.Direct {
 		if existing.Name == tool.Name {
 			return nil
@@ -474,6 +512,28 @@ func (ba *BaseAgent) AttachedSkills() []*llmtypes.Skill {
 	return append([]*llmtypes.Skill(nil), ba.definition.Skills...)
 }
 
+// SetInstalledSkillResolver keeps fallback skill reads under the same product
+// selection as attached skills, including after an immutable runtime rebuild.
+func (ba *BaseAgent) SetInstalledSkillResolver(resolver mcpagent.InstalledSkillResolver) {
+	ba.installedSkillResolver = nil
+	if resolver != nil {
+		ba.installedSkillResolver = func(name, path string) (mcpagent.InstalledSkillFile, error) {
+			if !ba.productSelection.AllowsSkill(name) {
+				return mcpagent.InstalledSkillFile{}, fmt.Errorf("skill %q is unavailable for this installation or account", name)
+			}
+			file, err := resolver(name, path)
+			if err == nil && skills.IsBuiltinSkill(name) {
+				file.Content = ba.productSelection.Text(file.Content)
+				file.Description = ba.productSelection.Text(file.Description)
+			}
+			return file, err
+		}
+	}
+	if ba.agent != nil {
+		ba.agent.SetInstalledSkillResolver(ba.installedSkillResolver)
+	}
+}
+
 func (ba *BaseAgent) AddObserver(observer mcpagent.AgentEventListener) error {
 	if ba.finalized {
 		return fmt.Errorf("agent definition is already finalized")
@@ -504,6 +564,7 @@ func (ba *BaseAgent) finalizeDefinition(ctx context.Context) error {
 		return fmt.Errorf("finalize immutable agent definition: %w", err)
 	}
 	old := ba.agent
+	nextAgent.SetInstalledSkillResolver(ba.installedSkillResolver)
 	nextSession, err := nextAgent.Start(ctx)
 	if err != nil {
 		nextAgent.Close()
@@ -538,6 +599,7 @@ func (ba *BaseAgent) replaceDefinition(ctx context.Context, nextDefinition mcpag
 	if err != nil {
 		return fmt.Errorf("rebuild agent identity: %w", err)
 	}
+	nextAgent.SetInstalledSkillResolver(ba.installedSkillResolver)
 	nextSession, err := nextAgent.Start(ctx)
 	if err != nil {
 		nextAgent.Close()
@@ -661,4 +723,24 @@ func (ba *BaseAgent) GetPreviousAgentOutput() string {
 // SetPreviousAgentOutput sets the previous agent output
 func (ba *BaseAgent) SetPreviousAgentOutput(output string) {
 	ba.previousAgentOutput = output
+}
+
+// Used before the first construction and every later definition update, so a
+// resumed step cannot restore an installation-disabled server capability.
+func projectProductTool(selection productpolicy.Selection, tool mcpagent.ToolDefinition) (mcpagent.ToolDefinition, bool) {
+	if !selection.AllowsTool(tool.Name) {
+		return tool, false
+	}
+	tool.Description = selection.Text(tool.Description)
+	tool.InputSchema, _ = selection.Schema(tool.InputSchema).(map[string]interface{})
+	if original := tool.Execute; original != nil {
+		name := tool.Name
+		tool.Execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+			if !selection.AllowsTool(name) {
+				return "", fmt.Errorf("%s product is unavailable", name)
+			}
+			return original(ctx, args)
+		}
+	}
+	return tool, true
 }

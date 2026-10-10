@@ -17,6 +17,7 @@ import (
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/subagents"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
@@ -793,6 +794,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		defer gate.logSurface(sessionID)
 	}
 
+	ctx = productpolicy.WithSelection(ctx, builderProductSelection(GetUserFromContext(ctx)))
 	// Create sub-agent using the wrapper (same as parent agent creation)
 	subAgent, err := agent.NewLLMAgentWrapper(ctx, subAgentConfig, nil, api.logger)
 	if err != nil {
