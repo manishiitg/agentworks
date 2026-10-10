@@ -55,6 +55,13 @@ jobs:
           test "$python_path" = "$(relay_dbos_prepare "$PWD" "$app_dir")"
           "$python_path" -I -c 'import dbos'
           test "$(stat -c %a "$(dirname "$(dirname "$python_path")")")" = 755
+      - name: Build the real workspace sandbox launcher
+        working-directory: workspace
+        env:
+          GOWORK: 'off'
+        run: |
+          go build -o "$RUNNER_TEMP/video-studio-landlock-runner" ./cmd/landlock-runner
+          echo "AGENTWORKS_LANDLOCK_RUNNER=$RUNNER_TEMP/video-studio-landlock-runner" >> "$GITHUB_ENV"
       - name: Exercise real process crash and recovery
         working-directory: agent_go
         env:
