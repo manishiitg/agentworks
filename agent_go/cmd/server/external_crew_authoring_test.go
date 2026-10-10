@@ -90,7 +90,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 
 	// A bad section refuses the whole update before anything is written.
-	if code, _ := externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "role": "Changed", "schedules": map[string]any{"remove": []any{"missing"}}}); code != 400 {
+	if code, _ := externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "role": "Changed", "schedules": map[string]any{"update": []any{map[string]any{"id": "missing", "enabled": false}}}}); code != 400 {
 		t.Fatalf("unknown schedule must refuse the update, got %d", code)
 	}
 	if _, got := externalCrewRequest(t, env, owner, "get_crew", map[string]any{"crew_id": crewID}); got["role"] != "Support triage lead" {
@@ -130,6 +130,14 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 	if first := out["functions"].([]any)[0]; first == nil || fmt.Sprintf("%T", first) != "string" {
 		t.Fatalf("the compact reply lists function names, got %v", out["functions"])
+	}
+	// A retry after a dropped connection is safe: the same add is not added twice, and removing a gone id is not an error.
+	code, out = externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "return_spec": true, "schedules": map[string]any{
+		"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cadence_hours": 168}},
+		"remove": []any{"already-gone"},
+	}})
+	if code != 200 || len(out["schedules"].([]any)) != 2 {
+		t.Fatalf("a retried add must not duplicate the schedule: %d %v", code, out["schedules"])
 	}
 	for _, private := range []string{"product.json", "functions.json", "db/x.sqlite", "builder/conversation/a.json", "../escape.md"} {
 		if code, _ := externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "files": map[string]any{private: "x"}}); code != 400 {

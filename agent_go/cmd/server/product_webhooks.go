@@ -814,7 +814,7 @@ func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Contex
 	if err != nil {
 		return productWebhookRunStatus{}, err
 	}
-	if !trigger.Caller.matchesAnyPresented(caller) {
+	if !internalRunReadAllowed(ctx, trigger.Caller.matchesAnyPresented(caller)) {
 		return productWebhookRunStatus{}, ErrInternalCallerMismatch
 	}
 	runsWorkspace := agentProfileRuntimeWorkspace(userID, binding.WorkspacePath)

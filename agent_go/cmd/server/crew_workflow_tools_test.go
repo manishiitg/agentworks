@@ -273,3 +273,19 @@ func TestGetWorkflowTriggerRunPollsStore(t *testing.T) {
 		t.Fatalf("foreign binding poll err = %v, want caller failure", err)
 	}
 }
+
+// A call already running keeps the binding it started under: only the supervision of a started call may read its run
+// after the trigger's caller list changed; every other read still needs the caller on the list (PLAT-839).
+func TestInFlightCallKeepsItsBindingWhenTheTriggerIsEdited(t *testing.T) {
+	plain := context.Background()
+	if internalRunReadAllowed(plain, false) {
+		t.Fatal("a caller no longer on the list must not read a run")
+	}
+	if !internalRunReadAllowed(plain, true) {
+		t.Fatal("a caller on the list may read a run")
+	}
+	supervising := context.WithValue(plain, inFlightCallRunReadKey{}, true)
+	if !internalRunReadAllowed(supervising, false) {
+		t.Fatal("the supervision of a call that already started must keep reading its run")
+	}
+}

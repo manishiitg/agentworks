@@ -266,6 +266,9 @@ type triggerTargetRunState struct {
 }
 
 func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID string) (triggerTargetRunState, error) {
+	// Only the server's supervision of a call it already started reads this way, so the read is marked: the call keeps
+	// the binding it started under even if the trigger's caller list was edited meanwhile (PLAT-839).
+	ctx = context.WithValue(ctx, inFlightCallRunReadKey{}, true)
 	switch target.Kind {
 	case triggerCallerCrew:
 		status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
@@ -300,6 +303,21 @@ func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string
 	default:
 		return triggerTargetRunState{}, fmt.Errorf("unknown target kind %q", target.Kind)
 	}
+}
+
+// inFlightCallRunReadKey marks a read of a run by the supervision of a call that started it. Such a read does not
+// re-check the trigger's current caller list: editing a trigger must not orphan a call already running under the
+// binding it started with. The trigger must still exist and be enabled, and the run must belong to it.
+type inFlightCallRunReadKey struct{}
+
+// internalRunReadAllowed is the caller check of an internal run read: the caller is on the trigger's current list, or
+// the read is the supervision of an in-flight call.
+func internalRunReadAllowed(ctx context.Context, callerMatches bool) bool {
+	if callerMatches {
+		return true
+	}
+	inFlight, _ := ctx.Value(inFlightCallRunReadKey{}).(bool)
+	return inFlight
 }
 
 // triggerTargetRunIsRunning says whether a target's run has started executing. A Crew run reports

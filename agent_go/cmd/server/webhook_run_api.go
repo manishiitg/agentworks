@@ -576,10 +576,10 @@ func (s *SchedulerService) readInternalWorkflowTriggerRun(ctx context.Context, w
 		return webhookRunResult{}, err
 	}
 	if sched.IsFunctionTrigger() {
-		if !workflowFunctionCallerAllowed(sched.Function, caller) {
+		if !internalRunReadAllowed(ctx, workflowFunctionCallerAllowed(sched.Function, caller)) {
 			return webhookRunResult{}, ErrInternalCallerMismatch
 		}
-	} else if !sched.Caller.matchesAnyPresented(caller) {
+	} else if !internalRunReadAllowed(ctx, sched.Caller.matchesAnyPresented(caller)) {
 		return webhookRunResult{}, ErrInternalCallerMismatch
 	}
 	run, err := s.existingWebhookRun(ctx, runID)

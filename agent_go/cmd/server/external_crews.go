@@ -71,7 +71,8 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 	out := call.snapshot()
 	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
-		out["next"] = "Still running in the Crew's chat. Poll get_crew_function_call with this call_id."
+		// A poll that waits is cheap: it returns the moment the call finishes (PLAT-837).
+		out["next"] = fmt.Sprintf("Still running in the Crew's chat. Call get_crew_function_call with this call_id and wait_seconds=%d: it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", externalCrewMaxWaitSeconds)
 	}
 	return out
 }
@@ -203,7 +204,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			replyFunctionCallInput(w, call, str("request_id"), str("response"))
 			return
 		}
-		externalJSON(w, externalCrewCallResponse(ctx, call, 0))
+		externalJSON(w, externalCrewCallResponse(ctx, call, externalCrewWait(args)))
 		return
 	}
 	if name == "list_crews" {

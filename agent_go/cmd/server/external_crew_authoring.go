@@ -638,6 +638,10 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 		}
 	}
 	var scheduleAdds []productschedule.Schedule
+	// A retry after a dropped connection must be safe: an add whose name already exists is already there, and a
+	// remove of an id that is gone is already removed (PLAT-837).
+	scheduleExists := map[string]bool{}
+	scheduleNames := map[string]bool{}
 	if update.Schedules != nil {
 		if api.productSchedules == nil {
 			return fmt.Errorf("schedules are unavailable on this server")
@@ -645,12 +649,18 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 		current := map[string]productschedule.Schedule{}
 		for _, schedule := range manifest.Schedules {
 			current[schedule.ID] = schedule
+			scheduleExists[schedule.ID] = true
+			scheduleNames[strings.ToLower(strings.TrimSpace(schedule.Name))] = true
 		}
 		for i, spec := range update.Schedules.Add {
 			schedule, err := spec.newSchedule()
 			if err != nil {
 				return fmt.Errorf("new schedule %d: %w", i+1, err)
 			}
+			if name := strings.ToLower(strings.TrimSpace(schedule.Name)); name != "" && scheduleNames[name] {
+				continue
+			}
+			scheduleNames[strings.ToLower(strings.TrimSpace(schedule.Name))] = true
 			scheduleAdds = append(scheduleAdds, schedule)
 		}
 		for _, spec := range update.Schedules.Update {
@@ -663,11 +673,6 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 			}
 			if err := productschedule.Validate(existing); err != nil {
 				return err
-			}
-		}
-		for _, id := range update.Schedules.Remove {
-			if _, ok := current[strings.TrimSpace(id)]; !ok {
-				return fmt.Errorf("crew has no schedule %q", id)
 			}
 		}
 	}
@@ -744,6 +749,9 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 			}
 		}
 		for _, id := range update.Schedules.Remove {
+			if !scheduleExists[strings.TrimSpace(id)] {
+				continue
+			}
 			if err := api.productSchedules.DeleteProjectSchedule(ctx, userID, projectScheduleJobID("work", manifest.ID, strings.TrimSpace(id))); err != nil {
 				return fmt.Errorf("schedule %q: %w", id, err)
 			}
