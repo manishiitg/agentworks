@@ -17,6 +17,7 @@ Servers (each one's host, domain and settings live in the private deployments re
   citymall              rootless Linux deployment on its own host, reached through a jump host
   sparkquill            rootless Linux deployment
   excellence            rootless Linux deployment (Code only)
+  <product>            any named rootless product configured in the private deployments repo
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
   dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
@@ -230,12 +231,12 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   # Every prepared host also gets the user-namespace exception the sandbox needs (a no-op where AppArmor does not restrict it),
   # scoped to this product's own launcher and nothing else. The activation then proves the sandbox works, or stops the deploy.
   echo "==> [$PRODUCT] Allowing the sandbox's user namespaces for this product's launcher only"
-  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
   # Per-user Linux accounts: every account in the user directory gets its own slot, on every deploy (a new account is covered by
   # the next deploy). The deploy's final check fails if any account still has none.
   if [[ "${SLOTS_ENABLED:-false}" == true ]]; then
     echo "==> [$PRODUCT] Giving every account its own Linux slot"
-    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
   fi
 fi
 
@@ -622,8 +623,14 @@ case "$SERVER" in
     exit 2
     ;;
   *)
-    echo "Unknown deployment server: $SERVER" >&2
-    usage >&2
-    exit 2
+    if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
+      reject_extra_arguments "$@"
+      deploy_rootless_product "$SERVER"
+      [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
+    else
+      echo "Unknown deployment server: $SERVER" >&2
+      usage >&2
+      exit 2
+    fi
     ;;
 esac

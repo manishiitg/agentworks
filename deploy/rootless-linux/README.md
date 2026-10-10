@@ -234,3 +234,14 @@ localStorage survives close/reopen. It cleans up its successful test profile
 and does not read or change a real user's login. Use this after browser upgrades;
 a sequence that merely reports successful commands can conceal browser crashes
 and automatic relaunches.
+
+## Private deployment targets
+
+A product folder in the private deployments repository can be deployed with
+`./deploy.sh <product>`. Its name must be lowercase letters, digits or hyphens,
+start with a letter, and match `PRODUCT` in `product.env`. No public target
+list change is needed. For products sharing a host, set `SLOT_PREFIX` and
+`SLOT_COUNT` in `product.env`, together with the matching `AGENTWORKS_SLOT_*`
+service settings, so root provisioning uses that product's own slot accounts
+and table. Host preparation must provide an initial `current/bin/slotctl`
+before the first slot provisioning pass.
