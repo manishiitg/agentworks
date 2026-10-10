@@ -6,26 +6,26 @@ import (
 )
 
 func TestSenderAllowlistAndAlternativePhrases(t *testing.T) {
-	f, err := NormalizeFilters(&Filters{SenderAllowlist: []string{" @RealTrainingSys.com ", "updates@vendor.example", "@realtrainingsys.com"}, SubjectContainsAny: []string{"Real Training", "Notion"}, BodyContainsAny: []string{"approved", "ready"}, HasAttachments: boolFilter(false)})
+	f, err := NormalizeFilters(&Filters{SenderAllowlist: []string{" @example.com ", "updates@vendor.example", "@example.com"}, SubjectContainsAny: []string{"Training", "Notion"}, BodyContainsAny: []string{"approved", "ready"}, HasAttachments: boolFilter(false)})
 	if err != nil || len(f.SenderAllowlist) != 2 {
 		t.Fatalf("normalize: %+v %v", f, err)
 	}
-	for _, sender := range []string{"MANISH@realtrainingsys.com", "updates@vendor.example"} {
+	for _, sender := range []string{"MANISH@example.com", "updates@vendor.example"} {
 		if reason := f.Mismatch(Message{From: sender, Subject: "NOTION update", Body: "Ready to review"}); reason != "" {
 			t.Fatal(reason)
 		}
 	}
-	for _, sender := range []string{"user@evilrealtrainingsys.com", "user@realtrainingsys.com.evil.example", "user@sub.realtrainingsys.com", "other@vendor.example", "@realtrainingsys.com", "Real Training <attacker@evil.example>"} {
+	for _, sender := range []string{"user@evilexample.com", "user@example.com.evil.example", "user@sub.example.com", "other@vendor.example", "@example.com", "Training <attacker@evil.example>"} {
 		if f.SenderAllowed(sender) {
 			t.Fatalf("unexpected sender allowed: %s", sender)
 		}
 	}
-	for _, m := range []Message{{From: "manish@realtrainingsys.com", Subject: "Different", Body: "ready"}, {From: "manish@realtrainingsys.com", Subject: "Real Training", Body: "pending"}, {From: "manish@realtrainingsys.com", Subject: "Notion", Body: "ready", Attachments: []Attachment{{Name: "file"}}}} {
+	for _, m := range []Message{{From: "manish@example.com", Subject: "Different", Body: "ready"}, {From: "manish@example.com", Subject: "Training", Body: "pending"}, {From: "manish@example.com", Subject: "Notion", Body: "ready", Attachments: []Attachment{{Name: "file"}}}} {
 		if f.Mismatch(m) == "" {
 			t.Fatal("an OR group bypassed the other required conditions")
 		}
 	}
-	for _, f := range []*Filters{{SenderAllowlist: []string{"*"}}, {SenderAllowlist: []string{"@*.example.com"}}, {SenderAllowlist: []string{"@example.com.evil@realtrainingsys.com"}}, {SenderAllowlist: []string{"Name <user@example.com>"}}, {SenderAllowlist: []string{"@-example.com"}}, {AllowAutomatic: true}} {
+	for _, f := range []*Filters{{SenderAllowlist: []string{"*"}}, {SenderAllowlist: []string{"@*.example.com"}}, {SenderAllowlist: []string{"@example.com.evil@example.com"}}, {SenderAllowlist: []string{"Name <user@example.com>"}}, {SenderAllowlist: []string{"@-example.com"}}, {AllowAutomatic: true}} {
 		if _, err := NormalizeFilters(f); err == nil {
 			t.Fatalf("invalid policy accepted: %+v", f)
 		}

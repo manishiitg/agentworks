@@ -117,7 +117,7 @@ and expire after 15 minutes; a server restart requires a fresh review, while
 successfully saved receiving configuration survives it. Concurrent provisioning
 is refused. Cloud resource charges remain subject to Google pricing.
 
-For server A, the event URL is `https://video.realtrainingsys.com/api/hooks/gmail/events`.
+For server A, the event URL is `https://app.example.com/api/hooks/gmail/events`.
 For other deployments it comes from their trusted `PUBLIC_URL` or existing
 validated audience. Local development must set `PUBLIC_URL` to its existing
 public HTTPS Cloudflare tunnel and route the callback/event paths to this backend.
@@ -172,7 +172,7 @@ as the push service account when creating the subscription.
 ```bash
 GMAIL_PROJECT_ID=YOUR_GOOGLE_PROJECT_ID
 GMAIL_DEPLOYMENT=server A
-GMAIL_PUSH_URL=https://video.realtrainingsys.com/api/hooks/gmail/events
+GMAIL_PUSH_URL=https://app.example.com/api/hooks/gmail/events
 GMAIL_PUSH_ACCOUNT=agentworks-gmail-${GMAIL_DEPLOYMENT}@${GMAIL_PROJECT_ID}.iam.gserviceaccount.com
 
 gcloud services enable gmail.googleapis.com pubsub.googleapis.com iam.googleapis.com --project="$GMAIL_PROJECT_ID"
@@ -202,13 +202,13 @@ exception for Google's Gmail publisher account.
 
 ## Server A first, then other deployments
 
-server A is the AWS deployment at `video.realtrainingsys.com`, reached by
+server A is the AWS deployment at `app.example.com`, reached by
 `./deploy.sh server A`. Its active rootless service reads
 `/var/lib/video-studio/video-studio/.env`. The old system service template's
 `/opt/video-studio/.env` is not the current server A release path. The release
 script preserves the Gmail settings and already installs checksum-verified
 gog. Set the audience to
-`https://video.realtrainingsys.com/api/hooks/gmail/events` when testing server A.
+`https://app.example.com/api/hooks/gmail/events` when testing server A.
 Verify that the CloudFront behavior forwards POST and Authorization to the
 origin without caching this endpoint. A proxy stripping Google's token
 causes a 401 and Pub/Sub retries.
@@ -309,11 +309,11 @@ exact saved workflow binding or project chat. Configuration accepts optional
 Separate groups combine with AND. Keywords are case-insensitive, trimmed and
 deduplicated, with at most 10 entries per field and 256 bytes per entry. Sender
 entries are lowercase, validated plain addresses/domains; wildcards and display
-names are rejected. For example, accepting Real Training senders OR an inspected
+names are rejected. For example, accepting Training senders OR an inspected
 notification address, plus either subject phrase:
 
 ```json
-{"sender_allowlist":["@realtrainingsys.com","updates@vendor.example"],"subject_contains_any":["Real Training","Notion"],"allow_automatic":true}
+{"sender_allowlist":["@example.com","updates@vendor.example"],"subject_contains_any":["Training","Notion"],"allow_automatic":true}
 ```
 
 The notification address here is a placeholder; Builder inspects the actual

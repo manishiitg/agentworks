@@ -18,7 +18,7 @@ To pause, ask the Builder to disable it. Disabling keeps the address; mail sent 
 
 ## What gets processed
 
-- **Your email by default.** Ask Builder to allow specific addresses or domains when you want other senders to start work. For example, accept `@realtrainingsys.com` OR a specific Notion sender. This authorizes those authenticated senders to run the saved target using your configured account and tools; only an interactive owner can change the rule.
+- **Your email by default.** Ask Builder to allow specific addresses or domains when you want other senders to start work. For example, accept `@example.com` OR a specific Notion sender. This authorizes those authenticated senders to run the saved target using your configured account and tools; only an interactive owner can change the rule.
 - **Only authenticated mail.** The sender's domain must pass DMARC, or the message must be your own mailbox's sent mail.
 - **Only mail received after activation.** Older mail never triggers work. The service tracks new messages and can catch up after an outage; unrelated new inbox mail does not push your request out of a 20-message window.
 - **Notifications require opt-in.** Ask Builder to accept automated notifications from your selected senders. Automatic replies, bounces, spam, and trash are always ignored.
@@ -73,8 +73,8 @@ Examples you can say in the project's Builder chat:
 
 - “Connect Gmail to this Crew. Only process emails whose subject contains invoice and that have attachments.”
 - “Use the Support route for emails with refund in the subject and order in the body.”
-- “Accept senders from @realtrainingsys.com OR the Notion sender in my inbox. Include their automated notifications.”
-- “Accept a subject containing Real Training OR Notion.”
+- “Accept senders from @example.com OR the Notion sender in my inbox. Include their automated notifications.”
+- “Accept a subject containing Training OR Notion.”
 - “Only start work for new email threads; ignore replies.”
 - “Remove the attachment condition but keep the subject filter.”
 - “Clear the email filters.”

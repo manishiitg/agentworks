@@ -97,7 +97,7 @@ func TestBroadMailboxDomainsRequireExactAddresses(t *testing.T) {
 			t.Fatalf("broad domain accepted: %s", domain)
 		}
 	}
-	for _, address := range []string{"person@gmail.com", "person@outlook.com", "@realtrainingsys.com"} {
+	for _, address := range []string{"person@gmail.com", "person@outlook.com", "@example.com"} {
 		if _, err := NormalizeFilters(&Filters{SenderAllowlist: []string{address}}); err != nil {
 			t.Fatalf("specific mailbox or organization domain rejected: %s %v", address, err)
 		}

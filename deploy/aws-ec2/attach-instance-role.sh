@@ -11,9 +11,9 @@
 # stack update, and an already-associated instance is left alone.
 set -euo pipefail
 
-AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-RTS}"
+AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?set AWS_PROFILE_NAME (private deployments repo: products/video-studio/aws.env)}"
 AWS_REGION="${AWS_REGION:-us-west-2}"
-STACK_NAME="${STACK_NAME:-video-studio-prod}"
+STACK_NAME="${STACK_NAME:?set STACK_NAME (private deployments repo: products/video-studio/aws.env)}"
 ROLE_STACK_NAME="${ROLE_STACK_NAME:-video-studio-instance-role}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 

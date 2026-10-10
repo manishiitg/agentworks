@@ -151,7 +151,7 @@ func TestGmailRulesAuthorizeSendersPerActionAndIntersectCommonPolicy(t *testing.
 	if err := api.authorizeInboundEmail(ctx, r, m); err != nil {
 		t.Fatal(err)
 	}
-	r.Filters = &gmailinbound.Filters{SenderAllowlist: []string{"@realtrainingsys.com"}}
+	r.Filters = &gmailinbound.Filters{SenderAllowlist: []string{"@example.com"}}
 	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
 		t.Fatal("rule escaped common sender restriction")
 	}

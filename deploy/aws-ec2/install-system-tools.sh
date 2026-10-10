@@ -14,9 +14,9 @@
 # Idempotent: every step checks before installing. Re-run to add tools.
 set -euo pipefail
 
-AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-RTS}"
+AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?set AWS_PROFILE_NAME (private deployments repo: products/video-studio/aws.env)}"
 AWS_REGION="${AWS_REGION:-us-west-2}"
-STACK_NAME="${STACK_NAME:-video-studio-prod}"
+STACK_NAME="${STACK_NAME:?set STACK_NAME (private deployments repo: products/video-studio/aws.env)}"
 NTN_VERSION_URL="${NTN_VERSION_URL:-https://ntn.dev}"
 
 aws_rts() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }

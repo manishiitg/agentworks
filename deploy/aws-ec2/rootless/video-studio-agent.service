@@ -18,7 +18,7 @@ Environment=STATIC_DIR=%h/video-studio/current/frontend
 # The public origin, for URLs the server hands to third parties: the MCP
 # connector OAuth redirect (deriveOAuthRedirectURI) and login redirects.
 # Without it the agent guesses from X-Forwarded-* headers two proxies deep.
-Environment=PUBLIC_URL=https://video.realtrainingsys.com
+Environment=PUBLIC_URL=https://app.example.com
 # RTS never emails invitations (it shares the Supabase project); admins copy them.
 # PLAT-364: coding CLIs run under the Landlock launcher, confined to their
 # folder, for every user.

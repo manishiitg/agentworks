@@ -4,7 +4,7 @@
 # "Requirements this template assumes"). Idempotent: re-running changes
 # nothing that is already in place. Run as root ON the host:
 #
-#   ssh -p "$BUILD_PORT" root@"$BUILD_HOST" 'bash -s' < deploy/rootless-linux/setup-agents-host.sh   # values: deployments/deploy.env
+#   ssh -p "$BUILD_PORT" root@"$BUILD_HOST" "DOMAIN='$DOMAIN' bash -s" < deploy/rootless-linux/setup-agents-host.sh   # values: deployments/deploy.env and products/<server>/product.env
 #
 # Already done by hand on 2026-09-28: the `agents` system account
 # (home /srv/agents, linger on, its directories) and /srv/agents/.env
@@ -13,7 +13,7 @@ set -euo pipefail
 
 PRODUCT=agents
 HOME_DIR=/srv/agents
-DOMAIN=agents.excellencetechnologies.in
+DOMAIN="${DOMAIN:?set DOMAIN to the site name (private deployments repo: products/<server>/product.env)}"
 UNIT_DIR="$HOME_DIR/.config/systemd/user"
 CADDYFILE=/etc/caddy/Caddyfile
 

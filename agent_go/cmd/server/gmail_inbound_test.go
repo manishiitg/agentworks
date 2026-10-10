@@ -10,7 +10,7 @@ import (
 
 func TestGmailInboundDeploymentConfiguration(t *testing.T) {
 	t.Setenv("GMAIL_INBOUND_TOPICS", `{"project-a-client":"projects/project-a-test/topics/agentworks-gmail","another-client":"projects/another-project/topics/agentworks-gmail"}`)
-	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://video.realtrainingsys.com/api/hooks/gmail/events")
+	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://app.example.com/api/hooks/gmail/events")
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "gmail-project-a@project-a-test.iam.gserviceaccount.com")
 	c, e := readGmailInboundConfig()
 	if e != nil || len(c.Topics) != 2 {

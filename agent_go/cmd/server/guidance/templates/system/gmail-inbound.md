@@ -83,9 +83,9 @@ with tools; never instruct the user to find an Enable button or route editor.
    at most 10 nonblank entries per field and 256 bytes each; no regex/wildcards.
    Invoices with attachments map to
    `filters={"subject_contains":["invoice"],"has_attachments":true}`.
-   Real Training OR an inspected notification sender with either subject maps
-   to `filters={"sender_allowlist":["@realtrainingsys.com","ACTUAL_SENDER"],
-   "subject_contains_any":["Real Training","Notion"],"allow_automatic":true}`;
+   Training OR an inspected notification sender with either subject maps
+   to `filters={"sender_allowlist":["@example.com","ACTUAL_SENDER"],
+   "subject_contains_any":["Training","Notion"],"allow_automatic":true}`;
    substitute the real address, never save the placeholder.
    Plain requests need no IDs or JSON from the user: discover the actual account,
    route and groups with tools, then configure them.

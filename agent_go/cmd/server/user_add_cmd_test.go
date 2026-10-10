@@ -12,7 +12,7 @@ func TestAddDirectoryUserCreatesOnceAndIsSafeToRepeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec, created, err := addDirectoryUser(dir, " Vaibhav@Gmail.com ", "", "editor", []string{"code"})
-	if err != nil || !created || rec.Email != "vaibhav@gmail.com" || rec.Username != "vaibhav@gmail.com" || len(rec.Products) != 1 {
+	if err != nil || !created || rec.Email != "user@example.com" || rec.Username != "user@example.com" || len(rec.Products) != 1 {
 		t.Fatalf("created %v rec %+v err %v", created, rec, err)
 	}
 	if err := saveUserDirectory(dir); err != nil {
@@ -22,7 +22,7 @@ func TestAddDirectoryUserCreatesOnceAndIsSafeToRepeat(t *testing.T) {
 	if json.Unmarshal([]byte(*content), &saved) != nil || len(saved.Users) != 2 {
 		t.Fatalf("saved %q", *content)
 	}
-	again, createdAgain, err := addDirectoryUser(dir, "vaibhav@gmail.com", "", "viewer", []string{"code"})
+	again, createdAgain, err := addDirectoryUser(dir, "user@example.com", "", "viewer", []string{"code"})
 	if err != nil || createdAgain || again.ID != rec.ID {
 		t.Fatalf("a repeat must return the existing account unchanged: created %v %+v %v", createdAgain, again, err)
 	}

@@ -16,7 +16,7 @@ See the [Linux release gate](ROOTLESS-LINUX-DEPLOYMENT-CHECKLIST.md#release-gate
 
 | Target | Path | Description |
 |--------|------|-------------|
-| **Video Studio** (AWS EC2) | [deploy/aws-ec2/](aws-ec2/) | Isolated EC2 host, rootless `systemd --user`. Live at https://video.realtrainingsys.com |
+| **Video Studio** (AWS EC2) | [deploy/aws-ec2/](aws-ec2/) | Isolated EC2 host, rootless `systemd --user`. Live URL: see the private deployments repo |
 | **Rootless Linux products** | [deploy/rootless-linux/](rootless-linux/) | Shared deterministic deployer used by Confida and SparkQuill |
 
 - **Video Studio**: `./deploy.sh rts`. See [aws-ec2/README.md](aws-ec2/README.md). Every RTS deploy ends with a CloudFront usage report (month-to-date requests and GB against the free tier, last-24h error rates); it never fails the deploy.

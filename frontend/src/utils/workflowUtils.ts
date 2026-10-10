@@ -15,7 +15,7 @@ import type { VariableGroup, VariablesManifest } from '../services/api-types'
  * @returns Sanitized display name, or empty string if invalid
  *
  * @example
- * sanitizeDisplayNameForFolder("Real Training #1") // Returns: "real-training-1"
+ * sanitizeDisplayNameForFolder("Training #1") // Returns: "real-training-1"
  * sanitizeDisplayNameForFolder("Production--Env") // Returns: "production-env"
  */
 export function sanitizeDisplayNameForFolder(displayName: string | undefined): string {

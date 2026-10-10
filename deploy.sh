@@ -73,13 +73,25 @@ DEPLOY_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/depl
 [[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
 source "$REPO_ROOT/deploy/common/build-once.sh"
 
-# --- RTS (video.realtrainingsys.com) -------------------------------------
+# --- AWS EC2 server (settings in the private deployments repo) -----------
 # Sends only deployment instructions and secrets; the server clones main of
 # all three repositories and builds the release itself.
+# The AWS server's profile, stack, CloudFront distribution, public branding and URL are company-specific, so they live in
+# the private deployments repo: products/<name>/aws.env plus runtime-config.js, video-studio-agent.service and brand/ there.
+# This loads aws.env into the shell and sets AWS_OVERLAY_DIR to the folder holding the rest.
+load_aws_server_config() {
+  local dir; dir="$(deployments_dir)/products/${1:-video-studio}"
+  [[ -f "$dir/aws.env" ]] || { echo "The AWS server's settings are missing: $dir/aws.env (private deployments repo; AGENTWORKS_DEPLOYMENTS_DIR)" >&2; exit 1; }
+  # shellcheck disable=SC1091
+  set -a; . "$dir/aws.env"; set +a
+  AWS_OVERLAY_DIR="$dir"
+}
 deploy_rts() {
-  local AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-RTS}"
+  load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
+  [[ -f "$AWS_OVERLAY_DIR/runtime-config.js" && -f "$AWS_OVERLAY_DIR/video-studio-agent.service" ]] || { echo "Missing runtime-config.js or video-studio-agent.service in $AWS_OVERLAY_DIR" >&2; exit 1; }
+  local AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}"
   local AWS_REGION="${AWS_REGION:-us-west-2}"
-  local STACK_NAME="${STACK_NAME:-video-studio-prod}"
+  local STACK_NAME="${STACK_NAME:?aws.env must set STACK_NAME}"
   local SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
   local GLOBAL_SECRETS_SECRET_ID="${GLOBAL_SECRETS_SECRET_ID:-video-studio/global-secrets}"
   local RTS_DIR="$REPO_ROOT/deploy/aws-ec2"
@@ -114,6 +126,10 @@ deploy_rts() {
    | jq -er 'to_entries[] | select(.key | test("^[A-Z0-9_]+$")) | select(.value | type == "string" and length > 0) | if .key == "CLAUDE_CODE_OAUTH_TOKEN" or .key == "CURSOR_API_KEY" then "\(.key)=\(.value)" else "GLOBAL_SECRET_\(.key)=\(.value)" end' > "$STAGING/globals"
   chmod 600 "$STAGING/globals"
   cp "$RTS_DIR/server/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
+  # This server's own branding, public URL and service file travel with the deploy; build-and-activate.sh prefers them.
+  mkdir -p "$STAGING/overlay"
+  cp "$AWS_OVERLAY_DIR/runtime-config.js" "$AWS_OVERLAY_DIR/video-studio-agent.service" "$STAGING/overlay/"
+  [[ ! -d "$AWS_OVERLAY_DIR/brand" ]] || cp -R "$AWS_OVERLAY_DIR/brand" "$STAGING/overlay/brand"
   # Make room first (PLAT-545): a full disk broke the new gateway's database on 2026-10-05. Only runs when space is short,
   # and never removes the live release, the newest one before it, or anything a running process still uses.
   "${SSH[@]}" "python3 - /var/lib/video-studio/video-studio --apply --only-if-free-below-gb 15" < "$REPO_ROOT/deploy/common/prune-releases.py" \
@@ -134,7 +150,8 @@ deploy_rts() {
 # Read-only CloudFront usage for RTS against the always-free tier (1 TB out,
 # 10M requests per month). Reported after every RTS deploy; never fails it.
 report_rts_cloudfront_usage() {
-  local profile="${AWS_PROFILE_NAME:-RTS}" dist="${CLOUDFRONT_DISTRIBUTION_ID:-E1OYOJGT2ZANUB}"
+  load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
+  local profile="${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}" dist="${CLOUDFRONT_DISTRIBUTION_ID:?aws.env must set CLOUDFRONT_DISTRIBUTION_ID}"
   local now month_start day_ago
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   month_start=$(date -u +%Y-%m-01T00:00:00Z)
@@ -543,7 +560,8 @@ if [[ "$SERVER" == slotcheck ]]; then
   case "$check_level" in basic|full) ;; *) echo "slotcheck level must be basic or full (got '$check_level')" >&2; exit 2 ;; esac
   case "$1" in
     rts|video-studio)
-      HOST_IP="$(aws --profile "${AWS_PROFILE_NAME:-RTS}" --region "${AWS_REGION:-us-west-2}" cloudformation describe-stacks --stack-name "${STACK_NAME:-video-studio-prod}" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
+      load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
+      HOST_IP="$(aws --profile "${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}" --region "${AWS_REGION:-us-west-2}" cloudformation describe-stacks --stack-name "${STACK_NAME:?aws.env must set STACK_NAME}" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
       exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
         "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $check_level"
       ;;
@@ -593,7 +611,7 @@ case "$SERVER" in
     [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
     ;;
   excellence)
-    # agents.excellencetechnologies.in; its account, units and product
+    # the Hetzner server; its account, units and product
     # folder are named "agents" on the host.
     reject_extra_arguments "$@"
     deploy_rootless_product agents

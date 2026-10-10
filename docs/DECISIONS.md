@@ -2528,7 +2528,7 @@ PLAT-403.
 
 ### 2026-10-03 — Builder chooses Gmail senders; email fetch and access disclosure
 
-- **User decision.** Owners can accept Real Training OR notification senders and
+- **User decision.** Owners can accept Training OR notification senders and
   alternative subject/body phrases through Builder. This extends the previous
   owner-only sender decision; omitted/cleared sender lists retain that default.
 - **Rules.** Exact email and exact `@domain` entries match with OR, never display

@@ -25,6 +25,14 @@ done
 BUILDER_REPO_ROOT="$WORKSPACE_ROOT/mcp-agent-builder-go"
 REPO_ROOT="$BUILDER_REPO_ROOT"
 SCRIPT_DIR="$REPO_ROOT/deploy/aws-ec2"
+# This server's branding, public URL and agent service file come from the private deployments repo, shipped next to the
+# globals file as overlay/ (deploy.sh). The copies in this repo are neutral placeholders and are never deployed as they are.
+OVERLAY_DIR="$(dirname "$GLOBAL_FILE")/overlay"
+[[ -f "$OVERLAY_DIR/runtime-config.js" && -f "$OVERLAY_DIR/video-studio-agent.service" ]] || { echo "Missing the private overlay (runtime-config.js, video-studio-agent.service) in $OVERLAY_DIR" >&2; exit 1; }
+RUNTIME_CONFIG="$OVERLAY_DIR/runtime-config.js"
+AGENT_SERVICE_FILE="$OVERLAY_DIR/video-studio-agent.service"
+BRAND_DIR="$OVERLAY_DIR/brand"
+LIVE_URL="$(sed -n 's/^Environment=PUBLIC_URL=//p' "$AGENT_SERVICE_FILE" | head -n 1)"
 HYPERFRAMES_VERSION="${HYPERFRAMES_VERSION:-0.8.6}"
 AGENTWORKS_PROVIDER="${AGENTWORKS_PROVIDER:-cursor-cli}"
 AGENTWORKS_MODEL="${AGENTWORKS_MODEL:-cursor-cli}"
@@ -43,15 +51,15 @@ fi
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before
 # building or touching the server if either checked-in allowlist drifts.
-grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway", "knowledgebase"]' "$SCRIPT_DIR/server/runtime-config.js" || {
+grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway", "knowledgebase"]' "$RUNTIME_CONFIG" || {
   echo "RTS deployment must expose AgentWorks, Video Studio, Work, Code, Vault, and Brain" >&2
   exit 1
 }
-grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code,mcp-gateway,knowledgebase' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
+grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code,mcp-gateway,knowledgebase' "$AGENT_SERVICE_FILE" || {
   echo "RTS deployment must load the video-studio, work, code, Vault and Brain product backends" >&2
   exit 1
 }
-grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
+grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$AGENT_SERVICE_FILE" || {
   echo "Video Studio server deployment must disable CDP in the agent service" >&2
   exit 1
 }
@@ -64,7 +72,7 @@ grep -Fq 'Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock' "$SCRIPT_DIR/
   exit 1
 }
 bash "$REPO_ROOT/deploy/common/install-rootless-docker.sh" --check video-studio
-grep -Fq 'cdpEnabled: false' "$SCRIPT_DIR/server/runtime-config.js" || {
+grep -Fq 'cdpEnabled: false' "$RUNTIME_CONFIG" || {
   echo "Video Studio runtime config must display CDP as disabled" >&2
   exit 1
 }
@@ -150,18 +158,18 @@ mkdir -p "$BUILD_DIR/static"
 static_source="$REPO_ROOT/agent_go/cmd/server/static"
 [[ -z "$PREBUILT" ]] || static_source="$PREBUILT/static"
 cp -R "$static_source/." "$BUILD_DIR/static/"
-install -m 0644 "$SCRIPT_DIR/server/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
+install -m 0644 "$RUNTIME_CONFIG" "$BUILD_DIR/frontend/runtime-config.js"
 # This deployment's own branding assets (logo, mark, favicon), served at /brand/.
-if [[ -d "$SCRIPT_DIR/server/brand" ]]; then
+if [[ -d "$BRAND_DIR" ]]; then
   install -d -m 0755 "$BUILD_DIR/frontend/brand"
-  install -m 0644 "$SCRIPT_DIR/server/brand"/* "$BUILD_DIR/frontend/brand/"
+  install -m 0644 "$BRAND_DIR"/* "$BUILD_DIR/frontend/brand/"
 fi
 # One shared MCP catalog for every deployment, plus this one's differences.
 python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/configs/mcp_servers_clean.json" "$BUILD_DIR/configs/mcp_servers_video_studio.json" "$SCRIPT_DIR/server/mcp-servers.override.json"
 chmod 0644 "$BUILD_DIR/configs/mcp_servers_video_studio.json"
 install -m 0755 "$SCRIPT_DIR/server/chrome-headless-wrapper.sh" "$BUILD_DIR/browser/agentworks-chrome-headless"
 install -m 0644 "$SCRIPT_DIR/rootless/video-studio-workspace.service" "$BUILD_DIR/systemd/video-studio-workspace.service"
-install -m 0644 "$SCRIPT_DIR/rootless/video-studio-agent.service" "$BUILD_DIR/systemd/video-studio-agent.service"
+install -m 0644 "$AGENT_SERVICE_FILE" "$BUILD_DIR/systemd/video-studio-agent.service"
 install -m 0644 "$SCRIPT_DIR/rootless/video-studio-gateway.service" "$BUILD_DIR/systemd/video-studio-gateway.service"
 install -m 0644 "$SCRIPT_DIR/rootless/video-studio-logrotate.conf" "$BUILD_DIR/systemd/video-studio-logrotate.conf"
 install -m 0644 "$SCRIPT_DIR/rootless/video-studio-logrotate.service" "$BUILD_DIR/systemd/video-studio-logrotate.service"
@@ -402,9 +410,9 @@ vault_start video-studio "$VAULT_PORT"
 # does not roll back, it fails the deploy loudly with FAIL lines that say what to fix.
 if slots_enabled; then
   if ! slots_selfcheck "$REMOTE_APP" /data/video-studio/docs video-studio "$REMOTE_RELEASE"; then
-    echo "Rootless Video Studio release is live at https://video.realtrainingsys.com, but the SLOT SELF-TEST FAILED (see FAIL lines above)" >&2
+    echo "Rootless Video Studio release is live at $LIVE_URL, but the SLOT SELF-TEST FAILED (see FAIL lines above)" >&2
     exit 1
   fi
 fi
 
-echo "Rootless Video Studio release deployed: https://video.realtrainingsys.com"
+echo "Rootless Video Studio release deployed: $LIVE_URL"

@@ -308,7 +308,7 @@ func TestGmailBuilderExplainsDeploymentSetupWhenDisabled(t *testing.T) {
 	t.Setenv("GMAIL_INBOUND_TOPICS", "")
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
-	t.Setenv("PUBLIC_URL", "https://video.realtrainingsys.com")
+	t.Setenv("PUBLIC_URL", "https://app.example.com")
 	result, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -328,7 +328,7 @@ func TestGmailBuilderExplainsDeploymentSetupWhenDisabled(t *testing.T) {
 	if err := json.Unmarshal([]byte(result), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Configured || len(status.Setup.Clients) != 0 || status.Setup.Admin.Endpoint != "https://video.realtrainingsys.com/api/hooks/gmail/events" || len(status.Setup.Admin.Steps) != 5 || !strings.Contains(status.Setup.Admin.Access, "Google Cloud project setup permissions") || !strings.Contains(status.Setup.Admin.Automatic, "without gcloud, environment edits or a restart") {
+	if status.Configured || len(status.Setup.Clients) != 0 || status.Setup.Admin.Endpoint != "https://app.example.com/api/hooks/gmail/events" || len(status.Setup.Admin.Steps) != 5 || !strings.Contains(status.Setup.Admin.Access, "Google Cloud project setup permissions") || !strings.Contains(status.Setup.Admin.Automatic, "without gcloud, environment edits or a restart") {
 		t.Fatalf("missing actionable deployment help: %s", result)
 	}
 }
@@ -501,7 +501,7 @@ func TestGmailBuilderConnectPreservesPrivateCodeScopeAndPlatformCallback(t *test
 
 func TestGmailExplicitSendersAreOwnerConfiguredAndAuthenticated(t *testing.T) {
 	api, ctx, _ := gmailTriggerFixture(t)
-	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"sender_allowlist": []string{"@realtrainingsys.com", "updates@vendor.example"}, "allow_automatic": true, "subject_contains_any": []string{"Real Training", "Notion"}}}
+	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"sender_allowlist": []string{"@example.com", "updates@vendor.example"}, "allow_automatic": true, "subject_contains_any": []string{"Training", "Notion"}}}
 	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", args); err != nil {
 		t.Fatal(err)
 	}

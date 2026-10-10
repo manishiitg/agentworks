@@ -26,7 +26,7 @@ func gmailSetupFixture(t *testing.T) (*StreamingAPI, context.Context) {
 	t.Setenv("GMAIL_INBOUND_TOPICS", "")
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
-	t.Setenv("PUBLIC_URL", "https://video.realtrainingsys.com")
+	t.Setenv("PUBLIC_URL", "https://app.example.com")
 	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
 	if _, err := services.CreateOAuthClient(context.Background(), "app-project", []byte(`{"web":{"client_id":"123456-abcdef.apps.googleusercontent.com","client_secret":"SETUP-SECRET","project_id":"sample-project"}}`), false); err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestGmailSetupConsentCompletesProvisioningAndOnlyActivatesAfterVerification
 			api.gmailSetup.mu.Lock()
 			api.gmailSetup.ctx = context.WithValue(api.gmailSetup.ctx, oauth2.HTTPClient, googleClient)
 			api.gmailSetup.mu.Unlock()
-			req := httptest.NewRequest("GET", "https://video.realtrainingsys.com"+gmailOAuthCallbackPath+"?state="+job.ID+"&code=human-code", nil).WithContext(context.WithValue(ctx, oauth2.HTTPClient, googleClient))
+			req := httptest.NewRequest("GET", "https://app.example.com"+gmailOAuthCallbackPath+"?state="+job.ID+"&code=human-code", nil).WithContext(context.WithValue(ctx, oauth2.HTTPClient, googleClient))
 			callback := httptest.NewRecorder()
 			gmailOAuthCallbackHandler(api)(callback, req)
 			if !strings.Contains(callback.Body.String(), "setup started") {
@@ -201,18 +201,18 @@ func TestGmailSetupReviewRequiresHumanGoogleConsentUsesExistingCallbackAndPKCE(t
 			t.Fatal("accepted cross-origin or opaque review submission")
 		}
 	}
-	post.Header.Set("Origin", "https://video.realtrainingsys.com")
+	post.Header.Set("Origin", "https://app.example.com")
 	consent := httptest.NewRecorder()
 	api.gmailSetupReview(consent, post)
 	u, _ := url.Parse(consent.Header().Get("Location"))
-	if consent.Code != 303 || u.Host != "accounts.google.com" || u.Query().Get("code_challenge_method") != "S256" || u.Query().Get("redirect_uri") != "https://video.realtrainingsys.com"+gmailOAuthCallbackPath || u.Query().Get("scope") != "https://www.googleapis.com/auth/cloud-platform" || u.Query().Get("access_type") == "offline" {
+	if consent.Code != 303 || u.Host != "accounts.google.com" || u.Query().Get("code_challenge_method") != "S256" || u.Query().Get("redirect_uri") != "https://app.example.com"+gmailOAuthCallbackPath || u.Query().Get("scope") != "https://www.googleapis.com/auth/cloud-platform" || u.Query().Get("access_type") == "offline" {
 		t.Fatalf("incorrect consent: %d %s", consent.Code, u)
 	}
 	if !shouldSkipAuth(gmailSetupStartPath) || shouldSkipAuth(gmailSetupStartPath+"/extra") {
 		t.Fatal("review authentication bypass is not exact")
 	}
 	callback := httptest.NewRecorder()
-	api.gmailSetupCallback(callback, httptest.NewRequest("GET", "https://video.realtrainingsys.com"+gmailOAuthCallbackPath+"?state="+job.ID+"&error=access_denied", nil))
+	api.gmailSetupCallback(callback, httptest.NewRequest("GET", "https://app.example.com"+gmailOAuthCallbackPath+"?state="+job.ID+"&error=access_denied", nil))
 	api.gmailSetup.mu.Lock()
 	used := api.gmailSetup.jobs[job.ID]
 	secretCleared := used.oauth.ClientSecret == "" && used.verifier == ""
@@ -221,7 +221,7 @@ func TestGmailSetupReviewRequiresHumanGoogleConsentUsesExistingCallbackAndPKCE(t
 		t.Fatal("denied consent retained sensitive setup state")
 	}
 	second := httptest.NewRecorder()
-	api.gmailSetupCallback(second, httptest.NewRequest("GET", "https://video.realtrainingsys.com"+gmailOAuthCallbackPath+"?state="+job.ID+"&code=second", nil))
+	api.gmailSetupCallback(second, httptest.NewRequest("GET", "https://app.example.com"+gmailOAuthCallbackPath+"?state="+job.ID+"&code=second", nil))
 	if !strings.Contains(second.Body.String(), "expired") {
 		t.Fatal("reused consumed OAuth state")
 	}
@@ -258,7 +258,7 @@ func TestGmailSetupPrivateConfigSurvivesRestartAndRejectsEnvironmentConflicts(t 
 	t.Setenv("GMAIL_INBOUND_TOPICS", "")
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
-	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
+	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://app.example.com/api/hooks/gmail/events", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestGmailSetupActivatesExistingServiceWithoutRestartButIngressStillRequires
 	if request().Code != 503 {
 		t.Fatal("accepted ingress before setup")
 	}
-	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://video.realtrainingsys.com/api/hooks/gmail/events", "", "")
+	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://app.example.com/api/hooks/gmail/events", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

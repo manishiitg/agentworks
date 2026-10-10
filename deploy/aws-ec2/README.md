@@ -13,7 +13,7 @@ deployment without an equivalent script had to rediscover each item as a
 live incident. Skim it after any change to the shared `workspace`/`agent_go`
 sandboxing or Caddy config, since this deployment shares that code.
 
-- URL: `https://video.realtrainingsys.com`
+- URL: `https://app.example.com`
 - Region: `us-west-2`
 - Stack: `video-studio-prod`
 - Deploy method: server clones all three `main` branches → native Linux build → user-level systemd restart
@@ -34,11 +34,14 @@ The RTS case in `deploy.sh` (`deploy_rts`) sends the deployment instructions
 and secrets; the server-side `server/bootstrap-build.sh` and
 `server/build-and-activate.sh` do the build, activation, and health gates.
 After the deploy it prints the CloudFront usage report
-(`report_rts_cloudfront_usage`; override the distribution with
-`CLOUDFRONT_DISTRIBUTION_ID`).
-Its defaults use the `RTS` AWS profile, `us-west-2`, and
-`~/.ssh/id_ed25519`; set `AWS_PROFILE_NAME`, `AWS_REGION`, or `SSH_KEY_PATH`
-only when overriding those defaults.
+(`report_rts_cloudfront_usage`).
+This server's AWS profile, stack, CloudFront distribution, public URL, branding
+and agent service file are not in this repository: they live in the private
+deployments repo under `products/<server>/` (`aws.env`, `runtime-config.js`,
+`video-studio-agent.service`, `brand/`), which `deploy.sh` reads and ships with
+each deploy. The copies of `server/runtime-config.js` and
+`rootless/video-studio-agent.service` here are neutral placeholders.
+`AWS_REGION` and `SSH_KEY_PATH` can still be overridden in the environment.
 
 This release path connects as `video-studio`, writes only its own application
 directory, and restarts only its user services. It neither runs `sudo` nor
@@ -195,7 +198,7 @@ ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
 ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
   'grep -q "^MCP_API_URL=http://127.0.0.1:8000$" /var/lib/video-studio/video-studio/.env'
 
-curl -fsSI https://video.realtrainingsys.com/
+curl -fsSI https://app.example.com/
 
 # Caddy does not compress responses by default -- a site block with no
 # `encode` directive silently ships the full uncompressed frontend bundle
@@ -207,7 +210,7 @@ curl -fsSI https://video.realtrainingsys.com/
 # /login page (small responses compress trivially either way and can look
 # fine even when the real bundle isn't compressed):
 curl -sS -H "Accept-Encoding: gzip" -D - -o /dev/null \
-  https://video.realtrainingsys.com/assets/index-*.js
+  https://app.example.com/assets/index-*.js
 # expect: content-encoding: gzip
 ```
 
