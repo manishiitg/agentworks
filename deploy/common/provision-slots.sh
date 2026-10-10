@@ -415,6 +415,19 @@ cmd_userns() {
 
 # Make the host match its user directory: slots exist, every account has one, and the service sees its slot groups. Safe to run
 # on every deploy (nothing changes when it is already right). A new account gets its slot here, so no one is left without.
+# Every deploy: what the service creates inside a shared folder stays usable by the slots (a Relay's run folder is made by the
+# service with its own group and modes, so a slot could not open runner.py). Only the folder itself gets the default ACL here,
+# which is cheap and leaves existing content alone; `shared` does the full recursive pass once. A host that never ran `shared`
+# has no shared group and is skipped.
+ensure_shared_default_acl() {
+  local group="${SLOT_PREFIX}shared" dir
+  getent group "$group" >/dev/null || return 0
+  for dir in ${SHARED_DIRS:-Workflow Downloads skills subagents tmp}; do
+    [[ -d "$DOCS/$dir" ]] || continue
+    setfacl -m "g:$group:rwX" "$DOCS/$dir" && setfacl -d -m "g:$group:rwX" "$DOCS/$dir" || echo "warning: could not set the default ACL on $DOCS/$dir" >&2
+  done
+}
+
 cmd_ensure() {
   # init is idempotent and is what installs the sudo rule and the launcher config: run it every time, so a run that stopped half-way
   # (the table and accounts exist, the sudo rule does not) is finished by the next one.
@@ -443,6 +456,7 @@ PY
     systemctl restart "user@$uid.service"
     sleep 5
   fi
+  ensure_shared_default_acl
   echo "Every account in $DOCS/config/users.json has a slot."
 }
 
