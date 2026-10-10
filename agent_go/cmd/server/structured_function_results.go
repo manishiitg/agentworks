@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -62,6 +63,47 @@ func admitStructuredFunctionLocked(candidate *crewFunctionCall) error {
 		return fmt.Errorf("busy: Crew %q already has %d function executions running (limit %d); no call was queued; decide whether to retry later", candidate.TargetLabel, running, structuredFunctionMaxRunning)
 	}
 	return nil
+}
+
+const structuredFunctionOutputKeep = 7 * 24 * time.Hour
+
+var structuredFunctionLastSweep sync.Map
+
+// sweepStructuredFunctionOutputs removes a Crew's per-call output folders a
+// week after their last change, at most once an hour per Crew. Folders of
+// calls still held in memory as running are left alone.
+func sweepStructuredFunctionOutputs(targetPath string) {
+	key := canonicalCrewWorkspaceRoot(targetPath)
+	if last, ok := structuredFunctionLastSweep.Load(key); ok && time.Since(last.(time.Time)) < time.Hour {
+		return
+	}
+	structuredFunctionLastSweep.Store(key, time.Now())
+	dir := filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(strings.TrimSuffix(targetPath, "/")), ".calls")
+	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "fn-") {
+			continue // never follow or remove links or stray files
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < structuredFunctionOutputKeep {
+			continue
+		}
+		if call := lookupCrewFunctionCall(e.Name()); call != nil {
+			call.mu.Lock()
+			held := call.admissionHeld
+			call.mu.Unlock()
+			if held {
+				continue
+			}
+		}
+		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+	}
 }
 
 func (c *crewFunctionCall) outputRelativeFolder() string { return ".calls/" + c.ID }
@@ -208,6 +250,18 @@ func readCrewFunctionOutput(ctx context.Context, call *crewFunctionCall, name st
 	raw, err := io.ReadAll(io.LimitReader(f, int64(limit)))
 	if err != nil {
 		return nil, err
+	}
+	if int64(offset)+int64(len(raw)) < st.Size() {
+		// A page may end inside a multi-byte character; leave that
+		// character for the next page so text stays text.
+		for cut := 1; cut < utf8.UTFMax && cut <= len(raw); cut++ {
+			if r := raw[len(raw)-cut]; utf8.RuneStart(r) {
+				if !utf8.FullRune(raw[len(raw)-cut:]) {
+					raw = raw[:len(raw)-cut]
+				}
+				break
+			}
+		}
 	}
 	next := int64(offset) + int64(len(raw))
 	out := map[string]interface{}{"file": p, "offset": offset, "next_offset": next, "total_size": st.Size(), "has_more": next < st.Size(), "mime_type": structuredFunctionMIME(p)}

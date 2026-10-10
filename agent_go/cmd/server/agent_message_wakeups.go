@@ -43,6 +43,7 @@ func materializeAgentWakeupsAllowed(s *agentMessageStore, now time.Time, config 
 		if w.Status != "scheduled" || w.Due.After(now) {
 			continue
 		}
+		pruneAgentConversations(s, now, "")
 		if len(s.Conversations) >= agentConversationKeep {
 			continue
 		}

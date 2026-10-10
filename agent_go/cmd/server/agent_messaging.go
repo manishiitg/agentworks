@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,7 +77,81 @@ func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 	if err != nil {
 		return err
 	}
-	return writeFileToWorkspace(ctx, agentMessagesPath, string(raw))
+	err = writeFileToWorkspace(ctx, agentMessagesPath, string(raw))
+	agentMessageVersion.Add(1)
+	return err
+}
+
+// agentMessageVersion changes on every save, so a waiting reader rereads the
+// store only when something was written instead of parsing it every poll.
+var agentMessageVersion atomic.Int64
+var agentMessageLastResume atomic.Int64
+
+const agentConversationIdleKeep = 7 * 24 * time.Hour
+const agentConversationPerUser = 300
+
+func agentConversationActivity(c agentConversation) time.Time {
+	if n := len(c.Messages); n > 0 {
+		return c.Messages[n-1].SentAt
+	}
+	return time.Time{}
+}
+func agentConversationIdle(c agentConversation) bool {
+	for _, m := range c.Messages {
+		if m.Delivery == "pending" || m.Delivery == "dispatching" {
+			return false
+		}
+	}
+	return true
+}
+
+// pruneAgentConversations keeps the shared store from filling up: idle
+// conversations expire after a week, and when the store (or one sender) is at
+// its cap the oldest idle conversation is dropped. A conversation with a
+// message still waiting for delivery is never dropped.
+func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string) {
+	kept := s.Conversations[:0]
+	for _, c := range s.Conversations {
+		if last := agentConversationActivity(c); !last.IsZero() && agentConversationIdle(c) && now.Sub(last) > agentConversationIdleKeep {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	s.Conversations = kept
+	evict := func(match func(agentConversation) bool) {
+		oldest := -1
+		for i, c := range s.Conversations {
+			if !match(c) || !agentConversationIdle(c) {
+				continue
+			}
+			if oldest < 0 || agentConversationActivity(c).Before(agentConversationActivity(s.Conversations[oldest])) {
+				oldest = i
+			}
+		}
+		if oldest >= 0 {
+			s.Conversations = append(s.Conversations[:oldest], s.Conversations[oldest+1:]...)
+		}
+	}
+	for userID != "" {
+		own := func(c agentConversation) bool { return c.Endpoints[0].UserID == userID }
+		count := 0
+		for _, c := range s.Conversations {
+			if own(c) {
+				count++
+			}
+		}
+		if count < agentConversationPerUser {
+			break
+		}
+		before := len(s.Conversations)
+		evict(own)
+		if len(s.Conversations) == before {
+			break
+		}
+	}
+	if len(s.Conversations) >= agentConversationKeep {
+		evict(func(agentConversation) bool { return true })
+	}
 }
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
@@ -228,6 +303,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			}
 		}
 		if index < 0 {
+			pruneAgentConversations(&s, time.Now().UTC(), userID)
 			if len(s.Conversations) >= agentConversationKeep {
 				agentMessageMu.Unlock()
 				return nil, fmt.Errorf("conversation capacity reached")
@@ -308,7 +384,21 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		wait = 25 * time.Second
 	}
 	deadline := time.Now().Add(wait)
+	seen := int64(-1)
 	for {
+		if v := agentMessageVersion.Load(); v == seen {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+			if time.Now().After(deadline) {
+				return map[string]interface{}{"messages": []map[string]interface{}{}, "next_cursor": after, "inbox_id": inboxID}, nil
+			}
+			continue
+		} else {
+			seen = v
+		}
 		agentMessageMu.Lock()
 		s, err := readAgentMessageStore(ctx)
 		agentMessageMu.Unlock()
@@ -347,7 +437,10 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			return nil, fmt.Errorf("conversation unavailable or access denied")
 		}
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
-			api.resumeAgentMessages()
+			if now := time.Now().Unix(); now-agentMessageLastResume.Load() >= 5 {
+				agentMessageLastResume.Store(now)
+				api.resumeAgentMessages()
+			}
 			return map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}, nil
 		}
 		select {

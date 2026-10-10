@@ -587,6 +587,9 @@ func (c *crewFunctionCall) finish(status string, result interface{}, errText str
 	}
 	c.Status, c.Result, c.Error, c.UpdatedAt = status, result, errText, time.Now().UTC()
 	withdraw := !c.TimedOut
+	if !c.TimedOut {
+		c.admissionHeld = false // a call that ended frees its Crew slot even if its run never did
+	}
 	c.closed = true
 	done := c.done
 	c.mu.Unlock()
@@ -943,6 +946,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	crewFunctionCalls.m[id] = call
 	crewFunctionCalls.Unlock()
+	if target.Kind == triggerCallerCrew {
+		go sweepStructuredFunctionOutputs(call.TargetPath)
+	}
 	if err := persistStructuredFunctionAdmission(ctx, call); err != nil {
 		releaseStructuredFunctionAdmission(call)
 		call.finish("failed", nil, "cannot save function admission: "+err.Error())
