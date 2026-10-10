@@ -2,13 +2,17 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 )
@@ -32,6 +36,19 @@ func TestExternalCrewToolsRespectTokenCrewBounds(t *testing.T) {
 	env.mock.files[linkBetaPath+"/builder/conversation/2026-09-24/session.json"] = "{}"
 	env.mock.mu.Unlock()
 
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	folder := filepath.Join(docs, filepath.FromSlash(linkBetaPath), "notes")
+	if err := os.MkdirAll(folder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "plan.md"), []byte("beta plan"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := []byte{0, 1, 2, 255, 128, 3}
+	if err := os.WriteFile(filepath.Join(folder, "report.pdf"), binary, 0600); err != nil {
+		t.Fatal(err)
+	}
 	bounded := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
 	code, out := externalCrewRequest(t, env, bounded, "list_crews", map[string]any{})
 	crews, _ := out["crews"].([]any)
@@ -45,16 +62,31 @@ func TestExternalCrewToolsRespectTokenCrewBounds(t *testing.T) {
 	if code != 200 || out["crew_id"] != "beta" {
 		t.Fatalf("get_crew beta = %d %v", code, out)
 	}
-	if functions, _ := out["functions"].([]any); len(functions) == 0 || functions[0].(map[string]any)["name"] != "ask" {
-		t.Fatalf("get_crew must list the built-in ask: %v", out["functions"])
+	for _, fn := range out["functions"].([]any) {
+		if fn.(map[string]any)["name"] == "ask" {
+			t.Fatalf("conversational ask is not a declared function: %v", out["functions"])
+		}
 	}
 	code, out = externalCrewRequest(t, env, bounded, "read_crew_file", map[string]any{"crew_id": "beta", "path": "notes/plan.md"})
 	if code != 200 || out["content"] != "beta plan" {
 		t.Fatalf("read_crew_file = %d %v", code, out)
 	}
-	for _, private := range []string{"builder/conversation/2026-09-24/session.json", "product.json", "../alpha/product.json"} {
-		if code, _ := externalCrewRequest(t, env, bounded, "read_crew_file", map[string]any{"crew_id": "beta", "path": private}); code != 404 {
-			t.Fatalf("private path %q must be refused, got %d", private, code)
+	code, out = externalCrewRequest(t, env, bounded, "read_crew_file", map[string]any{"crew_id": "beta", "path": "notes/report.pdf"})
+	if code != 200 || out["content_base64"] != base64.StdEncoding.EncodeToString(binary) {
+		t.Fatalf("binary read = %d %v", code, out)
+	}
+	for _, refused := range []struct {
+		path, errorCode string
+		status          int
+	}{
+		{"builder/conversation/2026-09-24/session.json", "not_found", 404},
+		{"product.json", "not_found", 404},
+		{"../alpha/product.json", "invalid_arguments", 400},
+	} {
+		code, out := externalCrewRequest(t, env, bounded, "read_crew_file", map[string]any{"crew_id": "beta", "path": refused.path})
+		errBody, _ := out["error"].(map[string]any)
+		if code != refused.status || errBody["code"] != refused.errorCode || out["content"] != nil || out["content_base64"] != nil {
+			t.Fatalf("refused path %q = %d %v", refused.path, code, out)
 		}
 	}
 
@@ -74,101 +106,95 @@ func TestExternalTokenScopeForCrewTools(t *testing.T) {
 	}
 }
 
-// A person asking a Crew over MCP talks in their own chat of it, exactly the
-// chat a 1:1 Slack DM or WhatsApp message continues: for the owner, the
-// Crew's own chat. No per-caller trigger conversation is created.
-func TestExternalAskCrewRunsInCallersOwnChatAndIsPollable(t *testing.T) {
+// A send receipt is not a captured answer. Explicit replies are inbox messages,
+// and both fresh external conversations and current token bounds stay separate.
+func TestExternalAgentMessagesKeepOptionalRepliesAndCurrentBounds(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	type turn struct {
-		req       map[string]interface{}
-		sessionID string
-		userID    string
+	turns := make(chan string, 4)
+	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, _ map[string]interface{}, sessionID, _ string) (internalSessionTurnResult, error) {
+		turns <- sessionID
+		return internalSessionTurnResult{FinalResponse: "This ordinary final text must not become an inbox reply."}, nil
 	}
-	turns := make(chan turn, 4)
-	crewOwnChatAskTurn = func(_ *StreamingAPI, _ context.Context, reqMap map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
-		turns <- turn{reqMap, sessionID, userID}
-		return internalSessionTurnResult{FinalResponse: "Nothing changed today."}, nil
+	t.Cleanup(func() { agentMessageTurn = nil })
+	request := func(claims *UserClaims, args map[string]any) (int, map[string]any) {
+		body, _ := json.Marshal(map[string]any{"name": "messages", "arguments": args})
+		req := httptest.NewRequest("POST", "/api/external/v1/call", strings.NewReader(string(body)))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
+		rec := httptest.NewRecorder()
+		env.api.handleExternalCall(rec, req)
+		out := map[string]any{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
 	}
-	t.Cleanup(func() { crewOwnChatAskTurn = nil })
-	runner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:run"}, CrewIDs: []string{"beta"}}}
-
-	code, out := externalCrewRequest(t, env, runner, "ask_crew", map[string]any{"crew_id": "beta", "message": "what changed today?", "wait_seconds": float64(0)})
-	if code != 200 {
-		t.Fatalf("ask_crew = %d %v", code, out)
+	runner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, CrewIDs: []string{"beta"}}}
+	code, receipt := request(runner, map[string]any{"action": "send", "crew_id": "beta", "message": "Please review", "submission_id": "message-one"})
+	inbox, _ := receipt["inbox_id"].(string)
+	if code != 200 || inbox == "" || receipt["call_id"] != nil {
+		t.Fatalf("send receipt = %d %v", code, receipt)
 	}
-	callID, _ := out["call_id"].(string)
-	if callID == "" || out["status"] == "failed" {
-		t.Fatalf("ask_crew must return a pollable call: %v", out)
-	}
-	var got turn
 	select {
-	case got = <-turns:
+	case <-turns:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the ask never reached the Crew")
+		t.Fatal("message never reached agent turn")
 	}
-	if got.userID != "owner" || got.req["query"] != "what changed today?" || got.req["triggered_by"] != "external" {
-		t.Fatalf("the ask must be the owner's own message in their chat: user=%q req=%v", got.userID, got.req)
+	code, page := request(runner, map[string]any{"action": "read", "inbox_id": inbox})
+	messages, _ := page["messages"].([]any)
+	if code != 200 || len(messages) != 0 {
+		t.Fatalf("ordinary final text was forwarded: %d %v", code, page)
 	}
-	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	code, next := request(runner, map[string]any{"action": "send", "crew_id": "beta", "message": "An independent conversation", "submission_id": "message-two"})
+	if code != 200 || next["inbox_id"] == inbox {
+		t.Fatalf("fresh callers share an inbox: %d %v", code, next)
+	}
+	select {
+	case <-turns:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second message never reached agent")
+	}
+	agentMessageMu.Lock()
+	store, err := readAgentMessageStore(context.Background())
+	agentMessageMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, dmSession, _, err := env.api.senderProfileTurn(context.Background(), "owner", profile, "beta", services.BotIncomingMessage{Platform: "slack", DirectMessage: true, Text: "hi"}, services.ThreadID{})
-	if err != nil || dmSession == "" || got.sessionID != dmSession {
-		t.Fatalf("MCP ask session %q must be the chat a Slack DM continues (%q, err=%v)", got.sessionID, dmSession, err)
-	}
-	if triggers, err := env.svc.projectWebhookConfigs(context.Background(), "owner", "work", "beta"); err != nil || len(triggers) != 0 {
-		t.Fatalf("a person's ask must not create a per-caller trigger conversation, got %+v err=%v", triggers, err)
-	}
-
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		code, out = externalCrewRequest(t, env, runner, "get_crew_function_call", map[string]any{"call_id": callID})
-		if code != 200 || out["call_id"] != callID {
-			t.Fatalf("poll = %d %v", code, out)
+	var peer agentMessageEndpoint
+	for _, conversation := range store.Conversations {
+		if conversation.ID == inbox {
+			peer = conversation.Endpoints[1]
 		}
-		if out["status"] == "completed" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("call never completed: %v", out)
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
-	if result, _ := out["result"].(map[string]interface{}); result["answer"] != "Nothing changed today." {
-		t.Fatalf("result = %v", out["result"])
+	env.api.eventStore = storeevents.NewEventStore(50)
+	env.api.eventStore.AddEvent(peer.Session, terminalRouteToolStartEvent(peer.Session, "exec", "message-tool", "execute_shell_command", `{"command":"ls -la && echo API_KEY=supersecretvalue123"}`, nil))
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: peer.Kind, ID: peer.ID, ProfileID: peer.Profile}, Label: peer.Label, Path: peer.Path, Chat: &codeChat{Key: peer.ChatKey, SessionID: peer.Session}}
+	if _, err := env.api.sendAgentMessage(context.Background(), peer.UserID, caller, triggerTarget{}, "My explicit reply", inbox, "reply-one"); err != nil {
+		t.Fatal(err)
 	}
-
+	code, page = request(runner, map[string]any{"action": "read", "inbox_id": inbox})
+	messages, _ = page["messages"].([]any)
+	if code != 200 || len(messages) != 1 || messages[0].(map[string]any)["message"] != "My explicit reply" {
+		t.Fatalf("explicit reply = %d %v", code, page)
+	}
+	commands, _ := page["commands_run"].([]any)
+	if len(commands) != 1 || strings.Contains(fmt.Sprint(commands), "supersecretvalue123") {
+		t.Fatalf("owner command evidence missing or unmasked: %v", commands)
+	}
+	if code, empty := request(runner, map[string]any{"action": "read", "inbox_id": inbox, "after": page["next_cursor"]}); code != 200 || len(empty["messages"].([]any)) != 0 {
+		t.Fatalf("cursor read = %d %v", code, empty)
+	}
+	bounded := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, CrewIDs: []string{"alpha"}}}
 	other := &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}}
-	// Someone else's ask continues their own reader chat, never the owner's.
-	if code, out := externalCrewRequest(t, env, other, "ask_crew", map[string]any{"crew_id": "beta", "message": "can you help?"}); code == 200 {
-		select {
-		case reader := <-turns:
-			if reader.userID != "other" || reader.sessionID == "" || reader.sessionID == dmSession {
-				t.Fatalf("a non-owner's ask must run in their own chat: user=%q session=%q owner=%q", reader.userID, reader.sessionID, dmSession)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("the non-owner's ask never ran")
+	for _, claims := range []*UserClaims{bounded, other} {
+		if code, _ := request(claims, map[string]any{"action": "read", "inbox_id": inbox}); code != 404 {
+			t.Fatalf("inbox escaped current caller/token bound: %d", code)
 		}
-	} else {
-		t.Logf("non-owner cannot reach this Crew in the fixture (%d %v)", code, out)
 	}
-	if code, _ := externalCrewRequest(t, env, other, "get_crew_function_call", map[string]any{"call_id": callID}); code != 404 {
-		t.Fatalf("another user's poll must be not-found, got %d", code)
+	if code, _ := request(runner, map[string]any{"action": "read"}); code != 400 {
+		t.Fatalf("missing inbox was accepted: %d", code)
 	}
-	if code, _ := externalCrewRequest(t, env, runner, "call_crew_function", map[string]any{"crew_id": "beta", "function": "nope"}); code != 404 {
-		t.Fatalf("unknown function must be not-found, got %d", code)
-	}
-	if code, _ := externalCrewRequest(t, env, runner, "ask_crew", map[string]any{"crew_id": "alpha", "message": "hi"}); code != 404 {
-		t.Fatalf("crew outside the token bound must be not-found, got %d", code)
-	}
-	readOnly := &UserClaims{AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
-	if externalTokenAllows(readOnly, externalTool{Name: "ask_crew"}) || externalTokenAllows(readOnly, externalTool{Name: "call_crew_function"}) {
-		t.Fatal("crews:read must not allow running a Crew")
-	}
-	if !externalTokenAllows(readOnly, externalTool{Name: "get_crew_function_call"}) {
-		t.Fatal("crews:read may poll")
+	readOnly := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
+	if code, _ := request(readOnly, map[string]any{"action": "send", "inbox_id": inbox, "message": "Not authorized"}); code != 404 {
+		t.Fatalf("read-only inbox owner sent a message: %d", code)
 	}
 }
 
@@ -183,8 +209,8 @@ func TestOAuthGrantCrewAccessFollowsApprovedScopes(t *testing.T) {
 	}
 }
 
-// manage_crew_chats lists only the caller's own chats, ask_crew's chat_id
-// must name one of them, and a Crew-bounded connection stays bounded.
+// manage_crew_chats lists only the caller's own app chats, and a Crew-bounded
+// connection stays bounded. Agent messaging uses separate inboxes.
 func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
@@ -201,9 +227,7 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "list"}); code != 200 || out["chats"] == nil {
 		t.Fatalf("list own chats = %d %v", code, out)
 	}
-	if code, _ := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hi", "chat_id": "not-a-chat"}); code != 404 {
-		t.Fatalf("ask_crew into an unknown chat = %d", code)
-	}
+
 	bounded := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, CrewIDs: []string{"beta"}}}
 	if code, _ := chats(bounded, map[string]any{"crew_id": "alpha", "action": "list"}); code != 403 {
 		t.Fatalf("Crew-bounded connection listed another Crew's chats: %d", code)
@@ -272,8 +296,8 @@ func TestExternalCrewListIsEmptyWithoutTheCrewProduct(t *testing.T) {
 	}
 }
 
-// An owner can turn off the built-in free-text ask (PLAT-833): programs then see and call only the declared
-// functions, and a call to ask says why it is gone.
+// Turning off programmatic agent messaging preserves the declared function
+// catalog, including a function named ask, and refuses conversational sends.
 func TestCrewOwnerCanTurnOffFreeTextAsk(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
@@ -286,18 +310,19 @@ func TestCrewOwnerCanTurnOffFreeTextAsk(t *testing.T) {
 		}
 		return got
 	}
-	if got := names(); len(got) != 1 || got[0] != "ask" {
-		t.Fatalf("a Crew offers the built-in ask by default, got %v", got)
+	if got := names(); len(got) != 0 {
+		t.Fatalf("a Crew must not offer an implicit conversational function, got %v", got)
 	}
 	env.mock.mu.Lock()
+	env.mock.files[linkBetaPath+"/functions.json"] = `{"version":1,"functions":[{"name":"ask","description":"A declared structured function"}]}`
 	env.mock.files[linkBetaPath+"/workflow.json"] = `{"schema_version":1,"capabilities":{"free_text_ask":false}}`
 	env.mock.mu.Unlock()
-	if got := names(); len(got) != 0 {
-		t.Fatalf("with free_text_ask off the Crew offers only its declared functions, got %v", got)
+	if got := names(); len(got) != 1 || got[0] != "ask" {
+		t.Fatalf("turning messaging off hid a declared function: %v", got)
 	}
 	code, out := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hello"})
 	errBody, _ := out["error"].(map[string]any)
-	if message, _ := errBody["message"].(string); code != 404 || !strings.Contains(message, "turned off free-text ask") {
+	if message, _ := errBody["message"].(string); code != 400 || !strings.Contains(message, "agent messaging is disabled") {
 		t.Fatalf("ask_crew on a Crew with ask off = %d %v", code, out)
 	}
 }

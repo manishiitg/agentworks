@@ -46,11 +46,12 @@ var cliOperationGroups = []struct {
 	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
 	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "list_schedules"}, {"runs", "get_schedule_runs"}, {"trigger", "trigger_schedule"}}},
-	{"chat", "Chat with the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
+	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
+	{"messages", "Send agent messages and read explicit replies from your inbox", []struct{ command, tool string }{{"send", "messages"}, {"read", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
-	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
-	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
+	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"call-file", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
+	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"call-file", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
 func main() {
@@ -409,7 +410,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	// Global guidance topics accept no workflow_id; offering the flag would
 	// only produce an avoidable invalid_arguments response.
 	crewTool := strings.Contains(tool, "crew")
-	if tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && !crewTool {
+	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && !crewTool {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
 	if crewTool && tool != "list_crews" && tool != "get_crew_function_call" && tool != "create_crew" && tool != "import_crew" {
@@ -420,9 +421,11 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("function", "", "Function name from crews functions")
 		f.String("args", "", "Function arguments as a JSON object")
 	case "ask_crew":
-		f.String("message", "", "Question or task for the Crew")
+		f.String("message", "", "Conversational message for the Crew; replies are optional")
+		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
+		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
 	case "get_crew_function_call":
-		f.String("call", "", "call_id returned by crews call or crews ask")
+		f.String("call", "", "call_id returned by crews call")
 	case "call_workflow_function":
 		f.String("function", "", "Function name from functions list")
 		f.String("args", "", "Function inputs as a JSON object")
@@ -437,10 +440,19 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 			f.String("step-id", "", "Optional related step ID")
 		}
 	}
+	if tool == "get_crew_function_call" || tool == "get_workflow_function_call" {
+		f.Int("after", -1, "Execution message cursor; start at -1, then use next_after from the previous page")
+		f.Int("after-event", -1, "Conversation text cursor; start at -1, then use next_after_event")
+		f.Int("message-limit", 0, "Maximum execution messages and conversation text events to return")
+		f.Int("wait", 0, "Seconds to wait for a terminal result, at most 25")
+		f.String("file", "", "Read an output file listed on the call")
+		f.Int("offset", 0, "Byte offset in the output file")
+		f.Int("limit", 0, "Maximum output-file bytes to return")
+	}
 	if tool == "write_crew_file" {
 		f.String("file", "", "Local file to upload: text or binary, at most 11 MiB. Read here by the CLI, so it is not pasted into the call")
 	}
-	if tool == "call_crew_function" || tool == "ask_crew" || tool == "call_workflow_function" {
+	if tool == "call_crew_function" || tool == "call_workflow_function" {
 		f.Int("wait", 0, "Seconds to wait for the result (max 25) before returning a call_id to poll")
 	}
 	if tool == "" {
@@ -481,7 +493,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	if tool == "run_full_workflow" {
 		f.String("group", "", "Variable group name to execute")
 	}
-	if tool == "run_status" || tool == "send_step_message" || tool == "stop_step" || tool == "stop_all_executions" || tool == "chat" || tool == "run_reply_input" {
+	if tool == "run_status" || tool == "send_step_message" || tool == "stop_step" || tool == "stop_all_executions" || tool == "run_reply_input" {
 		f.String("session", "", "Run session ID from a previous run call")
 	}
 	if tool == "run_status" {
@@ -494,7 +506,24 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("message", "", "Live correction for the running execution")
 	}
 	if tool == "chat" {
-		f.String("message", "", "Question or instruction for the workflow assistant")
+		f.String("message", "", "Conversational message for the workflow assistant; replies are optional")
+		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
+		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
+	}
+	if tool == "messages" {
+		if cmd.Name() == "send" {
+			f.String("target", "", "Authorized target agent name")
+			f.String("crew", "", "Crew ID")
+			f.String("workflow", "", "Workflow ID")
+			f.String("message", "", "Message to send; no reply is required")
+			f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
+		}
+		f.String("inbox", "", "Inbox ID from a send acknowledgement; omit on first send to create one")
+		if cmd.Name() == "read" {
+			f.Int("after", 0, "Non-destructive message cursor; use next_cursor from the previous page")
+			f.Int("limit", 0, "Maximum messages to read")
+			f.Int("wait", 0, "Wait for new explicitly sent messages, at most 25 seconds; silence returns an empty page")
+		}
 	}
 	if tool == "run_reply_input" {
 		f.String("request-id", "", "Pending input request ID from runs status")
@@ -551,7 +580,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier"} {
+	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value
@@ -565,13 +594,16 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 		}
 		arguments["args"] = object
 	}
-	for flagName, field := range map[string]string{"limit": "limit", "offset": "offset", "depth": "depth", "since-index": "since_index", "wait": "wait_seconds"} {
+	for flagName, field := range map[string]string{"limit": "limit", "offset": "offset", "depth": "depth", "since-index": "since_index", "wait": "wait_seconds", "after": "after", "message-limit": "message_limit", "after-event": "after_event"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetInt(flagName)
 			arguments[field] = value
 		}
 	}
-	if cmd.Flags().Lookup("file") != nil && cmd.Flags().Changed("file") {
+	if cmd.Flags().Lookup("file") != nil && cmd.Flags().Changed("file") && (cmd.Name() == "call-status" || cmd.Name() == "call-file") {
+		arguments["file"], _ = cmd.Flags().GetString("file")
+	}
+	if cmd.Flags().Lookup("file") != nil && cmd.Flags().Changed("file") && cmd.Name() == "put" {
 		localFile, _ := cmd.Flags().GetString("file")
 		if input == "-" && localFile == "-" {
 			return nil, errors.New("stdin can only supply one input")
@@ -624,6 +656,9 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 	arguments, err := operationArguments(cmd, o.stdin)
 	if err != nil {
 		return err
+	}
+	if name == "messages" && (cmd.Name() == "send" || cmd.Name() == "read") {
+		arguments["action"] = cmd.Name()
 	}
 	client, err := o.client()
 	if err != nil {

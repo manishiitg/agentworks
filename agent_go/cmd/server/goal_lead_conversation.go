@@ -89,6 +89,7 @@ const (
 	// goalLeadTurnRunFailed: a workflow run failed (goal_lead_owns_reviews.go).
 	goalLeadTurnRunFailed      = "run_failed"
 	goalLeadTurnFunctionResult = "function_result"
+	goalLeadTurnAgentMessage   = "agent_message"
 )
 
 var errPulseResultIneligible = errors.New("Pulse result continuation is no longer eligible")
@@ -399,7 +400,7 @@ How you work:
 - You read; the Builder chat acts. Your own tools read the workflow and keep your records (goal checks, memory, recommendations, focus areas, decisions, notifications). To run or change anything, ask the Builder chat with ask_builder, even with full autonomy. Your permission levels say what the Builder may do for you without the owner. When something important needs the owner (beyond your levels, a goal change, a real trade-off), ask the Builder chat to raise one clear decision for the owner with the options and your recommendation; it tells you the decision id, and you attach your recommendation with record_pulse_recommendation. You recommend; only the owner decides (you cannot answer decisions). Say you do not know the owner's preference instead of guessing it.
 - Skills: your own pack, read_skill(skills=[{"name":"pulse","path":"references/<skill>.md"}]); its index lists each skill and when to use it. Load one when a turn needs it: %s.
 - You are this workflow's only reviewer: there are no separate Technical or Architecture reviews. When a failed run or step blocks or threatens the goal, diagnose it (the inspect skill) and ask the Builder chat to debug and fix it with your evidence. A failed run wakes you once for a short turn; your goal check reads run_health. When your checks raise a structural question, use the architecture skill.\n- No goal metric yet: work out from soul.md what to measure and ask the Builder chat to set it up (the measure skill); until then the goal is not measured.
-- The workflow's Builder chat edits the workflow; you own the goal. Work with it as a conversation, not one-off messages: ask what changed and why or what the owner decided, ask it to make a change, answer its questions, and follow up on its reply (did it work, what next) until the item is done or clearly blocked. It works within the same permission levels as you, and each reply comes back to you. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
+- The workflow's Builder chat edits the workflow; you own the goal. Work with it as a conversation, not one-off messages: ask what changed and why or what the owner decided, ask it to make a change, answer its questions, and follow up on its reply (did it work, what next) until the item is done or clearly blocked. It works within the same permission levels as you, and either agent explicitly chooses whether and when to send a reply with send_message(inbox_id=<reply address>). Final chat text is never forwarded. Read incoming messages with read_agent_messages and schedule an explicit self-wakeup when you want to follow up later. Record what matters in goal memory (source builder_answer). Workflow Review checks plan changes before the next run.
 - Focus areas: propose them with record_pulse_focus_area (at most three active, each with an end date and its own check); the owner confirms with one click. Track them on each goal check and close them with a lesson.
 - Keep replies short and plain: what you did, what you need, why.`, label, workspacePath, strings.Join(agentworksproduct.PulseSkills(), ", "))
 }
@@ -423,7 +424,7 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 	perms, _ := goalWorkAutonomy(ctx, workspacePath)
 	autonomyText := pulseLevelsText(perms)
 	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
-		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat; reply to it as a colleague, and your reply goes back to it. A message headed \"PULSE TURN:\" is an automatic one (goal check, Goal Work, a failed run). Any other message is the owner testing you directly: answer it, and still never wait for a person. " + goalLeadOwnerDirectionRules +
+		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat. A message with an inbox/reply address is an agent conversation; explicitly send replies with send_message(inbox_id=<that address>). Your final chat answer is not forwarded. Replies are optional. A message headed \"PULSE TURN:\" is an automatic one (goal check, Goal Work, a failed run). Any other message is the owner testing you directly: answer it, and still never wait for a person. " + goalLeadOwnerDirectionRules +
 		"\n\n" + autonomyText + "\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath))
 }
 
@@ -455,6 +456,8 @@ func goalLeadTurnQuery(turn goalLeadTurn, overrideLevels string, now time.Time) 
 		return fmt.Sprintf("PULSE TURN: a run of this workflow failed, %s.\n\n%s%s", date, turn.Body, levels)
 	case goalLeadTurnFunctionResult:
 		return fmt.Sprintf("PULSE TURN: a requested result arrived, %s.\n\n%s\n\nReconcile this result with the associated Goal Work, latest goal check and goal memory using the existing record tools. Correct stale running claims and record actual evidence, blockers and pending verification. A completed chat reply saying work started does not mean that background work finished. Preserve intentional next-check times and measurement windows unless the evidence requires a change. Do not launch duplicate work or another reviewer; owner approval is still required by current permissions.%s", date, turn.Body, levels)
+	case goalLeadTurnAgentMessage:
+		return strings.TrimSpace(turn.Body) + levels
 	case goalLeadTurnAsk:
 		return firstNonEmptyTrimmed(turn.From, "a chat of this workflow") + ": " + strings.TrimSpace(turn.Body) + levels
 	default:
@@ -481,7 +484,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	if !found || manifest == nil {
 		return "", "", fmt.Errorf("workflow %s not found", workspacePath)
 	}
-	if turn.Kind == goalLeadTurnFunctionResult && !manifest.PulseEnabled() {
+	if (turn.Kind == goalLeadTurnFunctionResult || turn.Kind == goalLeadTurnAgentMessage) && !manifest.PulseEnabled() {
 		return "", "", errPulseResultIneligible
 	}
 	now := goalLeadNow().UTC()
@@ -490,7 +493,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 		return "", "", fmt.Errorf("pulse conversation: %w", err)
 	}
 	sessionID := conv.SessionID
-	if turn.Kind == goalLeadTurnFunctionResult {
+	if turn.Kind == goalLeadTurnFunctionResult || turn.Kind == goalLeadTurnAgentMessage {
 		if sessionID != turn.ExpectedSessionID || api.autoNotificationSessionUnreachable(sessionID) {
 			return "", sessionID, errPulseResultIneligible
 		}
@@ -517,7 +520,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	// session key on every turn, so the native session is resumed, never
 	// relaunched for a role change.
 	markPulseLifecycleTurn(reqMap)
-	if turn.Kind == goalLeadTurnFunctionResult {
+	if turn.Kind == goalLeadTurnFunctionResult || turn.Kind == goalLeadTurnAgentMessage {
 		reqMap["is_auto_notification"] = true
 	}
 	reqMap["session_title"] = label + " Pulse"
@@ -538,7 +541,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	reqMap["query"] = goalLeadTurnQuery(turn, overrideLevels, now)
 
 	switch turn.Kind {
-	case goalLeadTurnOwner, goalLeadTurnSlack, goalLeadTurnAsk, goalLeadTurnFunctionResult:
+	case goalLeadTurnOwner, goalLeadTurnSlack, goalLeadTurnAsk, goalLeadTurnFunctionResult, goalLeadTurnAgentMessage:
 		if !turn.Logged {
 			_ = appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: turn.Kind, Source: turn.From, Text: turn.Body, SessionID: sessionID})
 		}
@@ -547,7 +550,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	// A new turn is a deliberate start: a Stop on an earlier turn must not
 	// leave the conversation unable to resume (PLAT-130 guards continuations
 	// of the stopped turn, not the next one).
-	if turn.Kind != goalLeadTurnFunctionResult {
+	if turn.Kind != goalLeadTurnFunctionResult && turn.Kind != goalLeadTurnAgentMessage {
 		api.clearSessionStopped(sessionID)
 		mcpagent.ClearHTTPSessionStopped(sessionID)
 	}

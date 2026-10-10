@@ -71,8 +71,8 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	}}
 	crewTool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name: "ask_platform_crew",
-		Description: "Have a Crew do work toward this workflow's goal, in the owner's own continuing conversation with that Crew (never its main chat). ask_crew takes {crew_id, message}; call_crew_function takes {crew_id, function, args} per list_crew_functions. " +
-			"Returns the result if it finishes within wait_seconds, else a call_id for search_platform get_crew_function_call. If that poll shows pending_inputs, answer one with reply_crew_function_call {call_id, request_id, response}. Anything the Crew would post, send or contact outside follows this workflow's outward permission: when that is ask, request only preparation and put the outward step in a decision.",
+		Description: "Have a Crew do work toward this workflow's goal. ask_crew explicitly sends a message and returns an inbox/reply address; its recipient chooses whether to reply. call_crew_function starts an isolated declared-function trigger with {crew_id, function, args} per list_crew_functions. " +
+			"Conversational replies must be explicit messages, read with read_agent_messages; final chat text is not captured. Structured functions return a result if they finish within wait_seconds, else a call_id for search_platform get_crew_function_call. If that poll shows pending_inputs, answer one with reply_crew_function_call {call_id, request_id, response}. Anything the Crew would post, send or contact outside follows this workflow's outward permission: when that is ask, request only preparation and put the outward step in a decision.",
 		Parameters: params(pulseCrewWorkOperations, "The operation's arguments: {\"crew_id\":\"...\",\"message\":\"...\"} or {\"crew_id\":\"...\",\"function\":\"...\",\"args\":{...}}; optional wait_seconds (max 25) or reply_crew_function_call {\"call_id\":\"...\",\"request_id\":\"...\",\"response\":\"...\"}."),
 	}}
 	executors := map[string]interface{}{
@@ -105,13 +105,39 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 		}
 	}
 	requested, _ := args["workspace_path"].(string)
-	_, claims, err := api.pulseToolScope(ctx, requested, needWrite)
+	workspacePath, claims, err := api.pulseToolScope(ctx, requested, needWrite)
 	if err != nil {
 		return "", err
 	}
 	callArgs, _ := args["arguments"].(map[string]interface{})
 	if callArgs == nil {
 		callArgs = map[string]interface{}{}
+	}
+	if operation == "ask_crew" {
+		crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, externalArg(callArgs, "crew_id"))
+		if !ok {
+			return "", fmt.Errorf("Crew unavailable or access denied")
+		}
+		caller, err := workflowTriggerLinkCaller(workspacePath)(context.WithValue(ctx, UserContextKey, claims))
+		if err != nil {
+			return "", err
+		}
+		sessionID := strings.TrimSpace(executor.SessionIDFromContext(ctx))
+		if sessionID == "" {
+			sessionID, _ = ctx.Value(common.ChatSessionIDKey).(string)
+		}
+		key := "session:" + sessionID
+		if isGoalLeadSessionID(sessionID) {
+			key = pulseBuilderChatKey
+		}
+		caller.Chat = &codeChat{Key: key, SessionID: sessionID, Name: caller.Label}
+		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: firstNonEmptyTrimmed(manifest.Title, manifest.ID), CrewID: manifest.ID, CrewProfile: crewProfileID, CrewOwner: crew.OwnerID}
+		out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, externalArg(callArgs, "message"), externalArg(callArgs, "inbox_id"), externalArg(callArgs, "submission_id"))
+		if err != nil {
+			return "", err
+		}
+		raw, err := json.Marshal(out)
+		return string(raw), err
 	}
 	body, err := json.Marshal(map[string]interface{}{"name": operation, "arguments": callArgs})
 	if err != nil {

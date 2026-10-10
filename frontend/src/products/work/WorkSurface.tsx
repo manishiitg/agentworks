@@ -329,7 +329,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
-    const updated = await updateProductProjectFreeTextAsk(project, enabled, `${enabled ? 'Turn on' : 'Turn off'} free-text ask for ${product.noun} project ${project.title}`, 'workflow.json')
+    const updated = await updateProductProjectFreeTextAsk(project, enabled, `${enabled ? 'Turn on' : 'Turn off'} agent messaging for ${product.noun} project ${project.title}`, 'workflow.json')
     updateSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])

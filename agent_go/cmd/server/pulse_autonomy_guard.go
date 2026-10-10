@@ -77,6 +77,7 @@ func goalWorkTurnPermissions(sessionID string) (stepworkflow.GoalWorkPermissions
 var goalWorkRunTools = map[string]bool{
 	"execute_step": true, "run_full_workflow": true, "debug_step": true, "send_step_message": true,
 	"trigger_schedule": true, "ask_platform_crew": true,
+	"call_function": true, "run_project_workflow": true,
 }
 
 // goalWorkMeasureTools set up measurement: allowed from the Measure level.

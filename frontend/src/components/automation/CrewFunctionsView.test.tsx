@@ -50,7 +50,7 @@ describe('CrewFunctionsView', () => {
       ],
       calls: [
         { call_id: 'fn-1', function: 'run_login_flow', caller_kind: 'crew', caller_label: 'Alpha Bot', status: 'running', started_at: '2026-09-24T05:01:00Z', latest_progress: { at: '2026-09-24T05:02:00Z', message: 'login page loaded' }, progress: [{ at: '2026-09-24T05:02:00Z', message: 'login page loaded', percent: 40 }] },
-        { call_id: 'fn-2', function: 'ask', caller_kind: 'workflow', caller_label: 'Reports', status: 'completed', started_at: '2026-09-24T04:00:00Z', finished_at: '2026-09-24T04:01:00Z', result: { answer: 'three bugs' } },
+        { call_id: 'fn-2', function: 'ask', caller_kind: 'workflow', caller_label: 'Reports', status: 'completed', started_at: '2026-09-24T04:00:00Z', finished_at: '2026-09-24T04:01:00Z', answer: 'three bugs', files: [{ name: 'report.pdf', size: 120, mime_type: 'application/pdf' }], isolated_execution: true },
       ],
     })
   })
@@ -60,16 +60,15 @@ describe('CrewFunctionsView', () => {
     container.remove()
   })
 
-  it('lists functions with inputs, returns and creator, including the built-in ask', async () => {
+  it('lists declared functions with inputs, returns and creator, excluding conversational ask', async () => {
     await renderView()
     const fn = byTestId('crew-function-run_login_flow')!
     expect(fn.textContent).toContain('build: string')
     expect(fn.textContent).toContain('env: staging | prod?')
     expect(fn.textContent).toContain('passed: boolean')
     expect(fn.textContent).toContain('By crew:alpha (Alpha Bot)')
-    const ask = byTestId('crew-function-ask')!
-    expect(ask.textContent).toContain('Built in')
-    expect(ask.querySelector('button')).toBeNull()
+    expect(byTestId('crew-function-ask')).toBeNull()
+    expect(container.textContent).toContain('fresh isolated chat')
   })
 
   it('shows recent calls with status and latest progress, expandable to the result', async () => {
@@ -82,6 +81,8 @@ describe('CrewFunctionsView', () => {
     expect(done.textContent).not.toContain('three bugs')
     await act(async () => { done.querySelector('button')!.click() })
     expect(done.textContent).toContain('three bugs')
+    expect(done.textContent).toContain('report.pdf')
+    expect(done.textContent).toContain('Isolated execution')
   })
 
   it('removes a function and routes edits to the Crew chat', async () => {

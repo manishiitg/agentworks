@@ -29,7 +29,7 @@ export type ProductProject<P extends string = string> = {
   workflowContextPaths: string[]
   /** Crew "Native agent tools": capabilities.native_agent_tools in workflow.json, on unless explicitly false. */
   nativeAgentTools?: boolean
-  /** Crew "Free-text ask": capabilities.free_text_ask in workflow.json, on unless explicitly false. Off: programs reach the Crew by its functions only. */
+  /** Crew "Agent messaging": capabilities.free_text_ask in workflow.json, on unless explicitly false. Off: programs reach the Crew by its functions only. */
   freeTextAsk?: boolean
   /** Code: the computer and folder this workspace works in (product.json `local_files`). Absent = the server's files. */
   localFiles?: ProductLocalFiles
@@ -680,7 +680,7 @@ export async function updateProductProjectNativeAgentTools<P extends string>(
   return { ...project, nativeAgentTools: enabled, updatedAt }
 }
 
-/** Sets the Crew's "Free-text ask" switch (capabilities.free_text_ask): off means programs can call only its functions. */
+/** Sets the Crew's "Agent messaging" switch (capabilities.free_text_ask): off means programs can call only its functions. */
 export async function updateProductProjectFreeTextAsk<P extends string>(
   project: ProductProject<P>,
   enabled: boolean,

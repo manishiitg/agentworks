@@ -50,9 +50,9 @@ var externalToolMerges = []externalToolMerge{
 		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
 		{"write", "write_file|write_crew_file"}, {"code", "list_step_code"},
 	}},
-	{"functions", "A workflow's or Crew's typed entry points (workflow_id or crew_id): list them, call one, check a call and answer its question.", [][2]string{
+	{"functions", "Workflow and Crew internal function triggers: isolated executions with checked inputs. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
-		{"status", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
+		{"status", "get_workflow_function_call|get_crew_function_call"}, {"read", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
 		{"calls", "list_crew_function_calls"},
 	}},
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{

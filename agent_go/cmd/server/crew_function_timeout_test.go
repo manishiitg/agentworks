@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 // startLoginFlowCall starts Alpha's call of Beta.run_login_flow with a short
@@ -54,16 +56,46 @@ func callClosed(call *crewFunctionCall) bool {
 // accepted and delivered to the caller's chat.
 func TestCrewFunctionTimeoutFollowsActivityAndAcceptsLateAnswer(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env.svc.heldConversation = nil
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	env.svc.automationTurnRunner = func(ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
+		started <- session
+		<-release
+		vars := common.GetSessionShellEnv(session)
+		if err := os.MkdirAll(vars["FUNCTION_OUTPUT_DIR"], 0700); err != nil {
+			return internalSessionTurnResult{}, err
+		}
+		if err := os.WriteFile(vars["FUNCTION_RESULT_FILE"], []byte(`{"passed":true}`), 0600); err != nil {
+			return internalSessionTurnResult{}, err
+		}
+		return internalSessionTurnResult{FinalResponse: "Completed login check."}, nil
+	}
 	ctx := context.Background()
-	timeout := 300 * time.Millisecond
+	timeout := 500 * time.Millisecond
 	call := startLoginFlowCall(t, env, timeout)
+	var receiver map[string]recordedTool
+	select {
+	case session := <-started:
+		receiver = env.functionTools(t, linkBetaPath, session, nil)
+	case <-time.After(3 * time.Second):
+		t.Fatal("isolated execution never started")
+	}
 	executionID, err := env.api.startCrewFunctionWatch(QueryRequest{SelectedFolder: linkAlphaPath}, "sess-caller", "owner", call, timeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// This exercises supervision while the live run record still omits its
+	// session: progress must retain the worker's exact receiving identity.
+	if _, err := env.beta["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "wrong chat"}); err == nil {
+		t.Fatal("another chat reported progress for an isolated execution")
+	}
 	for i := 0; i < 8; i++ {
-		if _, err := env.beta["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "still testing"}); err != nil {
+		if _, err := receiver["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "still testing"}); err != nil {
 			t.Fatalf("progress %d: %v", i, err)
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -83,18 +115,22 @@ func TestCrewFunctionTimeoutFollowsActivityAndAcceptsLateAnswer(t *testing.T) {
 	}
 	waitForNotification(t, env, executionID, "late answer is sent to you automatically")
 
-	if _, err := env.beta["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "almost done"}); err != nil {
+	if _, err := receiver["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "almost done"}); err != nil {
 		t.Fatalf("progress after the timeout was refused: %v", err)
 	}
-	if _, err := env.beta["return_function_result"].exec(ctx, map[string]interface{}{"call_id": call.ID, "result": map[string]interface{}{"passed": true}}); err != nil {
-		t.Fatalf("late result was refused: %v", err)
+	releaseOnce.Do(func() { close(release) })
+	lateDeadline := time.Now().Add(3 * time.Second)
+	for call.snapshot()["late"] != true {
+		if time.Now().After(lateDeadline) {
+			t.Fatal("late terminal answer never arrived")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	late := call.snapshot()
-	if late["status"] != "completed" || late["late"] != true {
+	if late := call.snapshot(); late["status"] != "completed" {
 		t.Fatalf("late call = %v", late)
 	}
-	if _, err := env.beta["return_function_result"].exec(ctx, map[string]interface{}{"call_id": call.ID, "result": map[string]interface{}{"passed": false}}); err == nil {
-		t.Fatal("a second late result was accepted")
+	if call.settle("completed", nil, "") {
+		t.Fatal("a second terminal result was accepted")
 	}
 
 	deadline := time.Now().Add(3 * time.Second)
@@ -141,23 +177,17 @@ func waitForNotification(t *testing.T, env crewFunctionEnv, executionID, want st
 // open is settled as interrupted with its progress kept.
 func TestCrewFunctionCallSurvivesRestartAsInterrupted(t *testing.T) {
 	env := newCrewFunctionEnv(t)
-	call := startLoginFlowCall(t, env, time.Minute)
-	if _, err := env.beta["report_function_progress"].exec(context.Background(), map[string]interface{}{"call_id": call.ID, "message": "halfway"}); err != nil {
+	call := &crewFunctionCall{
+		ID: "fn-restart-interrupted", UserID: "owner", Function: "run_login_flow",
+		CallerKind: triggerCallerCrew, CallerProfileID: "work", CallerID: "alpha", CallerPath: linkAlphaPath,
+		TargetKind: triggerCallerCrew, TargetProfileID: "work", TargetID: "beta", TargetPath: linkBetaPath,
+		IsolatedExecution: true, Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{}),
+		Progress: []crewFunctionProgress{{At: time.Now(), Message: "halfway"}},
+	}
+	if err := persistStructuredFunctionAdmission(context.Background(), call); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate the restart: the process forgets the call and its supervisor.
-	call.finish("failed", nil, "test: stop supervisor")
-	record := strings.TrimSuffix(call.TargetPath, "/") + "/functions/calls/" + call.ID + ".json"
-	env.mock.mu.Lock()
-	var saved map[string]interface{}
-	_ = json.Unmarshal([]byte(env.mock.files[record]), &saved)
-	saved["status"], saved["error"] = "running", ""
-	encoded, _ := json.Marshal(saved)
-	env.mock.files[record] = string(encoded)
-	env.mock.mu.Unlock()
-	crewFunctionCalls.Lock()
-	delete(crewFunctionCalls.m, call.ID)
-	crewFunctionCalls.Unlock()
+	record := call.recordPath()
 
 	polled, err := env.alpha["get_function_call"].exec(context.Background(), map[string]interface{}{"call_id": call.ID})
 	if err != nil {
@@ -175,60 +205,5 @@ func TestCrewFunctionCallSurvivesRestartAsInterrupted(t *testing.T) {
 	}
 	if lookupCrewFunctionCall("fn-does-not-exist") != nil || lookupCrewFunctionCall("fn-../../etc") != nil {
 		t.Fatal("unknown or unsafe IDs must not resolve")
-	}
-}
-
-// A workflow ask that outlives its timeout releases the caller but keeps the
-// assistant's turn running; its reply arrives as a late answer.
-func TestWorkflowAskTimeoutKeepsTurnAndDeliversLateAnswer(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	release := make(chan struct{})
-	turnCtxErr := make(chan error, 1)
-	previous := workflowAskTurn
-	workflowAskTurn = func(_ *StreamingAPI, ctx context.Context, _ map[string]interface{}, _, _ string) (internalSessionTurnResult, error) {
-		<-release
-		turnCtxErr <- ctx.Err()
-		return internalSessionTurnResult{FinalResponse: "Ran review_pr on #149: passed."}, nil
-	}
-	t.Cleanup(func() { workflowAskTurn = previous })
-
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "#workflow:Reports")
-	if err != nil {
-		t.Fatal(err)
-	}
-	caller, err := crewTriggerLinkCaller(linkAlphaPath)(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	call, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, workflowAskFunction(), map[string]interface{}{"message": "review PR 149"}, 200*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-call.done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("a quiet workflow ask never timed out")
-	}
-	if snapshot := call.snapshot(); snapshot["timed_out"] != true {
-		t.Fatalf("timed-out ask = %v", snapshot)
-	}
-	close(release)
-	if err := <-turnCtxErr; err != nil {
-		t.Fatalf("the assistant's turn was cancelled by the caller's timeout: %v", err)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		snapshot := call.snapshot()
-		if snapshot["late"] == true {
-			if snapshot["status"] != "completed" || !strings.Contains(fmt.Sprint(snapshot["result"]), "passed") {
-				t.Fatalf("late ask = %v", snapshot)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("late answer not recorded: %v", snapshot)
-		}
-		time.Sleep(5 * time.Millisecond)
 	}
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // Crew functions in the Automation panel (PLAT-357): the Functions tab lists
-// a Crew's declared functions plus the implicit ask, and the recent calls
+// a Crew's declared functions and recent calls
 // made to them while the server has been running. Deletion is limited to the
 // Crew owner, like triggers (projectManifest resolves the caller's own
 // projects only).
@@ -140,10 +140,6 @@ func (s *ProductScheduleService) deleteCrewFunctionHTTP(w http.ResponseWriter, r
 		kept = append(kept, fn)
 	}
 	if !removed {
-		if name == crewFunctionAskName {
-			http.Error(w, "the default ask function is built in and cannot be removed", http.StatusBadRequest)
-			return
-		}
 		http.Error(w, "function not found", http.StatusNotFound)
 		return
 	}

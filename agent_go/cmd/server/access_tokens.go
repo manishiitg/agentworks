@@ -353,6 +353,13 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.actions != nil {
 		return externalMergedAllows(c, tool)
 	}
+	if tool.Name == "messages" {
+		if c.AccessToken == nil {
+			return true
+		}
+		t := c.AccessToken
+		return t.Allows("crews:run") || t.Allows("crews:read") || t.Allows("runs:execute") || t.Allows("workflows:read") || externalCodeRunAllowed(c)
+	}
 	if isDashboardTool(tool.Name) {
 		return dashboardScopeAllowed(c, dashboardActions[tool.Name])
 	}

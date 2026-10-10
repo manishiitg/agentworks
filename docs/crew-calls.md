@@ -1,147 +1,93 @@
-# Calling a Crew: functions, callers and webhooks
+# Crew messages, functions and triggers
 
-There is one way to call a Crew, and one kind of automation a Crew runs on its
-own.
+Use a conversation when agents need to talk. Use a declared function when a caller
+needs a defined task executed with checked inputs and a tracked terminal outcome.
 
-| You want to… | Use | Runs in |
+| You want to… | Use | Receiving context |
 |---|---|---|
-| Have a workflow, Crew or Code project call a Crew | **Functions** (`ask` or a declared function) | Any shared project owner: receiving project's main chat. No shared owner: separate continuing chat |
-| Have an external MCP/CLI connection call a Crew | **Functions** | Existing external connection routing; a person's `ask` uses their own Crew chat |
-| Run something on a timer | **Schedule** | The Crew's main chat, or the schedule's own conversation |
-| Let an outside system (GitHub, CI) start work | **Webhook** | The Crew's main chat, or the webhook's own conversation |
+| Talk to a Crew or workflow agent | Agent messages | Continuing authorized conversation |
+| Execute a Crew function | Internal function trigger | Fresh isolated execution per call |
+| Execute a workflow function | Internal function trigger | Workflow run with its own step history |
+| Run on a timer | Schedule | Its configured conversation |
+| Accept an outside-system event | Webhook | Its configured conversation |
 
-Project calls compare the owners recorded on the calling and receiving
-projects. For workflows with multiple owners, **any shared owner** counts.
-The person executing the call is not used as a substitute project owner.
+## Agent messages
 
-## Functions
+Internal agents send explicit messages using the message tool. Builder/Pulse and
+Crew/workflow conversations follow the same rule: the recipient decides whether
+and what to send back. The platform does not capture the recipient's final chat
+text as an answer. There is no conversational `call_id`, required result or timeout
+for silence. A declared function named `ask` remains a function; the built-in
+conversational ask is not listed as one.
 
-Every Crew has the built-in **`ask`**: free text in, and its final reply
-comes back as the answer. A Crew can also offer **typed functions**, such
-as `run_login_flow(build, env) → {passed, failed_step}`. For these, the
-arguments are checked before the call and the result is checked before it is
-returned.
+External callers use MCP `messages` action=send or `agentworks messages send`.
+The send receipt returns `inbox_id`, `conversation_id` and `message_id`. Keep the
+inbox for that external agent/conversation. Read explicitly sent replies with
+`messages` action=read or `agentworks messages read --inbox <id>` using
+`after` / `next_cursor`. Optional reads wait up to 25 seconds. `ask_crew` and
+workflow `chat` are send aliases with these same semantics.
 
-- **From a Crew or Builder chat:** use `list_functions(target)`, then
-  `call_function(target, function, args)`. Tagging `#crew:<name>` in a message
-  also generates a `<crew>__<function>` tool.
-- **From MCP or the CLI:** use `ask_crew` / `call_crew_function`, or
-  `agentworks crews ask` / `agentworks crews call`.
-- **Getting the result:** functions are agentic and usually take minutes, so
-  `call_function` returns at once with `status: running` and a `call_id`; a
-  calling Crew or workflow gets the result as an automatic notification. Pass
-  `wait_seconds` (up to 120) to wait inline for a function you expect to be
-  quick. MCP/CLI calls (`call_crew_function`, `ask_crew`,
-  `call_workflow_function`) also return at once; clients poll
-  `get_crew_function_call` / `get_workflow_function_call`, or pass
-  `wait_seconds` (max 25).
-- **No duplicate runs:** calling the same function with the same arguments
-  while that call is still running returns the running call (`joined`), not a
-  new run.
-- **While a call runs:** `get_function_call` shows progress without
-  interrupting. `ask_function_update` sends a question or extra details into
-  the running call.
+A Crew's **Agent messaging** switch is on by default. Off refuses all incoming
+programmatic conversational messages, including replies in established
+conversations. Agents can still use declared functions; human app chat is unchanged.
+
+## Crew functions
+
+Ask the Crew's owner chat to expose a named task with declared inputs and optional
+output schema. Invoke it internally with `call_function`, through MCP
+`functions action=call`, or with `agentworks crews call`.
+
+- Inputs are checked before dispatch. Missing, unknown or mistyped inputs are
+  refused before work starts.
+- Every accepted new call starts a fresh isolated execution with its own output
+  folder; calls never reuse the main chat or a caller's previous function chat.
+- Calls run in parallel by default within the per-Crew limit. When full, the
+  platform returns a busy error immediately without queueing.
+- Keep `call_id`. Read status, progress, execution messages, final answer/result,
+  error and output files. A repeated submission ID recovers its existing call.
+- Without an output schema, the platform returns the execution's final message
+  and produced files. With a schema, the agent writes JSON to its supplied
+  `FUNCTION_RESULT_FILE`; the platform validates it after execution. No
+  `return_function_result` tool is required or exposed.
+- Reads do not start or interrupt the execution. A waiting human-input question
+  can be answered through the matching function reply tool.
+
+For MCP use `functions action=status` and action=read with `call_id` plus a file
+name. Legacy `get_crew_function_call` accepts the same status/file-read fields.
+For CLI use `agentworks crews call-status --call <id>` or
+`agentworks crews call-file --call <id> --file <name>`. Reads are bounded and paged;
+text uses `content`, binary uses `content_base64`.
+
+Outputs are private to the caller and Crew owner. Isolation separates chats, but
+functions still share authorized project files and `MEMORY.md`; edit them only as
+required by the function's purpose and authority. Put per-call results in the
+provided output folder.
 
 ## Workflow functions
 
-A workflow offers `ask` plus the **functions its Builder exposes**.
+Workflow functions are declared triggers of kind `function`, selecting a route,
+allowed groups and typed workflow variables. Ask the workflow Builder to expose
+a route with its required inputs. Each call runs the workflow with a new run record
+and step history; terminal output and errors come from that run.
 
-- **`ask`** goes to the workflow's assistant (the Run-mode chat, the same one
-  MCP `chat` uses). Each caller gets one continuing thread with it, titled
-  "Asked by <caller>" in the workflow's chat history. The assistant answers
-  questions, and when asked to run something it picks the route, sets the
-  variables, waits and reports the outcome. It cannot edit the workflow: a
-  requested change or reported problem becomes a suggestion for the owner.
-- **Functions** are triggers of kind `function` with a fixed route and
-  allowed groups (like a webhook) and typed inputs, such as
-  `review_pr(GITHUB_OWNER, GITHUB_REPO, PR_NUMBER)`. Each input is a declared
-  workflow variable and is set for that run.
+MCP uses `functions action=list|call|status|read|reply` with `workflow_id`.
+CLI uses `agentworks functions list|call|call-status|call-file --workflow <id>`.
+A function has no public URL or secret: authenticated caller access and
+`function.allowed_callers` determine who may invoke it. Calling does not expand
+execution permissions. Webhooks on the same route retain their own signature/key
+checks and raw payload rules.
 
-A call with a missing, unknown or mistyped input is **refused before anything
-runs**, for example `review_pr: missing required input PR_NUMBER`. It never
-falls back to a saved value. The caller gets the run's outcome: its status,
-any error, and each step's output (a skipped step says why).
+## History, failures and existing triggers
 
-To add one, ask the workflow's Builder, for example "expose the review route
-as review_pr taking GITHUB_OWNER, GITHUB_REPO and PR_NUMBER (all required)".
-The workflow's **Automation → Functions** tab lists them, with the built-in
-`ask`.
+Call records and outputs are saved. Completed calls remain readable after restart;
+interrupted open calls expose their interruption and saved progress. Status reads
+show pending input or failure instead of treating the last progress message as
+success. When schema output is missing or invalid, one correction turn precedes
+validated-final-JSON fallback or failure.
 
-**Who may call:** a function has no URL and no secret. The platform identifies
-the caller, and nothing in the request can change that:
+Schedules and public webhooks retain their configured destination policies.
+Function isolation does not change those policies. Code does not expose callable
+functions; its authorized conversations and outgoing calls remain separate.
 
-- a Crew or workflow chat, running for a user with edit access to the
-  workflow;
-- an MCP/CLI access token with `runs:execute` that includes the workflow.
-
-`function.allowed_callers` can narrow this to named Crews or workflows. Every
-run records who called it.
-
-**Webhooks stay strict:** a GitHub webhook on the same route keeps its
-signature check, raw payload and key validation. The function checks only its
-declared inputs. Both feed the same workflow variables.
-
-- **From MCP/CLI:** `list_workflow_functions`, `call_workflow_function`,
-  `get_workflow_function_call`, or `agentworks functions list|call|call-status
-  --workflow <id>`.
-
-## One continuing conversation per caller
-
-Workflow, Crew and Code project calls use one owner rule. If the two projects
-share any recorded owner, the call continues in the receiving project's main
-chat. Otherwise it uses a separate continuing chat, keyed by the internal
-trigger and, for a guest call, the calling person. Unknown ownership also
-uses a separate chat. Follow-up calls reuse that chat; isolation does not
-create a new project or copy its files.
-
-On single-user local installs, legacy workflows with neither an access block
-nor a creator stamp belong to the configured local account (`DEFAULT_USER_ID`,
-defaulting to `default`) for this routing decision. This applies both to
-workflow step calls and assistant calls. Explicit ownership is preserved;
-multi-user/SSO servers never infer an owner for a legacy workflow. The
-executing user is never used as a fallback owner.
-
-The same rule applies to a workflow's `ask` assistant. Workflow main chats are
-private to each account: a same-owner project call uses the **executing user's**
-visible workflow chat, never another owner's private transcript. Cross-owner
-assistant chats are separate for each calling project and executing user and
-are excluded from the main-chat restore lookup. Typed workflow functions still
-execute normal workflow runs with their own run records and step history.
-
-Code has no functions: nothing calls into a Code project, because Code is a
-private space and Crews and workflows are shared (owner, 2026-10-09). A Code
-may call Crews and workflows, and its own chats reach each other with
-`ask_project_chat`. Sharing an owner chooses a conversation for Crew and
-workflow calls; it does not grant access.
-
-Internal bindings keep their stored isolated fallback for old installations;
-the owner rule overrides it at dispatch. External MCP/CLI connections, public
-webhooks and schedules keep their existing destination rules. The Crew's
-**Automation → Functions** tab lists bindings under **Callers**; **Disconnect**
-removes a binding. Cross-owner conversations appear in the Crew's **Chats** list.
-
-## Long calls, timeouts and restarts
-
-- **The timeout counts from the target's last sign of life.** Signs of life
-  are a progress report or any activity in its session. The default is 60
-  minutes (`timeout_minutes`). A call that keeps showing activity can run up
-  to four timeouts, capped at 24 hours.
-- **A timeout doesn't discard the target's work.** When the timeout fires,
-  the caller stops waiting and is told so. The target can still report
-  progress and return its answer, and `ask_function_update` still reaches
-  it. The answer is then sent to the caller's chat as a *late answer*.
-- **The same applies to `ask` on a workflow.** A timeout releases the caller
-  but the assistant's turn keeps running, and its reply arrives as a late
-  answer.
-- **A restart interrupts open calls.** Every call is saved under the
-  target's `functions/calls/` folder and indexed in `_system/function_calls/`.
-  After a restart, `get_function_call` still finds the call. A call that was
-  still open when the server restarted is reported as interrupted, with its
-  last progress kept.
-
-## Webhooks and schedules
-
-The **Webhooks** tab lists external webhooks only: URL, auth mode (Bearer or
-GitHub signature), and where each one runs. **Main chat** puts the run into
-the Crew's main conversation. **Own conversation** gives the webhook a
-continuing conversation of its own. Schedules offer the same choice.
+See [agent messaging and function contracts](design/agent_messaging.md) for the
+full lifecycle and [MCP/CLI setup](getting-started/agentworks-cli-mcp.md).

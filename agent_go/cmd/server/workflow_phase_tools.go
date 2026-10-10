@@ -87,6 +87,12 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		if err := api.registerCrewFunctionTools(definitionAgent, userID, sessionID, syntheticReq, workflowTriggerLinkCaller(phaseWorkspacePath), nil); err != nil {
 			return err
 		}
+	} else {
+		// Run and Pulse conversations can exchange explicit messages without
+		// acquiring Builder authoring or structured-function capabilities.
+		if err := api.registerAgentMessagingTools(definitionAgent, userID, sessionID, syntheticReq, workflowTriggerLinkCaller(phaseWorkspacePath), nil); err != nil {
+			return err
+		}
 	}
 	if err := api.registerUserAccessTools(definitionAgent, userID, phaseWorkspacePath, policy); err != nil {
 		return err

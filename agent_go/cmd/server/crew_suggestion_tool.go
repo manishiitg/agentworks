@@ -82,12 +82,12 @@ func submitCrewSuggestion(ctx context.Context, claims *UserClaims, crewPath, ses
 	})
 }
 
-// crewFunctionResultOnlyRegistrar admits only the tools a Crew needs to answer
-// a function call it received; a guest turn gets these and no way to call
-// other Crews or change functions.
+// crewFunctionResultOnlyRegistrar admits progress reporting on a function
+// invocation received by a guest, without granting callable agent functions
+// or a manual completion tool.
 type crewFunctionResultOnlyRegistrar struct{ definitionToolRegistrar }
 
-var crewFunctionResultTools = map[string]bool{"report_function_progress": true, "return_function_result": true}
+var crewFunctionResultTools = map[string]bool{"report_function_progress": true}
 
 func (r crewFunctionResultOnlyRegistrar) RegisterCustomTool(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), category string) error {
 	if !crewFunctionResultTools[name] {

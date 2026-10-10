@@ -38,6 +38,12 @@ func TestGoalWorkAutonomyIsEnforcedAtToolDispatch(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Measure autonomy level") {
 		t.Fatalf("execute_step with run=ask must be refused with a decision-request hint, got %v", err)
 	}
+	// Delegating an execution is also a run, including a typed function.
+	for _, tool := range []string{"call_function", "run_project_workflow"} {
+		if _, err := inTurn(`{"pulse":{"autonomy":{"run":"ask"}}}`, tool); err == nil {
+			t.Fatalf("%s bypassed Pulse run authority", tool)
+		}
+	}
 	// run=auto (also the default): allowed.
 	if _, err := inTurn(`{"pulse":{"autonomy":{"run":"auto"}}}`, "execute_step"); err != nil {
 		t.Fatalf("execute_step with run=auto must run: %v", err)

@@ -17,6 +17,25 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Conversations use explicit messages; functions are isolated triggers (PLAT-840, PLAT-841)
+
+General agent conversations, including Pulse and Builder, store explicit messages
+and inbox addresses. Replies are optional; final chat text is never captured as a
+reply, and there is no conversational call ID. Only agent-requested timers prompt
+follow-up turns. Incoming Crew messaging can be disabled while declared functions
+remain callable. Authenticated external clients read their inboxes with cursors.
+This supersedes PLAT-825's automatic chat-reply capture.
+[PLAT-840](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/chat/agent-messaging/plat-840.md).
+
+Declared functions are internal triggers, each in a fresh isolated execution with
+its own output folder. Parallel calls are the default (three active Crew calls);
+capacity returns busy without queueing. Stable submission keys recover accepted
+calls. Terminal answer/file validation replaces `return_function_result`, with one
+correction in the same execution for a declared JSON result. Call IDs still track
+execution status, history and authorized file reads.
+[PLAT-841](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/chat/agent-messaging/plat-841.md).
+See [the communication contract](design/agent_messaging.md).
+
 ### 2026-10-10 — New Python Relays use native DBOS recovery (PLAT-842–844)
 
 New Relays start with a native DBOS workflow so completed steps can be reused

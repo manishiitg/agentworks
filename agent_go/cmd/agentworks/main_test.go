@@ -104,7 +104,10 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 		{[]string{"schedules", "runs", "--workflow", "wf-1", "--schedule-id", "daily"}, "get_schedule_runs", map[string]any{"workflow_id": "wf-1", "schedule_id": "daily"}},
 		{[]string{"schedules", "trigger", "--workflow", "wf-1", "--schedule-id", "daily"}, "trigger_schedule", map[string]any{"workflow_id": "wf-1", "schedule_id": "daily"}},
 		{[]string{"chat", "ask", "--workflow", "wf-1", "--message", "why did step 1 fail?"}, "chat", map[string]any{"workflow_id": "wf-1", "message": "why did step 1 fail?"}},
-		{[]string{"chat", "ask", "--workflow", "wf-1", "--session", "s1", "--message", "and then?"}, "chat", map[string]any{"workflow_id": "wf-1", "session_id": "s1", "message": "and then?"}},
+		{[]string{"chat", "ask", "--workflow", "wf-1", "--inbox", "inbox-1", "--message", "and then?"}, "chat", map[string]any{"workflow_id": "wf-1", "inbox_id": "inbox-1", "message": "and then?"}},
+		{[]string{"messages", "send", "--crew", "crew-1", "--message", "Please review", "--submission-id", "msg-1"}, "messages", map[string]any{"action": "send", "crew_id": "crew-1", "message": "Please review", "submission_id": "msg-1"}},
+		{[]string{"messages", "read", "--inbox", "inbox-1", "--after", "2", "--limit", "10", "--wait", "25"}, "messages", map[string]any{"action": "read", "inbox_id": "inbox-1", "after": 2, "limit": 10, "wait_seconds": 25}},
+		{[]string{"crews", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "get_crew_function_call", map[string]any{"call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},
 		{[]string{"runs", "reply", "--workflow", "wf-1", "--session", "s1", "--request-id", "r1", "--response", "yes"}, "run_reply_input", map[string]any{"workflow_id": "wf-1", "session_id": "s1", "request_id": "r1", "response": "yes"}},
 	} {
 		t.Run(tc.tool, func(t *testing.T) {

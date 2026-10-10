@@ -1023,7 +1023,7 @@ func resolveIsolatedProjectAutomationBinding(ctx context.Context, userID string,
 
 func isolateProjectAutomationBinding(base productConversationBinding, projectID, kind, automationID, title string) (productConversationBinding, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
-	if kind != "schedule" && kind != "trigger" {
+	if kind != "schedule" && kind != "trigger" && kind != "function" && kind != "messages" {
 		return productConversationBinding{}, fmt.Errorf("invalid isolated automation kind %q", kind)
 	}
 	key := strings.TrimSpace(projectID) + ":" + kind + ":" + strings.TrimSpace(automationID)

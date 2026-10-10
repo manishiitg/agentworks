@@ -96,13 +96,13 @@ func (s functionCallStatus) idFor(f elicitationFamily) string {
 
 func elicitationFamilyFor(target string) (elicitationFamily, bool) {
 	switch target {
-	case "ask_crew", "call_crew_function", "get_crew_function_call":
+	case "call_crew_function", "get_crew_function_call":
 		return elicitationFamily{get: "get_crew_function_call", reply: "reply_crew_function_call", idField: "call_id"}, true
 	case "call_workflow_function", "get_workflow_function_call":
 		return elicitationFamily{get: "get_workflow_function_call", reply: "reply_workflow_function_call", idField: "call_id", workflow: true}, true
 	case "builder_status":
 		return elicitationFamily{get: "builder_status", reply: "builder_reply_input", idField: "operation_id", workflow: true}, true
-	case "chat", "run_status":
+	case "run_status":
 		return elicitationFamily{get: "run_status", reply: "run_reply_input", idField: "session_id", workflow: true}, true
 	}
 	return elicitationFamily{}, false

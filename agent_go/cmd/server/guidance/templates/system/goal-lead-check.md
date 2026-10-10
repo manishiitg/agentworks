@@ -34,7 +34,12 @@ is no separate Goal Work pass.
 6. **Otherwise act**, smallest useful step first, through the Builder chat: ask
    it (`ask_builder`) to run the goal-driving step or route, or make the change
    the goal needs. At an auto level it does so without the owner; at ask, prepare
-   it as a decision. When something important needs the owner, ask the
+   it as a decision. `ask_builder` acknowledges message delivery; it does not
+   promise a reply or prove completion. Read explicit replies from its inbox
+   with `read_agent_messages` and send useful replies with `send_message`.
+   Choose any later follow-up yourself with `schedule_message_wakeup`; the
+   platform does not resend or capture final chat text.
+   When something important needs the owner, ask the
    Builder chat to raise ONE decision for the owner (the problem in one line,
    the options); it tells you the decision id and you attach your
    recommendation with `record_pulse_recommendation` (a safe default by a time

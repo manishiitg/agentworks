@@ -17,7 +17,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 	manifest := selected.Manifest
 	switch name {
 	case "list_workflow_functions":
-		functions := append(workflowFunctions(manifest), workflowAskFunction())
+		functions := workflowFunctions(manifest)
 		listed := make([]map[string]any, 0, len(functions))
 		for _, fn := range functions {
 			listed = append(listed, map[string]any{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema})
@@ -31,7 +31,8 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			return
 		}
 		call.mu.Lock()
-		owned := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser && call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID
+		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
+		owned := call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID && (mine || name == "get_workflow_function_call" && access == WorkflowAccessOwner)
 		call.mu.Unlock()
 		if !owned {
 			externalError(w, 404, "not_found", "Function call not found.")
@@ -48,6 +49,9 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			return
 		}
 		out := externalWorkflowCallResponse(ctx, call, externalCrewWait(args))
+		if !api.externalFunctionReadDetails(w, ctx, args, call, out) {
+			return
+		}
 		out["can_reply"] = access == WorkflowAccessOwner || access == WorkflowAccessWrite
 		externalJSON(w, out)
 	case "call_workflow_function":
@@ -56,7 +60,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			return
 		}
 		fnName, _ := args["function"].(string)
-		fn, found := findCrewFunction(append(workflowFunctions(manifest), workflowAskFunction()), fnName)
+		fn, found := findCrewFunction(workflowFunctions(manifest), fnName)
 		if !found {
 			externalError(w, 404, "not_found", "The workflow has no function "+strings.TrimSpace(fnName)+"; see list_workflow_functions.")
 			return

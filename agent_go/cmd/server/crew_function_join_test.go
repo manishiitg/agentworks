@@ -7,46 +7,17 @@ import (
 	"time"
 )
 
-// A caller that repeats a call it believes failed (a shell curl that timed
-// out while call_function was still waiting) joins the running call instead
-// of starting another run; different arguments still start their own run.
-func TestCrewFunctionIdenticalInFlightCallIsJoined(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	first := startLoginFlowCall(t, env, time.Minute)
-	second := startLoginFlowCall(t, env, time.Minute)
-	if second.ID != first.ID {
-		t.Fatalf("identical in-flight call started a new run: %s vs %s", second.ID, first.ID)
-	}
-	if snap := second.snapshot(); snap["joined"] != 1 || snap["note"] == nil {
-		t.Fatalf("joined call must say it is the running one: %v", snap)
-	}
-
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
-	if err != nil {
-		t.Fatal(err)
-	}
-	caller, err := crewTriggerLinkCaller(linkAlphaPath)(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	functions, err := callableFunctions(ctx, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn, _ := findCrewFunction(functions, "run_login_flow")
-	other, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, fn, map[string]interface{}{"build": "8"}, time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if other.ID == first.ID {
-		t.Fatal("a call with different arguments must start its own run")
-	}
-}
-
 func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env.svc.heldConversation = nil
+	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
+	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+		t.Fatal(err)
+	}
 	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +38,11 @@ func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first.finish("completed", map[string]interface{}{"ok": true}, "")
+	select {
+	case <-first.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("isolated submission never completed")
+	}
 	second, err := start(map[string]interface{}{"build": "7"})
 	if err != nil || second.ID != first.ID {
 		t.Fatalf("completed retry started another call: %v %+v", err, second)
@@ -86,6 +61,11 @@ func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
 
 func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env.svc.heldConversation = nil
+	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
+	}
 	if _, err := env.alpha["define_function"].exec(context.Background(), loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +79,17 @@ func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 		t.Fatalf("call_function omitted call_id: %s", firstRaw)
 	}
 	call := lookupCrewFunctionCall(firstID)
-	call.finish("completed", map[string]interface{}{"passed": true}, "")
+	if call == nil {
+		t.Fatal("accepted submission has no call record")
+	}
+	select {
+	case <-call.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("isolated submission never completed")
+	}
+	if call.snapshot()["status"] != "completed" {
+		t.Fatalf("function did not complete: %v", call.snapshot())
+	}
 	secondRaw, err := env.alpha["call_function"].exec(context.Background(), args)
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +107,15 @@ func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 // call records it and the delivery to the Crew carries no trace of the flag, so a function cannot see or depend on it.
 func TestCrewFunctionRunModeIsRecordedAndKeptOutOfTheDelivery(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env.svc.heldConversation = nil
+	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
+	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+		t.Fatal(err)
+	}
 	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
 	if err != nil {
 		t.Fatal(err)
@@ -157,6 +155,13 @@ func TestCrewFunctionRunModeIsRecordedAndKeptOutOfTheDelivery(t *testing.T) {
 		}
 		env.mock.mu.Unlock()
 		if delivered {
+			for _, call := range []*crewFunctionCall{plain, pinned} {
+				select {
+				case <-call.done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("function did not complete")
+				}
+			}
 			return
 		}
 		if time.Now().After(deadline) {

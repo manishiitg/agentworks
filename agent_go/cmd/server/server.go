@@ -3048,6 +3048,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// for those same session lanes. Both services are already wired so a
 	// recovered turn sees the normal runtime capabilities.
 	api.recoverConversationTurnQueue(schedulerCtx)
+	api.recoverAgentMessages()
 	if os.Getenv("SCHEDULER_ENABLED") == "false" {
 		log.Printf("[SCHEDULER] Disabled via SCHEDULER_ENABLED=false — skipping cron execution on this machine")
 	} else {
@@ -4306,11 +4307,25 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else {
 			releaseInputLane = api.lockSessionInputLane(sessionID)
 		}
-		defer func() {
-			if releaseInputLane != nil {
-				releaseInputLane()
+	}
+	defer func() {
+		if releaseInputLane != nil {
+			releaseInputLane()
+		}
+	}()
+	if _, delegated := r.Context().Value(agentMessageAdmissionKey{}).(func(string) (func(), error)); delegated {
+		releaseAuthority, admissionErr := acquireAgentMessageAuthority(r.Context(), sessionID)
+		if admissionErr != nil {
+			http.Error(w, admissionErr.Error(), http.StatusForbidden)
+			return
+		}
+		releaseLane := releaseInputLane
+		releaseInputLane = func() {
+			releaseAuthority()
+			if releaseLane != nil {
+				releaseLane()
 			}
-		}()
+		}
 	}
 
 	// Builder-chat single-runner constraint: only one workflow-builder chat
@@ -5852,6 +5867,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		recordSessionSecretScope(sessionID, req.secretsWorkspacePath)
 		codingAgentSecretEnvironment := make(map[string]string)
+		for _, name := range []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"} {
+			if value := common.GetSessionShellEnv(sessionID)[name]; value != "" {
+				codingAgentSecretEnvironment[name] = value
+			}
+		}
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
@@ -6371,6 +6391,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					guardWrite := []string{profileWrite}
 					guardBlocked := []string(nil)
 					crewRunOutput, ownerOutput := "", ""
+					// A trusted isolated function has one output folder. Run
+					// mode can write that folder without widening project access.
+					functionOutput := ""
+					if id := common.GetSessionShellEnv(sessionID)["FUNCTION_CALL_ID"]; id != "" {
+						if call := lookupCrewFunctionCall(id); call != nil {
+							call.mu.Lock()
+							if call.IsolatedExecution && call.SessionID == sessionID && workspacePathsMatchForUser(currentUserID, call.TargetPath, profileRoot) {
+								functionOutput = call.outputFolder() + "/"
+							}
+							call.mu.Unlock()
+						}
+					}
+					outputFolder := crewOutputFolder(profileRoot)
+					if functionOutput != "" {
+						outputFolder = functionOutput
+					}
+
 					if crewReadOnlyTurn {
 						guardWriteRoot = ""
 						guardReadOnly = append([]string{profileWrite}, profileReadOnly...)
@@ -6378,7 +6415,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// Run mode runs what the owner built and saves what it produces in the Crew's output folder,
 						// made here; the rest of the Crew stays unwritable (PLAT-756, PLAT-812). The project root is then
 						// not a blocked-write root: blocked writes win in every layer and would close the folder.
-						if folder := crewOutputFolder(profileRoot); folder != "" {
+						if folder := outputFolder; folder != "" {
 							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
 								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
 							} else {
@@ -6391,7 +6428,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					} else if isCrewProjectPath(profileRoot) {
 						// The owner's turn names the same folder, so a function saves its output in one place for everyone.
-						if folder := crewOutputFolder(profileRoot); folder != "" {
+						if folder := outputFolder; folder != "" {
 							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
 								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
 							} else {
