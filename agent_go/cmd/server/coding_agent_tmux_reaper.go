@@ -89,6 +89,8 @@ func (api *StreamingAPI) cleanupStaleCodingAgentTmuxSessions(now time.Time) int 
 		log.Printf("[TMUX_REAPER] Closed stale coding-agent tmux session %q terminal=%q owner=%q session=%q reason=%s",
 			tmuxSession, snapshot.TerminalID, snapshot.OwnerID, snapshot.SessionID, candidate.reason)
 	}
+	// Panes no lease knows (their turn emitted no terminal event) are invisible to the loop above.
+	closed += api.cleanupUnleasedCodingAgentTmuxSessions(now)
 	return closed
 }
 
