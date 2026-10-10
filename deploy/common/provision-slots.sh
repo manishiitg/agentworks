@@ -63,13 +63,26 @@ print_group_refresh_notice() {
 }
 
 cmd_init() {
+  # A shared host's existing account may belong to another product. Reject
+  # the complete range before changing groups, directories or sudo rules.
+  local n slot existing_home
+  for n in $(seq 1 "$SLOT_COUNT"); do
+    slot="$(slot_name "$n")"
+    if id "$slot" >/dev/null 2>&1; then
+      existing_home="$(getent passwd "$slot" | cut -d: -f6)"
+      [[ "$existing_home" == "$HOME_DIR/slots/home/$slot" ]] || {
+        echo "Slot account $slot belongs to a different product; choose an unused SLOT_PREFIX." >&2
+        exit 1
+      }
+    fi
+  done
   command -v setfacl >/dev/null || { echo "Installing the acl package (setfacl)"; DEBIAN_FRONTEND=noninteractive apt-get install -y acl >/dev/null; }
   command -v setfacl >/dev/null || { echo "setfacl is missing and could not be installed." >&2; exit 1; }
   local slotctl_src
   slotctl_src="$(readlink -f "$HOME_DIR/current/bin/slotctl" 2>/dev/null || true)"
   [[ -x "$slotctl_src" ]] || { echo "No slotctl in $HOME_DIR/current/bin: deploy a release that builds it first." >&2; exit 1; }
 
-  local n slot names=""
+  local names=""
   for n in $(seq 1 "$SLOT_COUNT"); do
     slot="$(slot_name "$n")"
     getent group "$slot" >/dev/null || groupadd "$slot"

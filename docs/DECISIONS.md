@@ -17,6 +17,15 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Slot provisioning rejects another product's accounts
+
+Before provisioning any slot, validate every existing account in the requested
+range against this product's expected slot home. A collision refuses the entire
+operation before group, directory or sudo changes; the operator must choose an
+unused prefix. This prevents sharing a Linux identity between products on a
+shared host. Code: `deploy/common/provision-slots.sh`; ticket
+[PLAT-808](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/ops/deploys/plat-808.md).
+
 ### 2026-10-09 — Code has no functions: nothing shared reaches into a private space
 
 Code is private; Crews and workflows are shared. A Code project no longer
