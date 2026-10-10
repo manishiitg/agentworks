@@ -17,6 +17,13 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — Connected email accounts precede incoming email fetch
+
+Show account connections and delivery settings first, then Incoming email and
+its Fetch emails action at the bottom of the shared email pane. Why: people
+should see their connections before the less frequent incoming-mail actions.
+[PLAT-848](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/gmail/plat-848.md).
+
 ### 2026-10-10 — Conversations use explicit messages; functions are isolated triggers (PLAT-840, PLAT-841)
 
 General agent conversations, including Pulse and Builder, store explicit messages
