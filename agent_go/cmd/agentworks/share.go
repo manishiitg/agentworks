@@ -382,6 +382,9 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 				}
 				return fmt.Errorf("sharing stopped right away: %s\nDetails: %s", firstNonEmpty(st.Error, "see the log"), logPath)
 			case <-deadline:
+				if st, ok := readShareState(statePath); ok && st.Error != "" && st.Error != shareAuthFailed {
+					return fmt.Errorf("did not connect within 30 seconds: %s.\nRun `agentworks status` to see which folder, then `agentworks stop` in that folder, and start again here.\nDetails: %s", st.Error, logPath)
+				}
 				return fmt.Errorf("did not connect within 30 seconds; run `agentworks start --debug` to see why (log: %s)", logPath)
 			case <-poll.C:
 				if st, ok := readShareState(statePath); ok && st.Connected {
@@ -422,6 +425,7 @@ func serveShareCommand(o *options) *cobra.Command {
 		writeShareState(statePath, st)
 		p := shareParams(f, f.device, alias, folder)
 		p.connected = func() { st.Connected = true; writeShareState(statePath, st) }
+		p.waiting = func(reason string) { st.Connected = false; st.Error = reason; writeShareState(statePath, st) }
 		p.trace = requestTrace(o) // into the log: `agentworks watch` follows it
 		err := runExecutor(cmd.Context(), o, p)
 		if err != nil {

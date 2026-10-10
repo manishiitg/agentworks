@@ -23,7 +23,10 @@ type executorParams struct {
 	downloads                                bool
 	// connected runs each time the connection is (re)established; trace sees every served request (debugging).
 	connected func()
-	trace     func(request localfiles.Request, response localfiles.Response, took time.Duration)
+	// waiting runs when the server refuses this connection because the computer already holds one (a second folder shared while the
+	// first is still connected), with the reason to show, so `agentworks start` can say so instead of only timing out.
+	waiting func(reason string)
+	trace   func(request localfiles.Request, response localfiles.Response, took time.Duration)
 }
 
 func runExecutor(ctx context.Context, o *options, p executorParams) error {
@@ -112,6 +115,9 @@ func runExecutor(ctx context.Context, o *options, p executorParams) error {
 		var apiErr *agentworksclient.APIError
 		if errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 409 && apiErr.Code != "device_busy") {
 			return err
+		}
+		if p.waiting != nil && errors.As(err, &apiErr) && apiErr.Code == "device_busy" {
+			p.waiting("another folder on this computer is already being shared, and a computer shares one folder at a time")
 		}
 		// Exponential backoff (1s, 2s, 4s ... 30s) plus up to a quarter of the delay at random, so many computers that lost the
 		// server at the same moment do not all retry in the same second.
