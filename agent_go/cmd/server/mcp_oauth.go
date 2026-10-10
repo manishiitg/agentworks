@@ -28,7 +28,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review", "vault:read", "vault:manage", "users:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "files:write", "dashboards:read", "dashboards:write")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "code:run", "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "files:write", "dashboards:read", "dashboards:write")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -159,6 +159,8 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return user == nil || !vaultAdminActive(user.UserID)
 		case "vault:read":
 			return user == nil || vaultPersonLevel(user.UserID) == vaultNone
+		case "code:run":
+			return user == nil || !userAllowedProduct(user, "code")
 		case "code:review":
 			return !canReview
 		case "users:manage":

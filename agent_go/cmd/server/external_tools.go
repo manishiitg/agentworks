@@ -223,6 +223,8 @@ func externalTools() ([]externalTool, error) {
 		externalVaultDefinitions(add)
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
+		// Run your own Code (code:run; never a default scope).
+		externalCodeRunDefinitions(add)
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
@@ -564,6 +566,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCodeReviewTool(tool.Name) {
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if isExternalCodeRunTool(tool.Name) {
+		api.externalCodeRunCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if isExternalTokenLimitTool(tool.Name) {

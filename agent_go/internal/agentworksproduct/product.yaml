@@ -465,6 +465,11 @@ chat:
       - list_code_chats
       - read_code_chat
       - get_code_audit
+      # Run your own Code (code:run; never a default scope; own projects only; asks are logged).
+      - list_my_code_projects
+      - list_my_code_chats
+      - ask_my_code
+      - get_my_code_state
       # Shared-account token limits and allowed models (get: code:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
       - set_token_limits

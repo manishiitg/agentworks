@@ -73,6 +73,9 @@ var externalToolMerges = []externalToolMerge{
 		{"workspaces", "list_code_workspaces"}, {"costs", "get_code_costs"}, {"files", "list_code_files"}, {"file", "read_code_file"},
 		{"chats", "list_code_chats"}, {"chat", "read_code_chat"}, {"audit", "get_code_audit"},
 	}},
+	{"code", "Run your own Code from here (needs code:run): list your projects and their chats, ask a chat something and read the reply (commands, files and folder guards run in the real sandbox), and read a project's state (folder guard, slot, chats).", [][2]string{
+		{"projects", "list_my_code_projects"}, {"chats", "list_my_code_chats"}, {"ask", "ask_my_code"}, {"state", "get_my_code_state"},
+	}},
 }
 
 // Hidden with no merged tool: a narrower duplicate of a merged action.
