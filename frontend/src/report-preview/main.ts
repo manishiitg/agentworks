@@ -119,6 +119,7 @@ async function fetchReportMetrics<T>(kind: string, params: Record<string, string
 function createPreviewDataApi(): ReportDataApi {
   return {
     workspacePath: workspace,
+    getRelayRuns: (options = {}) => fetchReportMetrics('relay-runs', { version: options.version || 'draft', limit: String(options.limit || 20) }),
     getCosts: options => fetchReportMetrics<WorkflowCostsResponse>('costs', { days: String(options.days || 30), before: options.before || '' }),
     query: createReportQuery(workspace, async body => {
       const response = await fetch(apiUrl('query', {}), {

@@ -11,6 +11,18 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-10 — Relay dashboard authoring is independent of execution stores
+
+Builder chat can author dashboard HTML/assets/scripts and use an optional managed
+database while Relay execution continues without implicit DB/KB/learnings access.
+Keep raw SQLite and KB/learnings blocked; materialize authored folders before
+compiling the CLI sandbox. Dashboard remains an allowed Relay pane. Read recorded
+run summaries through `window.report.getRelayRuns`, bound to current project access
+and an explicit draft/published version, rather than exposing private run directories
+to slot shells. The reader excludes prompts, tool arguments and DBOS journals.
+Why: dashboard authoring tools must agree with filesystem and navigation policy.
+Ticket: [PLAT-847](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/reports/plat-847.md).
+
 Design references for the linked runtime decisions:
 
 - [Crew Run/Builder roles and private project links](design/project_instruction_files.md#crew-linked-runtimes).

@@ -44,10 +44,16 @@ This skill describes platform usage. Inspect existing documents before editing.
   `DB_PATH` is unset when no database exists. Only `REPORT_CACHE_DIR` is writable.
   Every call executes afresh; implement caching there if useful. A refresh flag
   in args is your script's convention, not platform caching.
-- A report script may read recorded `relay_result.json` and `relay_trace.json`
-  under the workspace's `runs/` to summarize past invocations. Resolve paths
-  relative to the parent of `WORKFLOW_CODE_ROOT`, validate script args and return
-  only the fields the Dashboard needs. Show an empty state before the first run.
+- Read recorded Relay invocations with `await window.report.getRelayRuns({ version: 'draft', limit: 20 })`.
+  The response is `{ version, runs }`. Each run contains `run`, `run_id`, `status`,
+  `attempt`, `started_at`, `duration_s`, `steps` (name/status/reused) and `result`.
+  Select an explicit published version, e.g. `version: 'v2'`, to show its runs;
+  draft and published histories are separate. Limits are 1–50. Render an empty
+  state before the first run, and a clear error when data cannot be fetched.
+  Never enumerate `runs/` from a shell or report script: slot filesystem
+  privacy prevents listing it. The authenticated reader returns only this
+  Relay's recorded summaries and JSON results, without its private journals,
+  agent prompts or tool arguments. It never starts a run.
 - Dashboard scripts run independently of `relay.py`: they do not get the Relay
   SDK `ctx`, start a published Relay or invoke `ctx.call_agent`. Do not run a
   Relay with external effects during dashboard load or refresh.

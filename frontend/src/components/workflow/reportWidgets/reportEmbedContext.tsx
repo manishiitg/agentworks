@@ -18,6 +18,8 @@ export type ReportChatOptions = {
 export interface ReportDataApi {
   workspacePath: string
   getCosts?: (options: ReportCostOptions) => Promise<WorkflowCostsResponse>
+  /** Recorded Relay results; never starts a run or reads its private journal. */
+  getRelayRuns?: (options?: { version?: string; limit?: number }) => Promise<{ version: string; runs: Record<string, unknown>[] }>
   // Sends directly from a report action through the human-decision chat queue.
   // Reuses an interactive automation chat, or creates one only if none exists.
   // Queued is not proof of execution or completion.

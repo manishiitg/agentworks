@@ -972,7 +972,7 @@ func reportMethodBody(stripped string, paren int) (reportJSSpan, bool) {
 var reportKnownReportMethods = []string{
 	"query", "get", "getText", "getHtml", "renderMarkdown", "fileUrl", "mediaUrl", "openFile",
 	"updateField", "updateFields", "run", "getGoalMetrics", "renderGoalProgress",
-	"getCosts", "renderCosts", "renderTable", "renderActivity",
+	"getCosts", "getRelayRuns", "renderCosts", "renderTable", "renderActivity",
 	"sendChatMessage", "ready",
 }
 

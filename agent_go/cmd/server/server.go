@@ -6595,11 +6595,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// like its workshop children. Give the dedicated DB tools their
 				// trusted logical capability and hard-block raw db.sqlite/WAL/SHM
 				// access so a denied migration cannot fall back to the sqlite CLI.
-				todo_creation_human.ConfigureManagedWorkflowDBSession(
-					sessionID,
-					workflowPhaseFolder,
-					!currentUserIsReadOnly,
-				)
+				if relayChat {
+					if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly); err != nil {
+						sendError(fmt.Sprintf("Could not prepare Relay dashboard authoring: %v", err), true)
+						return
+					}
+				} else {
+					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
+				}
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
 				if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -7342,11 +7345,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
-					todo_creation_human.ConfigureManagedWorkflowDBSession(
-						sessionID,
-						phaseWorkspacePath,
-						!currentUserIsReadOnly,
-					)
+					if relayChat {
+						if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly); err != nil {
+							sendError(fmt.Sprintf("Could not prepare Relay dashboard authoring: %v", err), true)
+							return
+						}
+					} else {
+						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
+					}
 					if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}

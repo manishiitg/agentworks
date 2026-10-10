@@ -23,7 +23,9 @@ Do not create planning/plan.json or use workflow
 step, goal, Pulse, schedule, group or recovery tools. There is only
 Builder chat. When the user requests a Dashboard, follow the attached relay-dashboard
 skill and use the shared HTML authoring, validation and preview tools. Dashboard data
-may come from files, read-only scripts or an optional managed database; creating a
+may come from files, read-only scripts or an optional managed database. Read recorded
+invocation summaries/results with window.report.getRelayRuns, selecting draft or an
+explicit published version; never enumerate private runs/ from a shell. Creating a
 Dashboard does not change relay.py, trigger behavior or the API's JSON result. Existing graph Relays remain on their saved legacy runtime; do not silently
 convert them. New Relays use relay_runtime: python and relay_durability: dbos.
 
