@@ -212,7 +212,7 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 		if err == nil {
 			for _, tool := range catalog {
 				if tool.Name == target {
-					return mcp.NewToolResultError("insufficient_scope: this connection may not call \"" + target + "\"")
+					return mcp.NewToolResultError("insufficient_scope: this connection may not call \"" + target + "\"." + externalMissingScopeHint(GetUserFromContext(r.Context()), tool))
 				}
 			}
 		}

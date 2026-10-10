@@ -441,7 +441,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		tool, call.Name, call.Arguments = &member, member.Name, args
 	}
 	if !externalTokenAllows(GetUserFromContext(r.Context()), *tool) {
-		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation.")
+		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation."+externalMissingScopeHint(GetUserFromContext(r.Context()), *tool))
 		return
 	}
 	if isExternalKnowledgebaseTool(tool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), tool.Name, call.Arguments) {
