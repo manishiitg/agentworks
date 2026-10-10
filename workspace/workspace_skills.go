@@ -140,7 +140,7 @@ func migrateWorkspaceSkills(docs, workspace, dir string, manifest, steps map[str
 	// Legacy shared workflows used the root store, not another account's folder.
 	bases := []string{}
 	if owner != "" && projectSkillsOwnerPattern.MatchString(owner) {
-		bases = append(bases, filepath.Join(docs, "_users", owner, "skills"))
+		bases = append(bases, filepath.Join(docs, filepath.FromSlash(workspaceref.PhysicalPathOf(owner, "skills"))))
 	}
 	bases = append(bases, filepath.Join(docs, "skills"))
 	for name := range used {

@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // wrapExecutorsWithReferenceMapNotes (PLAT-561): when the workflow Builder
@@ -58,7 +59,7 @@ func referenceMapWorkflowRelative(workflowFolder, target string) (string, bool) 
 	p = strings.TrimPrefix(p, "./")
 	if strings.HasPrefix(p, workflowFolder+"/") {
 		p = strings.TrimPrefix(p, workflowFolder+"/")
-	} else if filepath.IsAbs(p) || strings.HasPrefix(p, "Workflow/") || strings.HasPrefix(p, "_users/") {
+	} else if ref, _ := workspaceref.Parse(p); filepath.IsAbs(p) || strings.HasPrefix(p, "Workflow/") || ref.HasOwner() {
 		return "", false
 	}
 	return p, step_based_workflow.ReferenceMapTracksFile(p)

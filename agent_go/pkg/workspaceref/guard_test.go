@@ -34,6 +34,11 @@ var literalAllowlist = map[string]string{
 	"cmd/testing/": "developer e2e commands: flag defaults and fixtures naming the default user's folder; not a server code path",
 }
 
+// workspaceLiteralAllowlist: files of the workspace module allowed to spell "_users" in a string literal.
+var workspaceLiteralAllowlist = map[string]string{
+	"slotcheck/": "the slot self-test deliberately probes the on-disk per-user folder (it must not be listable from a slot); it names the physical directory, not a path it parses",
+}
+
 // workspaceUsersDirAllowlist is the same list for the workspace module (PLAT-442 step 3), paths relative to workspace/.
 var workspaceUsersDirAllowlist = map[string]string{
 	"utils/path.go": "defines UsersDirectory (the on-disk per-user folder name, used by tests and legacy migration) from the shared constant",
@@ -121,7 +126,7 @@ func TestNoUsersPathHandlingOutsideWorkspaceref(t *testing.T) {
 	// The agent server and the workspace service both parse paths through workspaceref; this one test guards both.
 	for _, g := range []guardRoot{
 		{name: "agent_go", dir: filepath.Join("..", ".."), skipDir: "pkg/workspaceref", usersDirAllow: usersDirAllowlist, literalAllow: literalAllowlist},
-		{name: "workspace", dir: filepath.Join("..", "..", "..", "workspace"), skipDir: "workspaceref", usersDirAllow: workspaceUsersDirAllowlist, literalAllow: map[string]string{}},
+		{name: "workspace", dir: filepath.Join("..", "..", "..", "workspace"), skipDir: "workspaceref", usersDirAllow: workspaceUsersDirAllowlist, literalAllow: workspaceLiteralAllowlist},
 	} {
 		t.Run(g.name, func(t *testing.T) { checkGuardRoot(t, filepath.Clean(filepath.Join(here, g.dir)), g) })
 	}
