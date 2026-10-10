@@ -144,7 +144,10 @@ func Check(ctx context.Context, opts Options) []Row {
 	sort.Strings(assigned)
 	testSlot := opts.TestSlot
 	if testSlot == "" {
-		testSlot = pickTestSlot(table, opts.Lookup)
+		testSlot = pickTestSlot(table, opts.Lookup, opts.AppDir)
+	} else if account, exists := opts.Lookup(testSlot); !exists || !slotBelongsToApp(account, testSlot, opts.AppDir) || table.Slots[testSlot] != "" {
+		add(Row{Fail, "test-slot-account", testSlot, "test slot must be an unassigned account belonging to this product", "choose a provisioned unassigned slot of this product"})
+		testSlot = ""
 	}
 	add(Row{Pass, "slot-table-count", "-", fmt.Sprintf("%d assigned slot(s); test slot %s", len(assigned), orNone(testSlot)), ""})
 
@@ -162,6 +165,10 @@ func Check(ctx context.Context, opts Options) []Row {
 		account, ok := opts.Lookup(slot)
 		if !ok {
 			add(Row{Fail, "slot-account", slot, "no such Linux account", "run provision-slots.sh init"})
+			continue
+		}
+		if !slotBelongsToApp(account, slot, opts.AppDir) {
+			add(Row{Fail, "slot-account-home", slot, "slot account belongs to a different product", "repair this product's slot assignment; do not reuse another product's account"})
 			continue
 		}
 		if blocked, kind := firstBlocked(opts.TraversalRoot, runner, account); blocked != "" {
@@ -226,18 +233,22 @@ func checkTable(opts Options) (*slots.Table, []Row) {
 
 // pickTestSlot is the highest-numbered slot account that exists and holds no user (provision-slots.sh creates
 // SLOT_COUNT accounts, default 50; they are contiguous). It holds no user's data.
-func pickTestSlot(table *slots.Table, lookup func(string) (Account, bool)) string {
+func pickTestSlot(table *slots.Table, lookup func(string) (Account, bool), app string) string {
 	best := ""
 	for n := 1; n <= 999; n++ {
 		name := fmt.Sprintf("%s%02d", slots.Prefix(), n)
 		if _, held := table.Slots[name]; held {
 			continue
 		}
-		if _, ok := lookup(name); ok {
+		if account, ok := lookup(name); ok && slotBelongsToApp(account, name, app) {
 			best = name
 		}
 	}
 	return best
+}
+
+func slotBelongsToApp(account Account, name, app string) bool {
+	return app != "" && account.Home != "" && canonical(account.Home) == canonical(filepath.Join(app, "slots", "home", name))
 }
 
 func probesFor(cfg slots.ExecConfig, docs, workflow, slot, user string, account Account) []Probe {

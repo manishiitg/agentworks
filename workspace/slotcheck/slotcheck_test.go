@@ -154,6 +154,31 @@ func failures(rows []Row) map[string]Row {
 	return out
 }
 
+func TestTestSlotBelongsToProduct(t *testing.T) {
+	l := newLayout(t)
+	lookup := l.opts.Lookup
+	l.opts.Lookup = func(name string) (Account, bool) {
+		if name == "slot99" {
+			return Account{Name: name, Home: filepath.Join(l.root, "other-product", "slots", "home", name)}, true
+		}
+		return lookup(name)
+	}
+	rows := Check(context.Background(), l.opts)
+	if Failed(rows) || !strings.Contains(Format(rows), "test slot slot50") {
+		t.Fatalf("must choose this product's spare slot: %s", Format(rows))
+	}
+	l.opts.TestSlot = "slot99"
+	rows = Check(context.Background(), l.opts)
+	if !Failed(rows) {
+		t.Fatal("explicit foreign test slot was accepted")
+	}
+	for _, probe := range l.runs {
+		if probe.Slot == "slot99" {
+			t.Fatal("ran a probe as another product's slot")
+		}
+	}
+}
+
 func TestFixedLayoutPassesEveryCheck(t *testing.T) {
 	l := newLayout(t)
 	rows := Check(context.Background(), l.opts)
