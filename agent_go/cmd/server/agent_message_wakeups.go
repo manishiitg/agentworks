@@ -70,6 +70,17 @@ func (api *StreamingAPI) scheduleAgentMessageWakeup(ctx context.Context, userID 
 	if err != nil {
 		return nil, err
 	}
+	// A Crew woken from a message conversation must wake that conversation's
+	// chat, not its main chat: take the receiving chat the store already knows.
+	if e.Kind == triggerCallerCrew && !strings.HasPrefix(e.ChatKey, "messages:") {
+		for _, c := range s.Conversations {
+			for _, end := range c.Endpoints {
+				if end.Session == e.Session && strings.HasPrefix(end.ChatKey, "messages:") {
+					e.ChatKey = end.ChatKey
+				}
+			}
+		}
+	}
 	index := -1
 	for i, w := range s.Wakeups {
 		if w.ID == id && messageEndpointMatches(w.Endpoint, userID, caller) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -600,6 +601,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), goalLeadTurnHardCap)
 			session, deliveryErr := api.deliverAgentMessage(deliveryCtx, conv, msg)
 			cancel()
+			if deliveryErr != nil {
+				log.Printf("[AGENT-MESSAGE] delivery %s in %s failed: %v", msg.ID, conv.ID, deliveryErr)
+			}
 			lane.Unlock()
 			agentMessageMu.Lock()
 			s, err = readAgentMessageStore(ctx)
@@ -733,7 +737,13 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 				}
 			}
 		} else {
-			binding, err = resolveIsolatedProjectAutomationBinding(ctx, dest.UserID, profile, dest.ID, "messages", c.ID, "Messages: "+source.Label)
+			// A later message or wakeup for a conversation that already has a
+			// receiving chat must reach that same chat, whatever inbox carries it.
+			conversationID := c.ID
+			if strings.HasPrefix(dest.ChatKey, "messages:") {
+				conversationID = strings.TrimPrefix(dest.ChatKey, "messages:")
+			}
+			binding, err = resolveIsolatedProjectAutomationBinding(ctx, dest.UserID, profile, dest.ID, "messages", conversationID, "Messages: "+source.Label)
 		}
 		if err != nil {
 			return session, err

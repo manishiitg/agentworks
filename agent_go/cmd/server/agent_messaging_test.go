@@ -151,3 +151,30 @@ func TestAgentMessagingOffBlocksRepliesAndWakeupsStayExplicit(t *testing.T) {
 		t.Fatalf("timer lost exact session: %+v", s)
 	}
 }
+
+// A Crew that sets a wakeup from the chat a message started must be woken in
+// that same chat. Its caller key says "session:<id>" (the main-chat form), which
+// resolved to a chat that does not exist and left the wakeup undelivered.
+func TestWakeupFromAMessageChatWakesThatChat(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	ctx := internalBotRequestContext(context.Background(), "owner")
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}, Label: "Alpha", Path: linkAlphaPath, Chat: &codeChat{Key: "session:alpha", SessionID: "alpha"}}
+	known := agentConversation{ID: "inbox-known", Endpoints: [2]agentMessageEndpoint{
+		{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true},
+		{UserID: "owner", Kind: triggerCallerCrew, ID: "alpha", Profile: "work", Session: "alpha", ChatKey: "messages:inbox-known"}}}
+	agentMessageMu.Lock()
+	err := saveAgentMessageStore(ctx, agentMessageStore{Conversations: []agentConversation{known}})
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = env.api.scheduleAgentMessageWakeup(ctx, "owner", caller, "schedule", "", "Check back", 60); err != nil {
+		t.Fatal(err)
+	}
+	agentMessageMu.Lock()
+	s, err := readAgentMessageStore(ctx)
+	agentMessageMu.Unlock()
+	if err != nil || len(s.Wakeups) != 1 || s.Wakeups[0].Endpoint.ChatKey != "messages:inbox-known" {
+		t.Fatalf("wakeup not bound to the message chat: %+v %v", s.Wakeups, err)
+	}
+}
