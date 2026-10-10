@@ -180,7 +180,8 @@ func externalTools() ([]externalTool, error) {
 		add("get_crew", "Describe one Crew: identity, description, model, and its functions (typed entry points other Crews and connections can call). Requires crews:read.", false, false, crewID(nil), "crew_id")
 		crewFiles := func(search bool) map[string]any {
 			p := page()
-			p["path"] = externalString("Crew-relative directory to start from; defaults to the Crew root.")
+			// An empty path is allowed (it means the Crew root); minLength 1 refused it and the root could not be listed.
+			p["path"] = map[string]any{"type": "string", "description": "Crew-relative directory to start from. Omit, or pass \"\" or \".\", for the Crew root."}
 			p["depth"] = externalInteger(1, 8)
 			p["glob"] = externalString("Optional path glob relative to path; use it to find files by name, e.g. **/*ForgotPassword*. ** matches directories recursively.")
 			if search {

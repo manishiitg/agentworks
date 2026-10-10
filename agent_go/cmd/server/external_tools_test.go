@@ -812,3 +812,21 @@ func TestExternalPlanCanBeReadInPieces(t *testing.T) {
 	}
 	externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "step_id": "nope"}), 404)
 }
+
+// The Crew root can be listed: an empty path is not refused by the schema (PLAT-837).
+func TestListCrewFilesAcceptsAnEmptyPath(t *testing.T) {
+	tools, err := externalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range tools {
+		if tool.Name != "list_crew_files" && tool.Name != "search_crew_files" {
+			continue
+		}
+		properties, _ := tool.InputSchema["properties"].(map[string]any)
+		path, _ := properties["path"].(map[string]any)
+		if _, restricted := path["minLength"]; restricted || path == nil {
+			t.Fatalf("%s must accept an empty path, got %v", tool.Name, path)
+		}
+	}
+}

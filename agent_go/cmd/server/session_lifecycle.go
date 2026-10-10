@@ -629,6 +629,22 @@ func (api *StreamingAPI) sessionRunsATurn(sessionID string) bool {
 	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)
 }
 
+// sessionStillWorkingAfterIdleRelease reports whether a session still has active work once an idle one has been let
+// go. A chat keeps its coding CLI pane alive between turns, which counts as active work; with no turn in flight that
+// pane is closed here (what the app's stop does before it closes or deletes) and a pane tmux no longer has is retired.
+// Closing a tab and deleting a project use it, so neither is refused for an idle chat (PLAT-819, PLAT-837).
+func (api *StreamingAPI) sessionStillWorkingAfterIdleRelease(sessionID string) bool {
+	if !api.sessionHasActiveWork(sessionID) {
+		return false
+	}
+	api.retireMissingTerminalPanes(sessionID)
+	if api.sessionHasActiveWork(sessionID) && !api.sessionRunsATurn(sessionID) {
+		closeCodingCLIAndReleaseTurnMarkers(sessionID, "chat closed")
+		api.retireMissingTerminalPanes(sessionID)
+	}
+	return api.sessionHasActiveWork(sessionID)
+}
+
 // releaseStoppedSessionTurnMarkers clears what still marks a stopped session as running a turn:
 // the retained coding-agent session's active turn (its CLI was just closed), the retained-main-turn
 // record, and the durable queue entry of the turn that was running (claimed, never finished). Turns

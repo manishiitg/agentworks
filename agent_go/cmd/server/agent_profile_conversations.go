@@ -357,7 +357,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		records = append([]ProductConversationRecord{current}, records...)
 	}
 	for _, record := range records {
-		if api.sessionHasActiveWork(record.SessionID) {
+		if api.sessionStillWorkingAfterIdleRelease(record.SessionID) {
 			writeAgentProfileError(w, http.StatusConflict, "Crew is still working; stop it before deleting the project")
 			return
 		}
