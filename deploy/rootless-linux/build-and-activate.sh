@@ -307,6 +307,8 @@ fi
 echo "==> [$RELEASE_ID] Activating release and restarting services"
 # Check again after the build, before switching current or restarting services.
 PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
+source "$REPO_ROOT/deploy/common/relay-dbos.sh"
+relay_dbos_python="$(relay_dbos_prepare "$REPO_ROOT" "$REMOTE_APP")"
 chmod +x "$BUILD_DIR"/bin/*
 # The Linux sandbox must really work on this host for this release before it goes live. Shell commands run inside it, and a
 # policy that blocks a path inside a granted one needs a user namespace, which Ubuntu 23.10+ denies by default
@@ -342,6 +344,7 @@ if ! "$SCRIPT_DIR/install-managed-chrome.sh" "$REMOTE_APP" >/dev/null; then
   STANDARD_ENV=("${STANDARD_ENV[@]/AGENT_BROWSER_EXECUTABLE_PATH=*/}")
 fi
 EXTRA_ENV=("${STANDARD_ENV[@]}" "${EXTRA_ENV[@]:-}")
+EXTRA_ENV+=("RELAY_DBOS_PYTHON=$relay_dbos_python")
 install -d -m 0700 "$REMOTE_APP/state" "$REMOTE_APP/state/mcp" "$REMOTE_APP/state/browser-profile"
 
 if true; then

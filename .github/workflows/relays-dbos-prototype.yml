@@ -7,6 +7,9 @@ on:
       - agent_go/pkg/relaypython/**
       - agent_go/cmd/relay-dbos-demo/**
       - agent_go/pkg/schedulerstate/**
+      - agent_go/cmd/server/*relay*.go
+      - deploy/common/relay-dbos.sh
+      - deploy/rootless-linux/build-and-activate.sh
       - .github/workflows/relays-dbos-prototype.yml
   push:
     branches: [main]
@@ -14,6 +17,9 @@ on:
       - agent_go/pkg/relaypython/**
       - agent_go/cmd/relay-dbos-demo/**
       - agent_go/pkg/schedulerstate/**
+      - agent_go/cmd/server/*relay*.go
+      - deploy/common/relay-dbos.sh
+      - deploy/rootless-linux/build-and-activate.sh
       - .github/workflows/relays-dbos-prototype.yml
 
 permissions:
@@ -40,9 +46,19 @@ jobs:
           cache-dependency-path: agent_go/pkg/relaypython/requirements-dbos.txt
       - name: Install the pinned runtime
         run: python -m pip install -r agent_go/pkg/relaypython/requirements-dbos.txt
+      - name: Check the shared deployment runtime
+        shell: bash
+        run: |
+          source deploy/common/relay-dbos.sh
+          app_dir="$(mktemp -d)"
+          python_path="$(relay_dbos_prepare "$PWD" "$app_dir")"
+          test "$python_path" = "$(relay_dbos_prepare "$PWD" "$app_dir")"
+          "$python_path" -I -c 'import dbos'
+          test "$(stat -c %a "$(dirname "$(dirname "$python_path")")")" = 755
       - name: Exercise real process crash and recovery
         working-directory: agent_go
         env:
           GOWORK: 'off'
         run: |
           RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/relaypython ./pkg/schedulerstate ./cmd/relay-dbos-demo -count=1 -v
+          RELAY_DBOS_PYTHON="$(command -v python)" go test ./cmd/server -run '^(TestDBOSRelayServerRecoversPublishedCheckpoint|TestDBOSNativeRelayServerRecoversPublishedCheckpoint|TestCreateRelayManifestUsesNativeStarter|TestRelayPublishRequiresWriterAndTokenScope)$' -count=1 -v

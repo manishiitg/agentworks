@@ -17,6 +17,19 @@ Design references for the linked runtime decisions:
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
+### 2026-10-10 — New Python Relays use native DBOS recovery (PLAT-842–844)
+
+New Relays start with a native DBOS workflow so completed steps can be reused
+after a process failure; uncertain external effects still need reconciliation.
+Existing saved runtimes keep their selected contract. Shared deployments install
+a pinned interpreter in a managed directory and grant the Relay sandbox read
+access only to that runtime, keeping slot write restrictions intact. Recovery
+settings stay locked when source loading or inspection fails, because the UI
+cannot establish whether the source requires DBOS.
+[Runtime](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/execution/plat-842.md),
+[creation](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/plans-contracts/plat-843.md),
+[settings](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/frontend-chat/plat-844.md).
+
 ### 2026-10-10 — Anyone who can run a Crew may leave files in its `shared/<their id>/` folder (PLAT-837)
 
 A Crew's files are written over MCP by `write_crew_file` (text or binary, up to 11 MiB; the CLI's `crews put` uploads

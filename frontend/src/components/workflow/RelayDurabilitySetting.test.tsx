@@ -6,20 +6,28 @@ import { afterEach, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   canWrite: true,
   native: false,
+  sourceError: false,
+  inspectError: false,
   get: vi.fn(async () => ({ manifest: { id: 'id', relay_durability: state.native ? 'dbos' : '' } })),
   update: vi.fn(async (_request: unknown) => ({})),
   refresh: vi.fn(async () => {}),
 }))
-vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent: async () => state.native ? ({ data: { content: 'from dbos import DBOS\n@DBOS.workflow()\nasync def run(INPUT): return INPUT' } }) : null, getWorkflowManifest: state.get, updateWorkflowManifest: state.update } }))
+vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent: async () => {
+  if (state.sourceError) throw new Error('source unavailable')
+  return { data: { content: state.native ? 'from dbos import DBOS\n@DBOS.workflow()\nasync def run(INPUT): return INPUT' : 'async def run(INPUT, ctx): return INPUT' } }
+}, getWorkflowManifest: state.get, updateWorkflowManifest: state.update } }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => state.canWrite }))
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: { getState: () => ({ refreshWorkflows: state.refresh }) } }))
-vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { relayGraph: async () => ({ native: state.native, nodes: [], edges: [], errors: [] }) } }))
+vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { relayGraph: async () => {
+  if (state.inspectError) throw new Error('inspection unavailable')
+  return { native: state.native, nodes: [], edges: [], errors: [] }
+} } }))
 import { RelayDurabilitySetting } from './RelayDurabilitySetting'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const host = document.createElement('div')
 const root = createRoot(host)
-afterEach(async () => { await act(async () => root.render(null)); vi.clearAllMocks(); state.canWrite = true; state.native = false })
+afterEach(async () => { await act(async () => root.render(null)); vi.clearAllMocks(); state.canWrite = true; state.native = false; state.sourceError = false; state.inspectError = false })
 async function renderSetting() {
   await act(async () => root.render(<RelayDurabilitySetting workspacePath="Workflow/orders" />))
   return host.querySelector('input') as HTMLInputElement
@@ -53,4 +61,18 @@ it('keeps recovery enabled for authored native DBOS programs', async () => {
   expect(checkbox.checked).toBe(true)
   expect(checkbox.disabled).toBe(true)
   expect(host.textContent).toContain('Native DBOS programs require recovery to stay enabled')
+})
+
+it('refuses recovery changes when source loading or inspection fails', async () => {
+  state.native = true
+  for (const failure of ['sourceError', 'inspectError'] as const) {
+    state[failure] = true
+    const checkbox = await renderSetting()
+    expect(checkbox.disabled).toBe(true)
+    await act(async () => checkbox.click())
+    expect(state.update).not.toHaveBeenCalled()
+    expect(host.querySelector('[role="alert"]')).not.toBeNull()
+    await act(async () => root.render(null))
+    state[failure] = false
+  }
 })

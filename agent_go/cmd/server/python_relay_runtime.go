@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -26,9 +29,24 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 	if err != nil {
 		return err
 	}
+	manifest, found, err := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
+	if err != nil || !found {
+		return fmt.Errorf("Relay manifest unavailable during execution")
+	}
+	readPaths := []string{sctx.WorkspacePath}
+	if isDBOSRelay(manifest) {
+		python := strings.TrimSpace(os.Getenv("RELAY_DBOS_PYTHON"))
+		if !filepath.IsAbs(python) || filepath.Base(filepath.Dir(python)) != "bin" {
+			return fmt.Errorf("DBOS recovery requires RELAY_DBOS_PYTHON to name an absolute interpreter in a managed bin directory")
+		}
+		// Only the platform-configured interpreter and its packages are readable.
+		// Keep its virtual environment outside app-private state; slots retain
+		// their normal filesystem isolation and cannot write this runtime.
+		readPaths = append(readPaths, filepath.Dir(filepath.Dir(python)))
+	}
 	common.SetSessionWorkflowPath(sessionID, draft)
 	common.SetSessionWorkingDir(sessionID, sctx.WorkspacePath)
-	common.SetSessionFolderGuard(sessionID, []string{sctx.WorkspacePath}, []string{runPath})
+	common.SetSessionFolderGuard(sessionID, readPaths, []string{runPath})
 	blocked := []string{path.Join(sctx.WorkspacePath, "db"), path.Join(sctx.WorkspacePath, "knowledgebase"), path.Join(sctx.WorkspacePath, "learnings"), path.Join(sctx.WorkspacePath, "secrets")}
 	common.SetSessionFolderGuardBlockedPaths(sessionID, blocked)
 	common.SetSessionSandbox(sessionID, true, false)
@@ -100,10 +118,6 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 		CallAgent: func(callCtx context.Context, call relaypython.Call, tool relaypython.ToolCaller) (interface{}, error) {
 			return s.api.callPythonRelayAgent(callCtx, sctx, sessionID, runPath, call, tool)
 		},
-	}
-	manifest, found, err := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
-	if err != nil || !found {
-		return fmt.Errorf("Relay manifest unavailable during execution")
 	}
 	if isDBOSRelay(manifest) {
 		return s.executeDurablePythonRelay(ctx, sctx, runID, cfg)
