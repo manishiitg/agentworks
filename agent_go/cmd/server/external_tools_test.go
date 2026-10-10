@@ -358,7 +358,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && !isDashboardTool(tool.Name) && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
+		if tool.mutates && !isDashboardTool(tool.Name) && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && !isExternalCodeRunTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -404,7 +404,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	// Golden pin: changing the exposed surface means editing product.yaml and
 	// these lists together, deliberately.
-	wantExternal := []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "list_workflows", "get_workflow", "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_needs_you", "answer_needs_you", "manage_pulse", "manage_project", "manage_crew_chats", "query_database", "run_after_run", "manage_messaging", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "get_crew_costs", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "get_token_usage", "set_token_limits", "set_allowed_models"}
+	wantExternal := []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "list_workflows", "get_workflow", "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_needs_you", "answer_needs_you", "manage_pulse", "manage_project", "manage_crew_chats", "query_database", "run_after_run", "manage_messaging", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "get_crew_costs", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "get_token_usage", "set_token_limits", "set_allowed_models"}
 	if len(admitted) != len(wantExternal) {
 		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
 	}
@@ -791,4 +791,24 @@ func TestExternalToolsClientTransportThroughJWTAndWorkspace(t *testing.T) {
 	if f.upstreamCalls.Load() != workspaceCalls {
 		t.Fatal("unauthenticated requests reached the workspace")
 	}
+}
+
+// A large plan is read in pieces: the outline lists steps and section sizes, step_id reads one step, and the plan is
+// no longer repeated inside artifacts (PLAT-837).
+func TestExternalPlanCanBeReadInPieces(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	full := externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices"}), 200)
+	if _, repeated := full["artifacts"].(map[string]any)["planning/plan.json"]; repeated || full["plan"] == nil {
+		t.Fatalf("the plan must be returned once, as plan: %v", full)
+	}
+	outline := externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "view": "outline"}), 200)
+	steps := outline["outline"].(map[string]any)["steps"].([]any)
+	if len(steps) != 1 || steps[0].(map[string]any)["id"] != "fetch-invoices" || outline["revision"] != full["revision"] {
+		t.Fatalf("outline = %v", outline)
+	}
+	one := externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "step_id": "fetch-invoices"}), 200)
+	if one["step"].(map[string]any)["title"] != "Fetch invoices" {
+		t.Fatalf("step = %v", one)
+	}
+	externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "step_id": "nope"}), 404)
 }

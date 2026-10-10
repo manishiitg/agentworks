@@ -432,6 +432,9 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 		}
 		out := externalCrewDescription(ctx, crew, manifest, summary)
 		out["updated"] = true
+		if full, _ := args["return_spec"].(bool); !full {
+			out = externalCrewUpdateReply(out, update)
+		}
 		externalJSON(w, out)
 	default:
 		externalError(w, http.StatusNotFound, "unknown_tool", "Tool is not exposed by this API.")
@@ -932,4 +935,48 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		}}},
 	}
 	return props, fnSpec, scheduleSpec
+}
+
+// externalCrewUpdateReply is update_crew's answer unless the caller asks for the whole spec (return_spec): what was
+// applied and the Crew's current names, not every function's instructions and schemas, which cost thousands of tokens
+// for a one-file change. get_crew returns the full description.
+func externalCrewUpdateReply(full map[string]any, update crewUpdate) map[string]any {
+	changed := []string{}
+	for name, set := range map[string]bool{
+		"name": update.Name != nil, "icon": update.Icon != nil, "role": update.Role != nil, "purpose": update.Purpose != nil,
+		"skills": update.Skills != nil, "functions": update.Functions != nil, "schedules": update.Schedules != nil,
+		"files": len(update.Files) > 0, "remove_files": len(update.RemoveFiles) > 0,
+	} {
+		if set {
+			changed = append(changed, name)
+		}
+	}
+	sort.Strings(changed)
+	functions := []string{}
+	if list, ok := full["functions"].([]map[string]interface{}); ok {
+		for _, fn := range list {
+			functions = append(functions, fmt.Sprint(fn["name"]))
+		}
+	}
+	schedules := []map[string]any{}
+	if list, ok := full["schedules"].([]crewScheduleSpec); ok {
+		for _, schedule := range list {
+			entry := map[string]any{"id": schedule.ID, "name": schedule.Name}
+			if schedule.Enabled != nil {
+				entry["enabled"] = *schedule.Enabled
+			}
+			schedules = append(schedules, entry)
+		}
+	}
+	files := make([]string, 0, len(update.Files))
+	for path := range update.Files {
+		files = append(files, path)
+	}
+	sort.Strings(files)
+	return map[string]any{
+		"crew_id": full["crew_id"], "name": full["name"], "role": full["role"], "updated": true,
+		"changed": changed, "skills": full["skills"], "functions": functions, "schedules": schedules,
+		"files_written": files, "files_removed": update.RemoveFiles,
+		"note": "Compact reply. get_crew returns the full spec; pass return_spec=true to get it here.",
+	}
 }

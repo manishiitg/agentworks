@@ -95,7 +95,10 @@ func externalTools() ([]externalTool, error) {
 		// Catalog membership is admitted by product.yaml (chat.run
 		// external_tools plus the run.tools proxy surface); these definitions
 		// are implementations only.
-		add("get_plan", "Read the plan and configuration.", false, true, nil)
+		add("get_plan", "Read the plan and configuration. A large plan can be several hundred thousand characters: pass view=outline first (each step's id, type, title and a short description, plus the size of every top-level plan section), then step_id to read one step's plan entry and its configuration. Without either you get everything (plan and step configuration).", false, true, map[string]any{
+			"view":    map[string]any{"type": "string", "enum": []any{"full", "outline"}, "description": "outline: step list and section sizes only. Default full."},
+			"step_id": externalString("Read only this step: its plan entry and its configuration."),
+		})
 		add("get_agent_context", "Describe this connection for an external agent: token capabilities, available tools, and guidance version. No workflow required; pass workflow_id for the caller's role on it.", false, false, map[string]any{"workflow_id": map[string]any{"type": "string", "description": "Optional workflow ID to report the caller's role on."}})
 		add("list_guidance_topics", "List the server-owned external guidance topics and their descriptions.", false, false, nil)
 		add("get_guidance_topic", "Read one external guidance topic rendered from the canonical builder reference. Load only topics relevant to the task.", false, false, map[string]any{"topic": externalString("Topic name from list_guidance_topics.")}, "topic")
@@ -215,6 +218,7 @@ func externalTools() ([]externalTool, error) {
 			"schedules":    map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"add": map[string]any{"type": "array", "items": scheduleSpec}, "update": map[string]any{"type": "array", "items": scheduleSpec}, "remove": strList}},
 			"files":        specProps["files"],
 			"remove_files": strList,
+			"return_spec":  map[string]any{"type": "boolean", "description": "Return the whole updated Crew (every function's instructions and schemas) instead of the compact summary. Default false."},
 		}), "crew_id")
 		add("export_crew", "Export a Crew as a portable spec (identity, skills with their project-local skill files, functions, schedules, template references). Chats, memory, databases, secrets, and model connections are never included. Pass the result to import_crew on any AgentWorks server. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		importSpec := map[string]any{"type": "object", "properties": specProps, "required": []any{"name", "role", "purpose"}, "description": "A spec from export_crew (or a Crew Agent Playbook catalog entry)."}
@@ -786,7 +790,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if tool.Name == "get_plan" {
-		api.externalPlanCall(w, r, *selected)
+		api.externalPlanCall(w, r, *selected, args)
 		return
 	}
 	api.externalFileCall(w, r, tool.Name, args, *selected)
@@ -919,7 +923,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 
 var externalPlanPaths = []string{"planning/plan.json", "planning/step_config.json"}
 
-func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow) {
+func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow, args map[string]any) {
 	artifacts := map[string]any{}
 	var revisions strings.Builder
 	for _, p := range externalPlanPaths {
@@ -938,7 +942,122 @@ func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request
 		}
 		artifacts[p] = value
 	}
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": wf.Revision([]byte(revisions.String())), "plan": artifacts["planning/plan.json"], "artifacts": artifacts})
+	revision := wf.Revision([]byte(revisions.String()))
+	plan, config := artifacts["planning/plan.json"], artifacts["planning/step_config.json"]
+	if stepID := externalArg(args, "step_id"); stepID != "" {
+		step := externalPlanFindStep(plan, stepID)
+		if step == nil {
+			externalError(w, 404, "not_found", "No step "+stepID+" in the plan; call get_plan with view=outline for the step ids.")
+			return
+		}
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "step_id": stepID, "step": step, "config": externalPlanConfigFor(config, stepID)})
+		return
+	}
+	if externalArg(args, "view") == "outline" {
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "outline": externalPlanOutline(plan, config)})
+		return
+	}
+	// The plan is returned once: it used to be repeated inside artifacts, doubling the reply.
+	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "plan": plan, "artifacts": map[string]any{"planning/step_config.json": config}})
+}
+
+// externalPlanFindStep returns the plan entry of a step: the first object with this id that also has a type.
+func externalPlanFindStep(node any, id string) map[string]any {
+	switch value := node.(type) {
+	case map[string]any:
+		if got, _ := value["id"].(string); got == id {
+			if _, isStep := value["type"].(string); isStep {
+				return value
+			}
+		}
+		for _, child := range value {
+			if found := externalPlanFindStep(child, id); found != nil {
+				return found
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if found := externalPlanFindStep(child, id); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+// externalPlanConfigFor returns a step's entry of step_config.json: the value under its id key, or the first object
+// whose id is this step's. Nil when the configuration has none.
+func externalPlanConfigFor(node any, id string) any {
+	switch value := node.(type) {
+	case map[string]any:
+		if entry, ok := value[id]; ok {
+			return entry
+		}
+		if got, _ := value["id"].(string); got == id {
+			return value
+		}
+		for _, child := range value {
+			if found := externalPlanConfigFor(child, id); found != nil {
+				return found
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if found := externalPlanConfigFor(child, id); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+// externalPlanOutline is the cheap view of a plan: every step's id, type, title and a short description, and the size
+// in characters of each top-level section of the plan and of the step configuration.
+func externalPlanOutline(plan, config any) map[string]any {
+	steps := []map[string]any{}
+	var walk func(node any)
+	walk = func(node any) {
+		switch value := node.(type) {
+		case map[string]any:
+			if id, _ := value["id"].(string); id != "" {
+				if kind, isStep := value["type"].(string); isStep {
+					entry := map[string]any{"id": id, "type": kind, "title": value["title"]}
+					if description, _ := value["description"].(string); description != "" {
+						if runes := []rune(description); len(runes) > 160 {
+							description = string(runes[:160]) + "…"
+						}
+						entry["description"] = description
+					}
+					steps = append(steps, entry)
+				}
+			}
+			keys := make([]string, 0, len(value))
+			for key := range value {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				walk(value[key])
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(plan)
+	sizes := func(node any) map[string]int {
+		out := map[string]int{}
+		if object, ok := node.(map[string]any); ok {
+			for key, child := range object {
+				encoded, _ := json.Marshal(child)
+				out[key] = len(encoded)
+			}
+		}
+		return out
+	}
+	return map[string]any{"steps": steps, "plan_sections": sizes(plan), "config_sections": sizes(config),
+		"next": "get_plan with step_id=<id> reads one step and its configuration; without view or step_id returns everything."}
 }
 
 // externalWorkflowView is a workflow as an external client may see it: the manifest without the stored webhook

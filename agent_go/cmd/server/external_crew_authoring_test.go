@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -104,6 +105,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 			"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cadence_hours": 168}},
 		},
 		"files": map[string]any{"notes/runbook.md": "Escalation runbook"},
+		"return_spec": true,
 	})
 	if code != 200 || out["role"] != "Escalation lead" || out["purpose"] != "Escalate the hard tickets." {
 		t.Fatalf("update_crew = %d %v", code, out)
@@ -117,6 +119,17 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 	if crewAuthoringFile(t, env, root+"/notes/runbook.md") != "Escalation runbook" {
 		t.Fatal("update_crew must write project files")
+	}
+	// Without return_spec the reply is a summary: names and what changed, not every function's instructions (PLAT-837).
+	code, out = externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "files": map[string]any{"notes/second.md": "x"}})
+	if code != 200 || out["updated"] != true || len(out["files_written"].([]any)) != 1 || len(out["functions"].([]any)) != 3 {
+		t.Fatalf("compact update_crew reply = %d %v", code, out)
+	}
+	if _, has := out["purpose"]; has {
+		t.Fatalf("the compact reply must not carry the whole spec: %v", out)
+	}
+	if first := out["functions"].([]any)[0]; first == nil || fmt.Sprintf("%T", first) != "string" {
+		t.Fatalf("the compact reply lists function names, got %v", out["functions"])
 	}
 	for _, private := range []string{"product.json", "functions.json", "db/x.sqlite", "builder/conversation/a.json", "../escape.md"} {
 		if code, _ := externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "files": map[string]any{private: "x"}}); code != 400 {
