@@ -1,0 +1,14 @@
+{
+  "name": "@agentworks/pi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Explicit AgentWorks attachment and native delivery for Pi",
+  "keywords": ["pi-package"],
+  "pi": { "extensions": ["./index.ts"] },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}
