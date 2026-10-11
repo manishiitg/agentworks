@@ -165,7 +165,7 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 	}
 	api.workshopChatSessions.Store("drifted-workshop-key", workshop)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/session/stop?cancelAgents=true", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/session/stop", nil)
 	req.Header.Set("X-Session-ID", "session-1")
 	rec := httptest.NewRecorder()
 

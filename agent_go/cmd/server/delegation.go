@@ -193,7 +193,7 @@ func isWorkflowStepTrackingExecution(id, name string, meta map[string]string) bo
 }
 
 // suppressRepeatedChildFailureNotification marks an enclosing execution silent
-// when it failed only because a direct agent child already reported
+// when it failed only because an agent or workflow-step descendant already reported
 // the same root error. The child remains the authoritative notification; the
 // parent is still recorded and emitted as a terminal execution event, but it
 // must not create a second synthetic user turn containing the same failure.
@@ -212,13 +212,29 @@ func suppressRepeatedChildFailureNotification(registry *BackgroundAgentRegistry,
 			continue
 		}
 		child := candidate.GetSnapshot()
-		if strings.TrimSpace(child.ParentExecutionID) != parentSnapshot.ID || child.Status != BGAgentFailed {
+		if child.Status != BGAgentFailed || child.Metadata["suppress_auto_notification"] == "true" {
+			continue
+		}
+		// Follow the registered execution tree, never match an unrelated error
+		// solely by its text. Full runs can wrap a step that wraps an agent item.
+		ancestor := strings.TrimSpace(child.ParentExecutionID)
+		seen := map[string]bool{}
+		for ancestor != "" && ancestor != parentSnapshot.ID && !seen[ancestor] {
+			seen[ancestor] = true
+			enclosing := registry.Get(sessionID, ancestor)
+			if enclosing == nil {
+				break
+			}
+			ancestor = strings.TrimSpace(enclosing.GetSnapshot().ParentExecutionID)
+		}
+		if ancestor != parentSnapshot.ID {
 			continue
 		}
 		isAgentItem := child.Kind == "agent_item" ||
 			(child.Metadata != nil && child.Metadata["execution_type"] == "agent-item")
 		childError := strings.TrimSpace(child.Error)
-		if !isAgentItem || childError == "" || !strings.Contains(parentSnapshot.Error, childError) {
+		isStep := child.Kind == "workflow_step" || isWorkflowStepTrackingExecution(child.ID, child.Name, child.Metadata)
+		if (!isAgentItem && !isStep) || childError == "" || !strings.Contains(parentSnapshot.Error, childError) {
 			continue
 		}
 		parent.SetMetadata(map[string]string{

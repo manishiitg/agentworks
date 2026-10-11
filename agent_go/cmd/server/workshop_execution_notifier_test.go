@@ -20,6 +20,13 @@ func TestWorkflowStepAutoNotificationDelay(t *testing.T) {
 		t.Fatalf("young step delay = %s, want %s", got, want)
 	}
 
+	youngRun := youngStep
+	youngRun.ID = "workflow-full-example"
+	youngRun.Kind = "workflow_run"
+	if got := workflowStepAutoNotificationDelay(youngRun, now); got != 17*time.Second {
+		t.Fatalf("young full run delay = %s, want 17s", got)
+	}
+
 	oldStep := youngStep
 	oldStep.CreatedAt = now.Add(-minimumWorkflowStepAutoNotificationAge)
 	if got := workflowStepAutoNotificationDelay(oldStep, now); got != 0 {
@@ -304,5 +311,34 @@ func TestWorkshopCompletionDisplayResultRejectsArtifactOutsideWorkspace(t *testi
 	})
 	if got != "review saved" {
 		t.Fatalf("display result = %q, want fallback", got)
+	}
+}
+
+func TestWorkshopExecutionNotifierSuppressesNestedRunFailure(t *testing.T) {
+	registry := NewBackgroundAgentRegistry()
+	api := &StreamingAPI{bgAgentRegistry: registry}
+	const session = "nested-run-failure"
+	run := &BackgroundAgent{ID: "workflow-full-example", SessionID: session, Status: BGAgentRunning, CreatedAt: time.Now()}
+	step := &BackgroundAgent{ID: "workflow-step-example", ParentExecutionID: run.ID, SessionID: session, Kind: "workflow_step", Status: BGAgentRunning, CreatedAt: time.Now()}
+	item := &BackgroundAgent{ID: "agent-item-example", ParentExecutionID: step.ID, SessionID: session, Kind: "agent_item", Status: BGAgentFailed, Error: "sandbox unavailable", CreatedAt: time.Now()}
+	registry.Register(session, run)
+	registry.Register(session, step)
+	registry.Register(session, item)
+	ch := registry.GetNotificationChannel(session)
+	notifier := &workshopExecutionBgNotifier{api: api, sessionID: session}
+	notifier.OnExecutionComplete(step.ID, "Step", "", nil, fmt.Errorf("step failed: %s", item.Error))
+	notifier.OnExecutionComplete(run.ID, "Run", "", nil, fmt.Errorf("run failed: step failed: %s", item.Error))
+	select {
+	case id := <-ch:
+		t.Fatalf("duplicate ancestor notification: %s", id)
+	default:
+	}
+	// If the item has no auto-notification, an enclosing failure must still report.
+	item.SetMetadata(map[string]string{"suppress_auto_notification": "true"})
+	another := &BackgroundAgent{ID: "another-run", SessionID: session, Status: BGAgentFailed, Error: "sandbox unavailable"}
+	registry.Register(session, another)
+	item.ParentExecutionID = another.ID
+	if suppressRepeatedChildFailureNotification(registry, session, another) {
+		t.Fatal("suppressed the only failure notification")
 	}
 }

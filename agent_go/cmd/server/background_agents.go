@@ -102,10 +102,12 @@ type BackgroundAgent struct {
 func shouldDelayWorkflowStepAutoNotification(snap BackgroundAgentSnapshot) bool {
 	kind := strings.TrimSpace(snap.Kind)
 	switch kind {
-	case "workflow_step", "agent_item", "prevalidation_warning":
+	case "workflow_step", "workflow_run", "agent_item", "prevalidation_warning":
 		return true
 	}
-	return isWorkflowStepTrackingExecution(snap.ID, snap.Name, snap.Metadata)
+	return isWorkflowStepTrackingExecution(snap.ID, snap.Name, snap.Metadata) ||
+		strings.HasPrefix(strings.TrimSpace(snap.ID), "workflow-full-") ||
+		snap.Metadata["execution_type"] == "workflow-full"
 }
 
 func workflowStepAutoNotificationDelay(snap BackgroundAgentSnapshot, now time.Time) time.Duration {

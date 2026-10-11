@@ -283,10 +283,10 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	api.setSessionBusy(sessionID, false)
 	api.setSyntheticTurn(sessionID, false)
 
-	// Cancel background agents if explicitly requested (e.g. user pressed the stop button).
-	// When called before sending a new message, cancelAgents is NOT set so agents survive
-	// across turns and synthetic turns can still fire when they complete.
-	if r.URL.Query().Get("cancelAgents") == "true" {
+	// A terminal stop (including closing a streaming tab) discards the registry,
+	// so cancel its work first. Preserved interactive conversations can retain
+	// work only when the caller has not explicitly requested cancellation.
+	if !preserveConversation || r.URL.Query().Get("cancelAgents") == "true" {
 		api.cancelBackgroundAgents(sessionID)
 		log.Printf("[SESSION DEBUG] Canceled all background agents for session %s", sessionID)
 	}
@@ -321,7 +321,9 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	delete(api.completionLoopStarted, sessionID)
 	api.completionLoopStartedMu.Unlock()
 
-	api.bgAgentRegistry.Cleanup(sessionID)
+	if !preserveConversation || r.URL.Query().Get("cancelAgents") == "true" {
+		api.bgAgentRegistry.Cleanup(sessionID)
+	}
 	log.Printf("[SESSION DEBUG] Cleared synthetic-turn state for stopped session %s", sessionID)
 
 	// Close workshop chat sessions for this session — cancels all running step executions.
