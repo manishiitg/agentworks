@@ -178,6 +178,10 @@ type Storage interface {
 type AccessWriter interface {
 	SetLLMModelAccessWithDenials(string, string, []string, []string, []string, int, string) (LLMModelAccess, error)
 }
+
+// AuditReader queries MCP and product records. Query applies Limit after filters
+// and phase coalescing. Summary ignores Limit and aggregates all matching logical
+// requests; unfinished admissions have no completed latency or cost observation.
 type AuditReader interface {
 	Query(context.Context, AuditFilter) ([]AuditEvent, error)
 	Summary(context.Context, AuditFilter) (AuditSummary, error)

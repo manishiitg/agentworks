@@ -100,19 +100,33 @@ func (s *Store) Query(ctx context.Context, f api.AuditFilter) ([]api.AuditEvent,
 	}
 	// Fetch retained product records before applying the display limit; admission
 	// and completion share a logical ID, so they cannot inflate cost totals.
-	rows, err := s.store.ReadAudit(store.AuditFilter{WorkspaceID: f.WorkspaceID, UserID: f.UserID, After: f.After, Before: f.Before})
+	// Status predicates must run after admission/completion coalescing. Applying
+	// them to raw rows could resurrect an admission whose completed status changed.
+	rows, err := s.store.ReadAudit(store.AuditFilter{
+		WorkspaceID: f.WorkspaceID, UserID: f.UserID, GroupID: f.GroupID,
+		ClientID: f.ClientID, ConnectorID: f.ConnectorID, PublicName: f.PublicName,
+		After: f.After, Before: f.Before,
+	})
 	if err != nil {
 		return nil, err
 	}
 	out := []api.AuditEvent{}
 	indices := map[string]int{}
 	for _, row := range rows {
-		if !strings.HasPrefix(row.ID, "llm-") {
-			continue
-		}
 		var e api.AuditEvent
-		if json.Unmarshal(row.Output, &e) != nil || e.ID == "" {
-			continue
+		if strings.HasPrefix(row.ID, "llm-") {
+			if json.Unmarshal(row.Output, &e) != nil || e.ID == "" {
+				continue
+			}
+		} else {
+			e = api.AuditEvent{
+				ID: row.ID, CallID: row.CallID, Timestamp: row.Timestamp,
+				WorkspaceID: row.WorkspaceID, UserID: row.UserID, GroupIDs: row.GroupIDs,
+				ClientID: row.ClientID, ConnectorID: row.ConnectorID, PublicName: row.PublicName,
+				UpstreamName: row.UpstreamName, Decision: row.Decision, Outcome: row.Outcome,
+				DurationMs: row.DurationMs, ErrorText: row.ErrorText, Input: row.Input, Output: row.Output,
+				InputTruncated: row.InputTruncated, OutputTruncated: row.OutputTruncated,
+			}
 		}
 		if index, exists := indices[e.ID]; exists {
 			// Completion always wins, regardless of backend ordering. Keep an
@@ -125,12 +139,28 @@ func (s *Store) Query(ctx context.Context, f api.AuditFilter) ([]api.AuditEvent,
 		indices[e.ID] = len(out)
 		out = append(out, e)
 	}
+	filtered := out[:0]
+	for _, e := range out {
+		isLLM := strings.HasPrefix(e.ID, "llm-")
+		if (f.Kind != "" && f.Kind != "llm" && f.Kind != "mcp") ||
+			(f.Kind == "llm" && !isLLM) || (f.Kind == "mcp" && isLLM) ||
+			(f.Decision != "" && e.Decision != f.Decision) ||
+			(f.Outcome != "" && e.Outcome != f.Outcome) {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	out = filtered
 	if f.Limit > 0 && len(out) > f.Limit {
 		out = out[:f.Limit]
 	}
 	return out, nil
 }
 func (s *Store) Summary(ctx context.Context, f api.AuditFilter) (api.AuditSummary, error) {
+	f.Limit = 0
 	events, err := s.Query(ctx, f)
-	return api.AuditSummary{Total: len(events)}, err
+	if err != nil {
+		return api.AuditSummary{}, err
+	}
+	return summarizeAudit(events), nil
 }
