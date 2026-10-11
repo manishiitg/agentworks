@@ -808,7 +808,7 @@ func ReconcilePulseActionableBacklog(ctx context.Context, workspacePath string) 
 			AND NOT EXISTS (SELECT 1 FROM pulse_fix_attempt_findings af WHERE af.fingerprint=run_concerns.fingerprint)`,
 		ConcernStatusRejected, now,
 		ConcernStatusResolved, ConcernStatusRejected, ConcernStatusExternalActionRequired,
-		ConcernPhaseExecution, ConcernPhaseMessageSequence, ConcernPhaseLearnings, ConcernPhaseKBReview)
+		ConcernPhaseExecution, ConcernPhaseAgent, ConcernPhaseLearnings, ConcernPhaseKBReview)
 	if err != nil {
 		return PulseActionableBacklogReconciliation{}, err
 	}

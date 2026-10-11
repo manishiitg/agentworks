@@ -281,7 +281,7 @@ describe('Pulse slash commands', () => {
     expect(submitted).not.toContain('required_pulse_review_modules')
     expect(submitted).toContain('focus on repeated targets')
     expect(submitted).toContain('Needs your decision proposals')
-    expect(submitted).not.toContain('message_sequence=')
+    expect(submitted).not.toContain('agent=')
     expect(submitted).not.toContain('in severity order')
   })
 
@@ -310,7 +310,7 @@ describe('Pulse slash commands', () => {
     expect(submitted).not.toContain('BACKGROUND task')
     expect(submitted).not.toContain('run_in_background')
     expect(submitted).toContain('Needs your decision proposals')
-    expect(submitted).not.toContain('message_sequence=')
+    expect(submitted).not.toContain('agent=')
   })
 
   it('uses design-plan as the single comprehensive plan review command', () => {
@@ -366,7 +366,7 @@ describe('Pulse slash commands', () => {
     expect(submitted).toContain('workflow.json.code_layout_version')
     expect(submitted).toContain('Architecture focus')
     expect(submitted).toContain('do not apply changes in this review')
-    expect(submitted).not.toContain('message_sequence=')
+    expect(submitted).not.toContain('agent=')
     expect(submitted).toContain('check the report exporter')
   })
 

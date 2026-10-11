@@ -119,7 +119,7 @@ func TestCollectPlanChangeBacklogNilWhenAllReviewed(t *testing.T) {
 }
 
 func TestModernReviewedPlanChangeStillFailsWhenDependencyCoverageIsIncomplete(t *testing.T) {
-	modernIncomplete := `{"entries":[{"change_id":"change-modern","timestamp":"2026-08-28T09:00:00Z","tool":"update_message_sequence_step","reason":"change output contract","artifact_review":{"done":true,"surfaces":{"downstream_steps":{"disposition":"updated","evidence":["consumer checked"]}}}}]}`
+	modernIncomplete := `{"entries":[{"change_id":"change-modern","timestamp":"2026-08-28T09:00:00Z","tool":"update_agent_step","reason":"change output contract","artifact_review":{"done":true,"surfaces":{"downstream_steps":{"disposition":"updated","evidence":["consumer checked"]}}}}]}`
 	ws := changelogWorkspace(t, map[string]string{"changelog-modern.json": modernIncomplete})
 
 	backlog := CollectPlanChangeBacklog(ws)
@@ -139,7 +139,7 @@ func TestModernReviewedPlanChangeStillFailsWhenDependencyCoverageIsIncomplete(t 
 }
 
 func TestModernPlanChangeWithCompleteDependencyCoverageIsClosed(t *testing.T) {
-	modernComplete := `{"entries":[{"change_id":"change-modern","timestamp":"2026-08-28T09:00:00Z","tool":"update_message_sequence_step","reason":"change output contract","artifact_review":{"done":true,"surfaces":{
+	modernComplete := `{"entries":[{"change_id":"change-modern","timestamp":"2026-08-28T09:00:00Z","tool":"update_agent_step","reason":"change output contract","artifact_review":{"done":true,"surfaces":{
 		"downstream_steps":{"disposition":"updated","evidence":["consumer contract updated"]},
 		"validation":{"disposition":"already_compatible","evidence":["schema covers the new output"]},
 		"evaluation":{"disposition":"not_applicable","evidence":["no evaluator consumes this field"]},
@@ -228,14 +228,14 @@ func TestCollectPlanChangeBacklogCapsListingNotCount(t *testing.T) {
 // tried update_scripted_step, was correctly refused by a message saying only
 // "use its type-specific update tool", and concluded the steps were "not
 // editable". It filed that as blocked and re-reported it for days, while
-// update_message_sequence_step was in its own tool surface throughout.
+// update_agent_step was in its own tool surface throughout.
 func TestWrongStepTypeRefusalNamesTheRightTool(t *testing.T) {
-	err := wrongStepTypeToolError("step-daily-latency-collect-dev-voice", StepTypeMessageSeq, "update_scripted_step")
+	err := wrongStepTypeToolError("step-daily-latency-collect-dev-voice", StepTypeAgent, "update_scripted_step")
 	if err == nil {
 		t.Fatal("a wrong-tool call was not refused")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "update_message_sequence_step") {
+	if !strings.Contains(msg, "update_agent_step") {
 		t.Fatalf("refusal does not name the tool that works: %q", msg)
 	}
 	if !strings.Contains(msg, "editable") {
@@ -243,10 +243,10 @@ func TestWrongStepTypeRefusalNamesTheRightTool(t *testing.T) {
 	}
 
 	for stepType, want := range map[StepType]string{
-		StepTypeOrchestrator: "update_orchestrator_step",
-		StepTypeRouting:      "update_routing_step",
-		StepTypeHumanInput:   "update_human_input_step",
-		StepTypeRegular:      "update_scripted_step",
+		StepTypeAgent:      "update_orchestrator_step",
+		StepTypeRouting:    "update_routing_step",
+		StepTypeHumanInput: "update_human_input_step",
+		StepTypeRegular:    "update_scripted_step",
 	} {
 		if got := updateToolForStepType(stepType); got != want {
 			t.Fatalf("step type %q maps to %q, want %q", stepType, got, want)

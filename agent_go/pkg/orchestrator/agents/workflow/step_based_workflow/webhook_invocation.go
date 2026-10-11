@@ -45,7 +45,7 @@ func attachWebhookStepInputs(steps []PlanStepInterface, inputs map[string]string
 			if step.StepType() != StepTypeHumanInput && step.GetID() != "" {
 				result[step.GetID()] = result[step.GetID()] + "\n" + WebhookInputInstruction(path)
 			}
-			if orchestration, ok := step.(*OrchestratorPlanStep); ok {
+			if orchestration, ok := step.(*AgentPlanStep); ok {
 				for _, route := range orchestration.PredefinedRoutes {
 					if route.SubAgentStep != nil {
 						visit([]PlanStepInterface{route.SubAgentStep})

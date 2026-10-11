@@ -14,9 +14,9 @@ import (
 )
 
 func TestRegisteredPromptHealthReadsCurrentPlan(t *testing.T) {
-	controller := newMessageSequenceClosingTestOrchestrator(t)
+	controller := newAgentClosingTestOrchestrator(t)
 	stale := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "old", Description: "cached description"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "old", Description: "cached description"}},
 	}}
 	executionCtx := withExecutionPlan(context.Background(), stale)
 	var mu sync.Mutex
@@ -62,7 +62,7 @@ func TestRegisteredPromptHealthReadsCurrentPlan(t *testing.T) {
 		for i, description := range descriptions {
 			// Decode real persisted step JSON, including its execution contract.
 			encoded, _ := json.Marshal(map[string]interface{}{"steps": []interface{}{map[string]interface{}{
-				"id": string(rune('a' + i)), "title": "Work", "type": "message_sequence", "description": description,
+				"id": string(rune('a' + i)), "title": "Work", "type": "agent", "description": description,
 				"items": []interface{}{map[string]interface{}{"id": "work", "type": "user_message", "message": "Do and verify the work."}},
 			}}})
 			var single PlanningResponse

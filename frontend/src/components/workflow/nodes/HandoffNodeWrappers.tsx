@@ -1,17 +1,17 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { StepNode } from './StepNode'
-import { TodoTaskNode } from './TodoTaskNode'
+import { LegacyAgentNode } from './LegacyAgentNode'
 import { HumanInputNode } from './HumanInputNode'
 import { RoutingStepNode } from './RoutingStepNode'
-import { MessageSequenceNode } from './MessageSequenceNode'
+import { AgentNode } from './AgentNode'
 import { CrewNode } from './CrewNode'
 import type {
   StepNodeData,
-  TodoTaskNodeData,
+  LegacyAgentNodeData,
   HumanInputNodeData,
   RoutingStepNodeData,
-  MessageSequenceNodeData,
+  AgentNodeData,
   CrewStepNodeData,
 } from '../hooks/usePlanToFlow'
 
@@ -35,9 +35,9 @@ export const HandoffStepNode = memo((props: NodeProps) => (
   </>
 ))
 
-export const HandoffTodoTaskNode = memo((props: NodeProps) => (
+export const HandoffLegacyAgentNode = memo((props: NodeProps) => (
   <>
-    <TodoTaskNode data={props.data as TodoTaskNodeData} selected={props.selected} />
+    <LegacyAgentNode data={props.data as LegacyAgentNodeData} selected={props.selected} />
     <HandoffTarget />
   </>
 ))
@@ -49,9 +49,9 @@ export const HandoffHumanInputNode = memo((props: NodeProps) => (
   </>
 ))
 
-export const HandoffMessageSequenceNode = memo((props: NodeProps) => (
+export const HandoffAgentNode = memo((props: NodeProps) => (
   <>
-    <MessageSequenceNode data={props.data as MessageSequenceNodeData} selected={props.selected} />
+    <AgentNode data={props.data as AgentNodeData} selected={props.selected} />
     <HandoffTarget />
   </>
 ))
@@ -85,8 +85,8 @@ export const HandoffRoutingNode = memo((props: NodeProps) => {
 })
 
 HandoffStepNode.displayName = 'HandoffStepNode'
-HandoffTodoTaskNode.displayName = 'HandoffTodoTaskNode'
+HandoffLegacyAgentNode.displayName = 'HandoffLegacyAgentNode'
 HandoffHumanInputNode.displayName = 'HandoffHumanInputNode'
-HandoffMessageSequenceNode.displayName = 'HandoffMessageSequenceNode'
+HandoffAgentNode.displayName = 'HandoffAgentNode'
 HandoffCrewNode.displayName = 'HandoffCrewNode'
 HandoffRoutingNode.displayName = 'HandoffRoutingNode'

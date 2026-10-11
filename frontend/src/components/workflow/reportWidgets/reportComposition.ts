@@ -445,7 +445,7 @@ export async function renderReportActivity(
         return [];
       }
       const logs = await dataApi.query(
-        `SELECT name, status, result, completed_at, updated_at FROM background_agent_log WHERE kind IN ('workflow_step','message_sequence_item') ORDER BY COALESCE(completed_at, updated_at) DESC LIMIT ${limit}`,
+        `SELECT name, status, result, completed_at, updated_at FROM background_agent_log WHERE kind IN ('workflow_step','agent_item') ORDER BY COALESCE(completed_at, updated_at) DESC LIMIT ${limit}`,
       );
       if (renders.get(host) !== version) return logs;
       if (logs.length === 0) {

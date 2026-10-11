@@ -163,7 +163,7 @@ func collectNestedArtifactFolderNames(step PlanStepInterface, names map[string]s
 	}
 
 	switch s := step.(type) {
-	case *OrchestratorPlanStep:
+	case *AgentPlanStep:
 		for _, route := range s.PredefinedRoutes {
 			collectNestedArtifactFolderNames(route.SubAgentStep, names)
 		}

@@ -100,14 +100,14 @@ func (e *OrchestratorAgentErrorEvent) GetEventType() events.EventType {
 // Background Agent Events
 //
 // These report the lifecycle of a background/delegated agent: a sub-agent
-// call, a todo-task step, or a message-sequence item — anything the main
+// call, a todo-task step, or a agent item — anything the main
 // agent dispatches and gets notified about asynchronously. AgentID is the
 // single universal identity field across all four event types below (never
 // "background_agent_id" — that name exists only as a generic fallback
 // candidate elsewhere and is never actually populated for these events).
 //
 // ParentExecutionID links a background agent to the execution node that
-// owns it (e.g. a message-sequence item -> its parent workflow step). It is
+// owns it (e.g. a agent item -> its parent workflow step). It is
 // often not set by the caller and is instead backfilled from the background
 // agent registry at emission time — see emitBackgroundAgentEvent.
 type BackgroundAgentStartedEvent struct {
@@ -118,7 +118,7 @@ type BackgroundAgentStartedEvent struct {
 	// Kind is what this execution IS (see ExecutionKind). It is declared by
 	// whoever creates the execution and must not be re-inferred downstream
 	// from the AgentID's string prefix — that inference is exactly what let
-	// message-sequence items and full runs be misclassified.
+	// agent items and full runs be misclassified.
 	Kind              ExecutionKind `json:"execution_kind,omitempty"`
 	ParentExecutionID string        `json:"parent_execution_id,omitempty"`
 }

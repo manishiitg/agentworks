@@ -23,13 +23,13 @@ import (
 // exposes the WHOLE server (every route), not a single report — so this is
 // admin-gated with a default 1h expiry, and the tool description says so.
 type shareTunnelManager struct {
-	mu         sync.Mutex
-	cmd        *exec.Cmd
-	publicURL  string
-	startedAt  time.Time
-	expiresAt  time.Time
-	startedBy  string
-	serverPort int
+	mu          sync.Mutex
+	cmd         *exec.Cmd
+	publicURL   string
+	startedAt   time.Time
+	expiresAt   time.Time
+	startedBy   string
+	serverPort  int
 	expiryTimer *time.Timer
 }
 

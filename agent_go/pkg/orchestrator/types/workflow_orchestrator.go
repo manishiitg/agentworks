@@ -206,8 +206,6 @@ type HumanVerificationRequest struct {
 	Status           string    `json:"status"` // "pending", "approved", "modified", "rejected"
 }
 
-
-
 // LLM verification check
 type LLMVerificationCheck struct {
 	VerificationFile string    `json:"verification_file"`

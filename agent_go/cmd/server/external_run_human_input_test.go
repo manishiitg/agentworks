@@ -14,7 +14,7 @@ import (
 type discardEvents struct{}
 
 func (discardEvents) HandleEvent(context.Context, *mcpagentevents.AgentEvent) error { return nil }
-func (discardEvents) Name() string                                                { return "discard" }
+func (discardEvents) Name() string                                                  { return "discard" }
 
 // PLAT-365, end to end over the external API: a question a workflow asks
 // through the real orchestrator helper shows up in run_status.pending_inputs

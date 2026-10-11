@@ -52,7 +52,7 @@ func TestStepExecutionSurfaceOmitsDesignAndPulseDocs(t *testing.T) {
 	// Deliberately checked with every signal enabled: if even the most capable
 	// step does not get these, no step does.
 	for _, banned := range []string{
-		"routing", "scripted", "message-sequence", "orchestrator", "step-config",
+		"routing", "scripted", "agent", "orchestrator", "step-config",
 		"running-steps", "execution-policy", "planning-steps", "plan-design",
 		"pulse-gate", "pulse-review-fixer", "pulse-finalizer", "pulse-bug-review",
 		"backup-strategy", "publish-strategy", "reporting-policy", "html-output",

@@ -720,8 +720,8 @@ func externalPlanToolRegistry() []externalPlanTool {
 		add("update_scripted_step", "Update an existing scripted step contract.", getUpdateRegularStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateRegularStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
-		add("update_message_sequence_step", "Update an existing conversational message sequence step.", getUpdateMessageSequenceStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createUpdateMessageSequenceStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
+		add("update_agent_step", "Update an existing conversational agent step.", getUpdateAgentStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
+			return createUpdateAgentStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
 		add("update_routing_step", "Update an existing routing step.", getUpdateRoutingStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateRoutingStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
@@ -732,17 +732,14 @@ func externalPlanToolRegistry() []externalPlanTool {
 		add("update_human_input_step", "Update an existing human input step.", getUpdateHumanInputStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateHumanInputStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
-		add("update_orchestrator_step", "Update an existing legacy orchestrator compatibility record; new adaptive agents use message_sequence with predefined_routes.", getUpdateOrchestratorStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createUpdateOrchestratorStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
-		})
 		add("update_crew_step", "Update an existing crew step.", getUpdateCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
 		add("add_scripted_step", "Add a scripted step to an existing plan.", getAddRegularStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddRegularStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
-		add("add_message_sequence_step", "Add an agent step whose description is the system charter and whose items are user turns; optional predefined_routes enable adaptive specialist delegation.", getAddMessageSequenceStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createAddMessageSequenceStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
+		add("add_agent_step", "Add an agent step whose description is the system charter and whose items are user turns; optional predefined_routes enable adaptive specialist delegation.", getAddAgentStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
+			return createAddAgentStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
 		add("add_routing_step", "Add a routing step.", getAddRoutingStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddRoutingStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
@@ -752,9 +749,6 @@ func externalPlanToolRegistry() []externalPlanTool {
 		})
 		add("add_human_input_step", "Add a human input step.", getAddHumanInputStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddHumanInputStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
-		})
-		add("add_orchestrator_step", "Legacy compatibility action; new adaptive agents use add_message_sequence_step with predefined_routes.", getAddOrchestratorStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createAddOrchestratorStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
 		add("add_crew_step", "Add a crew step.", getAddCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)

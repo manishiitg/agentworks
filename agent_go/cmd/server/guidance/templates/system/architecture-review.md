@@ -33,7 +33,7 @@ sequence. Do not debug an individual failed run; hand concrete correctness
 failures to Technical. Read relevant learnings, knowledge and Builder references
 selectively. Choose one concrete improvement question:
 prompt clarity and duplication; simpler orchestration and handoffs; repeatable
-work suited to scripts; Crew versus message sequence; learning applicability and
+work suited to scripts; Crew versus agent; learning applicability and
 contradictions; KB freshness and retrieval; DB structure and data lineage; useful
 reports; cost and latency.
 Historical technical reviews remain valid evidence; do not relabel or recreate them.
@@ -73,7 +73,7 @@ apply a **pure text-moving consolidation** yourself, one step at a time:
    path and quoted literal of the old text appears in the new description, items,
    or a file the new description names. Put anything missing back. List a token in
    `dropped_history` only when it described history.
-3. Apply with `update_message_sequence_step` (reason: what moved where and why).
+3. Apply with `update_agent_step` (reason: what moved where and why).
    Note the changelog `change_id` and the step's latest validation before the edit.
 4. Run the step once (`execute_step`, test mode where available) and read its
    validation. Passed: keep it. Failed: `restore_step_from_changelog(change_id,
@@ -98,20 +98,20 @@ latest detections), you may set `learnings_access="read"` yourself with
 `update_step_config` and a reason citing those counters: it is reversible.
 Read to read-write still needs a concrete `learning_objective` and a decision.
 
-### Crew versus message sequence
+### Crew versus agent
 
 The step-type rule is in
 `read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`:
-a message sequence is the default; a Crew (a Crew step, or a function call from
+a agent is the default; a Crew (a Crew step, or a function call from
 a step's agent) is for work that belongs to a persistent specialist with its own
 memory, skills and files. Judge a mismatch only from evidence, never from the
 step type alone:
-- A message sequence is a Crew candidate when its runs keep rebuilding the same
+- A agent is a Crew candidate when its runs keep rebuilding the same
   specialist context (re-reading the same sources, re-deriving the same
   judgments), or when the same specialist work is duplicated across workflows
   that a Crew could serve. `search_platform(operation="list_crews")` shows
   whether a suitable Crew already exists.
-- A Crew call is a message-sequence candidate when the work is one-off and
+- A Crew call is a agent candidate when the work is one-off and
   stateless, gains nothing from the Crew's memory, and pays for a second agent.
   `read_crew_calls(operation="list")` and `read_crew_calls(operation="read")`
   show what the Crew actually did with this workflow's calls.

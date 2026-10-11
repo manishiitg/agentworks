@@ -50,7 +50,7 @@ func TestResolvePlanOrphanStepRefs_ResolvesSharedRouteRef(t *testing.T) {
 		t.Fatalf("resolvePlanOrphanStepRefs: %v", err)
 	}
 
-	orchestratorStep, ok := plan.Steps[0].(*OrchestratorPlanStep)
+	orchestratorStep, ok := plan.Steps[0].(*AgentPlanStep)
 	if !ok {
 		t.Fatalf("expected todo_task step, got %T", plan.Steps[0])
 	}

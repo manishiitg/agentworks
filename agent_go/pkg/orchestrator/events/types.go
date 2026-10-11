@@ -34,13 +34,13 @@ type parentExecutionIDKeyType struct{}
 
 var ParentExecutionIDKey = parentExecutionIDKeyType{}
 
-// MessageSequenceItemContextKey marks an execution-only agent as an internal
+// AgentItemContextKey marks an execution-only agent as an internal
 // message_sequence item run rather than a user-visible sub-agent.
-type messageSequenceItemContextKeyType struct{}
+type agentSequenceItemContextKeyType struct{}
 
-var MessageSequenceItemContextKey = messageSequenceItemContextKeyType{}
+var AgentItemContextKey = agentSequenceItemContextKeyType{}
 
-type MessageSequenceItemContext struct {
+type AgentItemContext struct {
 	StepID   string
 	ItemID   string
 	ItemType string
@@ -58,7 +58,7 @@ const (
 	OrchestratorAgentError events.EventType = "orchestrator_agent_error"
 
 	// Background agent lifecycle events (sub-agents, todo-task steps,
-	// message-sequence items — anything dispatched and notified about
+	// agent items — anything dispatched and notified about
 	// asynchronously). BackgroundAgentFailed is intentionally NOT defined:
 	// failure is reported via BackgroundAgentCompleted with status "failed",
 	// not a distinct wire event type.

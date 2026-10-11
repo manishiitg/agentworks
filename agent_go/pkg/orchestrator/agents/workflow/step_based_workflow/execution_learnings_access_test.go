@@ -11,8 +11,8 @@ func TestResolveExecutionLearningsAccessMatchesPromptGate(t *testing.T) {
 		want string
 	}{
 		{name: "regular", step: &RegularPlanStep{}, want: LearningsAccessReadWrite},
-		{name: "message sequence", step: &MessageSequencePlanStep{}, want: LearningsAccessReadWrite},
-		{name: "todo orchestrator", step: &OrchestratorPlanStep{}, want: LearningsAccessReadWrite},
+		{name: "agent", step: &AgentPlanStep{}, want: LearningsAccessReadWrite},
+		{name: "todo orchestrator", step: &AgentPlanStep{}, want: LearningsAccessReadWrite},
 		{name: "deterministic routing", step: &RoutingPlanStep{}, want: LearningsAccessNone},
 	}
 	for _, tt := range tests {

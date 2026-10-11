@@ -178,10 +178,10 @@ describe('buildCostActivityBreakdown', () => {
     expect(builder.executions[0].cost.by_phase).toBeUndefined()
   })
 
-  // PLAT-167 — a message_sequence step tags each item's own turn with
+  // PLAT-167 — a agent step tags each item's own turn with
   // "item:<id>", so a step's by_phase can carry more than the two PLAT-166
   // phases (execution_only/reflection).
-  it('carries a per-message-sequence-item by_phase breakdown through', () => {
+  it('carries a per-agent-item by_phase breakdown through', () => {
     const summary: CostSummary = {
       total: cost(0.6),
       by_date: {},
@@ -241,7 +241,7 @@ describe('phaseLabel', () => {
     expect(phaseLabel('reflection')).toBe('Reflection')
   })
 
-  it('strips the item: prefix and cleans up separators for a message_sequence item phase', () => {
+  it('strips the item: prefix and cleans up separators for a agent item phase', () => {
     expect(phaseLabel('item:draft-message')).toBe('draft message')
     expect(phaseLabel('item:foreach-row_3')).toBe('foreach row 3')
   })

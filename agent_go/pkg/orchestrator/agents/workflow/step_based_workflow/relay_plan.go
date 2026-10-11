@@ -27,7 +27,7 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 	for _, step := range plan.Steps {
 		steps[step.GetID()] = step
 		switch s := step.(type) {
-		case *MessageSequencePlanStep:
+		case *AgentPlanStep:
 			if !s.AuthoredPrompt || strings.TrimSpace(s.SystemPrompt) == "" {
 				return fmt.Errorf("Relay agent %q needs an authored system prompt", s.ID)
 			}
@@ -78,7 +78,7 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 			return fmt.Errorf("Relay step %q has unsupported type %q", step.GetID(), step.StepType())
 		}
 	}
-	output, ok := steps[outputStepID].(*MessageSequencePlanStep)
+	output, ok := steps[outputStepID].(*AgentPlanStep)
 	if !ok || !output.AuthoredPrompt {
 		return fmt.Errorf("Relay output step %q must be an authored agent", outputStepID)
 	}
@@ -109,7 +109,7 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 		state[id] = 1
 		var next []string
 		switch s := step.(type) {
-		case *MessageSequencePlanStep:
+		case *AgentPlanStep:
 			next = []string{s.NextStepID}
 		case *RegularPlanStep:
 			next = []string{s.NextStepID}

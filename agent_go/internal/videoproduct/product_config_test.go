@@ -159,7 +159,7 @@ func TestVideoStudioIsPinnedToClaudeCodeWithoutProviderChoices(t *testing.T) {
 }
 
 // Plan-authoring guidance (frontend/src/commands/builtin-commands.tsx): use
-// message_sequence "for every conversational, judgment-heavy, browser-driven, or
+// agent "for every conversational, judgment-heavy, browser-driven, or
 // adaptive step, even when it needs only one message. Non-scripted regular steps
 // are unsupported." Every production stage here is exactly that — writing a
 // brief, a storyboard, a design, a critique — none is a deterministic script,
@@ -167,10 +167,10 @@ func TestVideoStudioIsPinnedToClaudeCodeWithoutProviderChoices(t *testing.T) {
 //
 // They previously authored as `regular` and ran only because the runtime
 // rewrites non-scripted regular steps into this same shape
-// (normalizeRegularStepToMessageSequence), which left the stored plan
+// (normalizeRegularStepToAgent), which left the stored plan
 // describing an execution model that no longer exists and forced the plan UI to
 // reconstruct the real one.
-func TestGeneratedPlanAuthorsStagesAsMessageSequences(t *testing.T) {
+func TestGeneratedPlanAuthorsStagesAsAgents(t *testing.T) {
 	raw, err := json.Marshal(planForAll(pipelineRegistry))
 	if err != nil {
 		t.Fatal(err)
@@ -200,8 +200,8 @@ func TestGeneratedPlanAuthorsStagesAsMessageSequences(t *testing.T) {
 
 	assertStage := func(id, stepType string, items int, firstItem string) {
 		t.Helper()
-		if stepType != "message_sequence" {
-			t.Fatalf("stage %q has type %q; non-scripted stages must author as message_sequence", id, stepType)
+		if stepType != "agent" {
+			t.Fatalf("stage %q has type %q; non-scripted stages must author as agent", id, stepType)
 		}
 		if items == 0 {
 			t.Fatalf("stage %q declares no items; the runtime would have to synthesize the turn again", id)
@@ -217,7 +217,7 @@ func TestGeneratedPlanAuthorsStagesAsMessageSequences(t *testing.T) {
 		case "routing":
 			continue // a router branches; it runs no stage turn
 		case "todo_task":
-			t.Fatalf("generated Video Studio plan still contains orchestrator step %q; every production task must be an individually runnable message_sequence", step.ID)
+			t.Fatalf("generated Video Studio plan still contains orchestrator step %q; every production task must be an individually runnable agent", step.ID)
 		}
 		stages++
 		first := ""

@@ -68,7 +68,7 @@ type promptBudgetInput struct {
 
 func promptBudgetHasLayout(stepType StepType, scriptOnly bool) bool {
 	switch stepType {
-	case StepTypeMessageSeq, StepTypeOrchestrator, StepTypeTodoTaskLegacy:
+	case StepTypeAgent:
 		return true
 	}
 	// A regular step is scripted by definition (PLAT-287); its description is

@@ -2124,7 +2124,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 					}
 					// PLAT-061 removed learn_code_max_fix_iterations. Every stored value
 					// was a migration artifact, not a judgment: the migration defaulted
-					// retries to 0 and only raised it when a legacy message-sequence item
+					// retries to 0 and only raised it when a legacy agent item
 					// declared repair_with_llm — so five hetznerssh steps carried 0 with no
 					// reasoning behind it, silently disabling script repair. lock_code
 					// remains the deliberate way to skip the fix loop.
@@ -2518,7 +2518,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 					// One [AUTO-NOTIFICATION] per step per run, on the FIRST
 					// failure only (see preValidationNotifiedThisStep above the
 					// retry loop) -- not the same case as
-					// completeMessageSequenceItemNotification's deliberately
+					// completeAgentItemNotification's deliberately
 					// silent per-ITEM prevalidation gate (controller_message_
 					// sequence.go): that one fires up to once per item and the
 					// step's own eventual completion notification already
@@ -2958,10 +2958,10 @@ func buildDirectModeCompletionSummary(mainSummary, kbSummary, learningsSummary s
 	return strings.Join(parts, "\n")
 }
 
-// isOrchestratorStep returns true if the step is a todo task step (orchestrator with todo list management)
-func isOrchestratorStep(step PlanStepInterface) bool {
-	_, ok := step.(*OrchestratorPlanStep)
-	return ok
+// isDelegatingAgentStep returns true if the step is a todo task step (orchestrator with todo list management)
+func isDelegatingAgentStep(step PlanStepInterface) bool {
+	agent, ok := step.(*AgentPlanStep)
+	return ok && len(agent.PredefinedRoutes) > 0
 }
 
 // isRoutingStep returns true if the step is a deterministic N-way switch --
@@ -3000,8 +3000,8 @@ func nextStepIDForSelectedRoute(step PlanStepInterface, selectedRouteID string) 
 	return ""
 }
 
-func isMessageSequenceStep(step PlanStepInterface) bool {
-	_, ok := step.(*MessageSequencePlanStep)
+func isAgentStep(step PlanStepInterface) bool {
+	_, ok := step.(*AgentPlanStep)
 	return ok
 }
 
@@ -3112,15 +3112,13 @@ func getAgentConfigs(step PlanStepInterface) *AgentConfigs {
 	switch s := step.(type) {
 	case *RegularPlanStep:
 		return s.AgentConfigs
-	case *OrchestratorPlanStep:
-		return s.AgentConfigs
 	case *HumanInputPlanStep:
 		return s.AgentConfigs
 	case *RoutingPlanStep:
 		return s.AgentConfigs
 	case *BranchPlanStep:
 		return s.AgentConfigs
-	case *MessageSequencePlanStep:
+	case *AgentPlanStep:
 		return s.AgentConfigs
 	default:
 		return nil
@@ -3402,25 +3400,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 			continue
 		}
 
-		// A message_sequence with predefined_routes is the canonical agent step:
+		// A agent with predefined_routes is the canonical agent step:
 		// the same persistent conversation runs its authored turns and decides
 		// whether/when to call its bounded specialist routes. Adapt it to the
-		// legacy orchestrator wrapper until that compatibility type is removed.
+		// delegation runtime when routes are present.
 		orchestratorExecutionStep := step
 		delegatingSequence := false
-		if sequence, ok := step.(*MessageSequencePlanStep); ok && len(sequence.PredefinedRoutes) > 0 {
-			orchestratorExecutionStep = delegatingMessageSequenceAsOrchestrator(sequence)
+		if sequence, ok := step.(*AgentPlanStep); ok && len(sequence.PredefinedRoutes) > 0 {
+			orchestratorExecutionStep = sequence
 			delegatingSequence = true
 		}
 
 		// Check if this is a legacy orchestrator or a delegating agent sequence.
-		if isOrchestratorStep(step) || delegatingSequence {
+		if isDelegatingAgentStep(step) || delegatingSequence {
 			// Execute todo task step - manages todo list and delegates to sub-agents
 			hcpo.GetLogger().Info(fmt.Sprintf("🎯 Starting todo task step execution: %s", step.GetTitle()))
 			// Generate step path for todo task step
 			orchestratorStepPath := fmt.Sprintf("step-%d", i+1)
 
-			successCriteriaMet, nextStepID, err := hcpo.executeOrchestratorStep(ctx, orchestratorExecutionStep, i, progress, previousContextFiles, previousExecutionResults, iteration, stepExecCtx, breakdownSteps, orchestratorStepPath)
+			successCriteriaMet, nextStepID, err := hcpo.executeDelegatingAgentStep(ctx, orchestratorExecutionStep, i, progress, previousContextFiles, previousExecutionResults, iteration, stepExecCtx, breakdownSteps, orchestratorStepPath)
 			if err != nil {
 				if isWorkflowCancellationErr(ctx, err) {
 					hcpo.GetLogger().Info(fmt.Sprintf("Todo task step %d canceled", i+1))
@@ -3465,41 +3463,41 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 		}
 
 		sequenceExecutionStep := step
-		if shouldNormalizeRegularStepToMessageSequence(step) {
-			sequenceExecutionStep = normalizeRegularStepToMessageSequence(step.(*RegularPlanStep))
-			hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing non-scripted regular step %q to the message-sequence runtime", step.GetID()))
+		if shouldNormalizeRegularStepToAgent(step) {
+			sequenceExecutionStep = normalizeRegularStepToAgent(step.(*RegularPlanStep))
+			hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing non-scripted regular step %q to the agent runtime", step.GetID()))
 		}
-		if isMessageSequenceStep(sequenceExecutionStep) {
-			hcpo.GetLogger().Info(fmt.Sprintf("💬 Starting message sequence step execution: %s", sequenceExecutionStep.GetTitle()))
+		if isAgentStep(sequenceExecutionStep) {
+			hcpo.GetLogger().Info(fmt.Sprintf("💬 Starting agent step execution: %s", sequenceExecutionStep.GetTitle()))
 			stepPath := fmt.Sprintf("step-%d", i+1)
-			callOptions := messageSequenceCallOptions{
+			callOptions := agentSequenceCallOptions{
 				Source: "configured_queue",
 			}
 			if stepExecCtx != nil {
-				callOptions.Restart = stepExecCtx.MessageSequenceRestart
+				callOptions.Restart = stepExecCtx.AgentRestart
 				if strings.TrimSpace(stepExecCtx.WorkshopHumanInput) != "" {
 					callOptions.Source = "builder_resume"
 					callOptions.ReentryMessage = stepExecCtx.WorkshopHumanInput
 				}
 			}
-			stepScopedCtx, finishSequence := hcpo.beginMessageSequenceExecution(ctx, sequenceExecutionStep)
-			executionResult, _, err := hcpo.executeMessageSequenceStep(stepScopedCtx, sequenceExecutionStep, i, stepPath, progress, stepExecCtx, breakdownSteps, callOptions)
+			stepScopedCtx, finishSequence := hcpo.beginAgentExecution(ctx, sequenceExecutionStep)
+			executionResult, _, err := hcpo.executeAgentStep(stepScopedCtx, sequenceExecutionStep, i, stepPath, progress, stepExecCtx, breakdownSteps, callOptions)
 			finishSequence(executionResult, err)
 			if err != nil {
 				if isWorkflowCancellationErr(ctx, err) {
-					hcpo.GetLogger().Info(fmt.Sprintf("Message sequence step %d canceled", i+1))
+					hcpo.GetLogger().Info(fmt.Sprintf("Agent step %d canceled", i+1))
 					return err
 				}
-				hcpo.GetLogger().Error(fmt.Sprintf("❌ Message sequence step %d execution failed: %v", i+1, err), nil)
-				hcpo.EmitOrchestratorAgentError(ctx, "workflow", "message-sequence-step-execution", fmt.Sprintf("Execute message sequence step: %s", step.GetTitle()), err.Error(), i, iteration)
-				return fmt.Errorf("message sequence step %d execution failed: %w", i+1, err)
+				hcpo.GetLogger().Error(fmt.Sprintf("❌ Agent step %d execution failed: %v", i+1, err), nil)
+				hcpo.EmitOrchestratorAgentError(ctx, "workflow", "agent-step-execution", fmt.Sprintf("Execute agent step: %s", step.GetTitle()), err.Error(), i, iteration)
+				return fmt.Errorf("agent step %d execution failed: %w", i+1, err)
 			}
 			previousExecutionResults = append(previousExecutionResults, executionResult)
 			hcpo.addCompletedStepIndex(progress, i)
 			if err := hcpo.saveStepProgress(ctx, progress); err != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to save progress after message sequence step: %v", err))
+				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to save progress after agent step: %v", err))
 			}
-			// KB contributions for message-sequence steps are owned by the sequence's
+			// KB contributions for agent steps are owned by the sequence's
 			// own closing turn under direct mode. The post-step KB update agent that
 			// used to cover write_method=agent here is retired — see
 			// the retired agent-mode KB writer.
@@ -3514,13 +3512,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 			// falling through in list order. Without this, after a router selected one
 			// route the selected route ran but execution then spilled into the next
 			// non-selected route target.
-			if seqStep, ok := sequenceExecutionStep.(*MessageSequencePlanStep); ok && strings.TrimSpace(seqStep.NextStepID) != "" {
+			if seqStep, ok := sequenceExecutionStep.(*AgentPlanStep); ok && strings.TrimSpace(seqStep.NextStepID) != "" {
 				outcome, navErr := hcpo.navigateToNextStepID(ctx, step.GetID(), seqStep.NextStepID, breakdownSteps, progress, &i, &startFromStep, maxLLMJumpRepeats)
 				if navErr != nil {
 					return navErr
 				}
 				if outcome == "end" {
-					hcpo.GetLogger().Info(fmt.Sprintf("🏁 message_sequence step %d next_step_id=end - terminating workflow", i+1))
+					hcpo.GetLogger().Info(fmt.Sprintf("🏁 agent step %d next_step_id=end - terminating workflow", i+1))
 					break
 				}
 			}

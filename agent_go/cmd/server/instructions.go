@@ -348,7 +348,7 @@ The ` + "`Workflow/`" + ` folder is read-only via raw shell writes — but sever
 
 Default mode rule: workflow schedules use ` + "`mode=\"workshop\"`" + `. Do not create direct ` + "`mode=\"workflow\"`" + ` schedules; legacy values are normalized to workshop execution.
 
-**Schedule execution-model rule** — prefer a route-backed schedule for durable workflow behavior: create or reuse the owning plan route/step, select it with ` + "`route_selections`" + `, and keep ` + "`messages`" + ` empty so canonical learnings, validation/retry, repair, and Pulse attribution apply. A direct ordered message sequence is also valid for genuinely schedule-specific conversation; record ` + "`direct_messages_reason`" + ` explaining why a route is the wrong abstraction and why its weaker step-level lifecycle is acceptable. Never choose solely from message length. Before mapping draft-only or approval-gated work to a route, verify identical inputs, outputs, side effects, failure behavior, and approval boundary.
+**Schedule execution-model rule** — prefer a route-backed schedule for durable workflow behavior: create or reuse the owning plan route/step, select it with ` + "`route_selections`" + `, and keep ` + "`messages`" + ` empty so canonical learnings, validation/retry, repair, and Pulse attribution apply. A direct ordered agent is also valid for genuinely schedule-specific conversation; record ` + "`direct_messages_reason`" + ` explaining why a route is the wrong abstraction and why its weaker step-level lifecycle is acceptable. Never choose solely from message length. Before mapping draft-only or approval-gated work to a route, verify identical inputs, outputs, side effects, failure behavior, and approval boundary.
 
 **Back up scheduled workflows** — backup behavior belongs to the planned workflow/finalizer, not a copied final message in every schedule. Whenever you create recurring work that mutates durable state, ensure its planned route has the workflow's configured backup behavior; do not append backup shell procedures to schedule messages. Confirm before intentionally skipping the configured backup behavior.
 
@@ -456,7 +456,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
       }
     },
     {
-      "type": "message_sequence",
+      "type": "agent",
       "id": "analyze-and-verify",
       "title": "Analyze and verify the result",
       "description": "Read fetched_data.json and complete the full judgment-heavy analysis. Write final_analysis.md plus analysis_proof.json containing run-specific source references, a check for every criterion, and any repaired gaps.",
@@ -502,7 +502,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 - If call selection requires judgment, use an agentic request-specification step, then a deterministic executor, then an agentic interpretation sequence.
 - Use multiple large sequences when their contexts should not be shared: different credentials/security exposure, independent durable outputs or retries, clean-room independence, human/routing boundaries, or unrelated context that would distract or contaminate the next agent. Split only when the builder can name that boundary; a desire to validate the same output is not enough.
 
-**Execution-mode handoff:** ` + "`plan.json`" + ` stores structure, not per-step execution mode. After ` + "`create_workflow`" + ` returns, tell the user to open the workflow in Workshop. Before the first production run, Workshop must declare deterministic fetch/parse/persist steps ` + "`scripted`" + ` with ` + "`update_step_config`" + `, author and test ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `, and keep judgment/message-sequence/browser work ` + "`agentic`" + `. The 10-run bar applies only before ` + "`lock_code=true`" + ` freezes a script, not before selecting scripted mode.
+**Execution-mode handoff:** ` + "`plan.json`" + ` stores structure, not per-step execution mode. After ` + "`create_workflow`" + ` returns, tell the user to open the workflow in Workshop. Before the first production run, Workshop must declare deterministic fetch/parse/persist steps ` + "`scripted`" + ` with ` + "`update_step_config`" + `, author and test ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `, and keep judgment/agent/browser work ` + "`agentic`" + `. The 10-run bar applies only before ` + "`lock_code=true`" + ` freezes a script, not before selecting scripted mode.
 
 **Step types**:
 - ` + "`message_sequence`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
@@ -521,7 +521,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 - **Use ` + "`create_workflow`" + `, not shell commands.** Sub-agents cannot write under ` + "`Workflow/`" + ` via ` + "`execute_shell_command`" + ` — they'll hit a folder-guard error. Build the two JSON objects in your reasoning, then call the tool directly from your own turn. No delegation needed for this step.
 - **Both JSON objects must be well-formed** — the tool will re-marshal them on write. If you produce invalid structures (missing required fields, wrong types, duplicate step ids, non-kebab-case step ids) the tool returns an error describing the problem and nothing gets written.
 - **Pick capabilities smartly** from the current chat's context: include only the servers, skills, and LLM tiers actually needed for the workflow's steps. Don't blindly copy every currently-enabled server.
-- **Apply the plan-shape rule before calling the tool.** The atomic creator validates graph integrity, but it cannot infer that an LLM-heavy plan should have used a scripted fetcher or that several micro-steps should have been merged. Build the correct scripted-fetcher → large-message-sequence structure up front, include validation on every producing step, and explicitly report the Workshop execution-mode/script handoff.
+- **Apply the plan-shape rule before calling the tool.** The atomic creator validates graph integrity, but it cannot infer that an LLM-heavy plan should have used a scripted fetcher or that several micro-steps should have been merged. Build the correct scripted-fetcher → large-agent structure up front, include validation on every producing step, and explicitly report the Workshop execution-mode/script handoff.
 - **Don't overwrite existing workflows.** ` + "`create_workflow`" + ` is for *new* workflows only — it refuses if the target folder already exists. To modify an existing workflow's **cron schedules**, use the workflow_schedule tools (see "Modifying Existing Workflows" above). For LLM config, MCP servers, skills, or plan steps, direct the user to the workflow builder / canvas.
 - After creation, report the folder path (returned by the tool) to the user and tell them they can activate it from the workflow picker.
 

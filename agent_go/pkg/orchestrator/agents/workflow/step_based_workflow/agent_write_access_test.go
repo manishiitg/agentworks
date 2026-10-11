@@ -11,13 +11,13 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// TestMessageSequenceAbsPath_IncludesWorkflowRoot guards the forward-pipe bug:
+// TestAgentAbsPath_IncludesWorkflowRoot guards the forward-pipe bug:
 // the absolute path the message_sequence agent is handed (StepExecutionPath,
 // item/code dirs) MUST include the workflow root (GetWorkspacePath, e.g.
 // "Workflow/social-media"). Without it the agent writes to <docsRoot>/runs/...,
 // outside its workflow folder, where downstream context_dependencies can't see
 // the file.
-func TestMessageSequenceAbsPath_IncludesWorkflowRoot(t *testing.T) {
+func TestAgentAbsPath_IncludesWorkflowRoot(t *testing.T) {
 	docsRoot := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docsRoot)
 
@@ -31,29 +31,29 @@ func TestMessageSequenceAbsPath_IncludesWorkflowRoot(t *testing.T) {
 	base.SetWorkspacePath("Workflow/social-media")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0"}
 
-	stepExecRel := hcpo.messageSequenceExecutionRelPath("step-5", "step-report") // runs/iteration-0/execution/step-report
-	got := hcpo.messageSequenceAbsPath(stepExecRel)
+	stepExecRel := hcpo.agentSequenceExecutionRelPath("step-5", "step-report") // runs/iteration-0/execution/step-report
+	got := hcpo.agentSequenceAbsPath(stepExecRel)
 	want := filepath.Join(docsRoot, "Workflow/social-media", "runs", "iteration-0", "execution", "step-report")
 	if got != want {
-		t.Fatalf("messageSequenceAbsPath = %q, want %q (must include docsRoot + workflow root)", got, want)
+		t.Fatalf("agentSequenceAbsPath = %q, want %q (must include docsRoot + workflow root)", got, want)
 	}
 	if !strings.Contains(filepath.ToSlash(got), "Workflow/social-media") {
 		t.Fatalf("agent-facing path is missing the workflow root: %q", got)
 	}
 }
 
-func TestMessageSequenceExecutionRelPath_UsesNormalStepFolder(t *testing.T) {
+func TestAgentExecutionRelPath_UsesNormalStepFolder(t *testing.T) {
 	hcpo := &StepBasedWorkflowOrchestrator{selectedRunFolder: "iteration-0"}
 	for _, tc := range []struct{ stepPath, stepID string }{
 		{"step-5", "step-run-intent-orchestrator"},
 		{"parent/agents/login/calls/call-1", "login-specialist"},
 	} {
-		got := hcpo.messageSequenceExecutionRelPath(tc.stepPath, tc.stepID)
+		got := hcpo.agentSequenceExecutionRelPath(tc.stepPath, tc.stepID)
 		// Must equal the folder every other step writes to (execution/<stepID>) —
 		// the folder downstream context_dependencies resolve against.
 		want := filepath.Join("runs", "iteration-0", "execution", getArtifactFolderName(tc.stepID, tc.stepPath))
 		if got != want {
-			t.Fatalf("messageSequenceExecutionRelPath(%q,%q) = %q, want normal step folder %q", tc.stepPath, tc.stepID, got, want)
+			t.Fatalf("agentSequenceExecutionRelPath(%q,%q) = %q, want normal step folder %q", tc.stepPath, tc.stepID, got, want)
 		}
 		if strings.Contains(got, "message_sequences") {
 			t.Fatalf("sequence still writes to isolated message_sequences folder: %q", got)
@@ -61,25 +61,25 @@ func TestMessageSequenceExecutionRelPath_UsesNormalStepFolder(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceRouteSessionLivesAboveCallFolders(t *testing.T) {
+func TestAgentRouteSessionLivesAboveCallFolders(t *testing.T) {
 	hcpo := &StepBasedWorkflowOrchestrator{selectedRunFolder: "iteration-0"}
 	stepPath := "parent/agents/login/calls/call-1"
 	want := filepath.Join("runs", "iteration-0", "execution", "parent", "agents", "login", "session.json")
-	if got := hcpo.messageSequenceSessionPath(stepPath, "login-specialist"); got != want {
-		t.Fatalf("messageSequenceSessionPath() = %q, want %q", got, want)
+	if got := hcpo.agentSequenceSessionPath(stepPath, "login-specialist"); got != want {
+		t.Fatalf("agentSequenceSessionPath() = %q, want %q", got, want)
 	}
 }
 
-func TestMessageSequenceRuntimeSessionIDStableForSequence(t *testing.T) {
+func TestAgentRuntimeSessionIDStableForSequence(t *testing.T) {
 	hcpo := &StepBasedWorkflowOrchestrator{
 		selectedRunFolder: "iteration-0",
 		currentGroupName:  "Acme Group",
 	}
 
-	session := &messageSequenceSession{}
-	gotA := hcpo.messageSequenceRuntimeSessionID(session, "step-5", "review-specialist")
-	session.runtime = &messageSequenceRuntime{SessionID: gotA}
-	gotB := hcpo.messageSequenceRuntimeSessionID(session, "step-5", "review-specialist")
+	session := &agentSequenceSession{}
+	gotA := hcpo.agentSequenceRuntimeSessionID(session, "step-5", "review-specialist")
+	session.runtime = &agentSequenceRuntime{SessionID: gotA}
+	gotB := hcpo.agentSequenceRuntimeSessionID(session, "step-5", "review-specialist")
 	if gotA != gotB {
 		t.Fatalf("runtime session id changed between sequence items: %q vs %q", gotA, gotB)
 	}
@@ -91,17 +91,17 @@ func TestMessageSequenceRuntimeSessionIDStableForSequence(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceRuntimeSessionIDOmitsEmptyScope(t *testing.T) {
+func TestAgentRuntimeSessionIDOmitsEmptyScope(t *testing.T) {
 	hcpo := &StepBasedWorkflowOrchestrator{}
 
-	got := hcpo.messageSequenceRuntimeSessionID(nil, "step-2", "writer")
+	got := hcpo.agentSequenceRuntimeSessionID(nil, "step-2", "writer")
 	if !strings.HasPrefix(got, "msgseq-step-2-writer-") {
 		t.Fatalf("runtime session id = %q, want msgseq-step-2-writer-<unique owner>", got)
 	}
 }
 
-func TestMessageSequenceWriteAccess_RejectsPerFilePaths(t *testing.T) {
-	var w MessageSequenceWriteAccess
+func TestAgentWriteAccess_RejectsPerFilePaths(t *testing.T) {
+	var w AgentWriteAccess
 	err := json.Unmarshal([]byte(`{"db": true, "paths": ["db/session_health.json"]}`), &w)
 	if err == nil {
 		t.Fatal("expected error for per-file paths in write_access, got nil")
@@ -111,8 +111,8 @@ func TestMessageSequenceWriteAccess_RejectsPerFilePaths(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceWriteAccess_FolderBooleansOK(t *testing.T) {
-	var w MessageSequenceWriteAccess
+func TestAgentWriteAccess_FolderBooleansOK(t *testing.T) {
+	var w AgentWriteAccess
 	if err := json.Unmarshal([]byte(`{"db": true, "knowledgebase": true}`), &w); err != nil {
 		t.Fatalf("folder-level booleans should unmarshal cleanly, got: %v", err)
 	}
@@ -121,25 +121,25 @@ func TestMessageSequenceWriteAccess_FolderBooleansOK(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceWriteAccess_EmptyOK(t *testing.T) {
-	var w MessageSequenceWriteAccess
+func TestAgentWriteAccess_EmptyOK(t *testing.T) {
+	var w AgentWriteAccess
 	if err := json.Unmarshal([]byte(`{}`), &w); err != nil {
 		t.Fatalf("empty write_access should unmarshal cleanly, got: %v", err)
 	}
-	if w != (MessageSequenceWriteAccess{}) {
+	if w != (AgentWriteAccess{}) {
 		t.Fatalf("empty write_access should be zero value, got: %+v", w)
 	}
 }
 
-func TestMessageSequenceItemInheritsStepWriteAccess(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+func TestAgentItemInheritsStepWriteAccess(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
 	hcpo.useKnowledgebase = true
 	config := &AgentConfigs{
 		KnowledgebaseAccess: KBAccessReadWrite,
 		LearningsAccess:     LearningsAccessReadWrite,
 	}
 
-	got := hcpo.resolveMessageSequenceItemWriteAccess(config, MessageSequenceItem{
+	got := hcpo.resolveAgentItemWriteAccess(config, AgentItem{
 		ID:   "plain-turn",
 		Type: "user_message",
 	})
@@ -148,45 +148,45 @@ func TestMessageSequenceItemInheritsStepWriteAccess(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceItemOverrideNarrowsStepWriteAccess(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+func TestAgentItemOverrideNarrowsStepWriteAccess(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
 	hcpo.useKnowledgebase = true
 	config := &AgentConfigs{
 		KnowledgebaseAccess: KBAccessReadWrite,
 		LearningsAccess:     LearningsAccessReadWrite,
 	}
 
-	got := hcpo.resolveMessageSequenceItemWriteAccess(config, MessageSequenceItem{
+	got := hcpo.resolveAgentItemWriteAccess(config, AgentItem{
 		ID:          "db-only-turn",
 		Type:        "user_message",
-		WriteAccess: MessageSequenceWriteAccess{DB: true},
+		WriteAccess: AgentWriteAccess{DB: true},
 	})
 	if !got.DB || got.Knowledgebase || got.Learnings {
 		t.Fatalf("non-empty item override should narrow inherited writes to db only, got: %+v", got)
 	}
 }
 
-func TestMessageSequenceItemAlwaysKeepsUniformDBWriteAccess(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+func TestAgentItemAlwaysKeepsUniformDBWriteAccess(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
 	hcpo.useKnowledgebase = true
 	config := &AgentConfigs{
 		KnowledgebaseAccess: KBAccessRead,
 		LearningsAccess:     LearningsAccessRead,
 	}
 
-	got := hcpo.resolveMessageSequenceItemWriteAccess(config, MessageSequenceItem{
+	got := hcpo.resolveAgentItemWriteAccess(config, AgentItem{
 		ID:   "attempted-escalation",
 		Type: "user_message",
-		WriteAccess: MessageSequenceWriteAccess{
+		WriteAccess: AgentWriteAccess{
 			DB: true, Knowledgebase: true, Learnings: true,
 		},
 	})
-	if got != (MessageSequenceWriteAccess{DB: true}) {
+	if got != (AgentWriteAccess{DB: true}) {
 		t.Fatalf("item override must keep uniform DB access without escalating KB/learnings, got: %+v", got)
 	}
 }
 
-func TestMessageSequenceTemplateVarsReflectItemWriteAccess(t *testing.T) {
+func TestAgentTemplateVarsReflectItemWriteAccess(t *testing.T) {
 	docsRoot := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docsRoot)
 
@@ -199,28 +199,28 @@ func TestMessageSequenceTemplateVarsReflectItemWriteAccess(t *testing.T) {
 	}
 	base.SetWorkspacePath("Workflow/test-flow")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0"}
-	step := msgSeqStep(MessageSequenceItem{ID: "capture", Type: "user_message"})
+	step := msgSeqStep(AgentItem{ID: "capture", Type: "user_message"})
 	// The step itself grants KB read-write: the prompt advertises only what the
 	// step's folder guard allows (PLAT-438).
 	step.AgentConfigs = &AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite}
-	item := MessageSequenceItem{
+	item := AgentItem{
 		ID:          "capture",
 		Type:        "user_message",
-		WriteAccess: MessageSequenceWriteAccess{DB: true, Knowledgebase: true, Learnings: true},
+		WriteAccess: AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true},
 	}
-	readPaths, writePaths := hcpo.setupMessageSequenceFolderGuard("step-1", step.GetID(), getAgentConfigs(step), item.WriteAccess)
-	vars := hcpo.buildMessageSequenceTemplateVars(step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, item.WriteAccess)
+	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", step.GetID(), getAgentConfigs(step), item.WriteAccess)
+	vars := hcpo.buildAgentTemplateVars(step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, item.WriteAccess)
 	if !strings.Contains(vars["FolderGuardReadPaths"], filepath.Join("Workflow", "test-flow", "learnings", step.GetID())) {
-		t.Fatalf("message sequence cannot read its step-specific learnings: %q", vars["FolderGuardReadPaths"])
+		t.Fatalf("agent cannot read its step-specific learnings: %q", vars["FolderGuardReadPaths"])
 	}
 	if strings.Contains(vars["FolderGuardWritePaths"], filepath.Join("Workflow", "test-flow", "learnings", step.GetID())) {
-		t.Fatalf("message sequence unexpectedly received step-learning write access: %q", vars["FolderGuardWritePaths"])
+		t.Fatalf("agent unexpectedly received step-learning write access: %q", vars["FolderGuardWritePaths"])
 	}
 
 	if got := vars["KbAccess"]; got != KBAccessReadWrite {
 		t.Fatalf("KbAccess = %q, want %q", got, KBAccessReadWrite)
 	}
-	if note := vars["MessageSequenceAccessNote"]; !strings.Contains(note, "db/") || !strings.Contains(note, "knowledgebase/notes/") || !strings.Contains(note, "learnings/_global/") {
+	if note := vars["AgentAccessNote"]; !strings.Contains(note, "db/") || !strings.Contains(note, "knowledgebase/notes/") || !strings.Contains(note, "learnings/_global/") {
 		t.Fatalf("access note does not list item write grants: %q", note)
 	}
 	if got := vars["KBGuidanceBlock"]; !strings.Contains(got, "Knowledgebase contribution") {
@@ -233,7 +233,7 @@ func TestMessageSequenceTemplateVarsReflectItemWriteAccess(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceTemplateVarsUseEffectiveWriteAccess(t *testing.T) {
+func TestAgentTemplateVarsUseEffectiveWriteAccess(t *testing.T) {
 	docsRoot := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docsRoot)
 
@@ -246,17 +246,17 @@ func TestMessageSequenceTemplateVarsUseEffectiveWriteAccess(t *testing.T) {
 	}
 	base.SetWorkspacePath("Workflow/test-flow")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0"}
-	step := msgSeqStep(MessageSequenceItem{ID: "capture", Type: "user_message"})
-	item := MessageSequenceItem{
+	step := msgSeqStep(AgentItem{ID: "capture", Type: "user_message"})
+	item := AgentItem{
 		ID:          "capture",
 		Type:        "user_message",
-		WriteAccess: MessageSequenceWriteAccess{Learnings: true},
+		WriteAccess: AgentWriteAccess{Learnings: true},
 	}
-	effectiveAccess := MessageSequenceWriteAccess{}
-	readPaths, writePaths := hcpo.setupMessageSequenceFolderGuard("step-1", step.GetID(), getAgentConfigs(step), effectiveAccess)
-	vars := hcpo.buildMessageSequenceTemplateVars(step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, effectiveAccess)
+	effectiveAccess := AgentWriteAccess{}
+	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", step.GetID(), getAgentConfigs(step), effectiveAccess)
+	vars := hcpo.buildAgentTemplateVars(step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, effectiveAccess)
 
-	if note := vars["MessageSequenceAccessNote"]; strings.Contains(strings.TrimPrefix(note, "Reads are available for execution outputs, soul, builder logs, db/, knowledgebase/, learnings/_global/, and this step's learnings folder. "), "learnings/_global/") {
+	if note := vars["AgentAccessNote"]; strings.Contains(strings.TrimPrefix(note, "Reads are available for execution outputs, soul, builder logs, db/, knowledgebase/, learnings/_global/, and this step's learnings folder. "), "learnings/_global/") {
 		t.Fatalf("write access note should reflect effective grants, not raw item grants: %q", note)
 	}
 	if writes := vars["FolderGuardWritePaths"]; strings.Contains(writes, "learnings/_global") {
@@ -264,7 +264,7 @@ func TestMessageSequenceTemplateVarsUseEffectiveWriteAccess(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceFolderGuardIncludesAdditionalReadPathsWithoutWrites(t *testing.T) {
+func TestAgentFolderGuardIncludesAdditionalReadPathsWithoutWrites(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "",
 		nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil,
@@ -276,21 +276,21 @@ func TestMessageSequenceFolderGuardIncludesAdditionalReadPathsWithoutWrites(t *t
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0/dev"}
 	config := &AgentConfigs{AdditionalReadPaths: []string{"variables", "reports/reference.json"}}
 
-	readPaths, writePaths := hcpo.setupMessageSequenceFolderGuard(
-		"step-1", "step-seq", config, MessageSequenceWriteAccess{},
+	readPaths, writePaths := hcpo.setupAgentFolderGuard(
+		"step-1", "step-seq", config, AgentWriteAccess{},
 	)
 	for _, expected := range []string{"Workflow/test-flow/variables", "Workflow/test-flow/reports/reference.json"} {
 		if !slices.Contains(readPaths, expected) {
-			t.Fatalf("message-sequence read paths missing %q: %v", expected, readPaths)
+			t.Fatalf("agent read paths missing %q: %v", expected, readPaths)
 		}
 		if slices.Contains(writePaths, expected) {
-			t.Fatalf("message-sequence additional read path widened writes to %q: %v", expected, writePaths)
+			t.Fatalf("agent additional read path widened writes to %q: %v", expected, writePaths)
 		}
 	}
 }
 
-func msgSeqStep(items ...MessageSequenceItem) *MessageSequencePlanStep {
-	return &MessageSequencePlanStep{
+func msgSeqStep(items ...AgentItem) *AgentPlanStep {
+	return &AgentPlanStep{
 		CommonStepFields: CommonStepFields{
 			ID:          "step-seq",
 			Title:       "Sequence",
@@ -300,7 +300,7 @@ func msgSeqStep(items ...MessageSequenceItem) *MessageSequencePlanStep {
 	}
 }
 
-func TestMessageSequenceItemReportedFailure(t *testing.T) {
+func TestAgentItemReportedFailure(t *testing.T) {
 	tests := []struct {
 		name       string
 		summary    string
@@ -315,7 +315,7 @@ func TestMessageSequenceItemReportedFailure(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			reason, failed := messageSequenceItemReportedFailure(tc.summary)
+			reason, failed := agentSequenceItemReportedFailure(tc.summary)
 			if failed != tc.wantFailed {
 				t.Fatalf("failed=%v, want %v (summary=%q)", failed, tc.wantFailed, tc.summary)
 			}
@@ -326,18 +326,18 @@ func TestMessageSequenceItemReportedFailure(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceItemUsesManagedDBToolsWithoutRawDBFilesystemAccess(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+func TestAgentItemUsesManagedDBToolsWithoutRawDBFilesystemAccess(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
 	config := &AgentConfigs{
 		KnowledgebaseAccess: KBAccessRead,
 		LearningsAccess:     LearningsAccessRead,
 	}
-	readPaths, writePaths := hcpo.setupMessageSequenceFolderGuard("step-1", "readonly", config, MessageSequenceWriteAccess{
+	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", "readonly", config, AgentWriteAccess{
 		DB: true, Knowledgebase: true, Learnings: true,
 	})
 	allPaths := strings.Join(append(append([]string{}, readPaths...), writePaths...), "\n")
 	if strings.Contains(allPaths, "db.sqlite") {
-		t.Fatalf("message-sequence item unexpectedly received raw db.sqlite filesystem access: %v", writePaths)
+		t.Fatalf("agent item unexpectedly received raw db.sqlite filesystem access: %v", writePaths)
 	}
 	for _, p := range readPaths {
 		if strings.Contains(p, "/db/") && !strings.Contains(p, "/db/assets") && !strings.HasSuffix(p, "/db/README.md") {
@@ -358,22 +358,22 @@ func TestMessageSequenceItemUsesManagedDBToolsWithoutRawDBFilesystemAccess(t *te
 }
 
 // PLAT-175. customer-login's survey-app-and-refresh-knowledge step is a
-// message_sequence step instructed, in its own plan description, to sync
+// agent step instructed, in its own plan description, to sync
 // db/assets/business-context/ via shell every cycle -- read the existing
 // .source_sha to compare, then add/overwrite/remove files and rewrite
 // .source_sha and _manifest.json. mutate_workflow_db is SQL-only and cannot
-// do this. Before this fix, setupMessageSequenceFolderGuard granted nothing
+// do this. Before this fix, setupAgentFolderGuard granted nothing
 // under db/ at all (commit a960df20 dropped the whole folder instead of
 // narrowing to just db.sqlite), so this step had no legal path to do the one
 // thing its own instructions require every run -- silently, since nothing
 // upstream had changed on the runs where it was checked.
-func TestMessageSequenceFolderGuardGrantsDBAssetsReadWrite(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+func TestAgentFolderGuardGrantsDBAssetsReadWrite(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
 	config := &AgentConfigs{
 		KnowledgebaseAccess: KBAccessRead,
 		LearningsAccess:     LearningsAccessRead,
 	}
-	readPaths, writePaths := hcpo.setupMessageSequenceFolderGuard("step-1", "survey-app-and-refresh-knowledge", config, MessageSequenceWriteAccess{
+	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", "survey-app-and-refresh-knowledge", config, AgentWriteAccess{
 		DB: true,
 	})
 	wantAssetsPath := filepath.Join("Workflow", "test-flow", "db", "assets")

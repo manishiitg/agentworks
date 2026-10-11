@@ -187,12 +187,12 @@ func TestKBSourcesWriteGrantAppliesToAllThreeFolderGuards(t *testing.T) {
 	}
 
 	writeStepConfig := &AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite}
-	_, writes = hcpo.setupMessageSequenceFolderGuard("step-2", "collect2", writeStepConfig, MessageSequenceWriteAccess{DB: true, Knowledgebase: true})
+	_, writes = hcpo.setupAgentFolderGuard("step-2", "collect2", writeStepConfig, AgentWriteAccess{DB: true, Knowledgebase: true})
 	if !containsString(writes, notesPath) {
-		t.Fatal("message sequence folder guard did not grant external write source", writes)
+		t.Fatal("agent folder guard did not grant external write source", writes)
 	}
 
-	step := &OrchestratorPlanStep{CommonStepFields: CommonStepFields{ID: "step-3"}, AgentConfigs: writeStepConfig}
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "step-3"}, AgentConfigs: writeStepConfig}
 	_, writes = hcpo.setupOrchestratorFolderGuard(step, "step-1")
 	if !containsString(writes, notesPath) {
 		t.Fatal("orchestrator folder guard did not grant external write source", writes)

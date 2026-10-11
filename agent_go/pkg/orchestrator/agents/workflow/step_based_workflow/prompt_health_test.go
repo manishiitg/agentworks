@@ -6,10 +6,10 @@ func TestBuildPromptHealthReportCountsNestedStepsAndTriggersReview(t *testing.T)
 	shared := "This is a deliberately long shared database access contract that is repeated verbatim across several steps so the prompt-health scanner can identify an extractable shared reference without treating short common phrases as a duplicate. "
 	shared += shared
 	steps := []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "large", Title: "Large", Description: makeDescription(20_001)}},
-		&OrchestratorPlanStep{
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "large", Title: "Large", Description: makeDescription(20_001)}},
+		&AgentPlanStep{
 			CommonStepFields: CommonStepFields{ID: "parent", Description: "parent description"},
-			PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "child", SubAgentStep: &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "child", Description: shared}}}},
+			PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "child", SubAgentStep: &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "child", Description: shared}}}},
 		},
 		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "other", Description: shared}},
 	}

@@ -184,7 +184,7 @@ Record a **`step_prompt_quality`** check only when the authored prompt, supplied
 schema/context, accessible guidance, or prompt authority changed, or when this is
 the step's first baseline review. A title-only or unrelated configuration edit
 does not require replaying prompt review. When applicable, inspect the authored description and,
-for message sequences, the individual item prompts together with the schema,
+for agents, the individual item prompts together with the schema,
 context dependencies, and guidance that execution actually receives. Assess:
 
 - a clear objective, necessary inputs/evidence, scope, output location, and
@@ -196,7 +196,7 @@ context dependencies, and guidance that execution actually receives. Assess:
 - precise wording, no conflicting/stale instructions, needless repetition,
   copied shared policy, or micromanaged procedure without a correctness reason;
 - enough context and accessible references to execute the task without guessing;
-- for a message sequence, a first item that instructs the work itself. A
+- for a agent, a first item that instructs the work itself. A
   sequence whose items only verify or re-open results lets the agent satisfy the
   step by re-checking an earlier run and doing no new work.
 
@@ -256,8 +256,8 @@ When the step type, topology, or its relevant execution boundary changed—or th
 is the first baseline review—use the existing reference-backed check ID for that
 applicable step type:
 `scripted_best_practices` (`references/scripted.md`),
-`message_sequence_best_practices` (`references/message-sequence.md`),
-`orchestrator_best_practices` (`references/orchestrator.md`),
+`agent_best_practices` (`references/agent.md`),
+`orchestrator_best_practices` (`references/agent.md`),
 `routing_best_practices` (`references/routing.md`), and
 `branch_best_practices` (`references/branch.md`). Load the matching reference and
 check the changed configuration and affected execution boundaries. These IDs are

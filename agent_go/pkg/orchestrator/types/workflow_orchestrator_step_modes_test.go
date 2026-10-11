@@ -59,7 +59,7 @@ func loadSessionJSON(t *testing.T, workspaceDisk, stepID string) *sessionFile {
 	pat := filepath.Join(workspaceDisk, "runs", "*", "*", "execution", "message_sequences", "*", stepID, "session.json")
 	matches, _ := filepath.Glob(pat)
 	if len(matches) == 0 {
-		t.Fatalf("session.json not written under %s — message_sequence step did not run", pat)
+		t.Fatalf("session.json not written under %s — agent step did not run", pat)
 	}
 	body, err := os.ReadFile(matches[0])
 	if err != nil {
@@ -86,7 +86,7 @@ func (s *sessionFile) roleTurns(role string) []sessionMessage {
 // ──────────────────────────────────────────────────────────────────────
 // Multi-item sequencing (tightened from the original broken version)
 
-// TestWorkflowMessageSequenceMultiItem proves the engine **actually
+// TestWorkflowAgentMultiItem proves the engine **actually
 // sequences** — not just that all expected tokens appear in
 // session.json. Specifically:
 //
@@ -102,7 +102,7 @@ func (s *sessionFile) roleTurns(role string) []sessionMessage {
 //	    the 3rd.
 //
 // Gated on RUN_WORKFLOW_REAL_E2E + RUN_VERTEX_REAL_E2E + GEMINI_API_KEY.
-func TestWorkflowMessageSequenceMultiItem(t *testing.T) {
+func TestWorkflowAgentMultiItem(t *testing.T) {
 	wo, cleanup, ok := buildEdgeCaseOrchestrator(t)
 	if !ok {
 		return
@@ -112,7 +112,7 @@ func TestWorkflowMessageSequenceMultiItem(t *testing.T) {
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "message_sequence",
+				"type":                 "agent",
 				"id":                   "multi-seq",
 				"title":                "Multi-item sequence",
 				"description":          "Three back-and-forth user_message items",
@@ -145,7 +145,7 @@ func TestWorkflowMessageSequenceMultiItem(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
-	if _, err := wo.orchestrator.Execute(ctx, "Three-turn message sequence", wo.workspaceRel, map[string]interface{}{
+	if _, err := wo.orchestrator.Execute(ctx, "Three-turn agent", wo.workspaceRel, map[string]interface{}{
 		"workflowStatus": workflowtypes.WorkflowStatusPreVerification,
 	}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -205,13 +205,13 @@ func TestWorkflowMessageSequenceMultiItem(t *testing.T) {
 	t.Logf("✅ multi-item sequence: %d human turns, %d ai turns, token→turn: %v", len(humans), len(ais), tokenTurn)
 }
 
-// TestWorkflowMessageSequenceItemTypeInvalidRejected proves the
+// TestWorkflowAgentItemTypeInvalidRejected proves the
 // engine refuses a message_sequence item with an unknown `type` field.
 // Today valid types are exactly user_message | code | prevalidation
 // (planning_agent.go:594). A typo or hallucinated item type should
 // fail at plan load, not be silently dropped or executed as
 // user_message.
-func TestWorkflowMessageSequenceItemTypeInvalidRejected(t *testing.T) {
+func TestWorkflowAgentItemTypeInvalidRejected(t *testing.T) {
 	wo, cleanup, ok := buildEdgeCaseOrchestrator(t)
 	if !ok {
 		return
@@ -221,7 +221,7 @@ func TestWorkflowMessageSequenceItemTypeInvalidRejected(t *testing.T) {
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "message_sequence",
+				"type":                 "agent",
 				"id":                   "bad-type-seq",
 				"title":                "Bad item type",
 				"description":          "first item is a valid user_message, second has a hallucinated type",
@@ -519,7 +519,7 @@ func TestWorkflowScriptedStepConfigIDMismatchNotApplied(t *testing.T) {
 // ──────────────────────────────────────────────────────────────────────
 // foreach — data-driven message expansion (message_sequence + todo_task)
 
-// TestWorkflowMessageSequenceForeach proves a `foreach` item expands a db
+// TestWorkflowAgentForeach proves a `foreach` item expands a db
 // JSON array into ONE user_message turn per row, deterministically, through
 // the same conversation. An earlier step's data (here: a pre-seeded
 // db/foreach_rows.json) drives the turns — the producer/consumer pattern.
@@ -531,7 +531,7 @@ func TestWorkflowScriptedStepConfigIDMismatchNotApplied(t *testing.T) {
 //
 // Gated on the same env as the other e2e tests (RUN_WORKFLOW_REAL_E2E + a
 // real provider). No-ops otherwise.
-func TestWorkflowMessageSequenceForeach(t *testing.T) {
+func TestWorkflowAgentForeach(t *testing.T) {
 	wo, cleanup, ok := buildEdgeCaseOrchestrator(t)
 	if !ok {
 		return
@@ -554,7 +554,7 @@ func TestWorkflowMessageSequenceForeach(t *testing.T) {
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "message_sequence",
+				"type":                 "agent",
 				"id":                   "foreach-seq",
 				"title":                "Foreach over db rows",
 				"description":          "Process every row of db/foreach_rows.json, one turn each",
@@ -576,7 +576,7 @@ func TestWorkflowMessageSequenceForeach(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
-	if _, err := wo.orchestrator.Execute(ctx, "Foreach message sequence", wo.workspaceRel, map[string]interface{}{
+	if _, err := wo.orchestrator.Execute(ctx, "Foreach agent", wo.workspaceRel, map[string]interface{}{
 		"workflowStatus": workflowtypes.WorkflowStatusPreVerification,
 	}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -821,13 +821,13 @@ func TestWorkflowOrchestratorPrevalidationGate(t *testing.T) {
 	t.Logf("✅ todo_task prevalidation gate: scripted turn ran and the gate passed")
 }
 
-// TestWorkflowMessageSequenceRouteReentry covers the headline of the (b2)
+// TestWorkflowAgentRouteReentry covers the headline of the (b2)
 // persistence refactor: a message_sequence used as a todo_task ROUTE remembers
 // its conversation across the orchestrator's repeated calls (in-memory,
 // run-scoped). The orchestrator is told to call the route twice — seed a secret
 // word, then ask for it back — and we assert the route's LAST reply recalls the
 // word, which is only possible if call #2 saw call #1's context.
-func TestWorkflowMessageSequenceRouteReentry(t *testing.T) {
+func TestWorkflowAgentRouteReentry(t *testing.T) {
 	wo, cleanup, ok := buildEdgeCaseOrchestrator(t)
 	if !ok {
 		return
@@ -849,7 +849,7 @@ func TestWorkflowMessageSequenceRouteReentry(t *testing.T) {
 						"route_name": "Recaller",
 						"condition":  "Remembers and recalls a secret word across calls",
 						"sub_agent_step": map[string]interface{}{
-							"type":                 "message_sequence",
+							"type":                 "agent",
 							"id":                   "recaller",
 							"title":                "Recaller",
 							"description":          "You are a memory specialist. Follow each instruction and keep all prior context across turns. Reply concisely.",

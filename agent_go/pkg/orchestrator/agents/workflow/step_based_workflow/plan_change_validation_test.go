@@ -19,15 +19,15 @@ func TestValidatePlanChangeProvesDeclaredStructuralInvariants(t *testing.T) {
 			},
 			NextStepID: "consumer",
 		},
-		&MessageSequencePlanStep{
-			Type: StepTypeMessageSeq,
+		&AgentPlanStep{
+			Type: StepTypeAgent,
 			CommonStepFields: CommonStepFields{
 				ID:                  "consumer",
 				Title:               "Consumer",
 				Description:         "Read the current producer output.",
 				ContextDependencies: []string{"current.json"},
 			},
-			Items:      []MessageSequenceItem{{ID: "work", Type: "user_message", Message: "Read and summarize the current output."}},
+			Items:      []AgentItem{{ID: "work", Type: "user_message", Message: "Read and summarize the current output."}},
 			NextStepID: "end",
 		},
 	}}
@@ -69,15 +69,15 @@ func TestValidatePlanChangeProvesDeclaredStructuralInvariants(t *testing.T) {
 
 func TestValidatePlanChangeReportsStaleReferencesAndDependencyDrift(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{
-			Type: StepTypeMessageSeq,
+		&AgentPlanStep{
+			Type: StepTypeAgent,
 			CommonStepFields: CommonStepFields{
 				ID:                  "consumer",
 				Title:               "Consumer",
 				Description:         "Still reads old/nested/output.json from removed-step.",
 				ContextDependencies: []string{"old.json"},
 			},
-			Items:      []MessageSequenceItem{{ID: "work", Type: "user_message", Message: "Read and summarize the output."}},
+			Items:      []AgentItem{{ID: "work", Type: "user_message", Message: "Read and summarize the output."}},
 			NextStepID: "end",
 		},
 	}}

@@ -42,7 +42,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeRoutingStep(
 		return "", "", fmt.Errorf("routing step %d (%s) must have at least 2 routes, got %d", stepIndex+1, step.GetTitle(), len(routingStep.GetRoutes()))
 	}
 	if strings.TrimSpace(routingStep.GetDescription()) != "" {
-		return "", "", fmt.Errorf("routing step %d (%s) sets description, but routing/branch is deterministic-only; move any probe or judgment into a prior message_sequence step that writes %s, then point the step at that file via route_source_file or context_dependencies", stepIndex+1, step.GetTitle(), routeSelectionFileName)
+		return "", "", fmt.Errorf("routing step %d (%s) sets description, but routing/branch is deterministic-only; move any probe or judgment into a prior agent step that writes %s, then point the step at that file via route_source_file or context_dependencies", stepIndex+1, step.GetTitle(), routeSelectionFileName)
 	}
 
 	// Emit step_started event

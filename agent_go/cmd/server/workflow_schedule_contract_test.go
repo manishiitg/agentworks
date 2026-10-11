@@ -340,7 +340,7 @@ func TestRetiredPulseMigrationCheckpointsDoNotRequireWorkspacePath(t *testing.T)
 func TestUpgradeQueriesNeverNamePlatTickets(t *testing.T) {
 	platTicket := regexp.MustCompile(`PLAT-\d+`)
 	queries := map[string]string{
-		"upgradeMessageSequenceCode":        upgradeMessageSequenceCode,
+		"upgradeAgentCode":                  upgradeAgentCode,
 		"upgradeCurrentArtifactContract":    upgradeCurrentArtifactContract,
 		"upgradeDirectHTMLReports":          upgradeDirectHTMLReports,
 		"upgradeDedicatedPulseSchedule":     upgradeDedicatedPulseSchedule,

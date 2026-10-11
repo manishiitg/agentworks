@@ -3299,7 +3299,7 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 		"prompt_budget_metrics":               promptBudgetMetrics,
 		"prompt_budget_metrics_note":          "PLAT-556 success metric, one row per Pulse pass, newest first: description size totals, steps over budget, dated text, duplicated text, missing layout, and cumulative Architecture runs and consolidations (kept, restored, validation before/after).",
 		"gate_mode":                           runMode,
-		"gate_mode_note":                      "The Gate-selected pass shape for the supplied pulse_run_id. Go records it but does not choose it; the following message sequence must follow it.",
+		"gate_mode_note":                      "The Gate-selected pass shape for the supplied pulse_run_id. Go records it but does not choose it; the following agent must follow it.",
 	})
 	return string(payload), nil
 }

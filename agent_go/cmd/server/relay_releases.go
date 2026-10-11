@@ -324,7 +324,7 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			if script, ok := step.(*stepworkflow.RegularPlanStep); ok && script.ScriptOnly {
 				scripts = append(scripts, script)
 			}
-			if agent, ok := step.(*stepworkflow.MessageSequencePlanStep); ok {
+			if agent, ok := step.(*stepworkflow.AgentPlanStep); ok {
 				for _, route := range agent.PredefinedRoutes {
 					if script, ok := route.SubAgentStep.(*stepworkflow.RegularPlanStep); ok {
 						scripts = append(scripts, script)

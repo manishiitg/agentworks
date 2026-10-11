@@ -13,10 +13,10 @@ import (
 
 func TestPlanMedianOtherStepDescriptionLen(t *testing.T) {
 	steps := []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "a", Description: strings.Repeat("x", 100)}},
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "b", Description: strings.Repeat("x", 200)}},
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "c", Description: strings.Repeat("x", 300)}},
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "target", Description: strings.Repeat("x", 99999)}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "a", Description: strings.Repeat("x", 100)}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "b", Description: strings.Repeat("x", 200)}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "c", Description: strings.Repeat("x", 300)}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "target", Description: strings.Repeat("x", 99999)}},
 		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "no-description"}},
 	}
 	if got := planMedianOtherStepDescriptionLen(steps, "target"); got != 200 {
@@ -51,12 +51,12 @@ func TestStepDescriptionSizeNudgeThresholds(t *testing.T) {
 	}
 }
 
-func TestAddMessageSequenceStepIncludesSizeNudgeRelativeToSiblings(t *testing.T) {
+func TestAddAgentStepIncludesSizeNudgeRelativeToSiblings(t *testing.T) {
 	existingPlan := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{
-			Type:             StepTypeMessageSeq,
+		&AgentPlanStep{
+			Type:             StepTypeAgent,
 			CommonStepFields: CommonStepFields{ID: "sibling-a", Title: "Sibling A", Description: strings.Repeat("normal ", 100), ContextDependencies: []string{}},
-			Items:            []MessageSequenceItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
+			Items:            []AgentItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
 		},
 	}}
 	planJSON, err := json.Marshal(existingPlan)
@@ -80,7 +80,7 @@ func TestAddMessageSequenceStepIncludesSizeNudgeRelativeToSiblings(t *testing.T)
 		}
 		return nil
 	}
-	add := createAddMessageSequenceStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile, nil)
+	add := createAddAgentStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile, nil)
 
 	bigDescription := strings.Repeat("this is durable technique restated inline instead of in a skill. ", 300)
 	result, err := add(context.Background(), map[string]interface{}{
@@ -95,7 +95,7 @@ func TestAddMessageSequenceStepIncludesSizeNudgeRelativeToSiblings(t *testing.T)
 		"reason":               "test",
 	})
 	if err != nil {
-		t.Fatalf("add_message_sequence_step failed: %v", err)
+		t.Fatalf("add_agent_step failed: %v", err)
 	}
 	if !strings.Contains(result, "Description should stay WHAT to achieve") {
 		t.Fatalf("add response missing size nudge for an oversized new step: %s", result)
@@ -107,13 +107,13 @@ func TestAddMessageSequenceStepIncludesSizeNudgeRelativeToSiblings(t *testing.T)
 
 func TestUpdateOrchestratorStepIncludesSizeNudge(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{
-			Type:             StepTypeMessageSeq,
+		&AgentPlanStep{
+			Type:             StepTypeAgent,
 			CommonStepFields: CommonStepFields{ID: "sibling-a", Title: "Sibling A", Description: strings.Repeat("normal ", 100), ContextDependencies: []string{}},
-			Items:            []MessageSequenceItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
+			Items:            []AgentItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
 		},
-		&OrchestratorPlanStep{
-			Type: StepTypeOrchestrator,
+		&AgentPlanStep{
+			Type: StepTypeAgent,
 			CommonStepFields: CommonStepFields{
 				ID: "target-orchestrator", Title: "Target orchestrator",
 				Description: "Investigate the failure.", ContextDependencies: []string{},
@@ -132,7 +132,7 @@ func TestUpdateOrchestratorStepIncludesSizeNudge(t *testing.T) {
 		return "", errors.New("not found")
 	}
 	writeFile := func(_ context.Context, _, _ string) error { return nil }
-	update := createUpdateOrchestratorStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
+	update := createUpdateAgentStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
 
 	bigDescription := strings.Repeat("this is durable technique restated inline instead of in a skill. ", 300)
 	result, err := update(context.Background(), map[string]interface{}{
@@ -149,15 +149,15 @@ func TestUpdateOrchestratorStepIncludesSizeNudge(t *testing.T) {
 	}
 }
 
-func TestUpdateMessageSequenceStepOmitsNudgeWhenDescriptionUntouched(t *testing.T) {
+func TestUpdateAgentStepOmitsNudgeWhenDescriptionUntouched(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{
-			Type: StepTypeMessageSeq,
+		&AgentPlanStep{
+			Type: StepTypeAgent,
 			CommonStepFields: CommonStepFields{
 				ID: "target", Title: "Target", Description: strings.Repeat("x", 50000),
 				ContextDependencies: []string{},
 			},
-			Items: []MessageSequenceItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
+			Items: []AgentItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
 		},
 	}}
 	planJSON, err := json.Marshal(plan)
@@ -175,7 +175,7 @@ func TestUpdateMessageSequenceStepOmitsNudgeWhenDescriptionUntouched(t *testing.
 		}
 	}
 	writeFile := func(_ context.Context, _, _ string) error { return nil }
-	update := createUpdateMessageSequenceStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
+	update := createUpdateAgentStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
 
 	// Update a field other than description: the already-huge description
 	// must not trigger a nudge for an edit that never touched it.

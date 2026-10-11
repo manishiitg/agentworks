@@ -129,7 +129,7 @@ func TestRetiredClearFieldsAreAcknowledgedNotSilentlySucceeded(t *testing.T) {
 
 // PLAT-061. learn_code_max_fix_iterations is retired: every value ever stored
 // was a migration artifact rather than a judgment. The migration defaulted
-// retries to 0 and only raised it when a legacy message-sequence item declared
+// retries to 0 and only raised it when a legacy agent item declared
 // repair_with_llm, so five hetznerssh steps carried 0 — silently disabling
 // script repair — because their legacy items happened to lack a field, not
 // because anyone decided fail-fast was right there.

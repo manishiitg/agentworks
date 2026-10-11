@@ -18,7 +18,7 @@ func workflowCreationArgs(folder string) map[string]any {
 		"folder_name":   folder,
 		"workflow_json": map[string]any{"schema_version": 1, "version": "1.0.0", "code_layout_version": 0, "id": "wf_" + folder, "label": "KB reader", "created_by": "outsider", "access": map[string]any{"owners": []any{"outsider"}}},
 		"plan_json": map[string]any{"steps": []any{map[string]any{
-			"type": "message_sequence", "id": "answer", "title": "Answer", "description": "Read attached KB", "next_step_id": "end",
+			"type": "agent", "id": "answer", "title": "Answer", "description": "Read attached KB", "next_step_id": "end",
 			"items": []any{map[string]any{"id": "read", "type": "user_message", "message": "Read the attached knowledge."}},
 		}}},
 	}

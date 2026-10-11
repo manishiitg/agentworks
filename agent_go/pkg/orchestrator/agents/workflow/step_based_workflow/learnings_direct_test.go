@@ -197,11 +197,11 @@ func testContainsString(values []string, target string) bool {
 
 // Regression for the message_sequence learnings-write sandbox denial: the reused
 // execution agent freezes its workspace-write guard at creation, so the snapshot
-// is built from the step's FULL granted write scope (messageSequenceStepFullWriteAccess)
+// is built from the step's FULL granted write scope (agentSequenceStepFullWriteAccess)
 // — not the first item's — or the learnings/KB closing turns are denied. This guards
 // that a learnings-read-write step yields Learnings=true (→ learnings/_global in the
 // frozen snapshot) while a read-only step does not.
-func TestMessageSequenceStepFullWriteAccessGrantsLearningsForRWStep(t *testing.T) {
+func TestAgentStepFullWriteAccessGrantsLearningsForRWStep(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "",
 		[]string{"test-server"}, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil,
@@ -212,19 +212,19 @@ func TestMessageSequenceStepFullWriteAccessGrantsLearningsForRWStep(t *testing.T
 	base.SetWorkspacePath("Workflow/customer-qa-testing")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 
-	rwStep := &MessageSequencePlanStep{
+	rwStep := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "survey-app-and-refresh-knowledge"},
 		AgentConfigs:     &AgentConfigs{LearningsAccess: LearningsAccessReadWrite, LearningObjective: "capture the refresh flow"},
 	}
-	if !hcpo.messageSequenceStepFullWriteAccess(rwStep).Learnings {
+	if !hcpo.agentSequenceStepFullWriteAccess(rwStep).Learnings {
 		t.Fatal("learnings-read-write step must grant Learnings in the frozen snapshot scope")
 	}
 
-	roStep := &MessageSequencePlanStep{
+	roStep := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "survey"},
 		AgentConfigs:     &AgentConfigs{LearningsAccess: LearningsAccessRead},
 	}
-	if hcpo.messageSequenceStepFullWriteAccess(roStep).Learnings {
+	if hcpo.agentSequenceStepFullWriteAccess(roStep).Learnings {
 		t.Fatal("learnings-read step must not grant Learnings write")
 	}
 }

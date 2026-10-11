@@ -42,14 +42,14 @@ func TestMigrateDeclaredExecutionModeMakesEveryPlanTypeExplicitAndLeavesConfigAl
 
 	updated, updatedConfigs := readTestPlanAndConfigs(t, readFile)
 	legacy, _, _ := findStepByID(updated.Steps, "legacy")
-	seq, ok := legacy.(*MessageSequencePlanStep)
+	seq, ok := legacy.(*AgentPlanStep)
 	if !ok || seq.NextStepID != "scripted" || seq.Description != "Legacy agentic work." || len(seq.Items) != 1 {
 		t.Fatalf("legacy agentic regular step must become an explicit sequence with its fields kept, got %T %+v", legacy, legacy)
 	}
 	if scripted, _, _ := findStepByID(updated.Steps, "scripted"); scripted.StepType() != StepTypeRegular {
 		t.Fatalf("a true scripted step must stay regular, got %s", scripted.StepType())
 	}
-	if talk, _, _ := findStepByID(updated.Steps, "talk"); talk.StepType() != StepTypeMessageSeq {
+	if talk, _, _ := findStepByID(updated.Steps, "talk"); talk.StepType() != StepTypeAgent {
 		t.Fatalf("a plain sequence must be untouched, got %s", talk.StepType())
 	}
 	// Half 1 only rewrites the plan; the retired key is removed by the v1.0.39
@@ -65,7 +65,7 @@ func TestMigrateDeclaredExecutionModeMakesEveryPlanTypeExplicitAndLeavesConfigAl
 	entry := findChangelogEntry(t, changeStepTypeTestWorkspace, files, "migrate_declared_execution_mode")
 	sawType := false
 	for _, change := range entry.Changes {
-		if change.StepID == "legacy" && change.Field == "type" && change.NewValue == string(StepTypeMessageSeq) {
+		if change.StepID == "legacy" && change.Field == "type" && change.NewValue == string(StepTypeAgent) {
 			sawType = true
 		}
 	}

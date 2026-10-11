@@ -66,7 +66,7 @@ func TestWorkflowArtifactPurityChecksOnlyChangedMutationFields(t *testing.T) {
 }
 
 func TestPlanMutationExecutorsEnforceWorkflowArtifactPurity(t *testing.T) {
-	add := createAddMessageSequenceStepExecutor("Workflow/demo", nil, nil, nil, nil)
+	add := createAddAgentStepExecutor("Workflow/demo", nil, nil, nil, nil)
 	_, err := add(context.Background(), map[string]interface{}{
 		"reason":      "add a review step",
 		"id":          "review",
@@ -77,7 +77,7 @@ func TestPlanMutationExecutorsEnforceWorkflowArtifactPurity(t *testing.T) {
 		t.Fatalf("add error = %v, want artifact-purity rejection", err)
 	}
 
-	update := createUpdateMessageSequenceStepExecutor("Workflow/demo", nil, nil, nil)
+	update := createUpdateAgentStepExecutor("Workflow/demo", nil, nil, nil)
 	_, err = update(context.Background(), map[string]interface{}{
 		"reason":           "refresh the step",
 		"existing_step_id": "review",
@@ -89,11 +89,11 @@ func TestPlanMutationExecutorsEnforceWorkflowArtifactPurity(t *testing.T) {
 		t.Fatalf("update error = %v, want nested artifact-purity rejection", err)
 	}
 
-	addRoute := createAddOrchestratorRouteExecutor("Workflow/demo", nil, nil, nil)
+	addRoute := createAddAgentRouteExecutor("Workflow/demo", nil, nil, nil)
 	_, err = addRoute(context.Background(), map[string]interface{}{
 		"reason":         "add a specialist route",
 		"parent_step_id": "orchestrate",
-		"new_route":      `{"route_id":"review","sub_agent_step":{"id":"review","type":"message_sequence","description":"Use $MCP_AUTH for bridge authentication."}}`,
+		"new_route":      `{"route_id":"review","sub_agent_step":{"id":"review","type":"agent","description":"Use $MCP_AUTH for bridge authentication."}}`,
 	})
 	if err == nil || !strings.Contains(err.Error(), "MCP bridge environment variables") {
 		t.Fatalf("route add error = %v, want JSON-string route purity rejection", err)

@@ -58,7 +58,7 @@ func CreateCodeLayoutToolRegistry(fallbackSessionID string, setVersion func(ctx 
 	}
 
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
-		Name: "set_code_layout_version",
+		Name:        "set_code_layout_version",
 		Description: "The ONLY supported way to switch this workflow's persisted code_layout_version between 0 (legacy learnings/<step-id>/main.py) and 1 (code/<step-id>/main.py). The ordinary workflow-configuration update tool silently preserves the existing value and ignores any change to it -- this tool is the deliberate, separate override for an authorized migration. Read code-authoring.md's \"Deliberate migration to code/\" section before calling this. Before calling with code_layout_version=1: stage a complete code/<step-id>/main.py (and its script_metadata.json) yourself, for every regular-type step in the plan, using ordinary file tools -- this tool does not move, copy, or verify any script itself, and the runtime starts resolving canonical source from code/ for every such step immediately on the next execution, with no execution-copy fallback for anything left only in learnings/. Nothing under learnings/ is ever deleted by this call, so calling it again with the previous value is a safe, instant rollback if something is wrong after the switch.",
 		Parameters: llmtypes.NewParameters(map[string]any{
 			"type": "object",

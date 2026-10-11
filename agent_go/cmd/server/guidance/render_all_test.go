@@ -1202,7 +1202,7 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 			wants: []string{
 				"Scripted acquisition, agentic processing",
 				"batch related calls",
-				"feed the durable rows/artifacts into a large message sequence",
+				"feed the durable rows/artifacts into a large agent",
 				"10+-run evidence bar is only for *freezing*",
 			},
 		},
@@ -1222,14 +1222,14 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 			wants: []string{
 				"Declare these steps `scripted` from initial design",
 				"No run-history threshold is required",
-				"regular scripted fetcher(s) → message_sequence processor",
+				"regular scripted fetcher(s) → agent processor",
 				// PLAT-436: scripts are built by the Builder, not healed by a run.
 				"Scripts are built by you, not healed by the run",
 				"no LLM rewrites",
 				"`execute_step` (the only place an agent may write or repair",
 			},
 		},
-		"message-sequence": {
+		"agent": {
 			registry: referenceKinds,
 			wants: []string{
 				"fetch-and-normalize-authoritative-data",
@@ -1292,7 +1292,7 @@ func TestSharedContextSpansOwnProofValidationAndRepair(t *testing.T) {
 		"planning-steps": {
 			registry: referenceKinds,
 			wants: []string{
-				"one large `message_sequence` per shared-context span",
+				"one large `agent` per shared-context span",
 				"proof/provenance output",
 				"Use multiple large sequences when their contexts should not be shared",
 				"The builder must decide this from",
@@ -1301,7 +1301,7 @@ func TestSharedContextSpansOwnProofValidationAndRepair(t *testing.T) {
 		"plan-design": {
 			registry: referenceKinds,
 			wants: []string{
-				"one large `message_sequence` for each coherent shared-context span",
+				"one large `agent` for each coherent shared-context span",
 				"proof/evidence contract",
 				"Multiple large sequences are correct when their contexts should not be shared",
 				"builder must decide this from the workflow semantics",
@@ -1318,7 +1318,7 @@ func TestSharedContextSpansOwnProofValidationAndRepair(t *testing.T) {
 				"Validate in context",
 			},
 		},
-		"message-sequence": {
+		"agent": {
 			registry: referenceKinds,
 			wants: []string{
 				"one persistent conversation",
@@ -1362,7 +1362,7 @@ func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
 	for kind, wants := range map[string][]string{
 		"plan-design":       {"Composition examples", "readiness", "draft"},
 		"orchestrator":      {"known upfront", "unknown work breakdown is one use case, not a prerequisite", "already supplied by the user"},
-		"message-sequence":  {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel"},
+		"agent":             {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel"},
 		"stores":            {"transaction or retry contract", "window.report.query", "knowledgebase/notes/", "learnings/_global/SKILL.md"},
 		"human-in-the-loop": {"provide the actual draft/change/evidence", "Schedules must complete unattended"},
 	} {

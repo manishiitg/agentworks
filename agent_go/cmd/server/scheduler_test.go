@@ -1427,7 +1427,7 @@ func TestPostRunMonitorPrependsStableSoulAndPulseHierarchyUpgradeForVersion108Ma
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.8"}, "1.0.8")
 }
 
-func TestPostRunMonitorPrependsMessageSequenceCodeMigrationForVersion109Manifest(t *testing.T) {
+func TestPostRunMonitorPrependsAgentCodeMigrationForVersion109Manifest(t *testing.T) {
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.9"}, "1.0.9")
 }
 

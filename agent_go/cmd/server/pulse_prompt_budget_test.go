@@ -28,9 +28,9 @@ func TestPromptBudgetMakesArchitectureDue(t *testing.T) {
 	item := []map[string]string{{"id": "work", "type": "user_message", "message": "Do the work."}}
 	small := "## Goal\nSmall.\n## Output\nA file.\n## Done when\nWritten."
 	plan := map[string]interface{}{"steps": []map[string]interface{}{
-		{"id": "big", "type": "message_sequence", "title": "Big", "description": strings.Repeat("Rule text that keeps growing. ", 500), "items": item},
-		{"id": "s1", "type": "message_sequence", "title": "S1", "description": small, "items": item},
-		{"id": "s2", "type": "message_sequence", "title": "S2", "description": small + " Two.", "items": item},
+		{"id": "big", "type": "agent", "title": "Big", "description": strings.Repeat("Rule text that keeps growing. ", 500), "items": item},
+		{"id": "s1", "type": "agent", "title": "S1", "description": small, "items": item},
+		{"id": "s2", "type": "agent", "title": "S2", "description": small + " Two.", "items": item},
 	}}
 	raw, _ := json.Marshal(plan)
 	if err := os.WriteFile(filepath.Join(planning, "plan.json"), raw, 0o644); err != nil {

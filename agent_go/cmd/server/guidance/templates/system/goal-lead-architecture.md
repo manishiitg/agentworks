@@ -11,7 +11,7 @@ chat).
 
 1. **One question.** Pick the single structural question the evidence raises:
    prompt clarity or duplication, simpler orchestration and handoffs, repeatable
-   work that should be a script, Crew versus message sequence, learnings and
+   work that should be a script, Crew versus agent, learnings and
    knowledge freshness, database structure and lineage, useful reports, model or
    tier choice, cost and latency.
    Judge it against the platform's design guides, loaded as needed:

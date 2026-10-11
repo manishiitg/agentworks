@@ -38,7 +38,7 @@ import {
   formatTokenCount,
   getExecutionMetrics,
   getExecutionOrigin,
-  getMessageSequenceReflection,
+  getAgentReflection,
   getSentAgentMessages,
   getStepFirstActivityMs,
   getStepMetrics,
@@ -390,15 +390,15 @@ export function StepContent(props: StepContentProps) {
             successCriteria={stepLogs.success_criteria}
           />
 
-          {/* A message-sequence session is its own durable execution trace. Its
+          {/* A agent session is its own durable execution trace. Its
               closing Reflection item is intentionally surfaced separately so
               operators can tell whether the sequence actually reflected, not
               merely whether the enclosing step completed. */}
-          {stepLogs.message_sequence && (
+          {stepLogs.agent && (
             <div className="p-4 bg-muted/30 border-b border-border">
               {(() => {
-                const reflection = getMessageSequenceReflection(stepLogs)
-                const sessionEntries = stepLogs.message_sequence.entries || []
+                const reflection = getAgentReflection(stepLogs)
+                const sessionEntries = stepLogs.agent.entries || []
                 const reflectionStatus = reflection?.status || 'not run'
                 const reflectionClass = reflectionStatus === 'completed'
                   ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
@@ -411,7 +411,7 @@ export function StepContent(props: StepContentProps) {
                       <MessageSquare className="w-4 h-4 text-muted-foreground" />
                       <h4 className="text-sm font-semibold text-foreground">Agent</h4>
                       <span className="rounded border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                        {stepLogs.message_sequence.status || 'recorded'}
+                        {stepLogs.agent.status || 'recorded'}
                       </span>
                       <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${reflectionClass}`}>
                         Reflection: {reflectionStatus}
@@ -754,7 +754,7 @@ export function StepContent(props: StepContentProps) {
                   const valId = `${stepId}-val-${val.kind || 'validation'}-${val.attempt}`
                   const isValExpanded = expandedValidations.has(valId)
                   const valStatus = val.content?.execution_status
-                  const isAutomaticFinalValidation = val.kind === 'pre_validation' && val.phase === 'message-sequence-automatic-final-validation'
+                  const isAutomaticFinalValidation = val.kind === 'pre_validation' && val.phase === 'agent-automatic-final-validation'
                   const valPassed = val.content?.overall_pass
                   const passedChecks = val.content?.passed_checks
                   const failedChecks = val.content?.failed_checks

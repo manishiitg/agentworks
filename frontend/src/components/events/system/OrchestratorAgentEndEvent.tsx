@@ -4,10 +4,10 @@ import { ConversationMarkdownRenderer } from '../../ui/MarkdownRenderer';
 import { humanReadableAgentResult, isEvaluationAgentEvent } from './eventDisplayUtils';
 import { completionTitle } from './agentEventDisplayLabels';
 
-function isMessageSequenceItemEvent(event: OrchestratorAgentEndEvent): boolean {
-  return event.metadata?.message_sequence_item === true ||
-    event.metadata?.message_sequence_item === 'true' ||
-    event.agent_name?.startsWith('message-sequence-') === true
+function isAgentItemEvent(event: OrchestratorAgentEndEvent): boolean {
+  return event.metadata?.agent_item === true ||
+    event.metadata?.agent_item === 'true' ||
+    event.agent_name?.startsWith('agent-') === true
 }
 
 function isWorkflowStepExecutionEvent(event: OrchestratorAgentEndEvent): boolean {
@@ -33,7 +33,7 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
   // the actual agent completion is already shown by the inner agent's end event
   const agentType = (event as unknown as { agent_type?: string })?.agent_type
   const isEvaluationAgent = isEvaluationAgentEvent(event)
-  const isMessageSequenceItem = isMessageSequenceItemEvent(event)
+  const isAgentItem = isAgentItemEvent(event)
   const isSequenceWork = isSequenceWorkEvent(event)
   const isWorkflowStepExecution = isWorkflowStepExecutionEvent(event)
   if (agentType === 'workshop-step-execution' || agentType === 'workshop-step-debug' || agentType === 'workshop-step-learning' || agentType === 'workshop-background-task') {
@@ -48,8 +48,8 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
   const getLabel = () => {
     const t = (event as unknown as { agent_type?: string })?.agent_type
     // The terminal rail already identifies the sequence step. Exposing the
-    // internal message-sequence name again in the transcript is redundant.
-    if (isMessageSequenceItem) return 'Step'
+    // internal agent name again in the transcript is redundant.
+    if (isAgentItem) return 'Step'
     if (isSequenceWork) return 'Sequence Work'
     if (isWorkflowStepExecution) return 'Step'
     if (isEvaluationAgent && t === 'evaluation_scoring') return 'Evaluation Scoring'
@@ -68,7 +68,7 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
 
   const getAgentIcon = () => {
     const t = (event as unknown as { agent_type?: string })?.agent_type
-    if (isMessageSequenceItem) return '✓'
+    if (isAgentItem) return '✓'
     if (isWorkflowStepExecution) return '✅'
     if (isEvaluationAgent) return '🧪'
     if (t === 'plan_breakdown') return '🔍'
@@ -81,7 +81,7 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
 
   const getAgentColor = () => {
     const t = (event as unknown as { agent_type?: string })?.agent_type
-    if (isMessageSequenceItem) return 'slate'
+    if (isAgentItem) return 'slate'
     if (isWorkflowStepExecution) return 'slate'
     if (isEvaluationAgent) return 'blue'
     if (t === 'plan_breakdown') return 'emerald'
@@ -177,7 +177,7 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
             </div>
             <div className="min-w-0 flex-1">
               <div className={`text-sm font-medium ${colors.text}`}>
-                {completionTitle(event.agent_name, isMessageSequenceItem, getLabel())}{' '}
+                {completionTitle(event.agent_name, isAgentItem, getLabel())}{' '}
                 {!compact && <span className={`text-xs font-normal ${colors.textSecondary}`}>
                   {event.step_index !== undefined && ` | Step: ${event.step_index}`}
                   {event.iteration !== undefined && ` | Iteration: ${event.iteration}`}

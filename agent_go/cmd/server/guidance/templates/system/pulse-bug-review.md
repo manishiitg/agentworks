@@ -146,7 +146,7 @@ guard, approval boundary, or externally visible artifact contract is
 #### Artifact ownership purity
 
 When selected evidence suggests artifact ownership/contract drift, inspect the
-affected plan descriptions and message-sequence messages plus relevant Learnings and KB packages for
+affected plan descriptions and agent messages plus relevant Learnings and KB packages for
 shared AgentWorks mechanics copied into workflow-owned prose: bridge/auth
 environment variables or curl envelopes, api-bridge routing, Folder Guard
 internals, managed workflow-DB tool syntax, `get_api_spec` workarounds, and
@@ -175,10 +175,10 @@ Bug Review is responsible for semantic execution defects, not only explicit
 runtime errors. When compact evidence makes a step suspicious, inspect that
 step's latest applicable observable trace:
 
-- regular and message-sequence agent steps (including legacy orchestrator records):
+- regular and agent agent steps (including legacy agent records):
   `runs/<run_folder>/logs/<step>/execution/execution-attempt-*-iteration-*-conversation.json`
   (`conversation_history`, `tool_calls`, and `llm_calls`)
-- message-sequence steps:
+- agent steps:
   `runs/<run_folder>/execution/<step>/session.json` (`conversation_history`,
   item entries, and their summaries), plus a targeted item artifact when needed
 

@@ -29,9 +29,9 @@ func TestEveryWorkflowGuardMaterializesFreshWorkspacePaths(t *testing.T) {
 			},
 		},
 		{
-			name: "message_sequence",
+			name: "agent",
 			paths: func(hcpo *StepBasedWorkflowOrchestrator) ([]string, []string) {
-				return hcpo.setupMessageSequenceFolderGuard("step-1", "brief", nil, MessageSequenceWriteAccess{})
+				return hcpo.setupAgentFolderGuard("step-1", "brief", nil, AgentWriteAccess{})
 			},
 		},
 		{

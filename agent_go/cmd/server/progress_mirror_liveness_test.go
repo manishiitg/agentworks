@@ -123,8 +123,8 @@ func TestProgressMirrorClassificationUsesDeclaredKindAndLegacyMetadata(t *testin
 			ID: "workflow-full-msvyee8q01-step-0-msvyijui03", Kind: "orchestrator"}, true},
 		"parent full-run must NOT match": {BackgroundAgentSnapshot{
 			ID: "workflow-full-msvyee8q01", Kind: "full_run"}, false},
-		"message sequence item is real work": {BackgroundAgentSnapshot{
-			ID: "msgseq-execute-remediate-123", Kind: "message_sequence_item"}, false},
+		"agent item is real work": {BackgroundAgentSnapshot{
+			ID: "msgseq-execute-remediate-123", Kind: "agent_item"}, false},
 		"sub agent is real work": {BackgroundAgentSnapshot{
 			ID: "todo-sub-execute-remediate-123", Kind: "sub_agent"}, false},
 		"legacy metadata fallback": {BackgroundAgentSnapshot{Metadata: map[string]string{"execution_type": "workflow-step"}}, true},

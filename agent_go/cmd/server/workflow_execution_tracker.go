@@ -155,7 +155,7 @@ func trackedExecutionBlocksNewWorkflowBuilderChat(exec *TrackedWorkflowExecution
 		return false
 	}
 	// Scheduled/background workflow work may use the workflow-builder phase for
-	// implementation details such as message-sequence items. It must not block a
+	// implementation details such as agent items. It must not block a
 	// user from opening or continuing a normal builder chat for the same workflow.
 	if isScheduledSessionIdentity(exec.SessionID, exec.TriggeredBy) {
 		return false

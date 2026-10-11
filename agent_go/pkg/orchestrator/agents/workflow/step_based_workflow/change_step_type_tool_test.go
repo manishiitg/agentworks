@@ -14,11 +14,11 @@ const changeStepTypeTestWorkspace = "Workflow/testing"
 
 // testSequenceStep builds a message_sequence that satisfies plan validation
 // on read (title, description, at least one item).
-func testSequenceStep(id, title string) *MessageSequencePlanStep {
-	return &MessageSequencePlanStep{
-		Type:             StepTypeMessageSeq,
+func testSequenceStep(id, title string) *AgentPlanStep {
+	return &AgentPlanStep{
+		Type:             StepTypeAgent,
 		CommonStepFields: CommonStepFields{ID: id, Title: title, Description: title + " step."},
-		Items:            []MessageSequenceItem{{ID: "work", Type: "user_message", Kind: "execution", Message: "Do the work."}},
+		Items:            []AgentItem{{ID: "work", Type: "user_message", Kind: "execution", Message: "Do the work."}},
 	}
 }
 
@@ -78,11 +78,11 @@ func readTestPlanAndConfigs(t *testing.T, readFile func(context.Context, string)
 
 func TestChangeStepTypeConvertsASequenceToScriptedInPlace(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{
-			Type:             StepTypeMessageSeq,
+		&AgentPlanStep{
+			Type:             StepTypeAgent,
 			CommonStepFields: CommonStepFields{ID: "place-paper-trades", Title: "Place paper trades", Description: "Place the day's paper trades through the alpaca CLI."},
 			NextStepID:       "verify-fills",
-			Items: []MessageSequenceItem{
+			Items: []AgentItem{
 				{ID: "work", Type: "user_message", Kind: "execution", Message: "Place the trades."},
 				{ID: "verify", Type: "user_message", Kind: "execution", Message: "Verify the fills."},
 			},
@@ -126,12 +126,12 @@ func TestChangeStepTypeConvertsASequenceToScriptedInPlace(t *testing.T) {
 	if len(entry.DeletedSteps) != 1 || len(entry.AddedSteps) != 1 {
 		t.Fatalf("changelog entry must carry the full step JSON before and after for a revert, got deleted=%d added=%d", len(entry.DeletedSteps), len(entry.AddedSteps))
 	}
-	if !strings.Contains(string(entry.DeletedSteps[0]), `"message_sequence"`) || !strings.Contains(string(entry.AddedSteps[0]), `"regular"`) {
+	if !strings.Contains(string(entry.DeletedSteps[0]), `"agent"`) || !strings.Contains(string(entry.AddedSteps[0]), `"regular"`) {
 		t.Fatalf("revert data must hold the old sequence and the new regular step, got deleted=%s added=%s", entry.DeletedSteps[0], entry.AddedSteps[0])
 	}
 	sawType := false
 	for _, change := range entry.Changes {
-		if change.Field == "type" && change.OldValue == string(StepTypeMessageSeq) && change.NewValue == string(StepTypeRegular) {
+		if change.Field == "type" && change.OldValue == string(StepTypeAgent) && change.NewValue == string(StepTypeRegular) {
 			sawType = true
 		}
 	}
@@ -149,7 +149,7 @@ func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T)
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{{ID: "collect-price", AgentConfigs: &AgentConfigs{LockCode: &lock}}})
 	files[normalizePathForWorkspaceAPI("learnings/collect-price/main.py", changeStepTypeTestWorkspace)] = "print('hi')"
 
-	out, err := runChangeStepType(t, readFile, writeFile, "collect-price", "message_sequence")
+	out, err := runChangeStepType(t, readFile, writeFile, "collect-price", "agent")
 	if err != nil {
 		t.Fatalf("change_step_type failed: %v", err)
 	}
@@ -159,9 +159,9 @@ func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T)
 
 	updated, configs := readTestPlanAndConfigs(t, readFile)
 	step, _, _ := findStepByID(updated.Steps, "collect-price")
-	seq, ok := step.(*MessageSequencePlanStep)
+	seq, ok := step.(*AgentPlanStep)
 	if !ok {
-		t.Fatalf("step type after conversion = %T, want *MessageSequencePlanStep", step)
+		t.Fatalf("step type after conversion = %T, want *AgentPlanStep", step)
 	}
 	if len(seq.Items) != 1 || seq.Items[0].ID != normalizedRegularSequenceItemID || seq.NextStepID != "judge" {
 		t.Fatalf("expected one execute-and-verify item and the chain kept, got %+v", seq)
@@ -221,7 +221,7 @@ func TestChangeStepTypeIsANoOpWhenAlreadyTheTarget(t *testing.T) {
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, nil)
 	before := len(files)
 
-	out, err := runChangeStepType(t, readFile, writeFile, "seq", "message_sequence")
+	out, err := runChangeStepType(t, readFile, writeFile, "seq", "agent")
 	if err != nil {
 		t.Fatalf("no-op conversion errored: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestChangeStepTypeConvertsAnOrphanStep(t *testing.T) {
 	if step, _, _ := findStepByID(updated.OrphanSteps, "orphan"); step == nil || step.StepType() != StepTypeRegular {
 		t.Fatalf("orphan step should now be regular, got %v", step)
 	}
-	if step, _, _ := findStepByID(updated.Steps, "main"); step == nil || step.StepType() != StepTypeMessageSeq {
+	if step, _, _ := findStepByID(updated.Steps, "main"); step == nil || step.StepType() != StepTypeAgent {
 		t.Fatalf("the untouched step must keep its type, got %v", step)
 	}
 }

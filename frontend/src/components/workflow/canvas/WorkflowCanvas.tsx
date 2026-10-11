@@ -19,10 +19,10 @@ import { nodeTypes } from '../nodes'
 import {
   HandoffCrewNode,
   HandoffHumanInputNode,
-  HandoffMessageSequenceNode,
+  HandoffAgentNode,
   HandoffRoutingNode,
   HandoffStepNode,
-  HandoffTodoTaskNode,
+  HandoffLegacyAgentNode,
 } from '../nodes/HandoffNodeWrappers'
 import { getExecutionModeVisuals } from '../nodes/executionModeVisuals'
 import { edgeTypes } from '../edges'
@@ -86,11 +86,11 @@ const canvasNodeTypes = {
   'workflow-trigger': WorkflowTriggerNode,
   'workflow-trigger-heading': WorkflowTriggerHeading,
   step: HandoffStepNode,
-  todo_task: HandoffTodoTaskNode,
+  todo_task: HandoffLegacyAgentNode,
   human_input: HandoffHumanInputNode,
   routing: HandoffRoutingNode,
   branch: HandoffRoutingNode,
-  message_sequence: HandoffMessageSequenceNode,
+  agent: HandoffAgentNode,
   crew: HandoffCrewNode,
 } as const
 
@@ -761,10 +761,10 @@ function ReadOnlyStepDetailPanel({
   const type = planStepTypeLabel(rawType)
   const routes = step?.type === 'routing' || step?.type === 'branch'
     ? step.routes
-    : (step?.type === 'todo_task' || step?.type === 'orchestrator' || step?.type === 'message_sequence')
+    : (step?.type === 'todo_task' || step?.type === 'orchestrator' || step?.type === 'agent')
       ? step.predefined_routes
       : undefined
-  const sequenceItems = step && node.type === 'message_sequence' ? effectiveAgentItems(step) : undefined
+  const sequenceItems = step && node.type === 'agent' ? effectiveAgentItems(step) : undefined
   const validationSchema = step?.validation_schema || ('validation_schema' in data ? data.validation_schema : undefined)
   const agentConfigs = step?.agent_configs
   const declaredExecutionMode = effectiveExecutionMode(step)
@@ -843,7 +843,7 @@ function ReadOnlyStepDetailPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {step?.type === 'message_sequence' && step.authored_prompt && (
+        {step?.type === 'agent' && step.authored_prompt && (
           <DetailSection icon={Braces} title="Authored agent">
             <p className="mb-1 text-xs text-muted-foreground">Exact system prompt</p>
             <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-2 text-xs text-foreground">{step.system_prompt}</pre>
@@ -909,12 +909,12 @@ function ReadOnlyStepDetailPanel({
         )}
 
         {sequenceItems?.length ? (
-          <DetailSection icon={ListOrdered} title={`${step?.type === 'message_sequence' && step.authored_prompt ? 'User messages' : 'Agent instructions'} (${sequenceItems.length})`}>
-            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'message_sequence' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : 'Ordered items the step runs top to bottom.'}</p>
+          <DetailSection icon={ListOrdered} title={`${step?.type === 'agent' && step.authored_prompt ? 'User messages' : 'Agent instructions'} (${sequenceItems.length})`}>
+            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'agent' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : 'Ordered items the step runs top to bottom.'}</p>
             <ol className="space-y-2">
               {sequenceItems.map((item, index) => {
                 // Normalize so it reads consistently with the Agent node card.
-                const kind = (!item.type || item.type === 'user_message') ? (step?.type === 'message_sequence' && step.authored_prompt ? 'user message' : 'message') : item.type
+                const kind = (!item.type || item.type === 'user_message') ? (step?.type === 'agent' && step.authored_prompt ? 'user message' : 'message') : item.type
                 const subKind = item.kind && item.kind !== 'execution' ? item.kind : undefined
                 const chipClass =
                   kind === 'prevalidation' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
@@ -1451,7 +1451,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
       ? null : { workspace: workspacePath, ...trace })
   }, [workspacePath])
   const displayNodes = React.useMemo(() => tracedGraph.nodes.map(node => {
-    if (node.type === 'message_sequence') return { ...node, data: { ...node.data,
+    if (node.type === 'agent') return { ...node, data: { ...node.data,
       isRelayOutput: relayMode && !!relayOutputStepID && (node.data as StepNodeData).step?.id === relayOutputStepID,
     } }
     if (node.type !== 'routing' && node.type !== 'branch') return node

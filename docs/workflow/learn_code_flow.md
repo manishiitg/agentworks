@@ -304,10 +304,10 @@ This doc covers regular-step learn_code. Todo-task orchestrators also have a lea
 - Eligibility: `declared_execution_mode="learn_code"` + `len(predefined_routes) >= 1`
 - Script calls sub-agents via `POST ${MCP_API_URL}/tools/custom/call_sub_agent`
 - Fallback is fresh — LLM orchestrator starts from zero, no script state carried over
-- See [orchestrator-step-type.md](orchestrator-step-type.md) for full details
+- See [agent-step-type.md](agent-step-type.md) for full details
 
 ## Related Docs
 
 - [Step Config Specification](step_config_format_specification.md)
 - [Learning Architecture](learning_architecture.md)
-- [Orchestrator Step Type](orchestrator-step-type.md)
+- [Orchestrator Step Type](agent-step-type.md)

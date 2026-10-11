@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-func TestMessageSequenceFullRunRegistersParentBeforeItems(t *testing.T) {
+func TestAgentFullRunRegistersParentBeforeItems(t *testing.T) {
 	notifier := &recordingExecutionNotifier{}
 	registry := NewWorkshopStepRegistry()
 	controller := &StepBasedWorkflowOrchestrator{workshopExecutionNotifier: notifier, workshopStepRegistry: registry}
-	step := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "sequence", Title: "Sequence"}}
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "sequence", Title: "Sequence"}}
 	root := virtualtools.WithBackgroundAgentID(context.Background(), "workflow-full-test")
-	ctx, finish := controller.beginMessageSequenceExecution(root, step)
+	ctx, finish := controller.beginAgentExecution(root, step)
 	if len(notifier.starts) != 1 || notifier.starts[0].ParentExecutionID != "workflow-full-test" {
 		t.Fatal("sequence parent not registered under the full run")
 	}
@@ -21,7 +21,7 @@ func TestMessageSequenceFullRunRegistersParentBeforeItems(t *testing.T) {
 	if registry.Get(parentID) == nil || currentWorkshopParentExecutionID(ctx) != parentID {
 		t.Fatal("sequence context and registry disagree")
 	}
-	controller.startMessageSequenceItemNotification(ctx, step, MessageSequenceItem{ID: "validate", Type: "prevalidation"}, 0, "step-1", "configured_queue", time.Now())
+	controller.startAgentItemNotification(ctx, step, AgentItem{ID: "validate", Type: "prevalidation"}, 0, "step-1", "configured_queue", time.Now())
 	if notifier.starts[1].ParentExecutionID != parentID {
 		t.Fatal("item not owned by registered sequence")
 	}
@@ -31,12 +31,12 @@ func TestMessageSequenceFullRunRegistersParentBeforeItems(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceStandaloneKeepsExistingLifecycle(t *testing.T) {
+func TestAgentStandaloneKeepsExistingLifecycle(t *testing.T) {
 	notifier := &recordingExecutionNotifier{}
 	controller := &StepBasedWorkflowOrchestrator{workshopExecutionNotifier: notifier}
-	step := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "sequence"}}
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "sequence"}}
 	root := virtualtools.WithBackgroundAgentID(context.Background(), "exec-sequence-123")
-	ctx, finish := controller.beginMessageSequenceExecution(root, step)
+	ctx, finish := controller.beginAgentExecution(root, step)
 	finish("done", nil)
 	if ctx != root || len(notifier.starts) != 0 || len(notifier.completes) != 0 {
 		t.Fatal("standalone execution got a duplicate lifecycle")

@@ -544,15 +544,13 @@ func ApplyStepConfigFromFile(
 			switch s := step.(type) {
 			case *RegularPlanStep:
 				s.AgentConfigs = matchedConfig
-			case *OrchestratorPlanStep:
-				s.AgentConfigs = matchedConfig
 			case *HumanInputPlanStep:
 				s.AgentConfigs = matchedConfig
 			case *RoutingPlanStep:
 				s.AgentConfigs = matchedConfig
 			case *BranchPlanStep:
 				s.AgentConfigs = matchedConfig
-			case *MessageSequencePlanStep:
+			case *AgentPlanStep:
 				s.AgentConfigs = matchedConfig
 			default:
 				return fmt.Errorf("unknown step type: %T", step)
@@ -578,15 +576,13 @@ func ApplyStepConfigFromFile(
 			switch s := step.(type) {
 			case *RegularPlanStep:
 				s.AgentConfigs = overrides
-			case *OrchestratorPlanStep:
-				s.AgentConfigs = overrides
 			case *HumanInputPlanStep:
 				s.AgentConfigs = overrides
 			case *RoutingPlanStep:
 				s.AgentConfigs = overrides
 			case *BranchPlanStep:
 				s.AgentConfigs = overrides
-			case *MessageSequencePlanStep:
+			case *AgentPlanStep:
 				s.AgentConfigs = overrides
 			}
 		} else {

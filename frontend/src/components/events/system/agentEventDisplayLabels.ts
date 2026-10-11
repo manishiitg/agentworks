@@ -1,4 +1,4 @@
-export function completionTitle(agentName: string | undefined, isMessageSequenceItem: boolean, label: string): string {
-  if (isMessageSequenceItem) return 'Completed'
+export function completionTitle(agentName: string | undefined, isAgentItem: boolean, label: string): string {
+  if (isAgentItem) return 'Completed'
   return `${label} completed: ${agentName || 'Agent'}`
 }

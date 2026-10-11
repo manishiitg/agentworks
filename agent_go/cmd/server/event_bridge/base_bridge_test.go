@@ -39,7 +39,7 @@ func TestHandleEventSurfacesOrchestratorAgentErrorText(t *testing.T) {
 		Type: orchestratorevents.OrchestratorAgentError,
 		Data: &orchestratorevents.OrchestratorAgentErrorEvent{
 			AgentType: "workflow",
-			AgentName: "message-sequence-step-execution",
+			AgentName: "agent-step-execution",
 			Error:     wantError,
 		},
 	}

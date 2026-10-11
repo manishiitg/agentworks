@@ -25,7 +25,7 @@ interface StepEditPanelProps {
   presetServers?: string[]; // Preset's selected servers (subset to show in UI)
   presetLLMConfig?: PresetLLMConfig | null; // Preset's LLM config with agent defaults
   presetUseCodeExecutionMode?: boolean; // Preset's code execution mode (default value for step)
-  isTodoTaskStep?: boolean; // Whether this step is a todo_task step (for tier selection UI)
+  isLegacyAgentStep?: boolean; // Whether this step is a todo_task step (for tier selection UI)
   isExpanded?: boolean; // Controlled expanded state from parent
   onToggleExpanded?: (expanded: boolean) => void; // Callback when expansion state changes
 }
@@ -38,7 +38,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
   presetServers = [],
   presetLLMConfig = null,
   presetUseCodeExecutionMode = false,
-  isTodoTaskStep: isTodoTask = false,
+  isLegacyAgentStep: isTodoTask = false,
   isExpanded: controlledIsExpanded,
   onToggleExpanded,
 }) => {

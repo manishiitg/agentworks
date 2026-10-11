@@ -84,11 +84,11 @@ func TestHandleCallGenericAgentReturnsTypedFailedEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandleCallGenericAgentPropagatesMessageSequence(t *testing.T) {
+func TestHandleCallGenericAgentPropagatesAgent(t *testing.T) {
 	var captured []GenericAgentMessage
 	ctx := context.WithValue(context.Background(), ExecuteGenericAgentKey, ExecuteGenericAgentFunc(
 		func(ctx context.Context, todoID, instructions string) (string, error) {
-			captured = GenericAgentMessageSequenceFromContext(ctx)
+			captured = GenericAgentAgentFromContext(ctx)
 			if todoID != "review" || instructions != "collect shared evidence" {
 				t.Fatalf("unexpected opening args: todo=%q instructions=%q", todoID, instructions)
 			}
@@ -100,7 +100,7 @@ func TestHandleCallGenericAgentPropagatesMessageSequence(t *testing.T) {
 		"task_id":        "review",
 		"instructions":   "collect shared evidence",
 		"preferred_tier": float64(1),
-		"message_sequence": []interface{}{
+		"agent": []interface{}{
 			map[string]interface{}{"id": "lens", "title": "Lens", "message": "inspect"},
 			map[string]interface{}{"id": "final", "message": "consolidate"},
 		},
@@ -117,7 +117,7 @@ func TestHandleCallGenericAgentPropagatesMessageSequence(t *testing.T) {
 	}
 }
 
-func TestCallGenericAgentSchemaPublishesMessageSequence(t *testing.T) {
+func TestCallGenericAgentSchemaPublishesAgent(t *testing.T) {
 	tools := CreateSubAgentTools()
 	for _, tool := range tools {
 		if tool.Function == nil || tool.Function.Name != "call_generic_agent" {
@@ -128,7 +128,7 @@ func TestCallGenericAgentSchemaPublishesMessageSequence(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := string(encoded)
-		for _, want := range []string{`"message_sequence"`, `"maxItems":12`, `"id"`, `"message"`} {
+		for _, want := range []string{`"agent"`, `"maxItems":12`, `"id"`, `"message"`} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("call_generic_agent schema missing %s: %s", want, text)
 			}
@@ -197,13 +197,13 @@ func TestDedicatedSubAgentHandlersRejectCrossedArgumentShapes(t *testing.T) {
 	}
 }
 
-func TestHandleCallSubAgentPropagatesMessageSequenceRestart(t *testing.T) {
+func TestHandleCallSubAgentPropagatesAgentRestart(t *testing.T) {
 	called := false
 	ctx := context.WithValue(context.Background(), ExecutePredefinedSubAgentKey, ExecutePredefinedSubAgentFunc(
 		func(ctx context.Context, routeID, todoID, instructions string) (string, error) {
 			called = true
-			if restart, _ := ctx.Value(SubAgentMessageSequenceRestartKey).(bool); !restart {
-				t.Fatalf("expected message sequence restart flag to be propagated")
+			if restart, _ := ctx.Value(SubAgentAgentRestartKey).(bool); !restart {
+				t.Fatalf("expected agent restart flag to be propagated")
 			}
 			if routeID != "seq-route" || todoID != "todo-1" || instructions != "run again" {
 				t.Fatalf("unexpected args: route=%q todo=%q instructions=%q", routeID, todoID, instructions)
@@ -213,11 +213,11 @@ func TestHandleCallSubAgentPropagatesMessageSequenceRestart(t *testing.T) {
 	))
 
 	result, err := handleCallSubAgent(ctx, map[string]interface{}{
-		"route_id":                 "seq-route",
-		"task_id":                  "todo-1",
-		"instructions":             "run again",
-		"preferred_tier":           float64(1),
-		"message_sequence_restart": true,
+		"route_id":       "seq-route",
+		"task_id":        "todo-1",
+		"instructions":   "run again",
+		"preferred_tier": float64(1),
+		"agent_restart":  true,
 	})
 	if err != nil {
 		t.Fatalf("handleCallSubAgent returned error: %v", err)

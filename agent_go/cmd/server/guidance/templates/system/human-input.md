@@ -117,7 +117,7 @@ into a text field).
   a real branch — just continue.
 - **Open-ended questions in scheduled runs**: schedules can't answer.
 - **Multiple human_inputs in sequence**: feels chatty. Either gather
-  context upfront with variables, or use a single message_sequence
+  context upfront with variables, or use a single agent
   step that has a conversation.
 - **Asking twice**: do not add a `human_input` branch picker when the
   builder can infer the route from the user's launch request and pass

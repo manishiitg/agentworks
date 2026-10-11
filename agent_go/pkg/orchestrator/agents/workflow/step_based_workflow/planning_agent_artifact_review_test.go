@@ -339,7 +339,7 @@ func TestPlanEditNoticesUseTargetedChecks(t *testing.T) {
 	for name, notice := range map[string]string{
 		"internal edit":            buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "description"}}, true, true, false),
 		"output change":            buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "context_output"}}, true, true, false),
-		"new step":                 buildAddedStepArtifactSetupNotice("step-a", "message_sequence"),
+		"new step":                 buildAddedStepArtifactSetupNotice("step-a", "agent"),
 		"deleted step":             buildDeletedStepArtifactCleanupNotice([]string{"step-a"}, nil, false),
 		"failed deletion tracking": buildDeletedStepArtifactCleanupNotice([]string{"step-a"}, nil, true),
 		"route change":             buildOrchestratorRouteArtifactReviewNotice("parent", "route-a", "updated", true, true, false),

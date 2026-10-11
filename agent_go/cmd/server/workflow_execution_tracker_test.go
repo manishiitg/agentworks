@@ -173,13 +173,13 @@ func TestScheduledWorkflowBuilderPhaseDoesNotBlockInteractiveBuilderChat(t *test
 	now := time.Now().UTC()
 	api := &StreamingAPI{
 		trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
-			"message-sequence": {
+			"agent": {
 				ExecutionID:   "msgseq-execute-allocate-execute-and-verify-1",
 				SessionID:     "schedule-cron--5227790a_1784694634941870000",
 				Source:        trackedExecutionSourceWorkshopBackground,
 				Kind:          "workflow_builder_task",
-				Name:          "Message sequence item -> [Execute] Allocator",
-				Title:         "Message sequence item -> [Execute] Allocator",
+				Name:          "Agent item -> [Execute] Allocator",
+				Title:         "Agent item -> [Execute] Allocator",
 				WorkspacePath: "Workflow/social-media",
 				PhaseID:       "workflow-builder",
 				PhaseName:     "Workflow Builder",
@@ -194,7 +194,7 @@ func TestScheduledWorkflowBuilderPhaseDoesNotBlockInteractiveBuilderChat(t *test
 		return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
 	})
 	if found != nil {
-		t.Fatalf("builder lookup = %#v, want nil for scheduled message-sequence work", found)
+		t.Fatalf("builder lookup = %#v, want nil for scheduled agent work", found)
 	}
 }
 

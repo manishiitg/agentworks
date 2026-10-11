@@ -19,20 +19,20 @@ func TestManagedStepDBFileAccessP0(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("requires OS filesystem sandbox")
 	}
-	for _, kind := range []string{"message_sequence", "orchestrator"} {
+	for _, kind := range []string{"agent", "orchestrator"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			workflow := filepath.Join(root, "Workflow", "test")
-			hcpo := newMessageSequenceClosingTestOrchestrator(t)
+			hcpo := newAgentClosingTestOrchestrator(t)
 			hcpo.BaseOrchestrator.SetWorkspacePath(workflow)
 			hcpo.selectedRunFolder = "iteration-0/default"
 			config := &AgentConfigs{KnowledgebaseAccess: KBAccessNone, LearningsAccess: LearningsAccessNone}
 			var reads, writes []string
-			if kind == "message_sequence" {
-				reads, writes = hcpo.setupMessageSequenceFolderGuard("step-1", "test-step", config, MessageSequenceWriteAccess{})
+			if kind == "agent" {
+				reads, writes = hcpo.setupAgentFolderGuard("step-1", "test-step", config, AgentWriteAccess{})
 			} else {
-				reads, writes = hcpo.setupOrchestratorFolderGuard(&OrchestratorPlanStep{
-					Type: StepTypeOrchestrator, CommonStepFields: CommonStepFields{ID: "test-step"}, AgentConfigs: config,
+				reads, writes = hcpo.setupOrchestratorFolderGuard(&AgentPlanStep{
+					Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: "test-step"}, AgentConfigs: config,
 				}, "step-1")
 			}
 			for _, path := range append(append([]string{}, reads...), writes...) {

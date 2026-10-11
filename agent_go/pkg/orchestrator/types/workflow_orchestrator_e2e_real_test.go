@@ -25,7 +25,7 @@ import (
 
 // TestWorkflowE2ESingleRegularStepPiCLI is the tracer-bullet for the workflow
 // engine on the Pi coding-agent transport. It runs regular, routing,
-// todo_task/sub-agent, and message_sequence steps against real Pi CLI tmux
+// todo_task/sub-agent, and agent steps against real Pi CLI tmux
 // sessions with the MCP bridge enabled by the agent layer.
 //
 // Gated on RUN_WORKFLOW_REAL_E2E=1 + RUN_PI_CLI_WORKFLOW_E2E=1 (or the
@@ -127,7 +127,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 				// delegates real (small) work to. Each sub-agent
 				// produces a distinct deterministic token in its
 				// execution_result so we can verify both were actually
-				// invoked. validateOrchestratorStepFieldsTyped requires
+				// invoked. validateAgentStepFieldsTyped requires
 				// route_id == sub_agent_step.id.
 				"predefined_routes": []map[string]interface{}{
 					{
@@ -167,7 +167,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 				// createExecutionOnlyAgent, which doesn't receive the orchestrator
 				// customTools, so they can't write files in this harness — the
 				// context_output file-handoff is covered by unit tests instead.
-				"type":                 "message_sequence",
+				"type":                 "agent",
 				"id":                   stepIDs[4],
 				"title":                "Final report",
 				"description":          "Multi-turn final report",
@@ -272,7 +272,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
-	result, err := wo.Execute(ctx, "Compute 6*7 and verify the answer through routing, regular, todo, and message-sequence steps.", workspace, map[string]interface{}{
+	result, err := wo.Execute(ctx, "Compute 6*7 and verify the answer through routing, regular, todo, and agent steps.", workspace, map[string]interface{}{
 		"workflowStatus": workflowtypes.WorkflowStatusPreVerification,
 	})
 	if err != nil {
@@ -304,7 +304,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 	t.Logf("✅ workflow e2e (%d step types, pi-cli/%s): result-len=%d", len(stepIDs), model, len(result))
 }
 
-func TestWorkflowE2EMessageSequencePiCLI(t *testing.T) {
+func TestWorkflowE2EAgentPiCLI(t *testing.T) {
 	apiKey, model := requirePiCLIWorkflowE2E(t)
 	wsAPI := strings.TrimSpace(os.Getenv("WORKSPACE_API_URL"))
 	if wsAPI == "" {
@@ -341,9 +341,9 @@ func TestWorkflowE2EMessageSequencePiCLI(t *testing.T) {
 	if err := writeJSON(filepath.Join(workspaceDisk, "planning", "plan.json"), map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "message_sequence",
+				"type":                 "agent",
 				"id":                   "msgseq-report",
-				"title":                "Message sequence runtime check",
+				"title":                "Agent runtime check",
 				"description":          "Two-turn message_sequence runtime check.",
 				"context_dependencies": []string{},
 				"context_output":       "out.json",
@@ -379,7 +379,7 @@ func TestWorkflowE2EMessageSequencePiCLI(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
-	if _, err := wo.Execute(ctx, "Run the message sequence runtime check.", relWorkspace, map[string]interface{}{"workflowStatus": workflowtypes.WorkflowStatusPreVerification}); err != nil {
+	if _, err := wo.Execute(ctx, "Run the agent runtime check.", relWorkspace, map[string]interface{}{"workflowStatus": workflowtypes.WorkflowStatusPreVerification}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -413,7 +413,7 @@ func TestWorkflowE2EMessageSequencePiCLI(t *testing.T) {
 		}
 	}
 	if !strings.Contains(string(body), "MS_FIRST_ALPHA") || !strings.Contains(string(body), "MS_SECOND_SEES_FIRST_ALPHA") {
-		t.Fatalf("session.json missing expected message sequence tokens\nsession=%s", body)
+		t.Fatalf("session.json missing expected agent tokens\nsession=%s", body)
 	}
 	t.Logf("✅ message_sequence e2e (pi-cli/%s): runtime_session_id=%s session=%s", model, session.RuntimeSessionID, matches[len(matches)-1])
 }
@@ -797,7 +797,7 @@ func assertAllStepsExecutedAndDecisionsMatch(t *testing.T, walkRoot string, step
 		// todo_task: prompts.json is the cheapest proof the step
 		// reached its agent factory. The richer assertion (todos
 		// created+completed) requires reading runtime fields that
-		// the engine does not persist to disk (OrchestratorDecision is
+		// the engine does not persist to disk (AgentDelegationDecision is
 		// runtime-only per planning_agent.go:646).
 		"step-double-check": {globs: []string{filepath.Join(walkRoot, "runs", "*", "*", "logs", "step-double-check", "execution", "todo-task-prompts.json")}},
 		// message_sequence persists session.json in the step's normal

@@ -12,45 +12,45 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-type legacyMessageSequenceCodeItem struct {
-	ID          string                     `json:"id"`
-	Type        string                     `json:"type"`
-	Title       string                     `json:"title,omitempty"`
-	Runtime     string                     `json:"runtime,omitempty"`
-	ScriptPath  string                     `json:"script_path,omitempty"`
-	InputFiles  []string                   `json:"input_files,omitempty"`
-	InputJSON   map[string]interface{}     `json:"input_json,omitempty"`
-	OutputFiles []string                   `json:"output_files,omitempty"`
-	WriteAccess MessageSequenceWriteAccess `json:"write_access,omitempty"`
+type legacyAgentCodeItem struct {
+	ID          string                 `json:"id"`
+	Type        string                 `json:"type"`
+	Title       string                 `json:"title,omitempty"`
+	Runtime     string                 `json:"runtime,omitempty"`
+	ScriptPath  string                 `json:"script_path,omitempty"`
+	InputFiles  []string               `json:"input_files,omitempty"`
+	InputJSON   map[string]interface{} `json:"input_json,omitempty"`
+	OutputFiles []string               `json:"output_files,omitempty"`
+	WriteAccess AgentWriteAccess       `json:"write_access,omitempty"`
 	OnFailure   struct {
 		Action     string `json:"action,omitempty"`
 		MaxRetries int    `json:"max_retries,omitempty"`
 	} `json:"on_failure,omitempty"`
 }
 
-type legacyMessageSequenceMigration struct {
+type legacyAgentMigration struct {
 	stepIndex        int
 	stepID           string
 	stepTitle        string
 	stepDescription  string
 	contextInputs    []string
 	parentValidation *ValidationSchema
-	codeItems        []legacyMessageSequenceCodeItem
+	codeItems        []legacyAgentCodeItem
 	validations      []*ValidationSchema
 	rawStep          json.RawMessage
 }
 
-type messageSequenceMigrationResult struct {
+type agentSequenceMigrationResult struct {
 	SequenceIDs   []string `json:"sequence_ids"`
 	ScriptedIDs   []string `json:"scripted_step_ids"`
 	CopiedScripts []string `json:"copied_scripts"`
 }
 
-// ValidateMessageSequenceCodeMigrationComplete verifies the v1.0.10 plan
+// ValidateAgentCodeMigrationComplete verifies the v1.0.10 plan
 // postcondition without trusting an agent-authored success message. It accepts
 // both migrated plans and genuine no-op plans, and rejects every remaining
 // legacy code item, including ambiguous nested and orphan usages.
-func ValidateMessageSequenceCodeMigrationComplete(planContent string) error {
+func ValidateAgentCodeMigrationComplete(planContent string) error {
 	var document map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(planContent), &document); err != nil {
 		return fmt.Errorf("parse planning/plan.json: %w", err)
@@ -61,7 +61,7 @@ func ValidateMessageSequenceCodeMigrationComplete(planContent string) error {
 		return fmt.Errorf("parse planning/plan.json steps: %w", err)
 	}
 
-	migrations, blockers, err := planMessageSequenceCodeMigrations(rawSteps, document["orphan_steps"])
+	migrations, blockers, err := planAgentCodeMigrations(rawSteps, document["orphan_steps"])
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func ValidateMessageSequenceCodeMigrationComplete(planContent string) error {
 	return nil
 }
 
-func createMigrateMessageSequenceCodeItemsExecutor(
+func createMigrateAgentCodeItemsExecutor(
 	workspacePath string,
 	logger loggerv2.Logger,
 	readFile func(context.Context, string) (string, error),
@@ -103,14 +103,14 @@ func createMigrateMessageSequenceCodeItemsExecutor(
 			return "", fmt.Errorf("parse planning/plan.json steps: %w", err)
 		}
 
-		migrations, blockers, err := planMessageSequenceCodeMigrations(rawSteps, document["orphan_steps"])
+		migrations, blockers, err := planAgentCodeMigrations(rawSteps, document["orphan_steps"])
 		if err != nil {
 			return "", err
 		}
 		if len(blockers) > 0 {
 			sort.Strings(blockers)
 			return "", fmt.Errorf(
-				"MESSAGE_SEQUENCE_CODE_MIGRATION_BLOCKED: no files were changed. Explicitly split these ambiguous usages into message_sequence -> standalone scripted regular step -> message_sequence with durable context: %s",
+				"MESSAGE_SEQUENCE_CODE_MIGRATION_BLOCKED: no files were changed. Explicitly split these ambiguous usages into message_sequence -> standalone scripted regular step -> agent with durable context: %s",
 				strings.Join(blockers, "; "),
 			)
 		}
@@ -123,12 +123,12 @@ func createMigrateMessageSequenceCodeItemsExecutor(
 			return "", err
 		}
 		newRawSteps := make([]json.RawMessage, 0, len(rawSteps)+8)
-		migrationByIndex := make(map[int]legacyMessageSequenceMigration, len(migrations))
+		migrationByIndex := make(map[int]legacyAgentMigration, len(migrations))
 		for _, migration := range migrations {
 			migrationByIndex[migration.stepIndex] = migration
 		}
 
-		result := messageSequenceMigrationResult{}
+		result := agentSequenceMigrationResult{}
 		for index, rawStep := range rawSteps {
 			migration, migrate := migrationByIndex[index]
 			if !migrate {
@@ -186,8 +186,8 @@ func createMigrateMessageSequenceCodeItemsExecutor(
 		}
 
 		logPlanChange(ctx, workspacePath, PlanChangelogEntry{
-			Tool:    "migrate_message_sequence_code_items",
-			Reason:  "Move deterministic code out of hidden message-sequence items into visible standalone scripted steps for workflow contract v1.0.10.",
+			Tool:    "migrate_agent_code_items",
+			Reason:  "Move deterministic code out of hidden agent items into visible standalone scripted steps for workflow contract v1.0.10.",
 			StepIDs: append(append([]string{}, result.SequenceIDs...), result.ScriptedIDs...),
 			// planContent/migratedPlan are the real pre/post planning/plan.json
 			// content already in scope from the rewrite above — wire them in so
@@ -202,8 +202,8 @@ func createMigrateMessageSequenceCodeItemsExecutor(
 	}
 }
 
-func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans json.RawMessage) ([]legacyMessageSequenceMigration, []string, error) {
-	var migrations []legacyMessageSequenceMigration
+func planAgentCodeMigrations(rawSteps []json.RawMessage, rawOrphans json.RawMessage) ([]legacyAgentMigration, []string, error) {
+	var migrations []legacyAgentMigration
 	var blockers []string
 	allIDs := map[string]bool{}
 	for _, raw := range rawSteps {
@@ -212,11 +212,11 @@ func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans js
 	if len(rawOrphans) > 0 && string(rawOrphans) != "null" {
 		var orphans []json.RawMessage
 		if err := json.Unmarshal(rawOrphans, &orphans); err != nil {
-			return nil, nil, fmt.Errorf("parse orphan_steps during message-sequence migration: %w", err)
+			return nil, nil, fmt.Errorf("parse orphan_steps during agent migration: %w", err)
 		}
 		for _, raw := range orphans {
 			collectRawPlanStepIDs(raw, allIDs)
-			if ids := rawMessageSequenceCodeItemIDs(raw); len(ids) > 0 {
+			if ids := rawAgentCodeItemIDs(raw); len(ids) > 0 {
 				blockers = append(blockers, fmt.Sprintf("orphan step contains code items %v", ids))
 			}
 		}
@@ -228,10 +228,10 @@ func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans js
 			ID   string `json:"id"`
 		}
 		if err := json.Unmarshal(raw, &header); err != nil {
-			return nil, nil, fmt.Errorf("parse step %d during message-sequence migration: %w", index, err)
+			return nil, nil, fmt.Errorf("parse step %d during agent migration: %w", index, err)
 		}
-		if header.Type != "message_sequence" {
-			if ids := rawMessageSequenceCodeItemIDs(raw); len(ids) > 0 {
+		if header.Type != "agent" {
+			if ids := rawAgentCodeItemIDs(raw); len(ids) > 0 {
 				blockers = append(blockers, fmt.Sprintf("nested code items under step %q: %v", header.ID, ids))
 			}
 			continue
@@ -249,7 +249,7 @@ func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans js
 		if err := json.Unmarshal(raw, &seq); err != nil {
 			return nil, nil, fmt.Errorf("parse message_sequence %q: %w", header.ID, err)
 		}
-		codeIDs := rawMessageSequenceCodeItemIDs(raw)
+		codeIDs := rawAgentCodeItemIDs(raw)
 		if len(codeIDs) == 0 {
 			continue
 		}
@@ -258,7 +258,7 @@ func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans js
 			continue
 		}
 
-		migration := legacyMessageSequenceMigration{
+		migration := legacyAgentMigration{
 			stepIndex:        index,
 			stepID:           seq.ID,
 			stepTitle:        seq.Title,
@@ -277,7 +277,7 @@ func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans js
 			}
 			switch strings.TrimSpace(kind.Type) {
 			case "code":
-				var item legacyMessageSequenceCodeItem
+				var item legacyAgentCodeItem
 				if err := json.Unmarshal(rawItem, &item); err != nil {
 					return nil, nil, fmt.Errorf("parse sequence %q code item %q: %w", seq.ID, kind.ID, err)
 				}
@@ -323,7 +323,7 @@ func planMessageSequenceCodeMigrations(rawSteps []json.RawMessage, rawOrphans js
 	return migrations, blockers, nil
 }
 
-func validateLegacyCodeItemForMigration(sequenceID string, item legacyMessageSequenceCodeItem) error {
+func validateLegacyCodeItemForMigration(sequenceID string, item legacyAgentCodeItem) error {
 	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.ScriptPath) == "" {
 		return fmt.Errorf("sequence %q has a code item missing id or script_path", sequenceID)
 	}
@@ -345,7 +345,7 @@ func validateLegacyCodeItemForMigration(sequenceID string, item legacyMessageSeq
 func convertLegacyCodeSequence(
 	ctx context.Context,
 	workspacePath string,
-	migration legacyMessageSequenceMigration,
+	migration legacyAgentMigration,
 	configs []StepConfig,
 	readFile func(context.Context, string) (string, error),
 	writeFile func(context.Context, string, string) error,
@@ -449,7 +449,7 @@ func removeStepConfigByID(configs []StepConfig, stepID string) (*StepConfig, []S
 	return parent, remaining
 }
 
-func cloneMigrationStepConfig(parent *StepConfig, item legacyMessageSequenceCodeItem, title string) StepConfig {
+func cloneMigrationStepConfig(parent *StepConfig, item legacyAgentCodeItem, title string) StepConfig {
 	var agent AgentConfigs
 	if parent != nil && parent.AgentConfigs != nil {
 		data, _ := json.Marshal(parent.AgentConfigs)
@@ -509,7 +509,7 @@ func collectRawPlanStepIDs(raw json.RawMessage, ids map[string]bool) {
 	}
 }
 
-func rawMessageSequenceCodeItemIDs(raw json.RawMessage) []string {
+func rawAgentCodeItemIDs(raw json.RawMessage) []string {
 	var node interface{}
 	if json.Unmarshal(raw, &node) != nil {
 		return nil
@@ -519,7 +519,7 @@ func rawMessageSequenceCodeItemIDs(raw json.RawMessage) []string {
 	walk = func(value interface{}) {
 		switch typed := value.(type) {
 		case map[string]interface{}:
-			if typed["type"] == "message_sequence" {
+			if typed["type"] == "agent" {
 				if items, ok := typed["items"].([]interface{}); ok {
 					for _, rawItem := range items {
 						if item, ok := rawItem.(map[string]interface{}); ok && item["type"] == "code" {

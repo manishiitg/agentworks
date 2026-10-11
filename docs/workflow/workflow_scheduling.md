@@ -197,7 +197,7 @@ If:
 - `workshop_mode` is `run`, legacy `runner`, or omitted
 - none of the scheduled messages explicitly invoke `run_full_report`
 
-then the scheduler tries to auto-generate the final report after the workshop message sequence completes.
+then the scheduler tries to auto-generate the final report after the workshop agent completes.
 
 That flow lives in [scheduler.go](../../agent_go/cmd/server/scheduler.go#L684).
 

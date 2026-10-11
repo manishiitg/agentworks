@@ -102,7 +102,7 @@ type BackgroundAgent struct {
 func shouldDelayWorkflowStepAutoNotification(snap BackgroundAgentSnapshot) bool {
 	kind := strings.TrimSpace(snap.Kind)
 	switch kind {
-	case "workflow_step", "message_sequence_item", "prevalidation_warning":
+	case "workflow_step", "agent_item", "prevalidation_warning":
 		return true
 	}
 	return isWorkflowStepTrackingExecution(snap.ID, snap.Name, snap.Metadata)
@@ -2020,8 +2020,8 @@ func buildBackgroundAgentStartSyntheticMessage(_ string, parts []string) string 
 func backgroundAgentStartLabel(snap BackgroundAgentSnapshot) string {
 	kind := strings.TrimSpace(snap.Kind)
 	if snap.Metadata != nil {
-		if executionType := strings.TrimSpace(snap.Metadata["execution_type"]); executionType == "message-sequence-item" {
-			return "Message sequence item"
+		if executionType := strings.TrimSpace(snap.Metadata["execution_type"]); executionType == "agent-item" {
+			return "Agent item"
 		}
 		if stepID := strings.TrimSpace(snap.Metadata["step_id"]); stepID != "" {
 			return "Step"
@@ -2039,8 +2039,8 @@ func backgroundAgentStartLabel(snap BackgroundAgentSnapshot) string {
 		return "Sub-agent"
 	case strings.Contains(kind, "delegation"):
 		return "Background sub-agent"
-	case strings.Contains(kind, "message_sequence_item"):
-		return "Message sequence item"
+	case strings.Contains(kind, "agent_item"):
+		return "Agent item"
 	case strings.Contains(kind, "workflow"):
 		return "Run"
 	case strings.Contains(kind, "route"):
@@ -2119,7 +2119,7 @@ func completionFinishedAt(snap BackgroundAgentSnapshot) time.Time {
 // filterSupersededCompletions drops an undelivered execution only when a newer
 // terminal execution exists for the same workflow step/item. Progress is a
 // snapshot, so replaying the older state after the newer result is available
-// is misleading; unrelated agents and message-sequence items remain distinct.
+// is misleading; unrelated agents and agent items remain distinct.
 func (api *StreamingAPI) filterSupersededCompletions(sessionID string, agentIDs []string) []string {
 	if api.bgAgentRegistry == nil || len(agentIDs) == 0 {
 		return agentIDs

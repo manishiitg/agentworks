@@ -264,6 +264,7 @@ func (b *uiControlBroker) snapshot(session string) (uiSnapshot, error) {
 	}
 	return c.state, nil
 }
+
 // onlyClient is the browser tab that receives a UI action for this chat. With
 // the chat open in several tabs it is the one in use: the visible tab that
 // became visible last, else the one last seen visible. Refusing whenever a

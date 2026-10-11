@@ -34,7 +34,7 @@ func planForAll(pipelines []*Pipeline) map[string]interface{} {
 	return map[string]interface{}{"steps": steps}
 }
 
-// stageStep is one production stage. Always a message_sequence — every stage
+// stageStep is one production stage. Always a agent — every stage
 // here is conversational and judgment-heavy, which is what the plan-authoring
 // guidance reserves that type for.
 func stageStep(p *Pipeline, stage PipelineStage, deps []string, last bool) map[string]interface{} {
@@ -43,7 +43,7 @@ func stageStep(p *Pipeline, stage PipelineStage, deps []string, last bool) map[s
 		required = append(required, map[string]interface{}{"file_name": artifact, "must_exist": true})
 	}
 	step := map[string]interface{}{
-		"type": "message_sequence", "id": stage.ID, "title": stage.Title,
+		"type": "agent", "id": stage.ID, "title": stage.Title,
 		"description": stage.Description, "context_dependencies": deps,
 		"context_output":    stage.Output,
 		"items":             []map[string]interface{}{stageExecuteItem()},
@@ -58,13 +58,13 @@ func stageStep(p *Pipeline, stage PipelineStage, deps []string, last bool) map[s
 // stageExecuteItem is the one turn a production stage runs. Every stage here is
 // conversational and judgment-heavy — writing a brief, a storyboard, a design,
 // a critique — which is exactly what the plan-authoring guidance means by
-// "use message_sequence for every conversational, judgment-heavy, browser-driven
+// "use agent for every conversational, judgment-heavy, browser-driven
 // or adaptive step, even when it needs only one message. Non-scripted regular
 // steps are unsupported." (frontend/src/commands/builtin-commands.tsx).
 //
 // These stages were authored as `regular` and only ran because the runtime
 // rewrites every non-scripted regular step into a sequence exactly like this one
-// (normalizeRegularStepToMessageSequence). Declaring it makes the stored plan
+// (normalizeRegularStepToAgent). Declaring it makes the stored plan
 // say what actually executes, so the plan UI no longer has to reconstruct it and
 // a stage that later wants a second turn — a critique pass, a repair gate — can
 // simply add an item instead of needing a different step type.

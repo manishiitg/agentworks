@@ -224,7 +224,7 @@ func TestWorkflowProgressBridgeNotifiesCompletionWithoutStart(t *testing.T) {
 	}
 }
 
-func TestWorkflowProgressBridgeSkipsMessageSequenceItemAgents(t *testing.T) {
+func TestWorkflowProgressBridgeSkipsAgentItemAgents(t *testing.T) {
 	notifier := &recordingExecutionNotifier{}
 	session := &WorkshopChatSession{
 		StepRegistry:      NewWorkshopStepRegistry(),
@@ -241,7 +241,7 @@ func TestWorkflowProgressBridgeSkipsMessageSequenceItemAgents(t *testing.T) {
 			Timestamp: time.Now(),
 			Data: &orchestrator_events.OrchestratorAgentStartEvent{
 				AgentType: "todo_planner_execution",
-				AgentName: "message-sequence-step-1-item-1",
+				AgentName: "agent-step-1-item-1",
 				StepIndex: 1,
 			},
 		},
@@ -250,7 +250,7 @@ func TestWorkflowProgressBridgeSkipsMessageSequenceItemAgents(t *testing.T) {
 			Timestamp: time.Now(),
 			Data: &orchestrator_events.OrchestratorAgentEndEvent{
 				AgentType: "todo_planner_execution",
-				AgentName: "message-sequence-step-1-item-1",
+				AgentName: "agent-step-1-item-1",
 				StepIndex: 1,
 				Result:    "done",
 				Success:   true,
@@ -263,6 +263,6 @@ func TestWorkflowProgressBridgeSkipsMessageSequenceItemAgents(t *testing.T) {
 	}
 
 	if len(notifier.starts) != 0 || len(notifier.completes) != 0 {
-		t.Fatalf("expected message-sequence agent bridge notifications to be skipped, got starts=%d completes=%d", len(notifier.starts), len(notifier.completes))
+		t.Fatalf("expected agent agent bridge notifications to be skipped, got starts=%d completes=%d", len(notifier.starts), len(notifier.completes))
 	}
 }

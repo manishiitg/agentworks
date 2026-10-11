@@ -2,7 +2,7 @@
 
 A step's `description` is the durable system-level charter the execution agent
 receives on every turn. Every word costs context and has system-level authority,
-so keep it stable and task-defining. For `message_sequence`, the ordered
+so keep it stable and task-defining. For `agent`, the ordered
 `items[]` are the actual user messages that tell the agent how to carry out,
 inspect, verify, or repair that charter. Read this before writing or editing a
 step's `description` or sequence items.
@@ -45,7 +45,7 @@ rules, what success means, and where the result belongs. Keep binding constraint
 here, including approval requirements and actions outside the step's authority.
 These define the task even when the implementation changes.
 
-For `message_sequence`, put execution phases and conversational instructions in
+For `agent`, put execution phases and conversational instructions in
 `items[]`: perform the work, re-open authoritative evidence, critique it, repair
 verified gaps, or incorporate new runtime input. Do not repeat the description in
 the first item. The first item should tell the agent what to do now under the
@@ -54,7 +54,7 @@ delegation instructions are also user messages, not description mutations.
 
 ### Use this section layout for the description
 
-This layout is for agent steps (message_sequence and orchestrator). Scripted, routing, branch, human-input and Crew
+This layout is for agent steps (agent and orchestrator). Scripted, routing, branch, human-input and Crew
 steps are driven by code, routes, a question to a person or a Crew; keep their description short and do not force
 the sections on them.
 

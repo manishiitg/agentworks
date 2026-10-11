@@ -39,7 +39,7 @@ func newExternalRelayFixture(t *testing.T) *externalRelayFixture {
 	raw, _ := json.Marshal(m)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		"Workflow/invoices/workflow.json":            string(raw),
-		"Workflow/invoices/planning/plan.json":       `{"steps":[{"type":"message_sequence","id":"answer","title":"Answer","description":"Reply","authored_prompt":true,"system_prompt":"Return JSON v1","next_step_id":"end","items":[{"id":"turn","type":"user_message","message":"{{input.name}}"}]}]}`,
+		"Workflow/invoices/planning/plan.json":       `{"steps":[{"type":"agent","id":"answer","title":"Answer","description":"Reply","authored_prompt":true,"system_prompt":"Return JSON v1","next_step_id":"end","items":[{"id":"turn","type":"user_message","message":"{{input.name}}"}]}]}`,
 		"Workflow/invoices/variables/variables.json": `{"variables":[{"name":"INPUT","type":"object","value":"{}"}]}`,
 	}}
 	ws := httptest.NewServer(mock)

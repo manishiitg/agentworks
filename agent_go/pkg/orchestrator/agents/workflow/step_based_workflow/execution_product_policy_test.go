@@ -24,11 +24,11 @@ func TestRelayExecutionPolicyLoadedWithPlanForAllEntrypoints(t *testing.T) {
 			if c.resolveDBAccess(cfg) != DBAccessNone || c.UseKnowledgebase() || c.resolveExecutionLearningsAccess(cfg, nil) != LearningsAccessNone || c.canReadLearnings(cfg, nil) || c.canWriteLearnings(cfg, nil) {
 				t.Fatal("legacy step config re-enabled platform stores")
 			}
-			access := c.constrainMessageSequenceWriteAccess(cfg, MessageSequenceWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
-			if access != (MessageSequenceWriteAccess{}) {
+			access := c.constrainAgentWriteAccess(cfg, AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
+			if access != (AgentWriteAccess{}) {
 				t.Fatalf("sequence grants stores: %+v", access)
 			}
-			if items := c.messageSequenceClosingItems(context.Background(), &MessageSequencePlanStep{AgentConfigs: cfg}, 0); len(items) > 0 {
+			if items := c.agentSequenceClosingItems(context.Background(), &AgentPlanStep{AgentConfigs: cfg}, 0); len(items) > 0 {
 				t.Fatalf("Relay has reflection turns: %+v", items)
 			}
 			env := c.codeRuntimeEnv(map[string]string{"DB_PATH": "stale", workflowDBAccessEnv: DBAccessReadWrite, "VAR_INPUT": "hello", "SECRET_CUSTOM_DB": "user db", "WORKFLOW_KB_FACTS": "stale"})
@@ -66,7 +66,7 @@ func TestRelayToolsAndGuardsIgnoreExplicitStoreGrants(t *testing.T) {
 	if len(tools) != 1 || tools[0].Function.Name != "execute_shell_command" || len(execs) != 1 {
 		t.Fatalf("Relay got DB tools: %+v %v", tools, execs)
 	}
-	read, write := c.setupMessageSequenceFolderGuard("step-1", "answer", cfg, MessageSequenceWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
+	read, write := c.setupAgentFolderGuard("step-1", "answer", cfg, AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
 	for _, store := range platformStoreBlockedPaths(c.GetWorkspacePath()) {
 		if slices.Contains(read, store) || slices.Contains(write, store) || slices.Contains(write, store+"/assets") {
 			t.Fatalf("store grant %s read=%v write=%v", store, read, write)

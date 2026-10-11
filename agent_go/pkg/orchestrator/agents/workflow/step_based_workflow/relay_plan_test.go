@@ -10,11 +10,11 @@ import (
 )
 
 func relayTestPlan() *PlanningResponse {
-	agent := func(id, next string) *MessageSequencePlanStep {
-		return &MessageSequencePlanStep{
+	agent := func(id, next string) *AgentPlanStep {
+		return &AgentPlanStep{
 			CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "Produce JSON"},
 			AuthoredPrompt:   true, SystemPrompt: "Return JSON", NextStepID: next,
-			Items: []MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "{{input.kind}}"}},
+			Items: []AgentItem{{ID: "turn", Type: "user_message", Message: "{{input.kind}}"}},
 		}
 	}
 	return &PlanningResponse{Steps: []PlanStepInterface{
@@ -41,17 +41,17 @@ func TestValidateRelayPlanStructure(t *testing.T) {
 		t.Fatalf("script with agent fallback accepted: %v", err)
 	}
 	plan = relayTestPlan()
-	plan.Steps[3].(*MessageSequencePlanStep).NextStepID = "choose"
+	plan.Steps[3].(*AgentPlanStep).NextStepID = "choose"
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "cycle") {
 		t.Fatalf("cycle accepted: %v", err)
 	}
 	plan = relayTestPlan()
-	plan.Steps[3].(*MessageSequencePlanStep).NextStepID = "end"
+	plan.Steps[3].(*AgentPlanStep).NextStepID = "end"
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "before output") {
 		t.Fatalf("path bypassing output accepted: %v", err)
 	}
 	plan = relayTestPlan()
-	plan.Steps[4].(*MessageSequencePlanStep).NextStepID = ""
+	plan.Steps[4].(*AgentPlanStep).NextStepID = ""
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "next_step_id to end") {
 		t.Fatalf("output with sequential fallthrough accepted: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestRelayAgentMayOwnScriptToolsButNotSubAgents(t *testing.T) {
 	lookup := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
 
 	plan := relayTestPlan()
-	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(lookup)}
+	plan.Steps[3].(*AgentPlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(lookup)}
 	if err := ValidateRelayPlanStructure(plan, "answer"); err != nil {
 		t.Fatalf("a script tool on a Relay agent was rejected: %v", err)
 	}
@@ -87,15 +87,15 @@ func TestRelayAgentMayOwnScriptToolsButNotSubAgents(t *testing.T) {
 	rewritable := *lookup
 	rewritable.ScriptOnly = false
 	plan = relayTestPlan()
-	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(&rewritable)}
+	plan.Steps[3].(*AgentPlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(&rewritable)}
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "script_only") {
 		t.Fatalf("a script tool that could be rewritten was accepted: %v", err)
 	}
 
-	subAgent := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "helper", Title: "Helper", Description: "d"}, AuthoredPrompt: true, SystemPrompt: "x",
-		Items: []MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "go"}}}
+	subAgent := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "helper", Title: "Helper", Description: "d"}, AuthoredPrompt: true, SystemPrompt: "x",
+		Items: []AgentItem{{ID: "turn", Type: "user_message", Message: "go"}}}
 	plan = relayTestPlan()
-	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(subAgent)}
+	plan.Steps[3].(*AgentPlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(subAgent)}
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "sub-agents") {
 		t.Fatalf("a sub-agent on a Relay agent was accepted: %v", err)
 	}
@@ -103,13 +103,13 @@ func TestRelayAgentMayOwnScriptToolsButNotSubAgents(t *testing.T) {
 
 func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
 	lookup := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
-	agent := &MessageSequencePlanStep{
+	agent := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "deep-agent", Title: "Deep", Description: "Produce JSON"},
 		AuthoredPrompt:   true, SystemPrompt: "Return JSON about {{input.kind}}",
-		Items:            []MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "go"}},
+		Items:            []AgentItem{{ID: "turn", Type: "user_message", Message: "go"}},
 		PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "lookup-customer", RouteName: "Lookup customer", Condition: "When a customer id is known", SubAgentStep: lookup}},
 	}
-	orchestratorStep := delegatingMessageSequenceAsOrchestrator(agent)
+	orchestratorStep := agent
 	if !orchestratorStep.AuthoredPrompt || orchestratorStep.SystemPrompt != agent.SystemPrompt {
 		t.Fatalf("the delegation runtime lost the authored prompt: %+v", orchestratorStep)
 	}
@@ -125,7 +125,7 @@ func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
 	if authoredRoutesPromptBlock(nil, nil) != "" {
 		t.Error("an agent without routes gets no block")
 	}
-	if err := validateMessageSequenceStepFieldsTyped(agent); err != nil {
+	if err := validateAgentStepFieldsTyped(agent); err != nil {
 		t.Errorf("an authored agent with routes must pass plan validation: %v", err)
 	}
 }
@@ -136,7 +136,7 @@ func TestRelayRejectsRoutesThatShareAToolName(t *testing.T) {
 		return PlanOrchestrationRoute{RouteID: id, RouteName: id, SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "d"}, ScriptOnly: true}}
 	}
 	plan := relayTestPlan()
-	plan.Steps[3].(*MessageSequencePlanStep).PredefinedRoutes = []PlanOrchestrationRoute{script("a-b"), script("a_b")}
+	plan.Steps[3].(*AgentPlanStep).PredefinedRoutes = []PlanOrchestrationRoute{script("a-b"), script("a_b")}
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "a_b") {
 		t.Fatalf("two routes with one tool name accepted: %v", err)
 	}

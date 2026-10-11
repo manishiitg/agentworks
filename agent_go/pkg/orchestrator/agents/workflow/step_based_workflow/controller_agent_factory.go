@@ -92,7 +92,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyWorkflowTransportToAgentConfig(c
 // publishWorkflowTransportContext tags the live event stream with the
 // transport and, when the caller knows the plan step, its execution mode
 // (PLAT-287: derived from the step type — "scripted" for regular,
-// "agentic" for message sequences; "" when no
+// "agentic" for agents; "" when no
 // step is in scope, e.g. KB maintenance agents).
 func (hcpo *StepBasedWorkflowOrchestrator) publishWorkflowTransportContext(effectiveTransport string, executionMode string) {
 	cab, ok := hcpo.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge)
@@ -384,7 +384,7 @@ func ConfigureManagedWorkflowDBSession(sessionID, workspacePath string, readWrit
 }
 
 // appendManagedDBFileAccess is the common filesystem contract for agentic
-// message sequences and orchestrators. SQL access remains mediated by DB tools;
+// agents and orchestrators. SQL access remains mediated by DB tools;
 // never grant the parent db/ directory, which would also expose db.sqlite.
 func appendManagedDBFileAccess(workspacePath string, readPaths, writePaths []string) ([]string, []string) {
 	dbPath := getDBPath(workspacePath)
@@ -1340,7 +1340,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		readPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(readPaths, hcpo.GetWorkspacePath(), planStep.GetDescription()))
 	}
 	stepEnvOutputPathOverride := ""
-	if override, ok := ctx.Value(messageSequenceFolderGuardOverrideKey{}).(*messageSequenceFolderGuardOverride); ok && override != nil {
+	if override, ok := ctx.Value(agentSequenceFolderGuardOverrideKey{}).(*agentSequenceFolderGuardOverride); ok && override != nil {
 		readPaths = append([]string{}, override.ReadPaths...)
 		writePaths = append([]string{}, override.WritePaths...)
 		if strings.TrimSpace(override.OutputPath) != "" {
@@ -1354,7 +1354,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 			readPaths = common.DeduplicateStrings(append(readPaths, dbPath))
 			writePaths = common.DeduplicateStrings(append(writePaths, dbPath))
 		}
-		hcpo.GetLogger().Info(fmt.Sprintf("🔒 Message sequence folder guard override for execution agent - Read: %v Write: %v", readPaths, writePaths))
+		hcpo.GetLogger().Info(fmt.Sprintf("🔒 Agent folder guard override for execution agent - Read: %v Write: %v", readPaths, writePaths))
 	}
 	readPaths, writePaths, _, _ = appendWorkflowFolderAccess(hcpo.GetWorkspacePath(), readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 
@@ -1399,7 +1399,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// 4. Create config
 	config := hcpo.CreateStandardAgentConfigWithLLM(agentName, maxTurns, agents.OutputFormatStructured, llmConfig)
-	// Execution-only agents (plain execution steps, message_sequence steps, repair
+	// Execution-only agents (plain execution steps, agent steps, repair
 	// agents, continuation recovery) are workflow steps like any other, so they
 	// follow the same transport rule instead of being pinned to tmux. This path
 	// previously never consulted the resolver at all — harmless while everything
@@ -1415,9 +1415,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	// Dedicated tool session for this execution step's shell/filesystem calls. Browser
 	// reuse is re-bound separately below, so shell isolation does not imply browser isolation.
 	execSessionID := ""
-	if override, ok := ctx.Value(messageSequenceRuntimeSessionOverrideKey{}).(*messageSequenceRuntimeSessionOverride); ok && override != nil && strings.TrimSpace(override.SessionID) != "" {
+	if override, ok := ctx.Value(agentSequenceRuntimeSessionOverrideKey{}).(*agentSequenceRuntimeSessionOverride); ok && override != nil && strings.TrimSpace(override.SessionID) != "" {
 		execSessionID = strings.TrimSpace(override.SessionID)
-		hcpo.configureSubAgentSessionGuard(execSessionID, "message-sequence", stepID, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
+		hcpo.configureSubAgentSessionGuard(execSessionID, "agent", stepID, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	} else {
 		execSessionID = hcpo.setupSubAgentSessionGuard("exec", stepID, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	}
@@ -1441,7 +1441,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// Apply step-specific overrides
 	hcpo.applyStepConfigToAgentConfig(ctx, config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep, stepConfig))
-	if override, ok := ctx.Value(messageSequenceRuntimeSessionOverrideKey{}).(*messageSequenceRuntimeSessionOverride); ok && override != nil && override.KeepAlive && common.IsCLIProvider(config.LLMConfig.Primary.Provider) && !config.ForceStructuredCodingAgent {
+	if override, ok := ctx.Value(agentSequenceRuntimeSessionOverrideKey{}).(*agentSequenceRuntimeSessionOverride); ok && override != nil && override.KeepAlive && common.IsCLIProvider(config.LLMConfig.Primary.Provider) && !config.ForceStructuredCodingAgent {
 		config.CodingAgentKeepAlive = true
 		hcpo.GetLogger().Info(fmt.Sprintf("🔁 message_sequence runtime will keep coding-agent session alive: %s", config.MCPSessionID))
 	}
@@ -1605,7 +1605,7 @@ func subAgentConversationPage(records []SubAgentCallRecord, executionID string, 
 
 // SubAgentExecutionContext holds the context needed for sub-agent execution from tools
 type SubAgentExecutionContext struct {
-	OrchestratorStep *OrchestratorPlanStep
+	OrchestratorStep *AgentPlanStep
 	StepIndex        int
 	StepPath         string
 	AllSteps         []PlanStepInterface
@@ -1832,7 +1832,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	hcpo.setupBrowserDownloadsPathOverride(ctx, config, stepConfig)
 
 	// Start with the exact same default custom-tool policy as every other
-	// message-sequence agent. Specialist tools are the only conditional overlay.
+	// agent agent. Specialist tools are the only conditional overlay.
 	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(stepConfig)
 	// DB capability tools are always derived from trusted db_access even when a
 	// step supplies a narrower custom-tool list.
@@ -2114,7 +2114,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) wrapSubAgentToolExecutor(
 						encoded, _ := json.MarshalIndent(schema, "", "  ")
 						desc += "\n\nScript parameters JSON Schema (call_scripted_sub_agent.parameters must match it):\n" + string(encoded)
 					}
-					if sequenceRouteInfo := formatMessageSequenceRoutePromptBlock(route.SubAgentStep); sequenceRouteInfo != "" {
+					if sequenceRouteInfo := formatAgentRoutePromptBlock(route.SubAgentStep); sequenceRouteInfo != "" {
 						desc += "\n\n" + sequenceRouteInfo
 					}
 				}
@@ -2205,8 +2205,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 			}
 		}
 
-		// Build a OrchestratorDecision to reuse existing execution logic
-		response := &OrchestratorDecision{
+		// Build a AgentDelegationDecision to reuse existing execution logic
+		response := &AgentDelegationDecision{
 			NextAction:             "delegate",
 			SelectedRouteID:        routeID,
 			TodoIDToExecute:        todoID,
@@ -2292,9 +2292,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecuteGenericAgentSyncFunc(
 			}
 		}
 
-		// Build a OrchestratorDecision to reuse existing execution logic
+		// Build a AgentDelegationDecision to reuse existing execution logic
 		// All task info comes from the tool parameters, not from a file
-		response := &OrchestratorDecision{
+		response := &AgentDelegationDecision{
 			NextAction:             "delegate",
 			UseGenericAgent:        true,
 			TodoIDToExecute:        todoID,

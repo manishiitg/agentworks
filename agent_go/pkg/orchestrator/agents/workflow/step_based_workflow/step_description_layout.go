@@ -43,9 +43,10 @@ func MissingDescriptionLayoutHeadings(description string) []string {
 // not apply to them (owner, 2026-10-06; a routing step with an empty description
 // blocked the 1.0.46 stamp).
 var descriptionLayoutStepTypes = map[string]bool{
-	string(StepTypeMessageSeq):     true,
-	string(StepTypeOrchestrator):   true,
-	string(StepTypeTodoTaskLegacy): true,
+	string(StepTypeAgent): true,
+	"message_sequence":    true,
+	"orchestrator":        true,
+	"todo_task":           true,
 }
 
 // planStepDescriptionsFromPlanJSON returns every live agent step's description by

@@ -100,21 +100,21 @@ func TestLatestAssistantExecutionSummaryUsesFinalAssistantTurn(t *testing.T) {
 // steps' context see, so it is the last authored item's answer, not a count.
 // Prevalidation gates and synthetic __...__ items are bookkeeping, and the
 // count is only the fallback when no authored item produced text.
-func TestMessageSequenceSummaryIsLastAuthoredAnswer(t *testing.T) {
+func TestAgentSummaryIsLastAuthoredAnswer(t *testing.T) {
 	o := &StepBasedWorkflowOrchestrator{}
-	session := &messageSequenceSession{
+	session := &agentSequenceSession{
 		StepID: "publish-sequence",
-		Entries: []messageSequenceEntry{
+		Entries: []agentSequenceEntry{
 			{ItemID: "draft", Status: "completed", Summary: "Drafted post.\nSTATUS: COMPLETED"},
 			{ItemID: "publish", Status: "completed", Summary: "Published post.\nSTATUS: COMPLETED"},
 			{ItemID: "__automatic_final_validation__", ItemType: "prevalidation", Status: "completed", Summary: "prevalidation passed"},
 		},
 	}
-	if got := o.summarizeMessageSequenceSession(session); got != "Published post.\nSTATUS: COMPLETED" {
-		t.Fatalf("message-sequence result = %q, want the last authored item's answer", got)
+	if got := o.summarizeAgentSession(session); got != "Published post.\nSTATUS: COMPLETED" {
+		t.Fatalf("agent result = %q, want the last authored item's answer", got)
 	}
-	empty := &messageSequenceSession{StepID: "s", Entries: []messageSequenceEntry{{ItemID: "a", Status: "completed"}}}
-	if got := o.summarizeMessageSequenceSession(empty); got != "Message sequence s completed: 1 item(s) completed" {
+	empty := &agentSequenceSession{StepID: "s", Entries: []agentSequenceEntry{{ItemID: "a", Status: "completed"}}}
+	if got := o.summarizeAgentSession(empty); got != "Agent s completed: 1 item(s) completed" {
 		t.Fatalf("fallback = %q", got)
 	}
 }

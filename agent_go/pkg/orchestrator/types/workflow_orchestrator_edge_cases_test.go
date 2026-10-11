@@ -247,13 +247,13 @@ func TestWorkflowEdgeCyclicNextStepIDDocumentedGap(t *testing.T) {
 	t.Logf("cyclic plan rejected by side-channel (not dedicated cycle detection) — error: %v", err)
 }
 
-// TestWorkflowEdgeMessageSequenceItemsRequired proves the engine
-// refuses a message_sequence step with an empty items array. A
-// message sequence with no items is degenerate — there's nothing to
-// send. The current validateMessageSequenceStepFieldsTyped behavior
+// TestWorkflowEdgeAgentItemsRequired proves the engine
+// refuses a agent step with an empty items array. A
+// agent with no items is degenerate — there's nothing to
+// send. The current validateAgentStepFieldsTyped behavior
 // determines whether this is enforced; if it isn't, the engine will
 // run the step path and silently produce no LLM interaction.
-func TestWorkflowEdgeMessageSequenceItemsRequired(t *testing.T) {
+func TestWorkflowEdgeAgentItemsRequired(t *testing.T) {
 	wo, cleanup, ok := buildEdgeCaseOrchestrator(t)
 	if !ok {
 		return
@@ -263,7 +263,7 @@ func TestWorkflowEdgeMessageSequenceItemsRequired(t *testing.T) {
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "message_sequence",
+				"type":                 "agent",
 				"id":                   "empty-seq",
 				"title":                "Empty Sequence",
 				"description":          "",
@@ -277,11 +277,11 @@ func TestWorkflowEdgeMessageSequenceItemsRequired(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	_, err := wo.orchestrator.Execute(ctx, "empty-message-sequence test", wo.workspaceRel, map[string]interface{}{
+	_, err := wo.orchestrator.Execute(ctx, "empty-agent test", wo.workspaceRel, map[string]interface{}{
 		"workflowStatus": workflowtypes.WorkflowStatusPreVerification,
 	})
 	if err == nil {
-		t.Fatal("expected engine to reject message_sequence with empty items; got nil error")
+		t.Fatal("expected engine to reject agent with empty items; got nil error")
 	}
 	if !containsAny(err.Error(), "items", "empty", "at least", "required") {
 		t.Errorf("error should explain the empty-items violation; got: %v", err)
@@ -289,7 +289,7 @@ func TestWorkflowEdgeMessageSequenceItemsRequired(t *testing.T) {
 }
 
 // TestWorkflowEdgeOrchestratorAcceptsZeroPredefinedRoutes locks in the
-// documented behavior of validateOrchestratorStepFieldsTyped
+// documented behavior of validateAgentStepFieldsTyped
 // (planning_agent.go:4090): "Predefined routes are optional
 // (orchestrators can be generic-agent-only)". A todo_task with no
 // predefined sub-agents falls through to a generic execution agent

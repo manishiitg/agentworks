@@ -77,7 +77,7 @@ improve-report
 | Area | Tools |
 |---|---|
 | Execution | `execute_step`, `query_step`, `send_step_message`, `stop_step`, `stop_all_executions`, `list_executions`, `run_full_workflow`, `debug_step` |
-| Plan/config | `add_scripted_step`, `add_message_sequence_step`, `add_routing_step`, `add_human_input_step`, `add_todo_task_step`, `update_*_step`, `delete_plan_steps`, `cleanup_orphan_step_configs`, `update_step_config`, `update_validation_schema` |
+| Plan/config | `add_scripted_step`, `add_agent_step`, `add_routing_step`, `add_human_input_step`, `add_todo_task_step`, `update_*_step`, `delete_plan_steps`, `cleanup_orphan_step_configs`, `update_step_config`, `update_validation_schema` |
 | Review | `review_plan`, `review_workflow_timing`, `review_workflow_costs`; artifact drift uses `/review-artifact-drift` with `call_generic_agent` |
 | Optimizer | `Pulse Review+Fix`, Goal Advisor proposal cards |
 | Reports | `get_report_plan`, `upsert_report_widget`, `move_report_widget`, `toggle_report_widget`, `remove_report_widget`, `set_report_theme`, `set_section_layout`, `validate_report_plan`, `preview_report_render` |

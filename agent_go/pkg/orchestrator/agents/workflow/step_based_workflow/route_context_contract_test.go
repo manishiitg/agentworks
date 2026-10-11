@@ -13,7 +13,7 @@ func TestTodoRouteHasOneDurableContextChannel(t *testing.T) {
 		"condition":"when due",
 		"context_to_pass":"pass everything",
 		"sub_agent_step":{
-			"type":"message_sequence",
+			"type":"agent",
 			"id":"scan",
 			"title":"Scan",
 			"description":"Inspect the declared input.",
@@ -44,8 +44,8 @@ func TestTodoRouteHasOneDurableContextChannel(t *testing.T) {
 
 func TestTodoRouteMutationSchemasDoNotAdvertiseDeadContextChannel(t *testing.T) {
 	for name, schema := range map[string]string{
-		"add":    getAddOrchestratorRouteSchema(),
-		"update": getUpdateOrchestratorRouteSchema(),
+		"add":    getAddAgentRouteSchema(),
+		"update": getUpdateAgentRouteSchema(),
 	} {
 		if strings.Contains(schema, "context_to_pass") {
 			t.Fatalf("%s route schema still advertises context_to_pass", name)

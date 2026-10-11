@@ -640,12 +640,12 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 		}
 	}
 
-	if sequenceItem, ok := ctx.Value(orchevents.MessageSequenceItemContextKey).(orchevents.MessageSequenceItemContext); ok {
+	if sequenceItem, ok := ctx.Value(orchevents.AgentItemContextKey).(orchevents.AgentItemContext); ok {
 		addMetadataToEvent(event, map[string]any{
-			"message_sequence_item":      true,
-			"message_sequence_step_id":   sequenceItem.StepID,
-			"message_sequence_item_id":   sequenceItem.ItemID,
-			"message_sequence_item_type": sequenceItem.ItemType,
+			"agent_item":      true,
+			"agent_step_id":   sequenceItem.StepID,
+			"agent_item_id":   sequenceItem.ItemID,
+			"agent_item_type": sequenceItem.ItemType,
 		})
 	}
 

@@ -86,13 +86,13 @@ type StepBasedWorkflowOrchestrator struct {
 	workshopGroupSessionRefs map[string]int
 	workshopGroupLastUsed    map[string]time.Time
 
-	// In-memory message_sequence ROUTE conversation cache. When a message_sequence is used
+	// In-memory message_sequence ROUTE conversation cache. When a agent is used
 	// as a todo_task route, the orchestrator re-enters it across calls within one run; this
 	// holds each route's conversation so it remembers prior calls WITHOUT reading back from
 	// disk. Scoped to this orchestrator instance (one workflow run). Standalone
-	// message_sequence steps never use this — they always run a fixed queue.
+	// agent steps never use this — they always run a fixed queue.
 	msgSeqRoutesMu   sync.Mutex
-	msgSeqRoutes     map[string]*messageSequenceSession
+	msgSeqRoutes     map[string]*agentSequenceSession
 	msgSeqRouteLocks map[string]*sync.Mutex
 
 	// Variable management
@@ -319,7 +319,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) bindWorkshopBrowserSession(toolSessio
 		common.SetSessionBrowserNamespace(toolSessionID, namespace)
 	}
 	common.SetSessionBrowserSessionID(toolSessionID, browserSessionID)
-	// Dedicated execution/message-sequence sessions need the same authenticated
+	// Dedicated execution/agent sessions need the same authenticated
 	// parent relationship as group sessions. The bridge checks this registry;
 	// a shared browser namespace alone is not authority to use the parent's tools.
 	if parent := strings.TrimSpace(hcpo.httpSessionID); parent != "" && parent != toolSessionID {

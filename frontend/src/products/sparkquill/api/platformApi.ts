@@ -377,7 +377,7 @@ export function createPlatformApi(options: PlatformApiOptions): FamilyApi {
     // channel; there is no per-product toggle to offer.
     whatsappVoice: notYet('WhatsApp voice transcription') as (enabled: boolean) => Promise<WhatsAppVoiceTranscription>,
     // The check-in is the product's `pulse` schedule, run by the platform
-    // scheduler: a fixed message sequence on a cadence from the manifest.
+    // scheduler: a fixed agent on a cadence from the manifest.
     // The parent can switch it on or off and run it now; the cadence is the
     // product's. Watched websites are family state the prompt reads.
     pulseConfig: checkinConfig,

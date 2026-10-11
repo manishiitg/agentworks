@@ -17,7 +17,7 @@ import "strings"
 //	orchestrator                 yes            no         todo_task; dispatches sub-agents
 //	sub_agent                    yes            no         delegated LLM agent
 //	message_sequence             yes            no         one terminal for the whole step
-//	message_sequence_item        no             yes        internal turn of its step
+//	agent_item        no             yes        internal turn of its step
 //	scripted_step                yes            no         python main.py — a real output pane
 //	router                       no             no         a decision record; emits no pane
 //	main_agent                   yes            no         the user's own chat agent
@@ -31,7 +31,7 @@ import "strings"
 // Historically these facts were re-derived independently in the terminal store,
 // the rail, and the event dispatcher, each by pattern-matching ID prefixes
 // ("msgseq-", "exec-", "workflow-full-"). Every divergence between those copies
-// was a bug: message-sequence items fragmenting into empty terminals, "Full run"
+// was a bug: agent items fragmenting into empty terminals, "Full run"
 // appearing in the rail as if it were an agent, scripted steps synthesizing fake
 // conversation panes. Declaring the kind once at creation removes the whole class.
 type ExecutionKind string
@@ -57,14 +57,14 @@ const (
 	// call_generic_agent, background delegation).
 	ExecutionKindSubAgent ExecutionKind = "sub_agent"
 
-	// ExecutionKindMessageSequence is a message_sequence step — one multi-turn
+	// ExecutionKindAgent is a agent step — one multi-turn
 	// conversation. The STEP owns exactly one terminal; its items do not.
-	ExecutionKindMessageSequence ExecutionKind = "message_sequence"
+	ExecutionKindAgent ExecutionKind = "agent"
 
-	// ExecutionKindMessageSequenceItem is a single turn inside a
-	// message_sequence step (including the automatic final-validation pass).
+	// ExecutionKindAgentItem is a single turn inside a
+	// agent step (including the automatic final-validation pass).
 	// It is part of its parent's conversation, never a peer terminal.
-	ExecutionKindMessageSequenceItem ExecutionKind = "message_sequence_item"
+	ExecutionKindAgentItem ExecutionKind = "agent_item"
 
 	// ExecutionKindScriptedStep is a deterministic python main.py step. It
 	// produces OUTPUT, not a conversation, so it belongs inline in its parent
@@ -91,11 +91,11 @@ func (k ExecutionKind) OwnsTerminal() bool {
 	case ExecutionKindMainAgent,
 		ExecutionKindOrchestrator,
 		ExecutionKindSubAgent,
-		ExecutionKindMessageSequence,
+		ExecutionKindAgent,
 		ExecutionKindWorkflowStep:
 		return true
 	default:
-		// full_run, message_sequence_item, scripted_step, router, unknown
+		// full_run, agent_item, scripted_step, router, unknown
 		return false
 	}
 }
@@ -109,7 +109,7 @@ func (k ExecutionKind) OwnsTerminal() bool {
 // dump an entire workflow's output into the main agent chat.
 func (k ExecutionKind) FoldsIntoParent() bool {
 	switch k {
-	case ExecutionKindMessageSequenceItem,
+	case ExecutionKindAgentItem,
 		ExecutionKindScriptedStep,
 		ExecutionKindRouter:
 		return true
@@ -149,10 +149,10 @@ func ParseExecutionKind(value string) ExecutionKind {
 		"workflow_sub_agent", "workflow_generic_agent", "generic_agent",
 		"pulse_reviewer", "workshop_background":
 		return ExecutionKindSubAgent
-	case "message_sequence", "message-sequence":
-		return ExecutionKindMessageSequence
-	case "message_sequence_item", "message-sequence-item":
-		return ExecutionKindMessageSequenceItem
+	case "agent", "message_sequence", "message-sequence":
+		return ExecutionKindAgent
+	case "agent_item", "agent-item":
+		return ExecutionKindAgentItem
 	case "scripted_step", "scripted", "learn_code":
 		return ExecutionKindScriptedStep
 	case "router", "routing", "routing_step":

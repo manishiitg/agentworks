@@ -1,8 +1,8 @@
-# Message Sequence Agent Steps
+# Agent Agent Steps
 
 ## Purpose
 
-A `message_sequence` is the canonical **agent step**: a persistent, ordered conversation with one coding agent. Use one large sequence per coherent shared-context span, when later turns must retain the reasoning and tool context from earlier turns.
+A `agent` is the canonical **agent step**: a persistent, ordered conversation with one coding agent. Use one large sequence per coherent shared-context span, when later turns must retain the reasoning and tool context from earlier turns.
 
 The step may declare `predefined_routes`. Those routes are bounded specialist
 capabilities, not a prescribed checklist: the sequence agent receives
@@ -30,7 +30,7 @@ Deterministic code is not a sequence item. Put code in a standalone `regular` st
 ```json
 {
   "id": "review-and-correct",
-  "type": "message_sequence",
+  "type": "agent",
   "title": "Review and correct",
   "description": "Review the latest generated report against the workflow goal.",
   "context_dependencies": [
@@ -56,7 +56,7 @@ Deterministic code is not a sequence item. Put code in a standalone `regular` st
 			"route_name": "Source checker",
 			"condition": "When a claim needs independent source verification",
 			"sub_agent_step": {
-				"type": "message_sequence",
+				"type": "agent",
 				"id": "source-checker",
 				"title": "Source checker",
 				"description": "Verify the requested claim against authoritative evidence.",
@@ -121,10 +121,10 @@ Use explicit plan steps:
 
 ```text
 regular scripted: fetch-and-normalize-authoritative-data
-  -> message_sequence: analyze-verify-and-repair-from-fetched-data
+  -> agent: analyze-verify-and-repair-from-fetched-data
 ```
 
-The scripted step owns `code/fetch-and-normalize-authoritative-data/main.py`, batches related deterministic API/SDK calls or CLI commands under one source/auth/retry/output contract, and writes validated DB rows or an explicit output artifact with provenance and freshness. Its working directory is its own `code/<step-id>/` directory. This makes failures, retries, permissions, logs, and costs visible at the workflow-step level. The message sequence consumes those results for judgment, synthesis, semantic verification, and repair; it does not re-fetch or re-parse stable response shapes conversationally.
+The scripted step owns `code/fetch-and-normalize-authoritative-data/main.py`, batches related deterministic API/SDK calls or CLI commands under one source/auth/retry/output contract, and writes validated DB rows or an explicit output artifact with provenance and freshness. Its working directory is its own `code/<step-id>/` directory. This makes failures, retries, permissions, logs, and costs visible at the workflow-step level. The agent consumes those results for judgment, synthesis, semantic verification, and repair; it does not re-fetch or re-parse stable response shapes conversationally.
 
 ## Runtime artifact layout
 
@@ -145,17 +145,17 @@ runs/<run>/execution/<parent-step>/
 Each child receives its call directory as `STEP_OUTPUT_DIR` and may collaborate
 through the owning parent subtree. A script always executes
 `code/<script-step-id>/main.py` with `code/<script-step-id>/` as its working
-directory. There is no fallback to flattened sub-agent, `message_sequences`,
+directory. There is no fallback to flattened sub-agent, `agents`,
 or older scripted-item artifact paths; workflows on older contracts must migrate.
 
-When call selection requires judgment, use an agentic request-specification step before the scripted executor and a later message sequence to interpret the result. Do not create one scripted step per endpoint or tiny transform.
+When call selection requires judgment, use an agentic request-specification step before the scripted executor and a later agent to interpret the result. Do not create one scripted step per endpoint or tiny transform.
 
 ## Workflow Contract v1.0.10
 
 Contract v1.0.10 removes legacy `type: "code"` items.
 
 The v1.0.10 upgrade is started manually from the workflow's interactive Builder
-chat and calls `migrate_message_sequence_code_items`. Migrations run in order
+chat and calls `migrate_agent_code_items`. Migrations run in order
 and each completed migration must stamp its expected version. Schedules do not
 run this migration; they continue against their saved contract, while manual
 chat execution and direct webhooks remain blocked until incompatible legacy
@@ -177,10 +177,10 @@ The runtime also rejects any remaining code item with a precise v1.0.10 upgrade 
 ## Authoring Rules
 
 - Keep each user message focused on one outcome.
-- Treat the message sequence as the agent. Add `predefined_routes` only for bounded specialists the agent may choose dynamically; do not encode a fixed checklist as delegation.
+- Treat the agent as the agent. Add `predefined_routes` only for bounded specialists the agent may choose dynamically; do not encode a fixed checklist as delegation.
 - Use the same conversation only when shared context is valuable.
 - Put the final deterministic acceptance contract in the top-level `validation_schema`. Use explicit prevalidation items only for intermediate checks, not subjective review.
 - Use `foreach` only with bounded, read-only queries.
 - Put all deterministic code in standalone scripted regular steps.
-- Put fixed API/SDK/CLI fetching, pagination, stable parsing/normalization, and mechanical persistence in coherent scripted fetchers; feed their durable outputs to large message sequences.
+- Put fixed API/SDK/CLI fetching, pagination, stable parsing/normalization, and mechanical persistence in coherent scripted fetchers; feed their durable outputs to large agents.
 - Pass data between steps through declared files or the workflow database, never hidden in terminal context.

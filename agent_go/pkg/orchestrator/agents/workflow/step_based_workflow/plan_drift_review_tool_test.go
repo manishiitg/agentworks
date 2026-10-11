@@ -271,10 +271,10 @@ func TestRecordPlanDriftReviewExecutorWritesNewRecord(t *testing.T) {
 	}
 }
 
-func TestRecordPlanDriftReviewExecutorAllowsCompatibilityOnlyMessageSequenceReceipt(t *testing.T) {
+func TestRecordPlanDriftReviewExecutorAllowsCompatibilityOnlyAgentReceipt(t *testing.T) {
 	ctx := context.Background()
 	files := map[string]string{
-		"planning/plan.json":        `{"steps":[{"id":"sequence-a","type":"message_sequence","title":"Sequence","description":"Complete the outcome.","items":[{"id":"verify","type":"user_message","message":"Verify the outcome."}]}]}`,
+		"planning/plan.json":        `{"steps":[{"id":"sequence-a","type":"agent","title":"Sequence","description":"Complete the outcome.","items":[{"id":"verify","type":"user_message","message":"Verify the outcome."}]}]}`,
 		"planning/step_config.json": `{"steps":[{"id":"sequence-a"}]}`,
 	}
 	executor := newPlanDriftReviewTestExecutor(files)
@@ -292,13 +292,13 @@ func TestRecordPlanDriftReviewExecutorAllowsCompatibilityOnlyMessageSequenceRece
 		"checks": []interface{}{
 			baseCheck,
 			map[string]interface{}{
-				"check_id": messageSequenceBestPracticesDriftCheckID,
+				"check_id": agentSequenceBestPracticesDriftCheckID,
 				"status":   "pass",
 				"evidence": "the sequence owns one coherent outcome, verifies authoritative evidence, repairs gaps, and uses the automatic final gate",
 			},
 		},
 	}); err != nil {
-		t.Fatalf("expected the executor to accept an explicitly relevant message-sequence check, got %v", err)
+		t.Fatalf("expected the executor to accept an explicitly relevant agent check, got %v", err)
 	}
 }
 
@@ -432,7 +432,7 @@ func TestRecordPlanDriftReviewExecutorRequiresStepID(t *testing.T) {
 // when no run artifacts exist.
 func TestRecordPlanDriftReviewPersistsPromptRepairWithoutProducingRun(t *testing.T) {
 	files := map[string]string{
-		"planning/plan.json":        `{"steps":[{"id":"sequence-a","type":"message_sequence"}]}`,
+		"planning/plan.json":        `{"steps":[{"id":"sequence-a","type":"agent"}]}`,
 		"planning/step_config.json": `{"steps":[{"id":"sequence-a","agent_configs":{"drift_review":{"needs_review":true}}}]}`,
 	}
 	executor := newPlanDriftReviewTestExecutor(files)
@@ -440,7 +440,7 @@ func TestRecordPlanDriftReviewPersistsPromptRepairWithoutProducingRun(t *testing
 		"step_id":                    "sequence-a",
 		"reviewed_through_change_id": "change-prompt-1",
 		"checks": []interface{}{
-			map[string]interface{}{"check_id": "message_sequence_best_practices", "status": "pass", "evidence": "Current sequence preserves declared inputs, outcome, and approval ordering."},
+			map[string]interface{}{"check_id": "agent_best_practices", "status": "pass", "evidence": "Current sequence preserves declared inputs, outcome, and approval ordering."},
 			map[string]interface{}{"check_id": "step_prompt_quality", "status": "fixed", "evidence": "Applied step-description.md: removed contradictory field list, retained the supplied schema and approval boundary. No producing run was performed."},
 		},
 	})

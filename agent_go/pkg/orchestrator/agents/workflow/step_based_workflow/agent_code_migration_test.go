@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestPlanMessageSequenceCodeMigrationsRejectsMixedSequence(t *testing.T) {
+func TestPlanAgentCodeMigrationsRejectsMixedSequence(t *testing.T) {
 	raw := json.RawMessage(`{
 		"id":"mixed",
-		"type":"message_sequence",
+		"type":"agent",
 		"title":"Mixed",
 		"description":"Conversation followed by code",
 		"items":[
@@ -19,7 +19,7 @@ func TestPlanMessageSequenceCodeMigrationsRejectsMixedSequence(t *testing.T) {
 		]
 	}`)
 
-	migrations, blockers, err := planMessageSequenceCodeMigrations([]json.RawMessage{raw}, nil)
+	migrations, blockers, err := planAgentCodeMigrations([]json.RawMessage{raw}, nil)
 	if err != nil {
 		t.Fatalf("plan migration: %v", err)
 	}
@@ -31,29 +31,29 @@ func TestPlanMessageSequenceCodeMigrationsRejectsMixedSequence(t *testing.T) {
 	}
 }
 
-func TestValidateMessageSequenceCodeMigrationCompleteAcceptsNoOpPlan(t *testing.T) {
+func TestValidateAgentCodeMigrationCompleteAcceptsNoOpPlan(t *testing.T) {
 	plan := `{
 		"steps":[{
 			"id":"plain-sequence",
-			"type":"message_sequence",
+			"type":"agent",
 			"items":[{"id":"review","type":"user_message","message":"Review the result."}]
 		}],
 		"orphan_steps":[]
 	}`
-	if err := ValidateMessageSequenceCodeMigrationComplete(plan); err != nil {
+	if err := ValidateAgentCodeMigrationComplete(plan); err != nil {
 		t.Fatalf("no-op plan should satisfy v1.0.10 postcondition: %v", err)
 	}
 }
 
-func TestValidateMessageSequenceCodeMigrationCompleteRejectsRemainingCode(t *testing.T) {
+func TestValidateAgentCodeMigrationCompleteRejectsRemainingCode(t *testing.T) {
 	plan := `{
 		"steps":[{
 			"id":"legacy",
-			"type":"message_sequence",
+			"type":"agent",
 			"items":[{"id":"run","type":"code","script_path":"scripts/run.py","output_files":["db/result.json"]}]
 		}]
 	}`
-	err := ValidateMessageSequenceCodeMigrationComplete(plan)
+	err := ValidateAgentCodeMigrationComplete(plan)
 	if err == nil || !strings.Contains(err.Error(), "legacy") {
 		t.Fatalf("validation error = %v, want remaining sequence id", err)
 	}
@@ -62,7 +62,7 @@ func TestValidateMessageSequenceCodeMigrationCompleteRejectsRemainingCode(t *tes
 func TestConvertLegacyCodeSequenceCreatesStandaloneScriptedSteps(t *testing.T) {
 	raw := json.RawMessage(`{
 		"id":"legacy",
-		"type":"message_sequence",
+		"type":"agent",
 		"title":"Legacy pipeline",
 		"description":"Prepare and summarize deterministic data.",
 		"context_dependencies":["seed.json"],
@@ -91,7 +91,7 @@ func TestConvertLegacyCodeSequenceCreatesStandaloneScriptedSteps(t *testing.T) {
 		]
 	}`)
 
-	migrations, blockers, err := planMessageSequenceCodeMigrations([]json.RawMessage{raw}, nil)
+	migrations, blockers, err := planAgentCodeMigrations([]json.RawMessage{raw}, nil)
 	if err != nil {
 		t.Fatalf("plan migration: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestExplicitConversationScriptConversationPlanValidates(t *testing.T) {
 		"steps":[
 			{
 				"id":"prepare-input",
-				"type":"message_sequence",
+				"type":"agent",
 				"title":"Prepare input",
 				"description":"Prepare durable input for the deterministic transform.",
 				"context_output":"db/prepared-input.json",
@@ -198,7 +198,7 @@ func TestExplicitConversationScriptConversationPlanValidates(t *testing.T) {
 			},
 			{
 				"id":"review-output",
-				"type":"message_sequence",
+				"type":"agent",
 				"title":"Review output",
 				"description":"Review the durable transform output and decide the next action.",
 				"context_dependencies":["db/transformed-output.json"],
@@ -215,28 +215,28 @@ func TestExplicitConversationScriptConversationPlanValidates(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceValidatorRejectsLegacyCodeItem(t *testing.T) {
-	step := &MessageSequencePlanStep{
-		Type: StepTypeMessageSeq,
+func TestAgentValidatorRejectsLegacyCodeItem(t *testing.T) {
+	step := &AgentPlanStep{
+		Type: StepTypeAgent,
 		CommonStepFields: CommonStepFields{
 			ID:          "legacy",
 			Title:       "Legacy",
 			Description: "Old code sequence",
 		},
-		Items: []MessageSequenceItem{{ID: "run", Type: "code"}},
+		Items: []AgentItem{{ID: "run", Type: "code"}},
 	}
-	err := validateMessageSequenceStepFieldsTyped(step)
-	if err == nil || !strings.Contains(err.Error(), "contract v1.0.10") || !strings.Contains(err.Error(), "migrate_message_sequence_code_items") {
+	err := validateAgentStepFieldsTyped(step)
+	if err == nil || !strings.Contains(err.Error(), "contract v1.0.10") || !strings.Contains(err.Error(), "migrate_agent_code_items") {
 		t.Fatalf("validation error = %v, want actionable v1.0.10 migration error", err)
 	}
 }
 
-func TestLegacyMessageSequenceCodeCanLoadOnlyForMigration(t *testing.T) {
+func TestLegacyAgentCodeCanLoadOnlyForMigration(t *testing.T) {
 	var plan PlanningResponse
 	if err := json.Unmarshal([]byte(`{
 		"steps":[{
 			"id":"legacy",
-			"type":"message_sequence",
+			"type":"agent",
 			"title":"Legacy",
 			"description":"Run deterministic code.",
 			"items":[{"id":"run-code","type":"code","script_path":"scripts/run.py","output_files":["db/result.json"]}]
@@ -247,7 +247,7 @@ func TestLegacyMessageSequenceCodeCanLoadOnlyForMigration(t *testing.T) {
 	if err := validateLoadedPlanStructure(&plan); err == nil {
 		t.Fatal("strict runtime validator accepted a legacy code item")
 	}
-	if err := validateLoadedPlanStructureAllowLegacyMessageSequenceCode(&plan); err != nil {
+	if err := validateLoadedPlanStructureAllowLegacyAgentCode(&plan); err != nil {
 		t.Fatalf("migration-only loader rejected legacy code item: %v", err)
 	}
 
@@ -259,7 +259,7 @@ func TestLegacyMessageSequenceCodeCanLoadOnlyForMigration(t *testing.T) {
 			Description: "Invalid duplicate id.",
 		},
 	})
-	if err := validateLoadedPlanStructureAllowLegacyMessageSequenceCode(&plan); err == nil {
+	if err := validateLoadedPlanStructureAllowLegacyAgentCode(&plan); err == nil {
 		t.Fatal("migration-only loader ignored an unrelated duplicate-id error")
 	}
 }

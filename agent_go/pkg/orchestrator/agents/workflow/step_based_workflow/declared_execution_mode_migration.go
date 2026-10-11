@@ -36,7 +36,7 @@ func (r *declaredModeMigrationResult) noOp() bool {
 // migrateDeclaredExecutionModeInPlan makes the plan say explicitly what the
 // runtime already did (PLAT-287, half 1): a regular step without a declared
 // scripted mode is the legacy agentic shape that the runtime normalizes to a
-// message_sequence at execution time (shouldNormalizeRegularStepToMessageSequence),
+// message_sequence at execution time (shouldNormalizeRegularStepToAgent),
 // so it becomes one on disk; a message_sequence still declared scripted
 // (PLAT-280 drift) becomes regular. After this, every regular step in the
 // plan is a declared scripted step, which is what lets a later release make
@@ -74,7 +74,7 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 			continue
 		}
 		switch step.(type) {
-		case *RegularPlanStep, *MessageSequencePlanStep:
+		case *RegularPlanStep, *AgentPlanStep:
 			if declaredScripted(step.GetID()) && !scriptExists(step.GetID()) {
 				broken = append(broken, step.GetID())
 			}
@@ -102,23 +102,23 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 			if declaredScripted(step.GetID()) {
 				continue // a true scripted step: type and declaration agree
 			}
-			replacement := normalizeRegularStepToMessageSequence(step)
+			replacement := normalizeRegularStepToAgent(step)
 			if err := replace(step.GetID(), replacement); err != nil {
 				return nil, err
 			}
 			result.TypeChanges = append(result.TypeChanges, declaredModeTypeChange{
-				StepID: step.GetID(), From: string(StepTypeRegular), To: string(StepTypeMessageSeq), before: step, after: replacement,
+				StepID: step.GetID(), From: string(StepTypeRegular), To: string(StepTypeAgent), before: step, after: replacement,
 			})
-		case *MessageSequencePlanStep:
+		case *AgentPlanStep:
 			if !declaredScripted(step.GetID()) {
 				continue
 			}
-			replacement := normalizeMessageSequenceStepToRegular(step)
+			replacement := normalizeAgentStepToRegular(step)
 			if err := replace(step.GetID(), replacement); err != nil {
 				return nil, err
 			}
 			result.TypeChanges = append(result.TypeChanges, declaredModeTypeChange{
-				StepID: step.GetID(), From: string(StepTypeMessageSeq), To: string(StepTypeRegular), before: step, after: replacement,
+				StepID: step.GetID(), From: string(StepTypeAgent), To: string(StepTypeRegular), before: step, after: replacement,
 			})
 		}
 	}
@@ -160,7 +160,7 @@ func createMigrateDeclaredExecutionModeExecutor(
 			return "", err
 		}
 		if result.noOp() {
-			return `{"status":"no_op","message":"Every regular step is already a declared scripted step and no message_sequence is declared scripted; the plan already states each step's execution model."}`, nil
+			return `{"status":"no_op","message":"Every regular step is already a declared scripted step and no agent is declared scripted; the plan already states each step's execution model."}`, nil
 		}
 
 		if err := validatePlanStepIDs(plan.Steps); err != nil {
@@ -190,7 +190,7 @@ func createMigrateDeclaredExecutionModeExecutor(
 			if raw, err := json.Marshal(change.after); err == nil {
 				added = append(added, raw)
 			}
-			if change.To == string(StepTypeMessageSeq) {
+			if change.To == string(StepTypeAgent) {
 				toSequence++
 			} else {
 				toRegular++
@@ -199,7 +199,7 @@ func createMigrateDeclaredExecutionModeExecutor(
 		logPlanChange(ctx, workspacePath, PlanChangelogEntry{
 			Tool: "migrate_declared_execution_mode",
 			Reason: fmt.Sprintf(
-				"Workflow contract v%s (PLAT-287, half 1): the plan type now states each step's execution model explicitly. %d legacy agentic regular step(s) made message_sequence (the runtime already ran them as one), %d declared-scripted message_sequence step(s) made regular; step_config.json untouched -- declared_execution_mode stays until the runtime stops reading it.",
+				"Workflow contract v%s (PLAT-287, half 1): the plan type now states each step's execution model explicitly. %d legacy agentic regular step(s) made message_sequence (the runtime already ran them as one), %d declared-scripted agent step(s) made regular; step_config.json untouched -- declared_execution_mode stays until the runtime stops reading it.",
 				workflowContractDeclaredExecutionModeRetiredVersionLabel, toSequence, toRegular,
 			),
 			StepIDs:        stepIDs,

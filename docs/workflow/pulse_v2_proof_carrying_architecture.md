@@ -2381,7 +2381,7 @@ agent-selected mode alongside its complete module worklist:
 
 The mode and its reason are durable per Pulse run and are returned by
 `get_pulse_state(view="module", pulse_run_id=…)`. The following Review+Fix
-message sequence reads that stored mode before dispatching children. Go only
+agent reads that stored mode before dispatching children. Go only
 validates and persists the finite mode vocabulary; it does not apply an issue
 count threshold or select reviewers. This keeps the system agentic while
 preventing a large unchanged backlog from repeatedly paying for rediscovery.

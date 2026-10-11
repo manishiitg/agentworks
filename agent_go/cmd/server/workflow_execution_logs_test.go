@@ -63,13 +63,13 @@ func TestHandleGetExecutionLogsReturnsAutomaticFinalValidation(t *testing.T) {
 	const workspacePath = "/workspace/Workflow/test"
 	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
 		workspacePath + "/planning/plan.json": `{
-			"steps": [{"id":"compile-package","title":"Compile package","type":"message_sequence","message_sequence":{"items":[{"id":"execute-and-verify","type":"user_message","message":"Compile and verify the package."}]}}]
+			"steps": [{"id":"compile-package","title":"Compile package","type":"agent","agent":{"items":[{"id":"execute-and-verify","type":"user_message","message":"Compile and verify the package."}]}}]
 		}`,
 		workspacePath + "/runs/iteration-0/default/logs/compile-package/execution/execution-attempt-1-iteration-2.json": `{
-			"execution_result":"Message sequence item: __automatic_final_validation__-repair-1 (user_message)"
+			"execution_result":"Agent item: __automatic_final_validation__-repair-1 (user_message)"
 		}`,
-		workspacePath + "/runs/iteration-0/default/logs/compile-package/pre_validation_message-sequence-automatic-final-validation_execution_001_attempt_001.json": `{
-			"validation_phase":"message-sequence-automatic-final-validation",
+		workspacePath + "/runs/iteration-0/default/logs/compile-package/pre_validation_agent-automatic-final-validation_execution_001_attempt_001.json": `{
+			"validation_phase":"agent-automatic-final-validation",
 			"execution_attempt":1,
 			"validation_attempt":1,
 			"overall_pass":false,
@@ -108,13 +108,13 @@ func TestHandleGetExecutionLogsReturnsAutomaticFinalValidation(t *testing.T) {
 	validations := body.Steps["compile-package"].Validations
 	plannedMessages := body.Steps["compile-package"].PlannedMessages
 	if len(plannedMessages) != 1 || plannedMessages[0].ID != "execute-and-verify" || plannedMessages[0].Message != "Compile and verify the package." {
-		t.Fatalf("expected planned message sequence item, got %+v", plannedMessages)
+		t.Fatalf("expected planned agent item, got %+v", plannedMessages)
 	}
 	if len(validations) != 1 {
 		t.Fatalf("expected one automatic final validation, got %+v", validations)
 	}
 	got := validations[0]
-	if got.Attempt != 1 || got.Kind != "pre_validation" || got.Phase != "message-sequence-automatic-final-validation" || got.ExecutionAttempt != 1 {
+	if got.Attempt != 1 || got.Kind != "pre_validation" || got.Phase != "agent-automatic-final-validation" || got.ExecutionAttempt != 1 {
 		t.Fatalf("unexpected automatic final validation metadata: %+v", got)
 	}
 }
@@ -195,12 +195,12 @@ func TestPopulateStepMetadataLinksPredefinedRouteToParent(t *testing.T) {
 	}
 }
 
-func TestHandleGetExecutionLogsUsesMessageSequenceSessionStatus(t *testing.T) {
+func TestHandleGetExecutionLogsUsesAgentSessionStatus(t *testing.T) {
 	const workspacePath = "/workspace/Workflow/test"
 	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
 		workspacePath + "/planning/plan.json": `{
 			"steps": [{
-				"type": "message_sequence",
+				"type": "agent",
 				"id": "deliver",
 				"title": "Deliver",
 				"description": "Deliver the report",
@@ -223,20 +223,20 @@ func TestHandleGetExecutionLogsUsesMessageSequenceSessionStatus(t *testing.T) {
 	}
 	var body struct {
 		Steps map[string]struct {
-			Status  string `json:"message_sequence_status"`
+			Status  string `json:"agent_status"`
 			Session struct {
 				Entries []struct {
 					ItemID string `json:"item_id"`
 					Status string `json:"status"`
 				} `json:"entries"`
-			} `json:"message_sequence"`
+			} `json:"agent"`
 		} `json:"steps"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if got := body.Steps["deliver"].Status; got != "failed" {
-		t.Fatalf("expected failed message sequence status, got %q", got)
+		t.Fatalf("expected failed agent status, got %q", got)
 	}
 	if entries := body.Steps["deliver"].Session.Entries; len(entries) != 1 || entries[0].ItemID != "deliver-reflection" || entries[0].Status != "failed" {
 		t.Fatalf("expected persisted reflection entry, got %+v", entries)

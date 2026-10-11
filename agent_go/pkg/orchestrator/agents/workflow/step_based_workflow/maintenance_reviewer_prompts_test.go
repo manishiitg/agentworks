@@ -62,7 +62,7 @@ func TestReviewPlanPromptPrefersCoherentAgenticSteps(t *testing.T) {
 		"one large `message_sequence` per coherent shared-context span",
 		"fewest durable steps",
 		"substantial end-to-end outcome",
-		"message_sequence",
+		"agent",
 		"Give the first work item the whole outcome",
 		"tiny sequence item per routine action",
 		"Separate deterministic acquisition from agentic processing",

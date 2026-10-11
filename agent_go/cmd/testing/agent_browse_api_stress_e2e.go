@@ -205,11 +205,11 @@ func newAgentBrowseAPITestServer() (agentBrowseAPITestServer, func()) {
 
 	server := httptest.NewServer(router)
 	return agentBrowseAPITestServer{
-			baseURL: server.URL,
-			token:   token,
-		}, func() {
-			server.Close()
-		}
+		baseURL: server.URL,
+		token:   token,
+	}, func() {
+		server.Close()
+	}
 }
 
 func runAgentBrowseAPIStressWorker(ctx context.Context, client *agentBrowseAPIStressClient, sessionPrefix string, tc agentBrowseStressCase, allCases []agentBrowseStressCase) agentBrowseAPIStressResult {

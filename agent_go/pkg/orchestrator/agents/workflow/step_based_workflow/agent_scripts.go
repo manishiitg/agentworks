@@ -14,7 +14,7 @@ import (
 
 // A script call references a saved, plan-local orphan definition. It cannot
 // contain code, routes, model selection, or free-form agent instructions.
-type MessageSequenceScriptCall struct {
+type AgentScriptCall struct {
 	ID         string                 `json:"id"`
 	StepID     string                 `json:"step_id"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
@@ -24,7 +24,7 @@ const maxSequenceScriptParallel = 8
 
 var sequenceScriptIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 
-func validateMessageSequenceScriptItem(item MessageSequenceItem) error {
+func validateAgentScriptItem(item AgentItem) error {
 	if !sequenceScriptIDPattern.MatchString(item.ID) {
 		return fmt.Errorf("scripted item id %q must be a safe identifier (letters, numbers, hyphens, underscores; max 128)", item.ID)
 	}
@@ -35,7 +35,7 @@ func validateMessageSequenceScriptItem(item MessageSequenceItem) error {
 		return fmt.Errorf("scripted item %q max_parallel must be 0..%d (0 means sequential)", item.ID, maxSequenceScriptParallel)
 	}
 	if item.Message != "" || item.SourceSQL != "" || item.MaxIterations != 0 || item.Kind != "" ||
-		item.WriteAccess != (MessageSequenceWriteAccess{}) || item.ValidationSchema != nil || item.Prevalidation != nil {
+		item.WriteAccess != (AgentWriteAccess{}) || item.ValidationSchema != nil || item.Prevalidation != nil {
 		return fmt.Errorf("scripted item %q uses only scripted_steps/max_parallel; messages, foreach, permissions and validation belong to their own items or script definition", item.ID)
 	}
 	seen := map[string]bool{}
@@ -52,12 +52,12 @@ func validateMessageSequenceScriptItem(item MessageSequenceItem) error {
 }
 
 type resolvedSequenceScript struct {
-	Call MessageSequenceScriptCall
+	Call AgentScriptCall
 	Step *RegularPlanStep
 }
 
-func resolveSequenceScripts(item MessageSequenceItem, plan *PlanningResponse) ([]resolvedSequenceScript, error) {
-	if err := validateMessageSequenceScriptItem(item); err != nil {
+func resolveSequenceScripts(item AgentItem, plan *PlanningResponse) ([]resolvedSequenceScript, error) {
+	if err := validateAgentScriptItem(item); err != nil {
 		return nil, err
 	}
 	if plan == nil {
@@ -91,10 +91,10 @@ func resolveSequenceScripts(item MessageSequenceItem, plan *PlanningResponse) ([
 	return resolved, nil
 }
 
-func validateMessageSequenceScriptReferences(plan *PlanningResponse) error {
+func validateAgentScriptReferences(plan *PlanningResponse) error {
 	for _, steps := range [][]PlanStepInterface{plan.Steps, plan.OrphanSteps} {
 		for _, info := range collectAllSteps(steps) {
-			sequence, ok := info.Step.(*MessageSequencePlanStep)
+			sequence, ok := info.Step.(*AgentPlanStep)
 			if !ok {
 				continue
 			}
@@ -198,7 +198,7 @@ func sequenceSavedScriptError(result *ScriptedFastPathResult) error {
 	}
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceScripts(ctx context.Context, step *MessageSequencePlanStep, item MessageSequenceItem, stepIndex int, stepPath string, session *messageSequenceSession) (string, error) {
+func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Context, step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, session *agentSequenceSession) (string, error) {
 	if session == nil || session.delegation != nil {
 		return "", fmt.Errorf("scripted batch items require a message_sequence; orchestrators use their existing scripted route tools")
 	}

@@ -5,11 +5,11 @@
 A `regular` step is the scripted boundary for one deterministic unit of work. It owns one
 coherent output and deterministic final gate and runs through the saved `main.py` path.
 Do not create an agentic regular step: every new conversational or judgment-heavy step uses
-**`message_sequence`**, even when it needs only one work turn. Persisted non-scripted regular
-steps are normalized to a one-turn message sequence at runtime; they never use the removed
-direct regular-agent path. See `read_skill(skills=[{"name":"builder-reference","path":"references/message-sequence.md"}])`.
+**`agent`**, even when it needs only one work turn. Persisted non-scripted regular
+steps are normalized to a one-turn agent at runtime; they never use the removed
+direct regular-agent path. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
 Use the others for branching (`branch` for a small in-flow decision, `routing` for a major
-sub-workflow fork), adaptive specialist coordination (`message_sequence` with
+sub-workflow fork), adaptive specialist coordination (`agent` with
 `predefined_routes`), or operator input (`human_input`).
 
 ## Scripts are built by you, not healed by the run
@@ -28,7 +28,7 @@ way. `lock_code` additionally stops that repair in your own `execute_step`.
 - One clear deterministic objective expressible as a `description` plus a `validation_schema`.
 - Batch related deterministic actions behind one input/output and retry contract; use `references/plan-design.md` for composing that script with agentic work.
 
-**Design scripts as parameterized tools agents can use.** When a script's work could reasonably vary by call — an ID, a date or time window, a repo/branch, a market, a filter, a limit — expose those as typed `script_parameters` with sensible defaults instead of hardcoding them or reading them only from workflow variables. A parameterized script is reusable: the main flow calls it with defaults, the Builder tests it with `execute_step(script_parameters=...)`, and an agent step can call it with values it chooses at runtime (as a route on a `message_sequence`, via `call_scripted_sub_agent`). Define reusable ones as orphan steps and set `shared_with.orchestrator_ids` for the agents allowed to call them. Keep parameters non-secret and few (the values that genuinely change between calls), and describe each one so an agent knows when to set it.
+**Design scripts as parameterized tools agents can use.** When a script's work could reasonably vary by call — an ID, a date or time window, a repo/branch, a market, a filter, a limit — expose those as typed `script_parameters` with sensible defaults instead of hardcoding them or reading them only from workflow variables. A parameterized script is reusable: the main flow calls it with defaults, the Builder tests it with `execute_step(script_parameters=...)`, and an agent step can call it with values it chooses at runtime (as a route on a `agent`, via `call_scripted_sub_agent`). Define reusable ones as orphan steps and set `shared_with.orchestrator_ids` for the agents allowed to call them. Keep parameters non-secret and few (the values that genuinely change between calls), and describe each one so an agent knows when to set it.
 
 **Pure scripts when no agent decides anything.** If the work is fully fixed — a nightly sync, a fixed ingest, a mechanical transform or write in the main flow — and no agent will ever choose what it fetches or with which values, keep it a plain script step in the fixed flow. Do not invent parameters or wrap it as a tool nobody calls; its inputs come from workflow variables and its context dependencies. Parameterize when an agent may need to vary the call (an investigation, a lookup, a re-query with a narrower window), not by default for every script.
 
@@ -36,7 +36,7 @@ If selecting further work requires agentic judgment, or the task needs conversat
 memory, use the redirects below. A deterministic script may process many records;
 task count alone does not make it agentic.
 
-## Calling scripts from a message sequence
+## Calling scripts from a agent
 
 Create a reusable definition with `add_step(is_orphan=true, ...)`, then
 reference its ID and typed parameters from a sequence's `scripted` batch item.
@@ -46,14 +46,14 @@ code repair, or automatic retry is started by this path. Script failures stop th
 sequence after remaining batch calls settle. Keep source fixes in Workshop.
 
 This is deterministic script execution, not an agentic sub-agent. The sequence's
-own conversation handles reasoning and reporting. See `references/message-sequence.md`
+own conversation handles reasoning and reporting. See `references/agent.md`
 for the exact item schema, permissions, parallelism, Stop behavior, and limits.
 
 ## Anatomy
 
 - `description` — the durable system-level contract for what the saved script must accomplish, not a per-run user instruction. Resolved variable values are available as `$VAR_*`.
 - `script_parameters` — the optional, typed public input contract for direct execution,
-  routed message-sequence specialists, or message-sequence scripted batches. Each named parameter declares `type`,
+  routed agent specialists, or agent scripted batches. Each named parameter declares `type`,
   `description`, and optionally `required`, `default`, and `enum`. These are non-secret
   per-call values; credentials still belong in Secrets. The builder defines this contract
   with the step, and `main.py` reads the validated object from `STEP_PARAMS_JSON`.
@@ -73,9 +73,9 @@ for the exact item schema, permissions, parallelism, Stop behavior, and limits.
 - **Scripted / code-execution mode** is the only mode for new regular steps. Create one with `add_step`; the internal plan type remains `regular`. The builder authors a `main.py` saved under
   `code/{step-id}/` when workflow.json has `code_layout_version: 1`; absent/0 stays at `learnings/{step-id}/`. Prefer an explicit migration to `code/` for legacy scripted workflows using the "Deliberate migration to code/" procedure in `references/code-authoring.md`; never silently move files or change the layout flag. Test using `execute_step(fast_path_only=true)` so the actual runner supplies the selected group's environment, inputs, permissions and working directory. New-layout source and shared helpers are edited in place, not copied into a run. Use for
   deterministic, repeatable execution. No run-history threshold is required to declare an obviously deterministic step scripted; 10+ representative successful runs are required only before `lock_code=true` freezes it. See `read_skill(skills=[{"name":"builder-reference","path":"references/code-authoring.md"}])`.
-- Judgment, adaptive discovery, ambiguous live evidence, and browser/UI work use `message_sequence`.
+- Judgment, adaptive discovery, ambiguous live evidence, and browser/UI work use `agent`.
 
-Preferred data shape: `regular scripted fetcher(s) → message_sequence processor`. Fetchers own credentials, calls, retries/rate limits, provenance, freshness, idempotency, response parsing, and authoritative DB/file output. The message sequence reads that output and owns semantic analysis, synthesis, critique, and repair.
+Preferred data shape: `regular scripted fetcher(s) → agent processor`. Fetchers own credentials, calls, retries/rate limits, provenance, freshness, idempotency, response parsing, and authoritative DB/file output. The agent reads that output and owns semantic analysis, synthesis, critique, and repair.
 
 ## Parameterized script calls
 
@@ -105,7 +105,7 @@ defaults and rejects unknown parameters, missing required values, wrong types,
 and enum violations before starting Python. Positional arguments remain reserved
 for `context_dependencies`.
 
-- **Message sequence:** put literal values in each `scripted_steps[].parameters`
+- **Agent:** put literal values in each `scripted_steps[].parameters`
   object in the authored `scripted` item. The sequence agent does not generate or
   modify those values at runtime; no template/environment-variable expansion or
   binding from earlier conversation results is implemented. There is no child
@@ -124,9 +124,9 @@ steps and rejects invalid values before registering background execution.
 
 - Branching on a decision or run flag → **`branch`** (small in-flow decision) or **`routing`**
   (major, self-contained sub-workflow fork).
-- Owning an adaptive strategy that interprets evidence and chooses subsequent specialist work → **`message_sequence` with `predefined_routes`**. A known script batch belongs in a `scripted` item; worker count alone does not justify routes.
+- Owning an adaptive strategy that interprets evidence and chooses subsequent specialist work → **`agent` with `predefined_routes`**. A known script batch belongs in a `scripted` item; worker count alone does not justify routes.
 - Same-context ordered turns, a stateful conversation, self-validation/grounding
-  gate, or stepping through a db array row-by-row → **`message_sequence`**
+  gate, or stepping through a db array row-by-row → **`agent`**
   (incl. its `foreach` item).
 - Pausing for a fixed human approval/selection → **`branch` with `route_source="human"`**; capturing a free-form value → **`human_input` (`text`)**.
 
@@ -148,7 +148,7 @@ Each saved-script attempt is retained in the execution log directory as `scripte
   failure-domain boundaries.
 - Narrative branching in the description ("if X do A else B") — use a `branch` or `routing` step.
 - Choosing an agent merely because there are many records. Deterministic row processing
-  can stay in a saved script. Use SQL `foreach` in `references/message-sequence.md`
+  can stay in a saved script. Use SQL `foreach` in `references/agent.md`
   when every selected row needs a conversational turn; add `predefined_routes`
   when the parent must adaptively choose bounded specialists for the investigation.
 - Missing or weak `validation_schema` — every step needs one strong enough that a

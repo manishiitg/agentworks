@@ -55,7 +55,7 @@ func TestApplyWorkshopScriptParametersRejectsMissingAndNonScriptedValues(t *test
 		t.Fatalf("error = %v, want missing required parameter", err)
 	}
 
-	agentic := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "review"}}
+	agentic := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "review"}}
 	if _, err := applyWorkshopScriptParameters(context.Background(), agentic, &WorkshopExecuteOptions{ScriptParameters: map[string]interface{}{}, ScriptParametersSet: true}); err == nil || !strings.Contains(err.Error(), "only supported for scripted") {
 		t.Fatalf("error = %v, want scripted-only failure", err)
 	}

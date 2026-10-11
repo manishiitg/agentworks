@@ -1,6 +1,6 @@
 {
   "messages": [
-    "List the workflow steps and identify any message_sequence steps. Do not edit files.",
-    "If a message_sequence step exists, run exactly one smoke execution with execute_step for the selected group. Keep the action minimal."
+    "List the workflow steps and identify any agent steps. Do not edit files.",
+    "If a agent step exists, run exactly one smoke execution with execute_step for the selected group. Keep the action minimal."
   ]
 }

@@ -126,7 +126,7 @@ func TestCollectStepOutputsLinesUpEachStepsLatestRuns(t *testing.T) {
 			}}, base.Add(time.Duration(i)*time.Hour))
 		// The generic sequence summary carries no account of the work.
 		writeStepSummary(t, filepath.Join(runs, run, "default", "logs", "connect", "execution", "execution-final-summary.json"),
-			map[string]string{"step_id": "connect", "run_folder": run, "execution_result": "Message sequence connect completed: 2 item(s) completed"}, base.Add(time.Duration(i)*time.Hour))
+			map[string]string{"step_id": "connect", "run_folder": run, "execution_result": "Agent connect completed: 2 item(s) completed"}, base.Add(time.Duration(i)*time.Hour))
 	}
 	writeStepSummary(t, filepath.Join(runs, "iteration-3", "default", "logs", "collect", "execution", "execution-final-summary.json"),
 		map[string]string{"step_id": "collect", "run_folder": "iteration-3", "execution_result": "wrote 4 rows"}, base)

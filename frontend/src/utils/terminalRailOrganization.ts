@@ -5,7 +5,7 @@ export type TerminalRailVisualKind =
   | 'terminal'
   | 'orchestrator'
   | 'sub-agent'
-  | 'message-sequence'
+  | 'agent'
   | 'routing'
   | 'scripted'
   | 'evaluation'
@@ -28,7 +28,7 @@ interface OrganizeTerminalRailOptions {
 }
 
 const REVIEW_LABEL_PATTERN = /\b(review(?:er)?|critic|advisor|audit|pulse|health|harden|maintenance)\b/i
-const MESSAGE_SEQUENCE_PATTERN = /^message[-_ ]sequence(?:[-_ ].*)?$/i
+const AGENT_PATTERN = /^message[-_ ]sequence(?:[-_ ].*)?$/i
 
 function normalizedReviewIdentity(values: Array<string | undefined>): string {
   return values.filter(Boolean).join(' ')
@@ -101,7 +101,7 @@ export function terminalRailTitle(terminal: TerminalSnapshot): string {
   // ("linkedin -> ..."). Prefer the intrinsic agent name so the compact rail
   // shows the task itself rather than repeating the selected workflow.
   const preferred = terminal.step_name || terminal.agent_name || terminal.display_title || terminal.step_id || terminal.label
-  if (preferred && MESSAGE_SEQUENCE_PATTERN.test(preferred) && terminal.parent_step_id) {
+  if (preferred && AGENT_PATTERN.test(preferred) && terminal.parent_step_id) {
     return `${humanize(terminal.parent_step_id)} sequence`
   }
   return humanize(preferred) || 'Agent'
@@ -143,16 +143,16 @@ export function terminalRailVisualKind(terminal: TerminalSnapshot): TerminalRail
     executionKind === 'orchestrator' ||
     executionKind === 'todo_task'
   ) return 'orchestrator'
-  // A predefined route can use message_sequence internally, but its
+  // A predefined route can use agent internally, but its
   // user-facing role is still a child agent of the owning orchestrator.
   if (hasDistinctParentStep) return 'sub-agent'
   if (
-    stepType === 'message_sequence' ||
+    stepType === 'agent' ||
     (stepType === 'regular' && executionMode !== 'scripted') ||
-    executionKind === 'message_sequence' ||
-    executionKind === 'message_sequence_item' ||
-    MESSAGE_SEQUENCE_PATTERN.test(agentName)
-  ) return 'message-sequence'
+    executionKind === 'agent' ||
+    executionKind === 'agent_item' ||
+    AGENT_PATTERN.test(agentName)
+  ) return 'agent'
   if ([
     'sub_agent',
     'subagent',
@@ -177,15 +177,15 @@ export function terminalRailLogicalKey(terminal: TerminalSnapshot): string {
   // history, even though each retry receives a fresh runtime execution ID.
   if (reviewTitle) return `review:${reviewTitle.toLowerCase()}`
 
-  // A message-sequence creates one terminal per turn. Keep those turns under
+  // A agent creates one terminal per turn. Keep those turns under
   // the owning plan step instead of presenting each turn as a separate agent.
-  if ((terminal.step_type || '').toLowerCase() === 'message_sequence' || MESSAGE_SEQUENCE_PATTERN.test(rawName)) {
+  if ((terminal.step_type || '').toLowerCase() === 'agent' || AGENT_PATTERN.test(rawName)) {
     const stepID = (terminal.step_id || '').trim().toLowerCase()
     // Current metadata uses step_id for the owning sequence (for example
     // calc-task and word-task) and parent_step_id for their shared manager.
-    // Older turn records used message-sequence-<item> as step_id, in which
+    // Older turn records used agent-<item> as step_id, in which
     // case parent_step_id remains the only stable owning identity.
-    const owningStep = stepID && !MESSAGE_SEQUENCE_PATTERN.test(stepID)
+    const owningStep = stepID && !AGENT_PATTERN.test(stepID)
       ? stepID
       : (terminal.parent_step_id || '').trim().toLowerCase() || stepID
     return `step:${owningStep || title}`
@@ -236,8 +236,8 @@ function isWorkflowTerminal(terminal: TerminalSnapshot): boolean {
     'todo_task',
     'orchestrator',
     'sub_agent',
-    'message_sequence',
-    'message_sequence_item',
+    'agent',
+    'agent_item',
     'scripted_step',
     'router',
     'delegation',

@@ -19,7 +19,7 @@ export type PulseModuleSummary = {
   proposals: number
   /**
    * Concerns the workflow's own steps filed while running — prevalidation,
-   * execution, message-sequence. They share `run_concerns` with Pulse findings
+   * execution, agent. They share `run_concerns` with Pulse findings
    * but are not Pulse's queue: the backend lifecycle only claims
    * `phase === 'review'`, and these ride along with module state as Gate
    * evidence. Counting them under "Pulse can fix" made social-media read 105

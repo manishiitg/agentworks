@@ -4,10 +4,10 @@ import "testing"
 
 func TestBuilderConversationVisibleToIsPrivatePerUser(t *testing.T) {
 	tests := []struct {
-		name       string
-		logUserID  string
-		viewerID   string
-		access     WorkflowAccessLevel
+		name        string
+		logUserID   string
+		viewerID    string
+		access      WorkflowAccessLevel
 		wantVisible bool
 	}{
 		{"owner sees own log", "admin", "admin", WorkflowAccessOwner, true},

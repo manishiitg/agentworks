@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestMessageSequenceParsesBoundedAgentRoutes(t *testing.T) {
+func TestAgentParsesBoundedAgentRoutes(t *testing.T) {
 	var plan PlanningResponse
 	err := json.Unmarshal([]byte(`{
 		"steps": [{
-			"type": "message_sequence",
+			"type": "agent",
 			"id": "investigate",
 			"title": "Investigate",
 			"description": "Investigate the evidence and decide which specialists are needed.",
@@ -20,7 +20,7 @@ func TestMessageSequenceParsesBoundedAgentRoutes(t *testing.T) {
 				"route_name": "Researcher",
 				"condition": "When more evidence is required",
 				"sub_agent_step": {
-					"type": "message_sequence",
+					"type": "agent",
 					"id": "researcher",
 					"title": "Researcher",
 					"description": "Collect the requested evidence.",
@@ -36,54 +36,54 @@ func TestMessageSequenceParsesBoundedAgentRoutes(t *testing.T) {
 	if len(plan.Steps) != 1 {
 		t.Fatalf("steps = %d, want 1", len(plan.Steps))
 	}
-	step, ok := plan.Steps[0].(*MessageSequencePlanStep)
+	step, ok := plan.Steps[0].(*AgentPlanStep)
 	if !ok {
-		t.Fatalf("step type = %T, want *MessageSequencePlanStep", plan.Steps[0])
+		t.Fatalf("step type = %T, want *AgentPlanStep", plan.Steps[0])
 	}
 	if len(step.PredefinedRoutes) != 1 {
 		t.Fatalf("routes = %d, want 1", len(step.PredefinedRoutes))
 	}
-	if _, ok := step.PredefinedRoutes[0].SubAgentStep.(*MessageSequencePlanStep); !ok {
-		t.Fatalf("route step type = %T, want *MessageSequencePlanStep", step.PredefinedRoutes[0].SubAgentStep)
+	if _, ok := step.PredefinedRoutes[0].SubAgentStep.(*AgentPlanStep); !ok {
+		t.Fatalf("route step type = %T, want *AgentPlanStep", step.PredefinedRoutes[0].SubAgentStep)
 	}
 	if err := validateLoadedPlanStructure(&plan); err != nil {
 		t.Fatalf("validate delegating message_sequence: %v", err)
 	}
 }
 
-func TestDelegatingMessageSequenceUsesAgentRuntimeAdapter(t *testing.T) {
-	sequence := &MessageSequencePlanStep{
-		Type: StepTypeMessageSeq,
+func TestDelegatingAgentUsesAgentRuntimeAdapter(t *testing.T) {
+	sequence := &AgentPlanStep{
+		Type: StepTypeAgent,
 		CommonStepFields: CommonStepFields{
 			ID:          "agent",
 			Title:       "Agent",
 			Description: "Choose specialists and complete the outcome.",
 		},
-		Items: []MessageSequenceItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
+		Items: []AgentItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
 		PredefinedRoutes: []PlanOrchestrationRoute{{
 			RouteID:   "specialist",
 			RouteName: "Specialist",
 			Condition: "When specialist work is needed",
-			SubAgentStep: &MessageSequencePlanStep{
-				Type:             StepTypeMessageSeq,
+			SubAgentStep: &AgentPlanStep{
+				Type:             StepTypeAgent,
 				CommonStepFields: CommonStepFields{ID: "specialist", Title: "Specialist", Description: "Do specialist work."},
-				Items:            []MessageSequenceItem{{ID: "done", Type: "user_message", Message: "Finish."}},
+				Items:            []AgentItem{{ID: "done", Type: "user_message", Message: "Finish."}},
 			},
 		}},
 		NextStepID: "end",
 	}
 
-	adapted := delegatingMessageSequenceAsOrchestrator(sequence)
+	adapted := sequence
 	if adapted == nil || adapted.ID != sequence.ID {
 		t.Fatalf("adapter did not preserve sequence identity: %#v", adapted)
 	}
 	if len(adapted.PredefinedRoutes) != 1 || adapted.PredefinedRoutes[0].RouteID != "specialist" {
 		t.Fatalf("adapter routes = %#v", adapted.PredefinedRoutes)
 	}
-	if len(adapted.Messages) != 1 || adapted.Messages[0].ID != "verify" {
-		t.Fatalf("adapter messages = %#v", adapted.Messages)
+	if len(adapted.Items) != 1 || adapted.Items[0].ID != "verify" {
+		t.Fatalf("adapter messages = %#v", adapted.Items)
 	}
-	if !messageSequenceDelegationItemAllowed(MessageSequenceItem{Type: "scripted"}) {
+	if !agentSequenceDelegationItemAllowed(AgentItem{Type: "scripted"}) {
 		t.Fatal("delegating agent sequence should retain safe declared scripted batches")
 	}
 }

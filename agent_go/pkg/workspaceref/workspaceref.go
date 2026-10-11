@@ -25,7 +25,9 @@ const (
 const SharedCrewRoot = w.SharedCrewRoot
 
 // SharedProjectPath builds "Crew/<project>/<rel...>".
-func SharedProjectPath(project string, rel ...string) string { return w.SharedProjectPath(project, rel...) }
+func SharedProjectPath(project string, rel ...string) string {
+	return w.SharedProjectPath(project, rel...)
+}
 
 // ProjectRoots lists every project product root, in lookup order.
 var ProjectRoots = w.ProjectRoots

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestMessageSequenceRouteLockSerializesOnlyMatchingRoute(t *testing.T) {
+func TestAgentRouteLockSerializesOnlyMatchingRoute(t *testing.T) {
 	orchestrator := &StepBasedWorkflowOrchestrator{}
 	unlockFirst := orchestrator.lockMsgSeqRoute("step/route-a")
 
@@ -26,12 +26,12 @@ func TestMessageSequenceRouteLockSerializesOnlyMatchingRoute(t *testing.T) {
 	select {
 	case <-differentRouteAcquired:
 	case <-time.After(time.Second):
-		t.Fatal("different message-sequence routes should execute concurrently")
+		t.Fatal("different agent routes should execute concurrently")
 	}
 
 	select {
 	case <-sameRouteAcquired:
-		t.Fatal("the same stateful message-sequence route executed concurrently")
+		t.Fatal("the same stateful agent route executed concurrently")
 	case <-time.After(50 * time.Millisecond):
 	}
 
@@ -39,6 +39,6 @@ func TestMessageSequenceRouteLockSerializesOnlyMatchingRoute(t *testing.T) {
 	select {
 	case <-sameRouteAcquired:
 	case <-time.After(time.Second):
-		t.Fatal("waiting message-sequence route did not resume after its predecessor")
+		t.Fatal("waiting agent route did not resume after its predecessor")
 	}
 }

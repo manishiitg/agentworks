@@ -88,9 +88,9 @@ func TestScriptedRouteDirectToolsOfferOnlyScriptedRoutesWithoutShadowing(t *test
 	scripted := func(id string, params map[string]ScriptParameterDefinition) *RegularPlanStep {
 		return &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "Look up one customer by id", ScriptParameters: params}}
 	}
-	step := &OrchestratorPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, PredefinedRoutes: []PlanOrchestrationRoute{
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, PredefinedRoutes: []PlanOrchestrationRoute{
 		{RouteID: "lookup-customer", Condition: "When a customer id is known", SubAgentStep: scripted("lookup", map[string]ScriptParameterDefinition{"customer_id": {Type: "string", Description: "Id", Required: true}})},
-		{RouteID: "research", SubAgentStep: &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "research"}}},
+		{RouteID: "research", SubAgentStep: &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "research"}}},
 		{RouteID: "execute_shell_command", SubAgentStep: scripted("shadow", nil)},
 		{RouteID: "broken", SubAgentStep: scripted("broken", map[string]ScriptParameterDefinition{"bad name": {Type: "string", Description: "x"}})},
 	}}
@@ -179,7 +179,7 @@ func TestScriptedRouteToolUsesTheFullSchema(t *testing.T) {
 	base.SetWorkspacePath("Workflow/demo")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 	schema := map[string]interface{}{"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "additionalProperties": false}
-	step := &OrchestratorPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, PredefinedRoutes: []PlanOrchestrationRoute{
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, PredefinedRoutes: []PlanOrchestrationRoute{
 		{RouteID: "lookup", SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup", Description: "d", ScriptParametersSchema: schema}}},
 	}}
 	execCtx := &SubAgentExecutionContext{OrchestratorStep: step}
@@ -268,7 +268,7 @@ func TestAuthoredScriptToolCollisionsFailInsteadOfBeingAdvertised(t *testing.T) 
 		return PlanOrchestrationRoute{RouteID: id, RouteName: id, Condition: "when " + id, SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Description: "d"}, ScriptOnly: true}}
 	}
 	authored := func(routes ...PlanOrchestrationRoute) *SubAgentExecutionContext {
-		return &SubAgentExecutionContext{OrchestratorStep: &OrchestratorPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, AuthoredPrompt: true, SystemPrompt: "x", PredefinedRoutes: routes}}
+		return &SubAgentExecutionContext{OrchestratorStep: &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, AuthoredPrompt: true, SystemPrompt: "x", PredefinedRoutes: routes}}
 	}
 
 	// A platform-name collision is an error, not a silently missing tool.
