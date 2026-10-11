@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "agentworks-muse",
   "displayName": "AgentWorks",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Receive AgentWorks messages in an explicitly attached Muse session.",
   "compat": {"source": "native", "manifestDir": ".muse-plugin"},
   "capabilities": {

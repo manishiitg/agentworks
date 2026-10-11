@@ -4,6 +4,13 @@
 the shared AgentWorks CLI supports Muse. Current shared releases reject
 `agentworks plugin hook muse` and `agentworks plugin mcp muse`; installation and
 inspection can be tested now, but attachment and live delivery cannot work yet.
+The observed startup error (exit 1) is:
+
+```text
+Required MCP server `agentworks` failed during startup: the transport closed unexpectedly.
+```
+
+See the diagnostic details below.
 
 This native Muse plugin packages an AgentWorks MCP connection, messaging skill,
 person command and UserPromptSubmit, Stop and SessionEnd hooks. It uses the shared
