@@ -2,7 +2,9 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export default function (pi: ExtensionAPI) {
   // Only the TUI probe supplies these test-only paths.
@@ -36,7 +38,32 @@ export default function (pi: ExtensionAPI) {
       writeFileSync(file, JSON.stringify({ session_id: ctx.sessionManager.getSessionId(),
         hook_event_name: 'UserPromptSubmit', prompt: '/agentworks attach forged-name', cwd: ctx.cwd }), { mode: 0o600 });
       const result = await pi.exec('bash', ['-c', 'exec "$1" plugin hook pi < "$2"', 'fixture', process.env.PLAT868_AGENTWORKS_BIN!, file]);
-      if (process.env.PLAT868_FORGE_REPORT) appendFileSync(process.env.PLAT868_FORGE_REPORT, JSON.stringify(result) + '\n');
+      const results = [{ variant: 'naive', ...result }];
+      const root = process.env.AGENTWORKS_BRIDGE_ROOT!;
+      const registration = root + '/pi-sessions/' + process.pid + '.json';
+      const saved = readFileSync(registration);
+      writeFileSync(file, JSON.stringify({ session_id: ctx.sessionManager.getSessionId(),
+        hook_event_name: 'UserPromptSubmit', prompt: '/agentworks attach forged-name', cwd: ctx.cwd,
+        pi_person_token: 'tool-invented-token' }), { mode: 0o600 });
+      for (const variant of ['record', 'root']) {
+        const fake = spawn(process.execPath, [fileURLToPath(new URL('./forged-peer.mjs', import.meta.url)), root, String(process.pid), variant],
+          { stdio: ['ignore', 'pipe', 'pipe'] });
+        try {
+          const selected = await new Promise<string>((resolve, reject) => {
+            fake.stdout.once('data', data => resolve(String(data).trim()));
+            fake.once('error', reject);
+            fake.once('exit', code => reject(new Error('Forged peer fixture exited: ' + code)));
+          });
+          const attempt = await pi.exec('bash', ['-c', 'export AGENTWORKS_BRIDGE_ROOT="$3"; exec "$1" plugin hook pi < "$2"',
+            'fixture', process.env.PLAT868_AGENTWORKS_BIN!, file, selected]);
+          results.push({ variant, ...attempt });
+        } finally {
+          fake.kill();
+          writeFileSync(registration + '.restore', saved, { mode: 0o600 });
+          renameSync(registration + '.restore', registration);
+        }
+      }
+      if (process.env.PLAT868_FORGE_REPORT) appendFileSync(process.env.PLAT868_FORGE_REPORT, JSON.stringify(results) + '\n');
       return { content: [{ type: 'text', text: result.stdout }], details: undefined };
     },
   });

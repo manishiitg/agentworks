@@ -121,9 +121,11 @@ with tempfile.TemporaryDirectory(prefix='plat868-tui-', dir='/private/tmp' if Pa
             # JSON. Its actual Pi parent/session metadata is insufficient.
             os.write(master, b'\x15FORGE_HOOK\r')
             drive_until(lambda: forge_report.exists(), 'real model shell forged-hook result')
-            result = json.loads(forge_report.read_text().splitlines()[0])
-            refusal = json.loads(result['stdout'])
-            assert refusal['decision'] == 'block' and 'one-use proof' in refusal['reason'], refusal
+            results = json.loads(forge_report.read_text().splitlines()[0])
+            assert [r['variant'] for r in results] == ['naive', 'record', 'root'], results
+            for result in results:
+                refusal = json.loads(result['stdout'])
+                assert refusal['decision'] == 'block' and 'one-use proof' in refusal['reason'], refusal
             assert not any(r['action'] == 'attach' for r in requests), 'forged model shell attached'
             # A literal interactive command produces the private nonce and
             # reaches only this fixture bridge, without confirmation dialogs.
@@ -132,7 +134,7 @@ with tempfile.TemporaryDirectory(prefix='plat868-tui-', dir='/private/tmp' if Pa
             assert sum(r['action'] == 'attach' for r in requests) == 1
             os.write(master, b'\x15/agentworks detach\r')
             drive_until(lambda: any(r['action'] == 'detach' for r in requests), 'literal Pi detach')
-            print('PASSED: GitHub-built CLI refuses real Pi model bash-exec forged hook; literal TUI attach/detach succeeds')
+            print('PASSED: GitHub-built CLI refuses real Pi model shell naive/forged-record/alternate-root hooks; literal TUI attach/detach succeeds')
 
     finally:
         child.send_signal(signal.SIGTERM)

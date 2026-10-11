@@ -22,7 +22,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
-// The override is person-configured SDK routing, never hook/tool payload data.
+// The override selects SDK routing; an environment value is not person proof.
 // Other providers retain the shared default unchanged.
 func piBridgeRoot() (string, error) {
 	root := os.Getenv("AGENTWORKS_BRIDGE_ROOT")
@@ -62,6 +62,9 @@ func piProcessFields(fields []string) bool {
 		return false
 	}
 	for _, field := range fields[1:] {
+		if !strings.HasSuffix(field, ".js") && !strings.HasSuffix(field, ".mjs") {
+			continue
+		}
 		resolved, err := filepath.EvalSymlinks(field)
 		if err != nil {
 			continue
@@ -160,7 +163,7 @@ func activatePiSession(ctx context.Context, root, host, session, lease string) e
 		return err
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", record.Socket)
+		return dialPiSDK(ctx, record)
 	}}
 	defer transport.CloseIdleConnections()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/activate", bytes.NewReader(body))
@@ -180,6 +183,37 @@ func activatePiSession(ctx context.Context, root, host, session, lease string) e
 		return errors.New("Pi refused activation of this exact lease; type /agentworks attach in that chat")
 	}
 	return nil
+}
+
+// Same-user records and socket paths can be replaced by a model shell. Check
+// the kernel peer before sending any nonce or accepting an SDK response.
+func dialPiSDK(ctx context.Context, record piSessionRecord) (net.Conn, error) {
+	connection, err := (&net.Dialer{}).DialContext(ctx, "unix", record.Socket)
+	if err != nil {
+		return nil, err
+	}
+	refuse := func() (net.Conn, error) {
+		_ = connection.Close()
+		return nil, errors.New("Pi SDK socket does not belong to its exact live process")
+	}
+	socket, ok := connection.(*net.UnixConn)
+	if !ok {
+		return refuse()
+	}
+	raw, err := socket.SyscallConn()
+	if err != nil {
+		return refuse()
+	}
+	var pid int
+	var peerErr error
+	if err = raw.Control(func(fd uintptr) { pid, peerErr = piSocketPeerPID(int(fd)) }); err != nil || peerErr != nil || pid != record.PID {
+		return refuse()
+	}
+	host, err := piPIDHostKey(pid)
+	if err != nil || host != record.Host {
+		return refuse()
+	}
+	return connection, nil
 }
 
 // Installation uses the bundled source or this exact stamped source revision.
@@ -270,7 +304,7 @@ func confirmPiPersonInput(ctx context.Context, root, host, session, prompt, toke
 		return err
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", record.Socket)
+		return dialPiSDK(ctx, record)
 	}}
 	defer transport.CloseIdleConnections()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/person-input", bytes.NewReader(body))

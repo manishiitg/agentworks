@@ -5,8 +5,10 @@
 Pi person commands run through the SDK interactive input hook, since registered
 slash commands execute before the source check. A one-use in-memory nonce binds
 the literal command/session and is confirmed through the private SDK socket before
-the hook acts; parent PID alone is insufficient because a model shell can exec
-the CLI directly. Terminal attach selects a private
+the hook acts. Kernel socket peer PID and current Pi birth identity must match
+the discovery record before a request is sent; a same-user model shell can
+replace that record or exec the CLI directly. The root environment setting
+selects routing and supplies no person authority. Terminal attach selects a private
 SDK record bound to the live PID/start and native session UUID; lease-only local
 activation checks the already authorized bridge attachment before starting one
 consumer. Native frame display is local evidence; admission and processing require
@@ -19,7 +21,8 @@ reattachment and crashes without letting sender text control attachment.
 
 The nonce proof is Pi-only; Claude/Codex forged-hook origins are tracked separately
 in PLAT-861 issue861-90. Same-OS-user filesystem/credential access remains outside
-this prompt-provenance guarantee.
+this prompt-provenance guarantee; this is not isolation against modifying the
+Pi runtime itself or using the person's bridge credentials.
 
 Ticket: [PLAT-868](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-868.md), under PLAT-861 issue861-44.
 

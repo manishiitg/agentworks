@@ -11,11 +11,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 )
 
 // Pin the reported process/session ambiguity at the real Unix activation
-// boundary, including PID birth, private records and nofollow reads.
+// boundary, including PID birth, forged peer sockets and nofollow reads.
 func TestPiSDKRecordAndLeaseActivation(t *testing.T) {
 	root, err := os.MkdirTemp("", "pi-sdk-")
 	if err != nil {
@@ -76,7 +77,9 @@ func TestPiSDKRecordAndLeaseActivation(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := "11111111-2222-4333-8444-555555555555"
+	var requests atomic.Int32
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		var input struct {
 			Host    string `json:"host_key"`
 			Session string `json:"session_id"`
@@ -103,8 +106,14 @@ func TestPiSDKRecordAndLeaseActivation(t *testing.T) {
 	if err := activatePiSession(context.Background(), root, key, session, "wrong-lease"); err == nil {
 		t.Fatal("wrong lease activated")
 	}
-	if err := activatePiSession(context.Background(), root, key, session, "person-lease"); err != nil {
-		t.Fatal(err)
+	if err := activatePiSession(context.Background(), root, key, session, "person-lease"); err == nil {
+		t.Fatal("same-user socket with forged Pi registration activated")
+	}
+	if err := confirmPiPersonInput(context.Background(), root, key, session, "/agentworks attach", "tool-token"); err == nil {
+		t.Fatal("same-user socket with forged Pi registration confirmed person input")
+	}
+	if requests.Load() != 0 {
+		t.Fatal("request sent to forged SDK peer before identity validation")
 	}
 	record.Host = "stale-birth"
 	write()

@@ -42,6 +42,8 @@ slash commands are deliberately avoided because Pi dispatches them before its
 input source hook. RPC, print and extension-generated text cannot attach/detach.
 The hook consumes a one-use command/session nonce held only in SDK memory; parent
 PID alone cannot distinguish a person from a model shell that execs the CLI. A
+kernel socket peer check binds proof and activation to the actual Pi process,
+so replacing the registration with a tool-owned socket does not supply proof. A
 non-exec shell shim for agentworks on PATH breaks the direct-parent check; use
 the native CLI binary. No attach/detach tool is exposed to the model. Model shell access is not a
 security boundary against the person's own local OS credentials.
@@ -64,6 +66,8 @@ SDK discovery/activation metadata, without starting delivery timers or remote
 listeners. The default bridge root is the system user cache under
 `agentworks/bridge`; `AGENTWORKS_BRIDGE_ROOT` selects an alternate private root.
 Directory/socket must belong to the current user with no group/other access.
+The root setting selects routing; tool-controlled environment and private files
+are not evidence of person input. Socket peer identity must still match Pi.
 Windows needs a supported shared IPC adapter; unsupported startup fails closed.
 
 Attached input uses `sendUserMessage` with `deliverAs: 'followUp'` and
