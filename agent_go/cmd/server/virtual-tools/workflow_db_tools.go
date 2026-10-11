@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"log"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -470,6 +471,9 @@ func resolveWorkflowDBSession(ctx context.Context, fallbackSessionID string) (st
 		return "", nil, fmt.Errorf("workflow database context is unavailable: missing trusted session")
 	}
 	cfg := common.GetSessionShellConfig(sessionID)
+	if strings.HasPrefix(sessionID, "external-crew-") {
+		log.Printf("[CREW_DEBUG] DB session=%q config=%v", sessionID, cfg != nil)
+	}
 	if cfg == nil {
 		return "", nil, fmt.Errorf("workflow database context is unavailable for session %q", sessionID)
 	}
