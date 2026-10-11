@@ -495,9 +495,9 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	cancel, done = start()
 	defer cancel()
 	local(nativeAttach)
-	status := base
-	status.Action = "status"
-	if local(status).NativeRouteStatus != "stale" {
+	routeStatus := base
+	routeStatus.Action = "status"
+	if local(routeStatus).NativeRouteStatus != "stale" {
 		t.Fatal("stale native route reported healthy")
 	}
 	send("registration changed before content write")
@@ -511,7 +511,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 			t.Fatal("definite pre-write failure was not repaired")
 		}
 	}
-	if local(status).NativeRouteStatus != "ok" {
+	if local(routeStatus).NativeRouteStatus != "ok" {
 		t.Fatal("replacement native route not persisted")
 	}
 	select {

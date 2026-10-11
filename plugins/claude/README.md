@@ -62,3 +62,15 @@ replaced once from the person's current login. Cleanup retires message-ID reply
 metadata; recover with an inbox read and reply using the original `--inbox`.
 
 The person chooses only the attachment name. The attached agent can describe its work with `agent_message_set_purpose` or `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. Purpose updates cannot attach, rename or grant permissions.
+
+### Updates from GitHub
+
+The marketplace source is `manishiitg/agentworks` on GitHub. Refresh it and
+install the newest published plugin; reload the provider as required.
+
+```sh
+claude plugin marketplace update agentworks
+claude plugin update agentworks@agentworks
+```
+
+Plugin updates do not update the AgentWorks CLI or server, attach chats, or approve hook trust.

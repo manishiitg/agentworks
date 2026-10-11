@@ -75,3 +75,15 @@ replaced once from the person's current login. Cleanup retires message-ID reply
 metadata; recover with an inbox read and reply using the original `--inbox`.
 
 The person chooses only the attachment name. The attached agent can describe its work with `agent_message_set_purpose` or `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. On macOS, optional `terminal-notifier` provides a notification click action for the exact Codex thread; without it, the basic alert must be followed by opening the chat manually.
+
+### Updates from GitHub
+
+The marketplace source is `manishiitg/agentworks` on GitHub. Refresh it and
+install the newest published plugin; reload the provider as required.
+
+```sh
+codex plugin marketplace upgrade agentworks
+codex plugin add agentworks-codex@agentworks
+```
+
+Plugin updates do not update the AgentWorks CLI or server, attach chats, or approve hook trust.
