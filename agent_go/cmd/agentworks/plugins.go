@@ -676,8 +676,9 @@ func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
 					args = append(args, "-open", "codex://threads/"+id.String())
 				}
 			}
-			_ = exec.CommandContext(ctx, helper, args...).Run()
-			return
+			if exec.CommandContext(ctx, helper, args...).Run() == nil {
+				return
+			}
 		}
 		// Without the optional helper macOS attributes this basic alert to Script Editor.
 		// No click-through claim: the person must open their agent chat manually.

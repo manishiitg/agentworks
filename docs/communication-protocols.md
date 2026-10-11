@@ -249,7 +249,13 @@ For separate agent connections, set `AGENTWORKS_CONFIG` to an independent privat
 CLI config before launching that provider. Shared configs still share authority.
 Bare attach proposes a unique name for this exact provider session.
 The person confirms with `/agentworks attach --confirm`, or chooses
-`/agentworks attach NAME`. All account senders are accepted; sender
+`/agentworks attach NAME`. Purpose is optional at attachment. The attached agent
+sets one line of up to 80 characters with `agent_message_set_purpose` or
+`agentworks bridge message purpose --provider codex --purpose "Review changes"`
+(use `claude` for Claude). Updates check the exact lease, cannot rename or attach,
+and allow at most one change per minute. Set it once after attachment; update
+when the person asks or after 24 hours if the work clearly changed.
+All account senders are accepted; sender
 allow fields have been removed. Existing attachments created under the old policy
 are held offline until the person confirms `/agentworks resume`; their sender
 permissions never widen silently. Update the server before installing this CLI. Claude's namespaced command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
@@ -257,7 +263,10 @@ consumes this person command before the model receives it and supplies its exact
 session_id. The Claude channel child is bound to its own ancestor PID plus process
 start time; it learns the session ID from this hook registration, never by selecting
 the newest chat or by a project/name match. No per-session native ID flag is needed
-for the plugin. An agent MCP tool cannot attach/detach.
+for the plugin. An agent MCP tool cannot attach/detach. Attach/status show whether the selected
+route is native live delivery or hooks. Optional macOS `terminal-notifier` alerts
+link to the exact Codex thread when notification access is enabled; otherwise
+a basic alert requires opening the chat manually.
 
 Default UserPromptSubmit and Stop hooks only use the private local socket; an
 unattached hook emits nothing and makes no server request. Stop loop guards prevent
