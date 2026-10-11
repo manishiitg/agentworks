@@ -496,5 +496,5 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	// A grant with no workflow IDs reaches every workflow the account may use (Builder included, bounded by the
 	// account's live role); an older Builder grant keeps the IDs it was given.
 	allCrews := slices.Contains(grant.Scopes, "dashboards:read") || slices.Contains(grant.Scopes, "crews:read") || slices.Contains(grant.Scopes, "crews:run") || slices.Contains(grant.Scopes, "crews:write")
-	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0, AllCrews: allCrews, ExpiresAt: grant.Expires}
+	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
 }

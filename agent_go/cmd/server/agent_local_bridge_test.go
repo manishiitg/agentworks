@@ -140,6 +140,38 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("wrong exact session")
 	}
+	// One parent can manage both names, but a derived child cannot impersonate
+	// the other agent or fetch the parent's general tool catalog.
+	call(receiver, map[string]any{"action": "register", "agent_name": "other-agent"})
+	files, e := filepath.Glob(filepath.Join(root, "connections", "*.json"))
+	if e != nil || len(files) != 1 {
+		t.Fatal("missing private child connection")
+	}
+	cfg, e := agentworksclient.LoadConfig(files[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	child, e := agentworksclient.New(cfg.Server, cfg.Token)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = child.Call(context.Background(), "messages", map[string]any{"action": "read", "agent_name": "other-agent"}); e == nil {
+		t.Fatal("child read another agent")
+	}
+	if _, e = child.Tools(context.Background()); e == nil {
+		t.Fatal("child obtained full catalog")
+	}
+	grant, e := store.Authenticate(context.Background(), cfg.Token)
+	if e != nil || grant.BoundAgentName != "hook-reviewer" || grant.BoundAgentID == "" {
+		t.Fatal("child lacks stable identity binding")
+	}
+	refreshCfg, e := receiver.CreateAgentConnection(context.Background(), "other-agent")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if refreshed, _, _, e := store.Refresh(context.Background(), refreshCfg.RefreshToken, cliOAuthClientID, srv.URL+"/api/external/v1"); e != nil || refreshed.BoundAgentName != "other-agent" {
+		t.Fatal("child refresh lost binding", e)
+	}
 	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{}); e != nil || out.IsError {
 		t.Fatalf("attached directory failed: %+v %v", out, e)
 	}
@@ -198,6 +230,31 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if len(responses) != 1 || responses[0].(map[string]any)["inbox_id"] != offer.Messages[0].InboxID {
 		t.Fatal("reply lost conversation")
 	}
+	cleanup := base
+	cleanup.Action = "cleanup"
+	local(cleanup)
+	stop(cancel, done)
+	cancel, done = start()
+	defer cancel()
+	if out := local(drain); len(out.Messages) != 0 {
+		t.Fatal("cleanup replayed an ambiguous offer")
+	}
+	offline := base
+	offline.Action = "offline"
+	local(offline)
+	statusOffline := base
+	statusOffline.Action = "status"
+	if out := local(statusOffline); out.Attached || !out.Offline || out.Attachment.AgentName != "hook-reviewer" {
+		t.Fatal("session end lost identity")
+	}
+	if out := local(drain); len(out.Messages) != 0 {
+		t.Fatal("offline session received a turn")
+	}
+	resume := base
+	resume.Action = "resume"
+	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
+		t.Fatal("person-confirmed exact resume failed")
+	}
 	wrong := drain
 	wrong.SessionID = "another-session"
 	wrong.HostKey = "another-host"
@@ -238,4 +295,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("revoked receiver cached body released")
 	}
 	stop(cancel, done)
+	if _, _, _, e := store.Refresh(context.Background(), cfg.RefreshToken, cliOAuthClientID, srv.URL+"/api/external/v1"); e == nil {
+		t.Fatal("child refreshed after parent revocation")
+	}
 }

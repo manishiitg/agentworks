@@ -118,24 +118,35 @@ func pluginCommand(o *options) *cobra.Command {
 				if err = ensureLocalBridge(ctx, root, o); err != nil {
 					return pluginBlock(o, err.Error())
 				}
-			case "detach", "status":
+			case "detach", "status", "resume", "cleanup":
 				if len(words) != 2 {
 					return pluginBlock(o, "detach and status take no arguments")
 				}
 			default:
-				return pluginBlock(o, "Use attach, detach or status.")
+				return pluginBlock(o, "Use attach, resume, detach, cleanup or status.")
 			}
 			out, err = agentworksclient.CallLocalBridge(ctx, root, req)
 			if err != nil {
 				return pluginBlock(o, err.Error())
+			}
+			if out.Offline {
+				return pluginBlock(o, "AgentWorks identity retained offline as agent:"+out.Attachment.AgentName+". Submit /agentworks resume to confirm reconnecting this exact session.")
 			}
 			if out.Attached {
 				return pluginBlock(o, "AgentWorks attached as agent:"+out.Attachment.AgentName+" ("+out.Attachment.Purpose+"). Hooks deliver at turn boundaries; idle native wake needs explicit provider setup.")
 			}
 			return pluginBlock(o, "This conversation is not attached to AgentWorks.")
 		}
+		if input.Event == "SessionStart" {
+			req.Action = "status"
+			out, e := agentworksclient.CallLocalBridge(ctx, root, req)
+			if e == nil && out.Offline {
+				return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": "AgentWorks identity agent:" + out.Attachment.AgentName + " is offline. The person can submit /agentworks resume to confirm reconnecting this exact session."}})
+			}
+			return nil
+		}
 		if input.Event == "SessionEnd" {
-			req.Action = "detach"
+			req.Action = "offline"
 		} else if input.Event == "Stop" || input.Event == "UserPromptSubmit" {
 			if input.Event == "Stop" && input.StopActive {
 				return nil

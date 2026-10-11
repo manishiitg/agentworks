@@ -5,9 +5,9 @@ Install the AgentWorks CLI and sign in with `agentworks login`. Run
 approve the provider's trust prompts; reload/restart the provider as it requires.
 Installation does not attach a conversation. The MCP child has only messaging
 tools and stays unavailable until this exact session is attached. Install a full
-AgentWorks MCP connection separately only when broader tools are wanted. Use independent private sign-ins or
-configs for distinct agents (set AGENTWORKS_CONFIG before launching each provider);
-shared credentials share mailbox authority.
+AgentWorks MCP connection separately only when broader tools are wanted. The daemon derives a private messaging-only child connection for each attached
+agent. It is bound to that stable agent ID/name, and parent sign-out revokes it.
+Named-peer messages use this child; product functions require a separate connection.
 
 In the chat type `/agentworks attach NAME "PURPOSE" --allow-sender SENDER`
 (or explicitly `--allow-none`), `/agentworks status`, or `/agentworks detach`.
@@ -20,15 +20,20 @@ Default hooks run without channel launch flags. Unattached hooks make no network
 request and emit nothing. Attached hooks drain a private local bridge socket;
 the bridge holds the server event stream and persists offers before handing them
 in. It does not poll the mailbox. Stop hooks respect the host loop guard.
-Closing the session detaches through SessionEnd when the host emits it.
+Closing the session marks it offline when the host emits SessionEnd. Its name
+and journal remain. Submit `/agentworks resume` in the same session to confirm
+reconnecting, or `/agentworks detach` to revoke and remove the attachment.
 
 Durable offers prevent automatic duplicates after restart. A crash between
 persisting an offer and delivering it is ambiguous: read the mailbox explicitly
 instead of automatically replaying a possible turn. SDK/stdout writes do not
-prove model receipt. Acknowledgements do not reclaim the local ID quota; detach
-clears this bridge cache. Legacy direct-channel journals have separate retention. Use admitted/processed acknowledgements and explicit replies
-in the original conversation. The local cache is private, bounded to 2,000
-messages per session and 32 MiB total; it persists until detach. No message bodies
+prove model receipt. Bodies are cleared on offer and acknowledgement; processed metadata is reclaimed
+under quota pressure, and offered metadata after seven days. `/agentworks cleanup`
+reclaims offered metadata while retaining pending bodies and the receive watermark.
+Retired messages require an explicit inbox read/reply. Legacy direct channels
+store bounded metadata without bodies. Use admitted/processed acknowledgements
+and explicit replies in the original conversation. The private local cache is
+bounded to 2,000 pending messages per session and 32 MiB total. No message bodies
 are included in desktop notifications.
 
 Codex requires explicit trust of plugin hooks; the installer never bypasses it.

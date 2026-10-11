@@ -26,6 +26,37 @@ jobs:
     with:
       arch: arm64
 
+  darwin-live:
+    if: >-
+      contains(github.event.head_commit.message, 'Verify-Darwin-Live: true')
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - name: Build local runtime artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime-artifacts
+          (cd agent_go && go mod download && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.cliVersion=$GITHUB_SHA" -o ../runtime-artifacts/agentworks ./cmd/agentworks)
+          bash scripts/build-darwin-voice-binary.sh agent_go runtime-artifacts/agent-server arm64
+          (cd workspace && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../runtime-artifacts/workspace-server .)
+          cp -R plugins runtime-artifacts/plugins
+          printf '%s\n' "$GITHUB_SHA" > runtime-artifacts/revision.txt
+          (cd runtime-artifacts && shasum -a 256 agentworks agent-server workspace-server > SHA256SUMS)
+          tar -czf agentworks-darwin-live.tar.gz runtime-artifacts
+      - uses: actions/upload-artifact@v6
+        with:
+          name: agentworks-darwin-live
+          path: agentworks-darwin-live.tar.gz
+          retention-days: 3
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 40

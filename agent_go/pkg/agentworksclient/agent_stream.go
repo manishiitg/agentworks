@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // AgentAttachment identifies one explicitly attached native conversation. An
@@ -118,4 +119,22 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 		return err
 	}
 	return errors.New("agent stream disconnected")
+}
+
+// CreateAgentConnection derives a messaging-only identity from the person's
+// explicit CLI login. The returned secret stays in the private local daemon.
+func (c *Client) CreateAgentConnection(ctx context.Context, name string) (Config, error) {
+	raw, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "connection", "agent_name": name}, true)
+	if err != nil {
+		return Config{}, err
+	}
+	var v struct {
+		Access  string `json:"access_token"`
+		Refresh string `json:"refresh_token"`
+		Expires int    `json:"expires_in"`
+	}
+	if json.Unmarshal(raw, &v) != nil || v.Access == "" || v.Refresh == "" {
+		return Config{}, errors.New("invalid agent connection response")
+	}
+	return Config{Server: c.baseURL, Token: v.Access, RefreshToken: v.Refresh, ExpiresAt: time.Now().Add(time.Duration(v.Expires) * time.Second)}, nil
 }

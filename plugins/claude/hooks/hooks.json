@@ -44,6 +44,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentworks plugin hook claude",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

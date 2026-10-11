@@ -46,26 +46,32 @@ type LocalBridgeReply struct {
 	Result     json.RawMessage    `json:"result,omitempty"`
 	Sessions   []AgentAttachment  `json:"sessions,omitempty"`
 	LastError  string             `json:"last_error,omitempty"`
+	Offline    bool               `json:"offline,omitempty"`
 	Pending    int                `json:"pending"`
 }
 
 type localOffer struct {
 	AgentLiveMessage
-	Offered    bool   `json:"offered"`
-	Suppressed bool   `json:"suppressed,omitempty"`
-	Transport  string `json:"transport,omitempty"`
+	Offered    bool      `json:"offered"`
+	Suppressed bool      `json:"suppressed,omitempty"`
+	Transport  string    `json:"transport,omitempty"`
+	OfferedAt  time.Time `json:"offered_at,omitempty"`
 }
 
 type localSession struct {
-	Attachment   AgentAttachment       `json:"attachment"`
-	HostKey      string                `json:"host_key,omitempty"`
-	NativeRemote string                `json:"native_remote,omitempty"`
-	LastError    string                `json:"last_error,omitempty"`
-	ConfigPath   string                `json:"config_path"`
-	Offers       map[string]localOffer `json:"offers"`
-	client       *Client
-	cancel       context.CancelFunc
-	nativeCalls  int
+	SeenThrough      int                   `json:"seen_through,omitempty"`
+	Offline          bool                  `json:"offline,omitempty"`
+	ParentConfigPath string                `json:"parent_config_path,omitempty"`
+	AllowedSenders   []string              `json:"allowed_senders,omitempty"`
+	Attachment       AgentAttachment       `json:"attachment"`
+	HostKey          string                `json:"host_key,omitempty"`
+	NativeRemote     string                `json:"native_remote,omitempty"`
+	LastError        string                `json:"last_error,omitempty"`
+	ConfigPath       string                `json:"config_path"`
+	Offers           map[string]localOffer `json:"offers"`
+	client           *Client
+	cancel           context.CancelFunc
+	nativeCalls      int
 }
 
 type localBridge struct {
@@ -203,6 +209,11 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		if s == nil {
 			return errors.New("invalid attached session state")
 		}
+		for _, v := range s.Offers {
+			if v.Sequence > s.SeenThrough {
+				s.SeenThrough = v.Sequence
+			}
+		}
 		if s.Offers == nil {
 			s.Offers = map[string]localOffer{}
 		}
@@ -213,7 +224,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		}
 	}
 	for _, s := range b.sessions {
-		if s.client != nil {
+		if s.client != nil && !s.Offline {
 			b.start(ctx, s)
 		}
 	}
@@ -272,15 +283,19 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				if b.closed || streamCtx.Err() != nil {
 					return context.Canceled
 				}
-				if s.Offers[m.MessageID].MessageID != "" {
+				if s.Offers[m.MessageID].MessageID != "" || m.Sequence <= s.SeenThrough {
 					return nil
 				}
+				compactLocalOffers(s, false)
 				if len(s.Offers) >= 2000 {
-					return errors.New("local pending journal is full; read and acknowledge messages explicitly")
+					return errors.New("local pending journal is full; use agent_message_read to recover and acknowledge pending messages, then /agentworks cleanup")
 				}
+				previousThrough := s.SeenThrough
+				s.SeenThrough = m.Sequence
 				s.Offers[m.MessageID] = localOffer{AgentLiveMessage: m}
 				if err := b.save(); err != nil {
 					delete(s.Offers, m.MessageID)
+					s.SeenThrough = previousThrough
 					return err
 				}
 				b.wake()
@@ -343,6 +358,17 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		sort.Slice(out.Sessions, func(i, j int) bool { return out.Sessions[i].AgentName < out.Sessions[j].AgentName })
 		return out
 	}
+	if in.Action == "resume" {
+		if s == nil || !s.Offline {
+			return LocalBridgeReply{Error: "This exact session has no offline attachment to resume."}
+		}
+		in.Action = "attach"
+		in.ConfigPath = s.ParentConfigPath
+		in.AgentName = s.Attachment.AgentName
+		in.Purpose = s.Attachment.Purpose
+		in.AllowedSenders = s.AllowedSenders
+		in.NativeRemote = s.NativeRemote
+	}
 	if in.Action == "attach" {
 		if in.NativeRemote != "" && (in.Provider != "codex" || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
@@ -357,13 +383,37 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if _, err = client.Call(callCtx, "messages", map[string]any{"action": "register", "agent_name": in.AgentName, "purpose": in.Purpose}); err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
+		connectionDir := filepath.Join(b.root, "connections")
+		if err = privateLiveDir(connectionDir); err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		connectionPath := ""
+		if s != nil && s.Attachment.AgentName == in.AgentName && s.ParentConfigPath == in.ConfigPath {
+			connectionPath = s.ConfigPath
+		}
+		if connectionPath == "" {
+			cfg, e := client.CreateAgentConnection(callCtx, in.AgentName)
+			if e != nil {
+				return LocalBridgeReply{Error: e.Error()}
+			}
+			connectionPath = filepath.Join(connectionDir, liveHash(cfg.Server, in.AgentName, in.SessionID, time.Now().String())+".json")
+			if e = SaveConfig(connectionPath, cfg); e != nil {
+				return LocalBridgeReply{Error: e.Error()}
+			}
+		}
+		client, err = localConfiguredClient(connectionPath)
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+
 		a, err := client.AttachAgent(callCtx, AgentAttachmentOptions{AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, AllowedSenders: in.AllowedSenders})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		next := &localSession{Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
+		next := &localSession{Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, AllowedSenders: in.AllowedSenders, Offers: map[string]localOffer{}, client: client}
 		if s != nil && s.Attachment.AgentID == a.AgentID {
 			next.Offers = s.Offers
+			next.SeenThrough = s.SeenThrough
 		}
 		old := map[string]*localSession{}
 		for k, v := range b.sessions {
@@ -392,13 +442,19 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if s == nil {
 		return LocalBridgeReply{}
 	}
+	if in.HostKey != "" && s.HostKey != "" && in.HostKey != s.HostKey {
+		return LocalBridgeReply{}
+	}
 	if in.AttachmentID != "" && in.AttachmentID != s.Attachment.ID {
 		return LocalBridgeReply{}
 	}
 	if s.client == nil {
 		return LocalBridgeReply{Error: "attached connection is unavailable; sign in and explicitly reattach"}
 	}
-	out := LocalBridgeReply{Attached: true, Attachment: s.Attachment, LastError: s.LastError}
+	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError}
+	if s.Offline && in.Action != "status" && in.Action != "detach" && in.Action != "cleanup" && in.Action != "offline" {
+		return out
+	}
 	for _, v := range s.Offers {
 		if !v.Offered && !v.Suppressed {
 			out.Pending++
@@ -432,19 +488,49 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return out
 	case "status":
 		return out
-	case "detach":
-		_, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID}, true)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+	case "detach", "offline":
+		if s.Offline && in.Action == "offline" {
+			return out
 		}
-		delete(b.sessions, key)
+		var err error
+		if !s.Offline {
+			_, err = s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID}, true)
+		}
+		if err != nil {
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || (apiErr.Status != 401 && apiErr.Status != 403 && apiErr.Status != 404 && apiErr.Status != 409) {
+				return LocalBridgeReply{Error: err.Error()}
+			}
+		}
+		if in.Action == "offline" {
+			s.Offline = true
+			s.HostKey = ""
+		} else {
+			delete(b.sessions, key)
+		}
 		if err = b.save(); err != nil {
 			b.sessions[key] = s
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		s.cancel()
+		if s.cancel != nil {
+			s.cancel()
+		}
+		if in.Action == "detach" && s.ParentConfigPath != "" {
+			if cfg, e := LoadConfig(s.ConfigPath); e == nil {
+				_ = s.client.RevokeOAuth(callCtx, cfg.RefreshToken)
+			}
+			_ = os.Remove(s.ConfigPath)
+		}
 		b.wake()
 		return LocalBridgeReply{}
+	case "cleanup":
+		// Retain pending bodies and the sequence watermark. Retire offered
+		// metadata without allowing a fresh automatic turn after a crash.
+		compactLocalOffers(s, true)
+		if err := b.save(); err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		return out
 	case "drain", "next":
 		if in.Action == "drain" && (s.NativeRemote != "" || s.nativeCalls > 0) {
 			return out
@@ -520,6 +606,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			} else {
 				v := s.Offers[m.MessageID]
 				v.Suppressed = true
+				v.Message = ""
 				s.Offers[m.MessageID] = v
 			}
 		}
@@ -527,6 +614,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		for _, m := range out.Messages {
 			v := s.Offers[m.MessageID]
 			v.Offered = true
+			v.OfferedAt = time.Now()
+			v.Message = ""
 			v.Transport = in.Transport
 			s.Offers[m.MessageID] = v
 		}
@@ -555,6 +644,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		raw, err := s.client.Call(callCtx, "messages", args)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
+		}
+		if in.Action == "ack" {
+			m.Message = ""
+			m.Delivery = in.Delivery
+			s.Offers[in.MessageID] = m
+			if err = b.save(); err != nil {
+				return LocalBridgeReply{Error: err.Error()}
+			}
 		}
 		out.Result = raw
 		return out
@@ -593,6 +690,18 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession) {
 		}
 		for _, m := range out.Messages {
 			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, MessageID: m.MessageID, Delivery: "admitted"})
+		}
+	}
+}
+
+// The server emits monotonically increasing account message sequences. Persist
+// the received watermark with pending bodies before offering anything. Retiring
+// offered metadata never permits an ambiguous delivery to become a new turn.
+func compactLocalOffers(s *localSession, all bool) {
+
+	for id, v := range s.Offers {
+		if (v.Offered || v.Suppressed) && (all || len(s.Offers) >= 1000 && v.Delivery == "processed" || !v.OfferedAt.IsZero() && time.Since(v.OfferedAt) > 7*24*time.Hour) {
+			delete(s.Offers, id)
 		}
 	}
 }

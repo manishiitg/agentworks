@@ -252,8 +252,11 @@ OS credentials from an agent with shell access.
 
 One local bridge process holds current per-attachment server SSE streams, private
 session leases and a durable offer journal. This is not yet one multiplexed stream
-or automatic per-agent child connections. Use independent private sign-ins/configs
-for distinct agents; shared credentials share mailbox authority. Before releasing
+but does create an independent messaging-only child connection for each attached
+agent, bound to its stable agent ID and name. The parent login manages these
+connections and revoking it immediately stops authentication and refresh. A child
+cannot register another identity, read another agent, or use the general tool
+catalog. It supports named-agent messaging; product calls need a separate connection. Before releasing
 cached messages it rechecks attachment, current sender and receiver authority and
 message retention on the server. Writes and SDK enqueues are offers, not fabricated
 admitted receipts. Claude/hook receivers acknowledge admitted and processed;
@@ -276,10 +279,16 @@ that endpoint. Without native setup, hooks plus a desktop notification apply.
 The installer never bypasses Codex hook trust. [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins).
 
 The cache is private (directory/socket 0700/0600), bounded to 2,000 messages per
-session and 32 MiB total, and persists until detach. Acknowledgements do not
-reclaim the ID quota. Legacy direct-channel journals persist separately beyond
-process exit; compaction and person cleanup remain pending. Offered IDs survive bridge
-restarts. The write-before-delivery crash window is intentionally ambiguous rather
+session and 32 MiB total. Bodies are cleared when offered or acknowledged;
+processed metadata is reclaimed under quota pressure, offered metadata after
+seven days, or by the person's `/agentworks cleanup`. Pending bodies are retained
+for explicit recovery. The persisted monotonic receive watermark survives cleanup
+and restart, so retired IDs cannot create duplicate automatic turns. Replies to
+retired IDs use an explicit mailbox read and the returned inbox address. Legacy
+direct channels retain only bounded offer metadata and a watermark, never bodies.
+SessionEnd retains the identity offline and stops delivery; SessionStart explains
+that `/agentworks resume` confirms reconnecting the same session. Explicit detach
+removes local state and revokes its child connection. The write-before-delivery crash window is intentionally ambiguous rather
 than automatically creating a duplicate turn; recover by explicit mailbox read.
 Native failures leave an offer pending for explicit handling and notify the person.
 Desktop notifications contain only an agent name, never message bodies. macOS/Linux

@@ -33,16 +33,20 @@ var Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:e
 var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}
 
 type Token struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	UserID       string          `json:"-"`
-	Username     string          `json:"-"`
-	Email        string          `json:"-"`
-	Provider     string          `json:"-"`
-	Scopes       []string        `json:"scopes"`
-	WorkflowIDs  []string        `json:"workflow_ids"`
-	AllWorkflows bool            `json:"all_workflows"`
-	FileGuard    *wf.FolderGuard `json:"file_guard,omitempty"`
+	// OAuth-derived messaging connections are fenced to one registered agent.
+	// These fields are server-owned, never accepted in a personal-token request.
+	BoundAgentName string          `json:"-"`
+	BoundAgentID   string          `json:"-"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	UserID         string          `json:"-"`
+	Username       string          `json:"-"`
+	Email          string          `json:"-"`
+	Provider       string          `json:"-"`
+	Scopes         []string        `json:"scopes"`
+	WorkflowIDs    []string        `json:"workflow_ids"`
+	AllWorkflows   bool            `json:"all_workflows"`
+	FileGuard      *wf.FolderGuard `json:"file_guard,omitempty"`
 	// CrewIDs / AllCrews bound crews:read, crews:run and crews:write the same way
 	// WorkflowIDs / AllWorkflows bound the workflow permissions.
 	CrewIDs  []string `json:"crew_ids"`

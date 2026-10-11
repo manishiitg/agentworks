@@ -14,8 +14,9 @@ import (
 // at-most-once automatic offers over duplicate turns after an ambiguous crash.
 // Offers are not admission receipts; the agent must still acknowledge them.
 type deliveryJournal struct {
-	path     string
-	Messages map[string]AgentLiveMessage `json:"messages"`
+	SeenThrough int `json:"seen_through,omitempty"`
+	path        string
+	Messages    map[string]AgentLiveMessage `json:"messages"`
 }
 
 func privateLiveDir(path string) error {
@@ -113,19 +114,34 @@ func newDeliveryJournal(root string, client *Client, attachment AgentAttachment)
 	if j.Messages == nil {
 		j.Messages = map[string]AgentLiveMessage{}
 	}
+	for _, m := range j.Messages {
+		if m.Sequence > j.SeenThrough {
+			j.SeenThrough = m.Sequence
+		}
+		m.Message = ""
+		j.Messages[m.MessageID] = m
+	}
 	return j, nil
 }
 
 func (j *deliveryJournal) offer(m AgentLiveMessage) (bool, error) {
-	if _, ok := j.Messages[m.MessageID]; ok {
+	if _, ok := j.Messages[m.MessageID]; ok || m.Sequence <= j.SeenThrough {
 		return false, nil
 	}
-	if len(j.Messages) >= 2000 {
-		return false, errors.New("channel journal capacity reached; explicitly read and acknowledge pending messages")
+	if len(j.Messages) >= 1000 {
+		for id, v := range j.Messages {
+			if v.Sequence <= j.SeenThrough-500 {
+				delete(j.Messages, id)
+			}
+		}
 	}
+	previous := j.SeenThrough
+	j.SeenThrough = m.Sequence
+	m.Message = ""
 	j.Messages[m.MessageID] = m
 	if err := atomicLiveJSON(j.path, j); err != nil {
 		delete(j.Messages, m.MessageID)
+		j.SeenThrough = previous
 		return false, err
 	}
 	return true, nil
@@ -134,8 +150,13 @@ func (j *deliveryJournal) offer(m AgentLiveMessage) (bool, error) {
 func (j *deliveryJournal) forget(id string) error {
 	m := j.Messages[id]
 	delete(j.Messages, id)
+	previous := j.SeenThrough
+	if m.Sequence == j.SeenThrough {
+		j.SeenThrough = m.Sequence - 1
+	}
 	if err := atomicLiveJSON(j.path, j); err != nil {
 		j.Messages[id] = m
+		j.SeenThrough = previous
 		return err
 	}
 	return nil

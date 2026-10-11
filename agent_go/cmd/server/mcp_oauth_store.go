@@ -48,16 +48,18 @@ type mcpOAuthRequest struct {
 }
 
 type mcpOAuthGrant struct {
-	FamilyID    string
-	ClientID    string
-	Resource    string
-	Scopes      []string
-	WorkflowIDs []string
-	UserID      string
-	Username    string
-	Email       string
-	Provider    string
-	Expires     time.Time
+	BoundAgentName string
+	BoundAgentID   string
+	FamilyID       string
+	ClientID       string
+	Resource       string
+	Scopes         []string
+	WorkflowIDs    []string
+	UserID         string
+	Username       string
+	Email          string
+	Provider       string
+	Expires        time.Time
 }
 
 func mcpOAuthSecret() (string, error) {
@@ -127,6 +129,7 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	}
 	db.SetMaxOpenConns(1)
 	for _, ddl := range []string{
+		`CREATE TABLE IF NOT EXISTS agent_connections (family_id TEXT PRIMARY KEY, parent_family TEXT NOT NULL, agent_name TEXT NOT NULL, agent_id TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS requests (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, resource TEXT NOT NULL, state TEXT NOT NULL, scopes TEXT NOT NULL, challenge TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS codes (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, resource TEXT NOT NULL, scopes TEXT NOT NULL, challenge TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL, provider TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
@@ -368,18 +371,30 @@ func (s *mcpOAuthStore) Authenticate(ctx context.Context, raw string) (mcpOAuthG
 	if !(strings.HasPrefix(raw, mcpOAuthAccessPrefix) || strings.HasPrefix(raw, cliOAuthAccessPrefix)) || strings.HasPrefix(raw, mcpOAuthRefreshPrefix) || strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
 		return mcpOAuthGrant{}, sql.ErrNoRows
 	}
-	return scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE hash=? AND kind='access' AND revoked_at IS NULL AND expires_at>?`, mcpOAuthHash(raw), time.Now().Unix()))
+	grant, err := scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE hash=? AND kind='access' AND revoked_at IS NULL AND expires_at>?`, mcpOAuthHash(raw), time.Now().Unix()))
+	if err != nil {
+		return grant, err
+	}
+	return s.bindAgentConnection(ctx, grant)
 }
 
 func (s *mcpOAuthStore) ActiveFamily(ctx context.Context, family string) (mcpOAuthGrant, error) {
-	return scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE family_id=? AND kind='access' AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
+	grant, err := scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE family_id=? AND kind='access' AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
+	if err != nil {
+		return grant, err
+	}
+	return s.bindAgentConnection(ctx, grant)
 }
 
 // LiveFamily is the grant of a family that is still signed in: not revoked, with an access or refresh token that has not expired.
 // ActiveFamily needs an unexpired access token; a connection that outlives its access token (a CLI device socket, which never
 // renews it) asks this instead, so only a sign-out, a revoked grant or an expired refresh token ends it.
 func (s *mcpOAuthStore) LiveFamily(ctx context.Context, family string) (mcpOAuthGrant, error) {
-	return scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE family_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
+	grant, err := scanMCPOAuthGrant(s.db.QueryRowContext(ctx, `SELECT `+mcpOAuthGrantColumns+` FROM tokens WHERE family_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
+	if err != nil {
+		return grant, err
+	}
+	return s.bindAgentConnection(ctx, grant)
 }
 
 func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource string) (mcpOAuthGrant, string, string, error) {
@@ -418,6 +433,10 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if err = json.Unmarshal([]byte(bounds), &grant.WorkflowIDs); err != nil {
 		return grant, "", "", err
 	}
+	grant, err = bindAgentConnection(ctx, tx, grant)
+	if err != nil {
+		return grant, "", "", err
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE tokens SET used_at=? WHERE hash=? AND used_at IS NULL AND revoked_at IS NULL`, time.Now().Unix(), mcpOAuthHash(raw))
 	if err != nil {
 		return grant, "", "", err
@@ -443,7 +462,7 @@ type mcpOAuthConnection struct {
 }
 
 func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOAuthConnection, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT t.family_id,c.name,t.scopes,MAX(t.expires_at),t.workflow_ids FROM tokens t JOIN clients c ON c.id=t.client_id WHERE t.user_id=? AND t.kind='refresh' AND t.revoked_at IS NULL AND t.expires_at>? GROUP BY t.family_id,c.name,t.scopes,t.workflow_ids ORDER BY MAX(t.expires_at) DESC`, userID, time.Now().Unix())
+	rows, err := s.db.QueryContext(ctx, `SELECT t.family_id,CASE WHEN a.agent_name IS NULL THEN c.name ELSE 'Agent: ' || a.agent_name END,t.scopes,MAX(t.expires_at),t.workflow_ids FROM tokens t JOIN clients c ON c.id=t.client_id LEFT JOIN agent_connections a ON a.family_id=t.family_id WHERE t.user_id=? AND t.kind='refresh' AND t.revoked_at IS NULL AND t.expires_at>? GROUP BY t.family_id,c.name,a.agent_name,t.scopes,t.workflow_ids ORDER BY MAX(t.expires_at) DESC`, userID, time.Now().Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +482,7 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 		if err := json.Unmarshal([]byte(bounds), &c.WorkflowIDs); err != nil {
 			return nil, err
 		}
-		c.AllWorkflows = len(c.WorkflowIDs) == 0
+		c.AllWorkflows = len(c.WorkflowIDs) == 0 && !strings.HasPrefix(c.ClientName, "Agent: ")
 		c.ExpiresAt = time.Unix(expiry, 0)
 		connections = append(connections, c)
 	}

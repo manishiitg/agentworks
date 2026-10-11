@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-11 — Attached agents have restricted child connections and explicit resume (PLAT-861)
+
+Derive a separate messaging-only CLI connection bound to the stable agent ID and
+name. Authenticate and refresh only while its parent login remains authorized.
+Keep parent credentials outside messaging children; parent sign-out revokes their
+authority. Session end marks the retained identity offline; a person command
+confirms reconnecting the same session. Persist the received message sequence
+before release, allowing offered bodies and processed metadata to be compacted
+without replaying ambiguous deliveries. Why: separate mailbox authority, retain
+consent across resume, and bound local storage without inventing receipts.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-28/41/43.
+
 ## 2026-10-11 — Person-attached plugins use a durable local message bridge (PLAT-861)
 
 Package Claude and Codex hooks, MCP connections, person commands and messaging

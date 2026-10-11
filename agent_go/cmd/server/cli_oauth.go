@@ -243,6 +243,10 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
 	}
+	if grant.BoundAgentID != "" && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
+		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
+		return nil, false
+	}
 	claims, err := accessTokenClaims(mcpOAuthTokenForGrant(grant))
 	if err != nil {
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")

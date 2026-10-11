@@ -46,6 +46,9 @@ func namedAgentConnectionAllowed(a namedMessageAgent, claims *UserClaims) bool {
 	if claims.AccessToken == nil {
 		return true
 	} // signed-in account owner
+	if claims.AccessToken.BoundAgentID != "" && (claims.AccessToken.BoundAgentID != a.ID || claims.AccessToken.BoundAgentName != a.Name) {
+		return false
+	}
 	for _, id := range a.Connections {
 		if id == claims.AccessToken.ID && id != "" {
 			return true
@@ -62,6 +65,9 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 		return true
 	}
 	t := claims.AccessToken
+	if t.BoundAgentID != "" {
+		return t.Allows("messages:send") || !send && t.Allows("messages:read")
+	}
 	return t.Allows("crews:run") || t.Allows("runs:execute") || externalCodeRunAllowed(claims) || !send && (t.Allows("crews:read") || t.Allows("workflows:read"))
 }
 

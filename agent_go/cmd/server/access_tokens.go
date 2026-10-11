@@ -367,6 +367,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
 		return false
 	}
+	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
+		return tool.Name == "messages" && namedAgentOperationAllowed(c, false)
+	}
 	if isExternalCrewTool(tool.Name) && !productEnabled("work") || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
 		return false
 	}

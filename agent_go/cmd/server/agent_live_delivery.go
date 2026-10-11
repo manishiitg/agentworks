@@ -36,8 +36,16 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || (externalArg(args, "action") != "attach" && externalArg(args, "action") != "detach" && externalArg(args, "action") != "validate") {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
+		return
+	}
+	if externalArg(args, "action") == "connection" {
+		api.createAgentConnection(w, r, args)
+		return
+	}
+	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" && externalArg(args, "agent_name") != token.BoundAgentName {
+		externalError(w, 403, "attachment_refused", "This connection belongs to another agent.")
 		return
 	}
 	if externalArg(args, "action") == "validate" {
