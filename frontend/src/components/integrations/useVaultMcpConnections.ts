@@ -20,7 +20,7 @@ export function useVaultMcpConnections() {
   useEffect(() => { void refresh() }, [refresh])
   return { loading, refresh, notices: error ? [{ message: error, retry: () => void refresh() }] : [],
     servers: [
-      ...servers.map(server => ({ id: `vault_${server.id}`, name: server.label, source: 'Vault', status: 'Available automatically', statusDot: 'bg-primary', toolCount: server.tools.length,
+      ...servers.map(server => ({ id: `vault_${server.id}`, name: server.label, provider: server.provider, source: 'Vault', status: 'Available automatically', statusDot: 'bg-primary', toolCount: server.tools.length,
         tools: server.tools.map(tool => ({ id: tool.name, name: tool.name.split('__').slice(1).join('__') || tool.name, description: tool.description, rawSchema: tool.input_schema })),
       })),
     ] satisfies McpConnectionRow[],

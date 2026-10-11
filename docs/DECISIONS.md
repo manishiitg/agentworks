@@ -20,7 +20,9 @@ Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/ti
 ## 2026-10-11 — MCP offer evidence stays separate from connection status (PLAT-856)
 
 Show provider offer badges, an Offers filter and expandable evidence only in
-Available MCPs. Join by exact catalog connector names; metadata cannot add a
+Available MCPs before a provider has a saved project or Vault connection. Hide
+offers on providers kept available for adding another account; use their catalog
+identity rather than account labels. Join by exact catalog connector names; metadata cannot add a
 connector or grant access. Read the maintained public catalog without app
 credentials, with a five-minute shared cache and a bundled offline snapshot.
 Retain source review dates and mark unverified, future-dated or older-than-30-day

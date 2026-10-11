@@ -135,6 +135,15 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      # The pinned Playwright installer stalls after downloading Chromium on Node 26.
+      # Keep product validation on Node 26 and use the proven browser runtime here.
+      - name: Set up browser runner
+        if: >-
+          steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Browser:')
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
       - name: Chromium checks named in the commit
         if: >-
           steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Browser:')

@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import snapshot from '../../api/mcpOfferSnapshot.json'
 import { parseMcpOffers } from '../../api/mcpOffers'
 import { TooltipProvider } from '../ui/tooltip'
-import { McpConnectionsPanel } from './McpConnectionsPanel'
+import { McpConnectionsPanel, type McpCatalogRow, type McpConnectionRow } from './McpConnectionsPanel'
 
 vi.mock('../../hooks/useMcpOffers', () => ({ useMcpOffers: () => ({ catalog: parseMcpOffers(snapshot), refresh: () => {} }) }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -17,12 +17,12 @@ const catalog = [
   { id: 'browserbase', name: 'Browserbase' },
   { id: 'custom', name: 'Exa-custom' },
 ]
-async function mount(view: 'available' | 'connected' = 'available') {
+async function mount(view: 'available' | 'connected' = 'available', initialCatalog: McpCatalogRow[] = catalog) {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime('2026-10-11T12:00:00Z')
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup = () => { act(() => root.unmount()); host.remove() }
-  const render = (next: 'available' | 'connected') => act(async () => root.render(<TooltipProvider><McpConnectionsPanel view={next} catalog={catalog} servers={[{ id: 'account', name: 'My Exa account', status: 'Connected' }]} showTools={false} /></TooltipProvider>))
+  const render = (next: 'available' | 'connected', nextCatalog = initialCatalog, servers: McpConnectionRow[] = [{ id: 'account', name: 'My Exa account', status: 'Connected' }]) => act(async () => root.render(<TooltipProvider><McpConnectionsPanel view={next} catalog={nextCatalog} servers={servers} showTools={false} /></TooltipProvider>))
   await render(view)
   if (view === 'available') await act(async () => { await import('./McpOfferBadge') })
   return { host, render }
@@ -57,4 +57,24 @@ it('separates trials from current free tiers and hides pricing controls on conne
   expect(host.textContent).toContain('My Exa account')
   expect(host.querySelector('[aria-label="Filter by offer"]')).toBeNull()
   expect(host.querySelector('a[href="https://agentworkshq.com/free-tools/"]')).toBeNull()
+})
+it('removes offer evidence after connection, including custom-labeled Vault accounts, without trapping the active filter', async () => {
+  const before = [catalog[0]]
+  const { host, render } = await mount('available', before)
+  const filter = host.querySelector<HTMLSelectElement>('[aria-label="Filter by offer"]')!
+  await act(async () => { filter.value = 'recurring'; filter.dispatchEvent(new Event('change', { bubbles: true })) })
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Exa Free tier details"]')!.click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  await render('available', [{ ...catalog[0], addedCount: 1 }])
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Exa Free tier details"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Filter by offer"]')).toBeNull()
+  expect(host.querySelector('a[href="https://agentworkshq.com/free-tools/"]')).toBeNull()
+  expect(host.textContent).toContain('1 added')
+  expect(host.querySelector('[aria-label="Add Exa connection"]')).not.toBeNull()
+  await render('available', before, [{ id: 'vault-account', name: 'Research account', provider: 'exa', source: 'Vault', status: 'Available automatically' }])
+  expect(host.querySelector('[aria-label="Exa Free tier details"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Add Exa connection"]')).not.toBeNull()
+  await render('available', before, [])
+  expect(host.querySelector('[aria-label="Exa Free tier details"]')).not.toBeNull()
 })

@@ -24,6 +24,8 @@ export interface McpAction {
 }
 export interface McpConnectionRow {
   id: string; name: string; source?: string; status: string; statusDot?: string
+  /** Catalog provider identity, independent of the connection's account label. */
+  provider?: string
   sectionId?: string
   toolCount?: number; tools?: McpToolRow[]; loadTools?: () => Promise<McpToolRow[]>
   toolsLabel?: (open: boolean) => string; toolsNotice?: ReactNode; settings?: ReactNode
@@ -57,9 +59,12 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   useEffect(() => { setQuery(''); setSort('name'); setOfferFilter('all') }, [activeView])
   const matches = (item: { name: string; description?: string }) => `${item.name} ${item.description || ''}`.toLowerCase().includes(query.trim().toLowerCase())
   const connections = servers.filter(matches).sort((a, b) => sort === 'tools' ? (b.toolCount ?? 0) - (a.toolCount ?? 0) : a.name.localeCompare(b.name))
-  const offerFor = (item: McpCatalogRow): McpOffer | undefined => offerCatalog.offers[item.name.trim().toLowerCase()]
+  const connectedProviders = new Set(servers.map(server => server.provider?.trim().toLowerCase()))
+  const isAdded = (item: McpCatalogRow) => (item.addedCount ?? 0) > 0 || connectedProviders.has(item.name.trim().toLowerCase())
+  const offerFor = (item: McpCatalogRow): McpOffer | undefined => isAdded(item) ? undefined : offerCatalog.offers[item.name.trim().toLowerCase()]
+  const hasOffers = catalog.some(offerFor)
   const matchesOffer = (item: McpCatalogRow) => {
-    if (offerFilter === 'all') return true
+    if (offerFilter === 'all' || !hasOffers) return true
     const offer = offerFor(item)
     if (!offer) return false
     const needsReview = offerNeedsReview(offer, offerCatalog.freshnessDays)
@@ -80,7 +85,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
       <select aria-label="Sort servers" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={sort} onChange={event => setSort(event.target.value)}>
         <option value="name">Sort A–Z</option>{showTools && activeView === 'connected' && <option value="tools">Sort by tools</option>}
       </select>
-      {activeView === 'available' && catalog.some(offerFor) && <select aria-label="Filter by offer" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={offerFilter} onChange={event => setOfferFilter(event.target.value)}>
+      {activeView === 'available' && hasOffers && <select aria-label="Filter by offer" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={offerFilter} onChange={event => setOfferFilter(event.target.value)}>
         <option value="all">Offers: All</option><option value="recurring">Free tiers</option><option value="trial">Trial credits</option>
         <option value="grant">Grants</option><option value="open_source">Open source</option><option value="review">Needs review</option>
       </select>}
@@ -124,7 +129,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
         })}
       </section>
       {addCustom && <div className="border-t border-border pt-4" aria-label="Add custom server"><Button variant="outline" size="sm" disabled={addCustom.disabled} onClick={() => void addCustom.run()} data-testid="mcp-add-custom"><Plus />{addCustom.label}</Button></div>}
-      <div className="flex justify-end"><a href={FREE_TOOLS_CATALOG_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline">Browse all free tools<ExternalLink className="h-3 w-3" aria-hidden /></a></div>
+      {catalog.some(item => !isAdded(item)) && <div className="flex justify-end"><a href={FREE_TOOLS_CATALOG_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline">Browse all free tools<ExternalLink className="h-3 w-3" aria-hidden /></a></div>}
     </>}
     {help && <details className="text-muted-foreground"><summary className="w-fit cursor-pointer">Connection help</summary><div className="mt-2 space-y-2">{help}</div></details>}
     {children}

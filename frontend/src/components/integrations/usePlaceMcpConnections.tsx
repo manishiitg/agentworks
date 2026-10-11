@@ -166,7 +166,7 @@ export function usePlaceMcpConnections({ workspacePath, placeNoun, canEdit, onAs
       ...(catalogState === 'failed' ? [{ message: 'Could not load the list of connectors.', retry: loadCatalog }] : []),
     ],
     servers: servers.map(server => ({
-      id: `private:${workspacePath}:${server.owner}:${server.name}`, name: server.label || server.catalog || server.name, source: `Connected by ${server.mine ? 'you' : server.owner_name || server.owner}${server.label && server.catalog ? ` · ${server.catalog}` : ''}`,
+      id: `private:${workspacePath}:${server.owner}:${server.name}`, name: server.label || server.catalog || server.name, provider: server.catalog, source: `Connected by ${server.mine ? 'you' : server.owner_name || server.owner}${server.label && server.catalog ? ` · ${server.catalog}` : ''}`,
       status: !server.active ? 'Paused' : server.connected ? 'Connected' : 'Sign-in required', statusDot: server.active && server.connected ? 'bg-green-500' : 'bg-muted-foreground',
       loadTools: server.active && server.connected ? async () => {
         const result = await placeMcpApi.tools(server.name)
