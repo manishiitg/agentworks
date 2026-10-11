@@ -46,7 +46,9 @@ type triggerTarget struct {
 	// CrewOwner is the user whose workspace holds a Crew target. Crews are
 	// shared server-wide, so it may differ from the requester.
 	CrewOwner string
-	Manifest  *WorkflowManifest
+	// TeamRecipientID is selected by trusted Pulse route assignment lookup, never model identity arguments.
+	TeamRecipientID string
+	Manifest        *WorkflowManifest
 	// Chat is set on a sibling chat of the caller's own Code (PLAT-648):
 	// the call runs as a turn in that chat's existing conversation.
 	Chat *codeChat

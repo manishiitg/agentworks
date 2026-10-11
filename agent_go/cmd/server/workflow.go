@@ -153,7 +153,14 @@ func workspacePathExists(ctx context.Context, folderPath string) bool {
 // readFileFromWorkspace reads a file from the workspace API and returns its content as a string
 // Returns (content, true, nil) if file exists, (empty, false, nil) if file doesn't exist (404), or (empty, false, error) on error
 func readFileFromWorkspace(ctx context.Context, filePath string) (string, bool, error) {
-	return readFileFromWorkspaceQuery(ctx, filePath, "")
+	if raw, exists, handled := stagedTeamRead(ctx, filePath); handled {
+		return raw, exists, nil
+	}
+	raw, exists, err := readFileFromWorkspaceQuery(ctx, filePath, "")
+	if err == nil {
+		rememberTeamPlanRead(ctx, filePath, raw)
+	}
+	return raw, exists, err
 }
 
 // readConversationTailFromWorkspace reads a chat conversation with only its
@@ -291,6 +298,9 @@ func readFileFromWorkspaceQuery(ctx context.Context, filePath, rawQuery string) 
 // deleteWorkspaceFile deletes a file from the workspace via the workspace API.
 // Returns nil if the file doesn't exist (404) or was successfully deleted.
 func deleteWorkspaceFile(ctx context.Context, configPath string) error {
+	if e := teamRawPathPolicy(ctx, configPath, true); e != nil {
+		return e
+	}
 	noteWorkspaceMutation(configPath, false)
 	pathSegments := strings.Split(configPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
@@ -328,6 +338,14 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 
 // writeFileToWorkspace writes content to a file in the workspace via the workspace API
 func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
+	if handled, e := stageTeamWrite(ctx, filePath, content); handled {
+		return e
+	}
+	release, policyErr := teamManagedWrite(ctx, filePath, content)
+	if policyErr != nil {
+		return policyErr
+	}
+	defer release()
 	noteWorkspaceMutation(filePath, false)
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
@@ -358,6 +376,7 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
+	teamPlanSaved(ctx, filePath, content)
 	publishPlanChanged(filePath)
 	return nil
 }
@@ -4898,6 +4917,9 @@ func deleteWorkspaceFolder(ctx context.Context, folderPath string) error {
 }
 
 func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (bool, error) {
+	if e := teamRawPathPolicy(ctx, folderPath, true); e != nil {
+		return false, e
+	}
 	noteWorkspaceMutation(folderPath, true)
 	pathSegments := strings.Split(folderPath, "/")
 	encodedSegments := make([]string, len(pathSegments))

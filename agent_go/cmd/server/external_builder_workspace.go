@@ -120,6 +120,7 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 		return wf.Result{}, lockErr
 	}
 	defer release()
+	if err := teamExternalSourceAuthority(ctx,rootPath,p); err != nil {return wf.Result{},err}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		return wf.Result{}, fmt.Errorf("external Builder file writes require the local workspace mount: %w", err)
@@ -271,6 +272,7 @@ func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected strin
 		return wf.Result{}, lockErr
 	}
 	defer release()
+	if err := teamExternalSourceAuthority(ctx,rootPath,p); err != nil {return wf.Result{},err}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		return wf.Result{}, err

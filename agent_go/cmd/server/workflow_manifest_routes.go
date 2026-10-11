@@ -444,6 +444,12 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	}
 	if req.Schedules != nil {
 		manifest.Schedules = *req.Schedules
+		if manifest.Team != nil {
+			for i := range manifest.Schedules {
+				manifest.Schedules[i].TeamAuthorizedBy = teamActor(r.Context())
+				manifest.Schedules[i].TeamPolicyRevision = manifest.Team.Revision
+			}
+		}
 	}
 	if req.WorkshopMode != nil {
 		manifest.ExecutionDefs.WorkshopMode = *req.WorkshopMode

@@ -19,9 +19,20 @@ func (c *Client) UpdateWorkspaceFile(ctx context.Context, params UpdateWorkspace
 		return UpdateFileResult{}, fmt.Errorf("filepath is required")
 	}
 
-	// Validate path against folder guard (write operation)
 	if err := c.ValidatePathWithContext(ctx, params.Filepath, true); err != nil {
 		return UpdateFileResult{}, err
+	}
+	if FileWriteInterceptor != nil {
+		if handled, err := FileWriteInterceptor(ctx, params.Filepath, params.Content); handled {
+			return UpdateFileResult{Success: err == nil}, err
+		}
+	}
+	if BeforeFileUpdate != nil {
+		release, err := BeforeFileUpdate(ctx, params.Filepath, params.Content)
+		if err != nil {
+			return UpdateFileResult{}, err
+		}
+		defer release()
 	}
 
 	// URL-encode the filepath segments
@@ -47,10 +58,16 @@ func (c *Client) UpdateWorkspaceFile(ctx context.Context, params UpdateWorkspace
 	var apiResp APIResponse
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
 		noteWorkspaceFileWrite(params.Filepath)
+		if FileWriteReceipt != nil {
+			FileWriteReceipt(ctx, params.Filepath, params.Content)
+		}
 		return UpdateFileResult{Success: true, Message: string(respBody)}, nil
 	}
 	if apiResp.Success {
 		noteWorkspaceFileWrite(params.Filepath)
+		if FileWriteReceipt != nil {
+			FileWriteReceipt(ctx, params.Filepath, params.Content)
+		}
 	}
 
 	return UpdateFileResult{

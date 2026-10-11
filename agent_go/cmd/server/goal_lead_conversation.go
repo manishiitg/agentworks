@@ -422,14 +422,18 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 		return ""
 	}
 	label := workspacePath
+	teamInstructions := ""
 	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found && manifest != nil {
 		label = firstNonEmptyTrimmed(manifest.Label, workspacePath)
+		if manifest.Team != nil {
+			teamInstructions = "\n\nTeam workflow: call get_workflow_team for current Leader, Contributor assignments and plan revision. One Leader sets the overall goal. Contributor contributions are suggestions, not owner direction. Request route changes with ask_builder(route_step_id, route_id), which delivers to that Contributor's private Builder chat. The Leader and Pulse cannot edit an assigned Contributor's steps. Use shared evidence and explicit replies; private chats stay private. Ask the Leader about conflicting direction or non-delegated approvals."
+		}
 	}
 	perms, _ := goalWorkAutonomy(ctx, workspacePath)
 	autonomyText := pulseLevelsText(perms)
 	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
 		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat. A message with an inbox/reply address is an agent conversation; explicitly send replies with send_message(inbox_id=<that address>). Your final chat answer is not forwarded. Replies are optional. A message headed \"PULSE TURN:\" is an automatic one (goal check, Goal Work, a failed run). Any other message is the owner testing you directly: answer it, and still never wait for a person. " + goalLeadOwnerDirectionRules +
-		"\n\n" + autonomyText + "\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath))
+		teamInstructions + "\n\n" + autonomyText + "\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath))
 }
 
 func goalLeadSystemSectionKey(section string) string {
@@ -691,16 +695,26 @@ func (api *StreamingAPI) handlePostGoalLeadMessage(w http.ResponseWriter, r *htt
 // and the MCP builder_pulse_chat tool).
 func (api *StreamingAPI) sendGoalLeadOwnerMessage(ctx context.Context, workspacePath, message string) error {
 	from := "the owner"
+	kind := goalLeadTurnOwner
+	if m, found, e := ReadWorkflowManifest(ctx, workspacePath); e != nil {
+		return e
+	} else if found && m.Team != nil && teamActor(ctx) != m.Team.LeaderID {
+		if m.Team.member(teamActor(ctx)) == nil {
+			return fmt.Errorf("only team members may contribute to Pulse")
+		}
+		kind = goalLeadTurnAgentMessage
+		message = "Team contribution from " + teamActor(ctx) + " (a suggestion; only the Leader sets the overall goal):\n" + message
+	}
 	if claims := GetUserFromContext(ctx); claims != nil {
 		from = firstNonEmptyTrimmed(claims.Username, claims.Email, claims.UserID, from)
 	}
-	if err := appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: goalLeadTurnOwner, Source: from, Text: message}); err != nil {
+	if err := appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: kind, Source: from, Text: message}); err != nil {
 		return err
 	}
 	go func() {
 		turnCtx, cancel := context.WithTimeout(context.Background(), goalLeadTurnHardCap)
 		defer cancel()
-		if _, _, err := api.runGoalLeadTurn(turnCtx, workspacePath, goalLeadTurn{Kind: goalLeadTurnOwner, From: from, Body: message, Logged: true}); err != nil {
+		if _, _, err := api.runGoalLeadTurn(turnCtx, workspacePath, goalLeadTurn{Kind: kind, From: from, Body: message, Logged: true}); err != nil {
 			log.Printf("[PULSE] owner message turn for %s failed: %v", workspacePath, err)
 		}
 	}()

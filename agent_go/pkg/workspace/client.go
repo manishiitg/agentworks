@@ -333,6 +333,11 @@ func cloneFolderGuard(guard *FolderGuardConfig) *FolderGuardConfig {
 // (session > context > client-level). Use this for all file operations from HTTP handlers
 // where session-scoped restrictions must be enforced.
 func (c *Client) ValidatePathWithContext(ctx context.Context, inputPath string, isWrite bool) error {
+	if AdditionalPathPolicy != nil {
+		if err := AdditionalPathPolicy(ctx, inputPath, isWrite); err != nil {
+			return err
+		}
+	}
 	guard := c.resolveEffectiveFolderGuard(ctx)
 	if isWrite && systemManagedWriteAllowed(ctx, inputPath) {
 		// System-managed access may override a write-only deny, but never a hard

@@ -114,6 +114,31 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 			return "Relay releases are not available through the workspace proxy"
 		}
 	}
+	// Bulk parent mutations must not erase protected team source through an ancestor.
+	if write && (clean == "" || clean == "." || clean == "Workflow") {
+		items, err := DiscoverWorkflowManifests(p.ctx)
+		if err != nil {
+			return "cannot verify team permissions for bulk mutation"
+		}
+		for _, item := range items {
+			if item.Manifest != nil && item.Manifest.Team != nil {
+				return "team workflows require scoped changes; cannot mutate their parent folder"
+			}
+		}
+	}
+	// Team assignment boundaries also apply to the Leader and administrators.
+	if write {
+		root, rel := teamWorkspacePath(clean)
+		if root != "" && teamProtectedSource(rel) {
+			m, ok, err := ReadWorkflowManifest(p.ctx, root)
+			if err != nil {
+				return "cannot verify current team permissions"
+			}
+			if ok && m.Team != nil {
+				return "use scoped Builder tools for team source changes"
+			}
+		}
+	}
 	if p.admin {
 		return ""
 	}

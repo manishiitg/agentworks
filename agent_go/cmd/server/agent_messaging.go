@@ -167,6 +167,9 @@ func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint 
 	if t.Kind == triggerCallerCrew {
 		e.UserID = t.ownerOr(userID)
 	}
+	if t.Kind == triggerCallerWorkflow && t.TeamRecipientID != "" {
+		e.UserID = t.TeamRecipientID
+	}
 	if t.Chat != nil {
 		e.Session = t.Chat.SessionID
 		e.ChatKey = t.Chat.Key
@@ -189,7 +192,7 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
 func endpointTarget(e agentMessageEndpoint) triggerTarget {
-	t := triggerTarget{Kind: e.Kind, Path: e.Path, Label: e.Label, CrewID: e.ID, CrewProfile: e.Profile, CrewOwner: e.UserID}
+	t := triggerTarget{Kind: e.Kind, Path: e.Path, Label: e.Label, CrewID: e.ID, CrewProfile: e.Profile, CrewOwner: e.UserID, TeamRecipientID: e.UserID}
 	if e.Kind == triggerCallerWorkflow {
 		t.Manifest = &WorkflowManifest{ID: e.ID}
 	}
@@ -653,6 +656,22 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	dest := c.Endpoints[1-m.From]
 	source := c.Endpoints[m.From]
 	text := agentMessageText(c, m)
+	for _, endpoint := range []agentMessageEndpoint{source, dest} {
+		if endpoint.Kind == triggerCallerWorkflow {
+			current, found, e := ReadWorkflowManifest(ctx, endpoint.Path)
+			if e != nil {
+				return dest.Session, e
+			}
+			if found && current.Team != nil {
+				if workflowAccessForManifest(&UserClaims{UserID: endpoint.UserID}, current) == WorkflowAccessNone || userAccessForClaims(&UserClaims{UserID: endpoint.UserID}).Disabled {
+					return dest.Session, fmt.Errorf("message participant no longer has team access")
+				}
+				if endpoint.ChatKey == pulseBuilderChatKey && endpoint.UserID != current.Team.LeaderID {
+					return dest.Session, fmt.Errorf("Pulse ownership changed; create a new contact")
+				}
+			}
+		}
+	}
 	if err := validateMessageDestination(ctx, dest); err != nil {
 		return dest.Session, err
 	}

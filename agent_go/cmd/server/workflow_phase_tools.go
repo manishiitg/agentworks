@@ -53,6 +53,12 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	syntheticReq QueryRequest,
 	readOnly bool,
 ) error {
+	if phaseWorkspacePath != "" {
+		definitionAgent = workflowTeamRegistrar{definitionRegistrar: definitionAgent, root: phaseWorkspacePath, user: userID}
+	}
+	if err := api.registerWorkflowTeamTools(definitionAgent, phaseWorkspacePath, userID, readOnly); err != nil {
+		return err
+	}
 	if check := api.scheduleCollisionCheck(phaseWorkspacePath, sessionID, syntheticReq.TriggeredBy); check != nil {
 		definitionAgent = scheduleGuardRegistrar{definitionAgent, todo_creation_human.GuardScheduleTools(definitionAgent, check)}
 	}

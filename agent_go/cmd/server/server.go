@@ -2884,6 +2884,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The Pulse's goal memory, edited by the owner in the Pulse tab (PLAT-697).
 	apiRouter.HandleFunc("/workflow/goal-memory", requireReportHumanInputAccess(true, api.handlePutGoalMemory)).Methods("PUT", "OPTIONS")
 	// The Pulse conversation and focus areas in the Pulse tab (PLAT-697 phase 4).
+	apiRouter.HandleFunc("/workflow/team", api.handleWorkflowTeam).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/workflow/goal-lead/message", requireReportHumanInputAccess(true, api.handlePostGoalLeadMessage)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/goal-lead/focus-areas", requireReportHumanInputAccess(true, api.handleGoalLeadFocusArea)).Methods("POST", "OPTIONS")
 
@@ -4001,6 +4002,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateTeamQuery(r.Context(), req); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	// One person at a time uses the Builder on a workflow. When someone else has it, this turn runs in Run mode instead
 	// of being refused, and is told who has it (PLAT-766). Your own other Builder chat still gets the 409 below.
@@ -4347,7 +4352,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// through. Frontend "+ new chat" pre-checks /api/workflow/running and
 	// offers a kill-and-start dialog; this 409 is the backend guard
 	// against races.
-	if workflowBusyGuardApplies(sessionID, req) {
+	if workflowBusyGuardApplies(sessionID, req) && !workflowTeamAllowsConcurrent(req.SelectedFolder) {
 		if running := api.findRunningTrackedExecutionForWorkspaceWhere(req.SelectedFolder, func(exec *TrackedWorkflowExecution) bool {
 			return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
 		}); running != nil && running.SessionID != sessionID {
@@ -6620,6 +6625,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if req.ExternalBuilderOperationID == "" {
 					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
+					configureWorkflowPhaseCLIShellGuard(sessionID, workflowPhaseFolder, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
 				}
 				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
 			}
@@ -7369,6 +7375,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					if req.ExternalBuilderOperationID == "" {
 						todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
+						configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
 					}
 					if len(workflowReadOnlyFolders) > 0 {
 						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
@@ -7411,11 +7418,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						return "", err
 					}
+					rememberTeamPlanRead(ctx, filePath, result.Content)
 					return result.Content, nil
 				}
 
 				// writeFile closure: writes content to workspace
 				phaseWriteFile := func(ctx context.Context, filePath string, content string) error {
+					ctx = context.WithValue(ctx, common.UserIDKey, currentUserID)
 					_, err := phaseWSClient.UpdateWorkspaceFile(ctx, workspace.UpdateWorkspaceFileParams{Filepath: filePath, Content: content})
 					return err
 				}
@@ -11512,7 +11521,7 @@ func (api *StreamingAPI) startNextTurnFromLiveInput(w http.ResponseWriter, r *ht
 	baseReq.IsAutoNotification = false
 	baseReq.userID = GetUserIDFromContext(r.Context())
 
-	if workflowBusyGuardApplies(sessionID, baseReq) {
+	if workflowBusyGuardApplies(sessionID, baseReq) && !workflowTeamAllowsConcurrent(baseReq.SelectedFolder) {
 		if running := api.findRunningTrackedExecutionForWorkspaceWhere(baseReq.SelectedFolder, func(exec *TrackedWorkflowExecution) bool {
 			return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
 		}); running != nil && running.SessionID != sessionID {
@@ -12508,6 +12517,10 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", fmt.Errorf("schedule not found: %w", err)
 			}
 			sched := &manifest.Schedules[idx]
+			if manifest.Team != nil {
+				sched.TeamAuthorizedBy = teamActor(ctx)
+				sched.TeamPolicyRevision = manifest.Team.Revision
+			}
 			if name != "" {
 				sched.Name = name
 			}

@@ -3256,3 +3256,34 @@ export const workFolderApi = {
 }
 
 export default api
+
+export interface WorkflowTeamMember {
+  approval_ids?: string[]
+  user_id: string
+  run: boolean
+  manage_schedules: boolean
+  approve: boolean
+  backup: boolean
+  publish: boolean
+  notify: boolean
+}
+export interface WorkflowTeamPolicy {
+  leader_id: string
+  revision: number
+  contributors: WorkflowTeamMember[]
+  routes: Array<{ step_id: string; route_id: string; contributor_id: string }>
+  read_only_step_ids?: string[]
+}
+export interface WorkflowTeamInfo {
+  can_manage: boolean
+  team: WorkflowTeamPolicy | null
+  routes: Array<{ step_id: string; route_id: string; name: string }>
+  my_user_id: string
+  plan_revision: string
+}
+export const workflowTeamApi = {
+  get: async (workspacePath: string): Promise<WorkflowTeamInfo> =>
+    (await api.get('/api/workflow/team', { params: { workspace_path: workspacePath } })).data,
+  save: async (workspacePath: string, team: WorkflowTeamPolicy, expectedRevision: number): Promise<WorkflowTeamInfo> =>
+    (await api.put('/api/workflow/team', { workspace_path: workspacePath, team, expected_revision: expectedRevision })).data,
+}

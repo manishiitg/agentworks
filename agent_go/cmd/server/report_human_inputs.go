@@ -611,6 +611,9 @@ func listReportHumanInputs(ctx context.Context, workspacePath, status, source st
 }
 
 func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, req ReportHumanInputAnswerRequest) (*ReportHumanInput, error) {
+	if e := requireTeamDecisionApproval(ctx, workspacePath, inputID); e != nil {
+		return nil, e
+	}
 	defer publishHumanInputsChanged(workspacePath) // live feed: header count + decisions pane
 	reportHumanInputStoreMu.Lock()
 	defer reportHumanInputStoreMu.Unlock()
@@ -636,6 +639,12 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	}
 	if input.Status == "consumed" || input.Status == "dismissed" || input.Status == "claimed" || input.Status == "withdrawn" {
 		return nil, fmt.Errorf("input_id %q is %s", inputID, input.Status)
+	}
+
+	if team, e := localDecisionTeam(normalized); e != nil {
+		return nil, e
+	} else if team != nil && input.Status == "answered" {
+		return nil, fmt.Errorf("decision already answered; accepted answers cannot be overwritten")
 	}
 
 	selected := strings.TrimSpace(req.SelectedOptionID)
@@ -720,6 +729,9 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 }
 
 func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string, req ReportHumanInputAnswerRequest) (*ReportHumanInput, error) {
+	if e := requireTeamDecisionApproval(ctx, workspacePath, inputID); e != nil {
+		return nil, e
+	}
 	defer publishHumanInputsChanged(workspacePath) // live feed: header count + decisions pane
 	reportHumanInputStoreMu.Lock()
 	defer reportHumanInputStoreMu.Unlock()

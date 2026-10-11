@@ -36,6 +36,8 @@ type pulseBuilderAskRequest struct {
 	PulseSession  string
 	Message       string
 	BuilderChat   string
+	RouteStepID   string
+	RouteID       string
 	Perms         stepworkflow.GoalWorkPermissions
 	Wait          time.Duration
 	SubmissionID  string
@@ -58,7 +60,7 @@ var findPulseBuilderChat = func(api *StreamingAPI, ctx context.Context, userID s
 		if _, found, err := findWorkflowBuilderConversationPathForSession(userCtx, userID, requested, workspacePath); err == nil && found {
 			return requested, nil
 		}
-		return "", fmt.Errorf("builder_session_id %q is not one of the owner's Builder chats of this workflow; leave it empty to use the most recent one", requested)
+		return "", fmt.Errorf("builder_session_id %q is not one of the selected person's private Builder chats of this workflow; leave it empty to use the most recent one", requested)
 	}
 	return api.userWorkflowChat(ctx, userID, services.ChannelRoute{WorkflowID: manifest.ID, WorkspacePath: workspacePath}), nil
 }
@@ -76,17 +78,33 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 	if err != nil || !found || manifest == nil {
 		return nil, fmt.Errorf("cannot read this workflow")
 	}
-	builderSession, err := findPulseBuilderChat(api, ctx, req.UserID, manifest, req.WorkspacePath, req.BuilderChat)
+	recipient := req.UserID
+	if manifest.Team != nil {
+		recipient = manifest.Team.LeaderID
+		if req.RouteID != "" || req.RouteStepID != "" {
+			matched := false
+			for _, a := range manifest.Team.Routes {
+				if a.StepID == req.RouteStepID && a.RouteID == req.RouteID {
+					recipient = a.ContributorID
+					matched = true
+				}
+			}
+			if !matched {
+				return nil, fmt.Errorf("route is unassigned or unknown; consult get_workflow_team")
+			}
+		}
+	}
+	builderSession, err := findPulseBuilderChat(api, ctx, recipient, manifest, req.WorkspacePath, req.BuilderChat)
 	if err != nil {
 		return nil, err
 	}
 	if builderSession == "" {
-		return map[string]interface{}{"status": "no_builder_chat", "note": "The owner has no Builder chat for this workflow yet. Read planning/changelog and the run records yourself, or ask the owner."}, nil
+		return map[string]interface{}{"status": "no_builder_chat", "note": "The selected team member has no Builder chat for this workflow yet. Read shared plan changes and run records, or request that they open a Builder chat."}, nil
 	}
 	label := firstNonEmptyTrimmed(manifest.Label, req.WorkspacePath)
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: label + " Pulse", Path: req.WorkspacePath,
 		Chat: &codeChat{Key: pulseBuilderChatKey, ID: pulseBuilderChatKey, Name: label + " Pulse", SessionID: req.PulseSession}}
-	target := triggerTarget{Kind: triggerCallerWorkflow, Path: req.WorkspacePath, Label: label + " Builder chat", Manifest: manifest,
+	target := triggerTarget{Kind: triggerCallerWorkflow, Path: req.WorkspacePath, Label: label + " Builder chat", Manifest: manifest, TeamRecipientID: recipient,
 		Chat: &codeChat{Key: "session:" + builderSession, ID: builderSession, Name: label + " Builder chat", SessionID: builderSession}}
 	out, err := api.sendAgentMessage(ctx, req.UserID, caller, target, req.Message, req.InboxID, req.SubmissionID)
 	if err != nil {
@@ -148,12 +166,14 @@ func recentPulseBuilderAsks(ctx context.Context, workspacePath string, since tim
 func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        pulseBuilderAskToolName,
-		Description: "Send an explicit message to this workflow's Builder chat (the owner's most recently active one, where they can watch). Ask what changed or request a change within your permission levels. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
+		Description: "Send an explicit message to this workflow's Builder chat (the Leader's most recent one, or the assigned Contributor's for route work). Ask what changed or request a change within your permission levels. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"message":            map[string]interface{}{"type": "string", "minLength": 1, "description": "Your message to the Builder chat, as you would write it to a colleague."},
-				"builder_session_id": map[string]interface{}{"type": "string", "description": "Optional: one of the owner's Builder chats of this workflow (e.g. a plan change's session_id); default the most recently active one."},
+				"route_step_id":      map[string]interface{}{"type": "string", "description": "For team route work: the parent step ID from get_workflow_team."},
+				"route_id":           map[string]interface{}{"type": "string", "description": "For team route work: assigned route ID; delivers to its Contributor Builder. Omit both route fields for the Leader."},
+				"builder_session_id": map[string]interface{}{"type": "string", "description": "Optional: one of the selected person's private Builder chats of this workflow (e.g. a plan change's session_id); default the most recently active one."},
 				"inbox_id":           map[string]interface{}{"type": "string", "description": "Existing conversation/reply address when continuing a conversation."},
 				"submission_id":      map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this message; reuse it after an uncertain retry to get the original acknowledgement."},
 			},
@@ -182,6 +202,7 @@ func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[strin
 		}
 		out, err := api.askBuilder(ctx, pulseBuilderAskRequest{
 			UserID: claims.UserID, WorkspacePath: workspacePath, PulseSession: sessionID,
+			RouteStepID: stringToolArg(args, "route_step_id"), RouteID: stringToolArg(args, "route_id"),
 			Message: stringToolArg(args, "message"), BuilderChat: stringToolArg(args, "builder_session_id"),
 			Perms: perms, InboxID: stringToolArg(args, "inbox_id"), SubmissionID: stringToolArg(args, "submission_id"),
 		})

@@ -51,6 +51,9 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		return string(b), err
 	}
 	executors["configure_goal_metrics"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if _, m := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), stringToolArg(args, "workspace_path")); m != nil && m.Team != nil && teamActor(ctx) != m.Team.LeaderID {
+			return "", fmt.Errorf("only the Leader configures goal measurements")
+		}
 		raw, err := json.Marshal(args["metrics"])
 		if err != nil {
 			return "", err

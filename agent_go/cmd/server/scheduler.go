@@ -2292,6 +2292,7 @@ func (s *SchedulerService) endQueuedLaunch(key string) {
 
 // runJob executes a scheduled job: updates runtime state, creates run history, executes, updates results.
 func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, error) {
+
 	if sctx.WebhookInput != nil {
 		defer s.pruneWebhookRuns(sctx.WorkspacePath)
 	} else if !sctx.PulseOnly {
@@ -2373,6 +2374,12 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 			state.ConsecutiveFailures++
 		})
 		s.cleanupRemovedScheduleRuntimeState(runtimeKey)
+	}
+	if !sctx.PulseOnly && sctx.WebhookInput == nil {
+		if err := validateTeamScheduleFire(ctx, sctx.WorkspacePath, sctx.Schedule); err != nil {
+			failBeforeHistory(err, "")
+			return "", err
+		}
 	}
 	if sctx.WorkflowKind == "relay" && (!sctx.Schedule.IsFunctionTrigger() || sctx.WebhookInput == nil) {
 		err := errors.New("Relays require an authenticated API function delivery; schedules are not supported")

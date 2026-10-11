@@ -51,6 +51,9 @@ func (m *WorkflowManifest) effectiveOwners() []string {
 	if m == nil {
 		return nil
 	}
+	if m.Team != nil {
+		return []string{m.Team.LeaderID}
+	}
 	if m.Access != nil && len(m.Access.Owners) > 0 {
 		return m.Access.Owners
 	}
@@ -141,6 +144,27 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 	}
 	if level, ok := workflowAccessForBotRouteClaims(claims, m); ok {
 		return level
+	}
+	if m != nil && m.Team != nil {
+		if a := userAccessForClaims(claims); a.Disabled || IsMultiUserMode() && !a.Known {
+			return WorkflowAccessNone
+		}
+		if userAccessForClaims(claims).Admin {
+			return WorkflowAccessOwner
+		}
+		if !userAccessForClaims(claims).CanEdit {
+			if claims.UserID == m.Team.LeaderID || m.Team.member(claims.UserID) != nil {
+				return WorkflowAccessRead
+			}
+			return WorkflowAccessNone
+		}
+		if claims.UserID == m.Team.LeaderID {
+			return WorkflowAccessOwner
+		}
+		if m.Team.member(claims.UserID) != nil {
+			return WorkflowAccessWrite
+		}
+		return WorkflowAccessNone
 	}
 	if userAccessForClaims(claims).Admin {
 		return WorkflowAccessOwner
@@ -447,6 +471,10 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 		if !containsID(owners, id) && !containsID(keptEditors, id) {
 			filtered = append(filtered, id)
 		}
+	}
+	if manifest.Team != nil {
+		writeUsersError(w, http.StatusConflict, "use team settings to manage the single Leader and Contributors")
+		return
 	}
 	manifest.Access = &WorkflowAccess{Owners: owners, Editors: keptEditors, Readers: filtered}
 	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {

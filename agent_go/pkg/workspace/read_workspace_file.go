@@ -33,6 +33,14 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 		return ReadFileResult{}, err
 	}
 
+	if FileReadOverlay != nil {
+		if raw, exists, handled := FileReadOverlay(ctx, params.Filepath); handled {
+			if !exists {
+				return ReadFileResult{}, fmt.Errorf("file not found")
+			}
+			return ReadFileResult{Filepath: params.Filepath, Content: raw}, nil
+		}
+	}
 	path := fmt.Sprintf("/api/documents/%s", params.Filepath)
 	respBody, err := c.request(ctx, "GET", path, nil)
 	if err != nil {
@@ -47,17 +55,26 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 
 	// Check if the API returned an error (file not found, etc.)
 	if apiResp.Error != "" {
+		if FileReadReceipt != nil {
+			FileReadReceipt(ctx, params.Filepath, "")
+		}
 		return ReadFileResult{}, fmt.Errorf("file not found: %s", params.Filepath)
 	}
 
 	// Check if there's actual content
 	if apiResp.Data.Content == "" && apiResp.Message == "File does not exist" {
+		if FileReadReceipt != nil {
+			FileReadReceipt(ctx, params.Filepath, "")
+		}
 		return ReadFileResult{}, fmt.Errorf("file not found: %s", params.Filepath)
 	}
 	if apiResp.Data.IsBinary {
 		return ReadFileResult{}, fmt.Errorf("cannot read binary file as text: %s", params.Filepath)
 	}
 
+	if FileReadReceipt != nil {
+		FileReadReceipt(ctx, params.Filepath, apiResp.Data.Content)
+	}
 	return ReadFileResult{
 		Filepath: apiResp.Data.Filepath,
 		Content:  apiResp.Data.Content,

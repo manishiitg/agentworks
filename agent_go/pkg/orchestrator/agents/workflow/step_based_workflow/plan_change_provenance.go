@@ -10,6 +10,10 @@ import (
 	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 )
 
+// PlanMutationContext attaches a server-owned read receipt to each native mutation.
+// It never serializes a whole conversation.
+var PlanMutationContext func(context.Context, map[string]interface{}) context.Context
+
 type planChangeOriginContextKey struct{}
 
 type PlanChangeOrigin struct {
@@ -33,16 +37,26 @@ type planChangeOriginRegistrar struct {
 
 func (r planChangeOriginRegistrar) decorate(execute func(context.Context, map[string]interface{}) (string, error)) func(context.Context, map[string]interface{}) (string, error) {
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if PlanMutationContext != nil {
+			ctx = PlanMutationContext(ctx, args)
+			copyArgs := make(map[string]interface{}, len(args))
+			for k, v := range args {
+				if k != "expected_plan_revision" {
+					copyArgs[k] = v
+				}
+			}
+			args = copyArgs
+		}
 		return execute(withPlanChangeOrigin(ctx, r.agentName), args)
 	}
 }
 
 func (r planChangeOriginRegistrar) RegisterCustomTool(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), displayGroup string) error {
-	return r.DefinitionToolRegistrar.RegisterCustomTool(name, description, parameters, r.decorate(execute), displayGroup)
+	return r.DefinitionToolRegistrar.RegisterCustomTool(name, description, planRevisionParameters(parameters), r.decorate(execute), displayGroup)
 }
 
 func (r planChangeOriginRegistrar) RegisterCustomToolWithTimeout(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, displayGroup string) error {
-	return r.DefinitionToolRegistrar.RegisterCustomToolWithTimeout(name, description, parameters, r.decorate(execute), timeout, displayGroup)
+	return r.DefinitionToolRegistrar.RegisterCustomToolWithTimeout(name, description, planRevisionParameters(parameters), r.decorate(execute), timeout, displayGroup)
 }
 
 func withPlanChangeOrigin(ctx context.Context, agentName string) context.Context {
@@ -262,4 +276,20 @@ func cursorBackfillSurfaceReviews() map[string]PlanDependencySurfaceReview {
 		}
 	}
 	return reviews
+}
+
+func planRevisionParameters(parameters map[string]interface{}) map[string]interface{} {
+	copy := make(map[string]interface{}, len(parameters))
+	for k, v := range parameters {
+		copy[k] = v
+	}
+	props := map[string]interface{}{}
+	if existing, ok := parameters["properties"].(map[string]interface{}); ok {
+		for k, v := range existing {
+			props[k] = v
+		}
+	}
+	props["expected_plan_revision"] = map[string]interface{}{"type": "string", "description": "Required for team workflows: plan_revision returned by get_workflow_team before proposing this change. A stale revision fails; read the latest plan and reconcile. Omit for non-team workflows."}
+	copy["properties"] = props
+	return copy
 }

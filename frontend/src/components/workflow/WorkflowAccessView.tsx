@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ShieldCheck } from 'lucide-react'
-import WorkflowSharePopup from './WorkflowSharePopup'
+import WorkflowTeamView from './WorkflowTeamView'
 import UsersAdminPanel from '../admin/UsersAdminPanel'
 import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -68,7 +68,7 @@ export default function WorkflowAccessView({ workspacePath }: WorkflowAccessView
           ? 'Accounts and roles for this deployment.'
           : activeTab === 'slack'
             ? 'The shared Slack bot and every workflow bot in this deployment.'
-            : `${scopeName} · owners edit, run, share and delete; editors edit and run; read-only people chat, run and watch.`}
+            : `${scopeName} · one Leader owns the goal; Contributors work through assigned routes.`}
         actions={
           activeTab ? (
             <WorkspaceViewActions
@@ -90,7 +90,7 @@ export default function WorkflowAccessView({ workspacePath }: WorkflowAccessView
         ) : (
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
-              <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} />
+              <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />
             ) : activeTab === 'slack' ? (

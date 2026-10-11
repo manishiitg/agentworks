@@ -1,5 +1,21 @@
 # Decisions and open issues
 
+## 2026-10-11 — One Leader and exclusive Contributor route editors (PLAT-863)
+
+Team collaboration is an explicit workflow opt-in. One Leader owns the goal,
+shared settings and grants. Assigned routes have exclusive Contributor editors,
+even against the Leader; reassignment revokes retained authority. Keep private
+Builder chats concurrent, stage native edits and check current policy and saved
+revisions under a short commit lock. Raw source writes cannot bypass assignments.
+Schedule management, run and housekeeping grants remain independent; schedules
+check standing authorization when they fire. Approval delegation names decisions
+and accepted answers cannot be overwritten. One Pulse addresses the relevant
+Contributor Builder using explicit messages and treats contributions as
+suggestions. Existing workflows retain single-user behavior until explicitly
+converted; no saved-plan migration is required.
+
+Ticket: [PLAT-863](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/collaboration/plat-863.md).
+
 ## 2026-10-11 — Workflow questions use launch inputs and human tools (PLAT-864)
 
 Retire the dedicated `human_input` step and its authoring/runtime/UI path.

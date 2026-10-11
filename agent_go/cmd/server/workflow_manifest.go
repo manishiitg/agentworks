@@ -124,6 +124,7 @@ const (
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
+	Team                         *WorkflowTeam                       `json:"team,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage                     `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          []knowledgebase.Binding             `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string                              `json:"knowledgebase_mode,omitempty"`
@@ -856,16 +857,18 @@ type WorkflowExecutionDefaults struct {
 
 // WorkflowSchedule represents a clock or webhook trigger stored in the manifest.
 type WorkflowSchedule struct {
-	ID             string                 `json:"id"`
-	Name           string                 `json:"name"`
-	Description    string                 `json:"description,omitempty"`
-	ScheduleType   string                 `json:"schedule_type,omitempty"` // "cron" (default), "calendar", or "webhook"
-	CronExpression string                 `json:"cron_expression"`
-	Timezone       string                 `json:"timezone"`
-	Enabled        bool                   `json:"enabled"`
-	TriggerPayload json.RawMessage        `json:"trigger_payload,omitempty"`
-	CalendarItems  []CalendarScheduleItem `json:"calendar_items,omitempty"`
-	GroupNames     []string               `json:"group_names,omitempty"`
+	TeamAuthorizedBy   string                 `json:"team_authorized_by,omitempty"`
+	TeamPolicyRevision int                    `json:"team_policy_revision,omitempty"`
+	ID                 string                 `json:"id"`
+	Name               string                 `json:"name"`
+	Description        string                 `json:"description,omitempty"`
+	ScheduleType       string                 `json:"schedule_type,omitempty"` // "cron" (default), "calendar", or "webhook"
+	CronExpression     string                 `json:"cron_expression"`
+	Timezone           string                 `json:"timezone"`
+	Enabled            bool                   `json:"enabled"`
+	TriggerPayload     json.RawMessage        `json:"trigger_payload,omitempty"`
+	CalendarItems      []CalendarScheduleItem `json:"calendar_items,omitempty"`
+	GroupNames         []string               `json:"group_names,omitempty"`
 	// RouteSelections selects deterministic routing-step branches for the scheduled
 	// full workflow. It is the same shape accepted by run_full_workflow; keeping it
 	// as data prevents a schedule from becoming a second, free-text workflow.
@@ -1865,6 +1868,21 @@ func manifestChangelogChange(path string, beforeOK, afterOK bool) step_based_wor
 
 // WriteWorkflowManifest validates and writes workflow.json to a workspace.
 func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *WorkflowManifest) error {
+	// All team settings writers share the source-edit commit lock. A caller
+	// already holding it (team assignment/commit) passes trusted context.
+	if held, _ := ctx.Value(teamLockHeldKey{}).(string); held != workspacePath {
+		if saved, ok, e := ReadWorkflowManifest(ctx, workspacePath); e != nil {
+			return e
+		} else if ok && saved.Team != nil {
+			unlock, e := teamLock(ctx, workspacePath)
+			if e != nil {
+				return e
+			}
+			defer unlock()
+			ctx = context.WithValue(ctx, teamLockHeldKey{}, workspacePath)
+		}
+	}
+
 	lockPath := filepath.Join(step_based_workflow.GetPromptDocsRoot(), filepath.FromSlash(manifestPath(workspacePath)))
 	if _, statErr := os.Stat(lockPath); statErr == nil {
 		unlock, lockErr := knowledgeManifestLock(lockPath)
@@ -1884,6 +1902,10 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		if err := json.Unmarshal([]byte(previous), &prior); err != nil {
 			return fmt.Errorf("parse existing workflow.json before update: %w", err)
 		}
+		if err := validateTeamManifestUpdate(ctx, &prior, m); err != nil {
+			return err
+		}
+		stampTeamScheduleChanges(ctx, &prior, m)
 		m.CodeLayoutVersion = prior.CodeLayoutVersion
 		m.SharedKnowledgebase = prior.SharedKnowledgebase
 		m.KnowledgebaseMode = prior.KnowledgebaseMode
@@ -1891,12 +1913,17 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		m.KnowledgebaseMigration = prior.KnowledgebaseMigration
 		m.KnowledgebaseContractHistory = prior.KnowledgebaseContractHistory
 	}
+	ctx = context.WithValue(ctx, teamManifestPermitKey{}, true)
 	workflowtypes.NormalizePresetLLMConfig(m.Capabilities.LLMConfig)
 	// Ensure nil slices become empty arrays in JSON
 	ensureManifestSlices(m)
 
 	// Set updated timestamp
-	m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if m.Team != nil {
+		m.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	} else {
+		m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
 
 	if err := ValidateManifest(m); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
