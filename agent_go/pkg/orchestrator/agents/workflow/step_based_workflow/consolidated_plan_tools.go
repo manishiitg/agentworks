@@ -50,8 +50,7 @@ func capturedPlanName(n string) bool {
 		}
 	}
 	switch n {
-	case "add_todo_task_step", "update_todo_task_step", "add_todo_task_route", "update_todo_task_route", "delete_todo_task_route",
-		"add_agent_route", "update_agent_route", "delete_agent_route",
+	case "add_agent_route", "update_agent_route", "delete_agent_route",
 		"add_group", "update_group", "delete_group", "change_step_type", "convert_routing_branch_step_type":
 		return true
 	}

@@ -122,7 +122,7 @@ func TestWorkflowProgressBridgeWaitsForOrchestratorStepCompletion(t *testing.T) 
 		Type:      orchestrator_events.OrchestratorAgentStart,
 		Timestamp: time.Now(),
 		Data: &orchestrator_events.OrchestratorAgentStartEvent{
-			AgentType: "todo_task_orchestrator",
+			AgentType: "delegating_agent",
 			AgentName: "[Route] Execution",
 			StepIndex: 6,
 		},
@@ -138,7 +138,7 @@ func TestWorkflowProgressBridgeWaitsForOrchestratorStepCompletion(t *testing.T) 
 		Type:      orchestrator_events.OrchestratorAgentEnd,
 		Timestamp: time.Now(),
 		Data: &orchestrator_events.OrchestratorAgentEndEvent{
-			AgentType: "todo_task_orchestrator",
+			AgentType: "delegating_agent",
 			AgentName: "[Route] Execution",
 			StepIndex: 6,
 			Result:    "execute-allocate was dispatched asynchronously; waiting for completion",
@@ -160,9 +160,9 @@ func TestWorkflowProgressBridgeWaitsForOrchestratorStepCompletion(t *testing.T) 
 	}
 
 	stepCompleted := &baseevents.AgentEvent{
-		Type:      orchestrator_events.OrchestratorStepCompleted,
+		Type:      orchestrator_events.AgentStepCompleted,
 		Timestamp: time.Now(),
-		Data: &OrchestratorStepCompletedEvent{
+		Data: &AgentStepCompletedEvent{
 			StepIndex:        6,
 			StepID:           "step-execution-pipeline",
 			StepTitle:        "[Route] Execution",

@@ -16,7 +16,8 @@ func TestAgentStepMigrationPreservesNestedRoutesAndContracts(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &raw); err != nil {
 		t.Fatal(err)
 	}
-	if string(raw["unknown"]) != `{"type":"message_sequence"}` {
+	var unknown map[string]string
+	if err := json.Unmarshal(raw["unknown"], &unknown); err != nil || unknown["type"] != "message_sequence" {
 		t.Fatalf("unrelated JSON changed: %s", raw["unknown"])
 	}
 	var plan PlanningResponse
@@ -47,5 +48,12 @@ func TestAgentStepMigrationPreservesNestedRoutesAndContracts(t *testing.T) {
 	}
 	if got := old.Steps[0].(*AgentPlanStep); got.Items[0].Type != "user_message" || got.StepType() != StepTypeAgent {
 		t.Fatalf("legacy read did not normalize: %#v", got)
+	}
+}
+
+func TestAgentMigrationRejectsConflictingItemsAndMessages(t *testing.T) {
+	input := `{"steps":[{"id":"ambiguous","type":"orchestrator","items":[{"message":"First"}],"messages":[{"message":"Second"}]}]}`
+	if _, _, err := MigrateAgentStepContent(input); err == nil {
+		t.Fatal("expected conflicting saved sequences to be rejected without losing either")
 	}
 }

@@ -92,9 +92,9 @@ Shell commands may use the absolute paths below. Workspace tools that accept a f
 - Allowed READ: {{.FolderGuardReadPaths}}
 - Allowed WRITE: {{.FolderGuardWritePaths}}
 - Step folder is **volatile** — deleted on re-execution. Only write primary results here.
-{{if .MessageSequenceAccessNote}}
+{{if .AgentAccessNote}}
 
-**Agent item access:** {{.MessageSequenceAccessNote}}
+**Agent item access:** {{.AgentAccessNote}}
 {{end}}
 
 {{if ne .DBAccess "none"}}**Three persistent stores — do not confuse them. Only access a store when it appears in Allowed READ/WRITE or a dedicated prompt section grants access:**

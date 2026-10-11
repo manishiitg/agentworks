@@ -171,7 +171,7 @@ You are a **read-only** execution analysis assistant. Help the user understand w
 - Specialist session logs: '{parent-step}/agents/{route-id}/session.json'
 
 All nested runtime artifacts belong to the parent Agent subtree. Do not look for
-retired flattened sub-agent or message_sequences folders.
+retired flattened sub-agent or agents folders.
 
 {{if .IsCodeExecutionMode}}{{"{{TOOL_STRUCTURE}}"}}{{end}}`)
 
@@ -1448,9 +1448,9 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 			// the same conversation. Treating that turn boundary as step completion
 			// sends a false AUTO-NOTIFICATION to the workshop chat and closes the
 			// parent execution while its child is still live. The controller emits a
-			// OrchestratorStepCompleted event only after all owned children have settled
+			// AgentStepCompleted event only after all owned children have settled
 			// and their results have been reconciled; that is the success boundary.
-			if agentType == "todo_task_orchestrator" && endEvent.Success {
+			if agentType == "delegating_agent" && endEvent.Success {
 				break
 			}
 			if workflowProgressTracksAgent(agentType, endEvent.AgentName) {
@@ -1520,8 +1520,8 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 				}
 			}
 		}
-	case orchestrator_events.OrchestratorStepCompleted:
-		if completedEvent, ok := event.Data.(*OrchestratorStepCompletedEvent); ok {
+	case orchestrator_events.AgentStepCompleted:
+		if completedEvent, ok := event.Data.(*AgentStepCompletedEvent); ok {
 			stepName := strings.TrimSpace(completedEvent.StepTitle)
 			if stepName == "" {
 				stepName = strings.TrimSpace(completedEvent.StepID)
@@ -1534,7 +1534,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 				result = "Todo task step completed"
 			}
 
-			progressID, alreadyStarted := b.workflowProgressExecIDForEnd("todo_task_orchestrator", stepName, completedEvent.StepIndex)
+			progressID, alreadyStarted := b.workflowProgressExecIDForEnd("delegating_agent", stepName, completedEvent.StepIndex)
 			if b.session != nil && b.session.StepRegistry != nil {
 				b.session.StepRegistry.Register(&WorkshopStepExecution{
 					ID:     progressID,
@@ -1549,7 +1549,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 					"execution_type": "workflow-step",
 					"step_name":      stepName,
 					"step_id":        completedEvent.StepID,
-					"agent_type":     "todo_task_orchestrator",
+					"agent_type":     "delegating_agent",
 					"step_index":     fmt.Sprintf("%d", completedEvent.StepIndex),
 				}
 				if b.iteration != "" {
@@ -1580,7 +1580,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 
 func workflowProgressTracksAgentType(agentType string) bool {
 	switch agentType {
-	case "todo_planner_execution", "todo_task_orchestrator", "generic_execution":
+	case "todo_planner_execution", "delegating_agent", "generic_execution":
 		return true
 	default:
 		return false
@@ -1598,7 +1598,7 @@ func workflowProgressTracksAgent(agentType string, agentName string) bool {
 // the declared ExecutionKind, so the terminal store and rail badge no longer have
 // to re-derive it from the "Step -> " name convention below.
 func workflowProgressExecutionKind(agentType string) orchestrator_events.ExecutionKind {
-	if agentType == "todo_task_orchestrator" {
+	if agentType == "delegating_agent" {
 		return orchestrator_events.ExecutionKindAgent
 	}
 	return orchestrator_events.ExecutionKindSubAgent
@@ -2088,7 +2088,7 @@ func RegisterRunFullWorkflowTool(
 				workflowController.SetSubAgentNotifier(session.combinedSubAgentNotifier())
 				workflowController.SetWorkshopExecutionContext(execCtx, session.StepRegistry)
 				// Wire the workshop execution notifier so step types that emit their
-				// own lifecycle notifications directly (message_sequence items,
+				// own lifecycle notifications directly (agent items,
 				// kb-update, continuation recovery) actually reach the main agent
 				// during a full-workflow run. Without this the notifier is nil and
 				// those notifications silently no-op — e.g. an agent step

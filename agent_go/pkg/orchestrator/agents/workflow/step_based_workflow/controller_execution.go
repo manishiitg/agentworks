@@ -3015,7 +3015,7 @@ var executionLogEvidenceSuffixes = []string{"", "-conversation", "-timing", "-pr
 // PLAT-176. Execution evidence is named
 // `execution-attempt-{retryAttempt}-iteration-{loopIteration}`, and both counters
 // are local to a single dispatch of a step: retryAttempt comes from this
-// function's own `for retryAttempt := 1; ...` loop, and message_sequence passes a
+// function's own `for retryAttempt := 1; ...` loop, and agent passes a
 // literal 1 with a per-entry turn number. Nothing in the name identifies WHICH
 // dispatch produced it, so a step that runs again -- a route re-entry, an
 // operator re-run, a gate sending work back -- recomputes the identical path and
@@ -3720,7 +3720,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 			hcpo.GetLogger().Info(fmt.Sprintf("[STEP-PATH] Using default step path %q for step index %d (override=%q, singleStep=%v, target=%d)",
 				stepPath, i, execCtx.StepPathOverride, execCtx.RunSingleStepOnly, execCtx.SingleStepTarget))
 		}
-		// Same contract as the message_sequence queue: a canceled run must not
+		// Same contract as the agent queue: a canceled run must not
 		// START another step, regardless of what the previous one reported
 		// (PLAT-130). A step failing for its own reasons already aborts the loop;
 		// this covers the case where cancellation never became an error.

@@ -102,16 +102,16 @@ Read to read-write still needs a concrete `learning_objective` and a decision.
 
 The step-type rule is in
 `read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`:
-a agent is the default; a Crew (a Crew step, or a function call from
+an agent is the default; a Crew (a Crew step, or a function call from
 a step's agent) is for work that belongs to a persistent specialist with its own
 memory, skills and files. Judge a mismatch only from evidence, never from the
 step type alone:
-- A agent is a Crew candidate when its runs keep rebuilding the same
+- An agent is a Crew candidate when its runs keep rebuilding the same
   specialist context (re-reading the same sources, re-deriving the same
   judgments), or when the same specialist work is duplicated across workflows
   that a Crew could serve. `search_platform(operation="list_crews")` shows
   whether a suitable Crew already exists.
-- A Crew call is a agent candidate when the work is one-off and
+- A Crew call is an agent candidate when the work is one-off and
   stateless, gains nothing from the Crew's memory, and pays for a second agent.
   `read_crew_calls(operation="list")` and `read_crew_calls(operation="read")`
   show what the Crew actually did with this workflow's calls.

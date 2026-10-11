@@ -91,7 +91,7 @@ type agentSequenceCallOptions struct {
 }
 
 // agentSequenceDelegation is the seam that lets a todo_task orchestrator run on
-// the message_sequence executor instead of its own turn loop. The executor owns
+// the agent executor instead of its own turn loop. The executor owns
 // the item queue, prevalidation repair loop, final validation gate, closing
 // reflection turn, session log, and stop/halt handling; the delegation hooks own
 // what is orchestrator-specific: which agent runs (the orchestrator agent type
@@ -164,7 +164,7 @@ const normalizedRegularSequenceItemID = "execute-and-verify"
 
 // normalizeRegularStepToAgent routes persisted non-scripted regular
 // steps through the canonical conversational runtime. New plans author these as
-// message_sequence directly; this normalization keeps existing workflows
+// agent directly; this normalization keeps existing workflows
 // executable without reviving the removed direct regular-agent path.
 func normalizeRegularStepToAgent(step *RegularPlanStep) *AgentPlanStep {
 	if step == nil {
@@ -187,7 +187,7 @@ func normalizeRegularStepToAgent(step *RegularPlanStep) *AgentPlanStep {
 
 // shouldNormalizeRegularStepToAgent is the transitional shim: only a
 // regular step whose unstripped step_config.json still declares the retired
-// agentic mode runs as a message_sequence. Every other regular step is
+// agentic mode runs as a agent. Every other regular step is
 // scripted (PLAT-287). Retire together with AgentConfigs.legacyDeclaredMode.
 func shouldNormalizeRegularStepToAgent(step PlanStepInterface) bool {
 	return isLegacyAgenticRegularStep(step, getAgentConfigs(step))
@@ -197,7 +197,7 @@ func shouldNormalizeRegularStepToAgent(step PlanStepInterface) bool {
 // mirror: an agent step whose step_config already declares scripted
 // mode (PLAT-280 — a checked-in learnings/{step-id}/main.py that needs the real
 // scripted executor's $DB_PATH/STEP_OUTPUT_DIR injection, which the
-// message_sequence runtime does not reliably provide) has no in-place way to
+// agent runtime does not reliably provide) has no in-place way to
 // become a true `regular` plan step. Items carry no information a scripted step
 // can use — its work lives entirely in the checked-in script — so they are
 // dropped, not migrated.
@@ -214,7 +214,7 @@ func normalizeAgentStepToRegular(step *AgentPlanStep) *RegularPlanStep {
 }
 
 // effectiveRuntimeStepType reports the execution model users actually see.
-// Persisted non-scripted regular steps run through message_sequence for
+// Persisted non-scripted regular steps run through agent for
 // compatibility, so exposing them as "regular" in terminal metadata is
 // misleading even though the saved plan still has the legacy type.
 func effectiveRuntimeStepType(step PlanStepInterface) string {
@@ -228,9 +228,9 @@ func effectiveRuntimeStepType(step PlanStepInterface) string {
 }
 
 // agentSequenceClosingItems builds synthetic trailing items so a standalone
-// message_sequence honors its step-level learning_objective and
+// agent honors its step-level learning_objective and
 // knowledgebase_contribution — the same post-step learnings/KB a regular step
-// runs (a message_sequence otherwise skips the learning/KB phase entirely). Each
+// runs (a agent otherwise skips the learning/KB phase entirely). Each
 // is a user_message turn carrying the matching write access; the item machinery
 // already grants learnings/_global or notes/ from kind + write_access.
 func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(ctx context.Context, seq *AgentPlanStep, stepIndex int) []AgentItem {
@@ -379,7 +379,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		stepPath = fmt.Sprintf("step-%d", stepIndex+1)
 	}
 
-	// How a message_sequence behaves depends on how it is invoked:
+	// How a agent behaves depends on how it is invoked:
 	//   - ROUTE (Source=="orchestrator_reentry"): the todo_task orchestrator re-enters the
 	//     same specialist across calls within one run. The conversation is kept in an
 	//     in-memory cache on this orchestrator so it remembers prior calls. This memory is
@@ -469,7 +469,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		}
 		// Run the configured queue, automatically enforce the step-level final
 		// validation contract, then append synthetic learnings/KB contribution
-		// turns so a standalone message_sequence honors its step-level
+		// turns so a standalone agent honors its step-level
 		// learning_objective / knowledgebase_contribution — the same post-step
 		// learnings/KB a regular step runs. (Copy first so we never mutate the plan's
 		// Items slice.)
@@ -511,7 +511,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	}
 
 	if !isRoute {
-		defer hcpo.closeAgentRuntime(session, "standalone message_sequence completed")
+		defer hcpo.closeAgentRuntime(session, "standalone agent completed")
 	}
 	// Resolve a single plan/config snapshot before starting any work. Script items
 	// never acquire the orchestrator's agentic delegation tools or child sessions.
@@ -656,7 +656,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	return finalSummary, session.ConversationHistory, nil
 }
 
-// appendAgentFinalValidation makes a message_sequence obey the same
+// appendAgentFinalValidation makes a agent obey the same
 // step-level validation contract as a regular step. Explicit prevalidation items
 // remain useful as intermediate gates, but authors do not need to duplicate the
 // top-level schema as the final configured item. The synthetic gate deliberately
@@ -722,12 +722,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) startAgentItemNotification(ctx contex
 	// appended gate item differently from them.
 	// Fail loud, not silent: a nil notifier means this execution path forgot to
 	// wire SetWorkshopExecutionNotifier, so the main agent gets NO notification
-	// for this message_sequence item. That used to be an invisible no-op (a whole
+	// for this agent item. That used to be an invisible no-op (a whole
 	// step ran with the main agent never told). Log it so the wiring gap is
 	// obvious instead of silently swallowed.
 	if hcpo.workshopExecutionNotifier == nil {
 		if hcpo.GetLogger() != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ message_sequence item %q/%q: workshopExecutionNotifier is nil — auto-notification skipped (notifier not wired for this execution path)", step.GetID(), item.ID))
+			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ agent item %q/%q: workshopExecutionNotifier is nil — auto-notification skipped (notifier not wired for this execution path)", step.GetID(), item.ID))
 		}
 		return "", "", nil, false
 	}
@@ -915,13 +915,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentItem(ctx context.Context,
 				Kind:    "execution",
 				Message: feedback,
 			}
-			hcpo.GetLogger().Info(fmt.Sprintf("🔁 message_sequence prevalidation %q failed — sending repair turn %d/%d", item.ID, attempt+1, maxAgentPrevalidationRepairs))
+			hcpo.GetLogger().Info(fmt.Sprintf("🔁 agent prevalidation %q failed — sending repair turn %d/%d", item.ID, attempt+1, maxAgentPrevalidationRepairs))
 			if _, rerr := hcpo.executeAgentUserMessage(ctx, step, repairItem, stepIndex, stepPath, session); rerr != nil {
 				return "", fmt.Errorf("agent prevalidation %q repair turn %d failed: %w", item.ID, attempt+1, rerr)
 			}
 		}
 	default:
-		return "", fmt.Errorf("unsupported message_sequence item type %q", item.Type)
+		return "", fmt.Errorf("unsupported agent item type %q", item.Type)
 	}
 }
 
@@ -1282,7 +1282,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentForeachItem(ctx context.C
 
 func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, step *AgentPlanStep, stepPath string, session *agentSequenceSession, readPaths, writePaths []string) (*agentSequenceRuntime, context.Context, error) {
 	if session == nil {
-		return nil, ctx, fmt.Errorf("message_sequence session is nil")
+		return nil, ctx, fmt.Errorf("agent session is nil")
 	}
 
 	if session.delegation != nil {
@@ -1293,7 +1293,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 			return session.runtime, ctx, nil
 		}
 		if session.delegation.CreateAgent == nil {
-			return nil, ctx, fmt.Errorf("message_sequence delegation for step %q has no agent factory", step.GetID())
+			return nil, ctx, fmt.Errorf("agent delegation for step %q has no agent factory", step.GetID())
 		}
 		agent, err := session.delegation.CreateAgent(ctx)
 		if err != nil {
@@ -1312,7 +1312,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 		session.runtime = &agentSequenceRuntime{SessionID: sessionID}
 		defer func() {
 			if !ready {
-				hcpo.closeAgentRuntime(session, "message_sequence setup failed")
+				hcpo.closeAgentRuntime(session, "agent setup failed")
 			}
 		}()
 	}
@@ -1322,7 +1322,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 	hcpo.configureSubAgentSessionGuard(sessionID, "agent", step.GetID(), readPaths, writePaths)
 	hcpo.setAgentShellEnv(sessionID, stepPath, step.GetID())
 
-	// The message_sequence execution agent is created ONCE and reused for every
+	// The agent execution agent is created ONCE and reused for every
 	// item, and the workspace-write tools (diff_patch_workspace_file) enforce a
 	// folder-guard snapshot FROZEN into the agent at creation (createExecutionOnlyAgent
 	// -> config.FolderGuardWritePaths, which the wrapper captures by value and never
@@ -1354,7 +1354,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 	if cfg := agent.GetConfig(); cfg != nil {
 		session.runtime.Provider = cfg.LLMConfig.Primary.Provider
 		if actualID := strings.TrimSpace(cfg.MCPSessionID); actualID != sessionID {
-			return nil, agentCtx, fmt.Errorf("message_sequence agent session %q does not match allocated runtime %q", actualID, sessionID)
+			return nil, agentCtx, fmt.Errorf("agent agent session %q does not match allocated runtime %q", actualID, sessionID)
 		}
 	}
 	// Agent creation applies its full-step guard; restore this item's scope.
@@ -1562,7 +1562,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 		// tool_output_folder is where any bridge tool result past its inline size
 		// cap is spilled (MCP_TOOL_OUTPUT_DIR) -- most often a large agent_browser
 		// snapshot. setupExecutionFolderGuard has granted this since PLAT-073
-		// cluster F; this parallel message_sequence builder never did, so a
+		// cluster F; this parallel agent builder never did, so a
 		// agent step told "full output saved to <path>" had no legal
 		// way to read it back. Confirmed live 2026-08-17 (customer-login
 		// step-5-execute-browser-and-capture-apis): its read paths carried no
@@ -1718,7 +1718,7 @@ func buildAgentAccessNote(writeAccess AgentWriteAccess, dbAccess string) string 
 // <docsRoot>/<workflowRoot>/<path>. The workflow root (GetWorkspacePath, e.g.
 // "Workflow/social-media") MUST be included — otherwise the agent is told to
 // write to <docsRoot>/runs/... , OUTSIDE its workflow folder, where the normal
-// context system can't see the file (this was the message_sequence forward-pipe
+// context system can't see the file (this was the agent forward-pipe
 // bug). The *Rel helpers stay workflow-root-relative for the workspace-file API
 // (which resolves relative to the workflow root); this is the single place that
 // converts them to absolute.
@@ -1758,9 +1758,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceSessionPath(stepPath str
 // (item state, output snapshots, and session.json). Called on restart so a fresh attempt starts clean.
 func (hcpo *StepBasedWorkflowOrchestrator) cleanupAgentRuntime(ctx context.Context, stepPath string, stepID string) error {
 	relPath := hcpo.agentSequenceExecutionRelPath(stepPath, stepID)
-	hcpo.GetLogger().Info(fmt.Sprintf("🗑️ Cleaning message_sequence runtime: %s", relPath))
+	hcpo.GetLogger().Info(fmt.Sprintf("🗑️ Cleaning agent runtime: %s", relPath))
 	if err := hcpo.CleanupDirectory(ctx, relPath, filepath.Join("execution", getArtifactFolderName(stepID, stepPath))); err != nil {
-		return fmt.Errorf("failed to cleanup message_sequence runtime %s/%s: %w", stepPath, stepID, err)
+		return fmt.Errorf("failed to cleanup agent runtime %s/%s: %w", stepPath, stepID, err)
 	}
 	return nil
 }
@@ -1849,7 +1849,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveAgentSession(ctx context.Context,
 // completion notification carries and what saveFinalExecutionSummary stores.
 // It is the last completed authored item's answer, the same thing a regular
 // step reports. A bare "N item(s) completed" count told the user nothing once
-// message_sequence became the default step type. Prevalidation gates and
+// agent became the default step type. Prevalidation gates and
 // synthetic __...__ items are bookkeeping, not answers, so they are skipped. The
 // count remains the fallback when no authored item produced text.
 func (hcpo *StepBasedWorkflowOrchestrator) summarizeAgentSession(session *agentSequenceSession) string {
@@ -1871,7 +1871,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) summarizeAgentSession(session *agentS
 	return fmt.Sprintf("Agent %s completed: %d item(s) completed", session.StepID, completed)
 }
 
-// agentSequenceHaltedBeforeItem reports why a message_sequence queue must not
+// agentSequenceHaltedBeforeItem reports why a agent queue must not
 // start another item, or nil to proceed.
 //
 // PLAT-130. Clicking Stop on a schedule canceled the run's context correctly,

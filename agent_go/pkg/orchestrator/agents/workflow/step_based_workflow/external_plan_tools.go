@@ -330,7 +330,7 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		// dropping the argument.
 		for _, retired := range []string{"declared_execution_mode", "declared_execution_mode_reason"} {
 			if val, ok := args[retired]; ok && val != nil {
-				return "", fmt.Errorf("%s is retired (PLAT-287): a step's plan type decides how it runs (regular = scripted main.py, message_sequence = conversational) -- use change_step_type(step_id=%q, target_type=\"scripted\"|\"message_sequence\", reason=...)", retired, stepID)
+				return "", fmt.Errorf("%s is retired (PLAT-287): a step's plan type decides how it runs (regular = scripted main.py, agent = conversational) -- use change_step_type(step_id=%q, target_type=\"scripted\"|\"agent\", reason=...)", retired, stepID)
 			}
 		}
 		if val, ok := args["description_reviewed"]; ok && val != nil {

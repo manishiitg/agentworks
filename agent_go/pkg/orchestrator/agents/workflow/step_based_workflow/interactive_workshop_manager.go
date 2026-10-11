@@ -257,7 +257,7 @@ func canonicalDeclaredExecutionMode(mode string) string {
 // conversational. The one exception is transitional: a regular step whose
 // step_config.json still carries the retired declared_execution_mode="agentic"
 // key (not yet stripped by v1.0.39) is a legacy agentic step the runtime keeps
-// running as a message_sequence.
+// running as a agent.
 // cfg may be nil.
 func isScriptedStep(step PlanStepInterface, cfg *AgentConfigs) bool {
 	switch step.(type) {
@@ -298,7 +298,7 @@ func executionModeLabel(scripted bool) string {
 
 // isLegacyAgenticRegularStep is the transitional shim's predicate: a regular
 // step whose unstripped step_config.json still declares agentic. Such a step
-// executed as a message_sequence before PLAT-287 and must keep doing so until
+// executed as a agent before PLAT-287 and must keep doing so until
 // the v1.0.38 migration rewrites its plan type -- which the scheduler's
 // preflight runs before a scheduled workflow, but a manual run does not wait
 // for.
@@ -1273,12 +1273,12 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"validate_plan_change",
 		"migrate_agent_code_items", "migrate_orchestrator_step_type", "migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
-		"add_human_input_step", "add_todo_task_step", "add_todo_task_route",
-		"add_orchestrator_step", "add_agent_route", "update_orchestrator_step", "update_agent_route", "delete_agent_route",
+		"add_human_input_step",
+		"add_agent_route", "update_agent_route", "delete_agent_route",
 		"add_crew_step", "update_crew_step",
 		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
-		"update_human_input_step", "update_todo_task_step", "update_todo_task_route",
-		"delete_todo_task_route", "delete_plan_steps", "cleanup_orphan_step_configs",
+		"update_human_input_step",
+		"delete_plan_steps", "cleanup_orphan_step_configs",
 		"update_validation_schema",
 		"change_step_type",
 		"record_plan_drift_review",
@@ -7468,9 +7468,9 @@ This is a **read-only review**:
 
 Modern agents can handle long context and many tool calls. Do not flag a step merely because it performs many actions, tool calls, screen interactions, or small transformations. A step is a durable workflow boundary: it has an output contract, validation gate, retry behavior, and persistent-store responsibilities.
 
-Start from one large `+"`message_sequence`"+` per coherent shared-context span. Prefer the fewest durable steps that preserve real control boundaries. One agentic step may own a substantial end-to-end outcome when the work shares one objective, context, tool/security envelope, output contract, retry domain, and final validation gate. Do not require a separate scripted step for each subtask, checklist item, source, tool, proof check, double-check, or intermediate thought.
+Start from one large `+"`agent`"+` per coherent shared-context span. Prefer the fewest durable steps that preserve real control boundaries. One agentic step may own a substantial end-to-end outcome when the work shares one objective, context, tool/security envelope, output contract, retry domain, and final validation gate. Do not require a separate scripted step for each subtask, checklist item, source, tool, proof check, double-check, or intermediate thought.
 
-When that coherent outcome needs staged assurance, prefer one `+"`message_sequence`"+` over several regular steps. Its `+"`description`"+` is the durable system-level charter (objective, boundaries, definition of done); its `+"`items[]`"+` are the actual user turns that execute and verify that charter. Do not repeat the description as item 0. Give the first work item the whole outcome; add only decision-useful follow-up turns that inspect evidence, challenge completion, and repair gaps (for example: `+"`re-open the result, verify every success criterion, and fix anything unsupported or incomplete`"+`). Do not turn a large task into one tiny sequence item per routine action.
+When that coherent outcome needs staged assurance, prefer one `+"`agent`"+` over several regular steps. Its `+"`description`"+` is the durable system-level charter (objective, boundaries, definition of done); its `+"`items[]`"+` are the actual user turns that execute and verify that charter. Do not repeat the description as item 0. Give the first work item the whole outcome; add only decision-useful follow-up turns that inspect evidence, challenge completion, and repair gaps (for example: `+"`re-open the result, verify every success criterion, and fix anything unsupported or incomplete`"+`). Do not turn a large task into one tiny sequence item per routine action.
 
 Treat validation as an improvement to that large step before treating it as a topology change. Require run-specific proof/provenance in the output, tighten the top-level `+"`validation_schema`"+`, and add evidence-based double-check and repair turns. Flag a separate validation/reviewer step unless it needs an independently rerunnable artifact/failure domain, different permissions/tools, or genuine clean-room independence from the maker.
 

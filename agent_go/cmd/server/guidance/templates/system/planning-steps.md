@@ -60,8 +60,8 @@ specialist work adaptively from runtime evidence. Several known actions in one s
 - **`branch`** — same deterministic route-map mechanics as `routing`, for a
   small in-flow next-step decision instead of a major fork
 - **`human_input`** — pause for operator input
-- **orphan** (`is_orphan: true`) — reusable across orchestrators via
-  `shared_with.orchestrator_ids` + `orphan_step_ref`
+- **orphan** (`is_orphan: true`) — reusable across agents via
+  `shared_with.agent_ids` + `orphan_step_ref`
 
 ## See also
 
@@ -71,14 +71,5 @@ step-types reference, inner steps, reusable orphan-route pattern),
 call **`read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`** — this is the entry
 point for any plan-composition decision. From there:
 
-- **Per-step-type deep dives**: `agent` (conversation and route
-  migration), `human-input` (input types + routing
-  pairing + unattended schedules), `agent` (full pattern
-  catalog: Stateful Specialist, Test/Fix Loop, Maker+Reviewer, Panel,
-	  Clean-Room Retry, HITL Re-entry, Scripted Conversation), `routing`
-	  (deterministic route_selection.json contract, anti-patterns), `branch`
-	  (same mechanics as `routing`, for a small in-flow decision).
-- **Combining steps**: examples live with their owning contracts in `plan-design`,
-  `agent` (script batches, verification, SQL iteration and specialist routes)
-  (adaptive investigations), `human-in-the-loop` (review/approval), and `stores`
-  (durable persistence).
+- **Per-step-type deep dives**: `agent` (conversation, specialist routes, verification, SQL iteration and script batches), `human-input` (free-form values and unattended schedules), `routing` (major deterministic mode selection), and `branch` (small in-flow decisions).
+- **Combining steps**: examples live with their owning contracts in `plan-design`, `agent`, `human-in-the-loop` (review/approval), and `stores` (durable persistence).

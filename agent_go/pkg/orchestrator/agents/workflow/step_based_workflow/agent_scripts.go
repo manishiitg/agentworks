@@ -101,7 +101,7 @@ func validateAgentScriptReferences(plan *PlanningResponse) error {
 			for _, item := range sequence.Items {
 				if item.Type == "scripted" {
 					if _, err := resolveSequenceScripts(item, plan); err != nil {
-						return fmt.Errorf("message_sequence %q: %w", sequence.ID, err)
+						return fmt.Errorf("agent %q: %w", sequence.ID, err)
 					}
 				}
 			}
@@ -200,7 +200,7 @@ func sequenceSavedScriptError(result *ScriptedFastPathResult) error {
 
 func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Context, step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, session *agentSequenceSession) (string, error) {
 	if session == nil || session.delegation != nil {
-		return "", fmt.Errorf("scripted batch items require a message_sequence; orchestrators use their existing scripted route tools")
+		return "", fmt.Errorf("scripted batch items require an agent")
 	}
 	calls, err := resolveSequenceScripts(item, session.scriptedPlan)
 	if err != nil {

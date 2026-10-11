@@ -94,9 +94,8 @@ var goalWorkChangeTools = map[string]bool{
 var goalWorkReshapeTools = map[string]bool{
 	"create_schedule": true, "create_calendar_schedule": true, "update_schedule": true, "manage_workflow_webhook": true,
 	"add_step": true, "add_scripted_step": true, "add_agent_step": true, "add_routing_step": true, "add_branch_step": true,
-	"add_human_input_step": true, "add_todo_task_step": true, "add_todo_task_route": true, "add_orchestrator_step": true,
-	"add_agent_route": true, "add_crew_step": true, "manage_step_route": true, "manage_group": true, "maintain_plan": true,
-	"convert_routing_branch_step_type": true, "delete_todo_task_route": true, "delete_agent_route": true,
+	"add_human_input_step": true, "add_agent_route": true, "add_crew_step": true, "manage_step_route": true, "manage_group": true, "maintain_plan": true,
+	"convert_routing_branch_step_type": true, "delete_agent_route": true,
 	"update_workflow_config": true, "set_workflow_llm_config": true, "update_variable": true, "add_group": true,
 	"update_group": true, "delete_group": true,
 }

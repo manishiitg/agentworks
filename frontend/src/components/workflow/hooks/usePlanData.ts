@@ -174,7 +174,7 @@ function resolveOrphanStepRefs(plan: PlanningResponse): PlanningResponse {
               }
             }
             const orphanStep = orphanMap.get(route.orphan_step_ref)
-            const allowedOrchestrators = orphanStep?.shared_with?.orchestrator_ids ?? []
+            const allowedOrchestrators = orphanStep?.shared_with?.agent_ids ?? []
             const isAllowed = !!orphanStep && allowedOrchestrators.includes(step.id)
 
             if (orphanStep && isAllowed) {

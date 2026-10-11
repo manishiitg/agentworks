@@ -224,7 +224,7 @@ func TestCollectPlanChangeBacklogCapsListingNotCount(t *testing.T) {
 // TestWrongStepTypeRefusalNamesTheRightTool covers the mistake that turned a
 // solvable finding into a fake blocker.
 //
-// latency-report's collectors are message_sequence and todo_task steps. A fixer
+// latency-report's collectors are agent and todo_task steps. A fixer
 // tried update_scripted_step, was correctly refused by a message saying only
 // "use its type-specific update tool", and concluded the steps were "not
 // editable". It filed that as blocked and re-reported it for days, while

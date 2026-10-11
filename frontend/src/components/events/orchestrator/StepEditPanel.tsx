@@ -25,7 +25,6 @@ interface StepEditPanelProps {
   presetServers?: string[]; // Preset's selected servers (subset to show in UI)
   presetLLMConfig?: PresetLLMConfig | null; // Preset's LLM config with agent defaults
   presetUseCodeExecutionMode?: boolean; // Preset's code execution mode (default value for step)
-  isLegacyAgentStep?: boolean; // Whether this step is a todo_task step (for tier selection UI)
   isExpanded?: boolean; // Controlled expanded state from parent
   onToggleExpanded?: (expanded: boolean) => void; // Callback when expansion state changes
 }
@@ -38,7 +37,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
   presetServers = [],
   presetLLMConfig = null,
   presetUseCodeExecutionMode = false,
-  isLegacyAgentStep: isTodoTask = false,
   isExpanded: controlledIsExpanded,
   onToggleExpanded,
 }) => {
@@ -1127,49 +1125,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
 	                </div>
 	              )}
 	            </div>
-
-            {/* Todo Task Tier Controls (only in tiered mode for todo_task steps) */}
-            {isTodoTask && presetLLMConfig?.mode === 'explicit' && (
-              <>
-                <div className="border-t border-gray-200 dark:border-gray-700"></div>
-                <div className="space-y-3">
-                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                    Todo Task Tier Settings
-                  </div>
-
-                  {/* Orchestrator Tier */}
-                  <div>
-                    <label className="text-xs text-gray-600 dark:text-gray-400">Orchestrator Agent Tier</label>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-500 mb-1">
-                      Which tier for the agent itself
-                    </p>
-                    {agentConfigs.execution_llm?.provider && agentConfigs.execution_llm?.model_id ? (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                        ⚠️ Execution LLM is set — it takes precedence over tier for the agent. Clear Execution LLM above to use tier-based selection.
-                      </p>
-                    ) : (
-                      <select
-                        value={agentConfigs.todo_task_orchestrator_tier ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setAgentConfigs((prev) => ({
-                            ...prev,
-                            todo_task_orchestrator_tier: val ? parseInt(val) : undefined,
-                          }));
-                        }}
-                        className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Auto (default)</option>
-                        <option value="1">Tier 1 - High Reasoning</option>
-                        <option value="2">Tier 2 - Medium Reasoning</option>
-                        <option value="3">Tier 3 - Low Reasoning</option>
-                      </select>
-                    )}
-                  </div>
-
-                </div>
-              </>
-            )}
 
             {/* LLM Validation Agent Configuration — disabled (LLM validation is dead code in backend).
                Only pre-validation (code-based structural checks) is active. Kept commented out for reference. */}

@@ -22,10 +22,10 @@ import (
 // conversation_history directly and asserts on per-turn structure.
 
 // ──────────────────────────────────────────────────────────────────────
-// Shared session parsing — used by the message_sequence tests below.
+// Shared session parsing — used by the agent tests below.
 
 // sessionFile mirrors the on-disk shape of session.json the engine
-// writes under execution/message_sequences/<step-path>/<step-id>/.
+// writes under execution/agents/<step-path>/<step-id>/.
 // Field names are PascalCase because the engine marshals
 // llmtypes.MessageContent that way.
 type sessionFile struct {
@@ -56,7 +56,7 @@ func (m sessionMessage) text() string {
 
 func loadSessionJSON(t *testing.T, workspaceDisk, stepID string) *sessionFile {
 	t.Helper()
-	pat := filepath.Join(workspaceDisk, "runs", "*", "*", "execution", "message_sequences", "*", stepID, "session.json")
+	pat := filepath.Join(workspaceDisk, "runs", "*", "*", "execution", "agents", "*", stepID, "session.json")
 	matches, _ := filepath.Glob(pat)
 	if len(matches) == 0 {
 		t.Fatalf("session.json not written under %s — agent step did not run", pat)
@@ -206,7 +206,7 @@ func TestWorkflowAgentMultiItem(t *testing.T) {
 }
 
 // TestWorkflowAgentItemTypeInvalidRejected proves the
-// engine refuses a message_sequence item with an unknown `type` field.
+// engine refuses a agent item with an unknown `type` field.
 // Today valid types are exactly user_message | code | prevalidation
 // (planning_agent.go:594). A typo or hallucinated item type should
 // fail at plan load, not be silently dropped or executed as
@@ -404,7 +404,7 @@ with open(os.path.join(out_dir, "computed.txt"), "w") as f:
 // step_config.json that still carries the RETIRED
 // declared_execution_mode="agentic" key (a workflow the v1.0.38/1.0.39
 // migrations have not reached). The transitional shim keeps such a step
-// running as a message_sequence, so the engine must NOT enter the
+// running as a agent, so the engine must NOT enter the
 // scripted path and must NOT create learnings/<step-id>/main.py.
 //
 // Together with the positive test, this pair proves the scripted path is
@@ -459,7 +459,7 @@ func TestWorkflowScriptedControlNoModeWritesNoScript(t *testing.T) {
 // step_config.json entry whose `id` doesn't match any plan.json step
 // is harmlessly ignored. The mismatched entry carries the retired
 // declared_execution_mode="agentic" key; were it applied to the real
-// step, the legacy shim would run that step as a message_sequence and
+// step, the legacy shim would run that step as a agent and
 // write no script. The real step is a regular one and so scripted by
 // type: its main.py must appear, and none for the phantom id.
 func TestWorkflowScriptedStepConfigIDMismatchNotApplied(t *testing.T) {
@@ -517,7 +517,7 @@ func TestWorkflowScriptedStepConfigIDMismatchNotApplied(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// foreach — data-driven message expansion (message_sequence + todo_task)
+// foreach — data-driven message expansion (agent + todo_task)
 
 // TestWorkflowAgentForeach proves a `foreach` item expands a db
 // JSON array into ONE user_message turn per row, deterministically, through
@@ -611,7 +611,7 @@ func TestWorkflowAgentForeach(t *testing.T) {
 			t.Errorf("rows ran out of order: alpha=%d bravo=%d charlie=%d", tokenTurn["ROW_ALPHA"], tokenTurn["ROW_BRAVO"], tokenTurn["ROW_CHARLIE"])
 		}
 	}
-	t.Logf("✅ foreach message_sequence: %d human turns, %d ai turns, token→turn: %v", len(humans), len(ais), tokenTurn)
+	t.Logf("✅ foreach agent: %d human turns, %d ai turns, token→turn: %v", len(humans), len(ais), tokenTurn)
 }
 
 // TestWorkflowOrchestratorForeachMessages proves a todo_task step's scripted
@@ -822,7 +822,7 @@ func TestWorkflowOrchestratorPrevalidationGate(t *testing.T) {
 }
 
 // TestWorkflowAgentRouteReentry covers the headline of the (b2)
-// persistence refactor: a message_sequence used as a todo_task ROUTE remembers
+// persistence refactor: a agent used as a todo_task ROUTE remembers
 // its conversation across the orchestrator's repeated calls (in-memory,
 // run-scoped). The orchestrator is told to call the route twice — seed a secret
 // word, then ask for it back — and we assert the route's LAST reply recalls the

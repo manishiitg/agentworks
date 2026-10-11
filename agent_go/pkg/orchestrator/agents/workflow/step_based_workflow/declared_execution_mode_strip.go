@@ -43,7 +43,7 @@ func stripDeclaredExecutionModeFromConfigs(scope string, configs []StepConfig) [
 }
 
 // legacyAgenticRegularStepIDs lists the regular steps that still run as a
-// message_sequence only because of the retired key. Stripping it would flip
+// agent only because of the retired key. Stripping it would flip
 // them to scripted, so the v1.0.38 migration has to have converted them first.
 func legacyAgenticRegularStepIDs(plan *PlanningResponse, configs []StepConfig) []string {
 	var ids []string

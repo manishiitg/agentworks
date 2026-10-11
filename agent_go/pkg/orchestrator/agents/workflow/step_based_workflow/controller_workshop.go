@@ -24,7 +24,7 @@ type WorkshopExecuteOptions struct {
 	Instructions        string                 // Optional orchestrator instructions for inner steps — appended to step description as "## Orchestrator Instructions"
 	HumanInput          string                 // Optional human input for top-level steps — injected as critical feedback in PreviousStepsSummary
 	Tier                int                    // Optional LLM tier override (1=high, 2=medium, 3=low). 0 means no override.
-	AgentRestart        bool                   // If true, archive any existing message_sequence session and replay the configured item queue.
+	AgentRestart        bool                   // If true, archive any existing agent session and replay the configured item queue.
 	ScriptParameters    map[string]interface{} // Validated named inputs for a scripted step, exposed through STEP_PARAMS_JSON.
 	ScriptParametersSet bool                   // Distinguishes an omitted field from an explicitly supplied empty object.
 	ExecutionID         string                 // Server-generated identity for this direct step execution.
@@ -301,7 +301,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	if opts != nil && opts.AgentRestart {
 		setup.Context.AgentRestart = true
 	} else if isAgentStart {
-		// A plain execute_step on a message_sequence means "start from beginning".
+		// A plain execute_step on a agent means "start from beginning".
 		// Resume requires human_input so we do not accidentally replay or append.
 		setup.Context.AgentRestart = true
 	}

@@ -246,9 +246,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	createAgent := func(agentCtx context.Context) (orchestratoragents.OrchestratorAgent, error) {
 		agent, err := hcpo.createOrchestratorAgent(
 			agentCtx,
-			"todo_task", // phase
-			stepIndex,   // step
-			0,           // iteration
+			"agent",   // phase
+			stepIndex, // step
+			0,         // iteration
 			stepID,
 			orchestratorStepPath,
 			agentName,
@@ -275,7 +275,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
 			preSystemPrompt := executionAgent.executionOnlySystemPromptProcessor(templateVars)
 			preUserMessage := executionAgent.executionOnlyUserMessageProcessor(templateVars)
-			hcpo.preSavePromptsJSON(stepIndex, stepID, orchestratorStepPath, "todo_task_orchestrator", preSystemPrompt, preUserMessage, executionLLM, "todo-task-prompts.json")
+			hcpo.preSavePromptsJSON(stepIndex, stepID, orchestratorStepPath, "delegating_agent", preSystemPrompt, preUserMessage, executionLLM, "todo-task-prompts.json")
 		}
 		return agent, nil
 	}
@@ -297,7 +297,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		hcpo.saveOrchestratorExecutionLog(logCtx, stepID, orchestratorStepPath, 1, turnNumber-1, turnLLM, history, toolCalls, llmCalls, startedAt, completedAt, completedAt.Sub(startedAt), "")
 	}
 
-	// Run the orchestrator on the message_sequence executor: the step description is
+	// Run the orchestrator on the agent executor: the step description is
 	// rendered as the system charter; authored messages are user turns, followed by
 	// the synthetic final validation gate and the
 	// closing reflection turn. Repairs happen in place with full memory (the
@@ -339,7 +339,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	}
 
 	hcpo.GetLogger().Info("✅ Todo task step complete")
-	hcpo.emitOrchestratorStepCompletedEvent(ctx, step, stepIndex, orchestratorStepPath, 1, "Execution completed", orchestratorStep.NextStepID)
+	hcpo.emitAgentStepCompletedEvent(ctx, step, stepIndex, orchestratorStepPath, 1, "Execution completed", orchestratorStep.NextStepID)
 	hcpo.emitStepFinishedEvent(ctx, step, stepIndex, orchestratorStepPath)
 	return true, orchestratorStep.NextStepID, nil
 }
@@ -567,7 +567,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectOrchestratorLLM(
 	}
 
 	// 2. Tiered mode: todo task orchestrators default to Tier 1 (High), including nested
-	// todo-task orchestrators. PLAT-061 removed todo_task_orchestrator_tier — it was an
+	// todo-task orchestrators. PLAT-061 removed delegating_agent_tier — it was an
 	// int where every other tier is a string enum, so it bypassed tier validation and
 	// PLAT-060's required-reason path. Use execution_llm to override.
 	if hcpo.tierResolver == nil {
@@ -700,7 +700,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeGenericAgent(
 			StepType:     effectiveRuntimeStepType(genericStep),
 			StepIndex:    stepIndex + 1,
 			ParentStepID: step.GetID(),
-			TriggeredBy:  "todo_task",
+			TriggeredBy:  "agent",
 		},
 	)
 
@@ -1145,8 +1145,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	return result, capturedHistory, nil
 }
 
-// emitOrchestratorRouteSelectedEvent emits an event when the todo task orchestrator selects a route/sub-agent
-func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorRouteSelectedEvent(
+// emitAgentRouteSelectedEvent emits an event when the todo task orchestrator selects a route/sub-agent
+func (hcpo *StepBasedWorkflowOrchestrator) emitAgentRouteSelectedEvent(
 	ctx context.Context,
 	step PlanStepInterface,
 	stepIndex int,
@@ -1187,7 +1187,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorRouteSelectedEvent(
 		preferredTierLabel = TierLevelLabel(TierLevel(tier))
 	}
 
-	event := &OrchestratorRouteSelectedEvent{
+	event := &AgentRouteSelectedEvent{
 		BaseEventData: baseevents.BaseEventData{
 			Timestamp: time.Now(),
 			Component: "orchestrator",
@@ -1213,7 +1213,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorRouteSelectedEvent(
 	}
 
 	agentEvent := &baseevents.AgentEvent{
-		Type:      events.OrchestratorRouteSelected,
+		Type:      events.AgentRouteSelected,
 		Timestamp: time.Now(),
 		Data:      event,
 	}
@@ -1226,8 +1226,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorRouteSelectedEvent(
 	}
 }
 
-// emitOrchestratorStepCompletedEvent emits an event when the entire todo task step is completed
-func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorStepCompletedEvent(
+// emitAgentStepCompletedEvent emits an event when the entire todo task step is completed
+func (hcpo *StepBasedWorkflowOrchestrator) emitAgentStepCompletedEvent(
 	ctx context.Context,
 	step PlanStepInterface,
 	stepIndex int,
@@ -1245,7 +1245,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorStepCompletedEvent(
 	totalTodos := 0
 	completedCount := 0
 
-	event := &OrchestratorStepCompletedEvent{
+	event := &AgentStepCompletedEvent{
 		BaseEventData: baseevents.BaseEventData{
 			Timestamp: time.Now(),
 			Component: "orchestrator",
@@ -1262,7 +1262,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitOrchestratorStepCompletedEvent(
 	}
 
 	agentEvent := &baseevents.AgentEvent{
-		Type:      events.OrchestratorStepCompleted,
+		Type:      events.AgentStepCompleted,
 		Timestamp: time.Now(),
 		Data:      event,
 	}

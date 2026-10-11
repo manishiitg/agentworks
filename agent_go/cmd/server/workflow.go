@@ -2070,11 +2070,13 @@ type PlanStepUpdate struct {
 	MaxIterations   *int    `json:"max_iterations,omitempty"`
 	LoopDescription *string `json:"loop_description,omitempty"`
 
-	// Routing/Orchestrator step fields
+	// Agent and routing step fields
 	NextStepID *string `json:"next_step_id,omitempty"`
 
-	// Orchestrator step fields
+	// Agent step fields
 	PredefinedRoutes *[]todo_creation_human.PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
+	Items            *[]todo_creation_human.AgentItem              `json:"items,omitempty"`
+	ValidationSchema *todo_creation_human.ValidationSchema         `json:"validation_schema,omitempty"`
 }
 
 // PlanUpdateRequest represents a request to update a plan step
@@ -2453,9 +2455,23 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 
 	case *todo_creation_human.AgentPlanStep:
 		updated := *s // Copy the step
-		// AgentPlanStep only has ID and Title (no embedded CommonStepFields)
 		if updates.Title != nil {
 			updated.Title = *updates.Title
+		}
+		if updates.Description != nil {
+			updated.Description = *updates.Description
+		}
+		if updates.ContextDependencies != nil {
+			updated.ContextDependencies = *updates.ContextDependencies
+		}
+		if updates.ContextOutput != nil {
+			updated.ContextOutput = *updates.ContextOutput
+		}
+		if updates.ValidationSchema != nil {
+			updated.ValidationSchema = updates.ValidationSchema
+		}
+		if updates.Items != nil {
+			updated.Items = *updates.Items
 		}
 		if updates.NextStepID != nil {
 			updated.NextStepID = *updates.NextStepID
@@ -3132,7 +3148,7 @@ func (api *StreamingAPI) handleAddStep(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		newStep = &s
-	case "agent", "message_sequence", "orchestrator", "todo_task":
+	case "agent":
 		var s todo_creation_human.AgentPlanStep
 		if err := json.Unmarshal(stepJSON, &s); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to parse todo_task step: %v", err), http.StatusBadRequest)

@@ -209,7 +209,7 @@ func New(ledger *costledger.Ledger, sessionID, userID, agentMode string, opts ..
 		// workflow step — grew a `by_phase.execution_only` entry
 		// that just duplicated its own top-level total, in every Cost
 		// Analysis API response, forever. Only a phase the caller explicitly
-		// sets via SetPhase (reflection, a message_sequence item) is worth
+		// sets via SetPhase (reflection, a agent item) is worth
 		// naming; addEntryToExecutionBucket already skips ByPhase entirely
 		// for an empty phase, so leaving this unset costs nothing.
 	}
@@ -247,7 +247,7 @@ func (o *Observer) ExecutionID() string {
 
 // SetPhase updates the phase every entry this observer writes from now on
 // carries, until changed again (PLAT-166). A reflection turn — or, per
-// PLAT-167, a message_sequence item's own turn — reuses the same agent, and
+// PLAT-167, a agent item's own turn — reuses the same agent, and
 // therefore the same Observer instance, as whatever ran before it. Bracket
 // the turn with SetPhase(PhaseReflection) (or "item:<id>") and a deferred
 // SetPhase(""), mirroring ContextAwareEventBridge.PushContext/PopContext's

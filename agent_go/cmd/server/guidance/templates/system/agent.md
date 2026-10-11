@@ -2,7 +2,7 @@
 
 **Saved-code paths:** Read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
 
-## MESSAGE SEQUENCE — THE AGENT STEP
+## AGENT STEP
 
 Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. The step `description` is the system-level charter for the whole sequence; every `items[]` entry is a user turn describing how to carry it out.
 
@@ -62,9 +62,15 @@ Do not use it when:
 
 ## DELEGATION AND CONTROL
 
+Add routes only when the parent makes a real runtime orchestration decision.
+A fixed child set and order does not justify adaptive routes. Routes are bounded
+capabilities; predetermined isolated agentic tasks can remain explicit plan steps.
+The specialist catalog may be known upfront or already supplied by the user:
+unknown work breakdown is one use case, not a prerequisite.
+
+
 The authored `items[]` define durable conversational phases. Optional
-`predefined_routes` expose bounded specialist agents, and the agent
-agent decides which routes to call from evidence it sees during any turn. It may
+`predefined_routes` expose bounded specialist agents, and the agent decides which routes to call from evidence it sees during any turn. It may
 skip a route, call several routes, or re-enter a conversational route with new
 instructions. A fixed list of workers still belongs in explicit plan steps or a
 scripted batch; adding routes does not turn a checklist into adaptive strategy.
@@ -144,7 +150,7 @@ the next conversational item, while the description remains the system charter.
 ## MEMORY
 
 - A top-level agent runs its fixed item queue once.
-- A agent specialist route can be re-entered during the same workflow run.
+- An agent specialist route can be re-entered during the same workflow run.
 - Route memory is in-memory only. It does not survive process restart or a later workflow run.
 - `agent_restart=true` starts a clean route conversation when prior context is stale or contaminated.
 - `session.json` is an observability record, not resume state.

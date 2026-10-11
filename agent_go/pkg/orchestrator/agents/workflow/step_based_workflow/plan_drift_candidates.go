@@ -26,7 +26,7 @@ import (
 // checks + step-description/learnings/KB/DB-normalization judgment checks
 // (PLAT-258 phases 1-6). 2 = adds route_structural_isolation/
 // route_eval_pairing for routing steps (PLAT-259 phase B). 3 adds canonical
-// reference-backed checks for regular/scripted, message_sequence, todo_task,
+// reference-backed checks for regular/scripted, agent, todo_task,
 // routing, and branch steps. Step types without a new check keep version 2.
 const planDriftReviewContractVersion = 3
 

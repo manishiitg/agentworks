@@ -118,10 +118,10 @@ func TestContextAwareBridgePushContextRichTagsTerminalStreamWithStepType(t *test
 		t.Fatalf("parent_step_id = %v, want parent-orchestrator", got)
 	}
 	if got := metadata["current_step_type"]; got != "agent" {
-		t.Fatalf("current_step_type = %v, want message_sequence", got)
+		t.Fatalf("current_step_type = %v, want agent", got)
 	}
 	if got := metadata["plan_step_type"]; got != "agent" {
-		t.Fatalf("plan_step_type = %v, want message_sequence", got)
+		t.Fatalf("plan_step_type = %v, want agent", got)
 	}
 }
 

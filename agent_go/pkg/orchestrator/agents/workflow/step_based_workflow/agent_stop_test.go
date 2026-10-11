@@ -11,7 +11,7 @@ import (
 //
 // The reported symptom: Stop on a running schedule interrupted the current
 // message, the UI and run history both recorded "stopped" — and the next queued
-// message_sequence item posted anyway.
+// agent item posted anyway.
 //
 // The loop already returned on any item error, so the assumption was that a
 // canceled context would surface as an error and halt the queue. That makes

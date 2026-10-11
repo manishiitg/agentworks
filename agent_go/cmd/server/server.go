@@ -8135,7 +8135,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// PLAT-130: also gated on isSessionMarkedStopped. A stopped session's
 					// tmux is gone because Stop just killed it, not because it idled out —
 					// relaunching here reproduced the "Stop doesn't stop" bug live: a
-					// message_sequence's next item was already in this same handleQuery
+					// agent's next item was already in this same handleQuery
 					// call when Stop landed, saw "tmux is gone", and this block relaunched
 					// a fresh coding-agent session that ran a real run_full_workflow turn
 					// to completion after the session had already been marked stopped

@@ -37,7 +37,7 @@ export interface AgentConfigs {
   enabled_skills?: string[];
   enable_context_offloading?: boolean;
   use_code_execution_mode?: boolean;
-  todo_task_orchestrator_tier?: number;       // 1/2/3 - tier for orchestrator agent in tiered mode
+  delegating_agent_tier?: number;       // 1/2/3 - tier for orchestrator agent in tiered mode
   orchestrator_llm?: AgentLLMConfig;          // Direct LLM override for orchestrator (works in both tiered and manual modes)
   sub_agent_llm?: AgentLLMConfig;             // Direct LLM override for ALL sub-agents spawned by this step (works in both tiered and manual modes)
   disable_parallel_tool_execution?: boolean;  // Disable parallel tool execution (default: enabled)
@@ -161,7 +161,7 @@ export interface ConsistencyRule {
 }
 
 export interface StepSharing {
-  orchestrator_ids?: string[];
+  agent_ids?: string[];
 }
 
 // Common fields shared by all step types

@@ -125,7 +125,7 @@ func NewWorkflowDelegatingAgent(config *agents.OrchestratorAgentConfig, logger l
 		config,
 		logger,
 		tracer,
-		agents.OrchestratorAgentType,
+		agents.DelegatingAgentType,
 		eventBridge,
 	)
 
@@ -322,7 +322,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"KBGuidanceBlock":           templateVars["KBGuidanceBlock"],           // Pre-built KB guidance block — non-empty only when the step has KB write access
 		"FolderGuardReadPaths":      folderGuardReadPaths,                      // Folder guard read paths for agent guidance
 		"FolderGuardWritePaths":     folderGuardWritePaths,                     // Folder guard write paths for agent guidance
-		"AgentAccessNote":           templateVars["AgentAccessNote"],           // Effective inherited/narrowed access for message_sequence turns
+		"AgentAccessNote":           templateVars["AgentAccessNote"],           // Effective inherited/narrowed access for agent turns
 		"IsScriptedMode":            templateVars["IsScriptedMode"],            // Learn code mode flag (validation schema shown in scripted section instead)
 		"WorkflowRoot":              templateVars["WorkflowRoot"],              // Workflow root path for absolute cwd display
 		"DocsRoot":                  GetPromptDocsRoot(),                       // Workspace docs base path — differs between macOS dev (/Users/.../workspace-docs) and Docker (/app/workspace-docs); do NOT hardcode.

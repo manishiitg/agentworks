@@ -304,7 +304,7 @@ func TestValidatePathAgainstGuard_ExactFileWritePathIsNotPrefix(t *testing.T) {
 	}
 }
 
-// Enforcement regression for message_sequence per-item permissions: the reused
+// Enforcement regression for agent per-item permissions: the reused
 // execution agent carries a BROAD frozen snapshot (step's full write scope: db +
 // learnings), but the current item's per-item session guard must take priority and
 // narrow it. Proves a db-only item is denied a learnings write and allowed a db write.

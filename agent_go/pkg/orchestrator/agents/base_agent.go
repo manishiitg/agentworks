@@ -50,8 +50,8 @@ const (
 	TodoPlannerSuccessLearningAgentType     AgentType = "todo_planner_success_learning"     // Analyzes successful executions to capture best practices
 	TodoPlannerLearningDetectionAgentType   AgentType = "todo_planner_learning_detection"   // Detects if new learnings were generated after learning phase
 	ConditionalAgentType                    AgentType = "conditional"                       // Conditional decision agent for evaluating step conditions
-	OrchestratorAgentType                   AgentType = "todo_task_orchestrator"            // Orchestrator orchestrator agent that manages todo lists and delegates to sub-agents
-	GenericExecutionAgentType               AgentType = "generic_execution"                 // Generic execution agent for todo task steps (no learning, no prevalidation)
+	DelegatingAgentType                     AgentType = "delegating_agent"                  // Conversational agent with specialist delegation
+	GenericExecutionAgentType               AgentType = "generic_execution"                 // Generic workflow execution agent (no learning, no prevalidation)
 	TodoPlannerInteractiveWorkshopAgentType AgentType = "todo_planner_interactive_workshop" // Interactive workshop: execute steps, edit plan, update step config in one session
 )
 

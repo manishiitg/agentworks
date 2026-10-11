@@ -27,12 +27,12 @@ func resolvePlanOrphanStepRefs(plan *PlanningResponse) error {
 		return nil
 	}
 
-	validOrchestratorIDs := make(map[string]bool)
+	validAgentIDs := make(map[string]bool)
 	for _, step := range plan.Steps {
-		collectOrchestratorStepIDs(step, validOrchestratorIDs)
+		collectDelegatingAgentIDs(step, validAgentIDs)
 	}
 	for _, step := range plan.OrphanSteps {
-		collectOrchestratorStepIDs(step, validOrchestratorIDs)
+		collectDelegatingAgentIDs(step, validAgentIDs)
 	}
 
 	for _, step := range plan.OrphanSteps {
@@ -40,9 +40,9 @@ func resolvePlanOrphanStepRefs(plan *PlanningResponse) error {
 		if sharing == nil {
 			continue
 		}
-		for _, orchestratorID := range sharing.OrchestratorIDs {
-			if !validOrchestratorIDs[orchestratorID] {
-				return fmt.Errorf("orphan step %q declares shared_with.orchestrator_ids entry %q, but no todo_task step with that ID exists in the plan", step.GetID(), orchestratorID)
+		for _, orchestratorID := range sharing.AgentIDs {
+			if !validAgentIDs[orchestratorID] {
+				return fmt.Errorf("orphan step %q declares shared_with.agent_ids entry %q, but no delegating agent step with that ID exists in the plan", step.GetID(), orchestratorID)
 			}
 		}
 	}
@@ -61,7 +61,7 @@ func resolvePlanOrphanStepRefs(plan *PlanningResponse) error {
 	return nil
 }
 
-func collectOrchestratorStepIDs(step PlanStepInterface, ids map[string]bool) {
+func collectDelegatingAgentIDs(step PlanStepInterface, ids map[string]bool) {
 	if step == nil {
 		return
 	}
@@ -73,7 +73,7 @@ func collectOrchestratorStepIDs(step PlanStepInterface, ids map[string]bool) {
 		}
 		for _, route := range s.PredefinedRoutes {
 			if route.SubAgentStep != nil {
-				collectOrchestratorStepIDs(route.SubAgentStep, ids)
+				collectDelegatingAgentIDs(route.SubAgentStep, ids)
 			}
 		}
 	}
@@ -100,14 +100,14 @@ func resolveOrphanRefsInAgentRoutes(agentID string, routes []PlanOrchestrationRo
 				return fmt.Errorf("agent step %q route %q cannot define both orphan_step_ref and sub_agent_step", agentID, route.RouteID)
 			}
 			if containsString(orphanChain, route.OrphanStepRef) {
-				return fmt.Errorf("orphan step reference cycle detected while resolving %q vian agent step %q route %q", route.OrphanStepRef, agentID, route.RouteID)
+				return fmt.Errorf("orphan step reference cycle detected while resolving %q via agent step %q route %q", route.OrphanStepRef, agentID, route.RouteID)
 			}
 
 			sourceStep, ok := orphanByID[route.OrphanStepRef]
 			if !ok {
 				return fmt.Errorf("agent step %q route %q references orphan_step_ref %q, but no orphan step with that ID exists", agentID, route.RouteID, route.OrphanStepRef)
 			}
-			if !orphanStepSharedWithOrchestrator(sourceStep, agentID) {
+			if !orphanStepSharedWithAgent(sourceStep, agentID) {
 				return fmt.Errorf("agent step %q route %q references orphan step %q, but that orphan step is not shared with this agent", agentID, route.RouteID, route.OrphanStepRef)
 			}
 
@@ -135,7 +135,7 @@ func resolveOrphanRefsInAgentRoutes(agentID string, routes []PlanOrchestrationRo
 	return nil
 }
 
-func orphanStepSharedWithOrchestrator(step PlanStepInterface, orchestratorID string) bool {
+func orphanStepSharedWithAgent(step PlanStepInterface, orchestratorID string) bool {
 	if step == nil || orchestratorID == "" {
 		return false
 	}
@@ -144,7 +144,7 @@ func orphanStepSharedWithOrchestrator(step PlanStepInterface, orchestratorID str
 	if sharing == nil {
 		return false
 	}
-	for _, allowedID := range sharing.OrchestratorIDs {
+	for _, allowedID := range sharing.AgentIDs {
 		if allowedID == orchestratorID {
 			return true
 		}

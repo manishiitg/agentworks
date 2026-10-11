@@ -215,7 +215,7 @@ func TestBackgroundReadOnlyAccessRejectsEscalationAndWriterTools(t *testing.T) {
 }
 
 func TestConsolidatedUpdateFindsNestedSteps(t *testing.T) {
-	parent := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "parent", Title: "Delegate", Description: "Delegate analysis"}, NextStepID: "end", PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", RouteName: "Analysis", SubAgentStep: testSequenceStep("nested", "Analyze")}}}
+	parent := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "parent", Title: "Delegate", Description: "Delegate analysis"}, Items: []AgentItem{{ID: "delegate", Type: "user_message", Message: "Delegate analysis."}}, NextStepID: "end", PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", RouteName: "Analysis", SubAgentStep: testSequenceStep("nested", "Analyze")}}}
 	f := newExternalPlanTestFiles(t, parent)
 	d := consolidatedPlanDraft(t, f)
 	if _, err := d.tools["update_step"].Execute(context.Background(), map[string]interface{}{"step_id": "nested", "changes": map[string]interface{}{"title": "Analyze invoices", "reason": "Clarify delegated analysis"}}); err != nil {

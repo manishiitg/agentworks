@@ -127,7 +127,7 @@ var retiredStepConfigClearFields = map[string]string{
 	"db_access":                     "retired in PLAT-061 — every step gets managed read-write access",
 	"disable_tier_optimization":     "retired in PLAT-061 — pin execution_tier (with its reason) instead",
 	"enable_context_offloading":     "retired in PLAT-061 — never settable, never used",
-	"todo_task_orchestrator_tier":   "retired in PLAT-061 — use execution_llm to override",
+	"delegating_agent_tier":         "retired in PLAT-061 — use execution_llm to override",
 	"learn_code_max_fix_iterations": "retired in PLAT-061 — every stored value was a migration artifact; use lock_code to skip script repair",
 	"lock_learnings":                "retired in PLAT-263 — use learnings_access=\"read\" to allow reads without writes",
 	"lock_learnings_reason":         "retired with lock_learnings in PLAT-263",

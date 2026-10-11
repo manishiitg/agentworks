@@ -106,7 +106,7 @@ func TestClearStepConfigField_UnknownName(t *testing.T) {
 		"execution_max_turns",
 		"learning_max_turns",
 		"orchestration_max_iterations",
-		"todo_task_orchestrator_tier",
+		"delegating_agent_tier",
 		"learn_code_max_fix_iterations",
 		"learning_llm",
 	}

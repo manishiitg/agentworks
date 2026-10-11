@@ -589,34 +589,34 @@ func parseGenericAgentAgent(raw interface{}) ([]GenericAgentMessage, error) {
 	}
 	items, ok := raw.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("message_sequence must be an array")
+		return nil, fmt.Errorf("agent must be an array")
 	}
 	if len(items) == 0 {
-		return nil, fmt.Errorf("message_sequence must contain at least one follow-up turn when supplied")
+		return nil, fmt.Errorf("agent must contain at least one follow-up turn when supplied")
 	}
 	if len(items) > 12 {
-		return nil, fmt.Errorf("message_sequence has %d items; maximum is 12", len(items))
+		return nil, fmt.Errorf("agent has %d items; maximum is 12", len(items))
 	}
 	seen := make(map[string]struct{}, len(items))
 	parsed := make([]GenericAgentMessage, 0, len(items))
 	for index, rawItem := range items {
 		item, ok := rawItem.(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("message_sequence[%d] must be an object", index)
+			return nil, fmt.Errorf("agent[%d] must be an object", index)
 		}
 		id, _ := item["id"].(string)
 		id = strings.TrimSpace(id)
 		if id == "" {
-			return nil, fmt.Errorf("message_sequence[%d].id is required", index)
+			return nil, fmt.Errorf("agent[%d].id is required", index)
 		}
 		if _, duplicate := seen[id]; duplicate {
-			return nil, fmt.Errorf("message_sequence item id %q is duplicated", id)
+			return nil, fmt.Errorf("agent item id %q is duplicated", id)
 		}
 		seen[id] = struct{}{}
 		message, _ := item["message"].(string)
 		message = strings.TrimSpace(message)
 		if message == "" {
-			return nil, fmt.Errorf("message_sequence[%d].message is required", index)
+			return nil, fmt.Errorf("agent[%d].message is required", index)
 		}
 		title, _ := item["title"].(string)
 		parsed = append(parsed, GenericAgentMessage{ID: id, Title: strings.TrimSpace(title), Message: message})

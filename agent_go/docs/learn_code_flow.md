@@ -32,7 +32,7 @@ retention can still prune old run outputs; durable reporting media belongs in
 A workflow step's execution model is decided by its plan `type` alone:
 
 - `regular` — a **scripted** step. Its work is a reusable `learnings/{step-id}/main.py` that is tried on every run before any LLM turn, and repaired by the LLM when it fails.
-- `message_sequence` — an **agentic** (conversational) step. The LLM acts each turn; no persistent script is saved. It may still use code execution for the current run.
+- `agent` — an **agentic** (conversational) step. The LLM acts each turn; no persistent script is saved. It may still use code execution for the current run.
 
 There is no separate mode field. The former `agent_configs.declared_execution_mode` (`"scripted"` / `"agentic"`, earlier `learn_code` / `code_exec`) was retired by workflow contract v1.0.38–1.0.39 (PLAT-287): it was implied on one type and forbidden on the other, so it could only ever drift from the plan (PLAT-280 was exactly such a stray declaration). Workflows migrated before v1.0.39 may still carry the key in `step_config.json`; it is ignored once the plan type is explicit and is stripped by the v1.0.39 upgrade.
 
@@ -41,9 +41,9 @@ There is no separate mode field. The former `agent_configs.declared_execution_mo
 | Plan `type` | Execution | Script persistence |
 |---|---|---|
 | `regular` | Scripted: saved-script fast path, then LLM generation/repair | `learnings/{step-id}/main.py` is saved back after each successful repair |
-| `message_sequence` | Agentic: LLM turns; code execution for the run if `use_code_execution_mode` is on | none — a leftover `learnings/{step-id}/main.py` is stale debt and should be deleted |
+| `agent` | Agentic: LLM turns; code execution for the run if `use_code_execution_mode` is on | none — a leftover `learnings/{step-id}/main.py` is stale debt and should be deleted |
 
-`use_code_execution_mode` (`agent_configs`) is independent of the type: it decides whether the agent writes and runs code through the bridge at all. A `regular` step always has it forced on — the agent needs the tool index and `get_api_spec` to write `main.py`. A `message_sequence` can turn it on for ad-hoc scripting without becoming scripted.
+`use_code_execution_mode` (`agent_configs`) is independent of the type: it decides whether the agent writes and runs code through the bridge at all. A `regular` step always has it forced on — the agent needs the tool index and `get_api_spec` to write `main.py`. A `agent` can turn it on for ad-hoc scripting without becoming scripted.
 
 ## Choosing and changing the model
 
@@ -56,7 +56,7 @@ Prefer a `regular` (scripted) step for stable, deterministic work:
 - repeatable file processing
 - browser flows with stable selectors and predictable navigation
 
-Prefer a `message_sequence` when the logic changes from run to run:
+Prefer a `agent` when the logic changes from run to run:
 
 - exploratory browser work
 - adaptive investigations
@@ -65,8 +65,8 @@ Prefer a `message_sequence` when the logic changes from run to run:
 
 Tools:
 
-- `add_scripted_step` creates a `regular` step; `add_message_sequence_step` creates a sequence.
-- `change_step_type(step_id, target_type="scripted"|"message_sequence", reason)` moves an existing step between the two in place — same id, description, dependencies, validation and position — and records the change (with the reason) in the plan changelog. To scripted, its conversational items are dropped and `learnings/{step-id}/main.py` must then be written with `update_scripted_step(code=...)`; to a sequence, one execute-and-verify item is synthesized and `lock_code` is cleared.
+- `add_scripted_step` creates a `regular` step; `add_agent_step` creates a sequence.
+- `change_step_type(step_id, target_type="scripted"|"agent", reason)` moves an existing step between the two in place — same id, description, dependencies, validation and position — and records the change (with the reason) in the plan changelog. To scripted, its conversational items are dropped and `learnings/{step-id}/main.py` must then be written with `update_scripted_step(code=...)`; to a sequence, one execute-and-verify item is synthesized and `lock_code` is cleared.
 - `update_step_config(...)` no longer accepts an execution-mode field; it still owns `use_code_execution_mode`, `lock_code`, tiers, models and access flags.
 - `run_saved_main_py(step_id, group_id?)` is valid only for `regular` steps, because only those have a persistent saved-script fast path.
 
@@ -90,7 +90,7 @@ with its script at `learnings/step-id/main.py`. The matching `step_config.json` 
 ```json
 {
   "id": "step-id",
-  "type": "message_sequence",
+  "type": "agent",
   "title": "Judge the day's setups",
   "items": [ ... ]
 }
@@ -153,7 +153,7 @@ Additional behavior:
 - Step config overrides workflow default.
 - Workflow default no longer auto-enables code execution globally.
 - Provider-specific auto-enable is handled per agent for CLI providers such as `claude-code`, `pi-cli`, and `codex-cli`.
-- Transitional: a `regular` step whose not-yet-stripped `step_config.json` entry still says `declared_execution_mode: "agentic"` (a legacy agentic regular step on a workflow below contract v1.0.38) is run as a `message_sequence` until the v1.0.38 upgrade makes its type explicit. After v1.0.39 no such entry exists.
+- Transitional: a `regular` step whose not-yet-stripped `step_config.json` entry still says `declared_execution_mode: "agentic"` (a legacy agentic regular step on a workflow below contract v1.0.38) is run as a `agent` until the v1.0.38 upgrade makes its type explicit. After v1.0.39 no such entry exists.
 
 ## Scripted (`regular`) Flow
 
@@ -247,7 +247,7 @@ That fallback is important:
 - the saved script is the preferred stable path
 - per-run code execution is the recovery path when the saved script is not currently salvageable within the repair budget
 
-## Agentic (`message_sequence`) Flow with Code Execution
+## Agentic (`agent`) Flow with Code Execution
 
 A sequence with `use_code_execution_mode` on uses the same bridge and env model, but it does not rely on a persistent saved script.
 
@@ -286,7 +286,7 @@ Choose a `regular` (scripted) step when:
 - you want future runs to be cheap and fast
 - you want a reviewable `main.py` artifact in learnings
 
-Choose a `message_sequence` when:
+Choose a `agent` when:
 
 - the task shape changes too much between runs
 - persistence would encode brittle assumptions

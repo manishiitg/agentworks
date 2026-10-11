@@ -28,7 +28,7 @@ way. `lock_code` additionally stops that repair in your own `execute_step`.
 - One clear deterministic objective expressible as a `description` plus a `validation_schema`.
 - Batch related deterministic actions behind one input/output and retry contract; use `references/plan-design.md` for composing that script with agentic work.
 
-**Design scripts as parameterized tools agents can use.** When a script's work could reasonably vary by call — an ID, a date or time window, a repo/branch, a market, a filter, a limit — expose those as typed `script_parameters` with sensible defaults instead of hardcoding them or reading them only from workflow variables. A parameterized script is reusable: the main flow calls it with defaults, the Builder tests it with `execute_step(script_parameters=...)`, and an agent step can call it with values it chooses at runtime (as a route on an `agent`, via `call_scripted_sub_agent`). Define reusable ones as orphan steps and set `shared_with.orchestrator_ids` for the agents allowed to call them. Keep parameters non-secret and few (the values that genuinely change between calls), and describe each one so an agent knows when to set it.
+**Design scripts as parameterized tools agents can use.** When a script's work could reasonably vary by call — an ID, a date or time window, a repo/branch, a market, a filter, a limit — expose those as typed `script_parameters` with sensible defaults instead of hardcoding them or reading them only from workflow variables. A parameterized script is reusable: the main flow calls it with defaults, the Builder tests it with `execute_step(script_parameters=...)`, and an agent step can call it with values it chooses at runtime (as a route on an `agent`, via `call_scripted_sub_agent`). Define reusable ones as orphan steps and set `shared_with.agent_ids` for the agents allowed to call them. Keep parameters non-secret and few (the values that genuinely change between calls), and describe each one so an agent knows when to set it.
 
 **Pure scripts when no agent decides anything.** If the work is fully fixed — a nightly sync, a fixed ingest, a mechanical transform or write in the main flow — and no agent will ever choose what it fetches or with which values, keep it a plain script step in the fixed flow. Do not invent parameters or wrap it as a tool nobody calls; its inputs come from workflow variables and its context dependencies. Parameterize when an agent may need to vary the call (an investigation, a lookup, a re-query with a narrower window), not by default for every script.
 
@@ -36,7 +36,7 @@ If selecting further work requires agentic judgment, or the task needs conversat
 memory, use the redirects below. A deterministic script may process many records;
 task count alone does not make it agentic.
 
-## Calling scripts from a agent
+## Calling scripts from an agent
 
 Create a reusable definition with `add_step(is_orphan=true, ...)`, then
 reference its ID and typed parameters from a sequence's `scripted` batch item.

@@ -31,7 +31,7 @@ func TestAgentParsesBoundedAgentRoutes(t *testing.T) {
 		}]
 	}`), &plan)
 	if err != nil {
-		t.Fatalf("unmarshal delegating message_sequence: %v", err)
+		t.Fatalf("unmarshal delegating agent: %v", err)
 	}
 	if len(plan.Steps) != 1 {
 		t.Fatalf("steps = %d, want 1", len(plan.Steps))
@@ -47,7 +47,7 @@ func TestAgentParsesBoundedAgentRoutes(t *testing.T) {
 		t.Fatalf("route step type = %T, want *AgentPlanStep", step.PredefinedRoutes[0].SubAgentStep)
 	}
 	if err := validateLoadedPlanStructure(&plan); err != nil {
-		t.Fatalf("validate delegating message_sequence: %v", err)
+		t.Fatalf("validate delegating agent: %v", err)
 	}
 }
 

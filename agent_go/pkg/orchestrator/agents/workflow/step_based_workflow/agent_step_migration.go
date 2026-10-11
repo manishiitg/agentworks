@@ -1,10 +1,10 @@
 package step_based_workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 
 	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -25,11 +25,25 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 			return nil, false, err
 		}
 	}
+	before, _ := json.Marshal(step)
+	if shared, ok := step["shared_with"]; ok && string(shared) != "null" {
+		var sharing map[string]json.RawMessage
+		if err := json.Unmarshal(shared, &sharing); err != nil {
+			return nil, false, err
+		}
+		if oldIDs, ok := sharing["orchestrator_ids"]; ok {
+			if _, exists := sharing["agent_ids"]; !exists {
+				sharing["agent_ids"] = oldIDs
+			}
+			delete(sharing, "orchestrator_ids")
+			step["shared_with"], _ = json.Marshal(sharing)
+		}
+	}
 	legacy := typ == "message_sequence" || typ == "orchestrator" || typ == "todo_task"
 	if typ != "agent" && !legacy {
-		return data, false, nil
+		after, err := json.Marshal(step)
+		return after, !bytes.Equal(before, after), err
 	}
-	before, _ := json.Marshal(step)
 	step["type"] = json.RawMessage(`"agent"`)
 	if inner := step["todo_task_step"]; len(inner) > 0 && string(inner) != "null" {
 		var fields map[string]json.RawMessage
@@ -46,8 +60,24 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 		}
 		delete(step, "todo_task_step")
 	}
-	if _, ok := step["items"]; !ok || string(step["items"]) == "null" {
-		if messages, ok := step["messages"]; ok {
+	if messages, ok := step["messages"]; ok {
+		var oldItems, newItems []json.RawMessage
+		if err := json.Unmarshal(messages, &oldItems); err != nil {
+			return nil, false, err
+		}
+		if items, ok := step["items"]; ok {
+			if err := json.Unmarshal(items, &newItems); err != nil {
+				return nil, false, err
+			}
+		}
+		if len(oldItems) > 0 && len(newItems) > 0 {
+			oldJSON, _ := json.Marshal(oldItems)
+			newJSON, _ := json.Marshal(newItems)
+			if !bytes.Equal(oldJSON, newJSON) {
+				return nil, false, fmt.Errorf("agent step has conflicting items and legacy messages; resolve the saved sequences before migration")
+			}
+		}
+		if len(newItems) == 0 {
 			step["items"] = messages
 		}
 	}
@@ -91,7 +121,7 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 		step["items"], _ = json.Marshal(items)
 	}
 	after, err := json.Marshal(step)
-	return after, !reflect.DeepEqual(before, after), err
+	return after, !bytes.Equal(before, after), err
 }
 
 // MigrateAgentStepContent walks only plan step locations, preserving unknown

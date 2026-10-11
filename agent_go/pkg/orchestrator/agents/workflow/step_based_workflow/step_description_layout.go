@@ -44,7 +44,7 @@ func MissingDescriptionLayoutHeadings(description string) []string {
 // blocked the 1.0.46 stamp).
 var descriptionLayoutStepTypes = map[string]bool{
 	string(StepTypeAgent): true,
-	"message_sequence":    true,
+	"agent":               true,
 	"orchestrator":        true,
 	"todo_task":           true,
 }
@@ -93,7 +93,7 @@ func checkDescriptionLayout(descriptions map[string]string, stepID string) StepD
 	description, agentStep := descriptions[stepID]
 	if !agentStep {
 		return StepDriftCheck{CheckID: descriptionLayoutDriftCheckID, Status: stepDriftCheckStatusPass,
-			Evidence: "The description layout applies to agent steps (message_sequence, orchestrator) only."}
+			Evidence: "The description layout applies to agent steps (agent, orchestrator) only."}
 	}
 	missing := MissingDescriptionLayoutHeadings(description)
 	if len(missing) == 0 {

@@ -204,7 +204,7 @@ chat:
       - change_step_type
       - maintain_plan
       - migrate_declared_execution_mode
-      - migrate_message_sequence_code_items
+      - migrate_agent_code_items
       - migrate_orchestrator_step_type
       - strip_declared_execution_mode
       - configure_slack_bot
