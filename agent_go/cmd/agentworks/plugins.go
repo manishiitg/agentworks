@@ -25,12 +25,13 @@ import (
 )
 
 type pluginHookInput struct {
-	SessionID  string `json:"session_id"`
-	Event      string `json:"hook_event_name"`
-	Prompt     string `json:"prompt"`
-	StopActive bool   `json:"stop_hook_active"`
-	Queued     bool   `json:"queued,omitempty"`
-	Cwd        string `json:"cwd"`
+	PiPersonToken string `json:"pi_person_token,omitempty"`
+	SessionID     string `json:"session_id"`
+	Event         string `json:"hook_event_name"`
+	Prompt        string `json:"prompt"`
+	StopActive    bool   `json:"stop_hook_active"`
+	Queued        bool   `json:"queued,omitempty"`
+	Cwd           string `json:"cwd"`
 }
 
 // Hooks receive the session ID from the CLI itself. Only a literal person
@@ -38,7 +39,7 @@ type pluginHookInput struct {
 func pluginCommand(o *options) *cobra.Command {
 	root := &cobra.Command{Use: "plugin", Short: "Local coding-agent hooks and MCP delivery"}
 	hook := &cobra.Command{Use: "hook PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if !messagingPluginProvider(args[0]) {
+		if !messagingPluginProvider(args[0]) && args[0] != "pi" {
 			return errors.New("unsupported hook provider")
 		}
 		var input pluginHookInput
@@ -52,11 +53,35 @@ func pluginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		if args[0] == "pi" {
+			root, err = piBridgeRoot()
+			if err != nil {
+				return pluginBlock(o, "Pi bridge root is unsafe or unavailable")
+			}
+		}
 		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID}
-		pid, host, _ := providerHostProcess(args[0])
-		req.HostKey = host
-		if args[0] == "muse" && req.HostKey != "" {
-			observeMuseSession(root, pid, host, input)
+		if args[0] != "pi" {
+			pid, host, _ := providerHostProcess(args[0])
+			req.HostKey = host
+			if args[0] == "muse" && req.HostKey != "" {
+				observeMuseSession(root, pid, host, input)
+			}
+		}
+		if args[0] == "pi" {
+			// Parent identity alone cannot prove person input: a model shell
+			// can exec this command directly. Consume the SDK in-memory proof
+			// bound to this exact literal command before any bridge action.
+			req.HostKey, err = piPIDHostKey(os.Getppid())
+			record, recordErr := piSessionForHost(root, req.HostKey, input.SessionID)
+			if err != nil || recordErr != nil || record.Mode != "tui" {
+				return pluginBlock(o, "Cannot identify this exact Pi SDK person-input session. Reload Pi and type /agentworks attach yourself.")
+			}
+			if input.Event != "UserPromptSubmit" {
+				return nil
+			}
+			if err := confirmPiPersonInput(cmd.Context(), root, req.HostKey, input.SessionID, input.Prompt, input.PiPersonToken); err != nil {
+				return pluginBlock(o, "Pi hook requires a one-use proof from literal person input. Type /agentworks attach yourself in the TUI.")
+			}
 		}
 		var out agentworksclient.LocalBridgeReply
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
@@ -74,6 +99,13 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, personCommandHelp)
 			}
 			req.Action = words[1]
+			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents") {
+				status, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
+				if e != nil || !status.Attached {
+					return pluginBlock(o, "This exact Pi session is not attached. Type /agentworks attach yourself.")
+				}
+				req.AttachmentID = status.Attachment.ID
+			}
 			switch req.Action {
 			case "attach":
 				if len(words) > 3 || len(words) == 3 && strings.HasPrefix(words[2], "--") {
@@ -109,6 +141,9 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, "AgentWorks identity retained offline as agent:"+out.Attachment.AgentName+". Type /agentworks attach to reconnect this exact session.")
 			}
 			if out.Attached {
+				if req.Provider == "pi" {
+					req.AttachmentID = out.Attachment.ID
+				}
 				req.Action = "peers"
 				peers, e := agentworksclient.CallLocalBridge(ctx, root, req)
 				local, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
@@ -332,6 +367,9 @@ func pluginAttachmentStatus(out agentworksclient.LocalBridgeReply) string {
 		text += " Purpose: " + out.Attachment.Purpose + "."
 	}
 	text += " All account senders are accepted."
+	if out.Attachment.Provider == "pi" && !out.NativeDelivery {
+		return text + " Pi SDK delivery is inactive. Type /agentworks attach in this chat to activate it; pending messages remain in the mailbox."
+	}
 	if out.NativeDelivery {
 		if out.NativeRouteStatus == "stale" {
 			return text + " Native route is stale. Type /agentworks attach in this chat to reconnect; pending messages remain in the mailbox."
@@ -467,6 +505,25 @@ func codexDesktopHost(command string) bool {
 }
 
 func providerHostKey(provider string) (string, error) {
+	if provider == "pi" {
+		pid := os.Getppid()
+		for i := 0; i < 8 && pid > 1; i++ {
+			if key, err := piPIDHostKey(pid); err == nil {
+				return key, nil
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=").Output()
+			cancel()
+			if err != nil {
+				break
+			}
+			pid, err = strconv.Atoi(strings.TrimSpace(string(out)))
+			if err != nil {
+				break
+			}
+		}
+		return "", errors.New("not running inside an exact Pi process")
+	}
 	_, host, err := providerHostProcess(provider)
 	return host, err
 }
@@ -499,19 +556,41 @@ func providerHostProcess(provider string) (int, string, error) {
 
 func bridgeCommand(o *options) *cobra.Command {
 	cmd := &cobra.Command{Use: "bridge", Short: "Local streaming delivery service"}
-	cmd.AddCommand(&cobra.Command{Use: "serve", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var piRootOverride string
+	serve := &cobra.Command{Use: "serve", Short: "Local streaming delivery service", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
 			return err
 		}
+		if piRootOverride != "" {
+			configured, e := piBridgeRoot()
+			if e != nil || os.Getenv("AGENTWORKS_BRIDGE_ROOT") == "" || configured != piRootOverride {
+				return errors.New("Pi bridge startup must match its private configured root")
+			}
+			root = configured
+		}
 		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Notify: notifyAgentWaiting, HostAlive: providerHostAlive})
-	}})
+	}}
+	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
+	_ = serve.Flags().MarkHidden("pi-root")
+	cmd.AddCommand(serve)
 	var provider, session, messageID, delivery, message, submission, target, inbox, purpose string
 	var cursor int
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
 		if err != nil {
 			return err
+		}
+		if provider == "pi" {
+			dir, e := piBridgeRoot()
+			if e != nil {
+				return e
+			}
+			record, e := piSessionForHost(dir, host, session)
+			if e != nil {
+				return e
+			}
+			session = record.Session
 		}
 		if provider == "codex" {
 			if os.Getenv("CODEX_THREAD_ID") == "" {
@@ -529,7 +608,24 @@ func bridgeCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor})
+		if provider == "pi" {
+			root, err = piBridgeRoot()
+			if err != nil {
+				return err
+			}
+		}
+		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor}
+		if provider == "pi" {
+			status, e := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: provider, SessionID: session, HostKey: host})
+			if e != nil {
+				return e
+			}
+			if !status.Attached {
+				return errors.New("this exact Pi session is not attached")
+			}
+			request.AttachmentID = status.Attachment.ID
+		}
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, request)
 		if err != nil {
 			return err
 		}
@@ -561,7 +657,14 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 	if err != nil {
 		return err
 	}
-	child := exec.Command(exe, "bridge", "serve")
+	args := []string{"bridge", "serve"}
+	if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
+		configured, e := piBridgeRoot()
+		if e == nil && configured == root {
+			args = append(args, "--pi-root", configured)
+		}
+	}
+	child := exec.Command(exe, args...)
 	detach(child)
 	child.Stdin = nil
 	child.Stdout = nil
@@ -703,6 +806,9 @@ func agentSessionStatus(o *options, ctx context.Context) error {
 }
 
 func providerPIDHostKey(provider string, pid int) (string, error) {
+	if provider == "pi" {
+		return piPIDHostKey(pid)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", providerProcessField(provider), "-o", "lstart=").Output()

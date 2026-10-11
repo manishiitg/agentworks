@@ -102,6 +102,7 @@ type localSession struct {
 	deliveryCtx      context.Context
 	nativeStarted    bool
 	nativeCalls      int
+	piNextAt         time.Time // Observed SDK consumer, not persisted authority.
 }
 
 type localBridge struct {
@@ -458,6 +459,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
 			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, Route: "hooks", LastError: session.LastError}
+			if session.Attachment.Provider == "pi" {
+				state.Route = "stored"
+				if piNativeActive(session) {
+					state.Route = "pi_extension"
+				}
+			}
 			if session.NativeRemote != "" {
 				state.Route = nativeCodexTransport(session.NativeRemote)
 			}
@@ -548,7 +555,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 						return LocalBridgeReply{Error: err.Error()}
 					}
 					b.wake()
-					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != ""}
+					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s)}
 				}
 			}
 		}
@@ -678,6 +685,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	} else if !s.Offline && (in.HostKey == "" || s.HostKey == "" || in.HostKey != s.HostKey) {
 		return LocalBridgeReply{}
 	}
+	if s.Attachment.Provider == "pi" && in.Action != "status" && in.AttachmentID == "" {
+		return LocalBridgeReply{Error: "Pi active actions require the exact attachment lease"}
+	}
 	if in.AttachmentID != "" && in.AttachmentID != s.Attachment.ID {
 		return LocalBridgeReply{}
 	}
@@ -692,7 +702,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		b.startNative(s)
 		b.wake()
 	}
-	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != ""}
+	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s)}
 	if in.Action == "status" && s.NativeRemote != "" && b.options.NativeRoute != nil {
 		out.NativeRouteStatus = "ok"
 		if b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, s.NativeRemote) != s.NativeRemote {
@@ -821,6 +831,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		return out
 	case "drain", "next":
+		if s.Attachment.Provider == "pi" {
+			if in.Action != "next" || in.Transport != "pi_extension" {
+				return LocalBridgeReply{Error: "Pi requires its native SDK adapter"}
+			}
+			s.piNextAt = time.Now()
+			out.NativeDelivery = true
+		}
 		if s.SetupPending && (in.Action == "next" || s.NativeRemote == "") {
 			out.SetupContext = b.setupContext(callCtx, s)
 			s.SetupPending = false
@@ -1199,4 +1216,10 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 	// bridge updates and lease renewal in the same exact provider session.
 	s.LastGuidanceAt = time.Now().UTC()
 	return text.String()
+}
+
+// A recent fenced next request proves only an SDK consumer is active. It is
+// neither attachment permission nor a message admission receipt.
+func piNativeActive(s *localSession) bool {
+	return s.Attachment.Provider == "pi" && !s.Offline && s.HostKey != "" && !s.piNextAt.IsZero() && time.Since(s.piNextAt) < 40*time.Second
 }

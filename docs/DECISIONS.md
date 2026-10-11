@@ -1,5 +1,29 @@
 # Decisions and open issues
 
+## 2026-10-12 — Pi attachment follows SDK identity and explicit receiver receipts (PLAT-868)
+
+Pi person commands run through the SDK interactive input hook, since registered
+slash commands execute before the source check. A one-use in-memory nonce binds
+the literal command/session and is confirmed through the private SDK socket before
+the hook acts; parent PID alone is insufficient because a model shell can exec
+the CLI directly. Terminal attach selects a private
+SDK record bound to the live PID/start and native session UUID; lease-only local
+activation checks the already authorized bridge attachment before starting one
+consumer. Native frame display is local evidence; admission and processing require
+explicit receiver tools. New processes require person attach, and session end
+retains the identity offline. A recent fenced SDK next request supplies route
+observation without granting authority or claiming admission.
+
+Why: exact process/session binding and truthful receipts must survive queued input,
+reattachment and crashes without letting sender text control attachment.
+
+The nonce proof is Pi-only; Claude/Codex forged-hook origins are tracked separately
+in PLAT-861 issue861-90. Same-OS-user filesystem/credential access remains outside
+this prompt-provenance guarantee.
+
+Ticket: [PLAT-868](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-868.md), under PLAT-861 issue861-44.
+
+
 ## 2026-10-12 — Recover native routes within an existing approved lease (PLAT-861)
 
 On listener restart or an exact-host hook boundary, discover a missing native route for an existing still-live approved attachment. Preserve the identity, lease, parent connection, pending bodies, offer watermark and guidance cadence. Discovery verifies the saved provider PID/start-time and exact session; Codex also requires its desktop owner to support untrusted input. Offline identities and changed processes still require person attach. Why: attachments created before native discovery was fixed should acquire live delivery without repeating attachment or widening authority.

@@ -214,7 +214,11 @@ func attachPluginCommand(o *options) *cobra.Command {
 			}
 			if len(sessions) == 0 {
 				installed := false
-				for _, p := range []string{"codex", "claude", "muse"} {
+				providers := []string{"codex", "claude", "muse", "pi"}
+				if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
+					providers = []string{"pi"}
+				}
+				for _, p := range providers {
 					if _, e := exec.LookPath(p); e == nil {
 						if e = installAgentPlugin(cmd.Context(), o, p); e != nil {
 							return e
@@ -223,7 +227,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 					}
 				}
 				if !installed {
-					return errors.New("no supported coding CLI found on PATH; install Codex, Claude Code or Muse first")
+					return errors.New("no supported coding CLI found on PATH; install Codex, Claude Code, Muse or Pi first")
 				}
 				fmt.Fprintln(o.stdout, "AgentWorks plugin ready. Reload your coding chat, review its hooks, then type /agentworks attach. No chat has been attached.")
 				return nil
@@ -279,14 +283,27 @@ func attachPluginCommand(o *options) *cobra.Command {
 
 func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAgentSession, name string) error {
 	var err error
+	if chosen.provider == "pi" {
+		root, err = piBridgeRoot()
+		if err != nil {
+			return err
+		}
+		record, e := piSessionForHost(root, chosen.host, chosen.session)
+		if e != nil || record.Mode != "tui" {
+			return errors.New("no exact Pi TUI SDK session")
+		}
+		chosen.remote = ""
+	}
 	if _, err = uuid.Parse(chosen.session); err != nil {
 		return errors.New("no exact live session UUID")
 	}
 	if chosen.host == "" {
 		return errors.New("cannot verify the provider process")
 	}
-	if err = installAgentPlugin(ctx, o, chosen.provider); err != nil {
-		return err
+	if chosen.provider != "pi" {
+		if err = installAgentPlugin(ctx, o, chosen.provider); err != nil {
+			return err
+		}
 	}
 	if chosen.remote == "" {
 		chosen.remote = discoverNativeRemote(chosen.provider, chosen.session, chosen.host)
@@ -298,6 +315,16 @@ func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAg
 	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
 	if err != nil {
 		return err
+	}
+	if chosen.provider == "pi" && out.Attached {
+		if err = activatePiSession(ctx, root, chosen.host, chosen.session, out.Attachment.ID); err != nil {
+			return err
+		}
+		req.Action, req.AttachmentID = "status", out.Attachment.ID
+		out, err = agentworksclient.CallLocalBridge(ctx, root, req)
+		if err != nil {
+			return err
+		}
 	}
 	if o.jsonOutput {
 		return o.output(out)
@@ -321,6 +348,12 @@ func detachAgentCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
+			root, err = piBridgeRoot()
+			if err != nil {
+				return err
+			}
+		}
 		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "list"})
 		if err != nil {
 			return err
@@ -342,7 +375,11 @@ func detachAgentCommand(o *options) *cobra.Command {
 			return errors.New("detach cancelled")
 		}
 		a := out.Sessions[n-1]
-		_, err = agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: a.Provider, SessionID: a.SessionID})
+		request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: a.Provider, SessionID: a.SessionID}
+		if a.Provider == "pi" {
+			request.AttachmentID = a.ID
+		}
+		_, err = agentworksclient.CallLocalBridge(cmd.Context(), root, request)
 		if err != nil {
 			return err
 		}
@@ -352,8 +389,11 @@ func detachAgentCommand(o *options) *cobra.Command {
 }
 
 func installAgentPlugin(ctx context.Context, o *options, provider string) error {
+	if provider == "pi" {
+		return installPiPlugin(ctx, o)
+	}
 	if !messagingPluginProvider(provider) {
-		return errors.New("this shared installer supports Codex, Claude Code and Muse")
+		return errors.New("this shared installer supports Codex, Claude Code, Muse and Pi")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -461,6 +501,30 @@ func installMusePlugin(ctx context.Context, o *options) error {
 }
 
 func providerHostAlive(provider, host string) bool {
+	if provider == "pi" {
+		if host == "" {
+			return false
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		command := exec.CommandContext(ctx, "ps", "-axo", "pid=", "-o", "comm=", "-o", "args=", "-o", "lstart=")
+		command.Env = append(os.Environ(), "LC_ALL=C", "TZ=UTC")
+		out, err := command.Output()
+		if err != nil {
+			return true
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 8 || !piProcessFields(fields[1:len(fields)-5]) {
+				continue
+			}
+			sum := sha256.Sum256([]byte(fields[0] + " " + strings.Join(fields[len(fields)-5:], " ")))
+			if hex.EncodeToString(sum[:]) == host {
+				return true
+			}
+		}
+		return false
+	}
 	if host == "" {
 		return false
 	}
@@ -484,6 +548,14 @@ func providerHostAlive(provider, host string) bool {
 }
 
 func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAgentSession, error) {
+	if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
+		configured, err := piBridgeRoot()
+		if err != nil {
+			return nil, err
+		}
+		local, _ := agentworksclient.CallLocalBridge(ctx, configured, agentworksclient.LocalBridgeRequest{Action: "list"})
+		return discoverPiLiveAgents(configured, local), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -593,6 +665,8 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 			}
 		}
 	}
+	found = append(found, discoverPiLiveAgents(root, local)...)
+
 	sort.Slice(found, func(i, j int) bool { return found[i].provider+found[i].session < found[j].provider+found[j].session })
 	return found, nil
 }

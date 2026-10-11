@@ -20,6 +20,7 @@ const until = async (fn, label) => {
 async function harness(t, options = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'plat868-'));
   await chmod(root, 0o700);
+  const history = new Map();
   const requests = [], offers = [], waiters = [], failures = new Map(), processed = new Set(), nativeAdmitted = new Set();
   let heldNext = false, heldDelivered = false, nextWait = 300;
   let attached = options.attached ?? true, session, lease = 'lease-one';
@@ -33,10 +34,12 @@ async function harness(t, options = {}) {
   const server = http.createServer(async (req, res) => {
     let body = ''; for await (const chunk of req) body += chunk;
     const input = JSON.parse(body); requests.push(input);
+    assert.match(input.host_key || '', /^[a-f0-9]{64}$/, 'each native request binds the exact process');
     if (!session) session = input.session_id;
     res.setHeader('Content-Type', 'application/json');
     if (input.attachment_id && input.attachment_id !== lease) { res.end('{"attached":false}'); return; }
     if (['next', 'ack', 'reply', 'detach'].includes(input.action)) assert.equal(input.attachment_id, lease, 'active requests must carry the lease');
+    if (input.action === 'read') { res.end(JSON.stringify({ attached, attachment: attachment(), result: { messages: [...history.values()].filter(m => m.attachment_id === lease) } })); return; }
     if (input.action === 'ack') {
       if (input.delivery === 'processed') {
         if (!nativeAdmitted.has(input.message_id)) { res.end(JSON.stringify({ error: 'AgentWorks not_admitted (HTTP 409): PRIVATE_ERROR_TAIL' })); return; }
@@ -111,9 +114,19 @@ async function harness(t, options = {}) {
       offers.push({ attachment_id: lease, message_id: messageId, inbox_id: 'original-inbox', sender: 'sender',
         message: `FIXTURE_MESSAGE_${messageId}`, sequence: counter, ...extra });
     }
+    for (const msg of offers) history.set(msg.message_id, msg);
     for (const wake of [...waiters]) wake();
   };
-  return { root, get child() { return child; }, events, requests, command, offer,
+  const activate = async (override = {}, expected = 200) => {
+    const record = JSON.parse(await readFile(path.join(root, 'pi-sessions', `${child.pid}.json`), 'utf8'));
+    return new Promise((resolve, reject) => {
+      const req = http.request({ socketPath: record.socket, path: '/activate', method: 'POST' }, res => {
+        let body = ''; res.on('data', c => { body += c; }); res.on('end', () => { assert.equal(res.statusCode, expected, body); resolve(JSON.parse(body)); });
+      });
+      req.on('error', reject); req.end(JSON.stringify({ host_key: record.host_key, session_id: record.session_id, attachment_id: lease, ...override }));
+    });
+  };
+  return { root, activate, get child() { return child; }, events, requests, command, offer,
     failures, processed, kill,
     restart: async () => { await kill(); events.length = 0; heldNext = false; launch(); await command('get_state'); },
     holdNext: () => { heldNext = true; },
@@ -130,6 +143,8 @@ const admitted = (requests, id) => requests.find(r => r.action === 'ack' && r.me
 
 test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke', async t => {
   const h = await harness(t);
+  await h.activate({ attachment_id: 'wrong-lease' }, 409);
+  assert.equal(h.requests.some(r => r.action === 'attach'), false, 'activation cannot create a lease');
   h.offer(['idle', 'idle-second']);
   await until(() => admitted(h.requests, 'idle'), 'idle native admission');
   assert.ok(userMessage(h.events, 'idle'));
@@ -139,6 +154,12 @@ test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke'
   assert.equal(userMessage(h.events, 'idle'), userMessage(h.events, 'idle-second'), 'one native prompt for a catch-up batch');
   await until(() => h.events.some(e => e.type === 'agent_settled'), 'idle settled');
   assert.equal(h.requests.some(r => r.delivery === 'processed' || r.action === 'reply'), false);
+  h.offer('unacknowledged', { message: 'FIXTURE_MESSAGE_unacknowledged NO_ACK' });
+  await until(() => userMessage(h.events, 'unacknowledged'), 'display without receiver acknowledgement');
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(admitted(h.requests, 'unacknowledged'), undefined, 'native display alone does not admit');
+  await h.command('prompt', { message: 'ADMITTED:unacknowledged' });
+  await until(() => admitted(h.requests, 'unacknowledged'), 'explicit receiver acknowledgement');
 
   h.events.length = 0;
   await h.command('prompt', { message: 'BUSY_TOOL' });
@@ -146,7 +167,8 @@ test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke'
   h.offer('busy');
   await until(() => h.events.some(e => e.type === 'queue_update' && e.followUp?.length), 'native follow-up queue');
   assert.equal(admitted(h.requests, 'busy'), undefined, 'queued is not admitted');
-  await h.command('prompt', { message: '/agentworks reconnect' });
+  await h.activate();
+  await h.activate(); // Repeated person activation retains one consumer.
   await until(() => admitted(h.requests, 'busy'), 'busy native admission');
   const toolEnd = h.events.findIndex(e => e.type === 'tool_execution_end');
   const delivery = h.events.indexOf(userMessage(h.events, 'busy'));
@@ -178,7 +200,7 @@ test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke'
   assert.equal(unattached.requests[0].action, 'status');
   assert.equal(unattached.events.some(e => e.type === 'extension_ui_request'), false, 'unattached startup is silent');
   await unattached.command('prompt', { message: '/agentworks attach receiver' });
-  assert.equal(unattached.requests.some(r => r.action === 'attach'), false, 'RPC cannot attach without a person in TUI');
+  assert.equal(unattached.requests.some(r => r.action === 'attach'), false, 'RPC cannot attach without literal person input');
 });
 
 test('private Unix bridge refuses a public directory and an unattached receiver', async t => {
@@ -225,7 +247,7 @@ test('real Pi: refused/lost receipts do not block delivery or downgrade processe
   h.offer('transient');
   await until(() => admitted(h.requests, 'transient'), 'first admission temporarily fails');
   await h.command('prompt', { message: 'PROCESSED:transient' });
-  await until(() => h.processed.has('transient'), 'processing forces admission before scheduled retry');
+  await until(() => h.processed.has('transient'), 'processing completes receiver-requested admission before its retry timer');
   const transit = h.requests.filter(r => r.message_id === 'transient' && r.action === 'ack');
   assert.deepEqual(transit.map(r => r.delivery), ['admitted', 'admitted', 'processed']);
   assert.equal(JSON.stringify(h.events).includes('PRIVATE_ERROR_TAIL'), false);
@@ -269,7 +291,7 @@ test('real Pi: multiple busy batches, exact frame admission and old-lease fencin
   h.offer('new-lease');
   await new Promise(resolve => setTimeout(resolve, 700));
   assert.equal(userMessage(h.events, 'new-lease'), undefined);
-  await h.command('prompt', { message: '/agentworks reconnect' });
+  await h.activate();
   // A stopped receiver may discover a person-created lease on explicit reconnect.
   await until(() => admitted(h.requests, 'new-lease'), 'new lease retains its offer');
   assert.ok(h.requests.filter(r => r.action === 'next').some(r => r.attachment_id === 'lease-two'));
@@ -290,6 +312,9 @@ test('real Pi: crash before offer response warns; saved native evidence restores
   assert.equal(userMessage(h.events, 'interrupted'), undefined, 'ambiguous offer is never reinjected');
   assert.equal((await readdir(path.join(h.root, 'pi-recovery'))).length, 1, 'reported previous-process marker is retired');
   assert.ok((await readdir(path.join(h.root, 'pi-recovery'))).every(name => !markers.includes(name)), 'notice acknowledges the stale marker');
+  await h.command('prompt', { message: 'RECOVER:interrupted' });
+  await until(() => admitted(h.requests, 'interrupted'), 'explicit receiver acknowledges a bounded mailbox read');
+  assert.equal(userMessage(h.events, 'interrupted'), undefined, 'manual recovery never reinjects missing input');
   h.offer('recorded');
   await until(() => admitted(h.requests, 'recorded'), 'real native admission before simulated journal loss');
   await until(() => h.events.some(e => e.type === 'agent_settled'), 'native transcript persisted');

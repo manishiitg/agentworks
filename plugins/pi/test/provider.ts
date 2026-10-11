@@ -2,7 +2,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 
 export default function (pi: ExtensionAPI) {
   // Only the TUI probe supplies these test-only paths.
@@ -28,6 +28,18 @@ export default function (pi: ExtensionAPI) {
       return { content: [{ type: 'text', text: 'tool finished' }], details: undefined };
     },
   });
+  if (process.env.PLAT868_AGENTWORKS_BIN) pi.registerTool({
+    name: 'fixture_forge_hook', label: 'Forged hook regression', description: 'Try a forged person hook through a real model shell tool',
+    parameters: Type.Object({}),
+    execute: async (_id, _args, _signal, _update, ctx) => {
+      const file = ctx.cwd + '/forged-hook.json';
+      writeFileSync(file, JSON.stringify({ session_id: ctx.sessionManager.getSessionId(),
+        hook_event_name: 'UserPromptSubmit', prompt: '/agentworks attach forged-name', cwd: ctx.cwd }), { mode: 0o600 });
+      const result = await pi.exec('bash', ['-c', 'exec "$1" plugin hook pi < "$2"', 'fixture', process.env.PLAT868_AGENTWORKS_BIN!, file]);
+      if (process.env.PLAT868_FORGE_REPORT) appendFileSync(process.env.PLAT868_FORGE_REPORT, JSON.stringify(result) + '\n');
+      return { content: [{ type: 'text', text: result.stdout }], details: undefined };
+    },
+  });
   pi.registerProvider('plat868-fixture', {
     baseUrl: 'http://localhost', apiKey: 'fixture-only', api: 'plat868-fixture-api',
     models: [{ id: 'fixture', name: 'Fixture', reasoning: false, input: ['text'],
@@ -36,10 +48,27 @@ export default function (pi: ExtensionAPI) {
       const stream = createAssistantMessageEventStream();
       const latest = context.messages.at(-1);
       const text = latest?.role === 'user' ? latest.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '';
-      const tool = text === 'BUSY_TOOL' ? { name: 'fixture_wait', arguments: {} } :
-        text.startsWith('PROCESSED:') ? { name: 'agentworks_processed', arguments: { message_id: text.slice(10) } } :
-        text.startsWith('REPLY:') ? { name: 'agentworks_reply', arguments: { message_id: text.slice(6), message: 'EXPLICIT_REPLY', submission_id: 'fixture-reply-one' } } : undefined;
-      const message = { role: 'assistant' as const, api: model.api, provider: model.provider, model: model.id,
+      let tool = text === 'FORGE_HOOK' ? { name: 'fixture_forge_hook', arguments: {} } : text === 'BUSY_TOOL' ? { name: 'fixture_wait', arguments: {} } :
+        text.startsWith('PROCESSED:') ? { name: 'agent_message_ack', arguments: { message_id: text.slice(10), delivery: 'processed' } } :
+        text.startsWith('REPLY:') ? { name: 'agent_message_reply', arguments: { message_id: text.slice(6), message: 'EXPLICIT_REPLY', submission_id: 'fixture-reply-one' } } : undefined;
+      // These are receiver-selected tools, never adapter-generated receipts.
+      const lastUser = context.messages.findLastIndex(m => m.role === 'user');
+      const native = context.messages[lastUser];
+      const incoming = native?.role === 'user' ? native.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '';
+      const used = context.messages.slice(lastUser + 1).flatMap(m => m.role === 'assistant' ? m.content.filter(p => p.type === 'toolCall').map(p => p.arguments?.message_id) : []);
+      const offered = incoming.split('\n').filter(line => line.startsWith('{')).flatMap(line => {
+        try { const msg = JSON.parse(line); return msg.message_id && !msg.message?.includes('NO_ACK') ? [msg.message_id] : []; } catch { return []; }
+      });
+      const next = offered.find(id => !used.includes(id));
+      if (next) tool = { name: 'agent_message_ack', arguments: { message_id: next, delivery: 'admitted' } };
+      const usedTools = context.messages.slice(lastUser + 1).flatMap(m => m.role === 'assistant' ? m.content.filter(p => p.type === 'toolCall').map(p => p.name) : []);
+      if (incoming.startsWith('RECOVER:')) {
+        const id = incoming.slice(8);
+        if (!usedTools.includes('agent_message_read')) tool = { name: 'agent_message_read', arguments: { inbox_id: 'original-inbox', after: 0 } };
+        else if (!used.includes(id)) tool = { name: 'agent_message_ack', arguments: { message_id: id, delivery: 'admitted' } };
+      }
+      if (text.startsWith('ADMITTED:')) tool = { name: 'agent_message_ack', arguments: { message_id: text.slice(9), delivery: 'admitted' } };
+      const message = { role: 'assistant'  as const, api: model.api, provider: model.provider, model: model.id,
         content: tool ? [{ type: 'toolCall' as const, id: 'wait-one', name: tool.name, arguments: tool.arguments }] :
           [{ type: 'text' as const, text: 'FIXTURE_RESPONSE' }],
         stopReason: tool ? 'toolUse' as const : 'stop' as const, timestamp: Date.now(),
