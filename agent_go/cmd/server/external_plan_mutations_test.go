@@ -98,4 +98,28 @@ func TestExternalPlanEditsOverMCP(t *testing.T) {
 	if f.read(t, "Workflow/invoices/planning/plan.json") != before {
 		t.Fatal("rejected shared edit changed the plan")
 	}
+	// Initializing an empty workflow also records the existing native changelog.
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"]}}`)
+	if err := os.Remove(filepath.Join(f.docs, "Workflow/invoices/planning/plan.json")); err != nil {
+		t.Fatal(err)
+	}
+	initialize := map[string]any{"action": "create_plan", "arguments": map[string]any{}, "expected_revision": revision(raw), "request_id": "initialize"}
+	f.call(t, raw, "plan", initialize, 200)
+	f.call(t, raw, "plan", initialize, 200)
+	initialize["request_id"] = "recreate"
+	initialize["expected_revision"] = revision(raw)
+	f.call(t, raw, "plan", initialize, 400)
+	logs, _ := filepath.Glob(filepath.Join(f.docs, "Workflow/invoices/planning/changelog/*.json"))
+	foundCreate := false
+	for _, p := range logs {
+		b, e := os.ReadFile(p)
+		if e != nil {
+			t.Fatal(e)
+		}
+		foundCreate = foundCreate || strings.Contains(string(b), `"tool": "create_plan"`)
+	}
+	if !foundCreate {
+		t.Fatal("new plan is absent from its native changelog")
+	}
+
 }

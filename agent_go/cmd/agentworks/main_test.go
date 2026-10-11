@@ -40,6 +40,8 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"messages", "list"}, "", "messages", map[string]any{"action": "list_agents"}},
 		{[]string{"messages", "read", "--agent", "reviewer", "--after", "42", "--wait", "25"}, "", "messages", map[string]any{"action": "read", "agent_name": "reviewer", "after": 42, "wait_seconds": 25}},
 		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "get_plan", map[string]any{"workflow_id": "wf-1"}},
+		{[]string{"plan", "list", "--workflow", "wf-1"}, "", "plan", map[string]any{"workflow_id": "wf-1", "action": "list"}},
+		{[]string{"plan", "edit", "--workflow", "wf-1", "--input", "-"}, `{"action":"update_step","arguments":{"step_id":"fetch","changes":{"title":"Fetch invoices","reason":"Clarify scope"}},"expected_revision":"revision","request_id":"edit-1"}`, "plan", map[string]any{"workflow_id": "wf-1", "action": "update_step", "expected_revision": "revision", "request_id": "edit-1", "arguments": map[string]any{"step_id": "fetch", "changes": map[string]any{"title": "Fetch invoices", "reason": "Clarify scope"}}}},
 		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "read_file", map[string]any{"workflow_id": "wf-1", "path": "notes.md"}},
 		{[]string{"files", "list", "--workflow", "wf-1", "--path", "code", "--glob", "**/*.py"}, "", "list_files", map[string]any{"workflow_id": "wf-1", "path": "code", "glob": "**/*.py"}},
 		{[]string{"files", "code", "--workflow", "wf-1", "--step-id", "run-basic-smoke"}, "", "list_step_code", map[string]any{"workflow_id": "wf-1", "step_id": "run-basic-smoke"}},

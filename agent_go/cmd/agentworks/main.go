@@ -158,19 +158,25 @@ func newCommand(o *options) *cobra.Command {
 		root.AddCommand(groupCmd)
 	}
 	plan := &cobra.Command{
-		Use: "plan get", Args: cobra.MaximumNArgs(1),
-		Short: "Read a workflow plan and configuration",
-		Long:  "Read with 'plan get'. Direct plan mutations are not exposed. Use Builder authoring tools when your existing consent and current role allow them.",
+		Use: "plan get|list|edit", Args: cobra.MaximumNArgs(1),
+		Short: "Read or edit a workflow plan with existing authoring consent",
+		Long:  "Read with plan get. Discover native edit schemas with plan list. Use plan edit --input FILE with action, arguments, expected_revision from get_plan and a unique request_id. Identical retries return the saved receipt; current owner/editor/team roles and existing Builder consent apply.",
 	}
 	addOperationFlags(plan, "get_plan")
 	plan.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return cmd.Help()
 		}
-		if args[0] != "get" {
-			return fmt.Errorf("unknown plan operation %q: v1 supports only 'plan get'", args[0])
+		switch args[0] {
+		case "get":
+			return o.call(cmd, "get_plan")
+		case "list":
+			return o.callWithArguments(cmd, "plan", map[string]any{"action": "list"})
+		case "edit":
+			return o.call(cmd, "plan")
+		default:
+			return fmt.Errorf("unknown plan operation %q: use get, list or edit", args[0])
 		}
-		return o.call(cmd, "get_plan")
 	}
 	root.AddCommand(plan)
 	mcpCmd := &cobra.Command{Use: "mcp", Short: "Expose this hosted connection as MCP"}
@@ -485,7 +491,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.Int("wait", 0, "Seconds to wait for the result (max 25) before returning a call_id to poll")
 	}
 	if tool == "" {
-		f.String("expected-revision", "", "Revision from read_file/get_plan (reserved for a future write-enabled API)")
+		f.String("expected-revision", "", "Current revision from read_file/get_plan for guarded source or plan mutations")
 	}
 	f.StringArray("set", nil, "Set a native argument as key=JSON; repeatable (quote string JSON values)")
 	if strings.Contains(tool, "file") || tool == "read_workflow_knowledge" {
@@ -699,6 +705,13 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 		if cmd.Name() == "list" {
 			arguments["action"] = "list_agents"
 		}
+	}
+	return o.callWithArguments(cmd, name, arguments)
+}
+
+func (o *options) callWithArguments(cmd *cobra.Command, name string, arguments map[string]any) error {
+	if workflow, _ := cmd.Flags().GetString("workflow"); workflow != "" {
+		arguments["workflow_id"] = workflow
 	}
 	client, err := o.client()
 	if err != nil {
