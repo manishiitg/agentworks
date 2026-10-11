@@ -14,7 +14,7 @@ import (
 // authoring consent as Builder. Discovery cannot resolve a project yet;
 // dispatch checks its product, role and connection bounds before writing.
 func externalFileAuthoringAllowed(claims *UserClaims, manifest *WorkflowManifest) bool {
-	if !externalBuilderEnabled() || claims == nil || claims.AccessToken == nil {
+	if claims == nil || claims.AccessToken == nil {
 		return false
 	}
 	access := userAccessForClaims(claims)

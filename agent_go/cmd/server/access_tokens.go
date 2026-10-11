@@ -225,7 +225,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			req.Name = "Access token"
 		}
 		now := time.Now()
-		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, FileGuard: req.FileGuard, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
+		t := accesstokens.Token{LocalPreset: localPreset, Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, FileGuard: req.FileGuard, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
 		if localPreset && req.ExpiresInDays == 0 {
 			t.NonExpiring = true
 			t.ExpiresAt = accesstokens.PermanentExpiry()
@@ -327,13 +327,17 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		}
 		token, raw, err := store.Issue(r.Context(), t, now)
 		if err != nil {
+			if errors.Is(err, accesstokens.ErrLocalPresetLimit) {
+				externalError(w, http.StatusConflict, "local_token_limit", err.Error())
+				return
+			}
 			externalError(w, 503, "token_creation_failed", "Could not create token; at most 100 active tokens are allowed.")
 			return
 		}
-		// Legacy connections replace only other legacy connections. Knowledge
-		// base tokens coexist and are revoked explicitly by their owner.
+		// Local presets and knowledge-base connections remain independent;
+		// cancel sessions only for grants actually replaced in the store.
 		for _, old := range previous {
-			if !t.KnowledgebaseAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
+			if !t.LocalPreset && !old.LocalPreset && !t.KnowledgebaseAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
 				api.cancelAccessTokenSessions(old.ID)
 			}
 		}
@@ -419,10 +423,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return externalWorkflowCreationAllowed(c)
 	}
 	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" || tool.Name == "workflow_upgrade" {
-		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
+		return c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}
 	if isExternalRelayAuthoringTool(tool.Name) {
-		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
+		return c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
 	}
 	if tool.Name == "write_file" || tool.Name == "patch_file" {
 		return externalFileAuthoringAllowed(c, nil)

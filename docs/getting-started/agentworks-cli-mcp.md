@@ -741,8 +741,8 @@ Call `write_file` through MCP `call_tool`, or `agentworks files write --input ed
 
 For a Relay-only connection, use `relays:write` in place of `builder:chat`.
 The caller needs current account/project edit rights and the project's product access;
-a Relay-only connection cannot edit workflow files. The server must enable MCP authoring
-(`AGENTWORKS_MCP_BUILDER_ENABLED`). Plans, `workflow.json`,
+a Relay-only connection cannot edit workflow files. CLI and MCP authoring need no
+deployment switch; existing connection consent and current roles apply. Plans, `workflow.json`,
 runtime run records, databases, private files and shared Brain content cannot be
 edited this way. This includes `costs/`, `schedule-runs.json`, the knowledge lock,
 `product.json` and `functions.json`. Use their typed tools. Authorized authors can

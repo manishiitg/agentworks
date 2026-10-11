@@ -6,7 +6,6 @@ import (
 	"errors"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -17,11 +16,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
-// External authoring is opt-in at both deployment and connection level.
-func externalBuilderEnabled() bool {
-	return strings.EqualFold(os.Getenv("AGENTWORKS_MCP_BUILDER_ENABLED"), "true")
-}
-
+// External authoring is always available; connection consent and current roles authorize each operation.
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder action=status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
 		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
@@ -189,7 +184,7 @@ func activeExternalGrantClaims(ctx context.Context, id string) (*UserClaims, err
 	return accessTokenClaims(token)
 }
 func validateBuilderGrant(ctx context.Context, claims *UserClaims, workflow, workspace string) (*UserClaims, error) {
-	if !externalBuilderEnabled() || claims == nil || claims.AccessToken == nil {
+	if claims == nil || claims.AccessToken == nil {
 		return nil, errors.New("Builder MCP is not authorized")
 	}
 	live, err := activeExternalGrantClaims(ctx, claims.AccessToken.ID)

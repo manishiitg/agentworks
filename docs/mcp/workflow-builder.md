@@ -6,7 +6,7 @@ This release provides managed plan and source-file editing. It does not expose n
 
 ## Enable and authorize
 
-Set `AGENTWORKS_MCP_BUILDER_ENABLED=true` on the server. The default is disabled. The endpoint remains `/api/external/v1/mcp`, with the existing outer tools `get_api_spec` and `call_tool`.
+CLI and MCP authoring are always available within the enabled products. The legacy `AGENTWORKS_MCP_BUILDER_ENABLED` deployment switch is ignored; existing connection consent and current roles remain required. The endpoint remains `/api/external/v1/mcp`, with the existing outer tools `get_api_spec` and `call_tool`.
 
 For OAuth, explicitly request all four scopes:
 
@@ -16,7 +16,7 @@ workflows:read files:read runs:execute builder:chat
 
 OAuth Builder consent follows the account: no workflow selection is requested. Each call resolves the current account, project and team permissions. Existing bounded grants keep their workflow limits. A compatible OAuth client must explicitly request Builder scopes; omitted scopes and the ordinary CLI device-login flow retain their previous defaults.
 
-The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Typed `plan` operations reuse the same consent; the unused `plan:write` permission is retired. Existing Builder-chat consent also authorizes these direct edits, explained in the consent details and Connect notice. Old plan:write-only grants lose that unused permission without receiving Builder consent. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
+The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Typed `plan` operations reuse the same consent; the unused `plan:write` permission is retired. Existing Builder-chat consent also authorizes these direct edits, explained in the consent details and Connect notice. Old plan:write-only grants lose that unused permission without receiving Builder consent. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent. Local full-access tokens include Builder consent; recreate an older local token that lacks it and update the client connection. Local preset tokens coexist with other clients, up to 32 active presets per account; revoke unused tokens in Connect to free capacity. Read-only and explicitly scoped tokens retain their limits.
 
 Managed source-file writes require the workflow documents to be mounted locally on the server. Remote-only workspace deployments fail those writes closed. A shared, server-owned auth state directory outside workflow documents is required for the durable operation records.
 

@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-11 — Native CLI and MCP authoring uses existing consent and roles (PLAT-856)
+
+Always expose authorized native workflow/Relay authoring through CLI and MCP;
+remove the additional deployment opt-in switch on local and multi-user servers.
+Legacy true/false settings are ignored; there is no separate authoring off switch.
+Local full-access token issuance
+includes existing Builder consent and does not revoke other local clients.
+Limit active local presets to 32 per account within the existing 100-token cap;
+revoke unused presets explicitly so they cannot exhaust every connection slot. Older
+grants without that consent require explicit renewal; read-only and bounded
+grants keep their limits. Live account,
+product, workflow and team permissions remain authoritative on every operation.
+Why: the owner wants plan editing available whenever they use the CLI, with the
+same role rules as the website and no extra environment setting.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-47.
+
+
 ## 2026-10-11 — People choose attachment names; agents describe their purpose (PLAT-861)
 
 The person attaches with `/agentworks attach NAME` or confirms a proposed name.

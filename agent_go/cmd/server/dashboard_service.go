@@ -59,9 +59,9 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 	}
 	switch target.Kind {
 	case "workflow":
-		return externalBuilderEnabled() && token.BuilderAccess() && token.AllowsWorkflow(target.ID)
+		return token.BuilderAccess() && token.AllowsWorkflow(target.ID)
 	case "relay":
-		return externalBuilderEnabled() && (token.BuilderAccess() || token.RelayBuilderAccess()) && token.AllowsWorkflow(target.ID)
+		return (token.BuilderAccess() || token.RelayBuilderAccess()) && token.AllowsWorkflow(target.ID)
 	case "crew":
 		return token.Allows("crews:write") && token.AllowsCrew(target.ID)
 	case "code":

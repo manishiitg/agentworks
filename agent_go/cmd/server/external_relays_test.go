@@ -98,9 +98,6 @@ func TestExternalRelayCreationRetryAndConsent(t *testing.T) {
 	f.relayCall(t, reader, "create_relay", map[string]any{"label": "Reader", "submission_id": "reader"}, 403)
 	_, runner := f.token(t, "owner", []string{"runs:execute"}, true)
 	f.relayCall(t, runner, "create_relay", args, 403)
-	_, writer = f.token(t, "owner", relayConsentScopes, true)
-	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "false")
-	f.relayCall(t, writer, "create_relay", args, 403)
 }
 func findWorkflowFunctionTriggerFromTest(ctx context.Context, id string) (*WorkflowSchedule, error) {
 	_, m, err := findWorkflowManifestByID(ctx, id)
