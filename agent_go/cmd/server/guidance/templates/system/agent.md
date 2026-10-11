@@ -268,6 +268,8 @@ Use an `agent` route when the parent agent should preserve specialist memory. No
 
 ## AGENT ROUTE PATTERNS
 
+Use an `agent` route when the parent agent should preserve specialist memory across calls; restart only when the prior conversation is stale, wrong, or contaminated.
+
 - Stateful specialist: re-enter one route for follow-up work.
 - Test/fix loop: validate externally, then re-enter the specialist with concrete failures.
 - Maker/reviewer: keep creation and independent review in separate routes.

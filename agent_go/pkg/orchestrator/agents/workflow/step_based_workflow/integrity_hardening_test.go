@@ -17,7 +17,7 @@ func TestPlanningResponseRejectsLegacyConditionalStep(t *testing.T) {
 		t.Fatal("expected legacy conditional step to be rejected")
 	}
 	if !strings.Contains(err.Error(), `unknown step type "conditional"`) ||
-		!strings.Contains(err.Error(), "regular, human_input, todo_task, routing, branch, agent, or crew") {
+		!strings.Contains(err.Error(), "regular, human_input, agent, routing, branch, or crew") {
 		t.Fatalf("unexpected legacy conditional error: %v", err)
 	}
 }

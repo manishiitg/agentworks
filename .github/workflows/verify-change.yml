@@ -78,6 +78,15 @@ jobs:
           working-directory: agent_go
           args: --new-from-rev=${{ steps.changed.outputs.base }} --timeout=15m ./...
 
+      - name: Build the workspace sandbox launcher for runtime tests
+        if: steps.changed.outputs.go == 'true'
+        working-directory: workspace
+        env:
+          GOWORK: "off"
+        run: |
+          go build -o "$RUNNER_TEMP/video-studio-landlock-runner" ./cmd/landlock-runner
+          echo "AGENTWORKS_LANDLOCK_RUNNER=$RUNNER_TEMP/video-studio-landlock-runner" >> "$GITHUB_ENV"
+
       - name: Go tests named in the commit
         if: steps.changed.outputs.go == 'true'
         working-directory: agent_go

@@ -5306,6 +5306,12 @@ func collectRegularPlanSteps(step PlanStepInterface) []*RegularPlanStep {
 	switch typed := step.(type) {
 	case *RegularPlanStep:
 		return []*RegularPlanStep{typed}
+	case *AgentPlanStep:
+		var scripts []*RegularPlanStep
+		for _, route := range typed.PredefinedRoutes {
+			scripts = append(scripts, collectRegularPlanSteps(route.SubAgentStep)...)
+		}
+		return scripts
 	default:
 		return nil
 	}
