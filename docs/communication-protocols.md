@@ -106,16 +106,17 @@ message got: `stored`, `delivered` (handed to the CLI) or `typed` (tmux fallback
 |---|---|---|---|---|
 | 1 | Native push | Immediate | Yes | Claude Code channels, Codex `codex queue`, Pi extension `sendUserMessage` |
 | 2 | Native steer during a turn | Immediate, even while busy | Yes | Pi steer, Codex queue |
-| 3 | Stop hook | When the current turn ends | No | Cursor (app and CLI) `followup_message`, Claude Code `Stop`, Codex `Stop`, agy plugin hooks |
-| 4 | Guarded tmux typing | Immediate when idle | Idle only | Terminal CLIs; only through platform live-input routing, only when the exact session is idle with an empty input line |
+| 3 | Stop hook | When the current turn ends | No | Cursor (app and CLI) `followup_message`, Claude Code `Stop`, Codex `Stop`, Muse plugin `Stop` hook (`decision: block`), agy plugin hooks |
+| 4 | Guarded tmux typing (optional) | Immediate when idle | Idle only | Terminal CLIs without a native wake (Muse, agy, Cursor CLI); only through platform live-input routing, only when the exact session is idle with an empty input line. Off by default; route 6 is the default for idle sessions |
 | 5 | Resume after the turn | When the current turn ends | Starts a new run | Platform-run CLIs (`--resume`, stream-json stdin) |
 | 6 | Notification to the person | Immediate, to the person | The person acts | Any client, e.g. an idle Cursor app chat |
 | 7 | Mailbox read | When the agent checks | No | Every client; the fallback |
 
 Best route per CLI: Claude Code channel, then stop hook; Codex `codex queue`,
 then stop hook; Pi extension; Cursor app stop hook plus a notification when idle;
-Cursor CLI and agy stop hook, then guarded tmux; Muse guarded tmux until Muse
-accepts external session messages. Every CLI keeps the mailbox as the fallback.
+Cursor CLI and agy stop hook; Muse plugin stop hook, and `muse session-message`
+once Muse accepts external session messages. Idle sessions without a native
+wake get a notification to the person; guarded tmux is an opt-in fallback. Every CLI keeps the mailbox as the fallback.
 
 How the pieces fit:
 
