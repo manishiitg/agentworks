@@ -21,8 +21,6 @@ import { BackgroundWorkPill } from './BackgroundWorkPill'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
 import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
-import { ChatSendModeButton } from './chat/ChatSendModeButton'
-import { DurableChatQueue } from './chat/DurableChatQueue'
 import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import FileSelectionDialog from './FileSelectionDialog'
@@ -123,6 +121,9 @@ import { MCPConfigPopup } from './MCPConfigPopup'
 import MCPDetailsModal from './MCPDetailsModal'
 // The Models dialog (all provider accounts and the key setup) loads when first opened, not with every chat (bundle budget, PLAT-717).
 const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel'))
+// Load the chat-only controls with the composer rather than the application entry.
+const ChatSendModeButton = lazy(() => import('./chat/ChatSendModeButton').then(module => ({ default: module.ChatSendModeButton })))
+const DurableChatQueue = lazy(() => import('./chat/DurableChatQueue').then(module => ({ default: module.DurableChatQueue })))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import { useAppStore, useMCPStore, useLLMStore, useChatStore } from '../stores'
@@ -3144,7 +3145,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           <div ref={setMicBannerHost} className="empty:hidden" />
-          {tabSessionId && activeTabId && !isViewOnly && <DurableChatQueue key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canSteer={canSteer || supportsLiveCodingAgentInput} />}
+          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canSteer={canSteer || supportsLiveCodingAgentInput} /></Suspense>}
         </>}>
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
@@ -3662,6 +3663,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       {/* Stop and send stay separate; Enter follows the selected delivery mode. */}
                       {backgroundWorkPill}
                       {showStopButton && stopButton}
+                      <Suspense fallback={<Button type="button" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} data-testid="chat-submit-button" className="px-1.5 text-[11px]">
+                        {isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'}
+                      </Button>}>
                       <ChatSendModeButton
                         mode={deliveryMode}
                         busy={isStreaming || transcriptTurnActive}
@@ -3670,6 +3674,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
+                      </Suspense>
                     </div>
                 </div>
               )}
