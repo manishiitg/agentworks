@@ -690,6 +690,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			args["action"], args["attachment_id"], args["message_id"], args["delivery"], args["transport"] = "ack", s.Attachment.ID, in.MessageID, in.Delivery, m.Transport
 		} else {
+			if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+				return LocalBridgeReply{Error: "attachment no longer authorized"}
+			}
 			args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", m.InboxID, in.Message, in.SubmissionID
 		}
 		raw, err := s.client.Call(callCtx, "messages", args)
