@@ -10,7 +10,7 @@ Retain source review dates and mark unverified, future-dated or older-than-30-da
 evidence as needing review. Provider API allowances may differ from MCP limits.
 Why: help people choose tools without implying remaining credits or changing setup.
 
-Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-36.
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-37.
 
 
 ## 2026-10-11 — Native Claude channels receive named-agent messages (PLAT-861)

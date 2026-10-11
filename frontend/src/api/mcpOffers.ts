@@ -1,21 +1,11 @@
 import snapshot from './mcpOfferSnapshot.json'
+import type { McpOffer, McpOfferCatalog, McpOfferKind } from './mcpOfferMetadata'
+export { FREE_TOOLS_CATALOG_URL, offerNeedsReview } from './mcpOfferMetadata'
+export type { McpOffer, McpOfferCatalog, McpOfferKind } from './mcpOfferMetadata'
 
-export const FREE_TOOLS_CATALOG_URL = 'https://agentworkshq.com/free-tools/'
 const SOURCE_URL = 'https://raw.githubusercontent.com/manishiitg/free-agent-tools/main/src/free_agent_tools/catalog.json'
 const STORAGE_KEY = 'agentworks.public-mcp-offers.v1'
 const REFRESH_MS = 5 * 60_000
-export type McpOfferKind = 'recurring' | 'trial' | 'grant' | 'open_source' | 'unconfirmed' | 'paid'
-export interface McpOffer {
-  name: string
-  kind: McpOfferKind
-  summary: string
-  conditions: string[]
-  sourceUrl: string
-  lastVerified: string | null
-  lastReviewed: string | null
-  status: 'verified' | 'needs_review'
-}
-export interface McpOfferCatalog { freshnessDays: number; offers: Record<string, McpOffer> }
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const kinds: McpOfferKind[] = ['recurring', 'trial', 'grant', 'open_source', 'unconfirmed', 'paid']
@@ -56,12 +46,6 @@ export function parseMcpOffers(value: unknown): McpOfferCatalog | null {
     }
   }
   return { freshnessDays: value.freshness_days, offers }
-}
-
-export function offerNeedsReview(offer: McpOffer, freshnessDays: number, now = Date.now()): boolean {
-  if (offer.status !== 'verified' || offer.kind === 'unconfirmed' || !offer.lastVerified) return true
-  const ageDays = Math.floor(now / 86_400_000) - Date.parse(offer.lastVerified + 'T00:00:00Z') / 86_400_000
-  return ageDays < 0 || ageDays > freshnessDays
 }
 
 let current = parseMcpOffers(snapshot)!

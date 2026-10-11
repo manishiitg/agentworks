@@ -24,6 +24,7 @@ async function mount(view: 'available' | 'connected' = 'available') {
   cleanup = () => { act(() => root.unmount()); host.remove() }
   const render = (next: 'available' | 'connected') => act(async () => root.render(<TooltipProvider><McpConnectionsPanel view={next} catalog={catalog} servers={[{ id: 'account', name: 'My Exa account', status: 'Connected' }]} showTools={false} /></TooltipProvider>))
   await render(view)
+  if (view === 'available') await act(async () => { await import('./McpOfferBadge') })
   return { host, render }
 }
 it('reveals provider eligibility on click, restores focus on Escape, and preserves connection setup', async () => {

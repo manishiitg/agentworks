@@ -136,8 +136,13 @@ jobs:
         env:
           BROWSER_CHECK_ARTIFACT_DIR: ${{ runner.temp }}/browser-check-artifacts
         run: |
-          npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium
+          # Keep the browser runner separate from the app's locked dependency tree.
+          runtime="$RUNNER_TEMP/browser-runtime"
+          mkdir -p "$runtime"
+          printf '%s\n' '{"private":true}' > "$runtime/package.json"
+          npm install --prefix "$runtime" --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+          ln -s "$runtime/node_modules/playwright" node_modules/playwright
+          "$runtime/node_modules/.bin/playwright" install --with-deps chromium
           grep -E '^Verify-Browser:' ../message.txt | sed 's/^Verify-Browser:[[:space:]]*//' > ../browser-tests.txt
           while IFS= read -r file; do
             [[ "$file" == scripts/test-*-browser.mjs && -f "$file" ]] || { echo "Invalid browser check: $file"; exit 1; }

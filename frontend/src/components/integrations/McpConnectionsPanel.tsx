@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ExternalLink, Loader2, MoreHorizontal, Plus, RefreshCw, Search } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -9,9 +9,10 @@ import { GROUP_ORDER } from '../connectors/catalog'
 import { WorkspaceViewTabs } from '../workflow/WorkspaceViewTabs'
 import { McpServerHeader } from './McpServerHeader'
 import { McpToolCard } from './McpToolCard'
-import { McpOfferBadge } from './McpOfferBadge'
 import { useMcpOffers } from '../../hooks/useMcpOffers'
-import { FREE_TOOLS_CATALOG_URL, offerNeedsReview, type McpOffer } from '../../api/mcpOffers'
+import { FREE_TOOLS_CATALOG_URL, offerNeedsReview, type McpOffer } from '../../api/mcpOfferMetadata'
+
+const McpOfferBadge = lazy(() => import('./McpOfferBadge').then(module => ({ default: module.McpOfferBadge })))
 
 export interface McpToolRow {
   id: string; name: string; description?: string; status?: string
@@ -115,7 +116,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
             <div className="space-y-2">{items.map(item => { const offer = offerFor(item); return <div key={item.id} className="rounded-md border border-border p-3"><div className="flex items-center gap-3">
               {batch && <input type="checkbox" aria-label={`Add ${item.name}`} disabled={item.connect?.disabled} checked={selected.includes(item.id)} onChange={() => setPicks(value => ({ ...value, [batch.id]: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }))} />}
               <ConnectionIcon icon={brandSlugFor(item.name)} name={item.name} size="xs" />
-              <div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-center gap-2"><p className="min-w-0 truncate text-sm font-medium">{item.name}</p>{!!item.addedCount && <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400">{item.addedCount} added</span>}{offer && <McpOfferBadge offer={offer} freshnessDays={offerCatalog.freshnessDays} />}</div>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
+              <div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-center gap-2"><p className="min-w-0 truncate text-sm font-medium">{item.name}</p>{!!item.addedCount && <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400">{item.addedCount} added</span>}{offer && <Suspense fallback={null}><McpOfferBadge offer={offer} freshnessDays={offerCatalog.freshnessDays} /></Suspense>}</div>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
               {(item.connectControl || (item.connect && <Button variant="outline" size="sm" disabled={item.connect.disabled} aria-label={item.connect.ariaLabel} data-testid={item.testId} onClick={() => void item.connect!.run()}>{item.connect.icon || <Plus />}{item.connect.label}</Button>))}
             </div>{item.details && <div className="mt-3">{item.details}</div>}</div> })}</div>
             {batch && selected.length > 0 && <Button size="sm" disabled={items.some(item => item.connect?.disabled)} onClick={() => { void Promise.resolve(batch.connect(selected)).then(result => { if (result !== false) setPicks(value => ({ ...value, [batch.id]: [] })) }) }}>Connect {selected.length} {selected.length === 1 ? 'service' : 'services'}</Button>}

@@ -31,6 +31,14 @@ try {
     assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width && bounds.y + bounds.height <= 850, `${name}: popover stays inside viewport`)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${name}: no horizontal overflow`)
     await page.screenshot({ path: path.join(output, `mcp-offers-${name}.png`), fullPage: true })
+    if (name === 'mobile') {
+      await page.setViewportSize({ width, height: 320 })
+      await page.waitForFunction(() => {
+        const rect = document.querySelector('[role="dialog"]').getBoundingClientRect()
+        return rect.y >= 0 && rect.bottom <= window.innerHeight
+      })
+      await page.setViewportSize({ width, height: 850 })
+    }
     await page.keyboard.press('Escape')
     assert.equal(await dialog.count(), 0)
     assert.equal(await exa.evaluate(element => element === document.activeElement), true)
