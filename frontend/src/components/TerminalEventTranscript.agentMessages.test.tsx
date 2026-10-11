@@ -9,8 +9,8 @@ import { agentApi } from '../services/api'
 vi.mock('../services/api', () => ({ agentApi: { getChatArtifact: vi.fn() } }))
 
 vi.mock('react-virtuoso', () => ({
-  Virtuoso: ({ data, firstItemIndex, itemContent }: { data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode }) => (
-    <div>{data.map((item, index) => <div key={index}>{itemContent(firstItemIndex + index, item)}</div>)}</div>
+  Virtuoso: ({ data, firstItemIndex, itemContent, computeItemKey }: { data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode; computeItemKey: (index: number, item: unknown) => React.Key }) => (
+    <div>{data.map((item, index) => <div key={computeItemKey(firstItemIndex + index, item)}>{itemContent(firstItemIndex + index, item)}</div>)}</div>
   ),
 }))
 vi.mock('./events/EventDispatcher', () => ({ EventDispatcher: () => null }))
@@ -74,7 +74,7 @@ it('keeps a delivered artifact summary as an agent card and loads its complete b
   const full = { id: 'history', session_id: 'chat-history', type: 'user_message', timestamp: '2026-10-11T08:00:00Z',
     data: { data: { content: `Internal delivery instructions\n\n${body}`, metadata } } } as PollingEvent
   const summary = { ...full, data: { data: { content: 'Internal delivery instructions',
-    metadata: { ...metadata, display_content: body.slice(0, 2048) + '…' }, truncated: true, artifact_id: 'artifact-history', original_size_bytes: body.length } } } as PollingEvent
+    metadata: { ...metadata, display_content: body.slice(0, 2048) + '…', display_content_truncated: true }, truncated: true, artifact_id: 'artifact-history', original_size_bytes: body.length } } } as PollingEvent
   vi.mocked(agentApi.getChatArtifact).mockResolvedValue(full)
   try {
     await act(async () => { root.render(<TerminalEventTranscript events={[summary]} terminal={null} />) })
@@ -91,6 +91,16 @@ it('keeps a delivered artifact summary as an agent card and loads its complete b
     expect(card.textContent).not.toContain('Internal delivery instructions')
     expect(card.querySelector('details')?.open).toBe(false)
     expect(card.querySelector('[data-testid="chat-artifact-show-full"]')).toBeNull()
+    // An oversized envelope can contain a complete body: no artifact fetch or
+    // load affordance is needed, even when that body literally ends in an ellipsis.
+    vi.clearAllMocks()
+    const complete = { ...summary, id: 'history-complete', data: { data: { content: 'Internal delivery instructions',
+      truncated: true, artifact_id: 'artifact-complete', original_size_bytes: body.length,
+      metadata: { ...metadata, display_content: 'Complete message…', display_content_truncated: false } } } } as PollingEvent
+    await act(async () => { root.render(<TerminalEventTranscript events={[complete]} terminal={null} />) })
+    expect(host.querySelector('[data-testid="agent-inbox-message"]')?.textContent).toContain('Complete message…')
+    expect(host.querySelector('[data-testid="chat-artifact-show-full"]')).toBeNull()
+    expect(agentApi.getChatArtifact).not.toHaveBeenCalled()
   } finally {
     act(() => root.unmount())
     host.remove()

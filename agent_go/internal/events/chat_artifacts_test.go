@@ -123,6 +123,9 @@ func TestDeliveredAgentArtifactKeepsIdentityAndFullBodyAfterRestart(t *testing.T
 		}
 	}
 	encoded, _ := json.Marshal(page.Events[0])
+	if stamp["display_content_truncated"] != true {
+		t.Fatal("shortened body is not marked truncated")
+	}
 	if len(encoded) > maxDurableChatEventBytes || len(stamp["display_content"].(string)) > 2*1024+8 {
 		t.Fatal("history summary exceeded its bound")
 	}
@@ -137,6 +140,14 @@ func TestDeliveredAgentArtifactKeepsIdentityAndFullBodyAfterRestart(t *testing.T
 	full := eventPayloadMap(&original)["metadata"].(map[string]interface{})
 	if full["display_content"] != body {
 		t.Fatal("artifact lost full delivered-message body")
+	}
+	// The envelope may exceed the row bound while the display body is complete.
+	// A literal ellipsis is body text, not evidence of summary truncation.
+	metadata["display_content"] = "Complete message…"
+	summaryEvent := summarizeChatArtifactEvent(event, "other-artifact", len(body), liveArtifactSummaryBytes)
+	short := eventPayloadMap(&summaryEvent)["metadata"].(map[string]interface{})
+	if short["display_content_truncated"] != false || short["display_content"] != metadata["display_content"] {
+		t.Fatal("complete body was marked truncated")
 	}
 }
 

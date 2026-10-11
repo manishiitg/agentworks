@@ -128,6 +128,9 @@ func summarizeChatArtifactEvent(event Event, artifactID string, originalSize, te
 			if value, exists := metadata[key]; exists {
 				if text, isText := value.(string); isText {
 					bounded[key] = truncateArtifactSummary(text, 2*1024)
+					if key == "display_content" {
+						bounded["display_content_truncated"] = bounded[key] != text
+					}
 				} else if isDurableScalar(value) {
 					bounded[key] = value
 				}

@@ -7,7 +7,9 @@ server delivery. Carry the sender, body and reply details in that metadata;
 typed envelope text and old unmarked rows remain ordinary messages. Bind the
 stamp to the admitted main input and clear it before the turn lane is released.
 Keep the same identity in bounded history summaries; load complete message bodies
-from their saved artifacts on demand.
+from their saved artifacts on demand. Mark whether the display body was shortened,
+and omit the load control when it is complete. Older summaries without that marker
+retain full-content access rather than treating unknown content as complete.
 Why: message wording cannot establish who sent it.
 
 Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).

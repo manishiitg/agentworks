@@ -10,7 +10,8 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
   if (metadata?.source !== 'agent_message') return null
   const { sender_label: sender, agent_message_inbox: inboxID, message_id: messageID, agent_message_instructions: instructions, display_content: body } = metadata
   if ([sender, inboxID, messageID, instructions, body].some(value => typeof value !== 'string' || !value.trim())) return null
-  return { sender: sender as string, inboxID: inboxID as string, messageID: messageID as string, instructions: instructions as string, body: body as string }
+  return { sender: sender as string, inboxID: inboxID as string, messageID: messageID as string, instructions: instructions as string, body: body as string,
+    bodyTruncated: typeof metadata.display_content_truncated === 'boolean' ? metadata.display_content_truncated : undefined }
 }
 
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
@@ -41,7 +42,9 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
           className="mt-2 rounded text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
           {expanded ? 'Show less' : 'Show full message'}
         </button>}
-        {artifact && !full.text && <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
+        {/* Legacy summaries lack the body marker: retain their existing access
+            to full content rather than treating an unknown body as complete. */}
+        {artifact && message.bodyTruncated !== false && !full.text && <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
           label="Load full message" onLoad={() => { void full.load().then(() => setExpanded(true)) }} />}
         <details className="group mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">
           <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
