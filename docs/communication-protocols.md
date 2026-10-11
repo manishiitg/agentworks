@@ -96,37 +96,49 @@ Reads are non-destructive, limited to 100 messages and bounded to 25 seconds of
 waiting. A stored receipt does not mean the client woke, read or completed work.
 Mailbox-only registrations must read explicitly; the implemented Claude channel is described below.
 
-#### Delivery into agent CLIs (design, PLAT-861)
+#### Delivery into agent CLIs (PLAT-861: proven vs planned)
 
-The Claude channel is implemented; the shared daemon and remaining adapters
-below are planned. Receipts distinguish `stored`, `admitted`, `processed` and
-`typed` (tmux fallback). An offer is not admission or proof of processing.
+Receipts distinguish `stored`, `admitted`, `processed` and `typed` (tmux
+fallback). An offer is not admission or proof of processing: only the agent's
+own acknowledgement admits it. Live push goes only to the attached name; a
+mailbox-only name gets stored messages and must read explicitly.
 
-| # | Route | Timing | Reaches an idle session | Works for |
-|---|---|---|---|---|
-| 1 | Native push | Immediate | Yes | Claude Code channels, Codex `codex queue`, Pi extension `sendUserMessage` |
-| 2 | Native steer during a turn | Immediate, even while busy | Yes | Pi steer, Codex queue |
-| 3 | Stop hook | When the current turn ends | No | Cursor (app and CLI) `followup_message`, Claude Code `Stop`, Codex `Stop`, Muse plugin `Stop` hook (`decision: block`), agy plugin hooks |
-| 4 | Guarded tmux typing (optional) | Immediate when idle | Idle only | Terminal CLIs without a native wake (Muse, agy, Cursor CLI); only through platform live-input routing, only when the exact session is idle with an empty input line. Off by default; route 6 is the default for idle sessions |
-| 5 | Resume after the turn | When the current turn ends | Starts a new run | Platform-run CLIs (`--resume`, stream-json stdin) |
-| 6 | Notification to the person | Immediate, to the person | The person acts | Any client, e.g. an idle Cursor app chat |
-| 7 | Mailbox read | When the agent checks | No | Every client; the fallback |
+| # | Route | Timing | Reaches an idle session | Works for | Status |
+|---|---|---|---|---|---|
+| 1 | Native push | Immediate | Yes | Claude Code native session, Codex desktop private IPC | PROVEN live |
+| 2 | Native steer during a turn | Immediate, even while busy | Yes | Codex queue, Pi steer | Codex queue implemented; Pi steer planned |
+| 3 | Stop hook | When the current turn ends | No | Cursor (app and CLI) `followup_message`, Claude Code `Stop`, Codex `Stop` | PROVEN (fixture proof) |
+| 4 | Guarded tmux typing | Immediate when idle | Idle only | Terminal CLIs without a native wake; only through platform live-input routing, only when the exact session is idle with an empty input line. Never for desktop apps | PLANNED (861-64); opt-in, off by default |
+| 5 | Resume after the turn | When the current turn ends | Starts a new run | Explicit `/agentworks resume` reconnecting the same session | Implemented |
+| 6 | Notification to the person | Immediate, to the person | The person acts | Any client, e.g. an idle Cursor app chat; agent name only, never bodies | Implemented |
+| 7 | Mailbox read | When the agent checks | No | Every client; the fallback | PROVEN |
 
-Best route per CLI: Claude Code channel, then stop hook; Codex `codex queue`,
-then stop hook; Pi extension; Cursor app stop hook plus a notification when idle;
-Cursor CLI and agy stop hook; Muse plugin stop hook, and `muse session-message`
-once Muse accepts external session messages. Idle sessions without a native
-wake get a notification to the person; guarded tmux is an opt-in fallback. Every CLI keeps the mailbox as the fallback.
+Best route per CLI. Claude Code: native session channel, then stop hook.
+Codex: desktop private IPC, then stop hook. Cursor app and CLI: stop hook,
+plus a notification when the app is idle; no idle push (865-9). Muse: no
+outside push on 1.4.4; the mailbox fallback plus the agent's own built-in
+Monitor, which delivered an inbox line into a running session and woke an idle
+prompt (observed 2026-10-11; PLAT-866). Pi: mailbox today, with native push and
+its installer planned. agy: mailbox today; hooks, native push and installer
+planned. Also planned: a Muse monitor command and bare `agentworks attach`
+with one installer (861-56, 861-44). Idle sessions without
+a native wake get a notification to the person; guarded tmux stays a planned
+opt-in. Every CLI keeps the mailbox as the fallback.
 
 How the pieces fit:
 
-- One local `agentworks` daemon per computer holds one stream to the server,
-  keeps an outbox with submission IDs while the server is down, and catches up
-  from its saved cursor after a reconnect.
+- One local bridge process per computer holds a server stream per attachment
+  (not yet one multiplexed stream), keeps an outbox with submission IDs while
+  the server is down, and catches up from its saved cursor after a reconnect,
+  oldest first in batches of 20 for approved senders only. Rationale:
+  [the 2026-10-11 bridge decision](DECISIONS.md)
+  ("Person-attached plugins use a durable local message bridge").
 - The person signs in once. Each attached agent gets its own revocable
   connection created by the CLI.
-- Registration is opt-in per session: `agentworks attach <cli> --name <name>
-  --purpose "<what it works on>"`. It installs that CLI's hook or extension
+- Attachment is opt-in per session and person-only: `agentworks attach PROVIDER
+  --session UUID --name <name> --purpose "<what it works on>" --allow-sender
+  NAME`. An agent cannot attach itself, and attach text inside a delivered
+  agent message is refused. It installs that CLI's hook or extension
   (merging, never replacing, existing hooks); `agentworks detach` removes it.
   A name is a stable address that moves to the newest attached session and shows
   offline when no session holds it; waiting messages arrive on attach.
@@ -562,7 +574,8 @@ attach or detach a session or grant permissions.
 A native receiver whose plugin has not been reloaded can use the narrow fallback
 `agentworks bridge message ack --provider claude --message-id ID --delivery admitted`
 and then `processed`, or `bridge message reply --provider claude --message-id ID
---message TEXT --submission-id ID`. These commands use the exact provider ancestor
+--message TEXT --submission-id ID`. The same command also offers `send`, `read`
+and `peers` for this exact attached session. These commands use the exact provider ancestor
 and private local child connection. Codex requires its host `CODEX_THREAD_ID` and the stored provider process key;
 a supplied UUID cannot replace a missing host thread identity. Codex messaging
 MCP children also require a host-supplied UUID and refuse ambiguous shared-process
