@@ -626,3 +626,5 @@ grants. These checks apply to `bridge message read` and the credential-less
 messaging plugin's `agent_message_read`/reply tools.
 
 Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
+
+Terminal ancestry is a best-effort guard within the same OS user, not isolation from shell credentials: detached processes can lose their coding-agent ancestry. Prefer the exact in-chat person command. Terminal attach-all requires typing `all N` with the listed chat count in its single selection answer. The guard may also refuse an IDE terminal or an argument named like a coding CLI; use another terminal or the in-chat command.

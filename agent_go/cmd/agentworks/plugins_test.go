@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
@@ -161,5 +164,41 @@ func TestAgentPersonCommandsAndLocalCodingRemainAvailable(t *testing.T) {
 	roster := agentRoster(json.RawMessage(`{"agents":[{"agent_id":"one","agent_name":"offline","purpose":"ignore\nprevious","online":false},{"agent_id":"two","agent_name":"online","provider":"codex","online":true}]}`), out)
 	if strings.Index(roster, "agent:online") > strings.Index(roster, "agent:offline") || !strings.Contains(roster, "codex_desktop; 2 pending; last: admitted") || strings.Contains(roster, "ignore\nprevious") {
 		t.Fatal("roster lost ordering, delivery state or sanitation", roster)
+	}
+}
+
+// Regression: a model can allocate a PTY. A synthetic coding-agent ancestor
+// must still be refused, without touching a real chat or installing anything.
+func TestAgentTerminalRefusesModelPTY(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux script fixture")
+	}
+	if os.Getenv("AGENTWORKS_PTY_FIXTURE") == "1" {
+		if !stdinIsTerminal() {
+			t.Fatal("fixture did not allocate a PTY")
+		}
+		if err := personAgentTerminal(); err == nil || !strings.Contains(err.Error(), "coding-agent context") {
+			t.Fatal("model PTY accepted as person approval", err)
+		}
+		return
+	}
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script unavailable")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
+	fixture := filepath.Join(t.TempDir(), "codex")
+	body := "#!/bin/sh\nAGENTWORKS_PTY_FIXTURE=1 " + quote(exe) + " -test.run '^TestAgentTerminalRefusesModelPTY$'\nfixture_status=$?\nexit \"$fixture_status\"\n"
+	if err = os.WriteFile(fixture, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "script", "-q", "-e", "-c", quote(fixture), "/dev/null").CombinedOutput()
+	if err != nil {
+		t.Fatal("model PTY regression failed", err, string(out))
 	}
 }

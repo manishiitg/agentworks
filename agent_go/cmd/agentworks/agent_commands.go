@@ -228,17 +228,24 @@ func attachPluginCommand(o *options) *cobra.Command {
 			for i, s := range sessions {
 				fmt.Fprintf(o.stderr, "%d. %s %s (%s)\n", i+1, s.provider, s.session, s.name)
 			}
-			fmt.Fprint(o.stderr, "Choose the chat to attach (number, all, or cancel): ")
-			var answer string
-			if _, e = fmt.Fscanln(o.stdin, &answer); e != nil {
-				return e
+			fmt.Fprintf(o.stderr, "Choose a chat number, or type all %d to attach the listed chats (cancel to stop): ", len(sessions))
+			var answer, count string
+			scanned, scanErr := fmt.Fscanln(o.stdin, &answer, &count)
+			if scanned == 0 {
+				return scanErr
 			}
 			if answer == "all" {
+				if count != strconv.Itoa(len(sessions)) {
+					return errors.New("attach-all cancelled: retype the listed chat count after all")
+				}
 				if name != "" && len(sessions) > 1 {
 					return errors.New("NAME selects one identity; choose a single chat, or attach all without NAME")
 				}
 				selected = sessions
 			} else {
+				if count != "" {
+					return errors.New("choose one chat number or all with the listed count")
+				}
 				n, e := strconv.Atoi(answer)
 				if e != nil || n < 1 || n > len(sessions) {
 					return errors.New("attachment cancelled")
@@ -617,7 +624,7 @@ func personAgentTerminal() error {
 		}
 		for _, f := range fields[1:] {
 			if isCodingAgentProcess(f) {
-				return errors.New("coding-agent shell cannot attach or detach chats, including through a PTY. The person must type /agentworks attach or /agentworks detach in the chat")
+				return errors.New("coding-agent context cannot attach or detach chats through this terminal, including a PTY. Use another terminal or type /agentworks attach or /agentworks detach yourself in the chat")
 			}
 		}
 		pid, err = strconv.Atoi(fields[0])
