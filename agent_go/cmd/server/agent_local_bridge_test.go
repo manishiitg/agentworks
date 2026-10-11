@@ -190,18 +190,24 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out, e := codexPeers.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"session_id": "11111111-2222-4333-8444-555555555555"}}}); e != nil || !out.IsError {
 		t.Fatal("model arguments selected an MCP thread")
 	}
-	for i, session := range []string{"11111111-2222-4333-8444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"} {
-		name := []string{"codex-one", "codex-two"}[i]
-		local(agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: session, HostKey: "desktop-parent", ConfigPath: path, AgentName: name, Purpose: "Review"})
+	threads := []string{"11111111-2222-4333-8444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}
+	names := []string{"codex-one", "codex-two"}
+	for i, session := range threads {
+		local(agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: session, HostKey: "desktop-parent", ConfigPath: path, AgentName: names[i], Purpose: "Review"})
+	}
+	for i, session := range threads {
 		req := mcp.CallToolRequest{Params: mcp.CallToolParams{Meta: &mcp.Meta{AdditionalFields: map[string]any{"x-codex-turn-metadata": map[string]any{"thread_id": session}}}}}
 		out, e := codexPeers.Handler(context.Background(), req)
 		if e != nil || out.IsError {
 			t.Fatal("host-bound peers failed", out, e)
 		}
 		var bound agentworksclient.LocalBridgeReply
-		if e := json.Unmarshal([]byte(out.Content[0].(mcp.TextContent).Text), &bound); e != nil || bound.Attachment.AgentName != name {
+		if e := json.Unmarshal([]byte(out.Content[0].(mcp.TextContent).Text), &bound); e != nil || bound.Attachment.AgentName != names[i] {
 			t.Fatal("shared MCP child selected another chat", bound.Attachment, e)
 		}
+	}
+	for _, session := range threads {
+		local(agentworksclient.LocalBridgeRequest{Action: "detach", Provider: "codex", SessionID: session, HostKey: "desktop-parent"})
 	}
 	send := func(text string) map[string]any {
 		return call(sender, map[string]any{"action": "send", "agent_name": "sender", "target": "agent:hook-reviewer", "message": text, "submission_id": text})
@@ -308,7 +314,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	peerReply.Action, peerReply.InboxID = "reply", newPeer["inbox_id"].(string)
 	peerReply.Message, peerReply.SubmissionID = "received", "new-peer-reply"
 	local(peerReply)
-	otherAccount, _, _ := issue("other-account")
+	otherAccount, _, _ := issue("other")
 	call(otherAccount, map[string]any{"action": "register", "agent_name": "outsider"})
 	if _, e := otherAccount.Call(context.Background(), "messages", map[string]any{"action": "send", "agent_name": "outsider", "target": "agent:hook-reviewer", "message": "outside account", "submission_id": "outside-account-proof"}); e == nil {
 		t.Fatal("sender-policy removal crossed the account boundary")
@@ -325,8 +331,28 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("compacted reply lost its original inbox")
 	}
 	stop(cancel, done)
+	// Simulate a saved pre-upgrade restricted attachment: never widen it silently.
+	savedPath := filepath.Join(root, "sessions.json")
+	rawState, e := os.ReadFile(savedPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var saved map[string]map[string]any
+	if e = json.Unmarshal(rawState, &saved); e != nil {
+		t.Fatal(e)
+	}
+	delete(saved["claude:"+base.SessionID], "account_senders")
+	rawState, _ = json.Marshal(saved)
+	if e = os.WriteFile(savedPath, rawState, 0600); e != nil {
+		t.Fatal(e)
+	}
 	cancel, done = start()
 	defer cancel()
+	migrationStatus := base
+	migrationStatus.Action = "status"
+	if out := local(migrationStatus); out.Attached || !out.Offline || !strings.Contains(out.LastError, "policy changed") {
+		t.Fatal("old sender permissions widened without person confirmation", out)
+	}
 	if out := local(drain); len(out.Messages) != 0 {
 		t.Fatal("cleanup replayed an ambiguous offer")
 	}
