@@ -28,6 +28,11 @@ func openCrewExecutionAudit() (*mcpOAuthStore, error) {
 		s.Close()
 		return nil, err
 	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS crew_execution_audit_history ON external_crew_execution_audit (crew_id,started_at DESC,id DESC)`)
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -57,6 +62,17 @@ func startCrewExecutionAudit(ctx context.Context, user, crew, connection, group,
 		return nil, "", err
 	}
 	id := uuid.NewString()
+	// Thirty-day retention plus bounded per-Crew/global inventories. Keep
+	// in-flight calls: their completion writes may arrive after disconnection.
+	_, err = s.db.ExecContext(ctx, `DELETE FROM external_crew_execution_audit WHERE
+ started_at<? OR (status!='started' AND id IN (
+ SELECT id FROM external_crew_execution_audit WHERE crew_id=? ORDER BY started_at DESC,id DESC LIMIT -1 OFFSET 999))
+ OR (status!='started' AND id IN (
+ SELECT id FROM external_crew_execution_audit ORDER BY started_at DESC,id DESC LIMIT -1 OFFSET 99999))`, time.Now().Add(-30*24*time.Hour).UnixMilli(), crew)
+	if err != nil {
+		s.Close()
+		return nil, "", err
+	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO external_crew_execution_audit
  (id,user_id,crew_id,connection_id,tool_group,action,operation,started_at,status)
  VALUES (?,?,?,?,?,?,?,?, 'started')`, id, user, crew, connection, group, action, crewAuditOperation(action, params), time.Now().UnixMilli())
@@ -92,27 +108,27 @@ func finishCrewExecutionAudit(s *mcpOAuthStore, id, result string, executionErr 
 	return err
 }
 
-func crewExecutionHistory(ctx context.Context, user, crew string) ([]map[string]any, error) {
+func crewExecutionHistory(ctx context.Context, crew string) ([]map[string]any, error) {
 	s, err := openCrewExecutionAudit()
 	if err != nil {
 		return nil, err
 	}
 	defer s.Close()
-	rows, err := s.db.QueryContext(ctx, `SELECT id,connection_id,tool_group,action,operation,started_at,finished_at,status,exit_code
- FROM external_crew_execution_audit WHERE user_id=? AND crew_id=? ORDER BY started_at DESC,id DESC LIMIT 100`, user, crew)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,user_id,connection_id,tool_group,action,operation,started_at,finished_at,status,exit_code
+ FROM external_crew_execution_audit WHERE crew_id=? AND started_at>=? ORDER BY started_at DESC,id DESC LIMIT 100`, crew, time.Now().Add(-30*24*time.Hour).UnixMilli())
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, connection, group, action, operation, status string
+		var id, user, connection, group, action, operation, status string
 		var started, finished int64
 		var exit sql.NullInt64
-		if err = rows.Scan(&id, &connection, &group, &action, &operation, &started, &finished, &status, &exit); err != nil {
+		if err = rows.Scan(&id, &user, &connection, &group, &action, &operation, &started, &finished, &status, &exit); err != nil {
 			return nil, err
 		}
-		row := map[string]any{"id": id, "connection_id": connection, "tool_group": group, "action": action, "operation": operation, "started_at": started, "finished_at": finished, "status": status}
+		row := map[string]any{"id": id, "actor_id": user, "connection_id": connection, "tool_group": group, "action": action, "operation": operation, "started_at": started, "finished_at": finished, "status": status}
 		if exit.Valid {
 			row["exit_code"] = exit.Int64
 		}

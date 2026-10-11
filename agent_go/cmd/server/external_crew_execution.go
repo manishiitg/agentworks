@@ -29,9 +29,43 @@ var crewExecutionMembers = map[string]bool{
 	"call_selected_mcp_tool": true,
 }
 
-// Fixed lock striping bounds memory and prevents two calls from replacing the
-// same connection's temporary policy. These sessions never adopt a chat.
-var crewExecutionLocks [64]sync.Mutex
+// Entries live only while calls use them. Unrelated sessions never wait on a
+// shared stripe, and a disconnected waiter can leave without starting work.
+var crewExecutionLocks = struct {
+	sync.Mutex
+	entries map[string]*crewExecutionLock
+}{entries: map[string]*crewExecutionLock{}}
+
+type crewExecutionLock struct {
+	permit chan struct{}
+	users  int
+}
+
+func lockCrewExecution(ctx context.Context, session string) (func(), error) {
+	crewExecutionLocks.Lock()
+	entry := crewExecutionLocks.entries[session]
+	if entry == nil {
+		entry = &crewExecutionLock{permit: make(chan struct{}, 1)}
+		crewExecutionLocks.entries[session] = entry
+	}
+	entry.users++
+	crewExecutionLocks.Unlock()
+	drop := func() {
+		crewExecutionLocks.Lock()
+		entry.users--
+		if entry.users == 0 {
+			delete(crewExecutionLocks.entries, session)
+		}
+		crewExecutionLocks.Unlock()
+	}
+	select {
+	case entry.permit <- struct{}{}:
+		return func() { <-entry.permit; drop() }, nil
+	case <-ctx.Done():
+		drop()
+		return nil, ctx.Err()
+	}
+}
 
 func crewExecutionDefinitions() []llmtypes.Tool {
 	tools := append(workspace.GetAdvancedToolDefinitions(), virtualtools.CreateWorkspaceBrowserTools()...)
@@ -119,7 +153,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 			externalError(w, 400, "invalid_arguments", "history takes no arguments.")
 			return
 		}
-		rows, err := crewExecutionHistory(r.Context(), claims.UserID, id)
+		rows, err := crewExecutionHistory(r.Context(), id)
 		if err != nil {
 			externalFailure(w, err)
 			return
@@ -213,9 +247,12 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	}
 	digest := sha256.Sum256([]byte(claims.UserID + "\x00" + connection + "\x00" + id))
 	session := "external-crew-" + hex.EncodeToString(digest[:16])
-	lock := &crewExecutionLocks[int(digest[0])%len(crewExecutionLocks)]
-	lock.Lock()
-	defer lock.Unlock()
+	release, err := lockCrewExecution(r.Context(), session)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	defer release()
 	defer common.ClearSessionShellConfig(session)
 	reads, writes, blocked, blockedWrites := crewExecutionFilePaths(root, guard)
 	common.SetSessionWorkingDir(session, root)

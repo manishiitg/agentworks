@@ -88,6 +88,57 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	if !strings.Contains(history, "mutate_workflow_db") || !strings.Contains(history, "connection_id") || strings.Contains(history, "saved via MCP") || strings.Contains(history, "INSERT INTO") {
 		t.Fatalf("audit missing or exposed data: %s", history)
 	}
+	// History belongs to the project, not the previous owner's user identity.
+	audit, oldID, err := startCrewExecutionAudit(ctx, "previous-owner", "team", "old-connection", "crew_execution", "execute_shell_command", map[string]any{"command": "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = finishCrewExecutionAudit(audit, oldID, `{"exit_code":0}`, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, err = audit.db.Exec(`INSERT INTO external_crew_execution_audit (id,user_id,crew_id,connection_id,tool_group,action,operation,started_at,status) VALUES ('expired','old','team','old','crew_execution','execute_shell_command','redacted',?,'completed')`, time.Now().Add(-31*24*time.Hour).UnixMilli())
+	audit.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	history = crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "history"}, 200)
+	if !strings.Contains(history, "previous-owner") || strings.Contains(history, "expired") {
+		t.Fatal(history)
+	}
+	call("mutate_workflow_db", map[string]any{"sql": "UPDATE example SET value=? WHERE id=?", "params": []any{"saved via MCP", 1}})
+	audit, err = openCrewExecutionAudit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expired int
+	err = audit.db.QueryRow(`SELECT COUNT(*) FROM external_crew_execution_audit WHERE id='expired'`).Scan(&expired)
+	audit.Close()
+	if err != nil || expired != 0 {
+		t.Fatalf("expired records=%d err=%v", expired, err)
+	}
+	first, err := lockCrewExecution(ctx, "session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := lockCrewExecution(ctx, "session-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other()
+	cancelled, stop := context.WithCancel(ctx)
+	stop()
+	if release, err := lockCrewExecution(cancelled, "session-a"); err == nil {
+		release()
+		t.Fatal("cancelled waiter acquired active session")
+	}
+	first()
+	crewExecutionLocks.Lock()
+	left := len(crewExecutionLocks.entries)
+	crewExecutionLocks.Unlock()
+	if left != 0 {
+		t.Fatalf("lock entries leaked: %d", left)
+	}
+
 	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_execution", map[string]any{"action": "history"}, 403)
 	for _, denied := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, denied, "crew_execution", map[string]any{"action": "mutate_workflow_db", "arguments": map[string]any{"sql": "DELETE FROM example"}}, 403)

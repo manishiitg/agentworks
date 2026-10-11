@@ -29,6 +29,16 @@ Why: help people choose tools without implying remaining credits or changing set
 
 Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-37.
 
+## 2026-10-11 — Crew integration management matches website roles (PLAT-856)
+
+Shared Google account grant changes require an administrator in both chat tools
+and direct MCP, matching Sending accounts. Code private account management
+keeps its existing owner scope. Crew execution history belongs to the Crew:
+only its current owner reads it, including calls made before ownership transfer.
+Keep metadata for 30 days, capped at 1,000 calls per Crew and 100,000 overall;
+never store payloads or outputs. Why: role parity and useful, bounded owner audit.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
 
 ## 2026-10-11 — Native Claude channels receive named-agent messages (PLAT-861)
 
