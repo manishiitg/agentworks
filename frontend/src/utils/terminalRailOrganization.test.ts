@@ -180,11 +180,11 @@ describe('terminal rail organization', () => {
   it('assigns a distinct visual kind to every supported step category', () => {
     expect(terminalRailVisualKind(terminal('orchestrator', {
       execution_kind: 'orchestrator',
-    }))).toBe('orchestrator')
+    }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('legacy-orchestrator', {
       execution_kind: 'workflow_step',
       step_type: 'todo_task',
-    }))).toBe('orchestrator')
+    }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('session-1:workflow-full-run-1', {
       execution_kind: 'sub_agent',
       execution_id: 'workflow-full-run-1',

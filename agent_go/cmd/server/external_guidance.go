@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"embed"
 	"crypto/sha256"
+	"embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,8 +13,8 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
-	"sync"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
@@ -82,7 +82,7 @@ func externalTopicVisible(claims *UserClaims, topic externalGuidanceTopic) bool 
 }
 
 var (
-	externalUnavailableOnce sync.Once
+	externalUnavailableOnce  sync.Once
 	externalUnavailableTools []string
 )
 
@@ -219,7 +219,7 @@ var externalGuidanceTopics = []externalGuidanceTopic{
 	{Name: "step-config", Description: "Per-step config reference: store-access modes, locks, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step.", ExternalNote: "External mapping: update_step_config, add_step, update_step, change_step_type, and update_validation_schema are not direct external tools. Delegate edits through builder action=chat only when it is available. read_skill, query_workflow_db, mutate_workflow_db, and other config tools named here are not either; describe the needed change in your reply instead of attempting it."},
 	{Name: "skill-management", Description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills.", ExternalNote: "External mapping: install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config are not in your catalog. list_skills and search_skills ARE in your catalog when the token allows runs:execute; use list_workflow_knowledge to inspect wiring. Installs and changes are not exposed, so say so instead of attempting them."},
 	{Name: "file-layout", Description: "Workspace file layout reference and path discipline."},
-	{Name: "message-sequence", Description: "Agent steps: the system-level charter, ordered user-message items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
+	{Name: "agent", Description: "Agent steps: the system-level charter, ordered user-message items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
 	{Name: "routing", Description: "Routing step design: deterministic major sub-workflow selection versus branch, a plain agent step, or an agent with adaptive routes; route selection, convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
 	{Name: "branch", Description: "Branch step design: a small in-flow next-step decision versus routing, human input or an agent step; convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
 	{Name: "scripted", Description: "Scripted step design: deterministic API, CLI and data work, script parameters and defaults, validation, permissions, and reuse from agent steps. The internal plan type is regular.", ExternalNote: "External mapping: plan, step and code edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
