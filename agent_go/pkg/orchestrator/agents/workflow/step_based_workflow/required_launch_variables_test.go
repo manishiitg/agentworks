@@ -32,7 +32,7 @@ func TestRequiredLaunchVariablesFollowSelectedPath(t *testing.T) {
 func TestRetiredHumanInputStepFailsWithMigrationAction(t *testing.T) {
 	var plan PlanningResponse
 	err := json.Unmarshal([]byte(`{"steps":[{"id":"question","type":"human_input","question":"Month?"}]}`), &plan)
-	if err == nil || !strings.Contains(err.Error(), "migrate_human_input_steps.py") {
+	if err == nil || !strings.Contains(err.Error(), "migrate_human_input_steps.py") || !strings.Contains(err.Error(), `id "question"`) || !strings.Contains(err.Error(), "docs/workflow/human-input-step-retirement.md") {
 		t.Fatalf("retired saved type: %v", err)
 	}
 	for _, stepType := range consolidatedStepTypes {

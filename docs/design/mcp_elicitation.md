@@ -45,14 +45,17 @@ the hosted endpoint and the stdio bridge, so the capability, scope, reader,
 secret-wording and requestState checks cannot drift apart. A retried
 `call_*` request with `requestState` never starts a second call.
 
-Crews cannot raise these questions yet: the Crew (Work) product does not
-enable `human_feedback`, so only workflow functions (`ask` and typed
-functions) produce pending inputs today.
+The Crew (Work) product does not currently enable `human_feedback`, so its
+ordinary function executions cannot raise these questions. Typed workflow
+functions can expose a runtime agent's pending `human_feedback` question.
+Conversational `ask` aliases now use message inboxes; they do not create a
+function `call_id` or function-call elicitation. Other explicitly enabled
+function runtimes use their own admitted human-input tools.
 
 Focused tests cover capability gating, Crew and workflow answers, a question
 arriving after an initial poll, choice validation, declined input, cross-user
 denial and replay refusal; the stdio bridge has a legacy-client round trip.
-A live run (PLAT-652) drove a workflow `ask` over Streamable HTTP with the
+A historical live run (PLAT-652), before `ask` moved to message inboxes, drove a workflow `ask` over Streamable HTTP with the
 mcp-go client: the elicitation form, the answer and the finished run worked,
 and clients without the capability (and Claude Code 2.1.292 headless) used
 poll/reply. Clients that render forms (interactive Claude Code, Claude.ai,

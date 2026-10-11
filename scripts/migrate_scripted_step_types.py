@@ -48,7 +48,7 @@ def migrate(roots, apply=False):
                 continue
             seen.add(path)
             # Historical execution plans must retain their original revision.
-            if "runs" in path.relative_to(root).parts:
+            if set(path.relative_to(root).parts) & {"runs", "releases", "versions", "backup", "backups", "moved-workflows", ".trash", ".calls", ".relay_releases"}:
                 continue
             before = path.read_bytes()
             plan, count = normalize(json.loads(before))

@@ -102,7 +102,7 @@ func TestAppendWorkflowFolderAccessPreservesModesAndAliases(t *testing.T) {
 	if !containsString(readOnlyPaths, readOnly) || containsString(readOnlyPaths, readWrite) {
 		t.Fatalf("read-only write-deny roots not preserved: %v", readOnlyPaths)
 	}
-	if env["WORKFLOW_FOLDER_REFERENCE_DATA"] != readOnly || env["WORKFLOW_FOLDER_project_source"] != readWrite {
+	if env["WORKFLOW_FOLDER_REFERENCE_DATA"] != readOnly || env["WORKFLOW_FOLDER_DOCS_SOURCE"] != readWrite {
 		t.Fatalf("alias environment incorrect: %#v", env)
 	}
 	if _, exists := env["WORKFLOW_FOLDER_MISSING"]; exists {
@@ -182,7 +182,7 @@ func TestRefreshWorkflowFolderAccessSessionReconcilesCrewGrants(t *testing.T) {
 	if cfg == nil || !containsString(cfg.ReadPaths, crewRoot) || !containsString(cfg.BlockedWritePaths, crewRoot) {
 		t.Fatalf("live crew root not granted readable: %#v", cfg)
 	}
-	if cfg.Env["WORKFLOW_CREW_project-a"] != crewRoot {
+	if cfg.Env["WORKFLOW_CREW_PROJECT_A"] != crewRoot {
 		t.Fatalf("live crew alias env missing: %#v", cfg.Env)
 	}
 
@@ -215,7 +215,7 @@ func TestLiveCrewAttachmentGrantsSkipInvalidAttachments(t *testing.T) {
 	if err := os.MkdirAll(workflowDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Only the server A crew workspace exists: the gone crew is deleted and
+	// Only the attached Crew workspace exists: the gone crew is deleted and
 	// the evil alias is retargeted at an arbitrary path.
 	if err := os.MkdirAll(filepath.Join(docsRoot, "_users", "owner", "Chats", "Work", "projects", "project-a"), 0o755); err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestLiveCrewAttachmentGrantsSkipInvalidAttachments(t *testing.T) {
 	if !containsString(read, crewRoot) || !containsString(readOnly, crewRoot) {
 		t.Fatalf("crew root missing from guard paths: read=%v readOnly=%v", read, readOnly)
 	}
-	if env["WORKFLOW_CREW_project-a"] != crewRoot {
+	if env["WORKFLOW_CREW_PROJECT_A"] != crewRoot {
 		t.Fatalf("crew alias env = %v", env)
 	}
 	for _, paths := range [][]string{read, readOnly} {

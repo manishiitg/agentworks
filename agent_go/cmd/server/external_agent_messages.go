@@ -33,6 +33,19 @@ func (api *StreamingAPI) externalMessagePeer(ctx context.Context, claims *UserCl
 			}
 		}
 	}
+	for _, conversation := range store.Expired {
+		if conversation.ID != inboxID || time.Since(conversation.ExpiredAt) > agentConversationIdleKeep {
+			continue
+		}
+		for side, endpoint := range conversation.Endpoints {
+			if endpoint.External && endpoint.UserID == claims.UserID && endpoint.Kind == triggerCallerUser && endpoint.ID == claims.UserID {
+				if err := api.externalAuthorizeMessagePeer(ctx, claims, conversation.Endpoints[1-side], send); err != nil {
+					return agentMessageEndpoint{}, err
+				}
+				return agentMessageEndpoint{}, fmt.Errorf("%w: inbox was removed by retention or capacity cleanup; start a new conversation", errCommunicationExpired)
+			}
+		}
+	}
 	return agentMessageEndpoint{}, fmt.Errorf("conversation unavailable or access denied")
 }
 
@@ -92,6 +105,10 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 }
 
 func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *UserClaims, args map[string]any) (triggerTarget, error) {
+	return api.externalMessageTargetForOperation(ctx, claims, args, true)
+}
+
+func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, claims *UserClaims, args map[string]any, send bool) (triggerTarget, error) {
 	crewID, workflowID, name := externalArg(args, "crew_id"), externalArg(args, "workflow_id"), strings.TrimSpace(externalArg(args, "target"))
 	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
 		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
@@ -133,7 +150,7 @@ func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *User
 		return triggerTarget{}, fmt.Errorf("choose one accessible Crew or workflow by ID; target is unavailable or ambiguous")
 	}
 	target := targets[0]
-	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), true); err != nil {
+	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
 		return triggerTarget{}, err
 	}
 	return target, nil
@@ -145,7 +162,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 	if inbox != "" {
 		peer, err := api.externalMessagePeer(r.Context(), claims, inbox, true)
 		if err != nil {
-			externalError(w, 404, "not_found", err.Error())
+			externalCommunicationError(w, 404, "not_found", err)
 			return
 		}
 		if target.Kind != "" && (peer.Kind != target.Kind || peer.ID != target.stampID() || peer.Profile != normalizeInternalProfileID(target.CrewProfile) || target.Chat != nil && peer.Session != target.Chat.SessionID) {
@@ -153,12 +170,12 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	} else if err := api.externalAuthorizeMessagePeer(r.Context(), claims, targetMessageEndpoint(claims.UserID, target), true); err != nil {
-		externalError(w, 404, "not_found", err.Error())
+		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
 	out, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, externalCrewCaller(claims), target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"))
 	if err != nil {
-		externalError(w, 400, "message_refused", err.Error())
+		externalCommunicationError(w, 400, "message_refused", err)
 		return
 	}
 	externalJSON(w, out)
@@ -168,13 +185,15 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	claims := GetUserFromContext(r.Context())
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	switch externalArg(args, "action") {
+	case "state":
+		api.externalAgentMessageState(w, r, args)
 	case "send":
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
 			var err error
 			target, err = api.externalMessageTarget(r.Context(), claims, args)
 			if err != nil {
-				externalError(w, 404, "not_found", err.Error())
+				externalCommunicationError(w, 404, "not_found", err)
 				return
 			}
 		}
@@ -185,19 +204,19 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if _, err := api.externalMessagePeer(r.Context(), claims, inbox, false); err != nil {
-			externalError(w, 404, "not_found", err.Error())
+			externalCommunicationError(w, 404, "not_found", err)
 			return
 		}
 		wait := time.Duration(externalInt(args, "wait_seconds", 0)) * time.Second
 		out, err := api.readAgentMessages(r.Context(), claims.UserID, externalCrewCaller(claims), inbox, externalInt(args, "after", 0), externalInt(args, "limit", 30), wait)
 		if err != nil {
-			externalError(w, 400, "read_refused", err.Error())
+			externalCommunicationError(w, 400, "read_refused", err)
 			return
 		}
 		// Access can be revoked while a bounded read waits; do not release its page.
 		peer, err := api.externalMessagePeer(r.Context(), claims, inbox, false)
 		if err != nil {
-			externalError(w, 404, "not_found", err.Error())
+			externalCommunicationError(w, 404, "not_found", err)
 			return
 		}
 		// Preserve the owner's existing masked command evidence without
@@ -209,15 +228,15 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, out)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be send or read")
+		externalError(w, 400, "invalid_arguments", "action must be send, read or state")
 	}
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "Send conversational agent messages or read explicit replies from your authenticated inbox. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds.", false, false, map[string]any{
-		"action":        map[string]any{"type": "string", "enum": []any{"send", "read"}},
-		"crew_id":       externalString("Crew ID for an initial send."),
-		"workflow_id":   externalString("Workflow ID for an initial send."),
+	add("messages", "Send conversational agent messages or read explicit replies from your authenticated inbox. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
+		"action":        map[string]any{"type": "string", "enum": []any{"send", "read", "state"}},
+		"crew_id":       externalString("Crew ID for an initial send or owner-only state inspection."),
+		"workflow_id":   externalString("Workflow ID for an initial send or owner-only state inspection."),
 		"target":        externalString("Accessible Crew or workflow name/ID for an initial send."),
 		"message":       externalString("Message to send; required for action send."),
 		"inbox_id":      externalString("Inbox returned by send; required for action read, reusable for later sends."),
@@ -232,7 +251,7 @@ func (api *StreamingAPI) externalFunctionReadDetails(w http.ResponseWriter, ctx 
 	if name := strings.TrimSpace(externalArg(args, "file")); name != "" {
 		page, err := readCrewFunctionOutput(ctx, call, name, externalInt(args, "offset", 0), externalInt(args, "limit", 256<<10))
 		if err != nil {
-			externalError(w, 400, "output_refused", err.Error())
+			externalCommunicationError(w, 400, "output_refused", err)
 			return false
 		}
 		out["file"] = page

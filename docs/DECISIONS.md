@@ -1,5 +1,29 @@
 # Decisions and open issues
 
+## 2026-10-11 — Checked deployment migration and communication expiration (PLAT-861)
+
+Allow an explicit offline agent-step batch after the server and document writers
+are drained. Require v1.0.46 and code layout 1 first, validate every live plan
+before writing, and share the interactive v1.0.47 stamp gate. Write the marker
+last and retain original backups and audit receipts; never rewrite historical
+plans or skip earlier contract upgrades. Why: deploys need the deterministic
+migration without a model turn for each workflow.
+
+Keep bounded inbox ownership metadata for up to seven days after cleanup so
+an authorized caller receives `expired`, while unknown IDs and foreign accounts
+retain the existing refusal. A known call output removed from disk also returns
+`expired`; retained call status remains available. Why: clients must distinguish
+retention from an incorrect address without learning another account's IDs.
+
+Recheck queued-message authority immediately before delivery and expose bounded
+owner-only delivery/wakeup metadata through the existing MCP message tool.
+Persist connection IDs without bearer tokens; an account inbox can survive a
+reconnect while a revoked submission cannot start a new turn. Why: transport
+acceptance must not freeze permission or hide an undeliverable message.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+
+
 ## 2026-10-11 — Incoming agent messages show the message first (PLAT-825)
 
 Render explicit incoming messages as a sender-labelled agent card in the chat

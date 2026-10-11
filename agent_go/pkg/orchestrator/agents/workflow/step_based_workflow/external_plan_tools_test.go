@@ -45,7 +45,7 @@ func (f *externalPlanTestFiles) execute(ctx context.Context, name string, args m
 
 func TestExternalPlanToolsExposeStrictDetachedAllowlist(t *testing.T) {
 	definitions := ExternalPlanToolDefinitions()
-	if len(definitions) != 15 {
+	if len(definitions) != 13 {
 		t.Fatalf("got %d tool definitions", len(definitions))
 	}
 	names := map[string]bool{}
@@ -62,7 +62,7 @@ func TestExternalPlanToolsExposeStrictDetachedAllowlist(t *testing.T) {
 			t.Fatalf("%s permits unknown fields", definition.Name)
 		}
 	}
-	for _, forbidden := range []string{"execute_step", "run_full_workflow", "migrate_declared_execution_mode", "create_plan", "write_workspace_file"} {
+	for _, forbidden := range []string{"execute_step", "run_full_workflow", "migrate_declared_execution_mode", "create_plan", "write_workspace_file", "add_human_input_step", "update_human_input_step", "add_orchestrator_step", "add_todo_task_step", "add_message_sequence_step"} {
 		if names[forbidden] {
 			t.Fatalf("unexpected external tool %s", forbidden)
 		}

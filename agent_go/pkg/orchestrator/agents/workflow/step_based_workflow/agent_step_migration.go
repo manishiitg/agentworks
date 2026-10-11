@@ -4,13 +4,78 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
+	"time"
 
 	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
 const AgentStepContractVersion = "1.0.47"
+
+// ValidateAgentStepContractStamp is shared by interactive stamps and drained
+// deployment batches. A version marker cannot stand in for the plan migration.
+func ValidateAgentStepContractStamp(content string) error {
+	_, count, err := MigrateAgentStepContent(content)
+	if err != nil {
+		return err
+	}
+	if count != 0 {
+		return fmt.Errorf("run migrate_agent_steps before stamping %s: %d saved agent records still need migration", AgentStepContractVersion, count)
+	}
+	return nil
+}
+
+// MigrateAgentStepDeployment prepares only the final contract rung. Earlier
+// migrations remain explicit prerequisites; unknown manifest fields are retained.
+func MigrateAgentStepDeployment(planContent, manifestContent string, appliedAt time.Time) (string, string, int, error) {
+	var manifest map[string]interface{}
+	decoder := json.NewDecoder(strings.NewReader(manifestContent))
+	decoder.UseNumber()
+	if err := decoder.Decode(&manifest); err != nil {
+		return "", "", 0, err
+	}
+	if err := decoder.Decode(new(interface{})); !errors.Is(err, io.EOF) {
+		return "", "", 0, fmt.Errorf("manifest must contain exactly one JSON document")
+	}
+	version, _ := manifest["version"].(string)
+	if version != StepDescriptionLayoutContractVersion && version != AgentStepContractVersion {
+		return "", "", 0, fmt.Errorf("complete earlier contract migrations through %s first; current version is %q", StepDescriptionLayoutContractVersion, version)
+	}
+	if layout, ok := manifest["code_layout_version"].(json.Number); !ok || layout.String() != "1" {
+		return "", "", 0, fmt.Errorf("agent migration requires the completed code_layout_version=1 prerequisite")
+	}
+	after, count, err := MigrateAgentStepContent(planContent)
+	if err != nil {
+		return "", "", 0, err
+	}
+	var plan PlanningResponse
+	if err := json.Unmarshal([]byte(after), &plan); err != nil {
+		return "", "", 0, err
+	}
+	if err := ValidatePlanStructure(&plan); err != nil {
+		return "", "", 0, err
+	}
+	if err := ValidateAgentStepContractStamp(after); err != nil {
+		return "", "", 0, err
+	}
+	if version == AgentStepContractVersion {
+		if count != 0 {
+			return "", "", 0, fmt.Errorf("plan is stamped %s but still contains legacy agent records; inspect this inconsistent checkpoint before deploying", version)
+		}
+		return planContent, manifestContent, 0, nil
+	}
+	manifest["version"] = AgentStepContractVersion
+	manifest["updated_at"] = appliedAt.UTC().Format(time.RFC3339)
+	if err := appendContractUpgradeHistory(manifest, AgentStepContractVersion, appliedAt); err != nil {
+		return "", "", 0, err
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	return after, string(data) + "\n", count, err
+}
 
 // canonicalAgentStepJSON is the read boundary for retired saved step shapes.
 // Runtime and authoring only use AgentPlanStep; saving emits type=agent/items.

@@ -1362,7 +1362,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 				return nil
 			}
 			if name == "call_function" {
-				description = "Call a declared function of another Crew, workflow or published Relay. Inputs and declared results are validated. Returns a call_id; poll get_function_call until it settles before using the result. Reuse submission_id after an uncertain retry; a different submission_id starts distinct work. No chat auto-notification is scheduled."
+				description = "Call a declared function of another Crew, workflow or published Relay. Inputs and declared results are validated. Returns a call_id; poll get_function_call until it settles before using the result. With no submission_id, identical target, function and arguments within the same run, step and group reuse the first call, including its completed result. Use a new explicit submission_id for intentionally repeated work; reuse that ID after an uncertain retry. No chat auto-notification is scheduled."
 				parameters["properties"].(map[string]interface{})["notify"] = map[string]interface{}{"type": "boolean", "enum": []interface{}{false}, "description": "Execution agents poll results; only false is accepted."}
 			}
 		}

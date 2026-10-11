@@ -16,7 +16,7 @@ import shutil
 import tempfile
 
 
-HISTORY = {"runs", "releases", "versions", "backup", "backups", "moved-workflows", ".trash", ".calls"}
+HISTORY = {"runs", "releases", "versions", "backup", "backups", "moved-workflows", ".trash", ".calls", ".relay_releases"}
 TYPES = {"agent", "scripted", "routing", "branch", "crew", "regular", "message_sequence", "orchestrator", "todo_task"}
 
 

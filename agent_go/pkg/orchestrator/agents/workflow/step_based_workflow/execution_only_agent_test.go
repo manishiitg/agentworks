@@ -283,7 +283,7 @@ func TestContributionTurnUserMessageDropsExecutionScaffolding(t *testing.T) {
 		"StepContextOutput": "report.json",
 		"StepExecutionPath": "execution/step-1",
 	})
-	for _, want := range []string{"Execution Checklist", "Create the output file", "### Inputs", "### Output"} {
+	for _, want := range []string{"Execution Checklist", "report.json", "execution/step-1/", "Verify the required outputs", "### Inputs", "### Output"} {
 		if !strings.Contains(normal, want) {
 			t.Fatalf("a normal execution turn must keep its scaffolding %q:\n%s", want, normal)
 		}

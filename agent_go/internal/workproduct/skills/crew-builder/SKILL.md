@@ -19,6 +19,13 @@ Keep results and caller conversations separate from the Crew's main human chat.
 Review reader suggestions with the owner. Accepting a suggestion only records
 the decision; implement the requested change explicitly and verify the result.
 
+Save ordinary shared artifacts under `$CREW_OUTPUT_DIR` (`<crew>/outputs/`),
+which has the same location for the owner and other callers. `CREW_RUN_DIR`
+is its compatibility name. For a structured function, use the execution’s
+`FUNCTION_OUTPUT_DIR` and, when a result schema is declared,
+`FUNCTION_RESULT_FILE`; those per-call files are read through call results.
+Avoid choosing a different output path based on who called the Crew.
+
 ## How to work
 
 - When asked for another Crew, use `create_crew` with the requested name and

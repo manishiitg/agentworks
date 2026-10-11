@@ -6196,10 +6196,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if err != nil {
 					return "", err
 				}
-				if _, count, err := MigrateAgentStepContent(content); err != nil {
+				if err := ValidateAgentStepContractStamp(content); err != nil {
 					return "", err
-				} else if count != 0 {
-					return "", fmt.Errorf("run migrate_agent_steps before stamping %s: %d saved agent records still need migration", version, count)
 				}
 			}
 			if err := validateStepDescriptionLayoutStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {

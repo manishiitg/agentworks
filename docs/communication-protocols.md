@@ -30,7 +30,7 @@ contract according to which of those behaviors the caller needs.
 | Caller | Direct messages | Structured functions |
 |---|---|---|
 | Workflow Builder, Run chat and Pulse | Authorized conversations through the registered message tools | Declared Crew/workflow functions through the shared function tools |
-| Crew conversations | Authorized conversations, subject to the receiving Crew's messaging switch | Declared Crew/workflow functions |
+| Crew conversations | Authorized conversations, subject to the receiving Crew's messaging switch | Crew Builder offers declared Crew/workflow functions; Run mode has no outgoing function tools |
 | Executing workflow `agent` steps, including delegated agents | Message and wakeup tools are not currently provided by the execution function tool binding | Declared Crew functions, other workflow functions and published Relay functions |
 | External MCP/CLI agent | Send/read using its own continuing inbox | Declared functions within its account access, connection scopes and target bounds |
 | External application using the Relay API | Relay execution has no Run-chat mode | Published Relay functions via the authenticated runs API |
@@ -50,11 +50,17 @@ The recipient decides whether to acknowledge, ask a question, send several updat
 send a later answer or stay silent. There is no required result or conversational
 `call_id`; a receipt does not prove that work finished.
 
-External MCP uses `messages` with `action=send|read`. CLI uses
+External MCP uses `messages` with `action=send|read|state`. CLI uses
 `agentworks messages send|read`. A send returns `inbox_id`, `conversation_id` and
 `message_id`. Keep that inbox for the external agent's continuing conversation;
 different agents sharing an account can use separate inboxes. Continue with the
 same `inbox_id`, and reuse `submission_id` after an uncertain send.
+
+An external inbox belongs to the authenticated **account**, not a device, client
+installation or MCP connection. Any client of that account holding its
+`inbox_id` can read and reply when its current connection scopes and target
+access permit it. Separate inboxes keep conversations distinct; they do not
+create a security boundary between clients of the same account.
 
 Reads are non-destructive and use `after` / `next_cursor`. An optional
 `wait_seconds` waits up to 25 seconds. An empty page means no new messages.
@@ -71,6 +77,15 @@ is recorded as interrupted rather than blindly sent again.
 The receiving Crew's **Agent messaging** switch can refuse programmatic messages,
 including replies in existing conversations. It does not disable human app chat
 or declared functions.
+
+Owners can inspect a selected Crew or workflow with MCP `messages action=state`.
+The paginated view includes inbox and receiving session IDs, the last 20 delivery
+records per inbox, errors and wakeup status; it excludes message bodies. Current
+owner authority and connection target bounds are checked before and after the
+read. Shared Crew callers and workflow readers cannot inspect other callers.
+Queued external messages retain only their sending connection ID; revoked or
+expired connections cannot start a delivery after queueing. Delivery also
+rechecks participant accounts and current workflow/Crew identity and access.
 
 ## Structured functions
 
@@ -92,6 +107,13 @@ new work, and reuse it after an uncertain retry. Crew calls have a per-Crew runn
 limit; when full they return busy without queueing. Call isolation gives each
 execution its own conversation and output folder, while authorized project files
 and memory remain shared.
+
+For Crew authors, ordinary shared artifacts belong in `CREW_OUTPUT_DIR`
+(`<crew>/outputs/`; `CREW_RUN_DIR` remains its older name) for every caller.
+Structured calls have their own `FUNCTION_OUTPUT_DIR` and result contract; use
+those supplied paths for per-call output, rather than branching on caller identity.
+Typed Crew functions run with the owner’s authorized role; conversational Run
+turns retain their restricted setup permissions and permitted output writes.
 
 Without a Crew output schema, the result includes the execution's final answer and
 produced files. With a schema, the agent writes JSON to `FUNCTION_RESULT_FILE`;
@@ -182,10 +204,40 @@ workflow execution calls identify their workflow while retaining launch grants.
 Execution continues under the target's authorized role. A function call does not
 increase that authority.
 
+MCP clients that advertise elicitation can render a function's pending
+`human_feedback` question while polling its call status. The hosted endpoint
+uses capability-gated `input_required` retries; the stdio bridge also supports
+the legacy form exchange. Answers use the same authenticated call-scoped reply
+path. Elicitation does not push a question to a client that stopped polling;
+clients without it use `pending_inputs` and explicit reply tools. Credential and
+one-time-code questions stay on poll/reply. Conversational `ask` aliases use
+message inboxes and do not produce function-call elicitation. See
+[MCP elicitation](design/mcp_elicitation.md).
+
 Webhooks retain their provider signature/key checks and payload rules. Schedules
 retain their destination and timing policies. Bot connectors route provider
 messages into their configured conversations. None of these entry points turns
 ordinary final chat text into an automatic cross-product reply.
+
+## Limits and retention
+
+| Surface | Current limit or retention |
+|---|---|
+| Direct messages | 1–20,000 Unicode characters per message; 40 accepted messages per hour per conversation, counting both directions. Identical retained submission retries reuse their receipt. |
+| Inbox history | At most 1,000 messages; old delivered/stored messages may be removed. A pending or dispatching oldest message prevents eviction and can make the inbox full. Cursors do not make history permanent. |
+| Inbox lifetime | Cleanup on new conversation admission removes idle inboxes after seven days of no message activity. At 300 inboxes for one initiating account, or 2,000 across the store, it evicts the oldest idle inbox. Pending/dispatching messages protect their inbox. |
+| Expired inbox lookup | Bounded endpoint metadata, without message bodies, lasts up to seven more days (at most 2,000 entries). An authorized lookup returns `expired`; older or unknown IDs and unauthorized callers retain the existing unavailable response. Start a new conversation. |
+| External waits and message pages | MCP message/function waits cap at 25 seconds; direct-message pages cap at 100 messages. Internal function fast waits have a separate 120-second cap. |
+| Crew function concurrency | Three isolated executions per Crew. A full Crew returns busy without queueing; an accepted identical retry reuses its call. A timed-out execution retains its slot while still running. |
+| Function retry IDs | Saved explicit `submission_id` bindings last seven days. In-memory records and old records without a timestamp can retain a binding longer. Use a fresh ID for new work; do not depend on a recurring ID automatically becoming fresh at a particular time. |
+| Result JSON and file pages | Result JSON validation caps at 16 MiB. Results up to 256 KiB may be inline; larger results use a file reference. File pages cap at 2 MiB. |
+| Crew call outputs | Cleanup removes `.calls/<call_id>/` folders seven days after their last directory change, swept at most hourly per Crew on later function activity. Calls still held as running are protected. The durable call record remains; reading a previously recorded output that has been removed returns `expired`. Save required output before cleanup. |
+| Workflow and Relay artifacts | Workflow function artifacts use their run folder and its retention policy; the Crew `.calls` rule is not a promise about those folders. Published Relay sources are pinned releases, while run-output retention follows the Relay/runtime policy. |
+
+These bounds are admission and storage controls, not completion signals. An
+empty page or expired output does not start another call or authorize replay of
+external effects. A retained call record can outlive both its retry-ID binding
+and its output files.
 
 ## Detailed contracts and implementation
 

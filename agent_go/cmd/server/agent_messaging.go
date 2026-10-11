@@ -41,15 +41,16 @@ type agentMessageEndpoint struct {
 	FunctionCallID string `json:"function_call_id,omitempty"`
 }
 type agentMessage struct {
-	ID         string    `json:"message_id"`
-	Sequence   int       `json:"sequence"`
-	From       int       `json:"from"`
-	Text       string    `json:"message"`
-	SentAt     time.Time `json:"sent_at"`
-	Submission string    `json:"submission_id,omitempty"`
-	Delivery   string    `json:"delivery"`
-	Error      string    `json:"delivery_error,omitempty"`
-	Wakeup     bool      `json:"wakeup,omitempty"`
+	ID                 string    `json:"message_id"`
+	Sequence           int       `json:"sequence"`
+	From               int       `json:"from"`
+	Text               string    `json:"message"`
+	SentAt             time.Time `json:"sent_at"`
+	Submission         string    `json:"submission_id,omitempty"`
+	SenderConnectionID string    `json:"sender_connection_id,omitempty"`
+	Delivery           string    `json:"delivery"`
+	Error              string    `json:"delivery_error,omitempty"`
+	Wakeup             bool      `json:"wakeup,omitempty"`
 }
 type agentConversation struct {
 	ID        string                  `json:"inbox_id"`
@@ -58,8 +59,30 @@ type agentConversation struct {
 	Next      int                     `json:"next_sequence"`
 }
 type agentMessageStore struct {
-	Conversations []agentConversation `json:"conversations"`
-	Wakeups       []agentWakeup       `json:"wakeups,omitempty"`
+	Conversations []agentConversation        `json:"conversations"`
+	Wakeups       []agentWakeup              `json:"wakeups,omitempty"`
+	Expired       []expiredAgentConversation `json:"expired,omitempty"`
+}
+
+type expiredAgentConversation struct {
+	ID        string                  `json:"inbox_id"`
+	Endpoints [2]agentMessageEndpoint `json:"endpoints"`
+	ExpiredAt time.Time               `json:"expired_at"`
+}
+
+// Keep bounded ownership metadata for a week after deletion, never message text.
+func (s *agentMessageStore) expireConversation(c agentConversation, now time.Time) {
+	s.Expired = append(s.Expired, expiredAgentConversation{ID: c.ID, Endpoints: c.Endpoints, ExpiredAt: now})
+}
+
+func expiredConversationForCaller(s agentMessageStore, id, userID string, caller triggerLinkCaller) error {
+	for _, c := range s.Expired {
+		if c.ID == id && time.Since(c.ExpiredAt) <= agentConversationIdleKeep &&
+			(messageEndpointMatches(c.Endpoints[0], userID, caller) || messageEndpointMatches(c.Endpoints[1], userID, caller)) {
+			return fmt.Errorf("%w: inbox was removed by retention or capacity cleanup; start a new conversation", errCommunicationExpired)
+		}
+	}
+	return fmt.Errorf("conversation unavailable or access denied")
 }
 
 func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
@@ -114,6 +137,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 	kept := s.Conversations[:0]
 	for _, c := range s.Conversations {
 		if last := agentConversationActivity(c); !last.IsZero() && agentConversationIdle(c) && now.Sub(last) > agentConversationIdleKeep {
+			s.expireConversation(c, now)
 			continue
 		}
 		kept = append(kept, c)
@@ -130,6 +154,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 			}
 		}
 		if oldest >= 0 {
+			s.expireConversation(s.Conversations[oldest], now)
 			s.Conversations = append(s.Conversations[:oldest], s.Conversations[oldest+1:]...)
 		}
 	}
@@ -153,6 +178,16 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 	if len(s.Conversations) >= agentConversationKeep {
 		evict(func(agentConversation) bool { return true })
 	}
+	expired := s.Expired[:0]
+	for _, c := range s.Expired {
+		if now.Sub(c.ExpiredAt) <= agentConversationIdleKeep {
+			expired = append(expired, c)
+		}
+	}
+	if len(expired) > agentConversationKeep {
+		expired = expired[len(expired)-agentConversationKeep:]
+	}
+	s.Expired = expired
 }
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
@@ -241,7 +276,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		if index < 0 {
 			agentMessageMu.Unlock()
-			return nil, fmt.Errorf("conversation unavailable or access denied")
+			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
 		}
 		c := &s.Conversations[index]
 		if messageEndpointMatches(c.Endpoints[0], userID, caller) {
@@ -367,6 +402,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if dest.External {
 		m.Delivery = "stored"
 	}
+	if claims := GetUserFromContext(ctx); c.Endpoints[side].External && claims != nil && claims.AccessToken != nil {
+		m.SenderConnectionID = claims.AccessToken.ID
+	}
 	c.Messages = append(c.Messages, m)
 	id := c.ID
 	out := agentMessageReceipt(id, m)
@@ -447,7 +485,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			}
 		}
 		if !found && inboxID != "" {
-			return nil, fmt.Errorf("conversation unavailable or access denied")
+			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
 		}
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
 			api.resumeAgentMessagesThrottled()
@@ -663,6 +701,9 @@ func acquireAgentMessageAuthority(ctx context.Context, session string) (func(), 
 func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConversation, m agentMessage) (string, error) {
 	dest := c.Endpoints[1-m.From]
 	source := c.Endpoints[m.From]
+	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
+		return dest.Session, err
+	}
 	text := agentMessageText(c, m)
 	for _, endpoint := range []agentMessageEndpoint{source, dest} {
 		if endpoint.Kind == triggerCallerWorkflow {

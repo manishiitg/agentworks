@@ -367,8 +367,8 @@ func TestWorkshopModeIsMergedSuperset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render workflow-tools reference: %v", err)
 	}
-	if !strings.Contains(workflowTools, "goal-advisor") {
-		t.Error("projected workflow-tools reference is missing goal-advisor guidance")
+	if !strings.Contains(workflowTools, "pulse-review-fixer") || strings.Contains(workflowTools, "goal-advisor") {
+		t.Error("projected workflow-tools reference must describe the current Pulse review lifecycle")
 	}
 }
 

@@ -224,15 +224,15 @@ func readCrewFunctionOutput(ctx context.Context, call *crewFunctionCall, name st
 	}
 	root, err := openStructuredFunctionOutputRoot(call, p)
 	if err != nil {
-		return nil, err
+		return nil, functionOutputReadError(call, p, err)
 	}
 	defer root.Close()
 	if err := externalNoSymlinks(root, p); err != nil {
-		return nil, err
+		return nil, functionOutputReadError(call, p, err)
 	}
 	f, err := root.Open(p)
 	if err != nil {
-		return nil, err
+		return nil, functionOutputReadError(call, p, err)
 	}
 	defer f.Close()
 	st, err := f.Stat()
@@ -274,6 +274,25 @@ func readCrewFunctionOutput(ctx context.Context, call *crewFunctionCall, name st
 		out["content_base64"] = base64.StdEncoding.EncodeToString(raw)
 	}
 	return out, nil
+}
+
+func functionOutputReadError(call *crewFunctionCall, name string, err error) error {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	call.mu.Lock()
+	known := false
+	for _, file := range call.Files {
+		known = known || file.Name == name
+	}
+	if result, ok := call.Result.(map[string]interface{}); ok {
+		known = known || result["file"] == name
+	}
+	call.mu.Unlock()
+	if known {
+		return fmt.Errorf("%w: function output %q was removed; the saved call status remains available", errCommunicationExpired, name)
+	}
+	return err
 }
 
 func readStructuredFunctionFileResult(call *crewFunctionCall) (interface{}, []string) {

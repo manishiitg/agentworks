@@ -32,7 +32,7 @@ For a tagged Crew:
   project's `get_report_link` tool does not target another Crew: ask that Crew
   for its Dashboard link when needed.
 - Schedule definitions live in `workflow.json`. For current enablement, next
-  run or latest run status, call the Crew's `ask` function and request its
+  run or latest run status, send the Crew an explicit message and request its
   `list_project_schedules` result. Your own `list_project_schedules` tool is
   bound to this project, not the tagged Crew.
 - Edit only when the user requests it and the runtime grants write access.
@@ -122,34 +122,28 @@ work around those checks with shell access or constructed HTTP requests.
 
 ## Talk to another Crew or workflow
 
-Crews, workflows and external tools (MCP, the `agentworks` CLI) call each other
-in one way: **functions**. That works in every direction (Crew→Crew,
-Crew→workflow, workflow→Crew, workflow→workflow). The user usually tags the
-target as `#crew:<name>` or `#workflow:<name>`; those tags are references,
-never Slack channels. Call only targets accessible to the current user.
-Function-call authorization and folder access are separate: a callable target
-does not automatically grant access to its files.
+Crews, workflows and external tools (MCP and the `agentworks` CLI) use explicit
+messages for conversation and structured functions for tracked work. This works
+between Crews and workflows in either direction. The user usually tags the
+target as `#crew:<name>` or `#workflow:<name>`; tags are project references,
+not message destinations or new authority. Call only targets accessible to the
+current user. A callable target does not automatically grant file access.
 
-Code may call accessible Crews/workflows. A Code project has no functions of its
-own and nothing can call into it: Code is private, Crews and workflows are
-shared, and nothing shared reaches into a private space. To reach another chat
-of the same Code, use `ask_project_chat`. Codes do not appear in the public
-Crew/MCP catalog.
+Code can call accessible Crew/workflow functions but exposes no functions.
+Its private chats remain under their owner's access rules; use
+`ask_project_chat` for another authorized chat of the same Code.
 
-**Where calls run.** Each caller has one continuing conversation with each
-Crew it calls, created on the first call. Follow-up calls land in the same
-conversation, so the target remembers earlier calls from you. Calls never run
-in the target's main chat, which is for people. A typed workflow function runs
-its declared route with the call's arguments; `ask` talks to its Run assistant.
+Messages use an inbox and explicit optional replies. A structured Crew call has
+its own isolated conversation and output folder; a typed workflow function runs
+its declared route with that call’s arguments. Neither runs in the target’s
+main human chat. Do not rely on a prior function call’s conversation context.
 
 ### Functions
 
-A Crew or workflow offers **functions**: a name, typed input and result
-schemas, and instructions, stored in its `functions.json`.
+A Crew or workflow offers **functions** with a name and typed input/result
+contract. Crew declarations live in `functions.json`; workflows expose their
+configured function triggers. Discover the current schema before calling.
 
-- **`ask`** — every Crew has the built-in `ask(message)` (generated as
-  `<crew>__ask`). Its result is `{answer}`, the Crew's final reply. Use it for
-  free-form questions and one-off tasks. A declared `ask` replaces it.
 - **Workflow functions** — a workflow offers the functions its Builder
   exposed as function triggers: a fixed route plus typed inputs, each set as a
   workflow variable for that run (e.g. `review_pr(GITHUB_OWNER, GITHUB_REPO,
@@ -157,22 +151,23 @@ schemas, and instructions, stored in its `functions.json`.
   before anything runs, so pass every required input. The result is the
   run's outcome: status, error and each step's output (a "skipped" step says
   why).
-- **Workflow `ask`** — goes to the workflow's assistant in Run mode, one
-  continuing thread per caller. It answers questions about the workflow and
-  its runs, and when asked to run something it picks the route and sets the
-  variables itself, then reports the outcome. Include every value a run
-  needs. It cannot edit the workflow: it records change requests and problem
-  reports as suggestions for the owner (`submit_workflow_suggestion`).
+- **Conversation** — use `send_message(target, message)` (or a conversational
+  `ask` alias) for an authorized Crew/workflow chat. It returns an inbox and
+  delivery receipt, without a function `call_id`. The recipient chooses whether
+  and when to reply with `send_message`; final chat text is not forwarded. Read
+  explicit replies with `read_agent_messages(inbox_id)` and decide whether to
+  follow up. Include every value the recipient needs. Workflow Run chats can
+  run permitted work and record suggestions, but cannot edit the workflow.
 - **Discover** — `list_functions(target)` shows what a target offers. Generated
   tools named `<crew>__<function>` appear for tagged or attached targets.
 - **Call** — `call_function(target, function, args)` validates `args`, runs the
-  function as a turn in your conversation with the target (queued if busy),
+  function in its own execution (a busy Crew refuses rather than queueing),
   and returns at once with `status: running` and a `call_id` (functions are
   agentic and usually take minutes): tell the user and end the turn, and the
   result arrives as an `[AUTO-NOTIFICATION]`. Pass `wait_seconds` (up to 120)
   only for a function you expect to finish quickly. Never call again for the
   same work: an identical call while one runs returns that same call. Write
-  `ask` messages and arguments self-contained, because the target does not see
+  messages and arguments self-contained, because the target does not see
   this chat. For a call you may need to retry after an uncertain result, pass
   a stable `submission_id` to `call_function` and reuse it on the retry.
 - **Follow** — `get_function_call(call_id)` shows status, the target's progress
@@ -187,10 +182,13 @@ schemas, and instructions, stored in its `functions.json`.
   another Crew; `delete_function` removes it. Workflow functions are made in
   that workflow's Builder chat instead. If the same ask keeps arriving,
   suggest turning it into a typed function.
-- **Serve** — when you receive a `[Function call <id>]` task, do the work,
-  report milestones with `report_function_progress(call_id, message,
-  percent)`, and finish with `return_function_result(call_id, result)` (or
-  `error`). The caller receives exactly that result, not your chat reply.
+- **Serve** — when you receive a `[Function call <id>]` task, do the work and
+  report milestones with `report_function_progress` when available. Write
+  schema-required JSON to `FUNCTION_RESULT_FILE` and per-call files to
+  `FUNCTION_OUTPUT_DIR`; the platform validates and records the result after
+  your turn. Without a result schema, the final response is the call’s answer.
+  Ordinary shared Crew artifacts use `CREW_OUTPUT_DIR` (`<crew>/outputs/`), the
+  same location for every caller. Follow the runtime’s supplied contract.
 
 Calls that would loop back to a target already in the call chain, or go
 deeper than 4 levels, are refused.

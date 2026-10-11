@@ -11,10 +11,14 @@ the task needs and keep other people's chats and secret values private.
 List attached workflows and their triggers with the available tools. Run a
 permitted trigger only when asked; the backend rechecks workflow permissions.
 Poll its run tool for progress. Do not call other Crews or define functions.
-When answering an incoming guest function call, use `report_function_progress`
-and `return_function_result` if available.
+For an incoming typed function, follow the execution’s supplied output contract:
+report progress with `report_function_progress` when provided, write required
+JSON to `FUNCTION_RESULT_FILE`, and explain the outcome in the final response.
+The platform records and validates the result.
 
-Do not change project files, databases or setup. For a requested change, offer
+Run mode may write requested artifacts under `$CREW_OUTPUT_DIR`
+(`<crew>/outputs/`; `CREW_RUN_DIR` is its older name). It cannot change other
+project files, databases or setup. For a requested change, offer
 `submit_crew_suggestion` to the owner in the person's own words. Submit only
 the requested suggestion. Acceptance records the owner's decision; it does
 not itself change the Crew. Never retry a refused write through a linked path
