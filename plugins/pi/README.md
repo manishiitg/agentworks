@@ -151,7 +151,7 @@ candidate. It sends JSON `POST /bridge` over the private Unix socket:
 The response attachment must include `attachment_id`, `provider: pi` and matching
 `native_session_id`. Each offer carries matching `attachment_id`, `message_id`,
 `inbox_id`, sender, body and sequence. The bridge must enforce current lease,
-approved sender and revoked connection checks before offering/acknowledging.
+same-account sender and revoked connection checks before offering/acknowledging.
 The server receipt transport enum must accept `pi_extension` only for provider
 `pi`. The shared installer must select this directory for `agentworks attach pi`.
 These shared changes belong to PLAT-861 and are not silently implemented here.
@@ -179,7 +179,7 @@ reconciliation after lost custom receipt entries. The fixture proves Pi behavior
 and provider requests, not server authorization.
 
 Remaining release evidence: shared installer selection, actual account
-attachment and approved sender enforcement, connection revocation, pending
+attachment and same-account sender enforcement, connection revocation, pending
 catch-up across actual bridge/server restart and authenticated recovery,
 multiple simultaneous sessions, busy detach/revoke, person-approved project
 installation, candidate review and authenticated end-to-end messaging.

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -26,13 +28,14 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		opts = append(opts, server.WithExperimental(map[string]any{"claude/channel": map[string]any{}}))
 	}
 	s := server.NewMCPServer("AgentWorks local delivery", "1.0.0", opts...)
-	call := func(callCtx context.Context, in LocalBridgeRequest) (*mcp.CallToolResult, error) {
+	call := func(callCtx context.Context, in LocalBridgeRequest, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		in.Provider, in.HostKey = provider, hostKey
 		if provider == "codex" {
-			if len(sessionIDs) == 0 || sessionIDs[0] == "" {
-				return mcp.NewToolResultError("Codex host did not supply an exact thread UUID; use bridge message inside the chat."), nil
+			var err error
+			in.SessionID, err = codexMCPThread(req, sessionIDs)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
 			}
-			in.SessionID = sessionIDs[0]
 		}
 		out, err := CallLocalBridge(callCtx, root, in)
 		if err != nil {
@@ -44,33 +47,33 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		raw, _ := json.Marshal(out)
 		return mcp.NewToolResultText(string(raw)), nil
 	}
-	s.AddTool(mcp.NewTool("agent_message_peers", mcp.WithDescription("Discover authorized named agents for this attached identity.")), func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return call(ctx, LocalBridgeRequest{Action: "peers"})
+	s.AddTool(mcp.NewTool("agent_message_peers", mcp.WithDescription("Discover authorized named agents for this attached identity.")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return call(ctx, LocalBridgeRequest{Action: "peers"}, req)
 	})
 	s.AddTool(mcp.NewTool("agent_message_send", mcp.WithDescription("Explicitly send from this attached identity to an authorized named agent."), mcp.WithString("target", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		target, _ := a["target"].(string)
 		text, _ := a["message"].(string)
 		submission, _ := a["submission_id"].(string)
-		return call(ctx, LocalBridgeRequest{Action: "send", Target: target, Message: text, SubmissionID: submission})
+		return call(ctx, LocalBridgeRequest{Action: "send", Target: target, Message: text, SubmissionID: submission}, req)
 	})
 	s.AddTool(mcp.NewTool("agent_message_read", mcp.WithDescription("Explicit bounded mailbox recovery for this attached identity; never start a watch/polling loop."), mcp.WithString("inbox_id"), mcp.WithNumber("after")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		inbox, _ := a["inbox_id"].(string)
 		cursor, _ := a["after"].(float64)
-		return call(ctx, LocalBridgeRequest{Action: "read", InboxID: inbox, Cursor: int(cursor)})
+		return call(ctx, LocalBridgeRequest{Action: "read", InboxID: inbox, Cursor: int(cursor)}, req)
 	})
 	s.AddTool(mcp.NewTool("agent_message_ack", mcp.WithDescription("Acknowledge an offered message in this exact session: admitted on receipt, processed after handling."), mcp.WithString("message_id", mcp.Required()), mcp.WithString("delivery", mcp.Required(), mcp.Enum("admitted", "processed"))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, _ := req.GetArguments()["message_id"].(string)
 		delivery, _ := req.GetArguments()["delivery"].(string)
-		return call(ctx, LocalBridgeRequest{Action: "ack", MessageID: id, Delivery: delivery})
+		return call(ctx, LocalBridgeRequest{Action: "ack", MessageID: id, Delivery: delivery}, req)
 	})
 	s.AddTool(mcp.NewTool("agent_message_reply", mcp.WithDescription("Explicit optional reply in the original conversation using this attached identity."), mcp.WithString("message_id", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		id, _ := a["message_id"].(string)
 		text, _ := a["message"].(string)
 		submission, _ := a["submission_id"].(string)
-		return call(ctx, LocalBridgeRequest{Action: "reply", MessageID: id, Message: text, SubmissionID: submission})
+		return call(ctx, LocalBridgeRequest{Action: "reply", MessageID: id, Message: text, SubmissionID: submission}, req)
 	})
 	if native {
 		var once sync.Once
@@ -103,4 +106,28 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		})
 	}
 	return s, nil
+}
+
+// Codex supplies this metadata outside model-visible tool arguments. Desktop
+// plugin MCP children can be shared between chats and have no CODEX_THREAD_ID.
+func codexMCPThread(req mcp.CallToolRequest, startup []string) (string, error) {
+	if req.Params.Meta != nil {
+		if raw, exists := req.Params.Meta.AdditionalFields["x-codex-turn-metadata"]; exists {
+			metadata, ok := raw.(map[string]any)
+			if !ok {
+				return "", errors.New("Codex host supplied invalid turn metadata")
+			}
+			thread, _ := metadata["thread_id"].(string)
+			if _, err := uuid.Parse(thread); err != nil {
+				return "", errors.New("Codex host did not supply a valid exact thread UUID")
+			}
+			return thread, nil
+		}
+	}
+	if len(startup) > 0 && startup[0] != "" {
+		if _, err := uuid.Parse(startup[0]); err == nil {
+			return startup[0], nil
+		}
+	}
+	return "", errors.New("Codex host did not supply an exact thread UUID; use bridge message inside the chat.")
 }

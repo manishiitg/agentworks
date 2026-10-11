@@ -275,3 +275,18 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("revoked stream stayed open after write")
 	}
 }
+
+// Guest runs retain the owner's storage path, but cannot impersonate that owner
+// when all account senders are accepted by an attached local coding agent.
+func TestAgentLiveGuestCallerKeepsItsActor(t *testing.T) {
+	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{"guest-session": {CrewGuestCaller: "guest", PinRunMode: true}}}
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew}, Chat: &codeChat{SessionID: "guest-session"}}
+	endpoint := api.agentMessageCallerRole(callerMessageEndpoint("owner", caller))
+	if endpoint.UserID != "owner" || endpoint.Guest != "guest" || sameAccountAgentSender(endpoint, "owner") {
+		t.Fatal("guest-run Crew widened to owner local-agent access", endpoint)
+	}
+	endpoint.Guest = ""
+	if !sameAccountAgentSender(endpoint, "owner") {
+		t.Fatal("owner-run Crew cannot reach its account")
+	}
+}

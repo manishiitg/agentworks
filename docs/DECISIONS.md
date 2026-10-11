@@ -9,6 +9,10 @@ session leases, revocation and explicit admission receipts. Bare in-chat attach
 proposes a unique name/purpose and asks the person to confirm. Prefer the verified
 native route for that exact session; otherwise use hooks.
 Why: the owner wants local agents to communicate without maintaining sender lists.
+Existing restricted attachments require a new person confirmation before this
+policy takes effect. A guest-run Crew retains its guest actor and cannot use the
+owner's storage namespace to enter the owner's local chat. Codex MCP routes by
+host-supplied per-call thread metadata, never a model-selected session argument.
 This supersedes earlier attachment sender-allowlist decisions.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-56 and 861-68.

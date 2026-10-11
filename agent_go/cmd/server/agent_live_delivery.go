@@ -14,10 +14,16 @@ import (
 )
 
 type namedAgentAttachment struct {
-	ID           string `json:"attachment_id"`
-	Provider     string `json:"provider"`
-	SessionID    string `json:"native_session_id"`
-	ConnectionID string `json:"connection_id"`
+	DeliveryContract int    `json:"delivery_contract,omitempty"`
+	ID               string `json:"attachment_id"`
+	Provider         string `json:"provider"`
+	SessionID        string `json:"native_session_id"`
+	ConnectionID     string `json:"connection_id"`
+}
+
+// A guest-run product keeps the owner's storage namespace but its own actor.
+func sameAccountAgentSender(source agentMessageEndpoint, userID string) bool {
+	return source.UserID == userID && (source.Guest == "" || source.Guest == userID)
 }
 
 var agentLiveEvents = struct {
@@ -70,7 +76,7 @@ func notifyAgentLiveChanged() {
 func namedAgentOnline(a namedMessageAgent) bool {
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()
-	return a.Attachment != nil && agentLiveEvents.online[a.ID] == a.Attachment.ID
+	return a.Attachment != nil && a.Attachment.DeliveryContract == 2 && agentLiveEvents.online[a.ID] == a.Attachment.ID
 }
 
 func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -111,7 +117,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		a.Purpose = purpose
-		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID}
+		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID}
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
@@ -137,7 +143,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				if m.ID != externalArg(args, "message_id") || dest.NamedAgentID != a.ID || dest.UserID != claims.UserID {
 					continue
 				}
-				if m.LiveAttachment != a.Attachment.ID || c.Endpoints[m.From].UserID != claims.UserID {
+				if m.LiveAttachment != a.Attachment.ID || !sameAccountAgentSender(c.Endpoints[m.From], claims.UserID) {
 					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
 					return
 				}
@@ -191,7 +197,7 @@ func currentAgentAttachment(ctx context.Context, claims *UserClaims, name, id st
 		return namedMessageAgent{}, nil, fmt.Errorf("connection revoked")
 	}
 	a, err := namedAgentForClaims(ctx, live, name)
-	if err != nil || a.Attachment == nil || a.Attachment.ID != id || a.Attachment.ConnectionID != live.AccessToken.ID {
+	if err != nil || a.Attachment == nil || a.Attachment.DeliveryContract != 2 || a.Attachment.ID != id || a.Attachment.ConnectionID != live.AccessToken.ID {
 		return namedMessageAgent{}, nil, fmt.Errorf("attachment changed")
 	}
 	return a, live, nil
@@ -286,7 +292,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || source.UserID != claims.UserID {
+			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !sameAccountAgentSender(source, claims.UserID) {
 				continue
 			}
 			if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
@@ -384,7 +390,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				src := c.Endpoints[m.From]
-				if src.UserID != live.UserID || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if !sameAccountAgentSender(src, live.UserID) || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
 					continue
 				}
 				permitted = append(permitted, id)

@@ -181,6 +181,28 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{}); e != nil || out.IsError {
 		t.Fatalf("attached directory failed: %+v %v", out, e)
 	}
+	// A desktop MCP child is shared, so only host metadata chooses the chat.
+	codexPlugin, e := agentworksclient.NewPluginMCPServer(context.Background(), root, "codex", "desktop-parent", false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	codexPeers := codexPlugin.GetTool("agent_message_peers")
+	if out, e := codexPeers.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"session_id": "11111111-2222-4333-8444-555555555555"}}}); e != nil || !out.IsError {
+		t.Fatal("model arguments selected an MCP thread")
+	}
+	for i, session := range []string{"11111111-2222-4333-8444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"} {
+		name := []string{"codex-one", "codex-two"}[i]
+		local(agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: session, HostKey: "desktop-parent", ConfigPath: path, AgentName: name, Purpose: "Review"})
+		req := mcp.CallToolRequest{Params: mcp.CallToolParams{Meta: &mcp.Meta{AdditionalFields: map[string]any{"x-codex-turn-metadata": map[string]any{"thread_id": session}}}}}
+		out, e := codexPeers.Handler(context.Background(), req)
+		if e != nil || out.IsError {
+			t.Fatal("host-bound peers failed", out, e)
+		}
+		var bound agentworksclient.LocalBridgeReply
+		if e := json.Unmarshal([]byte(out.Content[0].(mcp.TextContent).Text), &bound); e != nil || bound.Attachment.AgentName != name {
+			t.Fatal("shared MCP child selected another chat", bound.Attachment, e)
+		}
+	}
 	send := func(text string) map[string]any {
 		return call(sender, map[string]any{"action": "send", "agent_name": "sender", "target": "agent:hook-reviewer", "message": text, "submission_id": text})
 	}

@@ -62,6 +62,7 @@ type localOffer struct {
 }
 
 type localSession struct {
+	AccountSenders   bool                  `json:"account_senders,omitempty"`
 	SeenThrough      int                   `json:"seen_through,omitempty"`
 	LastGuidanceAt   time.Time             `json:"last_guidance_at,omitempty"`
 	Offline          bool                  `json:"offline,omitempty"`
@@ -218,6 +219,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		if s == nil {
 			return errors.New("invalid attached session state")
 		}
+		if !s.AccountSenders {
+			s.Offline = true
+			s.LastError = "Attachment policy changed to all account senders. Confirm with /agentworks resume before delivery resumes."
+		}
 		for _, v := range s.Offers {
 			if v.Sequence > s.SeenThrough {
 				s.SeenThrough = v.Sequence
@@ -231,6 +236,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			s.LastError = "Attached connection unavailable; sign in and explicitly reattach."
 			continue
 		}
+	}
+	if err = b.save(); err != nil {
+		return err
 	}
 	for _, s := range b.sessions {
 		if s.client != nil && !s.Offline {
@@ -456,7 +464,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		next := &localSession{Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
+		next := &localSession{AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough

@@ -244,7 +244,9 @@ CLI config before launching that provider. Shared configs still share authority.
 Bare attach proposes a unique name and purpose for this exact provider session.
 The person confirms with `/agentworks attach --confirm`, or chooses
 `/agentworks attach NAME "PURPOSE"`. All account senders are accepted; sender
-allow fields have been removed. Claude's namespaced command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
+allow fields have been removed. Existing attachments created under the old policy
+are held offline until the person confirms `/agentworks resume`; their sender
+permissions never widen silently. Update the server before installing this CLI. Claude's namespaced command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
 consumes this person command before the model receives it and supplies its exact
 session_id. The Claude channel child is bound to its own ancestor PID plus process
 start time; it learns the session ID from this hook registration, never by selecting
@@ -602,8 +604,11 @@ an inbox containing a currently authorized incoming message. Neither check fabri
 admission. Codex shell replies use CODEX_THREAD_ID as a routing hint together with
 the provider process key. A shell of the same OS user can change that variable or
 read that user's private credentials; these checks are not OS isolation between
-desktop chats. Credential-less MCP children cannot choose a different UUID through
-their tool arguments. Install broader shell permissions only under the host's
+desktop chats. Codex messaging MCP uses host-supplied
+`_meta["x-codex-turn-metadata"].thread_id` for each call, so a shared desktop
+child routes separate chats independently. A per-session host environment is
+the fallback where that metadata is absent. Model tool arguments cannot choose
+a UUID; missing or invalid host identity is refused. Install broader shell permissions only under the host's
 existing person-controlled trust settings.
 
 A separately approved full AgentWorks MCP/CLI connection retains its own broader
