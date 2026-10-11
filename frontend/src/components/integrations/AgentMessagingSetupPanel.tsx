@@ -22,7 +22,7 @@ function Command({ label, text }: { label: string; text: string }) {
   }
   return <div className="space-y-1">
     <div className="flex min-w-0 items-start gap-2 rounded-lg border border-border bg-background p-2.5">
-      <code aria-label={label} className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs leading-6 text-foreground">{text}</code>
+      <code aria-label={label} className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-6 text-foreground">{text}</code>
       <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={`Copy ${label}`} onClick={() => void copy()}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}</Button>
     </div>
     {(copied || error) && <p role="status" className={`text-xs ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{error ? 'Could not copy. Select the command and copy it manually.' : 'Copied'}</p>}

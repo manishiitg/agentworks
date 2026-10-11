@@ -28,7 +28,7 @@ try {
     await page.screenshot({ path: path.join(output, `agent-connect-${name}.png`), fullPage: true })
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${name}: no horizontal overflow`)
     await page.getByRole('button', { name: /Claude Code Live messaging plugin/ }).click()
-    assert.equal(await page.getByLabel('Install coding agent plugin').textContent(), 'agentworks attach claude')
+    assert.equal(await page.getByLabel('Install coding agent plugin', { exact: true }).textContent(), 'agentworks attach claude')
     assert.equal(await page.getByLabel('Attach this chat', { exact: true }).textContent(), '/agentworks attach claude-review')
     for (const provider of ['Cursor', 'Muse', 'Pi', 'agy']) {
       await page.getByRole('button', { name: `${provider} Other connection methods`, exact: true }).click()
