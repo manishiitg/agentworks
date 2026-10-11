@@ -18,6 +18,18 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Crew custom commands are directly available over MCP (PLAT-856)
+
+Expose Crew custom-command management using the Crew tool factory's schema
+and executor, without a Builder model turn. Discovery is admitted by Crew's
+product manifest. Resolve the project and authenticated user on every call;
+readers may list, while mutations require the current owner, an editable
+account and existing `crews:write` consent. Memory and project-local skill
+files continue to use the existing role-checked file writer. Plan-only
+changelog coverage remains unchanged. Why: the owner wants MCP to replace
+Builder chat, starting with small Crew capabilities.
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ### 2026-10-11 — Builder may withdraw obsolete unanswered agent proposals (PLAT-814)
 
 Builder judges whether its workflow agents' pending proposal is obsolete and

@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -244,6 +245,10 @@ func externalTools() ([]externalTool, error) {
 		externalPulseManageDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
+		if err := externalCrewCommandDefinition(add); err != nil {
+			externalCatalogErr = err
+			return
+		}
 		externalDatabaseDefinitions(add)
 		externalAfterRunDefinitions(add)
 		externalMessagingDefinitions(add)
@@ -316,6 +321,12 @@ func externalTools() ([]externalTool, error) {
 		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
 		admitted = append(admitted, relayTools...)
+		crewTools, err := workproduct.BuilderExternalTools()
+		if err != nil {
+			externalCatalogErr = err
+			return
+		}
+		admitted = append(admitted, crewTools...)
 		kbTools, err := knowledgebaseproduct.ExternalTools()
 		if err != nil {
 			externalCatalogErr = err

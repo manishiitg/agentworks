@@ -15,6 +15,16 @@ edits it.
   action=export and action=import move a Crew between accounts or servers as a portable spec.
 - Only the owner edits. Needs `crews:write`.
 
+## Custom commands
+
+- `manage_crew_commands` with `crew_id` and `action=list|create|update|delete`
+  uses the same custom-command tool as Crew chat, directly without a model turn.
+  Create/update take `name`, `description`, `prompt` and optional `icon`;
+  delete takes `name`. Custom commands appear in the Crew's slash menu.
+  Product-defined commands remain immutable. Listing needs `crews:read`;
+  changes need `crews:write` and current Crew ownership. Read-only accounts
+  cannot change them, even if they own the Crew.
+
 ## Functions
 
 A function is a typed entry point: `name` (snake_case), `description` (for callers), `instructions`
@@ -51,6 +61,14 @@ type, properties, required, items, enum).
   (manifests, `functions.json`, `builder/`, `db/`); other callers who can run the Crew write under
   `shared/<their id>/`. Text in `content`, binary in `content_base64` (up to 11 MiB). Put input files
   there for a function to use, and pass their paths as arguments.
+- The owner can also write the Crew's `MEMORY.md` and project-local
+  `skills/<name>/SKILL.md` or supporting files through `files action=write`,
+  with `crews:write`. Read first and pass `expected_revision` plus a stable
+  `request_id` to detect concurrent edits and retry safely. Other users
+  cannot modify the Crew's memory or skills, even with a write-capable
+  connection; their writable area remains `shared/<their id>/`.
+  To select a newly authored skill, use `settings` or `crew action=update`
+  with `skills` after writing it. This does not edit server-wide or built-in skills.
 
 ## Schedules and settings
 

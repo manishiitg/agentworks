@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -225,6 +226,15 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 				want[name] = true
 			}
 		}
+		crewNames, err := workproduct.BuilderExternalTools()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range crewNames {
+			if externalTokenAllows(claims, externalTool{Name: name}) {
+				want[name] = true
+			}
+		}
 		delete(want, "write_file") // Direct writes require explicit connection consent.
 		// Merged tools replace their members in the list; aliases are hidden.
 		for name := range externalHiddenAliases {
@@ -251,6 +261,9 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			native[name] = true
 		}
 		for _, name := range relayNames {
+			native[name] = true
+		}
+		for _, name := range crewNames {
 			native[name] = true
 		}
 		for _, tool := range knowledgebase.ConnectionToolDefinitions(true) {
@@ -323,6 +336,11 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 			wantCatalog = append(wantCatalog, name)
 		}
 	}
+	crewTools, err := workproduct.BuilderExternalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCatalog = append(wantCatalog, crewTools...)
 	kbTools, err := knowledgebaseproduct.ExternalTools()
 	if err != nil {
 		t.Fatal(err)
@@ -358,7 +376,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && !isDashboardTool(tool.Name) && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && !isExternalCodeRunTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
+		if tool.mutates && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && !isExternalCodeRunTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}

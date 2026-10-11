@@ -26,7 +26,8 @@ var externalCrewTools = map[string]bool{
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 	// Costs of a Crew you own (external_crew_costs.go).
-	"get_crew_costs": true,
+	"get_crew_costs":         true,
+	externalCrewCommandsTool: true,
 }
 
 const (
@@ -173,6 +174,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		return strings.TrimSpace(value)
 	}
 	switch name {
+	case externalCrewCommandsTool:
+		api.externalCrewCommandsCall(w, r, args)
+		return
 	case "create_crew", "update_crew", "export_crew", "import_crew", "write_crew_file":
 		api.externalCrewAuthoringCall(w, r, name, args)
 		return

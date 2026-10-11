@@ -47,6 +47,15 @@ func WorkManifest() (ProductManifest, error) {
 	return productManifest, productManifestErr
 }
 
+// BuilderExternalTools is Crew's explicit platform MCP admission list.
+func BuilderExternalTools() ([]string, error) {
+	manifest, err := WorkManifest()
+	if err != nil {
+		return nil, err
+	}
+	return append([]string(nil), manifest.Chat["builder"].ExternalTools...), nil
+}
+
 func renderProductPrompt() string {
 	manifest := mustWorkManifest()
 	prompt, err := manifest.RenderPrompt(productConfigFiles, manifest.Profile, nil)

@@ -111,7 +111,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	if code != 200 || out["role"] != "Escalation lead" || out["purpose"] != "Escalate the hard tickets." {
 		t.Fatalf("update_crew = %d %v", code, out)
 	}
-	if fns := out["functions"].([]any); len(fns) != 3 { // ask + triage_ticket + escalate
+	if fns := out["functions"].([]any); len(fns) != 2 { // triage_ticket + escalate; messages are separate
 		t.Fatalf("functions after upsert = %v", fns)
 	}
 	schedules = out["schedules"].([]any)
@@ -123,7 +123,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 	// Without return_spec the reply is a summary: names and what changed, not every function's instructions (PLAT-837).
 	code, out = externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "files": map[string]any{"notes/second.md": "x"}})
-	if code != 200 || out["updated"] != true || len(out["files_written"].([]any)) != 1 || len(out["functions"].([]any)) != 3 {
+	if code != 200 || out["updated"] != true || len(out["files_written"].([]any)) != 1 || len(out["functions"].([]any)) != 2 {
 		t.Fatalf("compact update_crew reply = %d %v", code, out)
 	}
 	if _, has := out["purpose"]; has {
@@ -171,7 +171,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 			t.Fatalf("imported schedules must arrive disabled: %v", raw)
 		}
 	}
-	if fns := imported["functions"].([]any); len(fns) != 3 {
+	if fns := imported["functions"].([]any); len(fns) != 2 {
 		t.Fatalf("imported functions = %v", fns)
 	}
 }
