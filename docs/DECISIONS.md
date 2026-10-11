@@ -1,5 +1,21 @@
 # Decisions and open issues
 
+## 2026-10-11 — Direct Crew execution follows existing authoring authority (PLAT-856)
+
+Expose the native shell, browser and managed database handlers directly over
+MCP for the Crew owner with existing `crews:write` consent and current editable
+account access. Resolve the Crew on every call; carry the product sandbox and
+connection file limits into a separate execution context instead of adopting
+the owner's chat. Reuse managed database migration, transactional mutation and
+snapshot handlers. Browser and database operations require unrestricted Crew
+file consent so these adapters cannot expand a narrowed file grant.
+Why: the owner requested full Builder-tool parity over MCP with website roles,
+including execution; a read-only database view alone does not cover authoring.
+No new scope or role is introduced. This supersedes the external database's
+read-only-only boundary for authorized Crew authoring; existing reads remain.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Recency follows exact names in quick navigation (PLAT-746)
 
 Keep exact name matches first in Ctrl+K search, then order matches by their

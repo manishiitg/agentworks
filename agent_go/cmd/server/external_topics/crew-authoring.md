@@ -13,6 +13,20 @@ edits it.
 
 ## Create and edit
 
+`crew_execution` runs native tools directly without a Builder model turn. Call
+`action=list` with `crew_id` for the enabled names, descriptions and exact input
+schemas, then use that tool name as `action` and its parameters as `arguments`.
+Available tools include `execute_shell_command`, `agent_browser`,
+`mutate_workflow_db`, `apply_workflow_db_migration` and
+`create_workflow_database_snapshot`. Every call requires Crew ownership,
+existing `crews:write` consent and a current editable account. Shell commands
+run inside the Crew sandbox with the connection's file guard, default timeout
+25 seconds. Browser and database operations require unrestricted Crew file
+consent. Author migration files in `db/migrations/` through the sandboxed shell,
+then apply their bare filenames with the managed migration tool. Database
+reads remain available through `query_database`. These calls do not borrow or
+start the owner's chat; inspect results before retrying a mutation.
+
 - `crew` action=create takes `name`, `role`, `purpose` (the Crew's standing instructions; what it is
   for and how it works) and optionally `icon`, `selected_skills`, `files` (path -> text content),
   `functions`, `schedules`. action=update edits one you own section by section (omitted parts stay):

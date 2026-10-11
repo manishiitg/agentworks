@@ -419,6 +419,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		if tool.Name == "crew_files" {
 			return t.Allows("crews:write")
 		}
+		if tool.Name == "crew_execution" {
+			status, _ := externalCrewAuthorGate(c)
+			return t.Allows("crews:write") && status == 0
+		}
 		switch tool.Name {
 		case externalCrewCommandsTool:
 			// Discovery includes list for readers; dispatch checks the action,
