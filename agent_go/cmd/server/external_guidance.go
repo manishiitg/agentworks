@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"io"
 	"net/http"
 	"regexp"
@@ -41,7 +42,7 @@ func externalGuidanceVersionFor(claims *UserClaims) string {
 func externalTopicVersionFor(claims *UserClaims, topic externalGuidanceTopic) string {
 	h := sha256.New()
 	h.Write([]byte(topic.Name + "\n" + topic.Description + "\n" + externalTopicNoteFor(claims, topic) + "\n" + strings.Join(topic.Scopes, ",") + "\n"))
-	if _, body, err := externalGuidanceContent(topic.Name); err == nil {
+	if _, body, err := externalGuidanceContentForProducts(topic.Name, builderProductSelection(claims)); err == nil {
 		h.Write([]byte(body))
 	}
 	return hex.EncodeToString(h.Sum(nil))[:12]
@@ -65,6 +66,9 @@ var externalTopicFiles embed.FS
 // externalTopicVisible reports whether this caller may see a topic. App
 // sessions see all; a token needs every scope the topic names.
 func externalTopicVisible(claims *UserClaims, topic externalGuidanceTopic) bool {
+	if topic.Source == "relay" && !productEnabled("relays") {
+		return false
+	}
 	if claims == nil || claims.AccessToken == nil {
 		return true
 	}
@@ -292,13 +296,17 @@ func externalGuidanceTopicByName(name string) *externalGuidanceTopic {
 // builder-reference renderer. It reuses the server's own materialization, so
 // external guidance can never drift from the builder's copy.
 func externalGuidanceContent(topic string) (description, body string, err error) {
+	return externalGuidanceContentForProducts(topic, productpolicy.Selection{})
+}
+
+func externalGuidanceContentForProducts(topic string, selection productpolicy.Selection) (description, body string, err error) {
 	meta := externalGuidanceTopicByName(topic)
-	if meta == nil {
+	if meta == nil || meta.Source == "relay" && !productEnabled("relays") {
 		return "", "", fmt.Errorf("topic %q is not exposed", topic)
 	}
 	topic = meta.Name
 	if meta.Source != "" {
-		return meta.Description, meta.Content, nil
+		return selection.Text(meta.Description), selection.Text(meta.Content), nil
 	}
 
 	skills, err := guidance.MaterializeReferenceKindsAsSkills("workshop", []string{topic})
@@ -312,7 +320,7 @@ func externalGuidanceContent(topic string) (description, body string, err error)
 	if index := strings.Index(body, "\n\n"); strings.HasPrefix(body, "PATH DISCIPLINE\n") && index >= 0 {
 		body = body[index+2:]
 	}
-	return meta.Description, body, nil
+	return selection.Text(meta.Description), selection.Text(body), nil
 }
 
 // externalAgentContext serves get_agent_context. It is a global tool: no
@@ -407,7 +415,9 @@ func externalPreparation(claims *UserClaims) []string {
 		steps[0] = "This connection can build selected workflows where you currently have write access: builder action=chat continues your existing workflow chat. Poll builder action=status and reply with builder action=reply_input using the operation_id. Native shell/account tools are unavailable. Changes use the configured Builder model."
 	}
 	if claims != nil && claims.AccessToken != nil {
-		steps = append(steps, "For Relays (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or builder action=chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. There is no Relay Run chat. Creation requires relays:write consent covering all accessible workflows.")
+		if productEnabled("relays") {
+			steps = append(steps, "For Relays (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or builder action=chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. There is no Relay Run chat. Creation requires relays:write consent covering all accessible workflows.")
+		}
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}
 	return steps
@@ -439,7 +449,7 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topic": name, "version": version, "unchanged": true})
 		return
 	}
-	description, body, err := externalGuidanceContent(name)
+	description, body, err := externalGuidanceContentForProducts(name, builderProductSelection(GetUserFromContext(r.Context())))
 	if err != nil {
 		externalError(w, 500, "guidance_unavailable", err.Error())
 		return

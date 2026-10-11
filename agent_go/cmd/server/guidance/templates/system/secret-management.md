@@ -1,20 +1,20 @@
 ## Secret Management
 
-Secrets are credentials (API keys, tokens, passwords). They may come from two buckets:
+Secrets are credentials (API keys, tokens, passwords). Keep project-specific credentials in the project secret store:
 
 - **Workflow secrets** — shared with users who have workflow access, AES-GCM encrypted, scoped only to one workflow or product project. Use these by default for workflow-specific credentials when the workflow secret tools are available.
-- **Vault secrets** — shared across projects, with group permissions. They are added, rotated, shared and deleted in Vault (its Secrets panel, its chat, or Vault's MCP tools), not from a Builder chat. `GLOBAL_SECRET_*` environment entries remain operator-managed.
+<!-- product:mcp-gateway -->- **Vault secrets** — shared across projects, with group permissions. They are added, rotated, shared and deleted in Vault (its Secrets panel, its chat, or Vault's MCP tools), not from a Builder chat. `GLOBAL_SECRET_*` environment entries remain operator-managed.<!-- /product -->
 
 ### Tools
 
-- **`list_secrets`** — returns `global` (the Vault secret names you may use) and `workflow` (current workflow names, when scoped) buckets. Values are never exposed. Call before set/delete/attach.
+- **`list_secrets`** — lists current project secret names<!-- product:mcp-gateway --> and permitted Vault names in the `global` bucket<!-- /product -->. Values are never exposed. Call before set/delete/attach.
 - **`set_workflow_secret(name, value)`** — create or update a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
 - **`delete_workflow_secret(name)`** — delete a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
 
 ### When a user says "store / save / set this key"
 
 1. Call `list_secrets` first to check if the name already exists and which bucket owns it.
-2. In a workflow builder/workshop chat, prefer `set_workflow_secret(name, value)` for workflow-only credentials. For credentials shared across workflows, point the user to Vault.
+2. In a workflow builder/workshop chat, prefer `set_workflow_secret(name, value)` for workflow-only credentials.<!-- product:mcp-gateway --> For credentials shared across workflows, point the user to Vault.<!-- /product -->
 3. In a workflow-builder session, `set_workflow_secret` automatically attaches and injects a newly stored value. For an already-stored secret, attach it with the workflow config tool (for example `update_workflow_config(add_secrets=["NAME"])`). The attached value becomes immediately available to the builder shell and workflow steps as `$SECRET_<NAME>` without revealing plaintext to the model.
 4. Confirm success. Do NOT echo the plaintext value back to the user — acknowledge by name only.
 
@@ -32,10 +32,10 @@ Do not tell the user to rotate the secret after a normal requested save. Recomme
 ### Removing a secret
 
 - `delete_workflow_secret(name)` for workflow-scoped values.
-- Vault secrets are deleted in Vault. Environment globals are removed through server configuration.
+<!-- product:mcp-gateway -->- Vault secrets are deleted in Vault. Environment globals are removed through server configuration.<!-- /product -->
 - After deleting a workflow secret that was attached to a workflow, the runtime `$SECRET_<NAME>` will no longer resolve for that workflow's steps. Detach it from the workflow config too if needed.
 
-## Reusing a secret across workflows
+<!-- product:mcp-gateway -->## Reusing a secret across workflows
 
 Secrets needed by more than one project belong in Vault. Sharing a project
 secret into Vault is done in Vault, by a Vault administrator: the
@@ -61,3 +61,4 @@ memberships for chat, reports, runs and schedules. Omitted/null selections mean
 none. Only name references appear in manifests. Connection OAuth tokens stay
 private to their MCP connections. Changes apply to new turns/runs; already-running
 processes may retain their environment.
+<!-- /product -->

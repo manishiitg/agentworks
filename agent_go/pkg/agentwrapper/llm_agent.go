@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"sort"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	agentlogger "github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -49,7 +51,8 @@ type LLMAgentWrapper struct {
 	installedSkillResolver mcpagent.InstalledSkillResolver
 	// admitTool, when set, decides whether a tool may join the definition at
 	// all. Fixed at construction from LLMAgentConfig.AdmitTool.
-	admitTool func(string) bool
+	admitTool        func(string) bool
+	productSelection productpolicy.Selection
 
 	// In-memory conversation history for multi-turn state
 	history    []llmtypes.MessageContent
@@ -418,6 +421,14 @@ func NewLLMAgentWrapper(ctx context.Context, config LLMAgentConfig, tracer obser
 // NewLLMAgentWrapperWithTrace creates a wrapper from one immutable definition
 // and one grouped runtime configuration.
 func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tracer observability.Tracer, mainTraceID observability.TraceID, logger loggerv2.Logger) (*LLMAgentWrapper, error) {
+	selection := productpolicy.FromContext(ctx)
+	admit := config.AdmitTool
+	config.AdmitTool = func(name string) bool {
+		return selection.AllowsTool(name) && (admit == nil || admit(name))
+	}
+	if err := productpolicy.CleanupProjected(config.CodingAgentWorkingDir); err != nil {
+		return nil, err
+	}
 	if common.ScopeAgentMCP != nil {
 		names, overrides, aliases, err := common.ScopeAgentMCP(ctx, config.SessionID, configuredServerNames(config.ServerName), config.RuntimeOverrides)
 		if err != nil {
@@ -492,7 +503,8 @@ func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tra
 	}
 
 	wrapper := &LLMAgentWrapper{
-		agent: agent, name: config.Name, config: config,
+		productSelection: selection,
+		agent:            agent, name: config.Name, config: config,
 		metrics: &agentMetricsImpl{
 			MinLatency: time.Duration(^uint64(0) >> 1),
 			IsHealthy:  true, LastRequestTime: time.Now(),
@@ -644,6 +656,20 @@ func (w *LLMAgentWrapper) SetInstalledSkillResolver(resolver mcpagent.InstalledS
 	if err := w.ensureDefinitionMutable(); err != nil {
 		return err
 	}
+	if resolver != nil {
+		original := resolver
+		resolver = func(name, path string) (mcpagent.InstalledSkillFile, error) {
+			if !w.productSelection.AllowsSkill(name) {
+				return mcpagent.InstalledSkillFile{}, fmt.Errorf("skill %s product is unavailable", name)
+			}
+			file, err := original(name, path)
+			if err == nil && skills.IsBuiltinSkill(name) {
+				file.Content = w.productSelection.Text(file.Content)
+				file.Description = w.productSelection.Text(file.Description)
+			}
+			return file, err
+		}
+	}
 	w.installedSkillResolver = resolver
 	return nil
 }
@@ -655,7 +681,7 @@ func (w *LLMAgentWrapper) AddInstructions(instructions ...string) error {
 		return err
 	}
 	for _, instruction := range instructions {
-		instruction = strings.TrimSpace(instruction)
+		instruction = strings.TrimSpace(w.productSelection.Text(instruction))
 		if instruction == "" {
 			continue
 		}
@@ -673,9 +699,9 @@ func (w *LLMAgentWrapper) ResetInstructions(base string, supplements ...string) 
 	if err := w.ensureDefinitionMutable(); err != nil {
 		return err
 	}
-	w.definition.Instructions = strings.TrimSpace(base)
+	w.definition.Instructions = strings.TrimSpace(w.productSelection.Text(base))
 	for _, supplement := range supplements {
-		supplement = strings.TrimSpace(supplement)
+		supplement = strings.TrimSpace(w.productSelection.Text(supplement))
 		if supplement == "" {
 			continue
 		}
@@ -695,6 +721,10 @@ func (w *LLMAgentWrapper) AttachSkill(skill *llmtypes.Skill) error {
 	}
 	if skill == nil {
 		return errors.New("skill cannot be nil")
+	}
+	skill = w.productSelection.Skill(skill)
+	if skill == nil {
+		return nil
 	}
 	// Incremental assembly can discover the same skill through more than one
 	// configuration source. For example, Workflow Builder receives installed
@@ -847,8 +877,19 @@ func (w *LLMAgentWrapper) RegisterCustomToolWithTimeout(name, description string
 	// Registration admission. Declining is not an error: the caller registered
 	// a tool this agent's profile does not include, which is a policy outcome,
 	// not a failure. Callers treat a returned error as fatal to the session.
-	if w.admitTool != nil && !w.admitTool(name) {
+	if !w.productSelection.AllowsTool(name) || (w.admitTool != nil && !w.admitTool(name)) {
 		return nil
+	}
+	description = w.productSelection.Text(description)
+	parameters, _ = w.productSelection.Schema(parameters).(map[string]interface{})
+	if execute != nil {
+		original := execute
+		execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+			if !w.productSelection.AllowsTool(name) {
+				return "", fmt.Errorf("%s product is unavailable", name)
+			}
+			return original(ctx, args)
+		}
 	}
 	if resolve := w.config.ToolExecutionContext; resolve != nil && execute != nil {
 		original := execute

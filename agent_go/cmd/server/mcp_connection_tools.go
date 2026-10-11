@@ -51,11 +51,17 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		if err != nil {
 			vaultError = err.Error()
 		}
-		sharing := "Connections added to this workflow, Relay, Crew or Code are used by everyone with access to it. Vault connections are shared by group permissions."
+		selection := builderProductSelection(GetUserFromContext(ctx))
+		sharing := selection.Text("Connections added to this project are used by everyone with access to it.<!-- product:mcp-gateway --> Vault connections are shared by group permissions.<!-- /product -->")
 		if _, builder, _ := api.vaultBuilderAuthority(ctx, person); builder {
 			sharing = "Vault administrator setup access covers connected Vault MCPs and secret metadata independently of group grants. Other products and external clients remain group scoped. Secret values are excluded."
 		}
 		inventory := map[string]any{"connections": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing}
+		if !selection.Has("mcp-gateway") {
+			for _, field := range []string{"vault", "vault_groups", "vault_secrets", "vault_error"} {
+				delete(inventory, field)
+			}
+		}
 		if vault.Users != nil {
 			inventory["vault_users"] = vault.Users
 		}
@@ -123,7 +129,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		if err != nil {
 			return "", err
 		}
-		data, _ := json.Marshal(map[string]any{"server": name, "tools": status.FunctionNames, "tool_count": status.ToolsEnabled, "message": "Discovered tools for this place's connection or a permitted Vault connection."})
+		data, _ := json.Marshal(map[string]any{"server": name, "tools": status.FunctionNames, "tool_count": status.ToolsEnabled, "message": "Discovered tools for this project's permitted connection."})
 		return string(data), nil
 	}
 
@@ -224,7 +230,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		}
 	}
 	if saved.OAuth == nil {
-		return fmt.Sprintf("Connected %s. Everyone with access to this place can use it; use Vault to share it across places.", saved.Name), nil
+		return fmt.Sprintf(builderProductSelection(GetUserFromContext(ctx)).Text("Connected %s. Everyone with access to this project can use it.<!-- product:mcp-gateway --> Use Vault to share it across projects.<!-- /product -->"), saved.Name), nil
 	}
 	redirect := deriveOAuthRedirectURIFromEnv()
 	if redirect == "" {

@@ -1,6 +1,7 @@
 import { McpConnectionsPanel } from './McpConnectionsPanel'
 import { usePlaceMcpConnections } from './usePlaceMcpConnections'
 import { useVaultMcpConnections } from './useVaultMcpConnections'
+import { isLocalProductInstallation } from '../../products/productSurfaceConfig'
 
 /** Project adapter. All MCP presentation is owned by McpConnectionsPanel. */
 export function ProjectMcpPanel({ workspacePath, placeNoun, canEdit, onAsk, chatSessionId, view }: {
@@ -16,7 +17,7 @@ export function ProjectMcpPanel({ workspacePath, placeNoun, canEdit, onAsk, chat
     ...place.servers.map(server => ({ ...server, sectionId: 'project' })),
     ...vault.servers.map(server => ({ ...server, sectionId: 'vault' })),
   ]} catalog={place.catalog} showTools={false}
-    connectionSections={[{ id: 'project', label: `${projectLabel} MCPs`, loading: place.loading }, { id: 'vault', label: 'Vault MCPs', loading: vault.loading }]}
+    connectionSections={[{ id: 'project', label: `${projectLabel} MCPs`, loading: place.loading }, ...(!isLocalProductInstallation() ? [{ id: 'vault', label: 'Vault MCPs', loading: vault.loading }] : [])]}
     loading={place.loading || vault.loading} notices={[...place.notices, ...vault.notices]}
     refresh={() => { void place.refresh(); void vault.refresh() }} addCustom={place.addCustom} help={place.help}>
     {place.dialogs}

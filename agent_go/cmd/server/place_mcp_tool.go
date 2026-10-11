@@ -19,9 +19,9 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 	root := cleanAttachRoot(codeRoot)
 	return reg.RegisterCustomTool("manage_my_mcp_servers",
 		"Manage the MCP connections of this Code (added with the owner's own login: Gmail, Drive, GitHub, ...). "+
-			"list: the catalog, this Code's connections, and the signed-in user's Vault groups, permitted MCPs/tools and secret names (never values). Inspect this live inventory before proposing shared setup. "+
+			"list: the catalog and this Code's connections. <!-- product:mcp-gateway -->Also shows the signed-in user's Vault groups, permitted MCPs/tools and secret names (never values).<!-- /product --> Inspect this live inventory before proposing setup. "+
 			"connect: add a catalog server (catalog) or an https URL (name + url) to this Code with the owner's own login, and return the sign-in link for them to open. "+
-			"remove: detach a connection from this Code. Vault MCPs are available automatically through the signed-in user/group permissions; select/deselect are obsolete for Vault. Shared connections and grants are managed in Vault. "+
+			"remove: detach a connection from this Code. <!-- product:mcp-gateway -->Vault MCPs are available automatically through the signed-in user/group permissions; select/deselect are obsolete for Vault. Shared connections and grants are managed in Vault.<!-- /product --> "+
 			"Never ask for passwords, API keys or OAuth client secrets in chat; when a provider needs the user's own OAuth app, send them to the Integrations > Available to finish. Changes apply from the user's next message.",
 		map[string]interface{}{
 			"type": "object", "additionalProperties": false,
@@ -29,7 +29,7 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 				"action":  map[string]interface{}{"type": "string", "enum": []string{"list", "connect", "remove", "select", "deselect"}},
 				"label":   map[string]interface{}{"type": "string", "description": "Account label, e.g. Notion · Engineering. Creates a separate account; omit when reconnecting an existing exact connection ID."},
 				"catalog": map[string]interface{}{"type": "string", "description": "Catalog server name from list (e.g. GitHub, GoogleGmail, Linear)."},
-				"server":  map[string]interface{}{"type": "string", "description": "Exact Vault connection name returned by list, for select or deselect."},
+				"server":  map[string]interface{}{"type": "string", "description": "Legacy connection name; use connect or remove for project connections."},
 				"name":    map[string]interface{}{"type": "string", "description": "The connection's name (lowercase), for a custom URL or remove."},
 				"url":     map[string]interface{}{"type": "string", "description": "https MCP URL, for a server that is not in the catalog."},
 			},

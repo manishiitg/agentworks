@@ -34,7 +34,7 @@ func refWrite(id, alias string) workflowtypes.KnowledgebaseSource {
 
 func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 	root := t.TempDir()
-	a := fixture(t, root, "consumer", "a", "owner", []workflowtypes.KnowledgebaseSource{ref("b", "project-a"), ref("c", "security")})
+	a := fixture(t, root, "consumer", "a", "owner", []workflowtypes.KnowledgebaseSource{ref("b", "project_a"), ref("c", "security")})
 	b := fixture(t, root, "project-a", "b", "owner", []workflowtypes.KnowledgebaseSource{ref("d", "private")})
 	fixture(t, root, "security", "c", "owner", nil)
 	fixture(t, root, "private", "d", "owner", nil)
@@ -75,7 +75,7 @@ func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 
 func TestSourcesOwnershipRevocationAndMissing(t *testing.T) {
 	root := t.TempDir()
-	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{ref("b", "project-a")})
+	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{ref("b", "project_a")})
 	fixture(t, root, "project-a", "b", "bob", nil)
 	sources, err := Resolve(root, a, nil)
 	if err != nil || sources[0].Available {
@@ -102,7 +102,7 @@ func TestSourcesOwnershipRevocationAndMissing(t *testing.T) {
 
 func TestSourcesWriteAccessRequiresExplicitGrant(t *testing.T) {
 	root := t.TempDir()
-	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{refWrite("b", "project-a")})
+	a := fixture(t, root, "consumer", "a", "alice", []workflowtypes.KnowledgebaseSource{refWrite("b", "project_a")})
 	fixture(t, root, "project-a", "b", "bob", nil)
 
 	// No access block at all on the source: legacy AudienceCanRead treats
@@ -153,7 +153,7 @@ func TestSourcesRejectInvalidReferencesAndSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, b, "workflow.json"), filepath.Join(root, b, "knowledgebase", "leak")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Validate(root, a, []workflowtypes.KnowledgebaseSource{ref("b", "project-a")}); err == nil {
+	if err := Validate(root, a, []workflowtypes.KnowledgebaseSource{ref("b", "project_a")}); err == nil {
 		t.Fatal("escaping symlink accepted")
 	}
 	if _, err := Resolve(root, "../outside", nil); err == nil {

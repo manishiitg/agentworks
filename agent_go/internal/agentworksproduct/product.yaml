@@ -181,6 +181,7 @@ pulse:
     - ask_builder
     - send_message
     - read_agent_messages
+    - list_message_agents
     - schedule_message_wakeup
     - get_function_call
 
@@ -218,6 +219,7 @@ chat:
       - delete_schedule
       - delete_workflow_secret
       - edit_mcp_server
+      - edit_team_source
       - execute_step
       - get_contract_upgrades
       - get_cost_summary
@@ -237,6 +239,8 @@ chat:
       - get_ui_state
       - get_workflow_command_guidance
       - get_workflow_config
+      - get_workflow_team
+      - read_team_source
       - get_human_input_request
       - import_skill
       - install_mcp_server
@@ -336,11 +340,14 @@ chat:
       - preview_step_runtime
       - send_message
       - read_agent_messages
+      - list_message_agents
       - schedule_message_wakeup
       - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
       - get_workflow_config
+      - get_workflow_team
+      - read_team_source
       - get_human_input_request
       - list_executions
       - list_mcp_servers
