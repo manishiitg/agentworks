@@ -176,7 +176,7 @@ func TestNavigateToNextStepIDCleansProgressFromTarget(t *testing.T) {
 	steps := jumpTestSteps()
 	progress := &StepProgress{CompletedStepIndices: []int{0, 1, 2}}
 	i, startFrom := 2, 0
-	outcome, err := hcpo.navigateToNextStepID(context.Background(), "step-3", "step-2", steps, progress, &i, &startFrom, maxHumanJumpRepeats)
+	outcome, err := hcpo.navigateToNextStepID(context.Background(), "step-3", "step-2", steps, progress, &i, &startFrom, 25)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -41,6 +41,7 @@ func getAddCrewStepSchema() string {
 				"type": "string",
 				"description": "REQUIRED: Workflow-specific instruction for this invocation. Variables in {{name}} form are rendered at run time."
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variable names that must be nonblank before this step runs."},
 			"context_dependencies": {
 				"type": "array",
 				"items": { "type": "string" },
@@ -104,6 +105,7 @@ func getUpdateCrewStepSchema() string {
 				"type": "string",
 				"description": "OPTIONAL: Updated workflow-specific instruction."
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variable names that must be nonblank before this step runs."},
 			"context_dependencies": {
 				"type": "array",
 				"items": { "type": "string" },

@@ -34,3 +34,5 @@ These docs cover workflow design, execution, and workflow-scoped runtime behavio
 - `workflow_monitoring.md` — run history, costs, reports, and monitoring surfaces
 - `workflow_scheduling.md` — scheduled workflow execution, routing, and history
 - `workflow_shell_working_directory.md` — shell working directories and FolderGuard scope during workflow runs
+
+- [Retiring fixed human-input steps](human-input-step-retirement.md): required launch inputs and migration.

@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-11 — Workflow questions use launch inputs and human tools (PLAT-864)
+
+Retire the dedicated `human_input` step and its authoring/runtime/UI path.
+Known values are required launch variables declared by their consuming step;
+missing values fail before work starts on a known selected path and at every
+consumer boundary. Keep scoped per-step instructions, human-decided branches,
+immediate `human_feedback` and durable human requests. Existing fixed question
+nodes require reviewed, hash-guarded replacements during a drained deployment;
+never guess an answer or silently insert another question agent. Why: the fixed
+form duplicated the existing interaction tools and blocked unattended runs.
+
+Ticket: [PLAT-864](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-864.md).
+
+
 ## 2026-10-11 — MCP guidance is an opt-in, versioned source catalog (PLAT-852)
 
 Mark public reference files and product skills at their source with `external: true`,

@@ -1722,7 +1722,7 @@ func RegisterRunFullWorkflowTool(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"run_full_workflow",
-		"Execute the complete workflow: load the plan, resolve variables, and run all steps for a single variable group. Interactive Builder runs use iteration-0; a saved schedule or webhook uses its server-bound immutable run folder. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains human_input steps on the selected path, you MUST provide a response for each one. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
+		"Execute the complete workflow: load the plan, resolve variables, and run all steps for a single variable group. Interactive Builder runs use iteration-0; a saved schedule or webhook uses its server-bound immutable run folder. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1732,7 +1732,7 @@ func RegisterRunFullWorkflowTool(
 				},
 				"human_inputs": map[string]interface{}{
 					"type":        "object",
-					"description": "Per-step run instructions or human_input responses, keyed by exact step ID. Each value is delivered only to that step. Required for human_input steps on the selected route. Example: {\"search-jobs\": \"Use only Best Matches and My Feed\", \"ask-target\": \"Mar26\"}. Do not use this for routing choices; use route_selections instead.",
+					"description": "Per-step run instructions keyed by exact step ID. Each value is delivered only to that step, including delegated route agents. Example: {\"search-jobs\": \"Use only Best Matches and My Feed\"}. Do not use this for routing choices; use route_selections instead.",
 					"additionalProperties": map[string]interface{}{
 						"type": "string",
 					},
@@ -1835,7 +1835,7 @@ func RegisterRunFullWorkflowTool(
 				}
 			}
 
-			// Validate: if the selected route has human_input steps, human_inputs must cover them.
+			// Validate exact input target IDs and selected routes.
 			// Route-scoped validation matters for workflows like Upwork where one plan contains
 			// bid/search/profile branches; a search run must not be forced to answer bid approval.
 			plan, err := session.controller.ReadCurrentPlan(ctx)
@@ -1864,7 +1864,6 @@ func RegisterRunFullWorkflowTool(
 				if unknown := unknownWorkflowStepInputIDs(plan.Steps, humanInputs); len(unknown) > 0 {
 					return fmt.Sprintf("human_inputs contains unknown step ID(s): %s. Read the current plan and key each value by an exact step ID.", strings.Join(unknown, ", ")), nil
 				}
-				var missingSteps []string
 				var legacyRoutingSteps []string
 				validationSteps := plan.Steps
 				variableValues := workflowRunValidationVariableValues(ctx, session, groupName)
@@ -1882,27 +1881,26 @@ func RegisterRunFullWorkflowTool(
 						variableValues[k] = v
 					}
 				}
+				if variableValues == nil {
+					variableValues = map[string]string{}
+				}
+				for name, value := range runVariables {
+					variableValues[name] = value
+				}
+				if err := validateRequiredLaunchVariables(plan.Steps, variableValues, routeSelections, 0, false); err != nil {
+					return err.Error(), nil
+				}
 				if len(variableValues) > 0 {
 					validationSteps = routeScopedValidationSteps(plan.Steps, variableValues, humanInputs, routeSelections)
 				} else if len(routeSelections) > 0 {
 					validationSteps = routeScopedValidationSteps(plan.Steps, nil, humanInputs, routeSelections)
 				}
 				for _, step := range validationSteps {
-					if step.StepType() == StepTypeHumanInput {
-						stepID := step.GetID()
-						if _, ok := humanInputs[stepID]; !ok {
-							hiStep := step.(*HumanInputPlanStep)
-							missingSteps = append(missingSteps, fmt.Sprintf("  - %s (id: %s, question: %q)", hiStep.GetTitle(), stepID, hiStep.Question))
-						}
-					}
 					if step.StepType() == StepTypeRouting || step.StepType() == StepTypeBranch {
 						if routingStep, ok := step.(routeSwitchStep); ok && routingStep.GetDescription() != "" {
 							legacyRoutingSteps = append(legacyRoutingSteps, fmt.Sprintf("  - %s (id: %s)", step.GetTitle(), step.GetID()))
 						}
 					}
-				}
-				if len(missingSteps) > 0 {
-					return fmt.Sprintf("❌ Plan has human_input steps that require responses via human_inputs parameter. Missing:\n%s\n\nProvide human_inputs with a response for each step ID listed above.", strings.Join(missingSteps, "\n")), nil
 				}
 				if len(legacyRoutingSteps) > 0 {
 					return fmt.Sprintf("❌ Plan has routing/branch steps with legacy descriptions. Both are deterministic-only and never execute agents:\n%s\n\nMove each probe/judgment into a prior agent step that writes route_selection.json, then clear the description and point the step at that file via route_source_file or context_dependencies.", strings.Join(legacyRoutingSteps, "\n")), nil

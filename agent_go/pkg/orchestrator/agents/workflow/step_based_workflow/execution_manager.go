@@ -215,7 +215,7 @@ func (em *ExecutionManager) PrepareExecution(
 		setup.Context.SkipHumanInput = true
 	}
 
-	// Propagate human input overrides for human_input steps
+	// Propagate per-step operator instructions
 	if len(opts.HumanInputs) > 0 {
 		setup.Context.HumanInputs = opts.HumanInputs
 	}

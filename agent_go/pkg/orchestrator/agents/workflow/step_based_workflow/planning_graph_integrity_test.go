@@ -35,17 +35,11 @@ func routingStepWithTargets(targets ...string) *RoutingPlanStep {
 func TestValidatePlanStructureReportsEveryDanglingReference(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		routingStepWithTargets("missing-a", "missing-b"),
-		&HumanInputPlanStep{
-			Type: StepTypeHumanInput,
-			CommonStepFields: CommonStepFields{
-				ID:    "approval",
-				Title: "Approval",
+		&BranchPlanStep{Type: StepTypeBranch, CommonStepFields: CommonStepFields{ID: "approval", Title: "Approval"},
+			BranchQuestion: "Approve?", RouteSource: "human", Routes: []RoutingRoute{
+				{RouteID: "yes", RouteName: "Approve", NextStepID: "missing-c"},
+				{RouteID: "no", RouteName: "Reject", NextStepID: "end"},
 			},
-			Question:        "Approve?",
-			ResponseType:    "yesno",
-			NextStepID:      "end",
-			IfYesNextStepID: "missing-c",
-			IfNoNextStepID:  "end",
 		},
 		&ScriptedPlanStep{
 			Type:             StepTypeScripted,
@@ -66,7 +60,7 @@ func TestValidatePlanStructureReportsEveryDanglingReference(t *testing.T) {
 		"PLAN_GRAPH_INVALID: 4 next-step reference(s)",
 		`route "route-a".next_step_id in step "router" points to missing step "missing-a"`,
 		`route "route-b".next_step_id in step "router" points to missing step "missing-b"`,
-		`if_yes_next_step_id in step "approval" points to missing step "missing-c"`,
+		`route "yes".next_step_id in step "approval" points to missing step "missing-c"`,
 		`next_step_id in step "scripted" points to missing step "missing-d"`,
 		"No changes were saved",
 	} {

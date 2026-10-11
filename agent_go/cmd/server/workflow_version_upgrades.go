@@ -448,7 +448,7 @@ Do only this migration. Every agent step's description (type agent or orchestrat
 ## Rules      — binding business constraints, approval limits, actions outside its authority
 ## Done when  — the success boundary, including what counts as a valid no-op
 ## Guides     — the skill/learning references to use, named only, never copied
-Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Leave every other step type as it is: scripted (scripted), routing, branch, human_input and crew steps are driven by code, routes, a question to a person or a Crew, and do not use the layout; an empty description on them is fine. Read that reference once before you start.
+Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Leave every other step type as it is: scripted (scripted), routing, branch and crew steps are driven by code, routes or a Crew, and do not use the layout; an empty description on them is fine. Read that reference once before you start.
 
 THIS IS A TEXT REORGANIZATION. NEVER CHANGE BEHAVIOUR: do not change outputs, context_dependencies, context_output, validation_schema, items, routes, step type, or any other step field; only the description moves.
 

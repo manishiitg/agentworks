@@ -10,12 +10,12 @@ import (
 // Human-decided branch (PLAT-294 follow-up).
 //
 // A branch step with route_source: "human" is the successor to a yesno /
-// multiple_choice human_input step: the routes ARE the options. The switch
+// fixed question form: the routes ARE the options. The switch
 // stays deterministic in every way a schedule or caller can see -- a
 // preseeded route_selection.json, route_selections, route_source_file or a
 // context_dependencies entry still wins, exactly as for any other branch --
 // and only when none of those supplied the answer does the run stop and ask
-// the person, through the same HumanFeedbackStore prompt human_input uses.
+// the person, through a HumanFeedbackStore prompt.
 // Unattended runs never block: skip-human mode falls back to
 // default_route_id or fails with an actionable error.
 
@@ -25,26 +25,6 @@ const branchRouteSourceHuman = "human"
 // the mode selector and is always preseeded (route_selections / default).
 func (r *RoutingPlanStep) GetRouteSource() string { return "" }
 func (b *BranchPlanStep) GetRouteSource() string  { return b.RouteSource }
-
-// validateNewHumanInputStepIsTextOnly is the add-time gate on
-// add_human_input_step: a person's decision between fixed options is a branch
-// with route_source "human" now, so a new human_input step may only capture a
-// free-form value. Existing yesno/multiple_choice steps are never touched --
-// this runs on add only, not on load, update, or execution.
-func validateNewHumanInputStepIsTextOnly(step *HumanInputPlanStep) error {
-	if step == nil {
-		return nil
-	}
-	responseType := strings.ToLower(strings.TrimSpace(step.ResponseType))
-	switch responseType {
-	case "", "text":
-		return nil
-	case "yesno", "multiple_choice":
-		return fmt.Errorf("human_input step %q has response_type %q; a person's decision between fixed options is a branch step now: add_branch_step(id=%q, route_source=\"human\", branch_question=<the question>, routes=<one route per option, route_name is the label shown, next_step_id where that answer goes>, default_route_id=<the safe unattended choice>). Schedules answer it with route_selections[%q]; interactive runs ask. Use human_input (response_type text) only to capture a free-form value into variable_name. Existing human_input steps keep working unchanged", step.ID, step.ResponseType, step.ID, step.ID)
-	default:
-		return fmt.Errorf("human_input step %q has unsupported response_type %q; new human_input steps capture a free-form value (response_type text); for a decision between fixed options use a branch step with route_source \"human\"", step.ID, step.ResponseType)
-	}
-}
 
 // isHumanRoutedBranch reports whether the step asks a person when no route
 // selection was supplied up front.

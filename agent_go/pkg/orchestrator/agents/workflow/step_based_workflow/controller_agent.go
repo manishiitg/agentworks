@@ -289,8 +289,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(ctx context
 // so their cap is only a failsafe against auto-responders. Routing passes 0:
 // it has its own per-route evaluation guard.
 const (
-	maxLLMJumpRepeats   = 5
-	maxHumanJumpRepeats = 25
+	maxLLMJumpRepeats = 5
 )
 
 // navigateToNextStepID advances the execution loop to the step whose ID matches
@@ -367,6 +366,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	allSteps []PlanStepInterface,
 	opts agentSequenceCallOptions,
 ) (string, []llmtypes.MessageContent, error) {
+	if err := validateStepRequiredVariables(step, hcpo.variableValues); err != nil {
+		return "", nil, err
+	}
 	_ = progress
 	_ = allSteps
 	ctx = withParentStepIndex(ctx, stepIndex)

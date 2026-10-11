@@ -50,8 +50,8 @@ workflows, the user's message is the workflow input.
   from the conversation and keep going.
 
 - **Use `run_full_workflow(group_name="<group>", human_inputs=...)`**
-  for the normal path. Populate human input steps with the user's
-  original question and any available channel context such as
+  for the normal path. Supply declared launch variables and attach the user's
+  original question as instructions to its consuming step and any available channel context such as
   platform, channel/thread, user, and message timestamp when the step
   asks for or can preserve that context.
 

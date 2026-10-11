@@ -72,7 +72,7 @@ func promptBudgetHasLayout(stepType StepType, scriptOnly bool) bool {
 		return true
 	}
 	// A scripted step is scripted by definition (PLAT-287); its description is
-	// not an agent charter, and routing/branch/human-input steps have none.
+	// not an agent charter, and routing/branch steps have none.
 	_ = scriptOnly
 	return false
 }

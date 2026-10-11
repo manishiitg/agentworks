@@ -508,7 +508,6 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 - ` + "`agent`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
 - ` + "`scripted`" + ` — scripted deterministic API/CLI/data work only. New conversational or judgment-heavy work always uses ` + "`agent`" + `, even for one turn.
 - ` + "`routing`" + ` — N-way branching. Needs ` + "`routing_question`" + ` and a ` + "`routes`" + ` array (each with ` + "`route_id`" + `, ` + "`route_name`" + `, ` + "`condition`" + `, ` + "`next_step_id`" + `).
-- ` + "`human_input`" + ` — Pause for user response. Needs ` + "`question`" + `, ` + "`response_type`" + ` (` + "`text`" + `/` + "`yesno`" + `/` + "`multiple_choice`" + `), ` + "`next_step_id`" + `, and (for yesno) ` + "`if_yes_next_step_id`" + `/` + "`if_no_next_step_id`" + `.
 
 **Step field reference**:
 - ` + "`context_dependencies`" + ` — array of file names this step reads (produced by earlier steps)

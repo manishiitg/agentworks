@@ -14,11 +14,9 @@ func TestAllSchemaFunctionsReturnValidJSON(t *testing.T) {
 		"UpdateAgentStep":         getUpdateAgentStepSchema,
 		"AddRoutingStep":          getAddRoutingStepSchema,
 		"UpdateRoutingStep":       getUpdateRoutingStepSchema,
-		"AddHumanInputStep":       getAddHumanInputStepSchema,
 		"AddOrchestratorRoute":    getAddAgentRouteSchema,
 		"UpdateOrchestratorRoute": getUpdateAgentRouteSchema,
 		"DeleteOrchestratorRoute": getDeleteAgentRouteSchema,
-		"UpdateHumanInputStep":    getUpdateHumanInputStepSchema,
 		"UpdateValidationSchema":  getUpdateValidationSchemaSchema,
 	}
 	for name, fn := range schemas {

@@ -434,10 +434,9 @@ func cascadeDeleteStepConfigsRetried(ctx context.Context, workspacePath string, 
 type StepType string
 
 const (
-	StepTypeScripted   StepType = "scripted"
-	StepTypeHumanInput StepType = "human_input"
-	StepTypeRouting    StepType = "routing"
-	StepTypeAgent      StepType = "agent"
+	StepTypeScripted StepType = "scripted"
+	StepTypeRouting  StepType = "routing"
+	StepTypeAgent    StepType = "agent"
 	// StepTypeBranch is a small in-flow next-step decision — same executor
 	// as StepTypeRouting, distinct type so guidance/reporting/eval tooling
 	// can tell it apart from routing, which is now the "route" (major fork)
@@ -450,7 +449,8 @@ const (
 
 // CommonStepFields contains fields shared by all step types
 type CommonStepFields struct {
-	ID                  string                `json:"id"` // Stable step ID (generated from title) - required
+	RequiredVariables   []string              `json:"required_variables,omitempty"` // Launch values required before this step can run.
+	ID                  string                `json:"id"`                           // Stable step ID (generated from title) - required
 	Title               string                `json:"title"`
 	Description         string                `json:"description"`
 	ContextDependencies []string              `json:"context_dependencies"`
@@ -606,15 +606,7 @@ func (r *RoutingPlanStep) GetContextOutput() FlexibleContextOutput { return r.Co
 func (r *RoutingPlanStep) GetValidationSchema() *ValidationSchema  { return r.ValidationSchema }
 func (r *RoutingPlanStep) StepType() StepType                      { return StepTypeRouting }
 func (r *RoutingPlanStep) GetCommonFields() CommonStepFields {
-	return CommonStepFields{
-		ID:                  r.ID,
-		Title:               r.Title,
-		Description:         r.Description,
-		ContextDependencies: r.ContextDependencies,
-		ContextOutput:       r.ContextOutput,
-		ValidationSchema:    r.ValidationSchema,
-		SharedWith:          r.SharedWith,
-	}
+	return r.CommonStepFields
 }
 
 // MarshalJSON ensures the type field is always set when marshaling
@@ -675,15 +667,7 @@ func (b *BranchPlanStep) GetContextOutput() FlexibleContextOutput { return b.Con
 func (b *BranchPlanStep) GetValidationSchema() *ValidationSchema  { return b.ValidationSchema }
 func (b *BranchPlanStep) StepType() StepType                      { return StepTypeBranch }
 func (b *BranchPlanStep) GetCommonFields() CommonStepFields {
-	return CommonStepFields{
-		ID:                  b.ID,
-		Title:               b.Title,
-		Description:         b.Description,
-		ContextDependencies: b.ContextDependencies,
-		ContextOutput:       b.ContextOutput,
-		ValidationSchema:    b.ValidationSchema,
-		SharedWith:          b.SharedWith,
-	}
+	return b.CommonStepFields
 }
 
 // Implement routeSwitchStep for BranchPlanStep
@@ -710,42 +694,6 @@ func (b *BranchPlanStep) UnmarshalJSON(data []byte) error {
 	}
 	*b = BranchPlanStep(temp)
 	return nil
-}
-
-// HumanInputPlanStep represents a step that asks a question to a human and blocks for input
-// This step type has no LLM, no execution, no validation, and no learning - just human input
-type HumanInputPlanStep struct {
-	Type StepType `json:"type"` // Always "human_input" - required for JSON marshaling/unmarshaling
-	CommonStepFields
-	Question           string            `json:"question"`                      // Required: question to ask human
-	VariableName       string            `json:"variable_name,omitempty"`       // Optional: store response in variable
-	ResponseType       string            `json:"response_type,omitempty"`       // "text" (default), "yesno", "multiple_choice"
-	Options            []string          `json:"options,omitempty"`             // For multiple_choice type
-	NextStepID         string            `json:"next_step_id"`                  // Default: where to go after response (or "end") when no response-specific route matches
-	IfYesNextStepID    string            `json:"if_yes_next_step_id,omitempty"` // Optional: for yesno type when response is "yes"
-	IfNoNextStepID     string            `json:"if_no_next_step_id,omitempty"`  // Optional: for yesno type when response is "no"
-	OptionRoutes       map[string]string `json:"option_routes,omitempty"`       // Optional: for multiple_choice type - maps option index (as string "0", "1", etc.) or option value to next_step_id
-	SelectedNextStepID string            `json:"-"`                             // runtime: stores computed next step ID based on response - not stored in plan.json
-	AgentConfigs       *AgentConfigs     `json:"-"`                             // runtime: per-agent configuration (LLM, max turns, toggles) - not stored in plan.json
-}
-
-// Implement PlanStepInterface for HumanInputPlanStep
-func (h *HumanInputPlanStep) GetID() string                           { return h.ID }
-func (h *HumanInputPlanStep) GetTitle() string                        { return h.Title }
-func (h *HumanInputPlanStep) GetDescription() string                  { return h.Description }
-func (h *HumanInputPlanStep) GetContextDependencies() []string        { return h.ContextDependencies }
-func (h *HumanInputPlanStep) GetContextOutput() FlexibleContextOutput { return h.ContextOutput }
-func (h *HumanInputPlanStep) GetValidationSchema() *ValidationSchema  { return h.ValidationSchema }
-func (h *HumanInputPlanStep) StepType() StepType                      { return StepTypeHumanInput }
-func (h *HumanInputPlanStep) GetCommonFields() CommonStepFields       { return h.CommonStepFields }
-
-// MarshalJSON ensures the type field is always set when marshaling
-func (h *HumanInputPlanStep) MarshalJSON() ([]byte, error) {
-	// Ensure type is set
-	h.Type = StepTypeHumanInput
-	// Use type alias to avoid infinite recursion
-	type Alias HumanInputPlanStep
-	return json.Marshal((*Alias)(h))
 }
 
 // AgentWriteAccess optionally narrows store writes for one sequence item.
@@ -945,7 +893,11 @@ func parseStepFromJSON(stepData json.RawMessage, index int, label string) (PlanS
 	}
 
 	if stepWithType.Type == "" {
-		return nil, fmt.Errorf("%s %d is missing required 'type' field (must be: scripted, human_input, agent, routing, branch, or crew)", label, index)
+		return nil, fmt.Errorf("%s %d is missing required 'type' field (must be: scripted, agent, routing, branch, or crew)", label, index)
+	}
+
+	if stepWithType.Type == "human_input" {
+		return nil, fmt.Errorf("human_input steps are retired; migrate the saved plan with scripts/migrate_human_input_steps.py before loading it")
 	}
 
 	switch stepWithType.Type {
@@ -960,12 +912,6 @@ func parseStepFromJSON(stepData json.RawMessage, index int, label string) (PlanS
 		var step CrewPlanStep
 		if err := json.Unmarshal(stepData, &step); err != nil {
 			return nil, fmt.Errorf("failed to parse crew %s %d: %w", label, index, err)
-		}
-		return &step, nil
-	case "human_input":
-		var step HumanInputPlanStep
-		if err := json.Unmarshal(stepData, &step); err != nil {
-			return nil, fmt.Errorf("failed to parse human_input %s %d: %w", label, index, err)
 		}
 		return &step, nil
 	case "routing":
@@ -987,7 +933,7 @@ func parseStepFromJSON(stepData json.RawMessage, index int, label string) (PlanS
 		}
 		return &step, nil
 	default:
-		return nil, fmt.Errorf("unknown step type %q in %s %d (must be: scripted, human_input, agent, routing, branch, or crew)", stepWithType.Type, label, index)
+		return nil, fmt.Errorf("unknown step type %q in %s %d (must be: scripted, agent, routing, branch, or crew)", stepWithType.Type, label, index)
 	}
 }
 
@@ -1069,6 +1015,7 @@ func (pr PlanningResponse) MarshalJSON() ([]byte, error) {
 // Nested steps (OrchestrationStep, IfTrueSteps, IfFalseSteps) are PlanStepInterface.
 // Once plan.json is migrated to use new type-safe types, this struct can be updated accordingly.
 type PartialPlanStep struct {
+	RequiredVariables   []string              `json:"required_variables,omitempty"`
 	ExistingStepID      string                `json:"existing_step_id"`               // Required: ID of existing step to update
 	Title               string                `json:"title,omitempty"`                // Optional: New title (if renaming)
 	Description         string                `json:"description,omitempty"`          // Optional: Updated description
@@ -1093,16 +1040,8 @@ type PartialPlanStep struct {
 	ScriptOnly      *bool             `json:"script_only,omitempty"`
 	// Branch step fields (PLAT-259: same deterministic-switch shape as
 	// routing, just its own field name for the human-readable prompt)
-	BranchQuestion string `json:"branch_question,omitempty"` // Optional: Updated branch question
-	RouteSource    string `json:"route_source,omitempty"`    // Optional: "human" makes the branch ask a person when nothing was preseeded (branch only)
-	// Human input step fields
-	Question               string                               `json:"question,omitempty"`                 // Optional: Updated question
-	VariableName           string                               `json:"variable_name,omitempty"`            // Optional: Updated variable name
-	ResponseType           string                               `json:"response_type,omitempty"`            // Optional: Updated response type
-	Options                []string                             `json:"options,omitempty"`                  // Optional: Updated options (for multiple_choice)
-	IfYesNextStepID        string                               `json:"if_yes_next_step_id,omitempty"`      // Optional: Updated if_yes_next_step_id (for yesno)
-	IfNoNextStepID         string                               `json:"if_no_next_step_id,omitempty"`       // Optional: Updated if_no_next_step_id (for yesno)
-	OptionRoutes           map[string]string                    `json:"option_routes,omitempty"`            // Optional: Updated option routes (for multiple_choice)
+	BranchQuestion         string                               `json:"branch_question,omitempty"`          // Optional: Updated branch question
+	RouteSource            string                               `json:"route_source,omitempty"`             // Optional: "human" makes the branch ask a person when nothing was preseeded (branch only)
 	ValidationSchema       *ValidationSchema                    `json:"validation_schema,omitempty"`        // Optional: Updated validation schema
 	ScriptParameters       map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`        // Optional: replace the scripted runtime parameter contract; pass {} to clear
 	ScriptParametersSchema map[string]interface{}               `json:"script_parameters_schema,omitempty"` // Optional: replace the full JSON Schema contract; pass {} to clear
@@ -1402,7 +1341,8 @@ func getUpdateScriptedStepSchema() string {
 							"description": "OPTIONAL: Replace the named runtime-input contract for main.py. Each value is {type, description, required?, default?, enum?}; pass {} to clear.",
 							"additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}
 						},
-						"context_dependencies": {
+						"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
+			"context_dependencies": {
 							"type": "array",
 							"items": { "type": "string" },
 							"description": "OPTIONAL: Updated context dependencies. Only include if you want to change them. If omitted, the existing context dependencies are preserved."
@@ -1477,6 +1417,7 @@ func getAddScriptedStepSchema() string {
 				"description": "OPTIONAL: Named runtime inputs accepted by main.py when this scripted step is used as a todo-task route. Each key defines {type, description, required?, default?, enum?}. Supported types: string, number, integer, boolean, array, object. main.py reads the validated values from STEP_PARAMS_JSON. Use {} when the script takes no route parameters.",
 				"additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {
 				"type": "array",
 				"items": { "type": "string" },
@@ -1553,6 +1494,7 @@ func getAddAgentStepSchema() string {
 			"description": {"type": "string", "description": "REQUIRED: The durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put ordered execution and verification instructions in items[]."},
 			"authored_prompt": {"type": "boolean", "description": "Relay agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
 			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "REQUIRED: Prior context files this sequence depends on. Use [] if none."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Summary/result file for later steps. Omit when the step writes its result to the db (validate via validation_schema.db)."},
 			"items": {
@@ -1608,6 +1550,7 @@ func getUpdateAgentStepSchema() string {
 			"description": {"type": "string", "description": "OPTIONAL: Replaces the durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Put ordered execution and verification instructions in items[]. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
 			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
 			"system_prompt": {"type": "string", "description": "Replace the authored system prompt. Supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "OPTIONAL: Replaces the full list of prior context files this sequence depends on. Omit to preserve the existing list."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Replaces the summary/result file for later steps. Omit to preserve the existing value, or to leave the step writing its result to the db (validate via validation_schema.db) instead of a file."},
 			"items": {
@@ -1645,6 +1588,7 @@ func getAddRoutingStepSchema() string {
 							"type": "string",
 				"description": "DO NOT SET for routing steps. Routing is deterministic-only and never executes an agent. If a probe/judgment is needed, add a prior agent step that writes route_selection.json, then route from that file."
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {
 				"type": "array",
 				"items": {"type": "string"},
@@ -1727,6 +1671,7 @@ func getUpdateRoutingStepSchema() string {
 				"type": "boolean",
 				"description": "OPTIONAL: Set true to clear a legacy routing description during migration. New routing steps must keep description empty."
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {
 				"type": "array",
 				"items": { "type": "string" },
@@ -1792,6 +1737,7 @@ func getAddBranchStepSchema() string {
 				"type": "string",
 				"description": "DO NOT SET for branch steps. Branch is deterministic-only and never executes an agent. If a probe/judgment is needed, add a prior agent step that writes route_selection.json, then route from that file."
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {
 				"type": "array",
 				"items": {"type": "string"},
@@ -1845,7 +1791,7 @@ func getAddBranchStepSchema() string {
 			"route_source": {
 				"type": "string",
 				"enum": ["human"],
-				"description": "OPTIONAL: Set to \"human\" when a person decides this branch mid-run (approve/hold, yes/no, pick one). The routes are the options shown (route_name is the label) and branch_question is the prompt. Preseeded sources still win: caller route_selections, route_selection.json, route_source_file or a context_dependencies entry answer it without asking -- that is how schedules answer up front. Unattended runs use default_route_id (set it to the safe do-nothing route) or fail. Successor to yesno/multiple_choice human_input, which add_human_input_step no longer accepts."
+				"description": "OPTIONAL: Set to \"human\" when a person decides this branch mid-run (approve/hold, yes/no, pick one). The routes are the options shown (route_name is the label) and branch_question is the prompt. Preseeded sources still win: caller route_selections, route_selection.json, route_source_file or a context_dependencies entry answer it without asking -- that is how schedules answer up front. Unattended runs use default_route_id (set it to the safe do-nothing route) or fail. Use this for planned human decisions; use agent human_feedback for urgent values."
 			},
 			"insert_after_step_id": {
 				"type": "string",
@@ -1881,6 +1827,7 @@ func getUpdateBranchStepSchema() string {
 				"type": "boolean",
 				"description": "OPTIONAL: Set true to clear a legacy description during migration. New branch steps must keep description empty."
 			},
+			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {
 				"type": "array",
 				"items": { "type": "string" },
@@ -1933,71 +1880,6 @@ func getUpdateBranchStepSchema() string {
 	}`
 }
 
-// getAddHumanInputStepSchema returns the JSON schema for add_human_input_step tool
-func getAddHumanInputStepSchema() string {
-	return `{
-		"type": "object",
-		"properties": {
-			"id": {
-				"type": "string",
-				"description": "REQUIRED: Stable step ID for this human input step. Generate a unique, URL-friendly ID based on the step title (e.g., 'ask-month' from 'Ask Month')."
-			},
-			"title": {
-				"type": "string",
-				"description": "REQUIRED: Short, clear title for the human input step"
-			},
-			"question": {
-				"type": "string",
-				"description": "REQUIRED: The question to ask the human. This will be displayed to the user and execution will block until they respond."
-			},
-			"response_type": {
-				"type": "string",
-				"enum": ["text"],
-				"description": "OPTIONAL: New human input steps accept text only (default), for a free-form value. For a fixed choice or approval, use add_branch_step with route_source=human. Existing legacy choice steps can still be maintained with update_human_input_step."
-			},
-			"options": {
-				"type": "array",
-				"items": { "type": "string" },
-				"description": "Legacy field: omit for new text steps. Use add_branch_step with route_source=human for a fixed choice; maintain existing choice steps with update_human_input_step."
-			},
-			"variable_name": {
-				"type": "string",
-				"description": "OPTIONAL: Variable name to store the human's response. If provided, the response will be stored in this variable and can be referenced in subsequent steps using {{variable_name}}."
-			},
-			"context_output": {
-				"type": "string",
-				"description": "OPTIONAL: Context file name to save the response (e.g., 'step-1.json'). Defaults to 'step-{index}.json' if not specified. The response will be saved as JSON with question, response, response_type, timestamp, and step details."
-			},
-			"next_step_id": {
-				"type": "string",
-				"description": "REQUIRED: The ID of the next step to execute after receiving the response, or 'end' to terminate the workflow. This is the default for text responses and the fallback when no response-specific route matches."
-			},
-			"if_yes_next_step_id": {
-				"type": "string",
-				"description": "Legacy field: omit for new text steps. Use add_branch_step with route_source=human for a fixed choice; maintain existing choice steps with update_human_input_step."
-			},
-			"if_no_next_step_id": {
-				"type": "string",
-				"description": "Legacy field: omit for new text steps. Use add_branch_step with route_source=human for a fixed choice; maintain existing choice steps with update_human_input_step."
-			},
-			"option_routes": {
-				"type": "object",
-				"additionalProperties": { "type": "string" },
-				"description": "Legacy field: omit for new text steps. Use add_branch_step with route_source=human for a fixed choice; maintain existing choice steps with update_human_input_step."
-			},
-			"insert_after_step_id": {
-				"type": "string",
-				"description": "REQUIRED: The ID of the step to insert after. Use the step's id field from the plan. Use empty string \"\" to insert at the beginning of the plan (before the first step)."
-			},
-			"reason": {
-				"type": "string",
-				"description": "REQUIRED: One-sentence rationale for why this human-input step is being added. Captured into the plan changelog."
-			}
-		},
-		"required": ["id", "title", "question", "next_step_id", "insert_after_step_id", "reason"]
-	}`
-}
-
 // getAddAgentRouteSchema returns the JSON schema for add_agent_route tool
 func getAddAgentRouteSchema() string {
 	return `{
@@ -2038,7 +1920,8 @@ func getAddAgentRouteSchema() string {
 							"script_parameters": {"type": "object", "description": "For scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 							"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 							"items": {"type": "array", "description": "REQUIRED when type='agent'. Ordered user_message, prevalidation, or foreach turns.", "items": {"type": "object"}},
-							"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
+							"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
+			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 							"context_output": {"type": "string", "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."},
 							"predefined_routes": {"type": "array", "description": "For an agent specialist: optional predefined routes. Conversational children use agent; deterministic scripted children may use scripted. A second nested delegation layer is not allowed."},
 							"validation_schema": {
@@ -2096,7 +1979,8 @@ func getUpdateAgentRouteSchema() string {
 					"script_parameters": {"type": "object", "description": "For scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 					"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 					"items": {"type": "array", "description": "Required when type='agent'. Replaces the entire ordered user-message queue — a full replacement, not a merge. The description is the system charter; items explain how to execute and verify it. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
-					"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
+					"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
+			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 					"context_output": {"type": "string"},
 					"predefined_routes": {"type": "array", "description": "Optional routes for an agent specialist. Children may use agent or scripted; a second nested delegation layer is not allowed."},
 						"validation_schema": {"type": "object"}
@@ -2134,67 +2018,6 @@ func getDeleteAgentRouteSchema() string {
 	}`
 }
 
-// getUpdateHumanInputStepSchema returns the JSON schema for update_human_input_step tool
-func getUpdateHumanInputStepSchema() string {
-	return `{
-		"type": "object",
-		"properties": {
-			"existing_step_id": {
-				"type": "string",
-				"description": "REQUIRED: The ID of the human input step to update. Use the step's id field from the plan."
-			},
-			"title": {
-				"type": "string",
-				"description": "OPTIONAL: New title for the step. Only include if you want to rename the step. If omitted, the existing title is preserved."
-			},
-			"question": {
-				"type": "string",
-				"description": "OPTIONAL: Updated question to ask the human. Only include if you want to change it. If omitted, the existing question is preserved."
-			},
-			"response_type": {
-				"type": "string",
-				"enum": ["text", "yesno", "multiple_choice"],
-				"description": "OPTIONAL: Updated response type. Only include if you want to change it. 'text' (default) for free-form text, 'yesno' for yes/no questions, 'multiple_choice' for selecting from options. If omitted, the existing response type is preserved."
-			},
-			"options": {
-				"type": "array",
-				"items": { "type": "string" },
-				"description": "OPTIONAL: Updated options for multiple_choice response type. Only include if you want to change them. Required if response_type is 'multiple_choice'. If omitted, the existing options are preserved."
-			},
-			"variable_name": {
-				"type": "string",
-				"description": "OPTIONAL: Updated variable name to store the response. Only include if you want to change it. If omitted, the existing variable name is preserved."
-			},
-			"context_output": {
-				"type": "string",
-				"description": "OPTIONAL: Updated context file name to save the response. Only include if you want to change it. Defaults to 'step-{index}.json' if not specified. If omitted, the existing context output is preserved. CRITICAL: Keep JSON files SMALL (< 100KB). For large text content, store it in a separate markdown file and reference it from JSON."
-			},
-			"next_step_id": {
-				"type": "string",
-				"description": "OPTIONAL: Updated next step ID. Only include if you want to change it. The ID of the next step to execute after receiving the response, or 'end' to terminate the workflow. If omitted, the existing next_step_id is preserved."
-			},
-			"if_yes_next_step_id": {
-				"type": "string",
-				"description": "OPTIONAL: Updated if_yes_next_step_id. Only include if you want to change it. For 'yesno' response type, the step ID to route to when user responds 'yes', or 'end' to terminate. If omitted, the existing value is preserved."
-			},
-			"if_no_next_step_id": {
-				"type": "string",
-				"description": "OPTIONAL: Updated if_no_next_step_id. Only include if you want to change it. For 'yesno' response type, the step ID to route to when user responds 'no', or 'end' to terminate. If omitted, the existing value is preserved."
-			},
-			"option_routes": {
-				"type": "object",
-				"additionalProperties": { "type": "string" },
-				"description": "OPTIONAL: Updated option routes. Only include if you want to change them. For 'multiple_choice' response type, maps option index (as string '0', '1', etc.) or option value to next_step_id. If omitted, the existing option routes are preserved."
-			},
-			"reason": {
-				"type": "string",
-				"description": "REQUIRED: One-sentence rationale for why this human-input step is being updated. Captured into the plan changelog."
-			}
-		},
-		"required": ["existing_step_id", "reason"]
-	}`
-}
-
 // getUpdateValidationSchemaSchema returns the JSON schema for update_validation_schema tool
 // updateToolForStepType names the tool that edits a given step type.
 //
@@ -2213,8 +2036,6 @@ func updateToolForStepType(stepType StepType) string {
 		return "update_routing_step"
 	case StepTypeBranch:
 		return "update_branch_step"
-	case StepTypeHumanInput:
-		return "update_human_input_step"
 	case StepTypeScripted:
 		return "update_scripted_step"
 	case StepTypeCrew:
@@ -2409,12 +2230,6 @@ func convertMapToStep(stepMap map[string]interface{}) (PlanStepInterface, error)
 		}
 		step.Type = StepTypeCrew
 		typedStep = &step
-	case "human_input":
-		var step HumanInputPlanStep
-		if err := json.Unmarshal(stepJSON, &step); err != nil {
-			return nil, fmt.Errorf("failed to parse human_input step: %w", err)
-		}
-		typedStep = &step
 	case "routing":
 		var step RoutingPlanStep
 		if err := json.Unmarshal(stepJSON, &step); err != nil {
@@ -2475,13 +2290,6 @@ func unmarshalStepFromJSON(stepData json.RawMessage) (PlanStepInterface, error) 
 		}
 		step.Type = StepTypeCrew
 		typedStep = &step
-	case "human_input":
-		var step HumanInputPlanStep
-		if err := json.Unmarshal(stepData, &step); err != nil {
-			return nil, fmt.Errorf("failed to parse human_input step: %w", err)
-		}
-		step.Type = StepTypeHumanInput
-		typedStep = &step
 	case "routing":
 		var step RoutingPlanStep
 		if err := json.Unmarshal(stepData, &step); err != nil {
@@ -2504,7 +2312,7 @@ func unmarshalStepFromJSON(stepData json.RawMessage) (PlanStepInterface, error) 
 		step.Type = StepTypeAgent
 		typedStep = &step
 	default:
-		return nil, fmt.Errorf("unknown step type %q (must be: scripted, human_input, agent, routing, branch, or crew)", stepType)
+		return nil, fmt.Errorf("unknown step type %q (must be: scripted, agent, routing, branch, or crew)", stepType)
 	}
 
 	return typedStep, nil
@@ -2742,8 +2550,6 @@ func updateValidationSchemaOnStep(step PlanStepInterface, schema *ValidationSche
 	switch s := step.(type) {
 	case *ScriptedPlanStep:
 		s.ValidationSchema = schema
-	case *HumanInputPlanStep:
-		s.ValidationSchema = schema
 	case *RoutingPlanStep:
 		s.ValidationSchema = schema
 	case *BranchPlanStep:
@@ -2924,6 +2730,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 	case *ScriptedPlanStep:
 		// Create updated copy
 		updated := *step
+		if partialUpdate.RequiredVariables != nil {
+			updated.RequiredVariables = append([]string{}, partialUpdate.RequiredVariables...)
+		}
 		if partialUpdate.Title != "" {
 			updated.Title = partialUpdate.Title
 		}
@@ -2958,51 +2767,11 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		// Validation schema is LLM-generated only - no code-based auto-generation
 		return &updated
 
-	case *HumanInputPlanStep:
-		updated := *step
-		if partialUpdate.Title != "" {
-			updated.Title = partialUpdate.Title
-		}
-		if partialUpdate.Description != "" {
-			updated.Description = partialUpdate.Description
-		}
-		if partialUpdate.ContextDependencies != nil {
-			updated.ContextDependencies = partialUpdate.ContextDependencies
-		}
-		if partialUpdate.ContextOutput != "" {
-			updated.ContextOutput = FlexibleContextOutput(partialUpdate.ContextOutput)
-		}
-		if partialUpdate.Question != "" {
-			updated.Question = partialUpdate.Question
-		}
-		if partialUpdate.VariableName != "" {
-			updated.VariableName = partialUpdate.VariableName
-		}
-		if partialUpdate.ResponseType != "" {
-			updated.ResponseType = partialUpdate.ResponseType
-		}
-		if partialUpdate.Options != nil {
-			updated.Options = partialUpdate.Options
-		}
-		if partialUpdate.NextStepID != "" {
-			updated.NextStepID = partialUpdate.NextStepID
-		}
-		if partialUpdate.IfYesNextStepID != "" {
-			updated.IfYesNextStepID = partialUpdate.IfYesNextStepID
-		}
-		if partialUpdate.IfNoNextStepID != "" {
-			updated.IfNoNextStepID = partialUpdate.IfNoNextStepID
-		}
-		if partialUpdate.OptionRoutes != nil {
-			updated.OptionRoutes = partialUpdate.OptionRoutes
-		}
-		if partialUpdate.ValidationSchema != nil {
-			updated.ValidationSchema = partialUpdate.ValidationSchema
-		}
-		return &updated
-
 	case *AgentPlanStep:
 		updated := *step
+		if partialUpdate.RequiredVariables != nil {
+			updated.RequiredVariables = append([]string{}, partialUpdate.RequiredVariables...)
+		}
 		if partialUpdate.Title != "" {
 			updated.Title = partialUpdate.Title
 		}
@@ -3037,6 +2806,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 
 	case *RoutingPlanStep:
 		updated := *step
+		if partialUpdate.RequiredVariables != nil {
+			updated.RequiredVariables = append([]string{}, partialUpdate.RequiredVariables...)
+		}
 		if partialUpdate.Title != "" {
 			updated.Title = partialUpdate.Title
 		}
@@ -3070,6 +2842,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 
 	case *BranchPlanStep:
 		updated := *step
+		if partialUpdate.RequiredVariables != nil {
+			updated.RequiredVariables = append([]string{}, partialUpdate.RequiredVariables...)
+		}
 		if partialUpdate.Title != "" {
 			updated.Title = partialUpdate.Title
 		}
@@ -3112,6 +2887,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 
 	case *CrewPlanStep:
 		updated := *step
+		if partialUpdate.RequiredVariables != nil {
+			updated.RequiredVariables = append([]string{}, partialUpdate.RequiredVariables...)
+		}
 		if partialUpdate.Title != "" {
 			updated.Title = partialUpdate.Title
 		}
@@ -3286,6 +3064,10 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: existingStep.GetDescription(),
 			NewValue: "",
 		})
+	}
+	if partialUpdate.RequiredVariables != nil {
+		changedFields = append(changedFields, "required_variables")
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "required_variables", OldValue: existingStep.GetCommonFields().RequiredVariables, NewValue: partialUpdate.RequiredVariables})
 	}
 	if partialUpdate.ContextDependencies != nil {
 		changedFields = append(changedFields, "context_dependencies")
@@ -3519,8 +3301,6 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 		switch step := existingStep.(type) {
 		case *ScriptedPlanStep:
 			oldNextStepID = step.NextStepID
-		case *HumanInputPlanStep:
-			oldNextStepID = step.NextStepID
 		case *AgentPlanStep:
 			oldNextStepID = step.NextStepID
 		case *CrewPlanStep:
@@ -3545,101 +3325,6 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			StepID:   partialUpdate.ExistingStepID,
 			Field:    "items",
 			OldValue: oldMessagesJSON,
-			NewValue: string(newBytes),
-		})
-	}
-	if partialUpdate.Question != "" {
-		changedFields = append(changedFields, "question")
-		oldQuestion := ""
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldQuestion = humanInputStep.Question
-		}
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "question",
-			OldValue: oldQuestion,
-			NewValue: partialUpdate.Question,
-		})
-	}
-	if partialUpdate.VariableName != "" {
-		changedFields = append(changedFields, "variable_name")
-		oldVariableName := ""
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldVariableName = humanInputStep.VariableName
-		}
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "variable_name",
-			OldValue: oldVariableName,
-			NewValue: partialUpdate.VariableName,
-		})
-	}
-	if partialUpdate.ResponseType != "" {
-		changedFields = append(changedFields, "response_type")
-		oldResponseType := ""
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldResponseType = humanInputStep.ResponseType
-		}
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "response_type",
-			OldValue: oldResponseType,
-			NewValue: partialUpdate.ResponseType,
-		})
-	}
-	if partialUpdate.Options != nil {
-		changedFields = append(changedFields, "options")
-		oldOptionsJSON := "[]"
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldBytes, _ := json.Marshal(humanInputStep.Options)
-			oldOptionsJSON = string(oldBytes)
-		}
-		newBytes, _ := json.Marshal(partialUpdate.Options)
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "options",
-			OldValue: oldOptionsJSON,
-			NewValue: string(newBytes),
-		})
-	}
-	if partialUpdate.IfYesNextStepID != "" {
-		changedFields = append(changedFields, "if_yes_next_step_id")
-		oldNextStepID := ""
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldNextStepID = humanInputStep.IfYesNextStepID
-		}
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "if_yes_next_step_id",
-			OldValue: oldNextStepID,
-			NewValue: partialUpdate.IfYesNextStepID,
-		})
-	}
-	if partialUpdate.IfNoNextStepID != "" {
-		changedFields = append(changedFields, "if_no_next_step_id")
-		oldNextStepID := ""
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldNextStepID = humanInputStep.IfNoNextStepID
-		}
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "if_no_next_step_id",
-			OldValue: oldNextStepID,
-			NewValue: partialUpdate.IfNoNextStepID,
-		})
-	}
-	if partialUpdate.OptionRoutes != nil {
-		changedFields = append(changedFields, "option_routes")
-		oldRoutesJSON := "{}"
-		if humanInputStep, ok := existingStep.(*HumanInputPlanStep); ok {
-			oldBytes, _ := json.Marshal(humanInputStep.OptionRoutes)
-			oldRoutesJSON = string(oldBytes)
-		}
-		newBytes, _ := json.Marshal(partialUpdate.OptionRoutes)
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{
-			StepID:   partialUpdate.ExistingStepID,
-			Field:    "option_routes",
-			OldValue: oldRoutesJSON,
 			NewValue: string(newBytes),
 		})
 	}
@@ -3817,7 +3502,7 @@ func planStepUpdateRequiresDependentArtifactReview(fieldChanges []PlanFieldChang
 // (Architecture's, not Plan Drift's, per pulse-gate.md) were never in this
 // set either.
 var planDriftMaterialFieldNames = map[string]bool{
-	"type": true, "context_dependencies": true, "context_output": true,
+	"type": true, "required_variables": true, "context_dependencies": true, "context_output": true,
 	"items": true, "next_step_id": true,
 	"validation_schema": true, "success_criteria": true, "script_parameters": true,
 	"routing_question": true, "branch_question": true, "routes": true,
@@ -4762,88 +4447,6 @@ func createCleanupOrphanStepConfigsExecutor(workspacePath string, logger loggerv
 	}
 }
 
-// createUpdateHumanInputStepExecutor creates an executor function for update_human_input_step tool
-func createUpdateHumanInputStepExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
-	return func(ctx context.Context, args map[string]interface{}) (string, error) {
-		reason, err := requireReason(args)
-		if err != nil {
-			return "", err
-		}
-		if err := validateWorkflowArtifactMutationArgs(args); err != nil {
-			return "", err
-		}
-
-		stepJSON, err := json.Marshal(args)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal step: %w", err)
-		}
-
-		var partialUpdate PartialPlanStep
-		if err := json.Unmarshal(stepJSON, &partialUpdate); err != nil {
-			return "", fmt.Errorf("failed to parse step: %w", err)
-		}
-
-		// Read current plan
-		plan, err := readPlanForMutation(ctx, workspacePath, readFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read plan: %w", err)
-		}
-
-		// Find the human input step
-		var existingStep PlanStepInterface
-		for _, step := range plan.Steps {
-			if step.GetID() == partialUpdate.ExistingStepID {
-				existingStep = step
-				break
-			}
-		}
-		if existingStep == nil {
-			availableIDs := make([]string, 0, len(plan.Steps))
-			for _, step := range plan.Steps {
-				availableIDs = append(availableIDs, step.GetID())
-			}
-			return "", fmt.Errorf("step ID '%s' not found in existing plan. Available step IDs: %v", partialUpdate.ExistingStepID, availableIDs)
-		}
-
-		// Validate it's a human input step before updating
-		_, ok := existingStep.(*HumanInputPlanStep)
-		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not a human input step", partialUpdate.ExistingStepID)
-		}
-
-		fieldChanges := make([]PlanFieldChange, 0)
-
-		_, _, err = updateSingleStep(plan, partialUpdate, &fieldChanges)
-		if err != nil {
-			return "", err
-		}
-
-		// Validate all steps after update
-		if err := validatePlanStepIDs(plan.Steps); err != nil {
-			return "", fmt.Errorf("plan validation failed after update: %w", err)
-		}
-		if err := validateStepIDUniqueness(plan); err != nil {
-			return "", fmt.Errorf("plan validation failed after update: %w", err)
-		}
-
-		// Write updated plan
-		if err := writePlanToFile(ctx, workspacePath, plan, readFile, writeFile, logger); err != nil {
-			return "", fmt.Errorf("failed to write plan: %w", err)
-		}
-		logPlanChange(ctx, workspacePath, PlanChangelogEntry{
-			Tool:    "update_human_input_step",
-			Reason:  reason,
-			StepIDs: []string{partialUpdate.ExistingStepID},
-			Changes: fieldChanges,
-		}, readFile, writeFile, logger)
-
-		dependentReviewNotice := handlePlanStepDependentArtifactReview(ctx, workspacePath, partialUpdate.ExistingStepID, fieldChanges, readFile, writeFile, logger)
-
-		logger.Info(fmt.Sprintf("✅ Updated human input step '%s' in plan", partialUpdate.ExistingStepID))
-		return fmt.Sprintf("Successfully updated human input step '%s' in the plan%s", partialUpdate.ExistingStepID, dependentReviewNotice), nil
-	}
-}
-
 // createAddRoutingStepExecutor creates an executor function for add_routing_step tool
 func createAddRoutingStepExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, moveFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
 	return createSingleStepAdder(workspacePath, logger, readFile, writeFile, moveFile, "routing")
@@ -5345,11 +4948,6 @@ func createAddAgentStepExecutor(workspacePath string, logger loggerv2.Logger, re
 	return createSingleStepAdder(workspacePath, logger, readFile, writeFile, moveFile, "agent")
 }
 
-// createAddHumanInputStepExecutor creates an executor function for add_human_input_step tool
-func createAddHumanInputStepExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, moveFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
-	return createSingleStepAdder(workspacePath, logger, readFile, writeFile, moveFile, "human_input")
-}
-
 // Returns an error message suitable for returning as a tool response if validation fails
 
 func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrationRoute, allowLegacyCode bool) error {
@@ -5488,11 +5086,6 @@ func setStepIdentity(step PlanStepInterface, id, title string) error {
 		if strings.TrimSpace(s.Title) == "" {
 			s.Title = title
 		}
-	case *HumanInputPlanStep:
-		s.ID = id
-		if strings.TrimSpace(s.Title) == "" {
-			s.Title = title
-		}
 	case *RoutingPlanStep:
 		s.ID = id
 		if strings.TrimSpace(s.Title) == "" {
@@ -5619,15 +5212,6 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 		case "crew":
 			if crewStep, ok := typedStep.(*CrewPlanStep); ok {
 				if err := validateCrewStepFieldsTyped(crewStep); err != nil {
-					return "", fmt.Errorf("validation failed: %w", err)
-				}
-			}
-		case "human_input":
-			// New decision-type human_input steps are branch steps with
-			// route_source "human" now; human_input keeps only free-form
-			// value capture. Existing steps are untouched (add-time only).
-			if humanStep, ok := typedStep.(*HumanInputPlanStep); ok {
-				if err := validateNewHumanInputStepIsTextOnly(humanStep); err != nil {
 					return "", fmt.Errorf("validation failed: %w", err)
 				}
 			}
@@ -5806,7 +5390,7 @@ Before adding it, decide the step type by who decides the work, not by habit:
 - add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE agent, not one scripted/agentic step per action.
 - add optional predefined_routes to the agent only when the agent must interpret runtime evidence and adaptively choose specialist work — a fixed child set/order does not qualify. Use the same agent type for plain conversations and specialist delegation.
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
-- add_human_input_step only for a free-form value the workflow cannot otherwise obtain.
+- Supply known values through run variables/function arguments or per-step human_inputs. Agents use human_feedback for urgent missing values and create_human_input_request for durable decisions.
 
 For the full decision playbook and anti-patterns, call read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}]) before adding the first step.`, planPath), nil
 	}
@@ -5844,7 +5428,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"create_plan",
-		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_human_input_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments. Note: workflow objective lives in soul/soul.md — edit that file separately; plan.json no longer stores it.",
+		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments. Note: workflow objective lives in soul/soul.md — edit that file separately; plan.json no longer stores it.",
 		createPlanParams,
 		createCreatePlanExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5957,21 +5541,6 @@ func registerNativePlanModificationTools(
 
 	// NOTE: update_orchestration_step tool removed (deprecated in favor of todo_task).
 
-	humanInputUpdateSchema := getUpdateHumanInputStepSchema()
-	humanInputUpdateParams, err := parseSchemaForToolParameters(humanInputUpdateSchema)
-	if err != nil {
-		return fmt.Errorf("failed to parse update human input step schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"update_human_input_step",
-		"Update a human input step in the plan. Provide existing_step_id (required) to identify which human input step to update, and only include the fields you want to change (question, response_type, options, variable_name, context_output, next_step_id, if_yes_next_step_id/if_no_next_step_id, option_routes). The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Pulse or an explicit user request.",
-		humanInputUpdateParams,
-		createUpdateHumanInputStepExecutor(workspacePath, logger, readFile, writeFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register update_human_input_step tool: %w", err)
-	}
-
 	deleteSchema := getDeletePlanStepsSchema()
 	deleteParams, err := parseSchemaForToolParameters(deleteSchema)
 	if err != nil {
@@ -6064,21 +5633,6 @@ func registerNativePlanModificationTools(
 	// NOTE: add_orchestration_step tool removed (deprecated in favor of todo_task).
 	// Schema, executor, and execution code kept for backward compatibility with existing workflows.
 
-	humanInputSchema := getAddHumanInputStepSchema()
-	humanInputParams, err := parseSchemaForToolParameters(humanInputSchema)
-	if err != nil {
-		return fmt.Errorf("failed to parse human input step schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"add_human_input_step",
-		"Add a human input step to the plan to capture a FREE-FORM VALUE from a person (an ID, a month, a note to format) into variable_name, blocking until they respond. New steps accept response_type=text only: a person's DECISION between fixed options (approve/hold, yes/no, pick one) is a branch step with route_source=\"human\" (add_branch_step) -- the routes are the options and schedules answer it via route_selections -- so yesno and multiple_choice are rejected here; existing human_input steps of every type keep working. This step has no LLM, no execution, no validation, and no learning. The response is saved to a JSON file and passed to the next step. Provide: id, title, question (required), response_type (text), options (legacy, multiple_choice only), variable_name (optional), context_output (optional, defaults to step-{index}.json), next_step_id (required), if_yes_next_step_id/if_no_next_step_id (for yesno), option_routes (for multiple_choice), insert_after_step_id. The plan.json file is updated immediately when this tool is called.",
-		humanInputParams,
-		createAddHumanInputStepExecutor(workspacePath, logger, readFile, writeFile, moveFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register add_human_input_step tool: %w", err)
-	}
-
 	routingSchema := getAddRoutingStepSchema()
 	routingParams, err := parseSchemaForToolParameters(routingSchema)
 	if err != nil {
@@ -6116,7 +5670,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_branch_step",
-		"Add a deterministic branch step to the plan. Use this for a small in-flow next-step decision -- the workflow must choose exactly one of a few existing downstream steps. (Routing steps now represent a larger, major sub-workflow fork; use branch for a lightweight decision instead.) When a PERSON makes the decision mid-run (approve/hold, yes/no, pick one), set route_source=\"human\": the routes are the options, branch_question is the prompt, schedules answer it up front via route_selections, unattended runs use default_route_id, interactive runs ask -- this replaces yesno/multiple_choice human_input steps. Otherwise branch has one mode only: read caller route_selections, the branch step's preseeded route_selection.json, route_source_file, a context_dependencies entry named route_selection.json, or default_route_id, then switch to the selected route. Do not set description or context_output on branch steps; if an agent/probe/judgment is needed, add a prior agent step that writes route_selection.json and declare that file in the branch step's route_source_file or context_dependencies. Provide: id, title, branch_question (readability/compatibility only), routes (min 2 with route_id/route_name/condition/next_step_id), context_dependencies, optional default_route_id, optional route_source_file, insert_after_step_id. The plan.json file is updated immediately when this tool is called.",
+		"Add a deterministic branch step to the plan. Use this for a small in-flow next-step decision -- the workflow must choose exactly one of a few existing downstream steps. (Routing steps now represent a larger, major sub-workflow fork; use branch for a lightweight decision instead.) When a PERSON makes the decision mid-run (approve/hold, yes/no, pick one), set route_source=\"human\": the routes are the options, branch_question is the prompt, schedules answer it up front via route_selections, unattended runs use default_route_id, interactive runs ask. Otherwise branch has one mode only: read caller route_selections, the branch step's preseeded route_selection.json, route_source_file, a context_dependencies entry named route_selection.json, or default_route_id, then switch to the selected route. Do not set description or context_output on branch steps; if an agent/probe/judgment is needed, add a prior agent step that writes route_selection.json and declare that file in the branch step's route_source_file or context_dependencies. Provide: id, title, branch_question (readability/compatibility only), routes (min 2 with route_id/route_name/condition/next_step_id), context_dependencies, optional default_route_id, optional route_source_file, insert_after_step_id. The plan.json file is updated immediately when this tool is called.",
 		branchParams,
 		createAddBranchStepExecutor(workspacePath, logger, readFile, writeFile, moveFile),
 		"workflow",

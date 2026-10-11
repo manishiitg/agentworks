@@ -134,7 +134,7 @@ type StepBasedWorkflowOrchestrator struct {
 	// Workshop: toolbar-selected group IDs (used for auto-resolving variable values and run folders)
 	enabledGroupNames []string
 
-	// Human input overrides: per-step responses for human_input steps during run_full_workflow.
+	// Human input overrides: per-step operator instructions during run_full_workflow.
 	// Key is step ID (e.g., "choose-workflow"), value is the response to use.
 	// Checked before variableValues fallback when SkipHumanInput is true.
 	humanInputOverrides map[string]string
@@ -907,7 +907,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Processing execution strategy early: %s", execOpts.ExecutionStrategy))
 		hcpo.SetSkipHumanInput(true)
 
-		// Apply human input overrides for routing/human_input steps.
+		// Apply human input overrides for executable steps.
 		// Previously this was only set via PrepareExecution → ApplyExecutionContext,
 		// which is only called for resume strategies. For start_from_beginning strategies
 		// humanInputOverrides was never populated, causing routing steps to miss
@@ -1311,7 +1311,7 @@ func cloneWorkflowStringMap(values map[string]string) map[string]string {
 
 // executionContextForStep derives an isolated context for one step. A keyed
 // run_full_workflow human_inputs value becomes prompt context only for its
-// matching executable step (or the response for a matching human_input step).
+// matching executable step.
 // An explicit execute_step(human_input=...) value remains higher priority.
 func executionContextForStep(base *ExecutionContext, stepID string) *ExecutionContext {
 	if base == nil {

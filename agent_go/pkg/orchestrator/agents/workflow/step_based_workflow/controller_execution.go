@@ -964,26 +964,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadSingleStepResultFromLogs(ctx cont
 	// {"response": "...", ...}. Without this branch, downstream routing steps
 	// that run in a separate invocation (e.g. workshop execute_step) would see
 	// an empty prior result and route blindly.
-	if plannedStep != nil && plannedStep.StepType() == StepTypeHumanInput {
-		executionWorkspacePath := fmt.Sprintf("%s/execution", validationWorkspacePath)
-		stepExecutionPath := getExecutionFolderPath(executionWorkspacePath, stepID, stepPath)
-		contextOutput := plannedStep.GetContextOutput().String()
-		if contextOutput == "" {
-			contextOutput = fmt.Sprintf("step-%d.json", stepNumber)
-		}
-		resolvedContextOutput := ResolveVariables(contextOutput, hcpo.variableValues)
-		responseFilePath := filepath.Join(stepExecutionPath, resolvedContextOutput)
-		if content, err := hcpo.ReadWorkspaceFile(ctx, responseFilePath); err == nil {
-			var responseData map[string]interface{}
-			if err := json.Unmarshal([]byte(content), &responseData); err == nil {
-				if response, ok := responseData["response"].(string); ok && response != "" {
-					hcpo.GetLogger().Info(fmt.Sprintf("Loaded human_input response for step %d from %s (length=%d)", stepNumber, responseFilePath, len(response)))
-					return response, true
-				}
-			}
-		}
-		// Fall through to the execution-attempt scan below — harmless, won't find anything.
-	}
 
 	executionLogsFolderPath := getExecutionFolderPathForLogs(validationWorkspacePath, stepID, stepPath)
 
@@ -1227,35 +1207,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildPreviousStepsSummary(allSteps []
 
 	summary.WriteString("Use this context to understand the workflow progression and what has been accomplished so far.\n")
 
-	// Include ALL human_input step results (regardless of position) as critical context,
-	// plus the most recent non-human-input execution result for general context.
-	// This matches the routing agent's behavior in controller_routing.go.
-	humanFeedbackIncluded := false
-	for idx := 0; idx < currentStepIndex && idx < len(previousExecutionResults); idx++ {
-		if previousExecutionResults[idx] == "" {
-			continue
-		}
-		if idx < len(allSteps) && allSteps[idx].StepType() == StepTypeHumanInput {
-			stepTitle := ResolveVariables(allSteps[idx].GetTitle(), hcpo.variableValues)
-			execOutput := previousExecutionResults[idx]
-			if len(execOutput) > 2000 {
-				execOutput = execOutput[:2000] + "\n... (truncated)"
-			}
-			summary.WriteString(fmt.Sprintf("\n## 🚨 HUMAN FEEDBACK (CRITICAL - READ CAREFULLY)\n\n"))
-			summary.WriteString(fmt.Sprintf("The human provided the following feedback/input in **Step %d: %s**.\n", idx+1, stepTitle))
-			summary.WriteString("**You MUST incorporate this human feedback into your work. This takes priority over other context.**\n\n")
-			summary.WriteString(fmt.Sprintf("```\n%s\n```\n", execOutput))
-			humanFeedbackIncluded = true
-		}
-	}
-
+	// Include the most recent execution result.
 	// Include the most recent non-human-input execution result
 	for idx := currentStepIndex - 1; idx >= 0; idx-- {
 		if idx >= len(previousExecutionResults) || previousExecutionResults[idx] == "" {
 			continue
-		}
-		if idx < len(allSteps) && allSteps[idx].StepType() == StepTypeHumanInput {
-			continue // Already included above
 		}
 		execOutput := previousExecutionResults[idx]
 		if len(execOutput) > 2000 {
@@ -1267,11 +1223,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildPreviousStepsSummary(allSteps []
 		} else {
 			stepTitle = fmt.Sprintf("Step %d", idx+1)
 		}
-		if humanFeedbackIncluded {
-			summary.WriteString(fmt.Sprintf("\n## 📤 Most Recent Step Execution Output\n\n"))
-		} else {
-			summary.WriteString(fmt.Sprintf("\n## 📤 Previous Step Execution Output\n\n"))
-		}
+		summary.WriteString("\n## Previous Step Execution Output\n\n")
 		summary.WriteString(fmt.Sprintf("**Step %d: %s** execution result:\n\n", idx+1, stepTitle))
 		summary.WriteString(fmt.Sprintf("```\n%s\n```\n", execOutput))
 		summary.WriteString("\nUse this execution output to understand what the immediately previous step accomplished.\n")
@@ -1302,6 +1254,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 	// Initialize updated context files as copy of previous context files
 	updatedContextFiles = make([]string, len(previousContextFiles))
 	copy(updatedContextFiles, previousContextFiles)
+
+	if err := validateStepRequiredVariables(step, hcpo.variableValues); err != nil {
+		return "", updatedContextFiles, err
+	}
 
 	// Crew steps run only as top-level steps through executeCrewStep; a crew
 	// step nested under an orchestrator route lands here via the sub-agent
@@ -2822,12 +2778,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 // boolean flags, making the execution routing logic more maintainable and
 // preparing for future migration to type-safe step types.
 
-// isHumanInputStep returns true if the step is a human input step (asks question and blocks for input)
-func isHumanInputStep(step PlanStepInterface) bool {
-	_, ok := step.(*HumanInputPlanStep)
-	return ok
-}
-
 // isCrewStep returns true if the step invokes a Crew trigger and waits for
 // its final response.
 func isCrewStep(step PlanStepInterface) bool {
@@ -3112,8 +3062,6 @@ func getAgentConfigs(step PlanStepInterface) *AgentConfigs {
 	switch s := step.(type) {
 	case *ScriptedPlanStep:
 		return s.AgentConfigs
-	case *HumanInputPlanStep:
-		return s.AgentConfigs
 	case *RoutingPlanStep:
 		return s.AgentConfigs
 	case *BranchPlanStep:
@@ -3179,6 +3127,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 	}
 	if hcpo.selectedRunFolder == "" {
 		return fmt.Errorf(fmt.Sprintf("run folder not resolved - this should have been set after plan approval"), nil)
+	}
+	validationStart := startFromStep
+	if execCtx.RunSingleStepOnly {
+		validationStart = execCtx.SingleStepTarget
+	}
+	if err := validateRequiredLaunchVariables(breakdownSteps, hcpo.variableValues, hcpo.requiredLaunchRouteSelections(), validationStart, execCtx.RunSingleStepOnly); err != nil {
+		return err
 	}
 	// Record completed work even when a later step fails.
 	receiptFolder, receiptID, receiptRevision := hcpo.beginCompletionReceipts(ctx, breakdownSteps, execCtx)
@@ -3266,6 +3221,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 		if isCompleted && !forceExecution {
 			hcpo.GetLogger().Info(fmt.Sprintf("⏭️ Skipping step %d/%d (marked as completed): %s", i+1, len(breakdownSteps), step.GetTitle()))
 			continue
+		}
+
+		if err := validateStepRequiredVariables(step, hcpo.variableValues); err != nil {
+			return err
 		}
 
 		// Build context files from previous steps
@@ -3515,119 +3474,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 					break
 				}
 			}
-			continue
-		}
-
-		// Check if this is a human input step
-		if isHumanInputStep(step) {
-			// Execute human input step - asks question and blocks for input
-			hcpo.GetLogger().Info(fmt.Sprintf("👤 Starting human input step execution: %s", step.GetTitle()))
-
-			// Build context files from previous steps
-			previousContextFiles := make([]string, 0)
-			for prevIdx := 0; prevIdx < i; prevIdx++ {
-				if prevIdx < len(breakdownSteps) {
-					contextOutput := breakdownSteps[prevIdx].GetContextOutput().String()
-					if contextOutput != "" {
-						// Resolve variables in context output
-						resolvedOutput := ResolveVariables(contextOutput, hcpo.variableValues)
-						previousContextFiles = append(previousContextFiles, resolvedOutput)
-					}
-				}
-			}
-
-			_, err := hcpo.executeHumanInputStep(ctx, step, i, progress, previousContextFiles, stepExecCtx, breakdownSteps)
-			if err != nil {
-				if isWorkflowCancellationErr(ctx, err) {
-					hcpo.GetLogger().Info(fmt.Sprintf("Human input step %d canceled", i+1))
-					return err
-				}
-				hcpo.GetLogger().Error(fmt.Sprintf("❌ Human input step %d execution failed: %v", i+1, err), nil)
-				// Emit error event using centralized method
-				hcpo.EmitOrchestratorAgentError(ctx, "workflow", "human-input-step-execution", fmt.Sprintf("Execute human input step: %s", step.GetTitle()), err.Error(), i, iteration)
-				return fmt.Errorf("human input step %d execution failed: %w", i+1, err)
-			}
-
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ Human input step %d completed successfully: %s", i+1, step.GetTitle()))
-
-			// Track execution result in memory for use by subsequent steps
-			// Extract the response from the saved JSON file to create an execution result summary
-			// Get the context output path to read the saved response
-			contextOutput := step.GetContextOutput().String()
-			if contextOutput == "" {
-				contextOutput = fmt.Sprintf("step-%d.json", i+1)
-			}
-			resolvedContextOutput := ResolveVariables(contextOutput, hcpo.variableValues)
-
-			// Read the saved response file to get the actual response
-			runWorkspacePath := fmt.Sprintf("%s/runs/%s", hcpo.GetWorkspacePath(), hcpo.selectedRunFolder)
-			executionWorkspacePath := fmt.Sprintf("%s/execution", runWorkspacePath)
-			stepPath := fmt.Sprintf("step-%d", i+1)
-			stepExecutionPath := getExecutionFolderPath(executionWorkspacePath, step.GetID(), stepPath)
-			responseFilePath := filepath.Join(stepExecutionPath, resolvedContextOutput)
-
-			var executionResult string
-			responseContent, err := hcpo.ReadWorkspaceFile(ctx, responseFilePath)
-			if err == nil {
-				// Parse JSON to extract response
-				var responseData map[string]interface{}
-				if err := json.Unmarshal([]byte(responseContent), &responseData); err == nil {
-					if response, ok := responseData["response"].(string); ok {
-						executionResult = response
-					} else {
-						executionResult = fmt.Sprintf("Human input step completed: %s", step.GetTitle())
-					}
-				} else {
-					executionResult = fmt.Sprintf("Human input step completed: %s", step.GetTitle())
-				}
-			} else {
-				// Fallback if file can't be read
-				executionResult = fmt.Sprintf("Human input step completed: %s", step.GetTitle())
-			}
-
-			// Ensure slice is large enough (pad with empty strings if needed)
-			for len(previousExecutionResults) <= i {
-				previousExecutionResults = append(previousExecutionResults, "")
-			}
-			previousExecutionResults[i] = executionResult
-			hcpo.GetLogger().Info(fmt.Sprintf("💾 Stored execution result for human input step %d (will be used by subsequent steps): %s", i+1, executionResult))
-			if lastOutcome != nil {
-				*lastOutcome = LastExecutedStepOutcome{StepIndex: i, StepID: step.GetID(), ExecutionResult: executionResult, Found: true}
-			}
-
-			// Check if we're in single step mode and should stop
-			if hcpo.runSingleStepOnly && i == hcpo.singleStepTarget {
-				hcpo.GetLogger().Info(fmt.Sprintf("🎯 Single step mode: completed target step %d, stopping execution", i+1))
-				hcpo.SetRunSingleStepMode(false, -1) // Reset mode
-				break
-			}
-
-			// Determine the next step from the human response route computed during execution.
-			humanInputStep, ok := step.(*HumanInputPlanStep)
-			if !ok {
-				return fmt.Errorf("step %d is not a HumanInputPlanStep", i+1)
-			}
-			// Use SelectedNextStepID if computed, otherwise fallback to NextStepID
-			nextStepID := humanInputStep.SelectedNextStepID
-			if nextStepID == "" {
-				nextStepID = humanInputStep.NextStepID
-			}
-
-			// Handle next step navigation. This now goes through the same shared
-			// helper as routing/todo_task — human_input jumps previously skipped
-			// progress cleanup and execution-folder archival entirely, which let
-			// converged steps read stale artifacts from a prior pass. The repeat
-			// cap is generous: each pass blocks on a human response, so loops are
-			// self-limiting and the guard is only a failsafe.
-			outcome, navErr := hcpo.navigateToNextStepID(ctx, step.GetID(), nextStepID, breakdownSteps, progress, &i, &startFromStep, maxHumanJumpRepeats)
-			if navErr != nil {
-				return navErr
-			}
-			if outcome == "end" {
-				hcpo.GetLogger().Info(fmt.Sprintf("🏁 Human input step %d specified 'end' - terminating workflow", i+1))
-				break
-			}
-			// "jump" repointed i; "none" falls through to the next sequential step.
 			continue
 		}
 

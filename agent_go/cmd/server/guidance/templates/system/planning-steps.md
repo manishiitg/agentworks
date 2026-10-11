@@ -15,7 +15,7 @@ proceed.
 
 Every plan-tool mutation is an atomic graph transaction. Before saving,
 the backend verifies that every routing route and explicit
-`next_step_id`/human-input branch targets a step that still exists or
+`next_step_id`/branch targets a step that still exists or
 `end`. If a tool returns `PLAN_GRAPH_INVALID`, no partial edit was saved:
 use the listed source step and field to reroute every dangling reference,
 then retry the original add/update/delete. Never delete a referenced step
@@ -50,7 +50,7 @@ switch instead of asking again — `branch` for a small in-flow decision,
 and pass `route_selections` when running either.
 Add `predefined_routes` to an `agent` only when the agent must choose
 specialist work adaptively from runtime evidence. Several known actions in one shared context belong in its ordered items. Do not add a
-`human_input` step just to ask the same branch choice again.
+checkpoint just to ask the same branch choice again.
 
 ## Step types
 
@@ -65,7 +65,7 @@ specialist work adaptively from runtime evidence. Several known actions in one s
   self-contained sub-workflow fork
 - **`branch`** — same deterministic route-map mechanics as `routing`, for a
   small in-flow next-step decision instead of a major fork
-- **`human_input`** — pause for operator input
+- **`crew`** — invoke a Crew trigger and wait for its response
 - **orphan** (`is_orphan: true`) — reusable across agents via
   `shared_with.agent_ids` + `orphan_step_ref`
 
@@ -77,5 +77,5 @@ step-types reference, inner steps, reusable orphan-route pattern),
 call **`read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`** — this is the entry
 point for any plan-composition decision. From there:
 
-- **Per-step-type deep dives**: `agent` (conversation, specialist routes, verification, SQL iteration and script batches), `human-input` (free-form values and unattended schedules), `routing` (major deterministic mode selection), and `branch` (small in-flow decisions).
+- **Per-step-type deep dives**: `agent` (conversation, specialist routes, verification, SQL iteration and script batches), `routing` (major deterministic mode selection), and `branch` (small in-flow decisions).
 - **Combining steps**: examples live with their owning contracts in `plan-design`, `agent`, `human-in-the-loop` (review/approval), and `stores` (durable persistence).

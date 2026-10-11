@@ -128,7 +128,7 @@ Recommended usage:
 
 - leave `learnings_access` unset (defaults to `"read"`) for most steps — they benefit from cross-step context.
 - set `learnings_access: "read-write"` + a non-empty `learning_objective` on steps that produce durable HOW-knowledge about the target system.
-- set `learnings_access: "none"` for steps that are truly throwaway or whose context would pollute the global skill (e.g. pure file moves, human-input steps — the latter is forced to `"none"` automatically).
+- set `learnings_access: "none"` for steps that are truly throwaway or whose context would pollute the global skill (e.g. pure file moves).
 - change a mature or redundant contributor to `learnings_access: "read"` so it still consumes shared guidance without running a write turn.
 
 ### Failure learning

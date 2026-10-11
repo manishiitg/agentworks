@@ -38,7 +38,7 @@ func (r consolidatedWorkshopRegistrar) RegisterCustomToolWithTimeout(n, d string
 	return r.capture.RegisterCustomToolWithTimeout(n, consolidatedPlanToolText(d), s, e, t, g)
 }
 
-var consolidatedStepTypes = []string{"scripted", "agent", "routing", "branch", "human_input", "crew"}
+var consolidatedStepTypes = []string{"scripted", "agent", "routing", "branch", "crew"}
 var consolidatedMaintenance = map[string]string{
 	"cleanup_orphan_configs": "cleanup_orphan_step_configs",
 }
@@ -239,7 +239,7 @@ func (r *consolidatedPlanRegistrar) flush() error {
 	if len(addBranches) > 0 {
 		s := objectToolSchema(map[string]interface{}{"type": stringToolSchema(addTypes...), "step": map[string]interface{}{"type": "object"}}, "type", "step")
 		s["oneOf"] = addBranches
-		if err := r.registerRefined("add_step", "Add a typed plan step. Put the native step fields, including reason, in step. Discover the type-specific schema; scripted is deterministic code, agent is conversational, routing selects a mode, branch selects a path, human_input captures free-form input, agent optionally delegates through predefined_routes. Uses the existing validated mutation handlers.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if err := r.registerRefined("add_step", "Add a typed plan step. Put the native step fields, including reason, in step. Discover the type-specific schema; scripted is deterministic code, agent is conversational, routing selects a mode, branch selects a path, agent optionally delegates through predefined_routes. Uses the existing validated mutation handlers.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			v, err := toolObjectArg(args, "step")
 			if err != nil {
 				return "", err

@@ -729,9 +729,6 @@ func externalPlanToolRegistry() []externalPlanTool {
 		add("update_branch_step", "Update an existing branch step.", getUpdateBranchStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateBranchStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
-		add("update_human_input_step", "Update an existing human input step.", getUpdateHumanInputStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createUpdateHumanInputStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
-		})
 		add("update_crew_step", "Update an existing crew step.", getUpdateCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
@@ -746,9 +743,6 @@ func externalPlanToolRegistry() []externalPlanTool {
 		})
 		add("add_branch_step", "Add a branch step.", getAddBranchStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddBranchStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
-		})
-		add("add_human_input_step", "Add a human input step.", getAddHumanInputStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createAddHumanInputStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
 		add("add_crew_step", "Add a crew step.", getAddCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)

@@ -167,6 +167,7 @@ export interface StepSharing {
 
 // Common fields shared by all step types
 interface CommonStepFields {
+  required_variables?: string[]
   id: string;                        // Stable step ID (required, always provided by backend)
   title: string;
   description?: string;
@@ -246,17 +247,6 @@ export interface AgentPlanStep extends CommonStepFields {
 }
 
 // Human input step (asks question to human and blocks for input)
-export interface HumanInputPlanStep extends CommonStepFields {
-  type: 'human_input';
-  question: string;                      // Required: question to ask human
-  variable_name?: string;                // Optional: store response in variable
-  response_type?: string;                // "text" (default), "yesno", "multiple_choice"
-  options?: string[];                    // For multiple_choice type
-  next_step_id?: string;                 // Default destination after response (or "end")
-  if_yes_next_step_id?: string;         // Optional: for yesno type when response is "yes"
-  if_no_next_step_id?: string;          // Optional: for yesno type when response is "no"
-  option_routes?: Record<string, string>; // Optional: for multiple_choice type - maps option index (as string "0", "1", etc.) or option value to next_step_id
-}
 
 // Routing route for routing steps
 export interface RoutingRoute {
@@ -307,7 +297,7 @@ export interface CrewPlanStep extends CommonStepFields {
 }
 
 // Discriminated union type for all step types
-export type PlanStep = ScriptedPlanStep | HumanInputPlanStep | LegacyAgentPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
+export type PlanStep = ScriptedPlanStep | LegacyAgentPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
 
 // PlanRoutingRoute represents a possible route/sub-agent for planning
 export interface PlanRoutingRoute {
@@ -331,9 +321,6 @@ export function isScriptedStep(step: PlanStep): step is ScriptedPlanStep {
   return step.type === 'scripted' || step.type === 'regular';
 }
 
-export function isHumanInputStep(step: PlanStep): step is HumanInputPlanStep {
-  return step.type === 'human_input';
-}
 
 export function isLegacyAgentStep(step: PlanStep): step is LegacyAgentPlanStep {
   return step.type === 'todo_task' || step.type === 'orchestrator';

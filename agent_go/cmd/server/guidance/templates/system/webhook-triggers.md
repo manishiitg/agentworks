@@ -250,7 +250,7 @@ step, including shared steps after paths rejoin.
 To choose one standalone step instead, use `payload_mappings.step` with the
 same `{source, values, default?}` shape, keep `route_selections={}`, and omit
 fixed or mapped routes. Group mapping may still be used. The mapped target must
-be one of `list.steps`; routing, branch, human-input, and nested nodes are not
+be one of `list.steps`; routing, branch, and nested nodes are not
 standalone targets.
 
 After saving, run one harmless authorized test for each configured mapping

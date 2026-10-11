@@ -112,6 +112,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	allSteps []PlanStepInterface,
 	stepPath string,
 ) (bool, string, error) {
+	if err := validateStepRequiredVariables(step, hcpo.variableValues); err != nil {
+		return false, "", err
+	}
 	// Cast to AgentPlanStep
 	orchestratorStep, ok := step.(*AgentPlanStep)
 	if !ok {
@@ -521,8 +524,6 @@ func routeStepTypeSummary(step PlanStepInterface) string {
 		return "type: scripted, stateless worker"
 	case StepTypeRouting:
 		return "type: routing"
-	case StepTypeHumanInput:
-		return "type: human_input"
 	default:
 		return fmt.Sprintf("type: %s", step.StepType())
 	}
@@ -823,10 +824,6 @@ func cloneStepWithDelegationOverrides(
 		applyDelegationOverridesToCommonFields(&stepCopy.CommonStepFields, instructions)
 		return &stepCopy, nil
 	case *BranchPlanStep:
-		stepCopy := *s
-		applyDelegationOverridesToCommonFields(&stepCopy.CommonStepFields, instructions)
-		return &stepCopy, nil
-	case *HumanInputPlanStep:
 		stepCopy := *s
 		applyDelegationOverridesToCommonFields(&stepCopy.CommonStepFields, instructions)
 		return &stepCopy, nil

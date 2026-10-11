@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
-import { isHumanInputStep, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
+import { isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -53,20 +53,6 @@ export interface LegacyAgentNodeData extends Record<string, unknown> {
   isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
 }
 
-export interface HumanInputNodeData extends Record<string, unknown> {
-  id: string
-  title: string
-  question?: string
-  response_type?: string
-  options?: string[]
-  status: 'pending' | 'waiting' | 'completed'
-  stepIndex: number
-  step: PlanStep
-  changeType?: ChangeType  // Highlight type for visual feedback
-  workspacePath?: string | null  // Workspace path for file opening
-  selectedRunFolder?: string  // Selected iteration folder for file opening
-  isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
-}
 
 export interface RoutingStepNodeData extends Record<string, unknown> {
   route_source?: 'human' // branch only: asks the person when nothing was preseeded
@@ -164,7 +150,7 @@ export interface WorkflowTriggerNodeData extends Record<string, unknown> {
   onRefresh?: () => void
 }
 
-export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | LegacyAgentNodeData | HumanInputNodeData | RoutingStepNodeData | AgentNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
+export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | LegacyAgentNodeData | RoutingStepNodeData | AgentNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
 
 // Node and edge types
 export type WorkflowNode = Node<WorkflowNodeData>
@@ -209,7 +195,6 @@ const NODE_DIMENSIONS = {
   routing: { width: 280, height: 200 },
   agent: { width: 320, height: 240 },
   todo_task: { width: 300, height: 120 },
-  human_input: { width: 260, height: 120 },
   crew: { width: 280, height: 160 },
   loop: { width: 300, height: 140 },
   start: { width: 96, height: 40 },
@@ -679,7 +664,6 @@ function buildPlanSuccessorMap(plan: PlanningResponse): Map<string, string[]> {
     const canContinueSequentially = !hasExplicitPlanContinuation(step) &&
       !isRoutingStep(step) &&
       !isBranchStep(step) &&
-      !isHumanInputStep(step) &&
       !isLegacyAgentStep(step)
     const nextStep = plan.steps[index + 1]
     if (canContinueSequentially && nextStep && !explicitTargets.has(nextStep.id)) {
@@ -1066,10 +1050,6 @@ function stepToNode(
     if (isLegacyAgentStep(step)) {
       return step.title || `Agent ${stepIndex + 1}`
     }
-    if (isHumanInputStep(step)) {
-      // For human input nodes, prefer question over generic title
-      return step.title || step.question || `Human Input ${stepIndex + 1}`
-    }
     return step.title || `Step ${stepIndex + 1}`
   }
 
@@ -1135,20 +1115,6 @@ function stepToNode(
     }
   }
 
-  if (isHumanInputStep(step)) {
-    return {
-      id: nodeId,
-      type: 'human_input',
-      position: { x: 0, y: 0 },
-      data: {
-        ...baseData,
-        question: step.question,
-        response_type: step.response_type || 'text',
-        options: step.options
-        // Note: status is inherited from baseData (computed based on completedStepIndices)
-      } as HumanInputNodeData
-    }
-  }
 
   if (isCrewStep(step)) {
     return {
@@ -1224,7 +1190,7 @@ function processSteps(
   // Track the last "exit" node ID for edge connections
   let lastExitNodeId: string | null = null
 
-  // Nodes reached by an explicit route edge (routing routes, human-input choices,
+  // Nodes reached by an explicit route edge (routing and branch routes,
   // or todo next_step_id). These are entered only via that route, so they must not
   // receive an array-order sequential edge.
   const explicitRouteTargetNodeIds = new Set<string>()
@@ -1236,10 +1202,6 @@ function processSteps(
   steps.forEach(s => {
     if (isRoutingStep(s) && s.routes) s.routes.forEach(r => addRouteTarget(r.next_step_id))
     if (isBranchStep(s) && s.routes) s.routes.forEach(r => addRouteTarget(r.next_step_id))
-    if (isHumanInputStep(s)) {
-      addRouteTarget(s.if_yes_next_step_id)
-      addRouteTarget(s.if_no_next_step_id)
-    }
     if (isLegacyAgentStep(s)) addRouteTarget(s.next_step_id)
   })
   const primaryRouteEntryStepIDs = new Set(
@@ -1499,14 +1461,10 @@ function processSteps(
       })
     }
 
-    if (!isHumanInputStep(step)) {
-      const vlResult = createValidationLearningNodes(node.id)
-      nodes.push(...vlResult.nodes)
-      edges.push(...vlResult.edges)
-      lastExitNodeId = vlResult.exitNodeId
-    } else {
-      lastExitNodeId = node.id
-    }
+    const vlResult = createValidationLearningNodes(node.id)
+    nodes.push(...vlResult.nodes)
+    edges.push(...vlResult.edges)
+    lastExitNodeId = vlResult.exitNodeId
     // Handle routing/branch step edge routing
     // Both evaluate a question and route to one of N possible next steps --
     // identical mechanics, routing is now the "route"/major-fork concept
@@ -1590,149 +1548,6 @@ function processSteps(
       lastExitNodeId = null // Routing steps handle their own routing
     }
 
-    // Handle human input step edge routing
-    // Human input steps ask a question and route based on response (yes/no or multiple choice)
-    if (isHumanInputStep(step)) {
-      const humanInputEdges: WorkflowEdge[] = []
-      // Use the human input node itself as source (no validation/learning nodes for human input)
-      const sourceNodeId = node.id
-
-      // Determine routing based on response_type
-      if (step.response_type === 'yesno') {
-        // Yes/No routing
-        if (step.if_yes_next_step_id) {
-          const targetNodeId = stepIdToNodeIdMap?.get(step.if_yes_next_step_id)
-          if (targetNodeId) {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-yes-to-${targetNodeId}`,
-              source: sourceNodeId,
-              target: targetNodeId,
-              type: 'smoothstep',
-              label: 'Yes',
-              labelStyle: { fill: '#22c55e', fontWeight: 600, fontSize: 11 },
-              labelBgStyle: { fill: '#f0fdf4', fillOpacity: 0.9 },
-              labelBgPadding: [4, 4] as [number, number],
-              labelBgBorderRadius: 4,
-              style: { stroke: '#22c55e', strokeWidth: 2 },
-              animated: false
-            })
-          } else if (step.if_yes_next_step_id === 'end') {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-yes-to-end`,
-              source: sourceNodeId,
-              target: 'end',
-              type: 'smoothstep',
-              label: 'Yes',
-              labelStyle: { fill: '#22c55e', fontWeight: 600, fontSize: 11 },
-              labelBgStyle: { fill: '#f0fdf4', fillOpacity: 0.9 },
-              labelBgPadding: [4, 4] as [number, number],
-              labelBgBorderRadius: 4,
-              style: { stroke: '#22c55e', strokeWidth: 2 },
-              animated: false
-            })
-          }
-        }
-
-        if (step.if_no_next_step_id) {
-          const targetNodeId = stepIdToNodeIdMap?.get(step.if_no_next_step_id)
-          if (targetNodeId) {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-no-to-${targetNodeId}`,
-              source: sourceNodeId,
-              target: targetNodeId,
-              type: 'smoothstep',
-              label: 'No',
-              labelStyle: { fill: '#ef4444', fontWeight: 600, fontSize: 11 },
-              labelBgStyle: { fill: '#fef2f2', fillOpacity: 0.9 },
-              labelBgPadding: [4, 4] as [number, number],
-              labelBgBorderRadius: 4,
-              style: { stroke: '#ef4444', strokeWidth: 2 },
-              animated: false
-            })
-          } else if (step.if_no_next_step_id === 'end') {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-no-to-end`,
-              source: sourceNodeId,
-              target: 'end',
-              type: 'smoothstep',
-              label: 'No',
-              labelStyle: { fill: '#ef4444', fontWeight: 600, fontSize: 11 },
-              labelBgStyle: { fill: '#fef2f2', fillOpacity: 0.9 },
-              labelBgPadding: [4, 4] as [number, number],
-              labelBgBorderRadius: 4,
-              style: { stroke: '#ef4444', strokeWidth: 2 },
-              animated: false
-            })
-          }
-        }
-      } else if (step.response_type === 'multiple_choice' && step.option_routes) {
-        // Multiple choice routing - create edges for each option route
-        Object.entries(step.option_routes).forEach(([optionKey, nextStepId]) => {
-          const targetNodeId = stepIdToNodeIdMap?.get(nextStepId)
-          const optionLabel = step.options?.[parseInt(optionKey)] || optionKey
-
-          if (targetNodeId) {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-option-${optionKey}-to-${targetNodeId}`,
-              source: sourceNodeId,
-              target: targetNodeId,
-              type: 'smoothstep',
-              label: optionLabel,
-              labelStyle: { fill: '#3b82f6', fontWeight: 600, fontSize: 11 },
-              labelBgStyle: { fill: '#eff6ff', fillOpacity: 0.9 },
-              labelBgPadding: [4, 4] as [number, number],
-              labelBgBorderRadius: 4,
-              style: { stroke: '#3b82f6', strokeWidth: 2 },
-              animated: false
-            })
-          } else if (nextStepId === 'end') {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-option-${optionKey}-to-end`,
-              source: sourceNodeId,
-              target: 'end',
-              type: 'smoothstep',
-              label: optionLabel,
-              labelStyle: { fill: '#ef4444', fontWeight: 600, fontSize: 11 },
-              labelBgStyle: { fill: '#fef2f2', fillOpacity: 0.9 },
-              labelBgPadding: [4, 4] as [number, number],
-              labelBgBorderRadius: 4,
-              style: { stroke: '#ef4444', strokeWidth: 2 },
-              animated: false
-            })
-          }
-        })
-      } else {
-        // Text response or default routing - use next_step_id
-        if (step.next_step_id) {
-          const targetNodeId = stepIdToNodeIdMap?.get(step.next_step_id)
-          if (targetNodeId) {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-to-${targetNodeId}`,
-              source: sourceNodeId,
-              target: targetNodeId,
-              type: 'smoothstep',
-              style: { stroke: '#6b7280', strokeWidth: 2 },
-              animated: false
-            })
-          } else if (step.next_step_id === 'end') {
-            humanInputEdges.push({
-              id: `${sourceNodeId}-human-input-to-end`,
-              source: sourceNodeId,
-              target: 'end',
-              type: 'smoothstep',
-              style: { stroke: '#6b7280', strokeWidth: 2 },
-              animated: false
-            })
-          }
-        }
-      }
-
-      edges.push(...humanInputEdges)
-
-      // Human input steps handle their own routing - don't connect to next sequential step
-      lastExitNodeId = null
-    }
-
     // Handle todo_task step edge routing
     // Todo task steps have predefined routes (sub-agents)
     // and optionally a generic agent. After sub-agents complete, they return to the main todo task node.
@@ -1781,8 +1596,8 @@ function processSteps(
 /**
  * Check if a node is a step-type node (has step data)
  */
-function isStepTypeNode(node: WorkflowNode): node is WorkflowNode & { data: StepNodeData | LegacyAgentNodeData | HumanInputNodeData | AgentNodeData } {
-  return node.type === 'step' || node.type === 'todo_task' || node.type === 'human_input' || node.type === 'agent'
+function isStepTypeNode(node: WorkflowNode): node is WorkflowNode & { data: StepNodeData | LegacyAgentNodeData | AgentNodeData } {
+  return node.type === 'step' || node.type === 'todo_task' || node.type === 'agent'
 }
 
 /**
@@ -2066,7 +1881,7 @@ export function usePlanToFlow(
     }
 
     // Connect a terminal step to End only when no explicit routing edge already
-    // leaves it. Routing, human-input, todo-task, and agent steps own
+    // leaves it. Routing, branch, and agent steps own
     // their deterministic next-step edges.
     if (processedNodes.length > 0) {
       const lastNode = processedNodes[processedNodes.length - 1]
@@ -2488,7 +2303,7 @@ export function usePlanToFlow(
 
     // Inject read-only context into step-type nodes.
     layoutedResult.nodes = layoutedResult.nodes.map(node => {
-      if (node.type === 'step' || node.type === 'human_input' || node.type === 'todo_task' || node.type === 'agent') {
+      if (node.type === 'step' || node.type === 'todo_task' || node.type === 'agent') {
         return {
           ...node,
           data: {

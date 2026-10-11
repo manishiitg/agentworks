@@ -86,7 +86,7 @@ Each entry in `routes[]` has:
 Routing routes do **not** define inline sub-agents. Unlike an agent
 agent's `predefined_routes` (which may embed a `sub_agent_step`), routing
 `routes[]` are pointers—every `next_step_id` must reference an existing plan
-step. Add downstream scripted, agent, or human-input steps separately,
+step. Add downstream scripted or agent steps separately,
 then point the routes at their IDs.
 
 ### Convergence — branches MUST rejoin via `next_step_id`
@@ -94,7 +94,7 @@ then point the routes at their IDs.
 A routing step jumps execution **into** the selected branch, but it does not stop the engine from continuing in list order afterwards. So each branch must explicitly route **out** to the shared continuation (or `end`), or execution will fall through into the *next* branch in the list and run a non-selected path.
 
 - Give the **terminal step of each branch** a `next_step_id` pointing to the shared downstream step (e.g. each portal branch → `normalize`), or `"end"` to finish.
-- The engine honors `next_step_id` on `routing`, `human_input`, and
+- The engine honors `next_step_id` on `routing` and
   `agent` steps (including legacy orchestrator compatibility
   records): the selected branch runs, jumps to the shared step, and sibling
   branches are skipped.
@@ -110,7 +110,7 @@ made decision selects exactly one genuinely different downstream path.
   zero, one, or several specialists adaptively. Routing runs exactly one fixed
   downstream alternative.
 - **Routing vs. plain agent**: a plain sequence is one ordered conversation; add `predefined_routes` only for adaptive delegation.
-- **Routing vs. human_input**: do not ask the user again when the builder already knows the requested branch. Use `route_selections`. Use `human_input` only when the workflow must pause mid-run for information that was not available at launch.
+- **Known route choices**: use `route_selections`; supply known values through variables or per-step `human_inputs`. Agents use `human_feedback` for urgent missing values.
 
 ### Example
 
@@ -125,7 +125,7 @@ After a login probe, write:
 Then route among:
 
 - `success` -> `next_step_id: "step-extract-data"`
-- `mfa_required` -> `next_step_id: "step-mfa-prompt"` (a human_input step that asks for the code)
+- `mfa_required` -> `next_step_id: "step-mfa-prompt"` (an agent that calls human_feedback for the code)
 - `failed` -> `next_step_id: "step-retry-or-abort"`
 
 Each `next_step_id` must already exist as a step in the plan.

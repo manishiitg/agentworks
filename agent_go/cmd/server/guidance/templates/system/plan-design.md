@@ -227,8 +227,9 @@ Step-level `success_criteria` is deprecated. Rely on a strong `description` plus
 - A reusable scripted route may declare `script_parameters`: a small named, typed contract (`type`, `description`, optional `required`, `default`, `enum`) for controlled per-call variation. Keep credentials in Secrets and file dependencies in `context_dependencies`; do not encode dynamic route behavior as rewritten code or narrative instructions.
 - **Routing** (type: "routing"): N-way deterministic branching for a major sub-workflow fork. Reads `route_selection.json` (or caller `route_selections`) and picks exactly one **routes[]** entry. Each route has **route_id**, **condition**, and **next_step_id** (pointer to an existing step). Optional **default_route_id** is a missing-file fallback. Optional **route_source_file** points at a prior step's route file.
 - **Branch** (type: "branch"): shares file-based selection with Routing, for a small in-flow next-step decision instead of a major fork. Uses **branch_question**; additionally supports **route_source="human"** for a fixed-choice prompt.
-- **Human Input** (type: "human_input"): Captures a free-form value with **response_type="text"**. Existing yesno/multiple_choice steps remain supported; new fixed-choice decisions use a human-decided Branch.
 - **Orphan** (is_orphan: true): Not part of the main execution flow. Orphan steps are plan-local reusable definitions and manual utility agents. Use them for data checks, environment validation, one-off investigations, or shared sub-agent definitions that multiple agents in the same plan may reuse. Reuse is explicit: an orphan step must declare `shared_with.agent_ids`, and an agent route must point to it with `orphan_step_ref`. Do not assume every orphan step is shared with every agent.
+
+Known values belong in declared launch variables. Set `required_variables` on their first consumer so missing values fail before work starts on the selected route. Use `human_feedback` inside an agent for a live CAPTCHA or other urgent interaction; use `create_human_input_request` for a durable request.
 
 ### Inner Steps
 

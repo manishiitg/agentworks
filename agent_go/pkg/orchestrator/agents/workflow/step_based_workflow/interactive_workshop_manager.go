@@ -1276,11 +1276,11 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"validate_plan_change",
 		"migrate_agent_code_items", "migrate_agent_steps", "migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
-		"add_human_input_step",
+
 		"add_agent_route", "update_agent_route", "delete_agent_route",
 		"add_crew_step", "update_crew_step",
 		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
-		"update_human_input_step",
+
 		"delete_plan_steps", "cleanup_orphan_step_configs",
 		"update_validation_schema",
 		"change_step_type",
@@ -2039,7 +2039,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"human_input": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional human input/custom instructions for this run. For a standalone agent step, this is opening context and the configured queue still runs from the beginning; standalone sessions are not resumed across execute_step calls. For human_input steps, it is used as the response. For other executable steps, it is injected as high-priority context.",
+					"description": "Optional human input/custom instructions for this run. For a standalone agent step, this is opening context and the configured queue still runs from the beginning; standalone sessions are not resumed across execute_step calls. For other executable steps, it is injected as high-priority context.",
 				},
 				"agent_restart": map[string]interface{}{
 					"type":        "boolean",

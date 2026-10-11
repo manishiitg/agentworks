@@ -25,13 +25,13 @@ func TestWebhookRunBindingKeepsRouteGroupAndHumanInputsScoped(t *testing.T) {
 		t.Fatal("tool can mutate saved route binding")
 	}
 	var plan PlanningResponse
-	if err = json.Unmarshal([]byte(`{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"},{"type":"human_input","id":"approve","title":"Approval","question":"Approve?"}]}`), &plan); err != nil {
+	if err = json.Unmarshal([]byte(`{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"},{"type":"agent","id":"approve","title":"Approval","description":"Use human_feedback if needed"}]}`), &plan); err != nil {
 		t.Fatal(err)
 	}
 	original := map[string]string{"work": "Existing instruction"}
 	inputs := attachWebhookStepInputs(plan.Steps, original, binding.InputFile)
-	if _, ok := inputs["approve"]; ok {
-		t.Fatal("payload reference satisfied human approval")
+	if !strings.Contains(inputs["approve"], binding.InputFile) {
+		t.Fatal("agent step did not receive payload context")
 	}
 	if !strings.Contains(inputs["work"], binding.InputFile) || !strings.Contains(inputs["work"], original["work"]) {
 		t.Fatalf("missing step context: %v", inputs)

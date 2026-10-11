@@ -38,9 +38,8 @@ When running a step or the full workflow:
      projection that keeps only unrelated fields can discard a valid
      execution ID after the step has already started.
 2. `execute_step` follows the step's persistent `learnings_access` config.
-3. **Human input steps**: Pass `human_input` parameter with the
-   appropriate answer from your conversation context. This prevents
-   blocking for manual UI input.
+3. **Run instructions**: Pass `human_input` to add the user's instructions to this
+   executable step. Use `human_inputs` keyed by step ID for a full workflow run.
 4. Tell the user the step is running. Move on to other work or wait
    for the auto-notification.
    - If the user adds a correction while it is running, call

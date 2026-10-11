@@ -18,7 +18,6 @@ import { useModeStore } from '../../../stores/useModeStore'
 import { nodeTypes } from '../nodes'
 import {
   HandoffCrewNode,
-  HandoffHumanInputNode,
   HandoffAgentNode,
   HandoffRoutingNode,
   HandoffStepNode,
@@ -87,7 +86,6 @@ const canvasNodeTypes = {
   'workflow-trigger-heading': WorkflowTriggerHeading,
   step: HandoffStepNode,
   todo_task: HandoffLegacyAgentNode,
-  human_input: HandoffHumanInputNode,
   routing: HandoffRoutingNode,
   branch: HandoffRoutingNode,
   agent: HandoffAgentNode,
@@ -1600,8 +1598,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
 
     // Helper to check if a node is a parent node type
     const isParentNode = (node: WorkflowNode): boolean => {
-      return node.type === 'step' ||
-             node.type === 'human_input'
+      return node.type === 'step'
     }
 
     // Also treat sub-agents as parent nodes (they have learning/validation children)

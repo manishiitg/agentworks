@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -194,9 +192,6 @@ func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex in
 			return fmt.Errorf("invalid script_parameters: %w", err)
 		}
 		return nil
-
-	case *HumanInputPlanStep:
-		return validateHumanInputStepFieldsTyped(step)
 
 	case *AgentPlanStep:
 		if err := validateAgentStepFieldsTypedWithOptions(step, allowLegacyAgentCode); err != nil {
@@ -459,18 +454,6 @@ func validateNextStepIDReferences(plan *PlanningResponse) error {
 				}
 			case *CrewPlanStep:
 				ref(s.GetID(), "next_step_id", s.NextStepID)
-			case *HumanInputPlanStep:
-				ref(s.GetID(), "next_step_id", s.NextStepID)
-				ref(s.GetID(), "if_yes_next_step_id", s.IfYesNextStepID)
-				ref(s.GetID(), "if_no_next_step_id", s.IfNoNextStepID)
-				optionKeys := make([]string, 0, len(s.OptionRoutes))
-				for key := range s.OptionRoutes {
-					optionKeys = append(optionKeys, key)
-				}
-				sort.Strings(optionKeys)
-				for _, key := range optionKeys {
-					ref(s.GetID(), fmt.Sprintf("option_routes[%q]", key), s.OptionRoutes[key])
-				}
 			}
 		}
 	}
@@ -483,67 +466,6 @@ func validateNextStepIDReferences(plan *PlanningResponse) error {
 		"PLAN_GRAPH_INVALID: %d next-step reference(s) point to missing steps:\n- %s\nNo changes were saved. Update every listed route/next-step reference to an existing step ID or \"end\", then retry the mutation",
 		len(issues), strings.Join(issues, "\n- "),
 	)
-}
-
-// validateHumanInputStepFieldsTyped enforces that a human_input step's
-// response-routing configuration is internally consistent. The runtime
-// (resolveHumanInputNextStep) never fails on a misconfigured step — an
-// unmatched option falls back to the default next_step_id and then to the
-// next sequential step — so a bad config doesn't error at execution, it
-// routes somewhere the builder didn't intend. Catch the unambiguous
-// misconfigurations at plan time instead.
-func validateHumanInputStepFieldsTyped(step *HumanInputPlanStep) error {
-	if strings.TrimSpace(step.Question) == "" {
-		return fmt.Errorf("human_input step (title: %q, ID: %s) is missing required question field", step.Title, step.ID)
-	}
-	responseType := strings.TrimSpace(step.ResponseType)
-	switch responseType {
-	case "", "text", "yesno", "multiple_choice":
-	default:
-		return fmt.Errorf("human_input step %q has unsupported response_type %q (use text, yesno, or multiple_choice)", step.ID, responseType)
-	}
-	if (step.IfYesNextStepID != "" || step.IfNoNextStepID != "") && responseType != "yesno" {
-		return fmt.Errorf("human_input step %q sets if_yes_next_step_id/if_no_next_step_id but response_type is %q — those fields only apply to response_type \"yesno\"", step.ID, responseType)
-	}
-	if len(step.OptionRoutes) > 0 && responseType != "multiple_choice" {
-		return fmt.Errorf("human_input step %q sets option_routes but response_type is %q — option_routes only applies to response_type \"multiple_choice\"", step.ID, responseType)
-	}
-	if responseType == "multiple_choice" {
-		if len(step.Options) == 0 {
-			return fmt.Errorf("human_input step %q has response_type \"multiple_choice\" but no options", step.ID)
-		}
-		optionValues := make(map[string]bool, len(step.Options))
-		for _, opt := range step.Options {
-			optionValues[opt] = true
-		}
-		for key := range step.OptionRoutes {
-			if idx, err := strconv.Atoi(key); err == nil {
-				if idx < 0 || idx >= len(step.Options) {
-					return fmt.Errorf("human_input step %q option_routes key %q is out of range — the step has %d option(s) (indices 0-%d)", step.ID, key, len(step.Options), len(step.Options)-1)
-				}
-				continue
-			}
-			if !optionValues[key] {
-				return fmt.Errorf("human_input step %q option_routes key %q matches neither an option index nor an option value", step.ID, key)
-			}
-		}
-		// A partial map is legal when the default next_step_id catches the
-		// rest; without one, picking an unmapped option silently continues to
-		// the next sequential step — almost always a missing mapping rather
-		// than a deliberate choice.
-		if len(step.OptionRoutes) > 0 && strings.TrimSpace(step.NextStepID) == "" {
-			for i, opt := range step.Options {
-				if _, byIdx := step.OptionRoutes[strconv.Itoa(i)]; byIdx {
-					continue
-				}
-				if _, byVal := step.OptionRoutes[opt]; byVal {
-					continue
-				}
-				return fmt.Errorf("human_input step %q option %d (%q) has no option_routes entry and the step has no default next_step_id — selecting it would silently continue to the next sequential step; map the option or set next_step_id as the fallback", step.ID, i, opt)
-			}
-		}
-	}
-	return nil
 }
 
 // populateRuntimeFields populates runtime fields (AgentConfigs, etc.) on plan steps in-place
@@ -570,28 +492,6 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 	switch step := typedStep.(type) {
 	case *ScriptedPlanStep:
 		// Scripted step (may have loops)
-		// Populate runtime field directly on plan step
-		step.AgentConfigs = agentConfigs
-		if validationSchemaOverride != nil {
-			step.ValidationSchema = validationSchemaOverride
-		}
-		return nil
-
-	case *HumanInputPlanStep:
-		// Human input step: no execution, validation, or learning - just asks question and blocks.
-		// Force learnings_access="none" + empty objective so this step is never included
-		// in the read or write path regardless of defaults. Under the learnings_access
-		// split, the default is "read" (step sees _global/ SKILL.md) — which is
-		// meaningless for a human-input step since it has no LLM prompt.
-		if agentConfigs == nil {
-			agentConfigs = &AgentConfigs{LearningsAccess: LearningsAccessNone}
-		} else if strings.TrimSpace(agentConfigs.LearningObjective) != "" || agentConfigs.LearningsAccess != LearningsAccessNone {
-			cleared := *agentConfigs
-			cleared.LearningObjective = ""
-			cleared.LearningsAccess = LearningsAccessNone
-			agentConfigs = &cleared
-		}
-
 		// Populate runtime field directly on plan step
 		step.AgentConfigs = agentConfigs
 		if validationSchemaOverride != nil {
@@ -651,7 +551,7 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 // of "plan mutation" (change_step_type, declared-execution-mode migrations,
 // agent compat).
 func IsPlanModificationTool(name string) bool {
-	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_human_input_step" || name == "update_agent_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_human_input_step" || name == "add_agent_step" || name == "add_crew_step" ||
+	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_agent_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_agent_step" || name == "add_crew_step" ||
 		name == "update_validation_schema" ||
 		name == "add_todo_task_route" ||
 		name == "add_agent_route" || name == "update_agent_route" || name == "delete_agent_route" || name == "migrate_agent_steps" ||

@@ -259,6 +259,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 		}
 	}
 
+	start := setup.StartFromStep
+	if setup.Context.RunSingleStepOnly {
+		start = setup.Context.SingleStepTarget
+	}
+	if err := validateRequiredLaunchVariables(breakdownSteps, hcpo.variableValues, hcpo.requiredLaunchRouteSelections(), start, setup.Context.RunSingleStepOnly); err != nil {
+		return "", err
+	}
+
 	// For inner steps: skip top-level cleanup and route execution into the
 	// owning Agent's nested artifact subtree.
 	if isInnerStep {
@@ -293,7 +301,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	execManager.ApplyExecutionContext(setup)
 
 	// Thread builder-supplied human_input into the execution context so the
-	// human_input controller can substitute it for the UI prompt without relying
+	// human branch can substitute it for the UI prompt without relying
 	// on session-scoped state.
 	if opts != nil && opts.HumanInput != "" {
 		setup.Context.WorkshopHumanInput = opts.HumanInput

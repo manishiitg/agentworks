@@ -41,8 +41,8 @@ func attachWebhookStepInputs(steps []PlanStepInterface, inputs map[string]string
 			if step == nil {
 				continue
 			}
-			// A payload reference must never satisfy a required human response.
-			if step.StepType() != StepTypeHumanInput && step.GetID() != "" {
+			// Attach payload context only to the matching executable step.
+			if step.GetID() != "" {
 				result[step.GetID()] = result[step.GetID()] + "\n" + WebhookInputInstruction(path)
 			}
 			if orchestration, ok := step.(*AgentPlanStep); ok {

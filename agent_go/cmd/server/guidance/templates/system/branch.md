@@ -37,10 +37,7 @@ publish or hold, any option that goes straight to `end` — is always a branch;
 When the decision is a person's — approve or hold, publish or redraft, pick
 one of a few options — set `route_source: "human"` on the branch. The
 `routes[]` are the options shown to the person (`route_name` is the label)
-and `branch_question` is the prompt. This is the successor to a `yesno` /
-`multiple_choice` `human_input` step: same blocking prompt, same UI, but the
-answer is a route, so there is no second copy of routing fields to keep in
-sync. Resolution order is unchanged for everything a schedule or caller can
+and `branch_question` is the prompt. The answer is a route; the choices and their targets share one definition. Resolution order is unchanged for everything a schedule or caller can
 see:
 
 1. caller `route_selections[step_id]`, a preseeded `route_selection.json`,
@@ -52,13 +49,11 @@ see:
    `default_route_id` to the safe do-nothing route (typically the one that
    goes to `end`) so scheduled runs never auto-approve;
 4. interactive run — the person is asked; the run waits (same 10-minute
-   window as `human_input`).
+   window).
 
-Use `add_step(..., route_source="human")` for any new yes/no or
-pick-one decision; `add_step` now rejects `yesno` and
-`multiple_choice` and points here. Keep `human_input` (`text`) only for
-capturing a free-form value into a variable. Existing `human_input` steps are
-untouched.
+Use `add_step(type="branch", step={..., route_source:"human", ...})` for a
+planned fixed choice. Agents collect urgent free-form input with `human_feedback`;
+known inputs arrive through run variables or per-step instructions.
 
 ### When to use branch
 
@@ -132,7 +127,7 @@ Each entry in `routes[]` has:
 
 Branch routes do **not** define inline sub-agents. Every `next_step_id`
 must reference a step that already exists in the plan. Add those
-downstream steps separately (as scripted, agent, or human_input
+downstream steps separately (as scripted or agent
 steps), then point the routes at their IDs.
 
 ### Convergence — options MUST rejoin via `next_step_id`
@@ -157,11 +152,7 @@ each option a `next_step_id` pointing to the shared downstream step, or
   fixed alternative.
 - **Branch vs. plain agent**: a plain sequence is one ordered
   conversation; add routes only for adaptive delegation.
-- **Branch vs. human_input**: do not ask the user again when the builder
-  already knows the requested option. Use `route_selections`. Use
-  `human_input` only when the workflow must pause mid-run for information
-  that was not available at launch.
-
+- **Known human choices**: use `route_selections` instead of asking again. Agents use `human_feedback` for urgent missing values.
 ### Anti-patterns
 
 - Branch with only one route, or with a generic catch-all route that should

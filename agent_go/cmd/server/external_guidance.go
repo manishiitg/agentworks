@@ -401,7 +401,7 @@ func externalPreparation(claims *UserClaims) []string {
 	canRun := claims == nil || claims.AccessToken == nil || claims.AccessToken.Allows("runs:execute")
 	if canRun {
 		steps = append(steps, "To run: call a run-mode tool such as execute_step (its reply carries session_id), then poll runs action=status for completion. Read run evidence with runs action=list, get_run, and runs action=logs.")
-		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer waiting human-input steps with runs action=reply_input.")
+		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending human_feedback requests with runs action=reply_input.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "builder_chat"}) {
 		steps[0] = "This connection can build selected workflows where you currently have write access: builder action=chat continues your existing workflow chat. Poll builder action=status and reply with builder action=reply_input using the operation_id. Native shell/account tools are unavailable. Changes use the configured Builder model."

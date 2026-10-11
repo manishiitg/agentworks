@@ -65,10 +65,7 @@ type ExecutionOptions struct {
 	// Variable group execution options (for batch execution with multiple groups)
 	EnabledGroupNames []string `json:"enabled_group_names,omitempty"` // Group names to execute (if empty, uses groups' enabled flags)
 
-	// Human input overrides, keyed by step ID. Human-input steps consume the
-	// value as their response; executable steps receive it as run-scoped prompt
-	// context. When SkipHumanInput is true, human-input responses take priority
-	// over the variableValues fallback.
+	// Operator instructions, keyed by step ID and scoped to that executable step.
 	HumanInputs map[string]string `json:"human_inputs,omitempty"`
 
 	// RouteSelections overrides routing steps deterministically by step ID.
@@ -121,8 +118,8 @@ type ExecutionContext struct {
 	HumanInputs map[string]string
 
 	// WorkshopHumanInput is the single-step response the builder agent supplies via
-	// execute_step(human_input="..."). Human input steps consume it as the response
-	// substitute; executable steps receive it as high-priority prompt context.
+	// execute_step(human_input="..."). Executable steps receive high-priority prompt
+	// context; a human-decided branch can use it as an explicit route choice.
 	WorkshopHumanInput string
 
 	// AgentRestart forces an agent step to archive any existing

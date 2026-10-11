@@ -10,6 +10,7 @@ Start with the operator journey, then use the subsystem references when you need
 
 ## Product Areas
 
+- [Retiring fixed human-input steps](workflow/human-input-step-retirement.md): required launch variables, live human tools and a drained migration.
 - [Workflow](workflow/README.md): workflow authoring, execution, scheduling, monitoring, Pulse, and Auto Improve.
 - [Organization and Agents](multiagent/README.md): delegation, Org Pulse, shared memory, and agent-to-agent coordination.
 - [Core](core/README.md): providers, MCP, browser sessions, connectors, secrets, security, and shared runtime services.

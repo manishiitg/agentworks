@@ -441,12 +441,12 @@ func TestClearDriftReviewAfterPlanUpdateRetriedReturnsPersistentFailure(t *testi
 
 func TestUpdateSingleStepTracksArtifactRelevantFields(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&HumanInputPlanStep{
+		&AgentPlanStep{
 			CommonStepFields: CommonStepFields{
-				ID:    "ask-user",
-				Title: "Ask user",
+				ID:          "ask-user",
+				Title:       "Ask user",
+				Description: "Old instruction",
 			},
-			Question:   "Old question?",
 			NextStepID: "step-old",
 		},
 		&RoutingPlanStep{
@@ -462,19 +462,17 @@ func TestUpdateSingleStepTracksArtifactRelevantFields(t *testing.T) {
 		},
 	}}
 
-	var humanChanges []PlanFieldChange
+	var agentChanges []PlanFieldChange
 	if _, _, err := updateSingleStep(plan, PartialPlanStep{
 		ExistingStepID: "ask-user",
-		Question:       "New question?",
-		ResponseType:   "multiple_choice",
-		Options:        []string{"A", "B"},
+		Description:    "New instruction",
 		NextStepID:     "step-new",
-	}, &humanChanges); err != nil {
-		t.Fatalf("updateSingleStep human input returned error: %v", err)
+	}, &agentChanges); err != nil {
+		t.Fatalf("updateSingleStep agent returned error: %v", err)
 	}
-	for _, want := range []string{"question", "response_type", "options", "next_step_id"} {
-		if !hasPlanFieldChange(humanChanges, want) {
-			t.Fatalf("human field changes missing %q: %#v", want, humanChanges)
+	for _, want := range []string{"description", "next_step_id"} {
+		if !hasPlanFieldChange(agentChanges, want) {
+			t.Fatalf("agent field changes missing %q: %#v", want, agentChanges)
 		}
 	}
 

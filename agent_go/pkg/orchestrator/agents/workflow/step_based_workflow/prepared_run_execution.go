@@ -18,6 +18,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePreparedRun(ctx context.Contex
 	// Apply execution context (sets orchestrator state, including selectedRunFolder)
 	// This MUST be done before setting session ID so that Downloads path override uses correct run folder
 	hcpo.GetExecutionManager().ApplyExecutionContext(setup)
+	start := setup.StartFromStep
+	if setup.Context.RunSingleStepOnly {
+		start = setup.Context.SingleStepTarget
+	}
+	if err := validateRequiredLaunchVariables(breakdownSteps, setup.VariableValues, hcpo.requiredLaunchRouteSelections(), start, setup.Context.RunSingleStepOnly); err != nil {
+		return err
+	}
+
 	hcpo.GetLogger().Info(fmt.Sprintf("🔍 [DEBUG] After ApplyExecutionContext - selectedRunFolder: '%s', runFolder: '%s'", hcpo.selectedRunFolder, setup.RunFolder))
 
 	// Each run owns its stateful MCP connections and Downloads directory.
