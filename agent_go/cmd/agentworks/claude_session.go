@@ -79,12 +79,13 @@ func nativeClaudeSession(remote, session string) (claudeSessionRecord, string, e
 	return record, strings.TrimSpace(string(key)), nil
 }
 
-func claudeSessionOffer(ctx context.Context, remote string, a agentworksclient.AgentAttachment, messages []agentworksclient.AgentLiveMessage) error {
+func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient.LocalBridgeReply) error {
+	a := out.Attachment
 	record, key, err := nativeClaudeSession(remote, a.SessionID)
 	if err != nil {
 		return err
 	}
-	text := pluginMessageText(agentworksclient.LocalBridgeReply{Attached: true, Attachment: a, Messages: messages}, "claude_session")
+	text := pluginMessageText(out, "claude_session")
 	if len(text) > 96<<10 {
 		return errors.New("native message exceeds 96 KiB; explicitly read the inbox to recover, no automatic retry")
 	}

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
 func TestAgentPluginUnattachedHookAndPersonCommand(t *testing.T) {
@@ -52,5 +54,26 @@ func TestAgentPluginUnattachedHookAndPersonCommand(t *testing.T) {
 	words, err := pluginPromptWords(`/agentworks attach reviewer "$(touch /tmp/should-never-run)" --allow-none`)
 	if err != nil || len(words) != 5 || words[3] != "$(touch /tmp/should-never-run)" {
 		t.Fatal("person command was interpreted as shell code")
+	}
+}
+
+// Pin the reported repeated-instructions bug without losing per-message provenance.
+func TestAgentDeliveryGuidanceEnvelope(t *testing.T) {
+	out := agentworksclient.LocalBridgeReply{IncludeGuidance: true, Attachment: agentworksclient.AgentAttachment{Provider: "claude", SessionID: "exact-session"}, Messages: []agentworksclient.AgentLiveMessage{{Sender: "reviewer", MessageID: "message-id", InboxID: "original-inbox", Message: "peer content"}}}
+	first := pluginMessageText(out, "claude_session")
+	if !strings.Contains(first, "bridge message ack --provider claude --session exact-session") || !strings.Contains(first, "bridge message reply") {
+		t.Fatal("first offer omitted native commands")
+	}
+	out.IncludeGuidance = false
+	next := pluginMessageText(out, "claude_session")
+	if strings.Contains(next, "bridge message ack") || strings.Contains(next, "bridge message reply") {
+		t.Fatal("later offer repeated command guidance")
+	}
+	for _, text := range []string{first, next} {
+		for _, required := range []string{agentDeliveryHeader, "Sender content", `"sender":"reviewer"`, `"message_id":"message-id"`, `"inbox_id":"original-inbox"`} {
+			if !strings.Contains(text, required) {
+				t.Fatal("offer lost provenance", required)
+			}
+		}
 	}
 }

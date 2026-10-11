@@ -199,6 +199,9 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	first := send("offer before crash")
 	offer := wait(first["message_id"].(string))
+	if !offer.IncludeGuidance {
+		t.Fatal("first delivery omitted session guidance")
+	}
 	if out := local(drain); len(out.Messages) != 0 {
 		t.Fatal("duplicate offer within bridge")
 	}
@@ -206,7 +209,41 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	cancel, done = start()
 	defer cancel()
 	second := send("new offer after restart")
-	_ = wait(second["message_id"].(string)) // Unacknowledged first message must NOT be reoffered.
+	if out := wait(second["message_id"].(string)); out.IncludeGuidance {
+		t.Fatal("bridge restart repeated session guidance before 24 hours")
+	} // Unacknowledged first message must NOT be reoffered.
+	// Advance the durable timestamp while stopped, then exercise the real
+	// server/SSE/socket path again without a day-long test wait.
+	stop(cancel, done)
+	statePath := filepath.Join(root, "sessions.json")
+	stateBytes, e := os.ReadFile(statePath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var state map[string]map[string]any
+	if e = json.Unmarshal(stateBytes, &state); e != nil {
+		t.Fatal(e)
+	}
+	for _, session := range state {
+		session["last_guidance_at"] = time.Now().Add(-25 * time.Hour).UTC()
+	}
+	stateBytes, e = json.Marshal(state)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(statePath, stateBytes, 0600); e != nil {
+		t.Fatal(e)
+	}
+	cancel, done = start()
+	defer cancel()
+	reminder := send("offer after guidance expires")
+	if out := wait(reminder["message_id"].(string)); !out.IncludeGuidance {
+		t.Fatal("24-hour guidance refresh missing")
+	}
+	afterReminder := send("offer immediately after reminder")
+	if out := wait(afterReminder["message_id"].(string)); out.IncludeGuidance {
+		t.Fatal("guidance repeated immediately after refresh")
+	}
 	page := call(receiver, map[string]any{"action": "read", "agent_name": "hook-reviewer"})
 	for _, v := range page["messages"].([]any) {
 		if v.(map[string]any)["delivery"] != "stored" {
@@ -290,6 +327,10 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	resume.Action = "resume"
 	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("person-confirmed exact resume failed")
+	}
+	resumed := send("offer on a new attachment")
+	if out := wait(resumed["message_id"].(string)); !out.IncludeGuidance {
+		t.Fatal("new attachment inherited old command guidance")
 	}
 	wrongProcess := base
 	wrongProcess.Action, wrongProcess.HostKey = "status", "another-provider-process"

@@ -40,15 +40,16 @@ type LocalBridgeRequest struct {
 }
 
 type LocalBridgeReply struct {
-	Attached   bool               `json:"attached"`
-	Attachment AgentAttachment    `json:"attachment,omitempty"`
-	Messages   []AgentLiveMessage `json:"messages,omitempty"`
-	Error      string             `json:"error,omitempty"`
-	Result     json.RawMessage    `json:"result,omitempty"`
-	Sessions   []AgentAttachment  `json:"sessions,omitempty"`
-	LastError  string             `json:"last_error,omitempty"`
-	Offline    bool               `json:"offline,omitempty"`
-	Pending    int                `json:"pending"`
+	Attached        bool               `json:"attached"`
+	IncludeGuidance bool               `json:"include_guidance,omitempty"`
+	Attachment      AgentAttachment    `json:"attachment,omitempty"`
+	Messages        []AgentLiveMessage `json:"messages,omitempty"`
+	Error           string             `json:"error,omitempty"`
+	Result          json.RawMessage    `json:"result,omitempty"`
+	Sessions        []AgentAttachment  `json:"sessions,omitempty"`
+	LastError       string             `json:"last_error,omitempty"`
+	Offline         bool               `json:"offline,omitempty"`
+	Pending         int                `json:"pending"`
 }
 
 type localOffer struct {
@@ -61,6 +62,7 @@ type localOffer struct {
 
 type localSession struct {
 	SeenThrough      int                   `json:"seen_through,omitempty"`
+	LastGuidanceAt   time.Time             `json:"last_guidance_at,omitempty"`
 	Offline          bool                  `json:"offline,omitempty"`
 	ParentConfigPath string                `json:"parent_config_path,omitempty"`
 	AllowedSenders   []string              `json:"allowed_senders,omitempty"`
@@ -88,7 +90,7 @@ type localBridge struct {
 var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receipt")
 
 type LocalBridgeOptions struct {
-	NativeOffer func(context.Context, string, AgentAttachment, []AgentLiveMessage) error
+	NativeOffer func(context.Context, string, LocalBridgeReply) error
 	Notify      func(AgentAttachment)
 }
 
@@ -682,6 +684,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		out.Messages = filtered
+		previousGuidanceAt := s.LastGuidanceAt
+		if len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
+			out.IncludeGuidance = true
+			s.LastGuidanceAt = time.Now().UTC()
+		}
 		for _, m := range out.Messages {
 			v := s.Offers[m.MessageID]
 			v.Offered = true
@@ -694,6 +701,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			for id, old := range previous {
 				s.Offers[id] = old
 			}
+			s.LastGuidanceAt = previousGuidanceAt
 
 			return LocalBridgeReply{Error: err.Error()}
 		}
@@ -752,7 +760,7 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		if len(out.Messages) == 0 {
 			continue
 		}
-		if err := b.options.NativeOffer(ctx, s.NativeRemote, s.Attachment, out.Messages); err != nil {
+		if err := b.options.NativeOffer(ctx, s.NativeRemote, out); err != nil {
 			if errors.Is(err, ErrNativeOfferUnconfirmed) {
 				continue
 			}

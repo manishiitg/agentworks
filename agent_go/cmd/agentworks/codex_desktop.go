@@ -17,7 +17,8 @@ import (
 // This opt-in adapter uses the desktop's same-user coordination IPC. It never
 // accesses the separately protected browser/app-tools pipe, guesses a chat, or
 // changes permissions, models, the composer, or existing queued follow-ups.
-func codexDesktopOffer(ctx context.Context, remote string, a agentworksclient.AgentAttachment, messages []agentworksclient.AgentLiveMessage) error {
+func codexDesktopOffer(ctx context.Context, remote string, out agentworksclient.LocalBridgeReply) error {
+	a := out.Attachment
 	if _, err := uuid.Parse(a.SessionID); err != nil {
 		return errors.New("desktop delivery requires an exact thread UUID")
 	}
@@ -25,7 +26,7 @@ func codexDesktopOffer(ctx context.Context, remote string, a agentworksclient.Ag
 	if err := validateCodexRemote(remote); err != nil {
 		return err
 	}
-	text := pluginMessageText(agentworksclient.LocalBridgeReply{Attached: true, Attachment: a, Messages: messages}, "codex_desktop")
+	text := pluginMessageText(out, "codex_desktop")
 	if len(text) > 96<<10 {
 		return errors.New("native message exceeds 96 KiB; explicitly read the inbox to recover, no automatic retry")
 	}

@@ -1,5 +1,17 @@
 # Decisions and open issues
 
+## 2026-10-11 — Delivery command guidance belongs to an attachment (PLAT-861)
+
+Send AgentWorks acknowledgement/reply instructions on the first authorized offer
+of an attachment, then on the next offer after 24 hours. Persist the timestamp
+with the offer before delivery, retaining the same ambiguity/no-replay policy as
+messages. Keep sender provenance and the session's permission boundary on every
+offer. A fresh attachment resets guidance; provider-added warnings remain under
+the provider's control. Why: avoid repeating setup text on every message while
+keeping durable context and truthful delivery.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-61.
+
 ## 2026-10-11 — Existing desktop and Claude sessions accept explicit native transports (PLAT-861)
 
 Allow a person to select an exact Codex desktop IPC endpoint or Claude's enabled

@@ -85,7 +85,7 @@ func TestCodexDesktopAmbiguousOfferDoesNotStartTurn(t *testing.T) {
 			}
 		}
 	}()
-	err = codexDesktopOffer(context.Background(), "desktop+unix://"+socket, agentworksclient.AgentAttachment{SessionID: "00000000-0000-0000-0000-000000000001", Provider: "codex"}, []agentworksclient.AgentLiveMessage{{MessageID: "message", Message: "peer content"}})
+	err = codexDesktopOffer(context.Background(), "desktop+unix://"+socket, agentworksclient.LocalBridgeReply{Attachment: agentworksclient.AgentAttachment{SessionID: "00000000-0000-0000-0000-000000000001", Provider: "codex"}, Messages: []agentworksclient.AgentLiveMessage{{MessageID: "message", Message: "peer content"}}})
 	if err == nil {
 		t.Fatal("disconnect fabricated admission")
 	}

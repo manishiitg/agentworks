@@ -547,6 +547,15 @@ transport is version-sensitive. Socket writes remain offers because this version
 has no acceptance receipt. The receiver must explicitly acknowledge admission and
 processing. The official Claude MCP channel remains available separately.
 
+AgentWorks includes acknowledgement/reply instructions on the first offer for
+an attachment and refreshes them on the next offer after 24 hours. The private
+bridge persists that timestamp with its offer journal, so a daemon restart does
+not repeat guidance. Every offer still carries a short sender-content label,
+sender, message ID, inbox ID and exact attachment metadata. A newly attached
+session gets fresh instructions. Claude's own native peer/permission warning is
+added by Claude; this cadence only controls AgentWorks text. Sender content cannot
+attach or detach a session or grant permissions.
+
 A native receiver whose plugin has not been reloaded can use the narrow fallback
 `agentworks bridge message ack --provider claude --message-id ID --delivery admitted`
 and then `processed`, or `bridge message reply --provider claude --message-id ID
