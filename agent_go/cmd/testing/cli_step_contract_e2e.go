@@ -19,7 +19,7 @@ import (
 // permissions a workflow's own steps run with. A step turn is bridge-only
 // (mcp_only) by design, so this also covers that mode for a real CLI.
 //
-// A two-step workflow is built: an agent step (message_sequence) that runs a
+// A two-step workflow is built: an agent step (agent) that runs a
 // harness-written file-access script through the api-bridge shell, and a
 // scripted step whose saved main.py runs the same script. Both write their
 // results into their own execution folder. Run mode starts the workflow

@@ -67,7 +67,7 @@ func ValidateAgentCodeMigrationComplete(planContent string) error {
 	}
 	if len(blockers) > 0 {
 		sort.Strings(blockers)
-		return fmt.Errorf("legacy message_sequence code migration is incomplete: %s", strings.Join(blockers, "; "))
+		return fmt.Errorf("legacy agent code migration is incomplete: %s", strings.Join(blockers, "; "))
 	}
 	if len(migrations) > 0 {
 		sequenceIDs := make([]string, 0, len(migrations))
@@ -75,7 +75,7 @@ func ValidateAgentCodeMigrationComplete(planContent string) error {
 			sequenceIDs = append(sequenceIDs, migration.stepID)
 		}
 		sort.Strings(sequenceIDs)
-		return fmt.Errorf("legacy message_sequence code migration is incomplete for sequence(s): %s", strings.Join(sequenceIDs, ", "))
+		return fmt.Errorf("legacy agent code migration is incomplete for sequence(s): %s", strings.Join(sequenceIDs, ", "))
 	}
 
 	return nil
@@ -110,12 +110,12 @@ func createMigrateAgentCodeItemsExecutor(
 		if len(blockers) > 0 {
 			sort.Strings(blockers)
 			return "", fmt.Errorf(
-				"MESSAGE_SEQUENCE_CODE_MIGRATION_BLOCKED: no files were changed. Explicitly split these ambiguous usages into message_sequence -> standalone scripted regular step -> agent with durable context: %s",
+				"MESSAGE_SEQUENCE_CODE_MIGRATION_BLOCKED: no files were changed. Explicitly split these ambiguous usages into agent -> standalone scripted regular step -> agent with durable context: %s",
 				strings.Join(blockers, "; "),
 			)
 		}
 		if len(migrations) == 0 {
-			return `{"status":"no_op","message":"No message_sequence code items found."}`, nil
+			return `{"status":"no_op","message":"No agent code items found."}`, nil
 		}
 
 		stepConfigs, err := readMigrationStepConfigs(ctx, workspacePath, readFile)
@@ -247,7 +247,7 @@ func planAgentCodeMigrations(rawSteps []json.RawMessage, rawOrphans json.RawMess
 			Items               []json.RawMessage `json:"items"`
 		}
 		if err := json.Unmarshal(raw, &seq); err != nil {
-			return nil, nil, fmt.Errorf("parse message_sequence %q: %w", header.ID, err)
+			return nil, nil, fmt.Errorf("parse agent %q: %w", header.ID, err)
 		}
 		codeIDs := rawAgentCodeItemIDs(raw)
 		if len(codeIDs) == 0 {
@@ -379,7 +379,7 @@ func convertLegacyCodeSequence(
 			title = humanizeMigrationID(item.ID)
 		}
 		description := fmt.Sprintf(
-			"Execute the deterministic Python script at learnings/%s/main.py as a standalone scripted step. This step was migrated from message_sequence %q item %q; preserve the declared durable inputs, outputs, validation, and read-only/side-effect contract.\n\nOriginal sequence contract:\n%s",
+			"Execute the deterministic Python script at learnings/%s/main.py as a standalone scripted step. This step was migrated from agent %q item %q; preserve the declared durable inputs, outputs, validation, and read-only/side-effect contract.\n\nOriginal sequence contract:\n%s",
 			item.ID,
 			migration.stepID,
 			item.ID,

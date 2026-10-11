@@ -126,7 +126,7 @@ func TestPrepareAgentUpdateTargetUpgradesLegacyAgenticRegular(t *testing.T) {
 }
 
 func TestPrepareScriptedStepUpdateTargetNeverConvertsASequence(t *testing.T) {
-	// Before PLAT-287 a message_sequence whose step_config declared scripted
+	// Before PLAT-287 a agent whose step_config declared scripted
 	// was silently downgraded to regular here. The plan type is now the only
 	// source of truth, so the conversion is change_step_type's job and this
 	// path refuses instead.
@@ -152,10 +152,10 @@ func TestPrepareScriptedStepUpdateTargetNeverConvertsASequence(t *testing.T) {
 
 	downgraded, err := prepareScriptedStepUpdateTarget(plan, configs, sequence.ID)
 	if err == nil || !strings.Contains(err.Error(), "change_step_type") {
-		t.Fatalf("a message_sequence must be refused with change_step_type guidance, got err=%v", err)
+		t.Fatalf("a agent must be refused with change_step_type guidance, got err=%v", err)
 	}
 	if downgraded {
-		t.Fatal("a message_sequence must never be converted by update_scripted_step")
+		t.Fatal("a agent must never be converted by update_scripted_step")
 	}
 	if _, ok := plan.Steps[0].(*AgentPlanStep); !ok {
 		t.Fatalf("refused step was mutated to %T", plan.Steps[0])
@@ -254,7 +254,7 @@ func TestUpdateAgentExecutorAtomicallyPersistsLegacyUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy agent update failed: %v", err)
 	}
-	if !strings.Contains(result, "upgraded its saved legacy regular type to message_sequence") {
+	if !strings.Contains(result, "upgraded its saved legacy regular type to agent") {
 		t.Fatalf("update result did not disclose compatibility upgrade: %s", result)
 	}
 	if writtenPlan == "" {
@@ -302,7 +302,7 @@ func TestNonScriptedRegularStepNormalizesToAgent(t *testing.T) {
 	}
 	sequence := normalizeRegularStepToAgent(regular)
 	if sequence == nil || sequence.StepType() != StepTypeAgent {
-		t.Fatalf("expected message_sequence normalization, got %#v", sequence)
+		t.Fatalf("expected agent normalization, got %#v", sequence)
 	}
 	if sequence.ID != regular.ID || sequence.Title != regular.Title || sequence.Description != regular.Description {
 		t.Fatalf("normalization changed step identity or instructions: %#v", sequence)
@@ -378,13 +378,14 @@ func TestCollectRegularPlanStepsIncludesNestedTodoRoutes(t *testing.T) {
 	}
 }
 
-func TestOrchestratorRejectsIncompleteAgentRoute(t *testing.T) {
+func TestAgentRejectsIncompleteAgentRoute(t *testing.T) {
 	step := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{
 			ID:          "orchestrate",
 			Title:       "Orchestrate",
 			Description: "Delegate work.",
 		},
+		Items:      []AgentItem{{ID: "delegate", Type: "user_message", Message: "Delegate work."}},
 		NextStepID: "end",
 		PredefinedRoutes: []PlanOrchestrationRoute{{
 			RouteID:   "analyze",

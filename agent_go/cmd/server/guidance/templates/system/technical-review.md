@@ -86,7 +86,7 @@ its latest runs side by side. Every status can be success while a step does no
 new work, for example by re-checking or rebuilding an earlier run's output.
 Compare runs of the same step, confirm against the system of record (new DB
 rows, receipts, published items), and file a step that stopped producing new
-work as a defect. Check the plan as a likely root cause: a agent
+work as a defect. Check the plan as a likely root cause: an agent
 whose items only verify, with no item that instructs the work itself.
 A failed child call alone is not a failed outcome. Establish required-output
 impact and recovery before filing a defect. Merge duplicate symptoms into one

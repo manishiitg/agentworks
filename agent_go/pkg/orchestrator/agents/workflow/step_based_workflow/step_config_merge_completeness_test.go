@@ -103,7 +103,7 @@ func TestRetiredClearFieldsAreAcknowledgedNotSilentlySucceeded(t *testing.T) {
 	for _, name := range []string{
 		"transport", "learning_mode", "learnings_write_method",
 		"knowledgebase_write_method", "db_access", "disable_tier_optimization",
-		"enable_context_offloading", "todo_task_orchestrator_tier",
+		"enable_context_offloading", "delegating_agent_tier",
 	} {
 		if clearStepConfigField(sc, name) {
 			t.Errorf("%q reported a successful clear, but no such field exists", name)

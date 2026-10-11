@@ -36,8 +36,8 @@ func (r *declaredModeMigrationResult) noOp() bool {
 // migrateDeclaredExecutionModeInPlan makes the plan say explicitly what the
 // runtime already did (PLAT-287, half 1): a regular step without a declared
 // scripted mode is the legacy agentic shape that the runtime normalizes to a
-// message_sequence at execution time (shouldNormalizeRegularStepToAgent),
-// so it becomes one on disk; a message_sequence still declared scripted
+// agent at execution time (shouldNormalizeRegularStepToAgent),
+// so it becomes one on disk; a agent still declared scripted
 // (PLAT-280 drift) becomes regular. After this, every regular step in the
 // plan is a declared scripted step, which is what lets a later release make
 // the plan type alone decide the model and delete the field.
@@ -45,7 +45,7 @@ func (r *declaredModeMigrationResult) noOp() bool {
 // It deliberately does NOT strip declared_execution_mode from step_config:
 // today's runtime still reads it to tell a scripted regular step from a
 // legacy agentic one, so removing it here would turn every real scripted
-// step into a message_sequence whose main.py never runs -- caught in review
+// step into a agent whose main.py never runs -- caught in review
 // before this ever ran anywhere. The field goes in the same release as the
 // runtime rule that makes it redundant, not before.
 //
@@ -61,7 +61,7 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 
 	// Pre-1.0.38 semantics on purpose: a regular step counted as scripted
 	// only when its step_config declared it, so a regular step with no
-	// declaration is a legacy agentic one that ran as a message_sequence.
+	// declaration is a legacy agentic one that ran as a agent.
 	declaredScripted := func(stepID string) bool {
 		return MatchStepConfigByID(stepID, configs).legacyDeclared() == StepModeScripted
 	}
@@ -81,7 +81,7 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 		}
 	}
 	if len(broken) > 0 {
-		return nil, fmt.Errorf("refusing to migrate: step(s) %s are declared scripted but have no learnings/<step-id>/main.py -- they are already broken, and this migration will not guess whether each should become a message_sequence (change_step_type target_type=message_sequence) or get its script written (update_scripted_step code=...); fix them first, then re-run", strings.Join(broken, ", "))
+		return nil, fmt.Errorf("refusing to migrate: step(s) %s are declared scripted but have no learnings/<step-id>/main.py -- they are already broken, and this migration will not guess whether each should become a agent (change_step_type target_type=agent) or get its script written (update_scripted_step code=...); fix them first, then re-run", strings.Join(broken, ", "))
 	}
 
 	// Pass 2: rewrite plan types so every regular step is a declared scripted one.
@@ -199,7 +199,7 @@ func createMigrateDeclaredExecutionModeExecutor(
 		logPlanChange(ctx, workspacePath, PlanChangelogEntry{
 			Tool: "migrate_declared_execution_mode",
 			Reason: fmt.Sprintf(
-				"Workflow contract v%s (PLAT-287, half 1): the plan type now states each step's execution model explicitly. %d legacy agentic regular step(s) made message_sequence (the runtime already ran them as one), %d declared-scripted agent step(s) made regular; step_config.json untouched -- declared_execution_mode stays until the runtime stops reading it.",
+				"Workflow contract v%s (PLAT-287, half 1): the plan type now states each step's execution model explicitly. %d legacy agentic regular step(s) made agent (the runtime already ran them as one), %d declared-scripted agent step(s) made regular; step_config.json untouched -- declared_execution_mode stays until the runtime stops reading it.",
 				workflowContractDeclaredExecutionModeRetiredVersionLabel, toSequence, toRegular,
 			),
 			StepIDs:        stepIDs,

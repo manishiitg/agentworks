@@ -53,7 +53,7 @@ func forceWorkflowClaudeCodeInteractiveTransport(config *agents.OrchestratorAgen
 }
 
 // applyWorkflowTransportToAgentConfig sets the coding-agent CLI transport for a
-// workflow EXECUTION agent (steps, message_sequence/execution-only, KB agents,
+// workflow EXECUTION agent (steps, agent/execution-only, KB agents,
 // todo-task orchestrator). It does NOT apply to the interactive
 // workflow-builder agent, which stays on tmux because a human chats with it —
 // see forceWorkflowClaudeCodeInteractiveTransport.
@@ -1443,7 +1443,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	hcpo.applyStepConfigToAgentConfig(ctx, config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep, stepConfig))
 	if override, ok := ctx.Value(agentSequenceRuntimeSessionOverrideKey{}).(*agentSequenceRuntimeSessionOverride); ok && override != nil && override.KeepAlive && common.IsCLIProvider(config.LLMConfig.Primary.Provider) && !config.ForceStructuredCodingAgent {
 		config.CodingAgentKeepAlive = true
-		hcpo.GetLogger().Info(fmt.Sprintf("🔁 message_sequence runtime will keep coding-agent session alive: %s", config.MCPSessionID))
+		hcpo.GetLogger().Info(fmt.Sprintf("🔁 agent runtime will keep coding-agent session alive: %s", config.MCPSessionID))
 	}
 
 	// Enable parallel tool execution for execution agents
@@ -2215,7 +2215,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 		}
 
 		// Emit route selected event BEFORE sub-agent execution so it appears before the agent card
-		hcpo.emitOrchestratorRouteSelectedEvent(ctx, execCtx.OrchestratorStep, execCtx.StepIndex, execCtx.StepPath, 0, response, "")
+		hcpo.emitAgentRouteSelectedEvent(ctx, execCtx.OrchestratorStep, execCtx.StepIndex, execCtx.StepPath, 0, response, "")
 
 		startTime := time.Now()
 
@@ -2302,7 +2302,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecuteGenericAgentSyncFunc(
 		}
 
 		// Emit route selected event BEFORE sub-agent execution so it appears before the agent card
-		hcpo.emitOrchestratorRouteSelectedEvent(ctx, execCtx.OrchestratorStep, execCtx.StepIndex, execCtx.StepPath, 0, response, "")
+		hcpo.emitAgentRouteSelectedEvent(ctx, execCtx.OrchestratorStep, execCtx.StepIndex, execCtx.StepPath, 0, response, "")
 
 		startTime := time.Now()
 

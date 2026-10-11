@@ -155,7 +155,7 @@ runs/<run>/execution/<parent-step>/agents/<route-id>/calls/<call-id>/
 runs/<run>/execution/<parent-step>/scripts/items/<item-id>/calls/<call-id>/
 runs/<run>/execution/<parent-step>/scripts/routes/<route-id>/calls/<call-id>/
 
-There is no runtime fallback to flattened step-*-sub-*, step-*-generic-*, execution/message_sequences/, or scripts/<item-id>/<call-id>/ paths. Historical run folders are evidence: do not move, rewrite, or delete them.
+There is no runtime fallback to flattened step-*-sub-*, step-*-generic-*, execution/agents/, or scripts/<item-id>/<call-id>/ paths. Historical run folders are evidence: do not move, rewrite, or delete them.
 
 Read workflow.json, planning/plan.json, planning/step_config.json, and every workflow-authored script or referenced instruction that names runtime paths. Replace hardcoded legacy execution paths with STEP_OUTPUT_DIR for the current invocation, STEP_EXECUTION_DIR or declared context dependencies for reads, and the nested layout only where an explicit relative artifact reference is unavoidable. Do not alter business behavior.
 
@@ -401,15 +401,15 @@ Do not delete a step or table without the parent agreeing in this conversation. 
 
 const upgradeScriptedTypeStaysRegular = `WORKFLOW CONTRACT UPGRADE: A DECLARED-SCRIPTED STEP'S PLAN TYPE MUST BE REGULAR, NEVER MESSAGE_SEQUENCE.
 
-Do only this migration. Read planning/step_config.json and planning/plan.json. Find every step whose step_config declares declared_execution_mode="scripted" but whose plan.json type is "agent" instead of "regular" -- that combination is invalid (PLAT-280): the real scripted executor only runs true regular-type steps and reliably injects $DB_PATH/STEP_OUTPUT_DIR there, which the message_sequence runtime does not guarantee even when its config claims to be scripted. This caused a live production step to silently lose database access.
+Do only this migration. Read planning/step_config.json and planning/plan.json. Find every step whose step_config declares declared_execution_mode="scripted" but whose plan.json type is "agent" instead of "regular" -- that combination is invalid (PLAT-280): the real scripted executor only runs true regular-type steps and reliably injects $DB_PATH/STEP_OUTPUT_DIR there, which the agent runtime does not guarantee even when its config claims to be scripted. This caused a live production step to silently lose database access.
 
-For each matching step, call change_step_type(step_id=<its id>, target_type="scripted", reason="PLAT-280 migration: message_sequence type with declared scripted mode is not a valid combination"). It atomically converts the step's plan type to regular in place -- same id, step_config.json history preserved -- and drops its message_sequence items, since a scripted step's real work is the checked-in learnings/{step-id}/main.py, not plan-authored items. Do not hand-edit plan.json or step_config.json. Do not run the workflow.
+For each matching step, call change_step_type(step_id=<its id>, target_type="scripted", reason="PLAT-280 migration: agent type with declared scripted mode is not a valid combination"). It atomically converts the step's plan type to regular in place -- same id, step_config.json history preserved -- and drops its agent items, since a scripted step's real work is the checked-in learnings/{step-id}/main.py, not plan-authored items. Do not hand-edit plan.json or step_config.json. Do not run the workflow.
 
 If no step matches, this is a no-op. If change_step_type reports an error for any matching step, do not stamp -- leave the mismatch as-is and report what blocked it. Otherwise call set_workflow_contract_version(version="1.0.37") and stop.`
 
 const upgradeDeclaredExecutionModeRetired = `WORKFLOW CONTRACT UPGRADE: EVERY STEP'S PLAN TYPE STATES ITS EXECUTION MODEL EXPLICITLY (PLAT-287, HALF 1).
 
-Do only this migration. A "regular" plan step is a scripted step (its work is the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. Until now a "regular" step WITHOUT a declared scripted mode was a legacy agentic step that the runtime silently ran as a message_sequence. Call migrate_declared_execution_mode once. It rewrites planning/plan.json so that shape is explicit -- every legacy agentic regular step becomes the message_sequence it already ran as (same id, description, dependencies, validation, position), and any message_sequence still declared scripted becomes regular -- validates the plan, and records the change. It touches only plan.json: planning/step_config.json is left exactly as it is, declared_execution_mode included, because the current runtime still reads that field; a later contract version retires it. Behavior does not change. A workflow already in this shape is a no-op.
+Do only this migration. A "regular" plan step is a scripted step (its work is the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. Until now a "regular" step WITHOUT a declared scripted mode was a legacy agentic step that the runtime silently ran as a agent. Call migrate_declared_execution_mode once. It rewrites planning/plan.json so that shape is explicit -- every legacy agentic regular step becomes the agent it already ran as (same id, description, dependencies, validation, position), and any agent still declared scripted becomes regular -- validates the plan, and records the change. It touches only plan.json: planning/step_config.json is left exactly as it is, declared_execution_mode included, because the current runtime still reads that field; a later contract version retires it. Behavior does not change. A workflow already in this shape is a no-op.
 
 Do not hand-edit plan.json or step_config.json and do not run the workflow. The tool refuses, without changing anything, when a step is declared scripted but has no learnings/<step-id>/main.py: that step is already broken, and this migration will not guess whether it should become a sequence or get a script. If it refuses, report exactly which step and why and do not stamp. Otherwise call set_workflow_contract_version(version="1.0.38") and stop.`
 
@@ -441,7 +441,7 @@ If a script cannot be converted without a product decision (it needs a PRAGMA, A
 
 const upgradeStepDescriptionLayout = `WORKFLOW CONTRACT UPGRADE: STEP DESCRIPTIONS USE THE STANDARD LAYOUT.
 
-Do only this migration. Every agent step's description (type message_sequence or orchestrator, nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
+Do only this migration. Every agent step's description (type agent or orchestrator, nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
 ## Goal       — what the step achieves, in one to three sentences
 ## Inputs     — what it reads: prior step outputs, DB tables, KB notes by name
 ## Output     — what it produces and where; the shape stays in validation_schema
@@ -620,4 +620,4 @@ EXECUTION CONTEXT. This is a manual platform migration started by the workflow o
 
 const upgradeAgentStep = `WORKFLOW CONTRACT UPGRADE: ONE AGENT STEP TYPE.
 
-Do only this migration. Conversational steps now use type agent with items and optional predefined_routes. Call migrate_agent_steps once. It rewrites message_sequence, orchestrator and todo_task records, including nested and orphan agents, to agent; legacy messages become items. Routes, IDs, wiring, validation and unknown fields are preserved. Do not edit plan.json by hand or run the workflow. If the migration reports an error, do not stamp. Otherwise call set_workflow_contract_version(version="1.0.47") and stop.`
+Do only this migration. Conversational steps now use type agent with items and optional predefined_routes. Call migrate_agent_steps once. It rewrites agent, orchestrator and todo_task records, including nested and orphan agents, to agent; legacy messages become items. Routes, IDs, wiring, validation and unknown fields are preserved. Do not edit plan.json by hand or run the workflow. If the migration reports an error, do not stamp. Otherwise call set_workflow_contract_version(version="1.0.47") and stop.`

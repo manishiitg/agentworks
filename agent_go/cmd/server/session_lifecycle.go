@@ -131,7 +131,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 		}
 		api.workflowOrchestratorContextMux.Unlock()
 	}
-	// This is the context the workflow step loop and the message_sequence queue
+	// This is the context the workflow step loop and the agent queue
 	// actually run under, so zero here with a live run means Stop reached
 	// nothing that matters.
 	log.Printf("[STOP] session=%s orchestrator contexts: queries=%d canceled=%d", sessionID, len(queryIDs), orchestratorCanceled)

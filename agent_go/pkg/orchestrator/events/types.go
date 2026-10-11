@@ -35,7 +35,7 @@ type parentExecutionIDKeyType struct{}
 var ParentExecutionIDKey = parentExecutionIDKeyType{}
 
 // AgentItemContextKey marks an execution-only agent as an internal
-// message_sequence item run rather than a user-visible sub-agent.
+// agent item run rather than a user-visible sub-agent.
 type agentSequenceItemContextKeyType struct{}
 
 var AgentItemContextKey = agentSequenceItemContextKeyType{}
@@ -107,8 +107,8 @@ const (
 	ScriptedExecution events.EventType = "learn_code_script_execution" // When controller runs python3 main.py
 
 	// Todo task orchestration events
-	OrchestratorRouteSelected events.EventType = "todo_task_route_selected" // When orchestrator selects a route/sub-agent
-	OrchestratorStepCompleted events.EventType = "todo_task_step_completed" // When the entire todo task step is completed
+	AgentRouteSelected events.EventType = "todo_task_route_selected" // When orchestrator selects a route/sub-agent
+	AgentStepCompleted events.EventType = "todo_task_step_completed" // When the entire todo task step is completed
 
 )
 
@@ -122,7 +122,7 @@ func GetComponentFromEventType(eventType events.EventType) string {
 		BatchExecutionCanceled,
 		RequestHumanFeedback, BlockingHumanFeedback, PlanApproval, HumanFeedbackResolved,
 		RoutingEvaluated, PreValidationCompleted,
-		OrchestratorRouteSelected, OrchestratorStepCompleted:
+		AgentRouteSelected, AgentStepCompleted:
 		return "orchestrator"
 	default:
 		return "system"

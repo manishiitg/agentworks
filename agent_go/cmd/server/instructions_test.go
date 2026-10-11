@@ -25,7 +25,7 @@ func TestNewWorkflowInstructionsUseModernPlanShape(t *testing.T) {
 
 	for _, want := range []string{
 		"Plan-shape rule — use this for every new workflow",
-		"one large `message_sequence` per coherent shared-context span",
+		"one large `agent` per coherent shared-context span",
 		"prove every criterion, repair gaps, and double-check",
 		"Use multiple large sequences when their contexts should not be shared",
 		"fetch-authoritative-data",

@@ -188,7 +188,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation). It no longer owns root objective/success fields; use ` + "`soul/soul.md`" + ` for that.
 - ` + "`planning/step_config.json`" + ` — per-step settings. Each step's ` + "`agent_configs`" + ` object controls execution mode:
   - ` + "`use_code_execution_mode`" + ` (bool) — ` + "`false`" + ` = direct tool calls, ` + "`true`" + ` = scripted Python (main.py)
-  - the execution model itself is the plan step type, not a config field: a ` + "`regular`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`message_sequence`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
+  - the execution model itself is the plan step type, not a config field: a ` + "`regular`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`agent`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
 
 **Variables:**
 - ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value,group}], groups:[{id,name,enabled}]}`" + `. Groups enable batch execution with different value sets. ` + "`workflow.json`" + ` does NOT carry variable definitions.
@@ -212,7 +212,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Interactive builder / workshop:**
 - ` + "`builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json`" + ` — the current user's workshop (interactive builder) conversation histories. Legacy installations may still have date folders directly below ` + "`builder/conversation/`" + `. These are JSON files with ` + "`conversation_history`" + ` entries. User messages have ` + "`Role`" + `=` + "`human`" + `/` + "`user`" + ` and text in ` + "`Parts[].Text`" + `; assistant replies have ` + "`Role`" + `=` + "`ai`" + `/` + "`assistant`" + `. Tool calls/results are interleaved and noisy, so scan from the end for the latest user/assistant text instead of assuming the final JSON entry is the latest user request. Other users' folders are private and blocked by the folder guard.
-- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_todo_task_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert; Artifact Review later stamps inspected entries with ` + "`artifact_review.done=true`" + ` through ` + "`mark_changelog_artifact_reviewed`" + `. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements typed Pulse findings with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
+- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_agent_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert; Artifact Review later stamps inspected entries with ` + "`artifact_review.done=true`" + ` through ` + "`mark_changelog_artifact_reviewed`" + `. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements typed Pulse findings with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
 
 **Pulse / Goal Advisor framework files (opt-in per workflow):**
 - ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. **Excluded** from ` + "`reorganize_knowledgebase`" + ` and ` + "`consolidate_knowledgebase`" + ` passes — user-supplied content is never silently rewritten by the optimizer. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. Each capture is recorded as a typed authoritative context record so it is visible in Pulse.
@@ -226,13 +226,13 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`execution/execution-attempt-{A}-iteration-{I}.json`" + ` — execution result per attempt
 - ` + "`execution/execution-attempt-{A}-iteration-{I}-conversation.json`" + ` — full LLM conversation for that attempt
 - ` + "`routing-evaluation.json`" + ` — routing-step results
-- ` + "`orchestration-execution.json`" + ` — JSONL log for orchestration / todo_task steps (one line per iteration)
+- ` + "`orchestration-execution.json`" + ` — JSONL log for delegating agent steps (one line per iteration)
 
 ### Efficient Parsing
 - **List workflows:** ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `
 - **Objective + success criteria:** ` + "`execute_shell_command(command: \"sed -n '1,160p' '" + absWorkflow + "/<name>/soul/soul.md'\")`" + `
 - **Step list (IDs + titles):** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; steps=json.load(open('" + absWorkflow + "/<name>/planning/plan.json')).get('steps',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s.get(\\\\\\\"label\\\\\\\",s.get(\\\\\\\"title\\\\\\\",\\\\\\\"\\\\\\\"))}') for s in steps]\\\"\")`" + `
-- **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (regular = scripted main.py, message_sequence = conversational)
+- **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (regular = scripted main.py, agent = conversational)
 - **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
 - **Variables + groups:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
 - **Global workflow learnings:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/learnings/_global/SKILL.md\")`" + `
@@ -495,21 +495,20 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 ` + "```" + `
 
 **Plan-shape rule — use this for every new workflow:**
-- Start with one large ` + "`message_sequence`" + ` per coherent shared-context span. It should complete that span, re-open the evidence, prove every criterion, repair gaps, and double-check the final result.
+- Start with one large ` + "`agent`" + ` per coherent shared-context span. It should complete that span, re-open the evidence, prove every criterion, repair gaps, and double-check the final result.
 - Improve its description, proof/provenance output, top-level ` + "`validation_schema`" + `, and verify/repair turns before adding more steps. Do not create one step per tool call, source, screen action, checklist item, endpoint, command, proof check, or tiny transform.
 - Fixed API/SDK calls, CLI commands, known pagination, deterministic fetching, stable parsing/normalization, and mechanical persistence belong in one or a few coherent ` + "`regular`" + ` fetcher steps, batched by source/auth/retry/output contract.
-- Feed those fetchers' validated DB rows or artifacts into one large ` + "`message_sequence`" + ` for reasoning, synthesis, evidence-based verification, and repair. Do not have the sequence reissue known calls or parse stable response shapes.
+- Feed those fetchers' validated DB rows or artifacts into one large ` + "`agent`" + ` for reasoning, synthesis, evidence-based verification, and repair. Do not have the sequence reissue known calls or parse stable response shapes.
 - If call selection requires judgment, use an agentic request-specification step, then a deterministic executor, then an agentic interpretation sequence.
 - Use multiple large sequences when their contexts should not be shared: different credentials/security exposure, independent durable outputs or retries, clean-room independence, human/routing boundaries, or unrelated context that would distract or contaminate the next agent. Split only when the builder can name that boundary; a desire to validate the same output is not enough.
 
 **Execution-mode handoff:** ` + "`plan.json`" + ` stores structure, not per-step execution mode. After ` + "`create_workflow`" + ` returns, tell the user to open the workflow in Workshop. Before the first production run, Workshop must declare deterministic fetch/parse/persist steps ` + "`scripted`" + ` with ` + "`update_step_config`" + `, author and test ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `, and keep judgment/agent/browser work ` + "`agentic`" + `. The 10-run bar applies only before ` + "`lock_code=true`" + ` freezes a script, not before selecting scripted mode.
 
 **Step types**:
-- ` + "`message_sequence`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
-- ` + "`regular`" + ` — scripted deterministic API/CLI/data work only. New conversational or judgment-heavy work always uses ` + "`message_sequence`" + `, even for one turn.
+- ` + "`agent`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
+- ` + "`regular`" + ` — scripted deterministic API/CLI/data work only. New conversational or judgment-heavy work always uses ` + "`agent`" + `, even for one turn.
 - ` + "`routing`" + ` — N-way branching. Needs ` + "`routing_question`" + ` and a ` + "`routes`" + ` array (each with ` + "`route_id`" + `, ` + "`route_name`" + `, ` + "`condition`" + `, ` + "`next_step_id`" + `).
 - ` + "`human_input`" + ` — Pause for user response. Needs ` + "`question`" + `, ` + "`response_type`" + ` (` + "`text`" + `/` + "`yesno`" + `/` + "`multiple_choice`" + `), ` + "`next_step_id`" + `, and (for yesno) ` + "`if_yes_next_step_id`" + `/` + "`if_no_next_step_id`" + `.
-- ` + "`todo_task`" + ` — Dynamic task orchestrator with ` + "`predefined_routes`" + `; use only when runtime delegation/task discovery is genuinely needed, not merely because a coherent job has several actions.
 
 **Step field reference**:
 - ` + "`context_dependencies`" + ` — array of file names this step reads (produced by earlier steps)

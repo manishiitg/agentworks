@@ -45,14 +45,8 @@ func TestStepSystemPromptsShareRuntimeAndBuilderSource(t *testing.T) {
 			t.Fatalf("agent guidance missing unified-agent contract %q", marker)
 		}
 	}
-	legacy := materializedFileContent(t, skill, "references/agent.md")
-	for _, marker := range []string{"canonical agent step", "agent", "predefined_routes"} {
-		if !strings.Contains(legacy, marker) {
-			t.Fatalf("orchestrator migration guidance missing %q", marker)
-		}
-	}
 	for _, stale := range []string{"description is turn 0", "description is the opening user", "no agentic children"} {
-		if strings.Contains(strings.ToLower(guide+sequence+legacy), stale) {
+		if strings.Contains(strings.ToLower(guide+sequence), stale) {
 			t.Fatalf("builder reference retains stale prompt model %q", stale)
 		}
 	}

@@ -83,13 +83,13 @@ Todo-task steps add two tier-related controls in `agent_configs`.
 ### Orchestrator tier
 
 - `orchestrator_llm`: exact model override, highest priority
-- `todo_task_orchestrator_tier`: explicit tier override in tiered mode
+- `delegating_agent_tier`: explicit tier override in tiered mode
 - default: Tier 1
 
 Current priority in `selectTodoTaskOrchestratorLLM()`:
 
 1. `orchestrator_llm`
-2. `todo_task_orchestrator_tier`
+2. `delegating_agent_tier`
 3. Tier 1
 
 ### Sub-agent tier selection

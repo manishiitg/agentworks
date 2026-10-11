@@ -195,7 +195,7 @@ func testContainsString(values []string, target string) bool {
 	return false
 }
 
-// Regression for the message_sequence learnings-write sandbox denial: the reused
+// Regression for the agent learnings-write sandbox denial: the reused
 // execution agent freezes its workspace-write guard at creation, so the snapshot
 // is built from the step's FULL granted write scope (agentSequenceStepFullWriteAccess)
 // — not the first item's — or the learnings/KB closing turns are denied. This guards

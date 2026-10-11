@@ -160,10 +160,10 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 				"next_step_id": stepIDs[4],
 			},
 			{
-				// message_sequence: replies with a token (its session.json glob
+				// agent: replies with a token (its session.json glob
 				// in assertStepExecutionResult confirms it wrote to the NORMAL
 				// step folder execution/step-report/ WITH the workflow root — the
-				// folder/prefix fix). NOTE: message_sequence item agents run via
+				// folder/prefix fix). NOTE: agent item agents run via
 				// createExecutionOnlyAgent, which doesn't receive the orchestrator
 				// customTools, so they can't write files in this harness — the
 				// context_output file-handoff is covered by unit tests instead.
@@ -290,7 +290,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 	// instead of the exact literal token. Accept equivalent forms while keeping
 	// the downstream delegated-token assertions strict.
 	assertStepExecutionResultContainsAny(t, walkRoot, "step-compute", []string{"RESULT=42", "result = 6 * 7", "6 * 7 = 42", "6 × 7", "= 42"})
-	// step-report uses the message_sequence path — its final reply is exact. The
+	// step-report uses the agent path — its final reply is exact. The
 	// session.json glob in assertStepExecutionResult confirms the sequence wrote
 	// to the NORMAL step folder (execution/step-report/), with the workflow root.
 	assertStepExecutionResultContains(t, walkRoot, "step-report", "WORKFLOW_DONE_42")
@@ -344,7 +344,7 @@ func TestWorkflowE2EAgentPiCLI(t *testing.T) {
 				"type":                 "agent",
 				"id":                   "msgseq-report",
 				"title":                "Agent runtime check",
-				"description":          "Two-turn message_sequence runtime check.",
+				"description":          "Two-turn agent runtime check.",
 				"context_dependencies": []string{},
 				"context_output":       "out.json",
 				"items": []map[string]interface{}{
@@ -385,7 +385,7 @@ func TestWorkflowE2EAgentPiCLI(t *testing.T) {
 
 	matches, _ := filepath.Glob(filepath.Join(workspaceDisk, "runs", "*", "*", "execution", "msgseq-report", "session.json"))
 	if len(matches) == 0 {
-		t.Fatalf("message_sequence session.json not written under %s", workspaceDisk)
+		t.Fatalf("agent session.json not written under %s", workspaceDisk)
 	}
 	body, err := os.ReadFile(matches[len(matches)-1])
 	if err != nil {
@@ -405,7 +405,7 @@ func TestWorkflowE2EAgentPiCLI(t *testing.T) {
 		t.Fatalf("runtime_session_id = %q, want stable msgseq-* owner", session.RuntimeSessionID)
 	}
 	if len(session.Entries) != 2 {
-		t.Fatalf("message_sequence entries = %d, want 2\nsession=%s", len(session.Entries), body)
+		t.Fatalf("agent entries = %d, want 2\nsession=%s", len(session.Entries), body)
 	}
 	for i, entry := range session.Entries {
 		if entry.Status != "completed" {
@@ -415,7 +415,7 @@ func TestWorkflowE2EAgentPiCLI(t *testing.T) {
 	if !strings.Contains(string(body), "MS_FIRST_ALPHA") || !strings.Contains(string(body), "MS_SECOND_SEES_FIRST_ALPHA") {
 		t.Fatalf("session.json missing expected agent tokens\nsession=%s", body)
 	}
-	t.Logf("✅ message_sequence e2e (pi-cli/%s): runtime_session_id=%s session=%s", model, session.RuntimeSessionID, matches[len(matches)-1])
+	t.Logf("✅ agent e2e (pi-cli/%s): runtime_session_id=%s session=%s", model, session.RuntimeSessionID, matches[len(matches)-1])
 }
 
 func requirePiCLIWorkflowE2E(t *testing.T) (apiKey string, model string) {
@@ -640,11 +640,11 @@ func assertStepExecutionResultContains(t *testing.T, walkRoot, stepID, wantToken
 			return
 		}
 		if !strings.Contains(string(body), wantToken) {
-			t.Errorf("%s: message_sequence session.json missing %q\n  log: %s", stepID, wantToken, matches[len(matches)-1])
+			t.Errorf("%s: agent session.json missing %q\n  log: %s", stepID, wantToken, matches[len(matches)-1])
 		}
 		return
 	}
-	t.Errorf("%s: no execution artifact found under %s (tried regular log, todo sub-agent log, message_sequence session)", stepID, walkRoot)
+	t.Errorf("%s: no execution artifact found under %s (tried regular log, todo sub-agent log, agent session)", stepID, walkRoot)
 }
 
 // assertStepExecutionResultContainsAny is the "any of these forms is
@@ -800,7 +800,7 @@ func assertAllStepsExecutedAndDecisionsMatch(t *testing.T, walkRoot string, step
 		// the engine does not persist to disk (AgentDelegationDecision is
 		// runtime-only per planning_agent.go:646).
 		"step-double-check": {globs: []string{filepath.Join(walkRoot, "runs", "*", "*", "logs", "step-double-check", "execution", "todo-task-prompts.json")}},
-		// message_sequence persists session.json in the step's normal
+		// agent persists session.json in the step's normal
 		// execution folder: execution/<step-id>/session.json.
 		"step-report": {globs: []string{filepath.Join(walkRoot, "runs", "*", "*", "execution", "step-report", "session.json")}},
 	}

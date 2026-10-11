@@ -12,7 +12,7 @@ import (
 )
 
 // TestAgentAbsPath_IncludesWorkflowRoot guards the forward-pipe bug:
-// the absolute path the message_sequence agent is handed (StepExecutionPath,
+// the absolute path the agent agent is handed (StepExecutionPath,
 // item/code dirs) MUST include the workflow root (GetWorkspacePath, e.g.
 // "Workflow/social-media"). Without it the agent writes to <docsRoot>/runs/...,
 // outside its workflow folder, where downstream context_dependencies can't see
@@ -55,8 +55,8 @@ func TestAgentExecutionRelPath_UsesNormalStepFolder(t *testing.T) {
 		if got != want {
 			t.Fatalf("agentSequenceExecutionRelPath(%q,%q) = %q, want normal step folder %q", tc.stepPath, tc.stepID, got, want)
 		}
-		if strings.Contains(got, "message_sequences") {
-			t.Fatalf("sequence still writes to isolated message_sequences folder: %q", got)
+		if strings.Contains(got, "agents") {
+			t.Fatalf("sequence still writes to isolated agents folder: %q", got)
 		}
 	}
 }

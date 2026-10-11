@@ -142,15 +142,15 @@ export function terminalRailVisualKind(terminal: TerminalSnapshot): TerminalRail
     stepType === 'orchestrator' ||
     executionKind === 'orchestrator' ||
     executionKind === 'todo_task'
-  ) return 'orchestrator'
+  ) return hasDistinctParentStep ? 'sub-agent' : 'agent'
   // A predefined route can use agent internally, but its
   // user-facing role is still a child agent of the owning agent.
   if (hasDistinctParentStep) return 'sub-agent'
   if (
-    stepType === 'agent' ||
+    (stepType === 'agent' || stepType === 'agent') ||
     (stepType === 'regular' && executionMode !== 'scripted') ||
-    executionKind === 'agent' ||
-    executionKind === 'agent_item' ||
+    (executionKind === 'agent' || executionKind === 'agent') ||
+    (executionKind === 'agent_item' || executionKind === 'agent_item') ||
     AGENT_PATTERN.test(agentName)
   ) return 'agent'
   if ([

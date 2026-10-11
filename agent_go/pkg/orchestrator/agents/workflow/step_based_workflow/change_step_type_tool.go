@@ -11,7 +11,7 @@ import (
 )
 
 // change_step_type converts a step between the two execution models in place
-// (PLAT-286). Until now the only way from a conversational message_sequence
+// (PLAT-286). Until now the only way from a conversational agent
 // to a deterministic scripted step was to rebuild it -- add_scripted_step +
 // delete_plan_steps + rewiring every dependency and route. The converters
 // already existed for the runtime's own compatibility paths
@@ -34,7 +34,7 @@ func getChangeStepTypeSchema() string {
 		"type": "object",
 		"properties": {
 			"step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: id of the step to convert (its id field in the plan). Nested and orphan steps are accepted."},
-			"target_type": {"type": "string", "enum": ["scripted", "agent"], "description": "REQUIRED: scripted = deterministic work in a checked-in learnings/<step-id>/main.py (the internal regular plan type); message_sequence = conversational turns."},
+			"target_type": {"type": "string", "enum": ["scripted", "agent"], "description": "REQUIRED: scripted = deterministic work in a checked-in learnings/<step-id>/main.py (the internal regular plan type); agent = conversational turns."},
 			"reason": {"type": "string", "minLength": 1, "description": "REQUIRED: why this step's execution model changes. Recorded in planning/changelog."}
 		},
 		"required": ["step_id", "target_type", "reason"]
@@ -144,7 +144,7 @@ func changeStepTypeInPlan(plan *PlanningResponse, configs []StepConfig, stepID, 
 				return res, nil
 			}
 			// A regular step still carrying the retired
-			// declared_execution_mode="agentic" runs as a message_sequence
+			// declared_execution_mode="agentic" runs as a agent
 			// through the transitional shim; clearing that key is the whole
 			// conversion (the plan type already says scripted).
 			configureScripted()
@@ -158,7 +158,7 @@ func changeStepTypeInPlan(plan *PlanningResponse, configs []StepConfig, stepID, 
 		return res, nil
 
 	default:
-		return nil, fmt.Errorf("change_step_type converts only between scripted and message_sequence; step %q is a %s step, which has its own add/update/delete tools", stepID, existing.StepType())
+		return nil, fmt.Errorf("change_step_type converts only between scripted and agent; step %q is a %s step, which has its own add/update/delete tools", stepID, existing.StepType())
 	}
 }
 
@@ -271,7 +271,7 @@ func createChangeStepTypeExecutor(
 			} else {
 				fmt.Fprintf(&b, " %s/main.py does NOT exist yet -- author this file with the workspace editing tools, then test with execute_step(fast_path_only=true).", scriptDir)
 			}
-			b.WriteString(" Keep validation_schema strict, and move any judgment or verification that lived in the old turns into a message_sequence that consumes this step's output rather than into the script.")
+			b.WriteString(" Keep validation_schema strict, and move any judgment or verification that lived in the old turns into a agent that consumes this step's output rather than into the script.")
 		default:
 			fmt.Fprintf(&b, "Converted step %q to an agent with one execute-and-verify item.", stepID)
 			b.WriteString(" Refine the turns with update_agent_step.")

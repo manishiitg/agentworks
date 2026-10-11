@@ -36,7 +36,7 @@ func TestResolvePlanOrphanStepRefs_ResolvesSharedRouteRef(t *testing.T) {
 				"success_criteria": "Environment is ready.",
 				"context_output": "env-check.json",
 				"shared_with": {
-					"orchestrator_ids": ["orchestrator-a"]
+					"agent_ids": ["orchestrator-a"]
 				}
 			}
 		]
@@ -111,7 +111,7 @@ func TestResolvePlanOrphanStepRefs_RejectsUnsharedRouteRef(t *testing.T) {
 				"success_criteria": "Environment is ready.",
 				"context_output": "env-check.json",
 				"shared_with": {
-					"orchestrator_ids": ["other-orchestrator"]
+					"agent_ids": ["other-orchestrator"]
 				}
 			}
 		]

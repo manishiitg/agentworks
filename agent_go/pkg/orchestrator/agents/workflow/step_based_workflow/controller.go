@@ -86,7 +86,7 @@ type StepBasedWorkflowOrchestrator struct {
 	workshopGroupSessionRefs map[string]int
 	workshopGroupLastUsed    map[string]time.Time
 
-	// In-memory message_sequence ROUTE conversation cache. When an agent is used
+	// In-memory agent ROUTE conversation cache. When an agent is used
 	// as a todo_task route, the orchestrator re-enters it across calls within one run; this
 	// holds each route's conversation so it remembers prior calls WITHOUT reading back from
 	// disk. Scoped to this orchestrator instance (one workflow run). Standalone

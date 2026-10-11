@@ -28,7 +28,7 @@ func TestObserverDefaultsToNoPhase(t *testing.T) {
 }
 
 // TestObserverSetPhaseTogglesEntryAttribution pins the reflection-turn /
-// message_sequence-item bracket pattern (reflection_turn_run.go,
+// agent-item bracket pattern (reflection_turn_run.go,
 // controller_agent.go): SetPhase changes what every subsequent
 // entry from this SAME observer instance carries, and a later SetPhase("")
 // restores the untagged default — since both reuse the step's own
@@ -58,7 +58,7 @@ func TestObserverSetPhaseTogglesEntryAttribution(t *testing.T) {
 }
 
 // TestObserverSetPhaseSupportsArbitraryAgentItemTags pins PLAT-167:
-// SetPhase is not limited to the two PLAT-166 constants — a message_sequence
+// SetPhase is not limited to the two PLAT-166 constants — a agent
 // item's own identity works exactly the same way.
 func TestObserverSetPhaseSupportsArbitraryAgentItemTags(t *testing.T) {
 	observer := New(nil, "sess-1", "user-1", "simple",

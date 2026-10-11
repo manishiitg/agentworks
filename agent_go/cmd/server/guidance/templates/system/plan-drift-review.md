@@ -196,7 +196,7 @@ context dependencies, and guidance that execution actually receives. Assess:
 - precise wording, no conflicting/stale instructions, needless repetition,
   copied shared policy, or micromanaged procedure without a correctness reason;
 - enough context and accessible references to execute the task without guessing;
-- for a agent, a first item that instructs the work itself. A
+- for an agent, a first item that instructs the work itself. A
   sequence whose items only verify or re-open results lets the agent satisfy the
   step by re-checking an earlier run and doing no new work.
 

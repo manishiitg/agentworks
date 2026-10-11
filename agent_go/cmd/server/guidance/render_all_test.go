@@ -336,7 +336,7 @@ func TestStandaloneStrategyAuditRunsDirectlyAndRequiresTerminalModuleResult(t *t
 	}
 }
 
-func TestOrchestratorEligibilityStaysConsistentAcrossGuidance(t *testing.T) {
+func TestAgentDelegationEligibilityStaysConsistentAcrossGuidance(t *testing.T) {
 	canonical, err := renderFromRegistry("design-plan", tmplData{}, allKinds)
 	if err != nil {
 		t.Fatalf("render design-plan: %v", err)
@@ -352,14 +352,14 @@ func TestOrchestratorEligibilityStaysConsistentAcrossGuidance(t *testing.T) {
 		}
 	}
 
-	for _, kind := range []string{"plan-design", "orchestrator", "optimize-playbook"} {
+	for _, kind := range []string{"plan-design", "agent", "optimize-playbook"} {
 		doc := RenderSystemDoc(kind)
 		if !containsNormalizedText(doc, "fixed child set and order does not justify adaptive routes") {
 			t.Fatalf("%s guidance weakened the canonical fixed-child invariant", kind)
 		}
 	}
 
-	for _, kind := range []string{"orchestrator", "optimize-playbook"} {
+	for _, kind := range []string{"agent", "optimize-playbook"} {
 		doc := RenderSystemDoc(kind)
 		if strings.Contains(doc, "Scripted-mode todo_task") || strings.Contains(doc, "Orchestrator scripted mode (deterministic delegation") {
 			t.Fatalf("%s still documents the removed orchestrator scripted fast path", kind)
@@ -1271,7 +1271,7 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 	}{
 		"planning-steps":    {registry: referenceKinds, text: "one atomic action with no"},
 		"optimize-playbook": {registry: referenceKinds, text: "add a separate step after it that reads the output"},
-		"orchestrator":      {registry: referenceKinds, text: "manages multiple discrete tasks"},
+		"agent":             {registry: referenceKinds, text: "manages multiple discrete tasks"},
 	}
 	for kind, check := range stale {
 		rendered, err := renderFromRegistry(kind, tmplData{}, check.registry)
@@ -1361,8 +1361,7 @@ func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
 	}
 	for kind, wants := range map[string][]string{
 		"plan-design":       {"Composition examples", "readiness", "draft"},
-		"orchestrator":      {"known upfront", "unknown work breakdown is one use case, not a prerequisite", "already supplied by the user"},
-		"agent":             {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel"},
+		"agent":             {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel", "known upfront", "unknown work breakdown is one use case, not a prerequisite", "already supplied by the user"},
 		"stores":            {"transaction or retry contract", "window.report.query", "knowledgebase/notes/", "learnings/_global/SKILL.md"},
 		"human-in-the-loop": {"provide the actual draft/change/evidence", "Schedules must complete unattended"},
 	} {

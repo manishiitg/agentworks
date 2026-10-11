@@ -103,7 +103,7 @@ func TestOrchestratorPromptRoutesConsequentialEvidenceToPulseReview(t *testing.T
 func TestDelegatingAndPlainAgentsShareSystemPromptBase(t *testing.T) {
 	plain := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{})
 	delegating := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{
-		"PredefinedRoutes": "- specialist (`specialist`) — type: `message_sequence`",
+		"PredefinedRoutes": "- specialist (`specialist`) — type: `agent`",
 	})
 
 	for name, prompt := range map[string]string{"plain": plain, "delegating": delegating} {

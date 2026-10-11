@@ -57,7 +57,7 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
     if (isEvaluationAgent) return 'Evaluation Agent'
     if (t === 'todo_planner_execution') return 'Sub-Agent'
     if (t === 'generic_execution') return 'Generic Agent'
-    if (t === 'todo_task_orchestrator') return 'Todo Orchestrator'
+    if (t === 'delegating_agent') return 'Agent'
     if (t === 'planning') return 'Planning Agent'
     if (t === 'execution') return 'Execution Agent'
     if (t === 'validation') return 'Validation Agent'
@@ -92,7 +92,7 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
     // A todo orchestrator finishing is an ordinary completion. It used to fall
     // through to the yellow default, so a normal end-of-run read as a warning
     // -- the loudest card on the screen for the least alarming event.
-    if (t === 'todo_task_orchestrator') return 'slate'
+    if (t === 'delegating_agent') return 'slate'
     // A normal completion is neutral. Failure components carry their own red
     // treatment, so yellow here looked like a warning even when work succeeded.
     return 'slate'

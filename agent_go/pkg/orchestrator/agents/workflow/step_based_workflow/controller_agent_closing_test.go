@@ -43,7 +43,7 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("want 3 messages, got %d", len(msgs))
 	}
-	if msgs[0].Type != "message" || msgs[0].Message != "hello" || msgs[0].MaxCorrections != 2 {
+	if msgs[0].Type != "user_message" || msgs[0].Message != "hello" || msgs[0].MaxCorrections != 2 {
 		t.Errorf("message[0] back-compat fields lost: %+v", msgs[0])
 	}
 	if msgs[1].Type != "foreach" || msgs[1].SourceSQL != "SELECT id FROM t" || msgs[1].MaxIterations != 5 {
@@ -54,7 +54,7 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	}
 }
 
-// Verifies a standalone message_sequence gets synthetic learnings/KB contribution
+// Verifies a standalone agent gets synthetic learnings/KB contribution
 // turns appended when (and only when) the step is configured for those writes —
 // so it honors step-level learning_objective / knowledgebase_contribution like a
 // regular step instead of silently skipping the post-step learnings/KB phase.

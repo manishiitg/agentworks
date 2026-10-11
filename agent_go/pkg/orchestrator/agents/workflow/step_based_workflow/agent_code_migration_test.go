@@ -211,7 +211,7 @@ func TestExplicitConversationScriptConversationPlanValidates(t *testing.T) {
 		t.Fatalf("decode explicit context-flow plan: %v", err)
 	}
 	if err := ValidatePlanStructure(&plan); err != nil {
-		t.Fatalf("message_sequence -> scripted step -> message_sequence plan should validate: %v", err)
+		t.Fatalf("agent -> scripted step -> agent plan should validate: %v", err)
 	}
 }
 

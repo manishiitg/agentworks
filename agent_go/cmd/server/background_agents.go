@@ -730,9 +730,9 @@ func (r *BackgroundAgentRegistry) GetAll(sessionID string) []*BackgroundAgent {
 // are built as "<parentID>-step-<n>-<token>" (workflowProgressExecIDForStart).
 // Each is registered on OrchestratorAgentStart and settled on the matching end
 // event — but several real paths never deliver that end. A superseded or
-// abandoned evaluation stops emitting entirely, and a todo_task_orchestrator's
+// abandoned evaluation stops emitting entirely, and a delegating_agent's
 // successful turn end is deliberately ignored in favor of a later
-// OrchestratorStepCompleted event that an abandoned run never sends.
+// AgentStepCompleted event that an abandoned run never sends.
 //
 // That matters because HasRunningAgents treats BGAgentRunning as live
 // unconditionally and the registry never deletes entries, so one orphan pins

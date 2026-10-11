@@ -12,7 +12,7 @@ steps. See PLAT-259.
 
 A routing step is a deterministic switch. It reads `route_selection.json`, resolves the selected value to one of its `routes[]`, and branches to that route's `next_step_id`.
 
-Use routing when the workflow must run **exactly one** of N major downstream sub-workflows. The common case is a fixed branch selected from the user's request to the builder; the builder/caller passes that choice as `route_selections` when starting the workflow. Do not put judgment inside the routing step itself; put judgment in an earlier agent or caller-provided `route_selections`. If an agent decision is needed, add a agent before routing that writes `route_selection.json` in its own output folder.
+Use routing when the workflow must run **exactly one** of N major downstream sub-workflows. The common case is a fixed branch selected from the user's request to the builder; the builder/caller passes that choice as `route_selections` when starting the workflow. Do not put judgment inside the routing step itself; put judgment in an earlier agent or caller-provided `route_selections`. If an agent decision is needed, add an agent before routing that writes `route_selection.json` in its own output folder.
 
 **A plan has at most one routing step.** Routing is the workflow's mode
 selector: the single fork whose route a schedule or caller picks via
@@ -77,7 +77,7 @@ Each entry in `routes[]` has:
 - `condition` — short prose explaining when this route should be selected
 - `next_step_id` — the ID of an existing step in the plan that this route branches to
 
-Routing routes do **not** define inline sub-agents. Unlike a agent
+Routing routes do **not** define inline sub-agents. Unlike an agent
 agent's `predefined_routes` (which may embed a `sub_agent_step`), routing
 `routes[]` are pointers—every `next_step_id` must reference an existing plan
 step. Add downstream scripted, agent, or human-input steps separately,

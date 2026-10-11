@@ -23,7 +23,7 @@ Split into separate steps only when a boundary buys something concrete that cann
 - Downstream consumer needs the intermediate artifact
 - Different persistent-store contract (learnings HOW, KB WHAT, database structured state, report data)
 - Human decision, approval, or routing checkpoint
-- Deterministic execution versus agentic judgment: fixed API/SDK calls, CLI commands, data fetching, parsing, normalization, and mechanical writes belong in scripted regular steps; reasoning over their results belongs in a agent
+- Deterministic execution versus agentic judgment: fixed API/SDK calls, CLI commands, data fetching, parsing, normalization, and mechanical writes belong in scripted regular steps; reasoning over their results belongs in an agent
 
 Combine actions into one step when they share one objective and output contract, use the same tools/security context, fail and retry together, produce only scratch intermediates, and one validation schema can verify the result.
 
@@ -174,12 +174,12 @@ rerun that archives the existing route session and replays the configured queue.
 - Add explicit reference-check, hallucination-check, critique, or self-validation items when reliability needs it.
 - Plain items inherit the step-level KB, DB, and learnings permissions, just like regular steps. Use a non-empty `write_access` object or `kind` only to narrow a particular turn; an item can never escalate beyond the step configuration. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
 - Deterministic code lives in saved regular script definitions with explicit inputs, outputs, and validation. Run them as standalone plan steps or reference orphan scripts in a `scripted` batch item; never embed code in a message item.
-- As a predefined route, a agent behaves like a reusable specialist sub-agent: reuse the same route for critique, test feedback, validation feedback, or follow-up work that should keep prior context; restart only when the prior conversation is stale, wrong, or contaminated.
+- As a predefined route, an agent behaves like a reusable specialist sub-agent: reuse the same route for critique, test feedback, validation feedback, or follow-up work that should keep prior context; restart only when the prior conversation is stale, wrong, or contaminated.
 - For row/item iteration, use a `foreach` item inside agent when one shared conversation should process every row. A SQL-selected worklist does not by itself require delegation. For known script batches, use a `scripted` item; add routes only when the parent owns substantive adaptive strategy.
 
 ### Step 6: When to Use Routing or Branch (brief)
 
-Use `routing` or `branch` when the next step must be **exactly one of N mutually exclusive paths** (e.g., "did login succeed, hit MFA, or fail?"). Both are deterministic: a caller or prior step must provide `route_selection.json` (or `route_selections`) with the selected route. For running every known sub-task, use a agent or explicit plan steps. Give an agent `predefined_routes` when it must reason about what specialist work is needed.
+Use `routing` or `branch` when the next step must be **exactly one of N mutually exclusive paths** (e.g., "did login succeed, hit MFA, or fail?"). Both are deterministic: a caller or prior step must provide `route_selection.json` (or `route_selections`) with the selected route. For running every known sub-task, use an agent or explicit plan steps. Give an agent `predefined_routes` when it must reason about what specialist work is needed.
 
 **Routing is now the "route" concept: a major, self-contained sub-workflow fork** — use it when the alternatives lead to substantially different continuations of the plan. **Branch is the small in-flow decision** — use it for a lightweight fork that converges back quickly. File-based selection mechanics are shared; branch additionally supports `route_source="human"` for fixed-choice decisions. **A plan has at most one routing step** — the mode selector whose route schedules pick via `route_selections`, each route a sub-workflow of many steps. Every further fixed choice — any simple if-condition, anything with an option that goes straight to `end` — is a branch; `add_step` rejects a second routing step and any route to `end`.
 
@@ -222,7 +222,7 @@ Step-level `success_criteria` is deprecated. Rely on a strong `description` plus
 - **Routing** (type: "routing"): N-way deterministic branching for a major sub-workflow fork. Reads `route_selection.json` (or caller `route_selections`) and picks exactly one **routes[]** entry. Each route has **route_id**, **condition**, and **next_step_id** (pointer to an existing step). Optional **default_route_id** is a missing-file fallback. Optional **route_source_file** points at a prior step's route file.
 - **Branch** (type: "branch"): shares file-based selection with Routing, for a small in-flow next-step decision instead of a major fork. Uses **branch_question**; additionally supports **route_source="human"** for a fixed-choice prompt.
 - **Human Input** (type: "human_input"): Captures a free-form value with **response_type="text"**. Existing yesno/multiple_choice steps remain supported; new fixed-choice decisions use a human-decided Branch.
-- **Orphan** (is_orphan: true): Not part of the main execution flow. Orphan steps are plan-local reusable definitions and manual utility agents. Use them for data checks, environment validation, one-off investigations, or shared sub-agent definitions that multiple orchestrators in the same plan may reuse. Reuse is explicit: an orphan step must declare `shared_with.orchestrator_ids`, and an orchestrator route must point to it with `orphan_step_ref`. Do not assume every orphan step is shared with every orchestrator.
+- **Orphan** (is_orphan: true): Not part of the main execution flow. Orphan steps are plan-local reusable definitions and manual utility agents. Use them for data checks, environment validation, one-off investigations, or shared sub-agent definitions that multiple agents in the same plan may reuse. Reuse is explicit: an orphan step must declare `shared_with.agent_ids`, and an agent route must point to it with `orphan_step_ref`. Do not assume every orphan step is shared with every agent.
 
 ### Inner Steps
 
@@ -234,9 +234,9 @@ steps—their `routes[].next_step_id` points to existing plan steps.
 
 ### Reusable Orphan Route Pattern
 
-When an orchestrator route should reuse an orphan step:
+When an agent route should reuse an orphan step:
 - Put the reusable step definition in `orphan_steps[]`.
-- On that orphan step, set `shared_with.orchestrator_ids` to the IDs of the parent agents allowed to reuse it (the field name remains for compatibility).
+- On that orphan step, set `shared_with.agent_ids` to the IDs of the parent agents allowed to reuse it.
 - On the route, set `orphan_step_ref` to the orphan step ID instead of embedding an inline `sub_agent_step`.
 - Use inline `sub_agent_step` only when the route needs its own dedicated definition.
 

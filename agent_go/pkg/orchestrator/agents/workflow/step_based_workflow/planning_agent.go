@@ -268,7 +268,7 @@ type AgentConfigs struct {
 	// conversational.
 	// Nothing sets these any more. They still round-trip through step_config.json
 	// for exactly two reasons: the runtime shim that keeps a not-yet-migrated
-	// legacy agentic regular step running as a message_sequence, and so that a
+	// legacy agentic regular step running as a agent, and so that a
 	// step_config write made before the v1.0.39 migration does not silently drop
 	// the key and flip such a step to scripted. The v1.0.39 migration
 	// (strip_declared_execution_mode) clears both; delete the fields and the
@@ -481,7 +481,23 @@ type ScriptParameterDefinition struct {
 
 // StepSharing defines which orchestrators in the same plan may reuse an orphan step.
 type StepSharing struct {
-	OrchestratorIDs []string `json:"orchestrator_ids,omitempty"`
+	AgentIDs []string `json:"agent_ids,omitempty"`
+}
+
+// UnmarshalJSON accepts only the retired sharing key at the saved-data boundary.
+func (s *StepSharing) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		AgentIDs  []string `json:"agent_ids"`
+		LegacyIDs []string `json:"orchestrator_ids"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	s.AgentIDs = raw.AgentIDs
+	if s.AgentIDs == nil {
+		s.AgentIDs = raw.LegacyIDs
+	}
+	return nil
 }
 
 // PlanStepInterface is the interface that all step types must implement
@@ -783,7 +799,7 @@ type AgentItem struct {
 	ScriptedSteps []AgentScriptCall `json:"scripted_steps,omitempty"`
 	MaxParallel   int               `json:"max_parallel,omitempty"`
 	// prevalidation entries: corrective turns allowed on gate failure. Used by the
-	// orchestrator's scripted sequence (todo_task); a standalone message_sequence
+	// orchestrator's scripted sequence (todo_task); a standalone agent
 	// uses its own fixed repair cap. Default 1 when unset.
 	MaxCorrections int `json:"max_corrections,omitempty"`
 	// Synthetic marks an item the runtime appended itself rather than one an
@@ -825,7 +841,7 @@ func (m *AgentPlanStep) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON handles the interface-valued sub_agent_step fields in optional
 // delegation routes. An agent with predefined_routes is still a
-// message_sequence plan step; the routes only add bounded, agent-decided
+// agent plan step; the routes only add bounded, agent-decided
 // delegation capabilities to its conversation.
 func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
 	data, _, err := canonicalAgentStepJSON(data)
@@ -966,7 +982,7 @@ func parseStepFromJSON(stepData json.RawMessage, index int, label string) (PlanS
 	case "agent", "message_sequence", "orchestrator", "todo_task":
 		var step AgentPlanStep
 		if err := json.Unmarshal(stepData, &step); err != nil {
-			return nil, fmt.Errorf("failed to parse message_sequence %s %d: %w", label, index, err)
+			return nil, fmt.Errorf("failed to parse agent %s %d: %w", label, index, err)
 		}
 		return &step, nil
 	default:
@@ -1587,7 +1603,7 @@ func getUpdateAgentStepSchema() string {
 	return `{
 		"type": "object",
 		"properties": {
-			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the agent step to update. Legacy non-scripted regular steps are accepted and atomically upgraded to message_sequence because that is already their effective runtime type."},
+			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the agent step to update. Legacy non-scripted regular steps are accepted and atomically upgraded to agent because that is already their effective runtime type."},
 			"title": {"type": "string", "description": "OPTIONAL: New title. Omit to preserve the existing title."},
 			"description": {"type": "string", "description": "OPTIONAL: Replaces the durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Put ordered execution and verification instructions in items[]. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
 			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
@@ -2013,19 +2029,18 @@ func getAddAgentRouteSchema() string {
 					},
 					"sub_agent_step": {
 						"type": "object",
-						"description": "OPTIONAL: The inline sub-agent step definition. Use type='message_sequence' for every new conversational or judgment-heavy specialist, even one turn. Use type='regular' only for a deterministic scripted boundary, or type='todo_task' for one nested orchestrator layer. Omit this when using orphan_step_ref.",
+						"description": "OPTIONAL: The inline sub-agent step definition. Use type='agent' for every new conversational or judgment-heavy specialist, even one turn. Use type='regular' only for a deterministic scripted boundary. Agent specialists may declare routes for one nested delegation layer. Omit this when using orphan_step_ref.",
 						"properties": {
-							"type": {"type": "string", "enum": ["agent", "regular"], "description": "REQUIRED: message_sequence for conversational work; regular only for deterministic scripted work; todo_task for one nested orchestrator layer."},
+							"type": {"type": "string", "enum": ["agent", "regular"], "description": "REQUIRED: agent for conversational work; regular only for deterministic scripted work; agent specialists may own one nested delegation layer."},
 							"id": {"type": "string", "description": "REQUIRED: Stable step ID for the sub-agent step"},
 							"title": {"type": "string", "description": "REQUIRED: Title of the sub-agent step"},
 							"description": {"type": "string", "description": "REQUIRED: What this specialized agent does AND its standing brief. For scripted regular routes this is the stable code contract; runtime variation belongs in script_parameters. For agent routes, per-call instructions are added on top."},
 							"script_parameters": {"type": "object", "description": "For regular scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 							"script_parameters_schema": {"type": "object", "description": "For regular scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
-							"items": {"type": "array", "description": "REQUIRED when type='message_sequence'. Ordered user_message, prevalidation, or foreach turns.", "items": {"type": "object"}},
+							"items": {"type": "array", "description": "REQUIRED when type='agent'. Ordered user_message, prevalidation, or foreach turns.", "items": {"type": "object"}},
 							"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 							"context_output": {"type": "string", "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."},
-							"todo_task_step": {"type": "object", "description": "When type='todo_task': the nested orchestrator's inner regular step metadata."},
-							"predefined_routes": {"type": "array", "description": "When type='todo_task': predefined routes for the nested orchestrator. Conversational children use agent; deterministic scripted children may use regular. Another todo_task layer is not allowed."},
+							"predefined_routes": {"type": "array", "description": "For an agent specialist: optional predefined routes. Conversational children use agent; deterministic scripted children may use regular. A second nested delegation layer is not allowed."},
 							"validation_schema": {
 								"type": "object",
 								"description": "OPTIONAL: Validation schema for the sub-agent output"
@@ -2072,7 +2087,7 @@ func getUpdateAgentRouteSchema() string {
 			},
 			"sub_agent_step": {
 				"type": "object",
-				"description": "OPTIONAL: Updated inline sub-agent step. Use message_sequence for conversational or judgment-heavy work, regular only for deterministic scripted work, or todo_task for one nested orchestrator layer. Omit this when using orphan_step_ref.",
+				"description": "OPTIONAL: Updated inline sub-agent step. Use agent for conversational or judgment-heavy work, regular only for deterministic scripted work, or todo_task for one nested orchestrator layer. Omit this when using orphan_step_ref.",
 				"properties": {
 					"type": {"type": "string", "enum": ["agent", "regular"]},
 					"id": {"type": "string"},
@@ -2080,10 +2095,9 @@ func getUpdateAgentRouteSchema() string {
 					"description": {"type": "string", "description": "OPTIONAL: Replaces the stable route contract. For scripted regular routes, runtime variation belongs in script_parameters. Omit to preserve the existing description."},
 					"script_parameters": {"type": "object", "description": "For regular scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 					"script_parameters_schema": {"type": "object", "description": "For regular scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
-					"items": {"type": "array", "description": "Required when type='message_sequence'. Replaces the entire ordered user-message queue — a full replacement, not a merge. The description is the system charter; items explain how to execute and verify it. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
+					"items": {"type": "array", "description": "Required when type='agent'. Replaces the entire ordered user-message queue — a full replacement, not a merge. The description is the system charter; items explain how to execute and verify it. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
 					"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 					"context_output": {"type": "string"},
-					"todo_task_step": {"type": "object", "description": "When type='todo_task': nested orchestrator inner step metadata."},
 					"predefined_routes": {"type": "array", "description": "When type='todo_task': nested routes may use agent or scripted regular, but not another todo_task layer."},
 						"validation_schema": {"type": "object"}
 				},
@@ -2187,7 +2201,7 @@ func getUpdateHumanInputStepSchema() string {
 // A refusal that says only "use its type-specific update tool" tells an agent it
 // was wrong without telling it what is right, and the reasonable next conclusion
 // is that the step cannot be edited at all. latency-report shows the cost: a fixer
-// tried update_scripted_step on two message_sequence collectors, was correctly
+// tried update_scripted_step on two agent collectors, was correctly
 // refused, and recorded "legacy agentic regular step, not editable" as a blocked
 // finding. It re-reported that for days while update_agent_step sat in
 // its own tool surface the whole time.
@@ -2317,7 +2331,7 @@ func readPlanFromFileWithGraphValidation(ctx context.Context, workspacePath stri
 		validate = validateLoadedPlanStructure
 	}
 	if err := validate(&plan); err != nil {
-		// A plan whose only defect is a pre-v1.0.10 message_sequence "code"
+		// A plan whose only defect is a pre-v1.0.10 agent "code"
 		// item can still be LOADED here for editing — e.g. so
 		// delete_plan_steps or update_agent_step can remove or
 		// repair the offending step — even though it fails strict
@@ -4264,7 +4278,7 @@ func createUpdateRegularStepExecutor(workspacePath string, logger loggerv2.Logge
 
 		downgradeNotice := ""
 		if downgradedLegacySequence {
-			downgradeNotice = " and downgraded its saved legacy message_sequence type to regular, so the real scripted executor (with its $DB_PATH/STEP_OUTPUT_DIR injection) now runs it"
+			downgradeNotice = " and downgraded its saved legacy agent type to regular, so the real scripted executor (with its $DB_PATH/STEP_OUTPUT_DIR injection) now runs it"
 		}
 		logger.Info(fmt.Sprintf("✅ Updated scripted step '%s' in plan%s", partialUpdate.ExistingStepID, downgradeNotice))
 		return fmt.Sprintf("Successfully updated scripted step '%s' in the plan%s%s", partialUpdate.ExistingStepID, downgradeNotice, dependentReviewNotice), nil
@@ -4293,7 +4307,7 @@ func prepareScriptedStepUpdateTarget(plan *PlanningResponse, stepConfigs []StepC
 	switch step := existingStep.(type) {
 	case *RegularPlanStep:
 		if isLegacyAgenticRegularStep(step, MatchStepConfigByID(stepID, stepConfigs)) {
-			return false, fmt.Errorf("step %q is a legacy agentic regular step (retired declared_execution_mode=\"agentic\") that still runs as a message_sequence; use update_agent_step, which upgrades its saved type atomically with the edit (or run the v1.0.38 migration migrate_declared_execution_mode), or change_step_type(step_id=%q, target_type=\"scripted\") if it should become a real scripted step", stepID, stepID)
+			return false, fmt.Errorf("step %q is a legacy agentic regular step (retired declared_execution_mode=\"agentic\") that still runs as a agent; use update_agent_step, which upgrades its saved type atomically with the edit (or run the v1.0.38 migration migrate_declared_execution_mode), or change_step_type(step_id=%q, target_type=\"scripted\") if it should become a real scripted step", stepID, stepID)
 		}
 		return false, nil
 	case *AgentPlanStep:
@@ -4305,7 +4319,7 @@ func prepareScriptedStepUpdateTarget(plan *PlanningResponse, stepConfigs []StepC
 
 // prepareAgentUpdateTarget makes the mutation API agree with the
 // runtime compatibility adapter. Persisted non-scripted regular steps already
-// execute as message_sequence, so the agent updater is their single
+// execute as agent, so the agent updater is their single
 // valid editing path and upgrades the stored type atomically with the edit.
 func prepareAgentUpdateTarget(plan *PlanningResponse, stepConfigs []StepConfig, stepID string) (bool, error) {
 	if plan == nil {
@@ -4324,7 +4338,7 @@ func prepareAgentUpdateTarget(plan *PlanningResponse, stepConfigs []StepConfig, 
 		return false, nil
 	case *RegularPlanStep:
 		if !isLegacyAgenticRegularStep(step, MatchStepConfigByID(stepID, stepConfigs)) {
-			return false, fmt.Errorf("step %q is a scripted (regular) step, not message_sequence; use update_scripted_step, or change_step_type(step_id=%q, target_type=\"agent\") first if it should become conversational", stepID, stepID)
+			return false, fmt.Errorf("step %q is a scripted (regular) step, not agent; use update_scripted_step, or change_step_type(step_id=%q, target_type=\"agent\") first if it should become conversational", stepID, stepID)
 		}
 		replacement := normalizeRegularStepToAgent(step)
 		replaced, _ := replaceStepRecursively(plan.Steps, stepID, replacement)
@@ -4332,7 +4346,7 @@ func prepareAgentUpdateTarget(plan *PlanningResponse, stepConfigs []StepConfig, 
 			replaced, _ = replaceStepRecursively(plan.OrphanSteps, stepID, replacement)
 		}
 		if !replaced {
-			return false, fmt.Errorf("failed to upgrade legacy agentic regular step %q to message_sequence", stepID)
+			return false, fmt.Errorf("failed to upgrade legacy agentic regular step %q to agent", stepID)
 		}
 		return true, nil
 	default:
@@ -4509,7 +4523,7 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 		dependentReviewNotice := handlePlanStepDependentArtifactReview(ctx, workspacePath, partialUpdate.ExistingStepID, fieldChanges, readFile, writeFile, logger)
 		upgradeNotice := ""
 		if upgradedLegacyRegular {
-			upgradeNotice = " and upgraded its saved legacy regular type to message_sequence"
+			upgradeNotice = " and upgraded its saved legacy regular type to agent"
 		}
 		sizeNudge := ""
 		if _, descriptionProvided := args["description"]; descriptionProvided && updatedStep != nil {
@@ -5423,7 +5437,7 @@ func validateAgentStepFieldsTypedWithOptions(step *AgentPlanStep, allowLegacyCod
 			itemType = "user_message"
 		}
 		if itemType != "scripted" && (len(item.ScriptedSteps) > 0 || item.MaxParallel != 0) {
-			return fmt.Errorf("message_sequence item %q: scripted_steps/max_parallel require type scripted", item.ID)
+			return fmt.Errorf("agent item %q: scripted_steps/max_parallel require type scripted", item.ID)
 		}
 		switch itemType {
 		case "scripted":
@@ -5626,7 +5640,7 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 					return "", fmt.Errorf("validation failed: %w", err)
 				}
 			}
-		case "agent", "message_sequence", "orchestrator", "todo_task":
+		case "agent":
 			if sequenceStep, ok := typedStep.(*AgentPlanStep); ok {
 				if err := validateAgentStepFieldsTyped(sequenceStep); err != nil {
 					return "", fmt.Errorf("validation failed: %w", err)
@@ -5797,9 +5811,9 @@ func createCreatePlanExecutor(workspacePath string, logger loggerv2.Logger, read
 		return fmt.Sprintf(`Created empty plan.json at %s. For the first step, pass insert_after_step_id="" to insert at the beginning.
 
 Before adding it, decide the step type by who decides the work, not by habit:
-- add_agent_step is the DEFAULT for conversational/judgment work, including one-turn work. Default to one large message_sequence per shared-context span; split only for a concrete boundary (distinct durable output, independent retry/failure domain, different credentials/tools, a downstream consumer needing the intermediate artifact, or a human checkpoint) — not because there are several known sub-tasks or many tool calls.
-- add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE message_sequence, not one scripted/agentic step per action.
-- add optional predefined_routes to the message_sequence only when the agent must interpret runtime evidence and adaptively choose specialist work — a fixed child set/order does not qualify. Do not create a new orchestrator/todo_task compatibility step.
+- add_agent_step is the DEFAULT for conversational/judgment work, including one-turn work. Default to one large agent per shared-context span; split only for a concrete boundary (distinct durable output, independent retry/failure domain, different credentials/tools, a downstream consumer needing the intermediate artifact, or a human checkpoint) — not because there are several known sub-tasks or many tool calls.
+- add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE agent, not one scripted/agentic step per action.
+- add optional predefined_routes to the agent only when the agent must interpret runtime evidence and adaptively choose specialist work — a fixed child set/order does not qualify. Do not create a new orchestrator/todo_task compatibility step.
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
 - add_human_input_step only for a free-form value the workflow cannot otherwise obtain.
 
@@ -5895,7 +5909,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"migrate_declared_execution_mode",
-		"Product-managed workflow-version migration for contract v1.0.38 (PLAT-287, half 1). Rewrites planning/plan.json so every step's type states its execution model explicitly: each legacy agentic regular step (no declared scripted mode) becomes the message_sequence the runtime already ran it as, and any message_sequence still declared scripted becomes regular -- same id, description, dependencies, validation, next_step_id, position. Touches only plan.json: step_config.json is read, never written, and declared_execution_mode stays in place because the current runtime still reads it. Behavior is unchanged. Idempotent. Refuses without changing anything when a step is declared scripted but has no code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Call only during the v1.0.38 workflow preflight.",
+		"Product-managed workflow-version migration for contract v1.0.38 (PLAT-287, half 1). Rewrites planning/plan.json so every step's type states its execution model explicitly: each legacy agentic regular step (no declared scripted mode) becomes the agent the runtime already ran it as, and any agent still declared scripted becomes regular -- same id, description, dependencies, validation, next_step_id, position. Touches only plan.json: step_config.json is read, never written, and declared_execution_mode stays in place because the current runtime still reads it. Behavior is unchanged. Idempotent. Refuses without changing anything when a step is declared scripted but has no code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Call only during the v1.0.38 workflow preflight.",
 		migrateDeclaredModeParams,
 		createMigrateDeclaredExecutionModeExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5926,7 +5940,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_scripted_step",
-		"Update an existing deterministic scripted step. The internal plan type remains regular, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be message_sequence. An agent step is rejected: convert it first with change_step_type(target_type=\"scripted\"), or edit it as a sequence with update_agent_step. A regular step is scripted by its plan type alone (PLAT-287); a regular step still carrying the retired declared_execution_mode=\"agentic\" runs as a sequence until the v1.0.38 migration converts it, and is likewise rejected here. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Pulse or an explicit user request.",
+		"Update an existing deterministic scripted step. The internal plan type remains regular, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be agent. An agent step is rejected: convert it first with change_step_type(target_type=\"scripted\"), or edit it as a sequence with update_agent_step. A regular step is scripted by its plan type alone (PLAT-287); a regular step still carrying the retired declared_execution_mode=\"agentic\" runs as a sequence until the v1.0.38 migration converts it, and is likewise rejected here. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Pulse or an explicit user request.",
 		regularUpdateParams,
 		createUpdateRegularStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5940,7 +5954,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"change_step_type",
-		"Convert a step between the two execution models in place, keeping its id, description, dependencies, validation_schema, next_step_id and position (nested and orphan steps included). target_type=\"scripted\" turns a message_sequence into a deterministic scripted step (internal plan type regular) and declares scripted mode in step_config in the same atomic change -- its conversational items are dropped, since a scripted step's work lives in code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py), which you then write with update_scripted_step(code=...). target_type=\"agent\" turns a scripted step into a sequence with one execute-and-verify item and clears the declared mode; refine the turns with update_agent_step. Use it instead of add_scripted_step + delete_plan_steps + rewiring. Records a revertable before/after entry in planning/changelog. Only scripted <-> message_sequence; other step types have their own tools.",
+		"Convert a step between the two execution models in place, keeping its id, description, dependencies, validation_schema, next_step_id and position (nested and orphan steps included). target_type=\"scripted\" turns a agent into a deterministic scripted step (internal plan type regular) and declares scripted mode in step_config in the same atomic change -- its conversational items are dropped, since a scripted step's work lives in code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py), which you then write with update_scripted_step(code=...). target_type=\"agent\" turns a scripted step into a sequence with one execute-and-verify item and clears the declared mode; refine the turns with update_agent_step. Use it instead of add_scripted_step + delete_plan_steps + rewiring. Records a revertable before/after entry in planning/changelog. Only scripted <-> agent; other step types have their own tools.",
 		changeStepTypeParams,
 		createChangeStepTypeExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6048,7 +6062,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_agent_step",
-		"Add an agent step (plan type message_sequence): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the durable objective, boundaries, and definition of done in the system-level description; put execution and verification instructions in items[]. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
+		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the durable objective, boundaries, and definition of done in the system-level description; put execution and verification instructions in items[]. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
 		agentSequenceParams,
 		createAddAgentStepExecutor(workspacePath, logger, readFile, writeFile, moveFile),
 		"workflow",
@@ -6186,7 +6200,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_agent_step",
-		"Update an agent step in the plan. This also accepts a persisted legacy non-scripted regular step and atomically upgrades it to message_sequence, matching the compatibility runtime agents already see; declared scripted regular steps still require update_scripted_step. Provide existing_step_id and only the fields to change. Replacing items changes the configured queue; an existing runtime session will still resume unless explicitly restarted by execution controls. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Pulse or an explicit user request.",
+		"Update an agent step in the plan. This also accepts a persisted legacy non-scripted regular step and atomically upgrades it to agent, matching the compatibility runtime agents already see; declared scripted regular steps still require update_scripted_step. Provide existing_step_id and only the fields to change. Replacing items changes the configured queue; an existing runtime session will still resume unless explicitly restarted by execution controls. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Pulse or an explicit user request.",
 		agentSequenceUpdateParams,
 		createUpdateAgentStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6205,7 +6219,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_agent_route",
-		"Add a new predefined route (sub-agent) to an Orchestrator step (orchestrator type; todo_task is the legacy alias). New conversational routes must use sub_agent_step.type=message_sequence, even for one turn. Use regular only for a deterministic scripted boundary; it is automatically configured as scripted. Provide parent_step_id and new_route with route_id, route_name, and condition, plus either sub_agent_step or orphan_step_ref. The plan.json file is updated immediately.",
+		"Add a new predefined route (sub-agent) to an Orchestrator step (orchestrator type; todo_task is the legacy alias). New conversational routes must use sub_agent_step.type=agent, even for one turn. Use regular only for a deterministic scripted boundary; it is automatically configured as scripted. Provide parent_step_id and new_route with route_id, route_name, and condition, plus either sub_agent_step or orphan_step_ref. The plan.json file is updated immediately.",
 		addOrchestratorRouteParams,
 		createAddAgentRouteExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6565,7 +6579,7 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 
 		routes, parentTitle, validateParent, ok := mutableAgentRoutes(parentStep)
 		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not an agent step (message_sequence or legacy orchestrator)", parentStepID)
+			return "", fmt.Errorf("step with ID '%s' is not an agent step (agent or legacy orchestrator)", parentStepID)
 		}
 
 		// Validate that the new route has a route_id
@@ -6681,7 +6695,7 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 
 		routes, parentTitle, validateParent, ok := mutableAgentRoutes(parentStep)
 		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not an agent step (message_sequence or legacy orchestrator)", parentStepID)
+			return "", fmt.Errorf("step with ID '%s' is not an agent step (agent or legacy orchestrator)", parentStepID)
 		}
 
 		// Find the route to update
@@ -6851,7 +6865,7 @@ func createDeleteAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 
 		routes, parentTitle, _, ok := mutableAgentRoutes(parentStep)
 		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not an agent step (message_sequence or legacy orchestrator)", parentStepID)
+			return "", fmt.Errorf("step with ID '%s' is not an agent step (agent or legacy orchestrator)", parentStepID)
 		}
 
 		// Find the route to delete

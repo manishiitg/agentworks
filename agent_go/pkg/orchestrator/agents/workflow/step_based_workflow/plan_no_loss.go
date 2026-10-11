@@ -373,7 +373,7 @@ func CheckPlanNoLoss(oldText, newDescription, newItemsText string, guides map[st
 	return report
 }
 
-// noLossItemsText extracts the authored text of message_sequence items:
+// noLossItemsText extracts the authored text of agent items:
 // title, message and source_sql. Ids and types are structure, not rules.
 func noLossItemsText(raw interface{}) string {
 	var parts []string
@@ -501,7 +501,7 @@ func checkPlanNoLossParameters() map[string]interface{} {
 			"step_id":              map[string]interface{}{"type": "string", "description": "The step whose current text is the 'old' side."},
 			"proposed_description": map[string]interface{}{"type": "string", "description": "The full new description. Omit to keep the current description."},
 			"proposed_items": map[string]interface{}{
-				"type": "array", "description": "The full new message_sequence items array (title/message/source_sql are compared). Omit to keep the current items.",
+				"type": "array", "description": "The full new agent items array (title/message/source_sql are compared). Omit to keep the current items.",
 				"items": map[string]interface{}{"type": "object"},
 			},
 			"dropped_history": map[string]interface{}{

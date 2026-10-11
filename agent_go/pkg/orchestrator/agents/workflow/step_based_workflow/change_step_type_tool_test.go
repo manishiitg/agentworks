@@ -12,7 +12,7 @@ import (
 
 const changeStepTypeTestWorkspace = "Workflow/testing"
 
-// testSequenceStep builds a message_sequence that satisfies plan validation
+// testSequenceStep builds a agent that satisfies plan validation
 // on read (title, description, at least one item).
 func testSequenceStep(id, title string) *AgentPlanStep {
 	return &AgentPlanStep{
@@ -174,7 +174,7 @@ func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T)
 
 func TestChangeStepTypeClearsTheLegacyAgenticKeyOnARegularStep(t *testing.T) {
 	// A regular step still carrying the retired declared_execution_mode=
-	// "agentic" runs as a message_sequence through the transitional shim;
+	// "agentic" runs as a agent through the transitional shim;
 	// converting it to scripted means clearing that key (the plan type
 	// already says scripted).
 	plan := &PlanningResponse{Steps: []PlanStepInterface{

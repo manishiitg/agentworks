@@ -82,7 +82,7 @@ For reliability a typed helper (`db_upsert(file, key, rows)`) is preferable to r
 | `controller_agent_factory.go:806` | Same for orchestrator agent guard |
 | `controller_todo_task.go:91` | Add `db/` to read+write paths |
 | `execution_only_agent.go` | Tell agents about `db/` path and JSON convention |
-| `todo_task_orchestrator_agent.go` | Same |
+| `delegating_agent_agent.go` | Same |
 | `pre_validation.go:1080` | Add `"db"` to known workflow folder names |
 | ~~`evaluation_types.go`~~ (retired) | ~~Add `DBWrite bool` to `EvaluationStep`~~ |
 | ~~`controller_agent_factory.go:800`~~ (retired) | ~~Evaluation folder guard~~ |
@@ -322,7 +322,7 @@ resolveKnowledgebaseAccess(stepConfig, presetEnabled):
 | `controller_agent_factory.go:806` | Same for orchestrator agent guard |
 | `controller_learn_code.go:642` | Use same `resolveKnowledgebaseAccess()` helper |
 | `execution_only_agent.go` | Prompt reflects actual access mode (e.g. `READ` vs `READ/WRITE`) |
-| `todo_task_orchestrator_agent.go` | Same |
+| `delegating_agent_agent.go` | Same |
 
 ---
 
@@ -823,7 +823,7 @@ All three agent prompts now explicitly distinguish the three persistent stores:
 
 Applied in:
 - Execution agent prompt (`execution_only_agent.go`)
-- Todo-task orchestrator agent prompt (`todo_task_orchestrator_agent.go`)
+- Todo-task orchestrator agent prompt (`delegating_agent_agent.go`)
 - Workshop builder prompt (`interactive_workshop_manager.go`)
 
 The workshop builder prompt also carries the full three-way comparison table and "when to use which" deciding questions so the builder agent can recommend the right store to users asking "where should I put X?"
@@ -841,7 +841,7 @@ Workers lazy-start via `sync.Once` on first enqueue — no explicit boot wiring.
 
 | Area | New files | Modified | Deleted |
 |---|---|---|---|
-| Persistent stores | `kb_graph.go`, `kb_update_agent.go`, `controller_kb_update.go`, `queues.go`, `workshop_helpers.go` | `controller_execution.go`, `controller_run_manager.go`, `controller_agent_factory.go`, `controller_todo_task.go`, `controller_learning.go`, `controller_batch_execution.go`, `controller_learn_code.go`, `evaluation_types.go`, `execution_only_agent.go`, `todo_task_orchestrator_agent.go`, `planning_agent.go`, `pre_validation.go` | — |
+| Persistent stores | `kb_graph.go`, `kb_update_agent.go`, `controller_kb_update.go`, `queues.go`, `workshop_helpers.go` | `controller_execution.go`, `controller_run_manager.go`, `controller_agent_factory.go`, `controller_todo_task.go`, `controller_learning.go`, `controller_batch_execution.go`, `controller_learn_code.go`, `evaluation_types.go`, `execution_only_agent.go`, `delegating_agent_agent.go`, `planning_agent.go`, `pre_validation.go` | — |
 | Report system | `ReportViewer.tsx`, `reportPlanParser.ts` | `interactive_workshop_manager.go` (prompts + tool schema), `api-types.ts`, `api.ts` | `final_output.go`, `FinalOutputPopup.tsx` |
 | KB UI | `KnowledgebaseView.tsx` | `WorkflowToolbar.tsx` (Database icon, popup wiring) | — |
 | Workflow-level | — | `workflow.go`, `server.go`, `scheduler.go`, `workflow_orchestrator.go`, `types.go` (workflowtypes) | — |

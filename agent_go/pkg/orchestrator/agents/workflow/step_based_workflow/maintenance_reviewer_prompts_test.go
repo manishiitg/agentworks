@@ -59,7 +59,7 @@ func TestReviewPlanPromptPrefersCoherentAgenticSteps(t *testing.T) {
 		"do not dump the full plan",
 		"workflow.json",
 		"planning/step_config.json",
-		"one large `message_sequence` per coherent shared-context span",
+		"one large `agent` per coherent shared-context span",
 		"fewest durable steps",
 		"substantial end-to-end outcome",
 		"agent",

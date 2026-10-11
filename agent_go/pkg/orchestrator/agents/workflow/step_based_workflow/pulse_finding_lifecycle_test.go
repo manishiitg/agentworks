@@ -684,7 +684,7 @@ func TestPulseFindingLifecycleLoadsStructuredHarnessReproduction(t *testing.T) {
 			Severity:       "critical",
 			Summary:        "Runtime and editing APIs disagree about the step type.",
 			Impact:         "Pulse can diagnose the workflow defect but cannot apply its repair.",
-			Workaround:     "Persist the step as message_sequence manually.",
+			Workaround:     "Persist the step as agent manually.",
 			Evidence:       []string{"update_scripted_step rejected the agentic step", "update_agent_step rejected the saved regular type"},
 			Reproduction: PulseFindingReproduction{
 				Safe:        true,
