@@ -9,6 +9,20 @@ AgentWorks MCP connection separately only when broader tools are wanted. The dae
 agent. It is bound to that stable agent ID/name, and parent sign-out revokes it.
 Named-peer messages use this child; product functions require a separate connection.
 
+This package uses Codex's supported `.codex-plugin/plugin.json` compatibility
+manifest and `.mcp.json` transport file. The installed loader must report two
+skills, the `agentworks` MCP server and four hooks: SessionStart, SessionEnd,
+UserPromptSubmit and Stop. Some installed Codex versions discover skills from a
+portable root manifest but ignore its OpenAI extension and compatibility-shaped
+MCP file; a skills-only listing is an incomplete installation.
+
+Installing a plugin and adding its marketplace are separate entries in Codex:
+the marketplace supplies updates, while the installed plugin's toggle controls
+loading. Enable the plugin, reload Codex and review its hooks. In the Codex CLI,
+use `/hooks` to review and trust the exact AgentWorks definitions. Installation
+never grants hook trust. A command reaching the model instead of the hook has
+not attached the chat; do not ask the model to execute it as a workaround.
+
 In the chat type `/agentworks attach NAME "PURPOSE" --allow-sender SENDER`
 (or explicitly `--allow-none`), `/agentworks status`, or `/agentworks detach`.
 Claude also accepts the namespaced `/agentworks:agentworks` spelling.

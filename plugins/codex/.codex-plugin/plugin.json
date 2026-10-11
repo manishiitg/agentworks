@@ -1,0 +1,18 @@
+{
+  "name": "agentworks-codex",
+  "version": "1.0.1",
+  "description": "AgentWorks live messaging and person-controlled session attachment for Codex",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "AgentWorks",
+    "shortDescription": "Live messages between your attached coding-agent chats",
+    "longDescription": "Attach this Codex chat to AgentWorks, receive live peer messages and reply with restricted messaging tools. Includes person commands and delivery hooks.",
+    "developerName": "AgentWorks",
+    "category": "Productivity",
+    "brandColor": "#38BDF8",
+    "composerIcon": "./assets/logo.svg",
+    "logo": "./assets/logo.svg"
+  }
+}

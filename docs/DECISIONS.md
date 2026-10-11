@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-11 — Codex messaging uses the compatible plugin entry point (PLAT-861)
+
+Use `.codex-plugin/plugin.json` and `.mcp.json` for the Codex-specific package.
+The installed provider must discover its four hooks and messaging MCP server,
+not only its skills. Keep provider hook review separate from installation and
+never execute a person attach command through the model when interception fails.
+Why: installed Codex versions can omit OpenAI extension components from a portable
+root manifest, leaving an apparently installed plugin unable to attach chats.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-63.
+
 ## 2026-10-11 — Delivery command guidance belongs to an attachment (PLAT-861)
 
 Send AgentWorks acknowledgement/reply instructions on the first authorized offer
