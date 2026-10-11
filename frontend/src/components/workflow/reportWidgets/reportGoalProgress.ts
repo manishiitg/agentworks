@@ -83,7 +83,7 @@ export async function getReportGoalMetrics(
         await Promise.all(
           metrics.map(async (m) => {
             const history =
-              await query(`SELECT observation_id, criterion_id, metric, run_id, route, environment, value, status, unit, observed_at, evidence_json, recorded_at
+              await query(`SELECT observation_id, criterion_id, metric, run_id, route, environment, value, status, unit, observed_at, window_start, window_end, evidence_json, recorded_at
         FROM pulse_goal_observations WHERE metric = ${quote(m.id)} AND criterion_id = ${quote(m.criterion_id)}
         AND unit = ${quote(m.unit)} AND COALESCE(route, '') = ${quote(m.route)} AND COALESCE(environment, '') = ${quote(m.environment)}
         ORDER BY julianday(observed_at) DESC, recorded_at DESC, observation_id DESC LIMIT 120`);

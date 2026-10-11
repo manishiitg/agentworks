@@ -222,7 +222,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   expect(panels).toHaveLength(2);
   expect(panels[0].textContent).toContain("1 attached");
   expect(panels[0].textContent).toContain("Workflow/project-a/knowledgebase/");
-  expect(panels[0].textContent).toContain("$WORKFLOW_KB_project-a");
+  expect(panels[0].textContent).toContain("$WORKFLOW_KB_PROJECT-A");
   expect(panels[0].textContent).toContain("Read only");
   expect(panels[1].querySelector("ul")).toBeNull();
   expect(panels[1].textContent).not.toContain("Attach knowledge");

@@ -125,11 +125,11 @@ describe('settings form kit adoption', () => {
     expect(users).not.toContain('<input')
     expect(users).not.toContain('<button')
     expect(users).not.toContain('window.confirm')
-    // The role dropdowns (each user's, and the Add a user form's) now use the
-    // kit Select, so no raw form element is left.
+    // Role dropdowns use the kit; compact shared-account model/limit pickers
+    // remain native selects, matching the other dense account controls.
     expect(users).toContain("from '../ui/select'")
-    expect(users).not.toContain('<select')
-    expect(rawCount(users)).toBe(0)
+    expect(users.match(/<select[\s>]/g)).toHaveLength(2)
+    expect(rawCount(users)).toBe(2)
 
     const share = read('src/components/workflow/WorkflowSharePopup.tsx')
     expect(share).toContain("from '../ui/SettingsCard'")

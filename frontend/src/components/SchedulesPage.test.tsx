@@ -10,14 +10,14 @@ vi.mock('./scheduler/WorkflowScheduleRunsPanel', () => ({ default: (props: { emb
 } }))
 vi.mock('./scheduler/GlobalTriggersView', () => ({ default: ({ kind, onOpen }: { kind: 'workflow' | 'crew'; onOpen: (owner: { id: string; label: string; kind: 'workflow' | 'crew' }) => void }) =>
   <button data-testid={`${kind}-triggers`} onClick={() => onOpen({ id: 'crew-one', label: 'Crew One', kind })}>Open</button> }))
-const { storeState } = vi.hoisted(() => ({ storeState: { setShowSchedulesOverview: vi.fn(), setShowWorkflowsOverview: vi.fn(), setAdminPage: vi.fn(), setModeCategory: vi.fn(), setActivityWorkflowPath: vi.fn() } }))
+const { storeState } = vi.hoisted(() => ({ storeState: { setShowSchedulesOverview: vi.fn(), setShowWorkflowsOverview: vi.fn(), setAdminPage: vi.fn(), setModeCategory: vi.fn(), setAgentMode: vi.fn(), setActivityWorkflowPath: vi.fn() } }))
 vi.mock('../stores/useAppStore', () => ({ useAppStore: Object.assign((selector: (state: unknown) => unknown) => selector({ showSchedulesOverview: true, ...storeState }), { getState: () => storeState }) }))
 vi.mock('../stores/useLLMStore', () => ({ useLLMStore: Object.assign((selector: (state: unknown) => unknown) => selector({ showLLMModal: false }), { getState: () => ({ setShowLLMModal: vi.fn() }) }) }))
 const { surfaceState } = vi.hoisted(() => ({ surfaceState: { productSurface: 'agentworks', setProductSurface: vi.fn(), setSelectedWorkProjectId: vi.fn(), setPendingWorkView: vi.fn() } }))
 vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: Object.assign((selector: (state: unknown) => unknown) => selector(surfaceState), { getState: () => surfaceState }) }))
 vi.mock('../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
 vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { getState: () => ({ workflowPresets: [], activePresetIds: {}, getActivePreset: () => null }) } }))
-vi.mock('../utils/workflowNavigation', () => ({ selectWorkflowPreset: vi.fn() }))
+vi.mock('../utils/workflowNavigation', () => ({ selectWorkflowPreset: vi.fn(), cancelPendingWorkflowNavigation: vi.fn() }))
 vi.mock('../utils/workflowSessionRestore', () => ({ openWorkflowPresetPage: vi.fn() }))
 import SchedulesPage from './SchedulesPage'
 

@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { claimWorkingTip, type ProductTip } from './productTips'
 import { markFeatureUsed } from '../utils/featureUsage'
+
+vi.hoisted(() => {
+  const values = new Map<string, string>()
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, String(value)) }, removeItem: (key: string) => { values.delete(key) }, clear: () => values.clear(), key: (index: number) => [...values.keys()][index] ?? null, get length() { return values.size } }
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
+})
 
 // Owner, 2026-10-09: tips are occasional (one every four hours), fit the product and the
 // moment, and never cover a feature the person already uses.
