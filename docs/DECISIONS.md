@@ -1,5 +1,15 @@
 # Decisions and open issues
 
+## 2026-10-11 — Refuse unsafe deployment browser directories (PLAT-847)
+
+Before creating browser sockets or artifacts, validate each deployment directory
+through open directory descriptors: no symlinks, current service ownership and
+mode 0700. Refuse an unsafe existing directory without changing its ownership or
+permissions. A failed scope stops command construction instead of falling back
+to a shared browser. Unconfigured local browser paths retain their legacy layout.
+Why: a predictable name in shared temporary storage is not proof of ownership.
+[PLAT-847](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/reports/plat-847.md).
+
 ## 2026-10-11 — Catalog and custom MCP servers share existing authority (PLAT-856)
 
 Allow custom remote MCP URLs and saved custom connections through the same

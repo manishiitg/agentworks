@@ -250,7 +250,11 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		return nil, nil, fmt.Errorf("prepare database helper: %w", err)
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
-	browserSocket := local.scopeBrowser()
+	browserSocket, err := local.scopeBrowser()
+	if err != nil {
+		releaseScratch()
+		return nil, nil, fmt.Errorf("prepare managed browser scope: %w", err)
+	}
 	if home := gogconfig.TerminalHome(iso.hostGogRestricted()); home != "" {
 		if err := os.MkdirAll(home, 0700); err != nil {
 			releaseScratch()
@@ -940,11 +944,11 @@ func (iso *Isolator) generateMountScript(command string, args []string) string {
 // folder its daemon listens in and its Chrome profile. It returns the socket
 // folder, or "" when the command has no managed browser (then the shared
 // browser grants apply, as before).
-func (iso *Isolator) scopeBrowser() string {
+func (iso *Isolator) scopeBrowser() (string, error) {
 	session := strings.TrimSpace(iso.BrowserSession)
 	if !browserconfig.IsUserSession(session) {
 		iso.BrowserSession = ""
-		return ""
+		return "", nil
 	}
 	if iso.Slot != "" {
 		// A slot command gets no browser folder at all (PLAT-478): the profile holds the project's logged-in
@@ -952,12 +956,11 @@ func (iso *Isolator) scopeBrowser() string {
 		// the project's browser through the platform (agent_browser / a standalone agent-browser command, which
 		// runs as the service account). BrowserSession stays set, so the policy is "browser scoped" and the shared
 		// browser folders are not granted either. Nothing is created here.
-		return ""
+		return "", nil
 	}
-	socketDir := browserconfig.SocketDirForSession(session)
-	if err := os.MkdirAll(socketDir, 0o700); err != nil {
-		iso.BrowserSession = ""
-		return ""
+	socketDir, err := browserconfig.EnsureManagedDirectory(session, false)
+	if err != nil {
+		return "", err
 	}
 	iso.WritePaths = append(iso.WritePaths, socketDir)
 	if profile := browserconfig.ProfilePathForSession(session); profile != "" {
@@ -965,7 +968,7 @@ func (iso *Isolator) scopeBrowser() string {
 			iso.WritePaths = append(iso.WritePaths, profile)
 		}
 	}
-	return socketDir
+	return socketDir, nil
 }
 
 func replaceEnv(env []string, key, value string) []string {

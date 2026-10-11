@@ -77,6 +77,11 @@ func PrepareBrowserArtifactStaging(sourcePath string, browserSession ...string) 
 	if filepath.Dir(filepath.Clean(source)) != root {
 		return fmt.Errorf("browser artifact source must be a direct child of managed staging directory")
 	}
+	if len(browserSession) > 0 && root == browserconfig.ArtifactDirForSession(browserSession[0]) {
+		if _, err := browserconfig.EnsureManagedDirectory(browserSession[0], true); err != nil {
+			return fmt.Errorf("prepare browser artifact directory: %w", err)
+		}
+	}
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return fmt.Errorf("create browser artifact staging directory: %w", err)
 	}

@@ -25,7 +25,7 @@ func TestSlotCommandGetsNoBrowserFolders(t *testing.T) {
 	}
 
 	slot := &Isolator{Slot: "slot02", BrowserSession: session}
-	if socket := slot.scopeBrowser(); socket != "" {
+	if socket, err := slot.scopeBrowser(); socket != "" || err != nil {
 		t.Fatalf("a slot command was given a browser socket folder %s", socket)
 	}
 	for _, path := range slot.WritePaths {
@@ -41,7 +41,7 @@ func TestSlotCommandGetsNoBrowserFolders(t *testing.T) {
 	}
 
 	app := &Isolator{BrowserSession: session}
-	if socket := app.scopeBrowser(); socket == "" {
+	if socket, err := app.scopeBrowser(); socket == "" || err != nil {
 		t.Fatal("a service-account command keeps its own browser")
 	}
 	found := false

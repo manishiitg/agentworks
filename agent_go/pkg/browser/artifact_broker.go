@@ -288,9 +288,10 @@ func newBrowserArtifactStagingPath(extension, fallback string, stagingSession ..
 	}
 	dir := browserArtifactStagingDir()
 	if len(stagingSession) > 0 {
-		dir = browserconfig.ArtifactDirForSession(stagingSession[0])
-		if dir == "" {
-			return "", fmt.Errorf("browser artifact requires a managed staging session")
+		var err error
+		dir, err = browserconfig.EnsureManagedDirectory(stagingSession[0], true)
+		if err != nil {
+			return "", fmt.Errorf("prepare browser artifact directory: %w", err)
 		}
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {

@@ -4,6 +4,7 @@ package browserconfig
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -127,6 +128,31 @@ func ArtifactDirForSession(session string) string {
 		return ""
 	}
 	return filepath.Join(SocketDirForSession(session), "artifacts")
+}
+
+// EnsureManagedDirectory refuses pre-existing deployment directories with
+// foreign ownership, symlinks or broad modes. Never repair their permissions.
+// Unconfigured local browsers retain the legacy directory layout.
+func EnsureManagedDirectory(session string, artifacts bool) (string, error) {
+	if !IsUserSession(session) {
+		return "", fmt.Errorf("browser directory requires a managed session")
+	}
+	dir := SocketDirForSession(session)
+	if ManagedSocketRoot() == SocketRoot {
+		if artifacts {
+			dir = filepath.Join(dir, "artifacts")
+		}
+		return dir, os.MkdirAll(dir, 0700)
+	}
+	children := []string{"o", filepath.Base(dir)}
+	if artifacts {
+		children = append(children, "artifacts")
+		dir = filepath.Join(dir, "artifacts")
+	}
+	if err := ensurePrivateDirectories(ManagedSocketRoot(), children...); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // ProfilePathForSession returns the persistent Chrome profile directory this
