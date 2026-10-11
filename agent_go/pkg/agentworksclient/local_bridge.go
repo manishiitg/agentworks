@@ -41,6 +41,7 @@ type LocalBridgeRequest struct {
 type LocalBridgeReply struct {
 	Attached           bool               `json:"attached"`
 	NativeDelivery     bool               `json:"native_delivery"`
+	NativeRouteStatus  string             `json:"native_route_status,omitempty"`
 	IncludeGuidance    bool               `json:"include_guidance,omitempty"`
 	Attachment         AgentAttachment    `json:"attachment,omitempty"`
 	Messages           []AgentLiveMessage `json:"messages,omitempty"`
@@ -97,6 +98,7 @@ var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
+	NativeRoute func(provider, session, hostKey, remote string) string
 	Notify      func(AgentAttachment, string)
 }
 
@@ -388,7 +390,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.AgentName = s.Attachment.AgentName
 		in.Purpose = s.Attachment.Purpose
 		if in.NativeRemote == "" {
-			in.NativeRemote = s.NativeRemote
+			if b.options.NativeRoute != nil {
+				in.NativeRemote = b.options.NativeRoute(in.Provider, in.SessionID, in.HostKey, s.NativeRemote)
+			} else {
+				in.NativeRemote = s.NativeRemote
+			}
 		}
 	}
 	if in.Action == "attach" {
@@ -520,6 +526,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Error: "attached connection is unavailable; sign in and explicitly reattach"}
 	}
 	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != ""}
+	if in.Action == "status" && s.NativeRemote != "" && b.options.NativeRoute != nil {
+		out.NativeRouteStatus = "ok"
+		if b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, s.NativeRemote) != s.NativeRemote {
+			out.NativeRouteStatus = "stale"
+		}
+	}
 	if s.Offline && in.Action != "status" && in.Action != "detach" && in.Action != "cleanup" && in.Action != "offline" {
 		return out
 	}
@@ -799,7 +811,34 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		if len(out.Messages) == 0 {
 			continue
 		}
-		if err := b.options.NativeOffer(ctx, s.NativeRemote, out); err != nil {
+		err := b.options.NativeOffer(ctx, s.NativeRemote, out)
+		if errors.Is(err, ErrNativeOfferRejected) && b.options.NativeRoute != nil {
+			refreshed := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, hostKey, s.NativeRemote)
+			if refreshed != "" && refreshed != s.NativeRemote {
+				b.mu.Lock()
+				current := b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s
+				if current {
+					s.NativeRemote = refreshed
+					err = b.save()
+				}
+				b.mu.Unlock()
+				if !current {
+					return
+				}
+				if err == nil {
+					err = b.options.NativeOffer(ctx, refreshed, out)
+				}
+			}
+		}
+		if err == nil || errors.Is(err, ErrNativeOfferUnconfirmed) {
+			b.mu.Lock()
+			if s.LastError != "" {
+				s.LastError = ""
+				_ = b.save()
+			}
+			b.mu.Unlock()
+		}
+		if err != nil {
 			if errors.Is(err, ErrNativeOfferUnconfirmed) {
 				continue
 			}

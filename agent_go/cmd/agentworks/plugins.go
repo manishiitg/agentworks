@@ -318,6 +318,12 @@ func pluginAttachmentStatus(out agentworksclient.LocalBridgeReply) string {
 	}
 	text += " All account senders are accepted."
 	if out.NativeDelivery {
+		if out.NativeRouteStatus == "stale" {
+			return text + " Native route is stale. The person must resume this chat after restarting it; pending messages remain in the mailbox."
+		}
+		if out.LastError != "" {
+			return text + " Native route selected. Last delivery: " + out.LastError
+		}
 		return text + " Native live delivery is selected."
 	}
 	return text + " Hooks deliver at turn boundaries; native live delivery is unavailable for this attachment."
@@ -365,6 +371,51 @@ func discoverNativeRemote(provider, session, hostKey string) string {
 	return ""
 }
 
+// Refresh only within the approved process/session. A new process key requires person resume.
+func refreshNativeRoute(provider, session, hostKey, remote string) string {
+	if hostKey == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if provider == "claude" {
+		files, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
+		for _, file := range files {
+			candidate := "claude+session://" + file
+			if record, _, err := nativeClaudeSession(candidate, session); err == nil {
+				if key, err := providerPIDHostKey(provider, record.PID); err == nil && key == hostKey {
+					return candidate
+				}
+			}
+		}
+		return ""
+	}
+	if provider != "codex" || validateCodexRemote(remote) != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	processes, err := exec.CommandContext(ctx, "ps", "-axo", "pid=", "-o", "args=").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(processes), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !strings.Contains(strings.ToLower(line), "codex") {
+			continue
+		}
+		pid, _ := strconv.Atoi(fields[0])
+		if key, err := providerPIDHostKey(provider, pid); err == nil && key == hostKey {
+			if !strings.HasPrefix(remote, "desktop+unix://") || codexDesktopHost(line) {
+				return remote
+			}
+		}
+	}
+	return ""
+}
+
 // Desktop Codex ships both as Codex.app and as CodexCLI.app inside the host app.
 // This is still checked against the exact provider PID/start-time key before use.
 func codexDesktopHost(command string) bool {
@@ -404,7 +455,7 @@ func bridgeCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, Notify: notifyAgentWaiting})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Notify: notifyAgentWaiting})
 	}})
 	var provider, session, messageID, delivery, message, submission, target, inbox, purpose string
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {

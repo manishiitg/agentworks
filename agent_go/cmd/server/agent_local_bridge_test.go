@@ -476,6 +476,50 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		}
 	}
 	stop(cancel, done)
+	// A missing registration may be retried once only before any content write,
+	// and only after resolving a route for the already-approved process/session.
+	routes := make(chan string, 4)
+	bridgeOptions.NativeRoute = func(provider, session, host, remote string) string {
+		if provider != base.Provider || session != base.SessionID || host != base.HostKey {
+			return ""
+		}
+		return "claude+session:///replacement"
+	}
+	bridgeOptions.NativeOffer = func(_ context.Context, remote string, _ agentworksclient.LocalBridgeReply) error {
+		routes <- remote
+		if remote != "claude+session:///replacement" {
+			return agentworksclient.ErrNativeOfferRejected
+		}
+		return agentworksclient.ErrNativeOfferUnconfirmed
+	}
+	cancel, done = start()
+	defer cancel()
+	local(nativeAttach)
+	status := base
+	status.Action = "status"
+	if local(status).NativeRouteStatus != "stale" {
+		t.Fatal("stale native route reported healthy")
+	}
+	send("registration changed before content write")
+	for _, expected := range []string{nativeAttach.NativeRemote, "claude+session:///replacement"} {
+		select {
+		case route := <-routes:
+			if route != expected {
+				t.Fatal("wrong native retry route", route)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("definite pre-write failure was not repaired")
+		}
+	}
+	if local(status).NativeRouteStatus != "ok" {
+		t.Fatal("replacement native route not persisted")
+	}
+	select {
+	case notice := <-nativeNotices:
+		t.Fatal("repaired route emitted a fallback notification", notice)
+	default:
+	}
+	stop(cancel, done)
 	bridgeOptions = agentworksclient.LocalBridgeOptions{}
 	cancel, done = start()
 	defer cancel()

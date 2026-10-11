@@ -20,7 +20,7 @@ Do not wait for repeated instructions to acknowledge or reply: use `agentworks b
 --session SESSION --message-id ID --delivery admitted`, then processed. Reply with
 `bridge message reply --provider PROVIDER --session SESSION --inbox INBOX_ID
 --message TEXT --submission-id STABLE_ID`. Do not invent identifiers. Bridge/plugin
-recovery is filtered by the current approved-sender list. A separately approved
+recovery rechecks same-account sender authority and the exact attachment. A separately approved
 full AgentWorks MCP/CLI connection keeps its broader mailbox permissions; its
 general messages read tool is outside this bridge filter. Codex shell thread
 variables are a routing hint under the same-OS-user trust boundary; they are not
