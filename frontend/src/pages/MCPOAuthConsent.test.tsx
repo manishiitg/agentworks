@@ -33,7 +33,8 @@ it('keeps ordinary read/run consent unchanged without authoring selection', asyn
 it('explains explicit Relay authoring without requiring an existing workflow selection', async () => {
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'relays:write'], [])
   try {
-    expect(view.host.textContent).toContain('Create, edit, test and publish Relays')
+    expect(view.host.textContent).toContain('Create, edit files, test and publish Relays within your current role')
+    expect(view.host.textContent).not.toContain('files:write')
     expect(view.host.querySelector('input[type="checkbox"]')).toBeNull()
     const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     expect(allow.disabled).toBe(false)
@@ -91,14 +92,5 @@ it('explains Vault management separately from runtime tool access', async () => 
     expect(view.host.textContent).toContain('Manage Vault connections, groups and permissions (administrator)')
     expect(view.host.textContent).toContain('Secret values are not returned')
     expect(view.host.textContent).not.toContain('Use Vault MCP tools you are allowed to use')
-  } finally { await view.cleanup() }
-})
-
-it('explains direct file write consent and the protected plan boundary', async () => {
-  const view = await mount(['workflows:read', 'files:read', 'files:write'], [])
-  try {
-    expect(view.host.textContent).toContain('Write workflow source and documentation with revision checks')
-    expect(view.host.textContent).toContain('Plans, configuration, databases and private files stay protected')
-    expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
   } finally { await view.cleanup() }
 })

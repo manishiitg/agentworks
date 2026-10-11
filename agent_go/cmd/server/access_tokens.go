@@ -293,7 +293,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			for _, wf := range visible {
 				if wf.Manifest != nil {
 					role := workflowAccessForManifest(c, wf.Manifest)
-					allowed[wf.Manifest.ID] = !(t.Allows("builder:chat") || t.Allows("relays:write") || t.Allows("files:write")) || role == WorkflowAccessOwner || role == WorkflowAccessWrite
+					allowed[wf.Manifest.ID] = !(t.Allows("builder:chat") || t.Allows("relays:write")) || role == WorkflowAccessOwner || role == WorkflowAccessWrite
 				}
 			}
 			for _, id := range t.WorkflowIDs {
@@ -401,8 +401,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if isExternalRelayAuthoringTool(tool.Name) {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
 	}
-	if tool.Name == "write_file" {
-		return c.AccessToken != nil && c.AccessToken.Allows("files:write") && c.AccessToken.Allows("files:read") && c.AccessToken.Allows("workflows:read") && userAccessForClaims(c).CanEdit
+	if tool.Name == "write_file" || tool.Name == "patch_file" {
+		return externalFileAuthoringAllowed(c, nil)
 	}
 	if c.AccessToken == nil {
 		return true
@@ -441,8 +441,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	switch tool.Name {
 	case "list_files", "read_file", "search_files", "list_step_code", "get_file_link":
 		return t.Allows("files:read")
-	case "write_file", "patch_file":
-		return t.Allows("files:write")
 	case "run_relay", "get_relay_run":
 		return t.Allows("runs:execute")
 	case "get_relay_releases":

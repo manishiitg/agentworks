@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	_ "modernc.org/sqlite"
@@ -292,6 +293,7 @@ func (s *mcpOAuthStore) ExchangeCode(ctx context.Context, raw, clientID, redirec
 	if err = json.Unmarshal([]byte(scopes), &grant.Scopes); err != nil {
 		return grant, "", "", err
 	}
+	grant.Scopes = accesstokens.CurrentScopes(grant.Scopes)
 	if err = json.Unmarshal([]byte(bounds), &grant.WorkflowIDs); err != nil {
 		return grant, "", "", err
 	}
@@ -315,6 +317,7 @@ func (s *mcpOAuthStore) ExchangeCode(ctx context.Context, raw, clientID, redirec
 }
 
 func issueMCPOAuthPair(ctx context.Context, tx *sql.Tx, grant *mcpOAuthGrant) (string, string, error) {
+	grant.Scopes = accesstokens.CurrentScopes(grant.Scopes)
 	accessPrefix, refreshPrefix := mcpOAuthAccessPrefix, mcpOAuthRefreshPrefix
 	if grant.ClientID == cliOAuthClientID {
 		accessPrefix, refreshPrefix = cliOAuthAccessPrefix, cliOAuthRefreshPrefix
@@ -353,6 +356,7 @@ func scanMCPOAuthGrant(row interface{ Scan(...any) error }) (mcpOAuthGrant, erro
 	}
 	grant.Expires = time.Unix(expiry, 0)
 	if err = json.Unmarshal([]byte(scopes), &grant.Scopes); err == nil {
+		grant.Scopes = accesstokens.CurrentScopes(grant.Scopes)
 		err = json.Unmarshal([]byte(bounds), &grant.WorkflowIDs)
 	}
 	return grant, err
@@ -410,6 +414,7 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if err = json.Unmarshal([]byte(scopes), &grant.Scopes); err != nil {
 		return grant, "", "", err
 	}
+	grant.Scopes = accesstokens.CurrentScopes(grant.Scopes)
 	if err = json.Unmarshal([]byte(bounds), &grant.WorkflowIDs); err != nil {
 		return grant, "", "", err
 	}
@@ -454,6 +459,7 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 		if err := json.Unmarshal([]byte(scopes), &c.Scopes); err != nil {
 			return nil, err
 		}
+		c.Scopes = accesstokens.CurrentScopes(c.Scopes)
 		if err := json.Unmarshal([]byte(bounds), &c.WorkflowIDs); err != nil {
 			return nil, err
 		}

@@ -21,7 +21,7 @@ The retired proposal remains available in Git history.
 
 Implemented now:
 
-- Public `write_file`, explicit optional `files:write` consent, persisted token
+- Public `write_file`, existing workflow/Relay authoring consent, persisted token
   folder caps, workflow access checks, revision conflicts and durable receipts.
 - File-owning workspace service writes, including deployments where the agent
   server does not share its filesystem. The internal service route is not exposed
@@ -148,7 +148,7 @@ Effective write authority is the intersection of:
 **connection scope ∩ current user access ∩ granted write folders ∩ operation
 policy**, with blocked/read-only/protected paths taking precedence.
 
-- Require explicit `files:write` consent and current workflow edit access.
+- Reuse existing workflow/Relay authoring consent and current project owner/editor access.
   Existing read/run connections do not silently acquire writes.
 - Resolve the workflow and guard on the server. A public MCP request has no
   automatic right to inherit another chat's session guard, and a client-sent
@@ -178,7 +178,7 @@ policy**, with blocked/read-only/protected paths taking precedence.
 | Secret stores, authentication files, private runtime/audit state | Rejected |
 | Another workflow, a path outside the grant, or a symlink escape | Rejected |
 
-A `files:write` grant permits authoring executable source: later runs may execute
+Existing project authoring consent permits editing executable source: later runs may execute
 that source. It must therefore require authoring authority, not merely run or
 read permission. This intentionally includes `code/<step>/`: editable authors
 can change source without Builder's description-hash/code-lock validation.

@@ -28,6 +28,18 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — File editing reuses website roles and existing authoring consent (PLAT-856)
+
+Remove the separate file-write permission from token issuance, OAuth metadata,
+consent and tool gates. Workflow source/documentation writes reuse `builder:chat`;
+Relay writes also accept `relays:write`. Every edit checks the current account,
+product and project owner/editor access, connection bounds, folder guards,
+protected paths and revisions. Crew keeps its existing owner/shared-folder rules.
+Persisted retired scopes are dropped on read and renewal, without adding replacement
+permissions; file-only writers reconnect for authoring access. Why: MCP should
+follow website roles without a second generic file permission.
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ### 2026-10-11 — Crew custom commands are directly available over MCP (PLAT-856)
 
 Expose Crew custom-command management using the Crew tool factory's schema

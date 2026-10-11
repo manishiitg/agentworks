@@ -10,10 +10,39 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
+// File editing uses the same live account/project authority and existing
+// authoring consent as Builder. Discovery cannot resolve a project yet;
+// dispatch checks its product, role and connection bounds before writing.
+func externalFileAuthoringAllowed(claims *UserClaims, manifest *WorkflowManifest) bool {
+	if !externalBuilderEnabled() || claims == nil || claims.AccessToken == nil {
+		return false
+	}
+	access := userAccessForClaims(claims)
+	if access.Disabled || !access.CanEdit {
+		return false
+	}
+	token := claims.AccessToken
+	workflowAuthor := token.BuilderAccess()
+	relayAuthor := workflowAuthor || token.RelayBuilderAccess()
+	if manifest == nil {
+		return workflowAuthor && userAllowedProduct(claims, "agentworks") || relayAuthor && userAllowedProduct(claims, "relays")
+	}
+	authorized, product := workflowAuthor, "agentworks"
+	if manifest.Kind == "relay" {
+		authorized, product = relayAuthor, "relays"
+	}
+	role := workflowAccessForManifest(claims, manifest)
+	return authorized && userAllowedProduct(claims, product) && token.AllowsWorkflow(manifest.ID) && userAllowedWorkflowID(claims, manifest.ID) && (role == WorkflowAccessOwner || role == WorkflowAccessWrite)
+}
+
 func (api *StreamingAPI) externalWriteFile(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil {
 		externalError(w, 401, "unauthorized", "Sign in first.")
+		return
+	}
+	if workflow.Manifest == nil || !externalFileAuthoringAllowed(claims, workflow.Manifest) {
+		externalError(w, 403, "forbidden", "File edits require current project owner/editor access and existing authoring consent for this product.")
 		return
 	}
 	req := wf.WriteRequest{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Content: externalArg(args, "content"), ContentBase64: externalArg(args, "content_base64"), ExpectedRevision: externalArg(args, "expected_revision"), RequestID: externalArg(args, "request_id"), Actor: claims.UserID, Identity: wf.EditIdentity{UserID: claims.UserID, Username: claims.Username, Source: "public_mcp"}}

@@ -161,9 +161,10 @@ and clears the local credentials.
 
 CLI grants run in full run mode —
 `workflows:read`, `files:read`, and `runs:execute` — over all currently and
-future accessible workflows. Additional authoring scopes are optional: `files:write` permits guarded source
-and documentation edits, and `builder:chat` delegates authoring to the workflow's
-Builder. Direct `plan:write` is never issued. Every
+future accessible workflows. Existing authoring consent is optional: `builder:chat` covers workflow
+authoring, and `relays:write` covers Relay authoring. Source and documentation
+edits reuse that consent and the same live owner/editor roles as the website; no
+separate file-write permission is needed. Direct `plan:write` is never issued. Every
 call checks the grant scopes and the user's current workflow
 access. CLI grants cannot call account management, the general query endpoint,
 or the workspace proxy; only the external tool, asset-content, skill, and
@@ -716,12 +717,13 @@ The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools us
 
 ## Guarded public file writes
 
-Request optional authoring permission explicitly; existing connections keep their
-original scopes:
+Use existing project authoring consent; every edit also checks your current account
+and project roles. Read-only connections stay read-only. Legacy file-only writers
+must reconnect with authoring consent; their retired permission is ignored:
 
 ```sh
 agentworks login --server https://your-agentworks.example \
-  --scopes workflows:read,files:read,files:write
+  --scopes workflows:read,files:read,runs:execute,builder:chat
 agentworks files read --workflow invoices --path docs/readme.md
 ```
 
@@ -737,7 +739,10 @@ Call `write_file` through MCP `call_tool`, or `agentworks files write --input ed
 }
 ```
 
-The caller needs current account/workflow edit rights. Plans, `workflow.json`,
+For a Relay-only connection, use `relays:write` in place of `builder:chat`.
+The caller needs current account/project edit rights and the project's product access;
+a Relay-only connection cannot edit workflow files. The server must enable MCP authoring
+(`AGENTWORKS_MCP_BUILDER_ENABLED`). Plans, `workflow.json`,
 runtime run records, databases, private files and shared Brain content cannot be
 edited this way. This includes `costs/`, `schedule-runs.json`, the knowledge lock,
 `product.json` and `functions.json`. Use their typed tools. Authorized authors can

@@ -3,10 +3,12 @@ package accesstokens
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -74,6 +76,7 @@ func TestPlanAndIncompleteWriteScopesRejected(t *testing.T) {
 	for _, scopes := range [][]string{
 		append([]string{}, Scopes...),
 		{"files:write"},
+		{"workflows:read", "files:read", "files:write"},
 		{"workflows:read", "plan:write"},
 		{"builder:chat"},
 	} {
@@ -417,13 +420,22 @@ func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	writer, raw, err := store.Issue(context.Background(), Token{Name: "Writer", UserID: "owner", Scopes: []string{"workflows:read", "files:read", "files:write"}, WorkflowIDs: []string{"one"}, FileGuard: &wf.FolderGuard{WritePaths: []string{"docs"}, ReadOnlyPaths: []string{"docs/locked"}}, ExpiresAt: now.Add(time.Hour)}, now)
+	writer, raw, err := store.Issue(context.Background(), Token{Name: "Writer", UserID: "owner", Scopes: []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, WorkflowIDs: []string{"one"}, FileGuard: &wf.FolderGuard{WritePaths: []string{"docs"}, ReadOnlyPaths: []string{"docs/locked"}}, ExpiresAt: now.Add(time.Hour)}, now)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Emulate a persisted grant from before permission retirement. Reading it
+	// drops the obsolete value without changing authoring consent or folder caps.
+	legacyScopes, _ := json.Marshal(append(append([]string(nil), writer.Scopes...), "files:write"))
+	if _, err := store.db.Exec(`UPDATE access_tokens SET scopes=? WHERE id=?`, string(legacyScopes), writer.ID); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := store.Authenticate(context.Background(), raw, now)
 	if err != nil || loaded.FileGuard == nil || loaded.FileGuard.Allows("docs/locked/a", true) || !loaded.FileGuard.Allows("docs/a", true) {
 		t.Fatalf("persisted guard %+v %v", loaded, err)
+	}
+	if slices.Contains(loaded.Scopes, "files:write") || !slices.Equal(loaded.Scopes, writer.Scopes) {
+		t.Fatal("legacy permission remained or grant changed", loaded.Scopes)
 	}
 	device, _, err := store.Issue(context.Background(), Token{Name: "Laptop", UserID: "owner", Scopes: []string{"devices:connect"}, ExpiresAt: now.Add(time.Hour)}, now)
 	if err != nil {

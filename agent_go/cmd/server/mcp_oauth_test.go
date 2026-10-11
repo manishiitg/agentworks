@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	}
 	resource := "https://agentworks.example.com" + externalMCPPath
 	metadata := request("GET", mcpOAuthProtectedResourcePath, "", "", "")
-	if metadata.Code != 200 || !strings.Contains(metadata.Body.String(), resource) {
+	if metadata.Code != 200 || !strings.Contains(metadata.Body.String(), resource) || strings.Contains(metadata.Body.String(), "files:write") {
 		t.Fatal(metadata.Code, metadata.Body)
 	}
 	challenge := request("GET", externalMCPPath, "", "", "")
@@ -79,6 +80,11 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if w := request("GET", mcpOAuthAuthorizePath+"?"+wrongResource.Encode(), "", "", ""); w.Code != 400 {
 		t.Fatal(w.Code, w.Body)
 	}
+	authorize.Set("scope", "workflows:read files:read files:write")
+	if w := request("GET", mcpOAuthAuthorizePath+"?"+authorize.Encode(), "", "", ""); w.Code != 400 || !strings.Contains(w.Body.String(), "invalid_scope") {
+		t.Fatal("retired permission accepted", w.Code, w.Body)
+	}
+	authorize.Set("scope", "workflows:read files:read")
 	started := request("GET", mcpOAuthAuthorizePath+"?"+authorize.Encode(), "", "", "")
 	if started.Code != 303 {
 		t.Fatal(started.Code, started.Body)
@@ -148,6 +154,19 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Legacy read/file-write grants renew with their remaining permissions,
+	// without acquiring Builder or Relay authoring access.
+	if _, err := store.db.Exec(`UPDATE tokens SET scopes=? WHERE family_id=?`, `["workflows:read","files:read","files:write"]`, grant.FamilyID); err != nil {
+		t.Fatal(err)
+	}
+	legacyGrant, err := store.Authenticate(t.Context(), pair.Access)
+	if err != nil || !slices.Equal(legacyGrant.Scopes, []string{"workflows:read", "files:read"}) {
+		t.Fatal("legacy access grant changed", legacyGrant.Scopes, err)
+	}
+	connections, err := store.Connections(t.Context(), GetDefaultUserID())
+	if err != nil || len(connections) != 1 || !slices.Equal(connections[0].Scopes, legacyGrant.Scopes) {
+		t.Fatal("retired permission exposed in connection metadata", connections, err)
+	}
 	refreshForm := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {pair.Refresh}, "client_id": {client.ID}, "resource": {resource}}
 	rotated := request("POST", mcpOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded")
 	if rotated.Code != 200 {
@@ -155,11 +174,12 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	}
 	var pair2 struct {
 		Access string `json:"access_token"`
+		Scope  string `json:"scope"`
 	}
 	if err := json.Unmarshal(rotated.Body.Bytes(), &pair2); err != nil {
 		t.Fatal(err)
 	}
-	if pair2.Access == pair.Access || pair2.Access == "" {
+	if pair2.Access == pair.Access || pair2.Access == "" || pair2.Scope != "workflows:read files:read" {
 		t.Fatal("refresh did not rotate")
 	}
 	if w := request("POST", mcpOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 400 {

@@ -28,7 +28,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review", "vault:read", "vault:manage", "users:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "code:run", "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "files:write", "dashboards:read", "dashboards:write")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "code:run", "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read", "dashboards:write")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -151,7 +151,7 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	// shows or grants what the server or the account would refuse: a client that requests every advertised scope used
 	// to get a 404 on Allow (server B 2026-10-05).
 	canRelays := builderOn && userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
-	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
+	return slices.DeleteFunc(accesstokens.CurrentScopes(scopes), func(scope string) bool {
 		switch scope {
 		case "knowledgebase:read", "knowledgebase:write":
 			return !knowledgebaseMCPAllowed(user)
@@ -168,7 +168,7 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return !canReview
 		case "users:manage":
 			return !claimsIsAdmin(user)
-		case "files:write", "dashboards:write":
+		case "dashboards:write":
 			return user == nil || !userAccessForClaims(user).CanEdit
 		case "builder:chat":
 			return !builderOn
@@ -212,9 +212,6 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 		seen[scope] = true
 	}
 	if seen["dashboards:write"] && !seen["dashboards:read"] {
-		return nil, false
-	}
-	if seen["files:write"] && (!seen["workflows:read"] || !seen["files:read"]) {
 		return nil, false
 	}
 	if (seen["builder:chat"] || seen["relays:write"]) && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {

@@ -13,10 +13,11 @@ import (
 )
 
 func writeTestClaims(user string) *UserClaims {
-	return &UserClaims{UserID: user, Username: user, AccessToken: &accesstokens.Token{ID: "writer", Scopes: []string{"workflows:read", "files:read", "files:write"}, WorkflowIDs: []string{"invoices"}}}
+	return &UserClaims{UserID: user, Username: user, AccessToken: &accesstokens.Token{ID: "writer", Scopes: []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, WorkflowIDs: []string{"invoices"}}}
 }
 func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
 	// Manifest discovery and writes go through the authenticated workspace API,
 	// while the agent's direct filesystem root is absent.
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir()+"/not-mounted")
@@ -55,9 +56,47 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 			t.Fatalf("allowed %s", p)
 		}
 	}
+
+	// Relay authors can edit source, memory and local skills with their existing
+	// consent. No additional file permission is issued or attached to this client.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["relays"]}]}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"]}}`)
+	relayClaims := writeTestClaims("owner")
+	relayClaims.AccessToken.Scopes = []string{"workflows:read", "files:read", "runs:execute", "relays:write"}
+	relaySrv := serveExternalMCP(t, f.api, relayClaims)
+	relayClient := dialExternalMCP(t, ctx, relaySrv.URL)
+	initializeExternalMCP(t, ctx, relayClient)
+	for _, p := range []string{"relay.py", "MEMORY.md", "skills/check/SKILL.md"} {
+		result := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": p, "content": "saved", "expected_revision": "missing", "request_id": "relay-" + p}})
+		requireRemoteSuccess(t, result, p)
+		if f.read(t, "Workflow/invoices/"+p) != "saved" {
+			t.Fatal("Relay file missing", p)
+		}
+	}
+	// A project reader cannot keep authoring through an editable account.
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"readers":["owner"]}}`)
+	projectDenied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "write_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/reader.md", "content": "denied", "expected_revision": "missing", "request_id": "reader"}})
+	if !projectDenied.IsError {
+		t.Fatal("project downgrade retained file write access")
+	}
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["owner"]}}`)
+	// The same connected app loses editing rights as soon as the user's role changes.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"viewer","products":["relays"]}]}`)
+	denied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "write_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/revoked.md", "content": "denied", "expected_revision": "missing", "request_id": "revoked"}})
+	if !denied.IsError {
+		t.Fatal("role downgrade retained file write access")
+	}
 }
 func TestExternalWritesRequireScopeLiveRoleAndWorkflowGrant(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
+	withMemoryUserDirectory(t, `{"users":[
+ {"id":"owner","username":"owner","role":"creator","products":["agentworks","relays"]},
+ {"id":"reader","username":"reader","role":"editor","products":["agentworks"]},
+ {"id":"readonly-owner","username":"readonly-owner","role":"viewer","products":["agentworks"]},
+ {"id":"disabled","username":"disabled","role":"creator","disabled":true,"products":["agentworks"]},
+ {"id":"outsider","username":"outsider","role":"creator","products":["agentworks"]}]}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","access":{"owners":["owner","readonly-owner","disabled"],"readers":["reader"]}}`)
 	for _, tc := range []struct {
 		user   string
 		scopes []string
@@ -65,10 +104,13 @@ func TestExternalWritesRequireScopeLiveRoleAndWorkflowGrant(t *testing.T) {
 		want   int
 	}{
 		{"owner", []string{"workflows:read", "files:read"}, []string{"invoices"}, 403},
-		{"reader", []string{"workflows:read", "files:read", "files:write"}, []string{"invoices"}, 403},
-		{"readonly-owner", []string{"workflows:read", "files:read", "files:write"}, []string{"invoices"}, 403},
-		{"outsider", []string{"workflows:read", "files:read", "files:write"}, []string{"invoices"}, 404},
-		{"owner", []string{"workflows:read", "files:read", "files:write"}, []string{"secret"}, 404},
+		{"owner", []string{"workflows:read", "files:read", "files:write"}, []string{"invoices"}, 403},
+		{"owner", []string{"workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, 403},
+		{"reader", []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, []string{"invoices"}, 403},
+		{"readonly-owner", []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, []string{"invoices"}, 403},
+		{"disabled", []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, []string{"invoices"}, 403},
+		{"outsider", []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, []string{"invoices"}, 404},
+		{"owner", []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}, []string{"secret"}, 404},
 	} {
 		claims := writeTestClaims(tc.user)
 		claims.AccessToken.Scopes = tc.scopes

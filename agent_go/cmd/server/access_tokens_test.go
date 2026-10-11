@@ -274,7 +274,7 @@ func TestAccessTokenHTTPManagementAndRestrictions(t *testing.T) {
 			t.Fatal("PAT escaped external API", path, w.Code)
 		}
 	}
-	// Direct writes are available only with explicitly granted files:write.
+	// Direct writes require existing authoring consent; read-only grants stay read-only.
 	denied := request("POST", "/api/external/v1/call", `{"name":"write_file","arguments":{}}`, created.Token)
 	if denied.Code != 403 || !strings.Contains(denied.Body.String(), "insufficient_scope") {
 		t.Fatal(denied.Code, denied.Body)

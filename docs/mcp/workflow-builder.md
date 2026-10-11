@@ -16,7 +16,7 @@ workflows:read files:read runs:execute builder:chat
 
 The consent page requires selection of workflows the signed-in person currently owns or may edit. Every workflow permission on this Builder connection is bounded to those selections. Access and refresh tokens retain the bounds; changing them requires a new authorization. A compatible OAuth client must explicitly request Builder scopes; omitted scopes and the ordinary CLI device-login flow retain their previous defaults.
 
-The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct `files:write` and `plan:write` scopes remain unavailable. Old connections are not upgraded. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
+The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Direct `plan:write` grants remain unavailable. Old connections are not upgraded. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
 
 Managed source-file writes require the workflow documents to be mounted locally on the server. Remote-only workspace deployments fail those writes closed. A shared, server-owned auth state directory outside workflow documents is required for the durable operation records.
 
