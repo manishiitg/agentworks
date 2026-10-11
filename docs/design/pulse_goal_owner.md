@@ -1,5 +1,13 @@
 # Pulse as the goal owner
 
+Scheduled goal-check turns provide the task and permission context. Pulse and
+Builder act as colleagues with their own tools: they choose what to read, ask and
+share. Execution/measurement summaries are not automatically injected into those
+turns. `get_goal_metrics` reads DB history; `get_pulse_state(view="goal_status")`
+is an optional aggregate, and run/step read tools allow focused investigation.
+Go stores evidence and delivers explicit messages; the agents judge what matters.
+
+
 Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: Pulse as its own persistent chat kind, see "Phase 4 as built"; QA and Architecture owned by Pulse for workflows with a goal, see that section; ask_builder and more goal facts, see that section); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
 
 Name (owner, 2026-10-07, second decision): users and agents see **Pulse**, e.g. "Substack Pulse". It was called
@@ -295,7 +303,7 @@ owner did not own its workflow. Now that conversation is the only Pulse of such 
 - **Safety net.** Code decides a run failed (a workflow run, not a Pulse pass, with status error, failed or
   interrupted in the last day); the tick gives the conversation one short turn for it, at most once per failed run
   (`goal_lead_run_failures`), with Run, Outward and Change held: it asks for QA when the failure blocks or threatens
-  the goal, and says in one line why the others can wait. The goal check's context carries `run_health` since the
+  the goal, and says in one line why the others can wait. The optional goal-status tool returns `run_health` since the
   last check: failed runs with their error, steps' `CONCERNS:` lines, the open issue count and schedule run health,
   what Technical read after runs; its skill says to request QA for a failure that threatens the goal and note the
   others.

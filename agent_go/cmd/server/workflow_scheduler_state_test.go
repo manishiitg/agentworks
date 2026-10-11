@@ -97,8 +97,8 @@ func TestCurrentSchedulerStateSurvivesHistoricalPausedRuns(t *testing.T) {
 			t.Fatal("global/product pause changed all-individual-disabled goal fact")
 		}
 		query := pulseLifecycleGoalCheckStep(ctx, ws, "check-state", workflowNotificationContentInstructions{}).query
-		if !strings.Contains(query, `"scheduler_state"`) || !strings.Contains(query, "Past skipped_paused runs") {
-			t.Fatal("initial Pulse goal turn lacks current state/historical distinction")
+		if !strings.Contains(query, "Read list_schedules") || strings.Contains(query, `"scheduler_state":`) || !strings.Contains(query, "Past skipped_paused runs") {
+			t.Fatal("initial Pulse goal turn must request current state through tools without preloading it")
 		}
 	}
 	put(`{"globally_paused":true,"paused_products":["work"]}`)

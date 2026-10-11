@@ -113,8 +113,22 @@ func TestGoalRunEvidenceDoesNotRequireMetricRouteMappings(t *testing.T) {
 		t.Fatalf("genuine measurement/run silence disappeared: %+v", stale.Facts)
 	}
 	query := pulseLifecycleGoalCheckStep(ctx, ws, "run-evidence-check", workflowNotificationContentInstructions{}).query
-	if !strings.Contains(query, "No metric-to-route declaration is required") || !strings.Contains(query, `"recent_runs"`) {
-		t.Fatal("Pulse goal turn lacks evidence and agentic judgment guidance")
+	if !strings.Contains(query, "No metric-to-route declaration is required") || !strings.Contains(query, "Use tools when you need evidence") {
+		t.Fatal("Pulse goal turn lacks tool-driven agent judgment guidance")
+	}
+	for _, preloaded := range []string{`"recent_runs":`, `"facts":`, `"scheduler_state":`, `"run_health":`, `"goal_memory":`, "iteration-2-sched", "Code-computed goal facts"} {
+		if strings.Contains(query, preloaded) {
+			t.Fatalf("Pulse turn still preloads evidence: %s", preloaded)
+		}
+	}
+	// The real read tool still exposes stored evidence if Pulse chooses it.
+	_, pulseExecutors, _ := createPulseWorklistTools()
+	out, err := pulseExecutors["get_pulse_state"].(func(context.Context, map[string]interface{}) (string, error))(ctx, map[string]interface{}{"workspace_path": ws, "view": "goal_status"})
+	if err != nil || !strings.Contains(out, `"recent_runs"`) || !strings.Contains(out, "iteration-2-sched") || !strings.Contains(out, `"goal_lead"`) {
+		t.Fatalf("optional state tool lost execution/goal evidence: %s %v", out, err)
+	}
+	if after := call("get_goal_metrics", map[string]interface{}{}); after != before {
+		t.Fatal("turn preparation or optional evidence reads changed measurement history")
 	}
 }
 

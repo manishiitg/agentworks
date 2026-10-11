@@ -11,6 +11,16 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Pulse chooses evidence through tools and conversation (PLAT-853)
+
+Scheduled goal-check turns carry their task and permission context, without an
+automatic goal-status or execution evidence packet. Pulse chooses focused reads,
+an optional aggregate (`get_pulse_state`), or a conversation with Builder. Both
+agents judge relevance and progress; Go implements reliable tools, stored records,
+message delivery and execution boundaries. Existing metrics/history, owner views,
+scheduling and optional evidence tools remain available; no workflow migration.
+[PLAT-853](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-853.md).
+
 ### 2026-10-11 — Goal contribution is agent judgment, not metric-route equality (PLAT-822)
 
 Metric definitions need no executable-work mapping. Go reports source-backed DB

@@ -397,9 +397,8 @@ func listPulseDecisionLog(ctx context.Context, workspacePath string, limit int) 
 	return out, rows.Err()
 }
 
-// goalLeadAgentContext is what the Pulse and goal-check turns read first:
-// goal memory, the pending decisions to recommend on, and decisions whose
-// outcome is still to record.
+// goalLeadAgentContext is an optional tool snapshot of goal memory, decisions
+// and operational evidence. Scheduled goal-check turns do not preload it.
 func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]interface{} {
 	memory, err := readGoalMemory(workspacePath)
 	if err != nil {
@@ -452,9 +451,9 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 		// failures it caught come here (goal_lead_owns_reviews.go).
 		"run_health":      goalLeadRunHealth(ctx, workspacePath, since),
 		"run_health_note": goalLeadRunHealthNote,
-		// ask_builder: the Builder chat's answers, including late ones.
+		// ask_builder delivery history; replies are explicit inbox messages.
 		"builder_asks":      recentPulseBuilderAsks(ctx, workspacePath, since, 5),
-		"builder_asks_note": "Your ask_builder calls since your last check and the Builder chat's answers (a late answer lands here). Record what matters in goal memory (source builder_answer, dated).",
+		"builder_asks_note": "Your ask_builder delivery records since the last check. Read explicit replies with read_agent_messages; delivery does not prove a reply or completion. Record useful replies in goal memory (source builder_answer, dated).",
 	}
 	// Plan changes, owner answers, spend, login hints and spikes since the last
 	// check (goal_lead_facts.go).
