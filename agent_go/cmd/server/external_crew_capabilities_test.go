@@ -128,7 +128,8 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	}
 	// Integrations still adds custom URLs through its existing shared path.
 	appCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	custom, _, err := f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: "custom", URL: "https://custom.example.com/mcp"}, "")
+	customHeaders := map[string]placeMCPHeader{"X-Api-Key": {Secret: "example_key"}}
+	custom, _, err := f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: "custom", URL: "https://custom.example.com/mcp", Headers: customHeaders}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,7 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	}
 	// A pre-existing custom URL with a catalog-like account name cannot be
 	// attached through catalog reuse either.
-	if _, _, err = f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: personal[0].Name, URL: "https://custom.example.com/mcp"}, ""); err != nil {
+	if _, _, err = f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: personal[0].Name, URL: "https://custom.example.com/mcp", Headers: customHeaders}, ""); err != nil {
 		t.Fatal(err)
 	}
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "Example"}, 400)

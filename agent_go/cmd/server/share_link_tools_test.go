@@ -193,6 +193,7 @@ func TestAddShareabilityMetadataClassifiesDeploymentHosts(t *testing.T) {
 
 func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other-user","role":"viewer","products":["code"]}]}`)
 	t.Setenv("PUBLIC_URL", "https://customer.example")
 	const userID = "owner"
 	const root = "_users/owner/Chats/Work/projects/demo"
@@ -241,7 +242,7 @@ func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
 			response = httptest.NewRecorder()
 			f.api.handlePublicFile(response, request)
 			if response.Code != 403 {
-				t.Fatalf("another user opened a personal Work link: %d", response.Code)
+				t.Fatalf("user without Crew access opened a Work link: %d", response.Code)
 			}
 		}
 	}

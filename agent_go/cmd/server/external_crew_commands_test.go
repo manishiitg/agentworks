@@ -61,7 +61,9 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	registry := agentprofiles.NewRegistry()
-	if err := registry.RegisterProfile(workproduct.BuiltinAgentProfile()); err != nil {
+	profile := workproduct.BuiltinAgentProfile()
+	profile.Product = "work" // Match the product binding applied at server startup.
+	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
 	if err := workproduct.RegisterAgentProfileRuntime(registry, ws.URL); err != nil {
