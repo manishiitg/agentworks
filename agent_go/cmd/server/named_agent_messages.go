@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -16,13 +17,14 @@ import (
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
 type namedMessageAgent struct {
-	ID          string                `json:"agent_id"`
-	UserID      string                `json:"user_id"`
-	Name        string                `json:"name"`
-	Connections []string              `json:"allowed_connection_ids"`
-	CreatedAt   time.Time             `json:"created_at"`
-	Purpose     string                `json:"purpose,omitempty"`
-	Attachment  *namedAgentAttachment `json:"attachment,omitempty"`
+	ID               string                `json:"agent_id"`
+	UserID           string                `json:"user_id"`
+	Name             string                `json:"name"`
+	Connections      []string              `json:"allowed_connection_ids"`
+	CreatedAt        time.Time             `json:"created_at"`
+	Purpose          string                `json:"purpose,omitempty"`
+	PurposeUpdatedAt time.Time             `json:"purpose_updated_at,omitempty"`
+	Attachment       *namedAgentAttachment `json:"attachment,omitempty"`
 }
 
 func normalizeMessageAgentName(name string) (string, error) {
@@ -265,8 +267,8 @@ func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *htt
 	claims := GetUserFromContext(r.Context())
 	purpose, ok := args["purpose"].(string)
 	purpose = strings.TrimSpace(purpose)
-	if !ok || purpose == "" || len(purpose) > 512 {
-		externalError(w, 400, "invalid_arguments", "purpose must be 1 to 512 bytes")
+	if !ok || purpose == "" || utf8.RuneCountInString(purpose) > 80 || strings.ContainsAny(purpose, "\r\n") {
+		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 80 characters")
 		return
 	}
 	if !namedAgentOperationAllowed(claims, true) {
@@ -287,7 +289,20 @@ func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *htt
 	}
 	for i, a := range s.Agents {
 		if a.UserID == claims.UserID && a.Name == name && namedAgentConnectionAllowed(a, claims) {
+			if token := claims.AccessToken; token != nil && token.BoundAgentID != "" && (a.Attachment == nil || a.Attachment.DeliveryContract != 2 || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != token.ID) {
+				externalError(w, 403, "attachment_refused", "Exact attachment unavailable or changed.")
+				return
+			}
+			if a.Purpose != purpose && time.Since(a.PurposeUpdatedAt) < time.Minute {
+				externalError(w, 429, "rate_limited", "Purpose can change at most once per minute.")
+				return
+			}
+			if a.Purpose == purpose {
+				externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "status": "updated"})
+				return
+			}
 			s.Agents[i].Purpose = purpose
+			s.Agents[i].PurposeUpdatedAt = time.Now().UTC()
 			if err = saveAgentMessageStore(r.Context(), s); err != nil {
 				externalCommunicationError(w, 400, "purpose_refused", err)
 				return

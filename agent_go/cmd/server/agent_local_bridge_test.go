@@ -142,7 +142,6 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	attach.Action = "attach"
 	attach.ConfigPath = path
 	attach.AgentName = "hook-reviewer"
-	attach.Purpose = "Review work"
 	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("wrong exact session")
 	}
@@ -185,6 +184,12 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	purposeTool := plugin.GetTool("agent_message_set_purpose")
 	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Review workflow communication"}}}); e != nil || result.IsError {
 		t.Fatalf("own purpose update failed: %+v %v", result, e)
+	}
+	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Change again"}}}); e != nil || !result.IsError {
+		t.Fatal("purpose changes were not rate limited")
+	}
+	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "update_purpose", "agent_name": "hook-reviewer", "attachment_id": "retired-lease", "purpose": "Old session"}); e == nil {
+		t.Fatal("stale attachment updated purpose")
 	}
 	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "update_purpose", "agent_name": "other-agent", "purpose": "Take over"}); e == nil {
 		t.Fatal("child changed another agent purpose")

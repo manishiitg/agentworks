@@ -536,7 +536,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
 			return LocalBridgeReply{Error: "attachment no longer authorized"}
 		}
-		raw, err := s.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": s.Attachment.AgentName, "purpose": in.Purpose})
+		raw, err := s.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "purpose": in.Purpose})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}

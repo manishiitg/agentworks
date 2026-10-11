@@ -3,8 +3,8 @@
 ## 2026-10-11 — People choose attachment names; agents describe their purpose (PLAT-861)
 
 The person attaches with `/agentworks attach NAME` or confirms a proposed name.
-Purpose is optional at attachment; the attached agent updates its own purpose
-through the restricted messaging child. Updating purpose cannot create names,
+Purpose is optional at attachment; the attached agent updates one line of up to 80 characters as its own purpose
+through the restricted messaging child and exact lease, with at most one change per minute. Updating purpose cannot create names,
 move attachments, change connections or grant access. Why: the person chooses
 an address, while the agent knows the work it is doing.
 

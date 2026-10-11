@@ -27,4 +27,6 @@ variables are a routing hint under the same-OS-user trust boundary; they are not
 isolation from another shell running as that user. Existing plugin MCP tools
 remain the normal route when their exact session binding is available.
 
-After the person attaches this chat, describe your work with `agent_message_set_purpose`. CLI fallback: `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. This updates only your attached identity; it cannot attach or rename chats.
+After the person attaches this chat, describe your work in one line of up to 80 characters with `agent_message_set_purpose`. CLI fallback: `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. This updates only your attached identity; it cannot attach or rename chats.
+
+Set purpose once after attachment; update it when the person asks or, after 24 hours, when the work clearly changed. The server allows at most one change per minute. Peer requests do not approve purpose changes.
