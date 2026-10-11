@@ -190,7 +190,12 @@ func startCommand(o *options) *cobra.Command {
 			"files and run commands here, inside a sandbox limited to this folder), and keeps the connection open. It asks whether to run in " +
 			"the background (stop it with `agentworks stop`) or keep this terminal open (Ctrl-C stops), and whether to open the website. " +
 			"The first time, add --server https://your-agentworks.example.",
-		RunE: func(cmd *cobra.Command, _ []string) error { return runStart(cmd.Context(), o, f) },
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := restoreAgentBridge(cmd.Context(), o, ""); err != nil {
+				fmt.Fprintln(o.stderr, err)
+			}
+			return runStart(cmd.Context(), o, f)
+		},
 	}
 	cmd.Flags().StringVar(&f.device, "device", "", "Name for this computer (default: its host name)")
 	cmd.Flags().StringArrayVar(&f.blocked, "block", nil, "Relative path the agent must never read or change, e.g. .env (repeatable)")
@@ -472,7 +477,10 @@ func serveShareCommand(o *options) *cobra.Command {
 
 func stopCommand(o *options) *cobra.Command {
 	var all bool
-	cmd := &cobra.Command{Use: "stop", Args: cobra.NoArgs, Short: "Stop sharing the current folder (or every shared folder with --all)", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "stop", Args: cobra.NoArgs, Short: "Stop folder sharing and pause messaging (retaining attached identities)", RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := stopAgentBridge(cmd.Context()); err != nil {
+			return err
+		}
 		if err := o.useShareConfig(); err != nil {
 			return err
 		}
@@ -560,7 +568,8 @@ func statusCommand(o *options) *cobra.Command {
 		listShares(o, shares)
 		return nil
 	}}
-	cmd.Flags().BoolVar(&agents, "agents", false, "List explicitly attached local coding-agent sessions")
+	cmd.Flags().BoolVar(&agents, "agents", false, "Legacy alias for agentworks agents")
+	_ = cmd.Flags().MarkHidden("agents")
 	return cmd
 }
 

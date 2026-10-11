@@ -346,6 +346,22 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if len(responses) != 2 || responses[1].(map[string]any)["inbox_id"] != recovered.InboxID {
 		t.Fatal("compacted reply lost its original inbox")
 	}
+	// The CLI's shutdown path retains identities/leases for update and stop/start.
+	leaseBeforeStop := local(agentworksclient.LocalBridgeRequest{Action: "status", Provider: base.Provider, SessionID: base.SessionID, HostKey: base.HostKey}).Attachment.ID
+	_, _ = agentworksclient.CallLocalBridge(context.Background(), root, agentworksclient.LocalBridgeRequest{Action: "shutdown"})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("CLI shutdown did not finish")
+	}
+	cancel()
+	cancel, done = start()
+	if got := local(agentworksclient.LocalBridgeRequest{Action: "status", Provider: base.Provider, SessionID: base.SessionID, HostKey: base.HostKey}); !got.Attached || got.Attachment.ID != leaseBeforeStop {
+		t.Fatal("CLI restart lost the approved attachment", got)
+	}
 	stop(cancel, done)
 	// Simulate a saved pre-upgrade restricted attachment: never widen it silently.
 	savedPath := filepath.Join(root, "sessions.json")
@@ -388,10 +404,34 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, missingHost); e == nil {
 		t.Fatal("resume accepted no provider process key")
 	}
+	offlineMessage := send("stored while offline")
 	resume := base
-	resume.Action = "resume"
+	resume.Action = "attach"
+	resume.AgentName = ""
+	resume.ConfigPath = "/missing/default/login"
+	resume.ReuseIdentity = true
 	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("person-confirmed exact resume failed")
+	}
+	offlineOffer := wait(offlineMessage["message_id"].(string))
+	if len(offlineOffer.Messages) != 1 || offlineOffer.Messages[0].AttachmentID != local(statusOffline).Attachment.ID {
+		t.Fatal("offline catch-up did not use the renewed lease", offlineOffer)
+	}
+	firstLease := local(statusOffline).Attachment.ID
+	if got := local(resume); got.Attachment.ID != firstLease {
+		t.Fatal("repeated person attach rotated an active lease")
+	}
+	setup := resume
+	setup.Setup = true
+	if !local(setup).Attached {
+		t.Fatal("person attach failed")
+	}
+	setupContext := local(drain)
+	if setupContext.SetupContext == "" || !strings.Contains(setupContext.SetupContext, "agent_message_set_purpose") || !strings.Contains(setupContext.SetupContext, "hook-reviewer") {
+		t.Fatal("attach setup omitted purpose/roster", setupContext)
+	}
+	if got := local(drain); got.SetupContext != "" {
+		t.Fatal("setup repeated without another person attach")
 	}
 	channelOffer := send("channel offer on new attachment")
 	drain.Transport = "claude_channel"
@@ -400,8 +440,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	drain.Transport = "claude_hook"
 	resumed := send("offer on a new attachment")
-	if out := wait(resumed["message_id"].(string)); !out.IncludeGuidance {
-		t.Fatal("new attachment inherited old command guidance")
+	if out := wait(resumed["message_id"].(string)); out.IncludeGuidance {
+		t.Fatal("reconnect repeated command guidance within 24 hours")
 	}
 	wrongProcess := base
 	wrongProcess.Action, wrongProcess.HostKey = "status", "another-provider-process"
@@ -410,9 +450,20 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	move := attach
 	move.SessionID, move.HostKey = "moved-exact-session", "moved-exact-process"
-	if !local(move).Attached || !local(attach).Attached {
-		t.Fatal("stable identity move failed")
+	if _, err := agentworksclient.CallLocalBridge(context.Background(), root, move); err == nil || !strings.Contains(err.Error(), "detach it there first") {
+		t.Fatal("live chat name was silently displaced", err)
 	}
+	local(offline)
+	if !local(move).Attached {
+		t.Fatal("explicit move from offline identity failed")
+	}
+	moveOffline := move
+	moveOffline.Action = "offline"
+	local(moveOffline)
+	if !local(attach).Attached {
+		t.Fatal("stable identity did not return from offline session")
+	}
+
 	files, e = filepath.Glob(filepath.Join(root, "connections", "*.json"))
 	if e != nil || len(files) != 1 {
 		t.Fatal("moving retained identities leaked child credentials")

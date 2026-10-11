@@ -28,25 +28,81 @@ func codexDesktopOffer(ctx context.Context, remote string, delivery agentworkscl
 	if _, err := uuid.Parse(a.SessionID); err != nil {
 		return errors.New("desktop delivery requires an exact thread UUID")
 	}
-	remote = strings.TrimPrefix(remote, "desktop+")
-	if err := validateCodexRemote(remote); err != nil {
-		return err
-	}
 	text := pluginMessageText(delivery, "codex_desktop")
 	if len(text) > 96<<10 {
 		return errors.New("native message exceeds 96 KiB; explicitly read the inbox to recover, no automatic retry")
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(remote, "unix://"))
+	conn, call, err := openCodexDesktop(ctx, remote)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	var out map[string]json.RawMessage
+	out, err = call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": a.SessionID}, 1, "")
+	if err != nil {
+		return err
+	}
+	var owner string
+	var support struct {
+		Untrusted bool `json:"supportsUntrustedAppInput"`
+	}
+	_ = json.Unmarshal(out["handledByClientId"], &owner)
+	_ = json.Unmarshal(out["result"], &support)
+	if owner == "" || !support.Untrusted {
+		return errors.New("exact desktop chat unavailable or untrusted app input unsupported")
+	}
+	tool := map[string]any{"namespace": "agentworks", "name": "agent_message", "output": text}
+	id := uuid.NewString()
+	restore := map[string]any{"id": id, "context": map[string]any{"workspaceRoots": []string{}}}
+	mayHaveDelivered = true
+	out, err = call("thread-follower-steer-turn", map[string]any{"conversationId": a.SessionID, "input": []any{}, "restoreMessage": restore, "clientUserMessageId": id, "toolOutput": tool}, 1, owner)
+	if err != nil {
+		return err
+	}
+	var result, errorText string
+	_ = json.Unmarshal(out["resultType"], &result)
+	_ = json.Unmarshal(out["error"], &errorText)
+	if result == "success" {
+		return nil
+	}
+	// Only a definite no-active-turn refusal permits an idle start. Timeouts,
+	// disconnects and all other errors remain ambiguous and are never retried.
+	if !strings.Contains(errorText, "no active turn") && !strings.Contains(errorText, "No active turn") && errorText != "Cannot steer conversation "+a.SessionID+" because its active turn already ended" {
+		return errors.New("desktop refused live offer: " + errorText)
+	}
+	out, err = call("thread-follower-start-turn", map[string]any{"conversationId": a.SessionID, "turnStart": map[string]any{"request": map[string]any{"threadId": a.SessionID, "input": []any{}, "toolOutput": tool, "clientUserMessageId": id}, "context": map[string]any{"inheritThreadSettings": true}}}, 2, owner)
+	if err != nil {
+		return err
+	}
+	_ = json.Unmarshal(out["resultType"], &result)
+	if result != "success" {
+		return errors.New("desktop refused idle offer; inspect attachment status")
+	}
+	return nil
+}
+
+// Read-only discovery and delivery share the same framed, exact-owner IPC.
+func openCodexDesktop(ctx context.Context, remote string) (net.Conn, func(string, any, int, string) (map[string]json.RawMessage, error), error) {
+	remote = strings.TrimPrefix(remote, "desktop+")
+	if err := validateCodexRemote(remote); err != nil {
+		return nil, nil, err
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(remote, "unix://"))
+	if err != nil {
+		return nil, nil, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			conn.Close()
+		}
+	}()
 	deadline := time.Now().Add(15 * time.Second)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}
 	if err = conn.SetDeadline(deadline); err != nil {
-		return err
+		return nil, nil, err
 	}
 	client := "initializing-client"
 	call := func(method string, params any, version int, target string) (map[string]json.RawMessage, error) {
@@ -99,54 +155,15 @@ func codexDesktopOffer(ctx context.Context, remote string, delivery agentworkscl
 	}
 	out, err := call("initialize", map[string]any{"clientType": "agentworks"}, 0, "")
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	var init struct {
 		ClientID string `json:"clientId"`
 	}
 	if json.Unmarshal(out["result"], &init) != nil || init.ClientID == "" {
-		return errors.New("desktop IPC initialization refused")
+		return nil, nil, errors.New("desktop IPC initialization refused")
 	}
 	client = init.ClientID
-	out, err = call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": a.SessionID}, 1, "")
-	if err != nil {
-		return err
-	}
-	var owner string
-	var support struct {
-		Untrusted bool `json:"supportsUntrustedAppInput"`
-	}
-	_ = json.Unmarshal(out["handledByClientId"], &owner)
-	_ = json.Unmarshal(out["result"], &support)
-	if owner == "" || !support.Untrusted {
-		return errors.New("exact desktop chat unavailable or untrusted app input unsupported")
-	}
-	tool := map[string]any{"namespace": "agentworks", "name": "agent_message", "output": text}
-	id := uuid.NewString()
-	restore := map[string]any{"id": id, "context": map[string]any{"workspaceRoots": []string{}}}
-	mayHaveDelivered = true
-	out, err = call("thread-follower-steer-turn", map[string]any{"conversationId": a.SessionID, "input": []any{}, "restoreMessage": restore, "clientUserMessageId": id, "toolOutput": tool}, 1, owner)
-	if err != nil {
-		return err
-	}
-	var result, errorText string
-	_ = json.Unmarshal(out["resultType"], &result)
-	_ = json.Unmarshal(out["error"], &errorText)
-	if result == "success" {
-		return nil
-	}
-	// Only a definite no-active-turn refusal permits an idle start. Timeouts,
-	// disconnects and all other errors remain ambiguous and are never retried.
-	if !strings.Contains(errorText, "no active turn") && !strings.Contains(errorText, "No active turn") && errorText != "Cannot steer conversation "+a.SessionID+" because its active turn already ended" {
-		return errors.New("desktop refused live offer: " + errorText)
-	}
-	out, err = call("thread-follower-start-turn", map[string]any{"conversationId": a.SessionID, "turnStart": map[string]any{"request": map[string]any{"threadId": a.SessionID, "input": []any{}, "toolOutput": tool, "clientUserMessageId": id}, "context": map[string]any{"inheritThreadSettings": true}}}, 2, owner)
-	if err != nil {
-		return err
-	}
-	_ = json.Unmarshal(out["resultType"], &result)
-	if result != "success" {
-		return errors.New("desktop refused idle offer; inspect attachment status")
-	}
-	return nil
+	ok = true
+	return conn, call, nil
 }

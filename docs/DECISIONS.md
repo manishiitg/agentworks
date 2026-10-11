@@ -1,5 +1,14 @@
 # Decisions and open issues
 
+## 2026-10-11 — Three messaging person commands, reconnect through attach (PLAT-861)
+
+The messaging person surface is attach [NAME], detach and agents, with matching in-chat commands. In-chat attach is immediate person approval; terminal attach discovers exact live sessions for person selection and installs a missing supported plugin. Attach preserves the saved identity and parent connection, verifies the new process and supplies purpose/roster setup context. It supersedes the earlier proposed-name confirmation and separate resume UX. CLI update and stop/start restore only existing still-live approved processes. Provider process restart still requires person attach. Cleanup is automatic; ambiguous offers do not replay. Full AgentWorks guidance is refreshed after 24 hours and retained through bridge/lease restarts; the provider may independently add its own notice. Local coding and folder-sharing authority are unchanged.
+
+Why: connecting or reconnecting should be one operation, without technical flags or duplicate setup instructions on every message.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues861-56,861-76.
+
+
 ## 2026-10-11 — Native CLI and MCP authoring uses existing consent and roles (PLAT-856)
 
 Always expose authorized native workflow/Relay authoring through CLI and MCP;

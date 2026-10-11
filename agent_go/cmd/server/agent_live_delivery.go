@@ -116,6 +116,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and an optional purpose (at most 512 bytes).")
 			return
 		}
+		rejectMove, _ := args["reject_live_move"].(bool)
+		if rejectMove && a.Attachment != nil && (a.Attachment.Provider != provider || a.Attachment.SessionID != session) && namedAgentOnline(*a) {
+			externalError(w, 409, "agent_attached_elsewhere", "agent:"+name+" is attached to another chat; detach it there first")
+			return
+		}
 		if purpose != "" {
 			a.Purpose = purpose
 		}

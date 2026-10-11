@@ -1032,3 +1032,19 @@ an external topic requires metadata in its canonical source, not a second
 external Go registration. Existing account roles and consent still gate calls.
 
 Direct plan authoring uses `agentworks plan list --workflow ID` for native operation schemas and `agentworks plan edit --workflow ID --input change.json` for an edit. The JSON contains the returned native `action` and `arguments`, the combined `expected_revision` from `plan get`, and a unique `request_id`. Reuse the same request ID and arguments after an uncertain response to inspect its receipt. Existing Builder consent, current owner/editor/team rules and the plan changelog apply. Relay edits use the guarded source file tools followed by `relay action=test` and run inspection.
+
+### Attached coding-agent messaging
+
+After signing in, the person uses only three messaging commands:
+
+```sh
+agentworks attach [NAME]
+agentworks detach
+agentworks agents
+```
+
+In the exact chat use `/agentworks attach [NAME]`, `/agentworks detach` or `/agentworks agents`. Attach installs a missing Codex/Claude plugin, discovers verified live sessions in a terminal, connects or reconnects the selected chat and preserves its identity. NAME is optional; the agent sets its own purpose. Hook trust is still reviewed in the provider. No separate resume or cleanup command is needed.
+
+CLI update and stop/start preserve and reconnect still-live approved attachments. If the coding-agent process itself restarted, type attach again. These messaging commands do not replace local folder sharing, `executor connect`, workflows, files or Crew commands. Use `agentworks start` in a project to keep local coding access as before.
+
+Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.

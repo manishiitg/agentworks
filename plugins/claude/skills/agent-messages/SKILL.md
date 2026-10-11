@@ -12,7 +12,7 @@ Call agent_message_ack with delivery=admitted when you receive an offer, then de
 Do not attach or detach chats. The person does this through the trusted prompt-submit hook or interactive terminal. Do not launch the local listener, edit hook trust or enable a channel yourself. If attachment is absent, explain the person command instead. For a journal/stream failure use an explicit mailbox read; do not create a polling loop or infer processing from storage.
 
 For an explicit native desktop or Claude-session transport, use the commands below. The bridge sends the fixed
-command guidance once per attachment, then on the next offer after 24 hours;
+command guidance once per exact session, then on the next offer after 24 hours, preserved across CLI updates/reconnects;
 Short sender provenance and a
 command-discovery help hint remain on every offer. Definite pre-delivery failures
 restore guidance for the next new offer; ambiguous writes retain the cadence. Guidance survives daemon restarts.

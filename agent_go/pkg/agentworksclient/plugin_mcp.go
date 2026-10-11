@@ -86,6 +86,9 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 				go func() {
 					for ctx.Err() == nil {
 						out, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "next", Provider: "claude", HostKey: hostKey, Transport: "claude_channel"})
+						if err == nil && out.SetupContext != "" {
+							err = s.SendNotificationToClient(sessionCtx, "notifications/claude/channel", map[string]any{"content": out.SetupContext, "meta": map[string]string{"source": "agentworks-local-setup", "agent_name": out.Attachment.AgentName}})
+						}
 						if err == nil {
 							for _, message := range out.Messages {
 								// The bridge already persisted the offer. On an ambiguous
