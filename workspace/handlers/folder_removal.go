@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,10 @@ import (
 // sandbox may own private directories the service cannot traverse; RemoveAll
 // on the live path would remove the manifest before failing on those files.
 func removeFolderAtomically(docsDir, folderPath string) (bool, error) {
+	return removeFolderAtomicallyWithContext(context.Background(), docsDir, folderPath)
+}
+
+func removeFolderAtomicallyWithContext(ctx context.Context, docsDir, folderPath string) (bool, error) {
 	root, err := filepath.Abs(docsDir)
 	if err != nil {
 		return false, err
@@ -21,6 +26,11 @@ func removeFolderAtomically(docsDir, folderPath string) (bool, error) {
 	}
 	if target == root {
 		return false, fmt.Errorf("cannot delete the workspace documents root")
+	}
+	// A slot cannot enter service-owned deletion staging. Remove its private
+	// Relay journals through the existing sandbox/slotctl path while reachable.
+	if err := cleanupRelaySlotRunFiles(ctx, root, target); err != nil {
+		return false, fmt.Errorf("clean Relay run files before deletion: %w", err)
 	}
 	// This fresh service-owned 0700 directory is outside the documents API and
 	// sandbox grants. A cross-device rename fails before touching the folder.

@@ -1,5 +1,17 @@
 # Decisions and open issues
 
+## 2026-10-11 — Delete private Relay journals as their owning slots (PLAT-847)
+
+Before moving a deleted Relay to service-owned staging, remove its slot-owned
+DBOS journals through the existing Isolator and slotctl launcher. Select slots
+from current assignments and actual file ownership, grant only that run folder,
+and cover draft and published runs. Take the executor lock without waiting:
+an active journal or failed cleanup leaves the Relay in place for retry.
+Refuse redirected directories; retain the existing administrator-cleanup notice
+for other inaccessible residue. Why: slots cannot enter private deletion staging,
+and the app must not widen filesystem permissions to traverse their journals.
+[PLAT-847](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/reports/plat-847.md).
+
 ## 2026-10-11 — Inspect step executions from chat (PLAT-861)
 
 Expose a small inspection action on execution activity and background-work rows.

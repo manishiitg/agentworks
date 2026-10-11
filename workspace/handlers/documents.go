@@ -1904,7 +1904,7 @@ func DeleteFolder(c *gin.Context) {
 		return
 	}
 
-	cleanupPending, err := removeFolderAtomically(docsDir, folderPath)
+	cleanupPending, err := removeFolderAtomicallyWithContext(c.Request.Context(), docsDir, folderPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
