@@ -93,7 +93,12 @@ func authorizedSharedAsset(w http.ResponseWriter, r *http.Request, full string) 
 }
 
 func sharedAssetRequest(r *http.Request, root, p, operation string) (*http.Response, error) {
-	body, _ := json.Marshal(map[string]string{"root": root, "path": p, "operation": operation})
+	body, _ := json.Marshal(struct {
+		Root      string          `json:"root"`
+		Path      string          `json:"path"`
+		Operation string          `json:"operation"`
+		Guard     *wf.FolderGuard `json:"guard,omitempty"`
+	}{root, p, operation, externalFileGuard(r.Context(), false)})
 	req, err := http.NewRequestWithContext(r.Context(), "POST", getWorkspaceAPIURL()+"/api/shared-assets", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -260,6 +265,17 @@ func (api *StreamingAPI) handleExternalAssetContent(w http.ResponseWriter, r *ht
 	claims := GetUserFromContext(r.Context())
 	if claims == nil {
 		externalError(w, 401, "unauthorized", "Sign in to AgentWorks.")
+		return
+	}
+	if crewID := r.URL.Query().Get("crew_id"); crewID != "" {
+		if r.URL.Query().Get("workflow_id") != "" {
+			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
+			return
+		}
+		root, relative, ok := api.externalCrewAssetTarget(w, r, crewID, r.URL.Query().Get("path"))
+		if ok {
+			serveSharedAsset(w, r, root, relative, "read")
+		}
 		return
 	}
 	if claims.AccessToken != nil && !claims.AccessToken.Allows("files:read") {

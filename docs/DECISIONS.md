@@ -13,6 +13,17 @@ form duplicated the existing interaction tools and blocked unattended runs.
 
 Ticket: [PLAT-864](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-864.md).
 
+## 2026-10-11 — Crew artifact links retain live access and connection bounds (PLAT-856)
+
+Extend `get_file_link` and authenticated downloads to Crews using existing
+`crews:read` consent. Resolve the project on each call and asset open; recipients
+keep their own current visibility, Crew bounds and file guards. Recognize shared
+and legacy owner roots, keep private areas hidden, and filter folder descendants
+in the workspace asset service before listing or archiving. Links grant no
+access. Why: external clients need the website's artifact links without broader
+file authority or a new permission level.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
 
 ## 2026-10-11 — MCP guidance is an opt-in, versioned source catalog (PLAT-852)
 

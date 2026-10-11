@@ -45,9 +45,10 @@ func noSymlinks(root *os.Root, p string) error {
 // root. OpenRoot confines subsequent reads even while files are being changed.
 func SharedAssets(c *gin.Context) {
 	var req struct {
-		Root      string `json:"root"`
-		Path      string `json:"path"`
-		Operation string `json:"operation"`
+		Root      string          `json:"root"`
+		Path      string          `json:"path"`
+		Operation string          `json:"operation"`
+		Guard     *wf.FolderGuard `json:"guard,omitempty"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)).Decode(&req) != nil {
 		c.AbortWithStatus(400)
@@ -59,7 +60,7 @@ func SharedAssets(c *gin.Context) {
 		return
 	}
 	p, err := wf.CleanRelative(req.Path)
-	if err != nil || wf.Private(p) {
+	if err != nil || wf.Private(p) || req.Guard.Validate() != nil || !req.Guard.Allows(p, false) {
 		c.AbortWithStatus(403)
 		return
 	}
@@ -124,7 +125,7 @@ func SharedAssets(c *gin.Context) {
 		}
 		http.ServeContent(c.Writer, c.Request, path.Base(p), info.ModTime(), f)
 	case "list", "archive":
-		items, err := sharedAssetEntries(c.Request.Context().Done(), root, p)
+		items, err := sharedAssetEntries(c.Request.Context().Done(), root, p, req.Guard)
 		if err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -202,7 +203,7 @@ type sharedAssetEntry struct {
 	Modified time.Time `json:"last_modified"`
 }
 
-func sharedAssetEntries(done <-chan struct{}, root *os.Root, p string) ([]sharedAssetEntry, error) {
+func sharedAssetEntries(done <-chan struct{}, root *os.Root, p string, guard *wf.FolderGuard) ([]sharedAssetEntry, error) {
 	st, err := root.Stat(p)
 	if err != nil || !st.IsDir() {
 		return nil, errors.New("folder not found")
@@ -222,7 +223,7 @@ func sharedAssetEntries(done <-chan struct{}, root *os.Root, p string) ([]shared
 		if scanned > 10000 {
 			return errors.New("folder exceeds 10000 entries; choose a smaller folder")
 		}
-		if d.Type()&os.ModeSymlink != 0 || wf.Private(name) {
+		if d.Type()&os.ModeSymlink != 0 || wf.Private(name) || !guard.Allows(name, false) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}

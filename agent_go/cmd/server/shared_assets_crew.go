@@ -19,16 +19,21 @@ import (
 // crewLinkReadAllowed reports whether claims may read the crew rooted at
 // crewRoot ("_users/<owner>/Chats/Work/projects/<p>"). Tests replace it.
 var crewLinkReadAllowed = func(api *StreamingAPI, claims *UserClaims, crewRoot string) bool {
-	return api.crewBrowserAccess(claims, crewRoot) != WorkflowAccessNone
+	manifest, err := readCrewProjectManifests(context.Background(), "work", crewRoot)
+	if err != nil {
+		return false
+	}
+	crew, _, _, ok := api.externalCrewResolve(context.Background(), claims, manifest.ID)
+	return ok && agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath) == crewRoot
 }
 
-// crewReaderSharedAsset resolves a link to another owner's crew for a
-// signed-in reader. handled is false when the link is not a cross-user crew
-// link, so the caller applies the ordinary rules. crewRootView is true when
-// the link addresses the crew root itself, whose listing must be filtered.
+// crewReaderSharedAsset recognizes shared and legacy Crew roots for every
+// viewer, including the owner. Code retains its existing cross-owner rules.
+// Returning the Crew root keeps file guards relative to the project rather
+// than to its parent's Chats folder.
 func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Request, full string) (root, relative string, crewRootView, handled, ok bool) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !IsMultiUserMode() {
+	if claims == nil {
 		return "", "", false, false, false
 	}
 	caller := publicWorkspaceUserID(r)
@@ -41,40 +46,69 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 	if ref := workspaceref.MustParse(clean); ref.HasOwner() && ref.Logical() != "" {
 		owner, parts = ref.Owner(), strings.Split(ref.Logical(), "/")
 	}
-	if owner == "" || owner == caller || sanitizeUserIDForPath(owner) != owner {
-		return "", "", false, false, false
+	if owner == "" {
+		owner = caller
 	}
-	if len(parts) < 4 || parts[0] != "Chats" || (parts[1] != "Work" && parts[1] != "Code") || parts[2] != "projects" || parts[3] == "" {
-		return "", "", false, false, false
-	}
-	crewRoot := workspaceref.PhysicalPathOf(owner, "Chats", parts[1], "projects", parts[3])
-	if parts[1] == "Code" {
-		// A Code link opens for the people its owner shared it with.
-		if !codeLinkReadAllowed(r.Context(), claims, owner, crewRoot) {
+	var crewRoot, crewRelative string
+	if len(parts) >= 2 && parts[0] == "Crew" && parts[1] != "" {
+		crewRoot, crewRelative = strings.Join(parts[:2], "/"), strings.Join(parts[2:], "/")
+	} else if len(parts) >= 4 && parts[0] == "Chats" && parts[1] == "Work" && parts[2] == "projects" && parts[3] != "" {
+		if sanitizeUserIDForPath(owner) != owner {
+			externalError(w, 403, "forbidden", "Crew owner is unavailable.")
+			return "", "", false, true, false
+		}
+		crewRoot = workspaceref.PhysicalPathOf(owner, "Chats", "Work", "projects", parts[3])
+		crewRelative = strings.Join(parts[4:], "/")
+	} else {
+		if !IsMultiUserMode() || owner == caller || sanitizeUserIDForPath(owner) != owner || len(parts) < 4 || parts[0] != "Chats" || parts[1] != "Code" || parts[2] != "projects" {
+			return "", "", false, false, false
+		}
+		codeRoot := workspaceref.PhysicalPathOf(owner, "Chats", "Code", "projects", parts[3])
+		if !codeLinkReadAllowed(r.Context(), claims, owner, codeRoot) {
 			externalError(w, 403, "forbidden", "You do not have access to this Code workspace.")
 			return "", "", false, true, false
 		}
-	} else if !crewLinkReadAllowed(api, claims, crewRoot) {
-		externalError(w, 403, "forbidden", "You do not have access to this crew.")
+		if claims.AccessToken != nil && !claims.AccessToken.Allows("files:read") {
+			externalError(w, 403, "insufficient_scope", "This token does not allow this asset.")
+			return "", "", false, true, false
+		}
+		codeRelative := strings.Join(parts[4:], "/")
+		if codeRelative != "" {
+			if _, confined := confineSharedProjectPath(codeRoot, codeRelative); !confined {
+				externalError(w, 403, "protected_path", "This part of the Code workspace is private to its owner.")
+				return "", "", false, true, false
+			}
+		}
+		relative = strings.Join(parts[1:], "/")
+		if wf.Private(relative) {
+			externalError(w, 403, "protected_path", "Private workspace files are not shareable.")
+			return "", "", false, true, false
+		}
+		return workspaceref.PhysicalPathOf(owner, "Chats"), relative, codeRelative == "", true, true
+	}
+	if !crewLinkReadAllowed(api, claims, crewRoot) {
+		externalError(w, 403, "forbidden", "You do not have access to this Crew.")
 		return "", "", false, true, false
 	}
-	if claims.AccessToken != nil && !claims.AccessToken.Allows("files:read") {
-		externalError(w, 403, "insufficient_scope", "This token does not allow this asset.")
-		return "", "", false, true, false
-	}
-	crewRelative := strings.Join(parts[4:], "/")
-	if crewRelative != "" {
-		if _, confined := confineSharedProjectPath(crewRoot, crewRelative); !confined {
-			externalError(w, 403, "protected_path", "This part of the crew is private to its owner.")
+	if token := claims.AccessToken; token != nil {
+		manifest, err := readCrewProjectManifests(r.Context(), "work", crewRoot)
+		if err != nil || !token.Allows("crews:read") || !token.AllowsCrew(manifest.ID) {
+			externalError(w, 403, "insufficient_scope", "This token does not allow this Crew asset.")
 			return "", "", false, true, false
 		}
 	}
-	relative = strings.Join(parts[1:], "/")
-	if wf.Private(relative) {
-		externalError(w, 403, "protected_path", "Private workspace files are not shareable.")
+	rootView := crewRelative == ""
+	if rootView {
+		crewRelative = "."
+	} else if _, confined := confineSharedProjectPath(crewRoot, crewRelative); !confined {
+		externalError(w, 403, "protected_path", "This part of the Crew is private to its owner.")
 		return "", "", false, true, false
 	}
-	return workspaceref.PhysicalPathOf(owner, "Chats"), relative, crewRelative == "", true, true
+	if wf.Private(crewRelative) || !externalFileGuard(r.Context(), false).Allows(crewRelative, false) {
+		externalError(w, 403, "protected_path", "File is private or outside folder grants.")
+		return "", "", false, true, false
+	}
+	return crewRoot, crewRelative, rootView, true, true
 }
 
 // crewRootListingVisible hides the crew's private areas from a reader's

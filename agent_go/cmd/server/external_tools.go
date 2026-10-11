@@ -89,7 +89,8 @@ func externalTools() ([]externalTool, error) {
 		p["step_id"] = externalString("Optional plan step ID; limits the inventory to its saved code directory.")
 		p["glob"] = externalString("Optional path glob inside the code directory; defaults to **/*.py.")
 		add("list_step_code", "List saved Python code by workflow step, with plan step IDs and titles where available. Uses code/<step-id>/ for current workflows and learnings/<step-id>/ for legacy workflows.", false, true, p)
-		add("get_file_link", "Get an existing file or folder’s authenticated browser preview URL. Files also include an authenticated download URL, size and content type. Links never contain credentials; recipients need workflow access.", false, true, map[string]any{"path": externalString("Workflow-relative file or folder path.")}, "path")
+		add("get_file_link", "Get an existing workflow, Relay or Crew file/folder's authenticated browser preview URL. Files include a download URL, size and content type. Pass exactly one of workflow_id (files:read) or crew_id (crews:read); existing visibility, project bounds and file guards apply. Links contain no credentials and grant no access; recipients must sign in with their own current project access.", false, false, map[string]any{"path": externalString("Canonical project-relative file or folder path."), "workflow_id": externalString("Workflow or Relay ID."), "crew_id": externalString("Crew ID returned by crew list.")}, "path")
+		defined[len(defined)-1].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workflow_id"}}, map[string]any{"required": []any{"crew_id"}}}
 		add("read_file", "Read a workflow file up to 2 MiB. Binary content is base64.", false, true, map[string]any{"path": externalString("Workflow-relative file path.")}, "path")
 		add("write_file", "Write UTF-8 source or documentation (content), or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB), within your current owner/editor role and existing workflow or Relay authoring consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Revision returned by read_file, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "expected_revision", "request_id")
 		// Tokens read and run, like the Slack and WhatsApp run-mode channels:
@@ -504,6 +505,16 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if isExternalCrewTool(tool.Name) {
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
+	}
+	if tool.Name == "get_file_link" {
+		if externalArg(call.Arguments, "crew_id") != "" {
+			api.externalCrewAssetLink(w, r, call.Arguments)
+			return
+		}
+		if token := GetUserFromContext(r.Context()).AccessToken; token != nil && !token.Allows("files:read") {
+			externalError(w, 403, "insufficient_scope", "File read permission is required for workflow links.")
+			return
+		}
 	}
 	if tool.Name == "query_database" && externalArg(call.Arguments, "crew_id") != "" {
 		claims := GetUserFromContext(r.Context())

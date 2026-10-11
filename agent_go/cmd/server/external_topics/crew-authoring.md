@@ -129,3 +129,18 @@ Call `crew` action=get for the Crew's functions, call a function with `wait_seco
 `status`, then check the result against the schema. A function that finishes without a valid result
 is a failed call: read its `answer` and `files`, fix the instructions, and call again with a fresh
 `submission_id`.
+
+## Existing file and folder links
+
+Use `get_file_link` with `crew_id` and a canonical Crew-relative `path` for
+an existing artifact. This requires existing `crews:read` consent and current
+Crew access; connection Crew bounds and file guards also apply. File results
+include `preview_url`, `download_url`, size and content type; folder results
+include a browser preview. Recipients sign in with their own current access.
+Creating a link grants no access and never makes the artifact public.
+
+Downloads accept a signed-in session or CLI/PAT Bearer header. MCP OAuth tokens
+are restricted to the MCP endpoint; use browser sign-in or the existing files
+reader instead. Never put a credential in a URL. Folder listings and archives
+exclude blocked descendants and symlinks; private manifests, chats and databases
+remain protected. Check `shareable`/`warning` for a same-machine preview.
