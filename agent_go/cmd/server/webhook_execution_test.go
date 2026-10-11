@@ -83,6 +83,23 @@ func TestDirectWebhookRequiresPreparedWorkflow(t *testing.T) {
 	}
 }
 
+// The agent-step migration is optional for unattended triggers: a workflow one
+// contract behind keeps answering webhooks and function calls, as schedules do.
+func TestDirectWebhookAcceptsPreviousContract(t *testing.T) {
+	previous := &WorkflowManifest{Version: workflowContractStepDescriptionLayoutVersion, CodeLayoutVersion: 1}
+	if err := directWebhookPreflight(previous); err != nil {
+		t.Fatalf("workflow one contract behind refused: %v", err)
+	}
+	previous.CodeLayoutVersion = 0
+	if err := directWebhookPreflight(previous); !errors.Is(err, errWorkflowContractMigrationRequired) {
+		t.Fatalf("unmigrated code layout allowed: %v", err)
+	}
+	older := &WorkflowManifest{Version: workflowContractManagedDBScriptsVersion, CodeLayoutVersion: 1}
+	if err := directWebhookPreflight(older); !errors.Is(err, errWorkflowContractMigrationRequired) {
+		t.Fatalf("two contracts behind allowed: %v", err)
+	}
+}
+
 func TestDirectWebhookCapacityResumeUsesRecordedFolder(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)

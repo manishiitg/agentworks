@@ -26,11 +26,24 @@ func turnInactivityLimit(ctx context.Context) time.Duration {
 	return schedulerWorkshopMaxInactivity
 }
 
+// directWebhookContractCompatible lets unattended triggers (webhooks, function
+// calls, mail and chat triggers) run a Goals workflow that is still on the
+// contract just before the agent-step unification. That migration only renames
+// saved step types and the runtime still reads the saved spellings, as it does
+// for scheduled runs. Older contracts owe earlier migrations and stay refused.
+func directWebhookContractCompatible(manifest *WorkflowManifest) bool {
+	if manifestContractIsExecutionCompatible(manifest) {
+		return true
+	}
+	return manifest != nil && !manifestIsRelay(manifest) &&
+		workflowContractVersionForUpgrade(manifest) == workflowContractStepDescriptionLayoutVersion
+}
+
 func directWebhookPreflight(manifest *WorkflowManifest) error {
 	if isPythonRelay(manifest) {
 		return nil
 	}
-	if manifest == nil || !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
+	if manifest == nil || !directWebhookContractCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
 		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
 	}
 	return nil
