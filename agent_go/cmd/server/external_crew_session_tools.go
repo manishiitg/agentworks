@@ -38,7 +38,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 		return
 	}
 	reg := crewCapabilityRegistrar{}
-	if agentprofiles.HasFeature(profile.Definition, "workspace-ui") {
+	if agentprofiles.HasFeature(profile, "workspace-ui") {
 		if err = api.registerOpenWorkWorkspaceViewTool(reg, claims.UserID, chat.SessionID, crew.Binding.WorkspacePath); err != nil {
 			externalFailure(w, err)
 			return
@@ -49,7 +49,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	api.lastQueryMu.RUnlock()
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
 	initialized = initialized && registerWorkUIAllowed(parent) && canonicalChatHistoryWorkspacePath(claims.UserID, parent.SelectedFolder) == canonicalChatHistoryWorkspacePath(claims.UserID, root)
-	if agentprofiles.HasFeature(profile.Definition, "background-work") && api.bgAgentRegistry != nil {
+	if agentprofiles.HasFeature(profile, "background-work") && api.bgAgentRegistry != nil {
 		api.sessionAgentsMux.RLock()
 		wrapper := api.sessionAgents[chat.SessionID]
 		api.sessionAgentsMux.RUnlock()

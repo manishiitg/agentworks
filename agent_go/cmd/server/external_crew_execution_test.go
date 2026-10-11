@@ -166,7 +166,7 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile.Definition, productConversationBinding{ConversationKey: "team", WorkspacePath: externalCommandCrewRoot, ResourceID: "team", Title: "Test Team"}, "own-session")
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, productConversationBinding{ConversationKey: "team", WorkspacePath: externalCommandCrewRoot, ResourceID: "team", Title: "Test Team"}, "own-session")
 	if err != nil {
 		t.Fatal(err)
 	}
