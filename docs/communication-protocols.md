@@ -239,6 +239,10 @@ The person runs `agentworks attach [NAME]` from a terminal, or `/agentworks atta
 
 CLI `update` restarts the delivery bridge with the installed binary. `stop` pauses it without deleting identities; `start` restores existing approved attachments. None of these automatically approves a new provider process or broadens folder-sharing authority. Sharing, executor, workflow, Crew and file commands keep their existing semantics. A restarted coding-agent process requires person `attach` again. Exact-session repeat attach validates and reuses its current lease; reconnect retains the guidance cadence and avoids replaying ambiguous offers. Cleanup runs automatically.
 
+An older approved attachment with no native route acquires one on listener restart or an exact-host hook boundary, once its saved live process and exact session are verified. The lease and message journal stay intact; offline identities and changed processes are never revived by route discovery. With a native route, person attach offers purpose/roster setup immediately without waiting for a peer message. Setup is persisted before emission, so a restart cannot repeat an ambiguous setup offer. Hooks-only sessions receive setup at the next turn boundary.
+
+The messaging skill has one source in `plugins/shared/skills/agent-messages/SKILL.md`. Run `python3 scripts/sync-agent-messaging-skills.py` to generate Claude, Codex, Muse, Pi and Cursor copies; `--check` detects drift in CI. Provider packages must include their generated skill. It teaches peer discovery, authorized first contact, same-inbox replies, admitted/processed receipts and purpose updates without provider transport details.
+
 AgentWorks sends full messaging guidance once per exact session and refreshes after 24 hours, preserving the timestamp through CLI restarts and lease renewal. Every message retains brief provenance and IDs. Claude's native session receiver independently appends its permission notice on each message; the AgentWorks payload does not control that notice.
 
 For separate agent connections, set `AGENTWORKS_CONFIG` to an independent private

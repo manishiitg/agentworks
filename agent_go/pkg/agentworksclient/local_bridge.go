@@ -99,6 +99,8 @@ type localSession struct {
 	Offers           map[string]localOffer `json:"offers"`
 	client           *Client
 	cancel           context.CancelFunc
+	deliveryCtx      context.Context
+	nativeStarted    bool
 	nativeCalls      int
 }
 
@@ -263,13 +265,16 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			continue
 		}
 	}
-	if err = b.save(); err != nil {
-		return err
-	}
 	for _, s := range b.sessions {
 		if b.options.HostAlive != nil && !b.options.HostAlive(s.Attachment.Provider, s.HostKey) {
 			s.Offline = true
 		}
+		b.recoverNativeRoute(s)
+	}
+	if err = b.save(); err != nil {
+		return err
+	}
+	for _, s := range b.sessions {
 		if s.client != nil && !s.Offline {
 			b.start(ctx, s)
 		}
@@ -329,11 +334,8 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 func (b *localBridge) start(ctx context.Context, s *localSession) {
 	streamCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
-	if s.NativeRemote != "" && b.options.NativeOffer != nil {
-		b.workers.Add(1)
-		hostKey := s.HostKey
-		go func() { defer b.workers.Done(); b.nativeLoop(streamCtx, s, hostKey) }()
-	}
+	s.deliveryCtx = streamCtx
+	b.startNative(s)
 	b.workers.Add(1)
 	go func() {
 		defer b.workers.Done()
@@ -401,6 +403,31 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			}
 		}
 	}()
+}
+
+// Recover transport metadata for a live, already approved lease. This never
+// attaches a session, revives an offline identity or changes its authority.
+// Called before workers start, or while holding b.mu at an exact-host boundary.
+func (b *localBridge) recoverNativeRoute(s *localSession) bool {
+	if s.Offline || !s.AccountSenders || s.client == nil || s.HostKey == "" || s.NativeRemote != "" || b.options.NativeOffer == nil || b.options.NativeRoute == nil || b.options.HostAlive == nil || !b.options.HostAlive(s.Attachment.Provider, s.HostKey) {
+		return false
+	}
+	remote := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, "")
+	if remote == "" {
+		return false
+	}
+	s.NativeRemote = remote
+	return true
+}
+
+func (b *localBridge) startNative(s *localSession) {
+	if s.NativeRemote == "" || b.options.NativeOffer == nil || s.nativeStarted || s.deliveryCtx == nil {
+		return
+	}
+	s.nativeStarted = true
+	b.workers.Add(1)
+	hostKey := s.HostKey
+	go func() { defer b.workers.Done(); b.nativeLoop(s.deliveryCtx, s, hostKey) }()
 }
 
 func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) LocalBridgeReply {
@@ -656,6 +683,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 	if s.client == nil {
 		return LocalBridgeReply{Error: "attached connection is unavailable; sign in and explicitly reattach"}
+	}
+	if (in.Action == "status" || in.Action == "drain") && b.recoverNativeRoute(s) {
+		if err := b.save(); err != nil {
+			s.NativeRemote = ""
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		b.startNative(s)
+		b.wake()
 	}
 	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != ""}
 	if in.Action == "status" && s.NativeRemote != "" && b.options.NativeRoute != nil {

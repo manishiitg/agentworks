@@ -570,6 +570,111 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("repaired route emitted a fallback notification", notice)
 	default:
 	}
+	approvedLease := local(routeStatus).Attachment.ID
+	stop(cancel, done)
+	// An older approved lease can lack its native route. Recovery changes
+	// transport metadata only, without a new attachment or replaying offers.
+	clearRoute := func() {
+		t.Helper()
+		file := filepath.Join(root, "sessions.json")
+		data, e := os.ReadFile(file)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var saved map[string]map[string]any
+		if e = json.Unmarshal(data, &saved); e != nil {
+			t.Fatal(e)
+		}
+		delete(saved[base.Provider+":"+base.SessionID], "native_remote")
+		data, e = json.Marshal(saved)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(file, data, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	clearRoute()
+	var routeReady atomic.Bool
+	bridgeOptions.HostAlive = func(provider, host string) bool { return provider == base.Provider && host == base.HostKey }
+	bridgeOptions.NativeRoute = func(provider, session, host, remote string) string {
+		if !routeReady.Load() || provider != base.Provider || session != base.SessionID || host != base.HostKey {
+			return ""
+		}
+		return "claude+session:///replacement"
+	}
+	bridgeOptions.NativeOffer = func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
+		nativeOffers <- out
+		return agentworksclient.ErrNativeOfferUnconfirmed
+	}
+	cancel, done = start()
+	defer cancel()
+	if local(routeStatus).NativeDelivery {
+		t.Fatal("unavailable route reported native delivery")
+	}
+	pendingNative := send("stored before approved native route recovery")
+	deadline := time.Now().Add(5 * time.Second)
+	for local(routeStatus).Pending == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if local(routeStatus).Pending == 0 {
+		t.Fatal("missing-route message was not retained")
+	}
+	routeReady.Store(true)
+	wrongHost := routeStatus
+	wrongHost.HostKey = "different-provider-process"
+	if local(wrongHost).Attached {
+		t.Fatal("another host recovered the approved route")
+	}
+	if out := local(drain); !out.NativeDelivery || out.Attachment.ID != approvedLease || len(out.Messages) != 0 {
+		t.Fatal("hook recovery changed lease or released native content through hooks", out)
+	}
+	select {
+	case out := <-nativeOffers:
+		if out.Attachment.ID != approvedLease || len(out.Messages) != 1 || out.Messages[0].MessageID != pendingNative["message_id"] {
+			t.Fatal("recovered native route lost pending body or replayed earlier offers", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("recovered route did not deliver retained message")
+	}
+	// A person attach on that exact native lease starts setup immediately,
+	// without waiting for a peer message; restarting cannot repeat it.
+	setupNative := nativeAttach
+	setupNative.NativeRemote = "claude+session:///replacement"
+	setupNative.Setup = true
+	if out := local(setupNative); out.Attachment.ID != approvedLease {
+		t.Fatal("setup renewed an already-live lease")
+	}
+	select {
+	case out := <-nativeOffers:
+		if out.SetupContext == "" || len(out.Messages) != 0 || !strings.Contains(out.SetupContext, "agent_message_set_purpose") {
+			t.Fatal("Claude native setup did not start without a peer message", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("native setup never offered")
+	}
+	stop(cancel, done)
+	clearRoute()
+	cancel, done = start()
+	defer cancel()
+	if out := local(routeStatus); !out.NativeDelivery || out.Attachment.ID != approvedLease {
+		t.Fatal("restart did not recover existing approved lease")
+	}
+	select {
+	case out := <-nativeOffers:
+		t.Fatal("restart replayed setup or an ambiguous offer", out)
+	case <-time.After(100 * time.Millisecond):
+	}
+	offlineNative := base
+	offlineNative.Action = "offline"
+	local(offlineNative)
+	stop(cancel, done)
+	clearRoute()
+	cancel, done = start()
+	defer cancel()
+	if out := local(routeStatus); !out.Offline || out.NativeDelivery {
+		t.Fatal("native recovery revived an offline identity")
+	}
 	stop(cancel, done)
 	bridgeOptions = agentworksclient.LocalBridgeOptions{}
 	cancel, done = start()
@@ -585,7 +690,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	_ = send("cached before sender revoke")
 	status := base
 	status.Action = "status"
-	deadline := time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(5 * time.Second)
 	for local(status).Pending == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}

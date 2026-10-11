@@ -160,6 +160,10 @@ jobs:
         if: hashFiles('scripts/tickets.py') != ''
         run: python3 scripts/tickets.py check
 
+      - name: Shared messaging skills match their source
+        if: hashFiles('scripts/sync-agent-messaging-skills.py') != ''
+        run: python3 scripts/sync-agent-messaging-skills.py --check
+
       - name: Frontend production build and bundle budget
         if: >-
           steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Frontend-Build: true')

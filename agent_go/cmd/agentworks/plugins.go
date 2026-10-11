@@ -361,7 +361,14 @@ func refreshNativeRoute(provider, session, hostKey, remote string) string {
 		}
 		return ""
 	}
-	if provider != "codex" || validateCodexRemote(remote) != nil {
+	if provider != "codex" {
+		return ""
+	}
+	recovering := remote == ""
+	if recovering {
+		remote = "desktop+unix://" + filepath.Join(home, ".codex", "ipc", "ipc.sock")
+	}
+	if validateCodexRemote(remote) != nil {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -378,6 +385,28 @@ func refreshNativeRoute(provider, session, hostKey, remote string) string {
 		pid, _ := strconv.Atoi(fields[0])
 		if key, err := providerPIDHostKey(provider, pid); err == nil && key == hostKey {
 			if !strings.HasPrefix(remote, "desktop+unix://") || codexDesktopHost(line) {
+				if recovering {
+					// A shared desktop socket alone cannot prove which chat owns
+					// this saved lease. Discovery never sends message content.
+					if _, err := uuid.Parse(session); err != nil {
+						return ""
+					}
+					conn, call, err := openCodexDesktop(ctx, remote)
+					if err != nil {
+						return ""
+					}
+					defer conn.Close()
+					out, err := call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": session}, 1, "")
+					var owner string
+					var support struct {
+						Untrusted bool `json:"supportsUntrustedAppInput"`
+					}
+					_ = json.Unmarshal(out["handledByClientId"], &owner)
+					_ = json.Unmarshal(out["result"], &support)
+					if err != nil || owner == "" || !support.Untrusted {
+						return ""
+					}
+				}
 				return remote
 			}
 		}
