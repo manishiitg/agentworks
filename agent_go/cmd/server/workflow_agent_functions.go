@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -80,7 +81,7 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 			return nil
 		}
 		draft := &workflowAgentFunctionDraft{executors: map[string]interface{}{}}
-		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, CheckTarget: checkTarget})
+		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, FunctionTools: agentworksproduct.ExecutionFunctionTools(), CheckTarget: checkTarget})
 		return draft.tools, draft.executors, err
 	}
 }

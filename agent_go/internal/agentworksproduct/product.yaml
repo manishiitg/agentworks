@@ -4,6 +4,13 @@ schema_version: 2
 # in Go; registration, guidance and native-session identity use the resolved policy.
 dependencies: {}
 
+# The workflow execution agent's server-owned function-call surface. Go owns
+# schemas, executors and authorization; this declaration owns admission/grouping.
+execution:
+  function_tools:
+    category: crew_function_tools
+    tools: [list_functions, call_function, get_function_call, reply_function_call]
+
 prompt:
   file: prompts/system-prompt.md
   variables: {}

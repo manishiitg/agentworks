@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
@@ -1333,6 +1335,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 type crewFunctionToolOptions struct {
 	Claims         *UserClaims
 	ExecutionScope string
+	FunctionTools  agentprofiles.ExecutionFunctionTools
 	CheckTarget    func(context.Context, triggerTarget, bool) error
 }
 
@@ -1355,18 +1358,18 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
+		category := crewFunctionToolCategory
 		if options.ExecutionScope != "" {
-			switch name {
-			case "list_functions", "call_function", "get_function_call", "reply_function_call":
-			default:
+			if !slices.Contains(options.FunctionTools.Tools, name) {
 				return nil
 			}
+			category = options.FunctionTools.Category
 			if name == "call_function" {
 				description = "Call a declared function of another Crew, workflow or published Relay. Inputs and declared results are validated. Returns a call_id; poll get_function_call until it settles before using the result. With no submission_id, identical target, function and arguments within the same run, step and group reuse the first call, including its completed result. Use a new explicit submission_id for intentionally repeated work; reuse that ID after an uncertain retry. No chat auto-notification is scheduled."
 				parameters["properties"].(map[string]interface{})["notify"] = map[string]interface{}{"type": "boolean", "enum": []interface{}{false}, "description": "Execution agents poll results; only false is accepted."}
 			}
 		}
-		return registrar.RegisterCustomTool(name, description, parameters, execute, crewFunctionToolCategory)
+		return registrar.RegisterCustomTool(name, description, parameters, execute, category)
 	}
 	jsonOut := func(value interface{}) (string, error) {
 		encoded, err := json.MarshalIndent(value, "", "  ")
