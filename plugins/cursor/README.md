@@ -6,6 +6,9 @@ transport. It does not implement a daemon, sign in, hold credentials, poll a
 mailbox, type into the app, or claim that writing stdout admits a message.
 The shared bridge on main supports Cursor hook receipts and attachment fencing;
 Cursor-specific narrow MCP/process binding is still pending under PLAT-861.
+Current main requires an exact provider host key for attached operations; this
+candidate does not supply it, and shared hook/MCP commands admit only Claude and
+Codex. The package is not ready for real attachment or delivery against main.
 
 ## Prerequisites and installation
 
@@ -51,8 +54,13 @@ responses with the last follow-up winning; a returned offer is not acceptance.
 
 ## Person-controlled attachment
 
-In the exact conversation, submit this literal control prompt, replacing the
-values with your name, purpose, connection config and approved sender name:
+Shared person commands are `/agentworks attach [NAME]`, `/agentworks detach`
+and `/agentworks agents`. Cursor support for that shared command handler and
+exact process binding is pending. Do not use another provider to bypass it.
+
+The candidate currently parses this older fixture-only control syntax, replacing
+the values with a name, purpose, config and sender. It is not a working setup
+command against the current shared bridge:
 
 ```text
 /agentworks attach --name reviewer --purpose "Review incoming work" --config /absolute/path/connection.json --allow-sender worker
@@ -106,6 +114,17 @@ package implements neither idle notification nor tmux. tmux remains off by
 default and any future fallback must be CLI-only, opt-in, exact-session, idle and
 empty-composer only. There is no Cursor desktop typing path.
 
+## Messaging skills
+
+The manifest explicitly loads `skills/agent-messages` for the shared messaging
+contract and `skills/agentworks-messaging` for Cursor-specific attachment-fenced
+ack, reply and recovery helpers. The shared copy is generated from
+`plugins/shared/skills/agent-messages/SKILL.md`; update the source through its
+shared owner and run `python3 scripts/sync-agent-messaging-skills.py cursor`.
+Never edit the generated copy. `--check cursor` detects drift. The shared CLI
+fallback applies only when the installed CLI supports this provider and can
+verify this exact session.
+
 ## Evidence and checks
 
 Research on 2026-10-11: desktop 3.21.18 (installed Info.plist), CLI
@@ -123,7 +142,7 @@ Official references:
 - [Cursor hooks](https://cursor.com/docs/hooks): conversation ID, stop follow-up,
   loop guard, prompt-submit blocking, lifecycle and response merging.
 - [Cursor plugins](https://cursor.com/docs/plugins): local plugin loading.
-- [Plugin reference](https://prod.cursor.com/docs/plugins/reference): manifest,
+- [Plugin reference](https://prod.cursor.com/docs/reference/plugins): manifest,
   component discovery, MCP and CURSOR_PLUGIN_ROOT.
 - [CLI parameters](https://cursor.com/docs/cli/reference/parameters): local
   plugin directory and exact chat resume.

@@ -78,7 +78,11 @@ def main():
     hooks = json.loads((package / manifest["hooks"]).read_text())["hooks"]
     assert set(hooks) == {"beforeSubmitPrompt", "stop", "sessionEnd"}
     assert hooks["stop"][0]["loop_limit"] == 5
-    assert (package / "skills/agentworks-messaging/SKILL.md").is_file()
+    assert manifest["skills"] == ["./skills/agent-messages", "./skills/agentworks-messaging"]
+    for skill in manifest["skills"]:
+        assert (package / skill / "SKILL.md").is_file()
+    source = package.parent / "shared/skills/agent-messages/SKILL.md"
+    assert (package / "skills/agent-messages/SKILL.md").read_bytes() == source.read_bytes()
     with tempfile.TemporaryDirectory(prefix="cursor-adapter-") as directory:
         root = Path(directory)
         stop = {"hook_event_name": "stop", "conversation_id": "session-a",
