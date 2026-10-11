@@ -985,6 +985,11 @@ func (api *StreamingAPI) registerWorkflowTeamTools(reg definitionToolRegistrar, 
 		if e := writeFileToWorkspace(ctx, root+"/"+rel, stringToolArg(args, "content")); e != nil {
 			return "", e
 		}
+		// The source replacement already passed current ownership and revision
+		// checks. Attribute its shared history even if membership changes next.
+		historyCtx := context.WithValue(ctx, teamCommitPermitKey{}, true)
+		historyCtx = stepworkflow.WithWorkflowSettingsOrigin(historyCtx, user)
+		stepworkflow.LogCanonicalArtifactChange(historyCtx, root, "edit_team_source", "Updated workflow source through a revision-checked team tool.", nil, workflowManifestChangelogReader, writeFileToWorkspace, createServerLogger(), rel, raw, stringToolArg(args, "content"))
 		return `{"status":"saved"}`, nil
 	}, "workflow")
 }

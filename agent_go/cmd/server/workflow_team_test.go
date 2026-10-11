@@ -62,6 +62,16 @@ func (f *teamTestFixture) file(p string) string {
 	defer f.store.mu.Unlock()
 	return f.store.files[teamTestRoot+"/"+p]
 }
+func (f *teamTestFixture) hasHistory(tool, user string) bool {
+	f.store.mu.Lock()
+	defer f.store.mu.Unlock()
+	for path, raw := range f.store.files {
+		if strings.HasPrefix(path, teamTestRoot+"/planning/changelog/") && strings.Contains(raw, `"user_id": "`+user+`"`) && strings.Contains(raw, tool) {
+			return true
+		}
+	}
+	return false
+}
 func (f *teamTestFixture) tools(t *testing.T, user string) *chatPolicyTestDefinition {
 	t.Helper()
 	reg := &chatPolicyTestDefinition{}
@@ -140,6 +150,9 @@ func TestWorkflowTeamNativeEditsRejectOtherEditorsAndStaleRevisions(t *testing.T
 	}
 	if _, e := first.tools["edit_team_source"].exec(context.Background(), map[string]interface{}{"path": "code/first-route/main.py", "content": "print('measure')", "expected_revision": "missing"}); e != nil {
 		t.Fatal(e)
+	}
+	if !f.hasHistory("edit_team_source", "first") {
+		t.Fatal("source edit lost its authenticated change history")
 	}
 	if f.api.workflowBuilderHeldByOther("second-chat", "second", QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: teamTestRoot}) != "" || !workflowTeamAllowsConcurrent(teamTestRoot) {
 		t.Fatal("team Builder still reserves whole workflow")
@@ -232,15 +245,7 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if e != nil || workflowExecutionOwnerUserID(transferred) != "second" || len(transferred.effectiveOwners()) != 1 {
 		t.Fatalf("not one new owner: %+v %v", transferred, e)
 	}
-	attributed := false
-	f.store.mu.Lock()
-	for path, raw := range f.store.files {
-		if strings.HasPrefix(path, teamTestRoot+"/planning/changelog/") && strings.Contains(raw, `"user_id": "leader"`) && strings.Contains(raw, `write_workflow_manifest`) {
-			attributed = true
-		}
-	}
-	f.store.mu.Unlock()
-	if !attributed {
+	if !f.hasHistory("write_workflow_manifest", "leader") {
 		t.Fatal("ownership transfer lost its authenticated change history")
 	}
 	if _, e := listReportHumanInputs(context.Background(), teamTestRoot, "answered", ""); e != nil {
