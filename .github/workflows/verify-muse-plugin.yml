@@ -23,3 +23,9 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python3 plugins/muse/tests/check_hooks.py
+      - name: Install pinned native Codex CLI for catalog compatibility
+        run: |
+          mkdir -p "$RUNNER_TEMP/muse-codex-regression"
+          curl --fail --silent --show-error --location https://github.com/openai/codex/releases/download/rust-v0.162.1/codex-x86_64-unknown-linux-musl.tar.gz | tar -xz -C "$RUNNER_TEMP/muse-codex-regression"
+      - name: Real Codex marketplace discovery and unchanged package install
+        run: python3 plugins/muse/tests/prove_codex_marketplace.py "$RUNNER_TEMP/muse-codex-regression/codex-x86_64-unknown-linux-musl"

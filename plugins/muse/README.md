@@ -1,5 +1,10 @@
 # AgentWorks for Muse
 
+**Packaging preview:** do not install or approve this plugin for messaging until
+the shared AgentWorks CLI supports Muse. Current shared releases reject
+`agentworks plugin hook muse` and `agentworks plugin mcp muse`; installation and
+inspection can be tested now, but attachment and live delivery cannot work yet.
+
 This native Muse plugin packages an AgentWorks MCP connection, messaging skill,
 person command and UserPromptSubmit, Stop and SessionEnd hooks. It uses the shared
 `agentworks plugin hook muse` boundary. It does not store credentials, read a
@@ -24,8 +29,9 @@ muse plugins install agentworks-muse@agentworks
 muse plugins inspect agentworks-muse --json
 ```
 
-After reviewing, approve with `muse plugins approve agentworks-muse --json` and
-restart Muse. Installation alone does not approve hooks or MCP execution.
+For an installation-only preview, stop after inspection. Once shared Muse
+support is available, approve with `muse plugins approve agentworks-muse --json`
+after reviewing and restart Muse. Installation alone does not approve hooks or MCP execution.
 
 The same GitHub repository serves each provider's catalog. Muse reads
 `.agents/plugins/marketplace.json`, which contains separate `agentworks-muse` and
@@ -60,7 +66,7 @@ Approve only after reviewing the hook commands and MCP connection. Restart Muse
 to load newly approved hooks. Nothing in this package approves its own trust or
 attaches a conversation automatically.
 
-In the intended conversation, type:
+Once the shared support is available, in the intended conversation, type:
 
 ```text
 /agentworks attach
@@ -83,6 +89,26 @@ interception fails. Muse's native namespaced command is
 Session close retains the identity offline. The person can use
 `/agentworks resume` in that exact session; `/agentworks cleanup` retires offers
 while retaining the receive watermark and pending inbox bodies.
+
+## Recognizing an unavailable MCP connection
+
+On the currently installed CLI, `agentworks plugin mcp muse` exits with
+`Error: local messaging child supports Claude and Codex`. A real Muse 1.4.4
+headless run with that command configured as a required MCP server exits with
+status 1 and reports:
+
+```text
+Required MCP server `agentworks` failed during startup: the transport closed unexpectedly.
+```
+
+That diagnostic was observed with a temporary per-run MCP configuration, without
+approving an installed plugin. The exact approved-plugin TUI presentation has
+not been verified. [Muse documents](https://dev.meta.ai/docs/muse-code/extending)
+that required MCP startup failure aborts the run; optional servers are skipped
+with a warning. In an interactive session that starts, `/mcp` shows the live
+server/tool inventory. Installed capabilities alone do not prove a connection.
+If an approved preview prevents startup, `muse plugins disable agentworks-muse`
+keeps the package installed while excluding it from future runs.
 
 ## Delivery
 
@@ -146,6 +172,11 @@ verify a real Stop continuation, the loop guard, and a single session UUID acros
 prompt/Stop/close. It does not install or approve this plugin in the person's
 settings, and its shared CLI response is a fixture. These checks do not establish
 authenticated AgentWorks delivery or an idle native wake.
+
+GitHub CI also runs Codex 0.162.1 marketplace add/list and installs the unchanged
+Codex package from the same catalog in its disposable runner profile. It checks
+the installed version and byte-identical cached files; no model session starts.
+The Muse entry has no Codex manifest and must not be installed in Codex.
 
 The marketplace proof uses an isolated Git fixture containing the real Claude,
 Codex and Muse catalogs/packages, then runs Muse's marketplace discovery,
