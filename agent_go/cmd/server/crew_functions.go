@@ -1380,7 +1380,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path. A Code project has no functions."}
+	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path. <!-- product:code -->A Code project has no functions.<!-- /product -->"}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		if args == nil {
 			args = map[string]interface{}{}
@@ -1467,7 +1467,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 	}
 	schemaSchema := map[string]interface{}{"type": "object", "description": "JSON Schema subset: type object|array|string|number|integer|boolean, properties, required, items, enum."}
 
-	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), or another Crew. Code projects have no functions. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
+	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), or another Crew. <!-- product:code -->Code projects have no functions.<!-- /product --> Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
 		"type": "object", "required": []string{"name", "description", "instructions"}, "properties": map[string]interface{}{
 			"target":        targetSchema,
 			"name":          map[string]interface{}{"type": "string", "description": "snake_case name, e.g. run_login_flow."},

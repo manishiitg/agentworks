@@ -6,13 +6,13 @@ description: Use and connect this {{product}}'s MCP connections (Linear, Asana, 
 # {{product}} MCP
 
 Connections are private to the authenticated person, even in a shared {{product}}.
-Shared MCPs belong in Vault and require group permissions on every tool call.
+<!-- product:mcp-gateway -->Shared MCPs belong in Vault and require group permissions on every tool call.<!-- /product -->
 
 - **See what is connected.** Call `manage_my_mcp_servers` with `list`:
   `this_code_has` names the connections and whether each is `connected`;
   `catalog` is what can be added; `you_can_connect` says whether this person
-  may. `vault` lists shared connections permitted by their groups, automatically
-  available in this Code without select/deselect. First call `search_tools(query="<provider or task>")` to find registered tools. Use the exact runtime `server_name` returned by that search to narrow subsequent searches, then `get_api_spec(tool_name="<returned-name>")` for a schema. Private names and Vault selection IDs from the connection list are not runtime server names.
+  may. <!-- product:mcp-gateway -->`vault` lists shared connections permitted by their groups, automatically
+  available in this Code without select/deselect.<!-- /product --> First call `search_tools(query="<provider or task>")` to find registered tools. Use the exact runtime `server_name` returned by that search to narrow subsequent searches, then `get_api_spec(tool_name="<returned-name>")` for a schema. Connection selection IDs from the connection list are not runtime server names.
 - **Server names.** Connected servers appear as `u<id>__<name>`, for example
   `u3f2a...__googlegmail`. Use that exact name in tool calls. When you talk to
   the person, say "your Gmail connection" and never show the `u<id>__` id.
@@ -48,5 +48,6 @@ Shared MCPs belong in Vault and require group permissions on every tool call.
   provider alias when several accounts exist. Named accounts do not reuse the
   legacy provider-group token. The provider's sign-in screen chooses the real
   account; labels do not verify account identity.
-
+<!-- product:mcp-gateway -->
 Vault MCPs are available automatically through the executing user's current user/group permissions, independent of project MCP selections. Do not call select/deselect for Vault. Tool grants and regex rules are checked at the gateway on every call. Secrets still require explicit selection by name.
+<!-- /product -->

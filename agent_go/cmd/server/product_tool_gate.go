@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"sort"
 	"strings"
@@ -223,6 +224,9 @@ func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
 }
 
 func (g *productToolGate) allowsLocked(name string) bool {
+	if !(productpolicy.Selection{}).AllowsTool(name) {
+		return false
+	}
 	if (name == "notify_user" || name == "send_email" || name == "record_summary") && !g.workflowNotifications {
 		return false
 	}

@@ -76,7 +76,7 @@ For an authorized migration, using `set_code_layout_version`:
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
 
 **Runs never repair scripts**
-- In a run (schedule, webhook/Relay, `run_full_workflow`, a route called by an agent) a scripted step only executes its saved `main.py`. A missing or failing script fails the step with its real error; no LLM writes, repairs or stands in for it, and Pulse reports the failure. Write and fix scripts in the Builder with `execute_step` on that step, which may author or repair `main.py` (not with `fast_path_only`, and not for a `lock_code` step).
+- In a run (schedule, webhook<!-- product:relays -->/Relay<!-- /product -->, `run_full_workflow`, a route called by an agent) a scripted step only executes its saved `main.py`. A missing or failing script fails the step with its real error; no LLM writes, repairs or stands in for it, and Pulse reports the failure. Write and fix scripts in the Builder with `execute_step` on that step, which may author or repair `main.py` (not with `fast_path_only`, and not for a `lock_code` step).
 
 **Returning a value from a scripted route**
 - A scripted route called by an agent hands its answer back by writing one JSON value to `os.path.join(os.environ['STEP_OUTPUT_DIR'], 'route_result.json')` (at most 1 MiB). Inputs arrive in `json.loads(os.environ['STEP_PARAMS_JSON'])`. A lookup that finds nothing returns e.g. `{"found": false}`; it does not fail.

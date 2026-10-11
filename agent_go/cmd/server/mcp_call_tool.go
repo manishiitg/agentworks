@@ -63,10 +63,10 @@ func (api *StreamingAPI) registerMCPCallTool(reg interface {
 	if disabled != nil && disabled("call_mcp_tool") {
 		return nil
 	}
-	return reg.RegisterCustomTool("call_mcp_tool", "Call an MCP tool using the current chat's verified identity and live MCP authority. The Vault administrator builder can use active approved Vault tools independently of group grants; other product chats and external clients use existing user/group permissions. First use list_mcp_servers for the exact connection name, tool name and input schema. Pass arguments as an object. Use searches/fetches to resolve real resource IDs before drafting restrictions. Read/write hints are not authorization; call mutations only when explicitly requested. This does not connect servers or grant access. Permission failures must be reported, never bypassed by changing grants.", map[string]interface{}{
+	return reg.RegisterCustomTool("call_mcp_tool", "Call an MCP tool using the current chat's verified identity and live MCP authority. <!-- product:mcp-gateway -->The Vault administrator builder can use active approved Vault tools independently of group grants; other product chats and external clients use existing user/group permissions.<!-- /product --> First use list_mcp_servers for the exact connection name, tool name and input schema. Pass arguments as an object. Use searches/fetches to resolve real resource IDs before drafting restrictions. Read/write hints are not authorization; call mutations only when explicitly requested. This does not connect servers or grant access. Permission failures must be reported, never bypassed by changing grants.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"server", "tool", "arguments"},
 		"properties": map[string]interface{}{
-			"server":    map[string]interface{}{"type": "string", "description": "Exact connection name or vault_<connection ID> from list_mcp_servers."},
+			"server":    map[string]interface{}{"type": "string", "description": "Exact connection name from list_mcp_servers. <!-- product:mcp-gateway -->A permitted Vault connection uses vault_<connection ID>.<!-- /product -->"},
 			"tool":      map[string]interface{}{"type": "string", "description": "Exact tool name on that connection, from its live inventory."},
 			"arguments": map[string]interface{}{"type": "object", "description": "Arguments conforming to that tool's input schema; use {} for no arguments."},
 		},

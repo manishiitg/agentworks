@@ -35,9 +35,9 @@ with tools; never instruct the user to find an Enable button or route editor.
    is selected automatically; if several exist, use an exact returned
    `client_name`. If the returned client list is empty, explain that no registered OAuth client
    is mapped to an inbound topic; Google sign-in may already be configured.
-   Use the automatic admin setup above to finish the client/topic mapping. The connect action returns `connection_id` and `reconnect_url`. Code owners
-   can connect private accounts; shared Crew/workflow accounts retain the
-   administrator requirement. Never substitute shared credentials for Code.
+   Use the automatic admin setup above to finish the client/topic mapping. The connect action returns `connection_id` and `reconnect_url`.<!-- product:code --> Code owners
+   can connect private accounts.<!-- /product --> Shared Crew/workflow accounts retain the
+   administrator requirement.<!-- product:code --> Never substitute shared credentials for Code.<!-- /product -->
    Reuse an existing pending connection ID instead of creating duplicates.
    If an existing mailbox lacks Gmail read consent, call
    `manage_gmail_trigger(action="connect", connection_id="EXACT_ID")` to
@@ -46,10 +46,10 @@ with tools; never instruct the user to find an Enable button or route editor.
    inspect `list_gmail_connections` again before enabling anything. A callback
    saying "Gmail connected" is required; do not claim consent succeeded from
    the stored request. Never send the human to an app configuration form.
-3. For a Crew or Code, call `manage_gmail_trigger(action="configure",
+3. For a Crew<!-- product:code --> or Code<!-- /product -->, call `manage_gmail_trigger(action="configure",
    connection_id="EXACT_ID", name="Incoming tasks", enabled=true,
    reply=true)`. It creates one stable receiving address per target/owner.
-   Code can use only its own private Google accounts. Other workflow routing
+   <!-- product:code -->Code can use only its own private Google accounts.<!-- /product --> Other workflow routing
    fields do not apply to project chats.
 4. For a workflow, first inspect the saved plan and
    `manage_workflow_webhook(action="list")` to discover exact routing-step,
@@ -93,13 +93,13 @@ with tools; never instruct the user to find an Enable button or route editor.
    of a single action. Discover accounts and workflow IDs yourself; ask about
    desired actions and overlap priority, not IDs or JSON. Each rule has a stable
    `id` (1–64 letters, digits, underscores or hyphens), `name`, optional `enabled`
-   (defaults true), and optional `filters`. For Crew/Code, add `instruction`: the
+   (defaults true), and optional `filters`. For Crew<!-- product:code -->/Code<!-- /product -->, add `instruction`: the
    owner-authored message sent to an isolated project chat with the incoming
    email as untrusted context. For workflows, each rule needs its own exact
    `route_selections` and `group_names`, or `step_id` plus groups. An explicit
    `{}` route map means the full workflow. Do not combine `rules` with top-level
    workflow bindings. For example, subject containing help runs Support, while
-   invoice runs Billing; Crew/Code can instead use two different saved messages.
+   invoice runs Billing; Crew<!-- product:code -->/Code<!-- /product --> can instead use two different saved messages.
    Rules are checked in saved order; the first enabled rule whose authorization
    and conditions match runs. No match skips the email; overlapping rules never
    start several actions. There are at most 20 rules and one receiving address
@@ -114,7 +114,7 @@ with tools; never instruct the user to find an Enable button or route editor.
    preserves rules; `rules=[]` returns to the original single-action setup
    (workflows must explicitly supply the replacement saved binding and groups).
    Rule `new_threads_only` applies to that rule; common `new_threads_only`
-   applies across the target. Crew/Code replies continue the same chat for that
+   applies across the target. Crew<!-- product:code -->/Code<!-- /product --> replies continue the same chat for that
    sender, Gmail thread and rule; different rules get separate chats. Queued
    deliveries retain their selected ID even after reordering; removal, pause or
    changed conditions rejects/skips that delivery rather than redirecting it.
@@ -136,7 +136,7 @@ with tools; never instruct the user to find an Enable button or route editor.
    message-ID deduplication remain; this is not a newest-20-mailbox scan.
 
 Without a sender list, only the owner's signed-in directory email is accepted.
-Explicit sender lists authorize those senders instead. Crew/Code email
+Explicit sender lists authorize those senders instead. Crew<!-- product:code -->/Code<!-- /product --> email
 replies continue the same project chat. A workflow trigger starts an isolated
 saved-route run per message, including email replies; it does not ask Builder
 to choose a route or create a new plan. Optional final responses stay in the

@@ -43,6 +43,9 @@ func (api *StreamingAPI) loadManagedGlobalSecrets(ctx context.Context) error {
 }
 
 func canManageGlobalSecrets(userID string) bool {
+	if !productEnabled("mcp-gateway") {
+		return false
+	}
 	access := userAccessForClaims(&UserClaims{UserID: userID})
 	return access.Admin && !access.Disabled
 }
