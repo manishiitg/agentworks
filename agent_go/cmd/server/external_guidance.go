@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"sync"
 	"strings"
@@ -113,8 +114,55 @@ func externalUnavailableToolNames() []string {
 	return externalUnavailableTools
 }
 
+// externalToolVerbs are the prefixes Builder tools use; a snake_case word in
+// guidance that starts with one is treated as an operation name.
+var externalToolVerbs = []string{"list_", "get_", "create_", "update_", "delete_", "add_", "set_", "read_", "run_", "call_", "mutate_", "apply_", "query_", "preview_", "validate_", "publish_", "restore_", "install_", "uninstall_", "import_", "export_", "test_", "diff_", "execute_", "manage_", "trigger_", "answer_", "reply_", "search_", "migrate_", "change_", "record_", "submit_", "send_", "dismiss_", "mark_", "perform_", "configure_", "debug_", "query_", "setup_", "consolidate_", "check_", "stamp_", "write_", "patch_", "move_", "rename_", "enable_", "disable_", "stop_", "start_", "open_", "close_"}
+
+var externalToolWord = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+)+`)
+
+// externalNamedOperations returns the operation names a text mentions: the
+// known Builder and Run tools, and any snake_case word that starts with a tool
+// verb (Builder tools registered in code are not all in the product lists).
+func externalNamedOperations(body string) []string {
+	exposed := map[string]bool{}
+	if catalog, err := externalTools(); err == nil {
+		for _, tool := range catalog {
+			exposed[tool.Name] = true
+		}
+	}
+	found := map[string]bool{}
+	for _, name := range externalUnavailableToolNames() {
+		if externalTextMentions(body, name) {
+			found[name] = true
+		}
+	}
+	for _, loc := range externalToolWord.FindAllStringIndex(body, -1) {
+		word := body[loc[0]:loc[1]]
+		if loc[0] > 0 && (body[loc[0]-1] == '.' || body[loc[0]-1] == '/' || body[loc[0]-1] == '$') {
+			continue // a file name, path or variable, not an operation
+		}
+		if loc[1] < len(body) && (body[loc[1]] == '.' || body[loc[1]] == '/') {
+			continue
+		}
+		for _, verb := range externalToolVerbs {
+			if strings.HasPrefix(word, verb) {
+				found[word] = true
+				break
+			}
+		}
+	}
+	var names []string
+	for name := range found {
+		if !exposed[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // externalTopicNote is the topic's hand-written mapping note plus an automatic
-// list of every unavailable operation its text names.
+// list of every operation its text names that this connection does not have.
 func externalTopicNote(topic externalGuidanceTopic) string {
 	note := topic.ExternalNote
 	_, body, err := externalGuidanceContent(topic.Name)
@@ -122,8 +170,8 @@ func externalTopicNote(topic externalGuidanceTopic) string {
 		return note
 	}
 	var named []string
-	for _, name := range externalUnavailableToolNames() {
-		if externalTextMentions(body, name) && !externalTextMentions(topic.ExternalNote, name) {
+	for _, name := range externalNamedOperations(body) {
+		if !externalTextMentions(topic.ExternalNote, name) {
 			named = append(named, name)
 		}
 	}
@@ -171,16 +219,16 @@ var externalGuidanceTopics = []externalGuidanceTopic{
 	{Name: "step-config", Description: "Per-step config reference: store-access modes, locks, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step.", ExternalNote: "External mapping: update_step_config, add_step, update_step, change_step_type, and update_validation_schema are not direct external tools. Delegate edits through builder action=chat only when it is available. read_skill, query_workflow_db, mutate_workflow_db, and other config tools named here are not either; describe the needed change in your reply instead of attempting it."},
 	{Name: "skill-management", Description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills.", ExternalNote: "External mapping: install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config are not in your catalog. list_skills and search_skills ARE in your catalog when the token allows runs:execute; use list_workflow_knowledge to inspect wiring. Installs and changes are not exposed, so say so instead of attempting them."},
 	{Name: "file-layout", Description: "Workspace file layout reference and path discipline."},
-	{Name: "message-sequence", Description: "Agent steps: the system-level charter, ordered user-message items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply."},
-	{Name: "routing", Description: "Routing step design: deterministic major sub-workflow selection versus branch, a plain agent step, or an agent with adaptive routes; route selection, convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply."},
-	{Name: "branch", Description: "Branch step design: a small in-flow next-step decision versus routing, human input or an agent step; convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply."},
-	{Name: "scripted", Description: "Scripted step design: deterministic API, CLI and data work, script parameters and defaults, validation, permissions, and reuse from agent steps. The internal plan type is regular.", ExternalNote: "External mapping: plan, step and code edits go through builder action=chat when it is available; otherwise describe the change in your reply."},
-	{Name: "human-input", Description: "human_input step design: free-form text input, human-decided branches, route selections, unattended runs and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available. Answer a waiting human-input step with runs action=reply_input."},
+	{Name: "message-sequence", Description: "Agent steps: the system-level charter, ordered user-message items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
+	{Name: "routing", Description: "Routing step design: deterministic major sub-workflow selection versus branch, a plain agent step, or an agent with adaptive routes; route selection, convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
+	{Name: "branch", Description: "Branch step design: a small in-flow next-step decision versus routing, human input or an agent step; convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
+	{Name: "scripted", Description: "Scripted step design: deterministic API, CLI and data work, script parameters and defaults, validation, permissions, and reuse from agent steps. The internal plan type is regular.", ExternalNote: "External mapping: plan, step and code edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
+	{Name: "human-input", Description: "human_input step design: free-form text input, human-decided branches, route selections, unattended runs and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available. Answer a waiting human-input step with runs action=reply_input. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
 	{Name: "schedules", Description: "Schedule reference: cron and calendar schedules, collision queues, after-schedule chains, Pulse policy, backup coverage and unattended message design.", ExternalNote: "External mapping: list_schedules, get_schedule_runs, trigger_schedule and manage_schedules ARE in your catalog (manage_schedules covers create, change, enable, disable, run and stop); changes need the workflow's owner."},
-	{Name: "webhook-triggers", Description: "Inbound route webhooks: authentication, payload mappings, testing and how a step reads its trigger input, including Crew and Code function calls.", ExternalNote: "External mapping: manage_triggers (workflow_id or crew_id) lists, creates, updates and tests triggers and reads their deliveries; a webhook secret is shown once."},
+	{Name: "webhook-triggers", Description: "Inbound route webhooks: authentication, payload mappings, testing and how a step reads its trigger input, including Crew and Code function calls.", ExternalNote: "External mapping: manage_triggers (workflow_id or crew_id) lists, creates, updates and tests triggers and reads their deliveries (a webhook secret is shown once); manage_workflow_webhook, list_workflow_triggers and run_workflow_trigger map to it. Function calls use the functions tool (action=list|call|status|read) instead of list_functions and call_function."},
 	{Name: "crew-authoring", Source: "embedded", Scopes: []string{"crews:write"}, Description: "Author a Crew over MCP: create and update, typed functions with input and result schemas, isolated calls and result files, messages and memory, files and shared folders, schedules and settings."},
-	{Name: "relay-builder", Source: "relay", Scopes: []string{"relays:write"}, Description: "The Python Relay contract the Relay Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Relay.", ExternalNote: "External mapping: you do not edit relay.py yourself; ask builder action=chat to change a Relay, test the draft with relay action=test, publish with relay action=publish and run with relay action=run. Tools named here belong to the Relay Builder."},
-	{Name: "relay-dashboard", Source: "relay", Scopes: []string{"relays:write"}, Description: "How a Relay's dashboard is authored and fed with recorded run data.", ExternalNote: "External mapping: use the dashboard tool (action=create|update|validate|preview|publish) for Relay dashboards when it is in your catalog; ask builder action=chat for Relay code changes."},
+	{Name: "relay-builder", Source: "relay", Scopes: []string{"relays:write"}, Description: "The Python Relay contract the Relay Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Relay.", ExternalNote: "External mapping: you do not edit relay.py yourself; ask builder action=chat to change a Relay, test the draft with relay action=test, publish with relay action=publish and run with relay action=run. Tools named here belong to the Relay Builder: test_relay, publish_relay, get_relay_run and get_relay_releases map to relay action=test|publish|get_run|releases."},
+	{Name: "relay-dashboard", Source: "relay", Scopes: []string{"relays:write"}, Description: "How a Relay's dashboard is authored and fed with recorded run data.", ExternalNote: "External mapping: the dashboard tool (action=list|get|link|create|update|validate|preview|publish|restore) replaces create_dashboard, get_dashboard, update_dashboard, validate_dashboard, preview_dashboard, publish_dashboard, restore_dashboard, list_dashboards and get_dashboard_link; ask builder action=chat for Relay code changes."},
 	{Name: "secure-share-links", Description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing.", ExternalNote: "External mapping: get_file_link IS in your catalog; the dashboard tool (action=link) requires dashboards:read and returns authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."},
 }
 

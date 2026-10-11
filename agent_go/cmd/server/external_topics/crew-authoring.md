@@ -24,22 +24,24 @@ type, properties, required, items, enum).
 - Each accepted call runs in a fresh, isolated execution with its own output folder
   (`.calls/<call_id>/`), never in the Crew's main chat. A function runs with the OWNER's authority
   for every caller, so write instructions that are safe for whoever may call them.
-- Inputs are checked before anything starts. Calls run in parallel up to a per-Crew limit; beyond it
+- Inputs are checked before anything starts. Calls run in parallel, up to 3 running at once per Crew; beyond that
   the caller gets a busy error and nothing is queued.
 - With a `result_schema`, the function writes its JSON result to the file named by
-  `$FUNCTION_RESULT_FILE` before it finishes. The platform validates it after the run, allows one
+  `$FUNCTION_RESULT_FILE` before it finishes (the call message also gives the path, `.calls/<call_id>/result.json`; create the folder if it is missing). The platform validates it after the run, allows one
   correction turn, then fails the call with the reason. Without a `result_schema` the final message is
   the answer. Other outputs (reports, PDFs, images) go in the call's output folder
-  (`$FUNCTION_OUTPUT_DIR`); callers read them by `call_id`.
+  (`$FUNCTION_OUTPUT_DIR`, the same `.calls/<call_id>/` folder); callers read them by `call_id`.
 - Callers: `functions` action=list|call|status|read|reply|calls. `calls` lists recent calls (the owner
-  sees all, others their own); the owner also sees the commands each call ran.
+  sees all, others their own); the owner's `status` and `read` replies for a call also carry `commands_run`, the commands that call ran (the list itself does not). Entries of other people's calls show who called, the function, status and times, but no answer, result or files.
 
 ## Messages and memory
 
 - Conversational contact is separate from functions: `messages`/`ask_crew` send a message to the Crew,
   it may reply or not, and replies are read from the inbox. The Crew's **Agent messaging** setting
   (`free_text_ask` in settings) turns incoming programmatic messages off; declared functions and people
-  chatting in the app keep working.
+  chatting in the app keep working. Read replies with `messages` action=read, `inbox_id`, `after` (a
+  cursor) and `wait_seconds` (up to 25). Inside a Crew, an agent can also set one timed wakeup in its own
+  conversation with `schedule_message_wakeup`; it does not fire while the scheduler is paused.
 - Runs have no earlier conversation. Anything a later run must know belongs in `MEMORY.md` at the
   Crew's root or in the Crew's files; say so in `purpose` and in function `instructions`.
 
