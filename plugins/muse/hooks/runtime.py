@@ -22,9 +22,10 @@ def main(event):
         return
     if event == "Stop" and payload.get("stop_hook_active"):
         return
-    control = event == "UserPromptSubmit" and isinstance(payload.get("prompt"), str) and (
-        payload["prompt"].startswith("/agentworks ")
-        or payload["prompt"].startswith("/agentworks-muse:agentworks ")
+    prompt = payload.get("prompt")
+    control = event == "UserPromptSubmit" and isinstance(prompt, str) and any(
+        prompt == command or prompt.startswith(command + " ")
+        for command in ("/agentworks", "/agentworks-muse:agentworks")
     )
     try:
         result = subprocess.run(

@@ -205,13 +205,16 @@ func attachPluginCommand(o *options) *cobra.Command {
 				return err
 			}
 		} else {
+			if _, e := exec.LookPath("muse"); e == nil {
+				fmt.Fprintln(o.stderr, museDiscoveryHint)
+			}
 			sessions, e := discoverLiveAgents(cmd.Context(), root, o)
 			if e != nil {
 				return e
 			}
 			if len(sessions) == 0 {
 				installed := false
-				for _, p := range []string{"codex", "claude"} {
+				for _, p := range []string{"codex", "claude", "muse"} {
 					if _, e := exec.LookPath(p); e == nil {
 						if e = installAgentPlugin(cmd.Context(), o, p); e != nil {
 							return e
@@ -220,7 +223,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 					}
 				}
 				if !installed {
-					return errors.New("no supported coding CLI found on PATH; install Codex or Claude Code first")
+					return errors.New("no supported coding CLI found on PATH; install Codex, Claude Code or Muse first")
 				}
 				fmt.Fprintln(o.stdout, "AgentWorks plugin ready. Reload your coding chat, review its hooks, then type /agentworks attach. No chat has been attached.")
 				return nil
@@ -349,12 +352,15 @@ func detachAgentCommand(o *options) *cobra.Command {
 }
 
 func installAgentPlugin(ctx context.Context, o *options, provider string) error {
-	if provider != "codex" && provider != "claude" {
-		return errors.New("this shared installer supports Codex and Claude Code")
+	if !messagingPluginProvider(provider) {
+		return errors.New("this shared installer supports Codex, Claude Code and Muse")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
+	}
+	if provider == "muse" {
+		return installMusePlugin(ctx, o)
 	}
 	// Existing cache + installation registry are required; a downloaded cache on
 	// its own is not an installed plugin. Never enable/trust hooks programmatically.
@@ -406,6 +412,54 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 	return nil
 }
 
+func installMusePlugin(ctx context.Context, o *options) error {
+	// Use the provider's installation registry, not its download cache. Listing
+	// never enables hooks or changes the person's approval decisions.
+	result, err := exec.CommandContext(ctx, "muse", "plugins", "list", "--json").Output()
+	if err != nil {
+		return fmt.Errorf("cannot inspect Muse plugin installation: %w", err)
+	}
+	var installed struct {
+		Plugins []struct {
+			Record struct {
+				ID string `json:"id"`
+			} `json:"record"`
+			Valid bool `json:"valid"`
+		} `json:"plugins"`
+	}
+	if err = json.Unmarshal(result, &installed); err != nil {
+		return fmt.Errorf("cannot read Muse plugin installation: %w", err)
+	}
+	for _, p := range installed.Plugins {
+		if p.Record.ID == "agentworks-muse" && p.Valid {
+			return nil
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(o.stderr, "Install the AgentWorks muse plugin in %s? Review provider trust prompts afterward. Type yes: ", cwd)
+	var answer string
+	if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
+		return errors.New("plugin installation cancelled")
+	}
+	for _, args := range [][]string{
+		{"plugins", "marketplace", "add", "agentworks", "https://github.com/manishiitg/agentworks.git"},
+		{"plugins", "install", "agentworks-muse@agentworks"},
+	} {
+		c := exec.CommandContext(ctx, "muse", args...)
+		c.Stdin = o.stdin
+		output, e := c.CombinedOutput()
+		if e != nil && !strings.Contains(strings.ToLower(string(output)), "already") {
+			return fmt.Errorf("muse plugin setup failed: %s", strings.TrimSpace(string(output)))
+		}
+		fmt.Fprint(o.stderr, string(output))
+	}
+	fmt.Fprintln(o.stderr, "Muse package installed. Inspect it with muse plugins inspect agentworks-muse --json, approve its hooks and MCP yourself, then restart Muse and type /agentworks attach. Installation does not approve or attach a chat.")
+	return nil
+}
+
 func providerHostAlive(provider, host string) bool {
 	if host == "" {
 		return false
@@ -418,7 +472,7 @@ func providerHostAlive(provider, host string) bool {
 	} // Permission failure is not evidence of death.
 	for _, line := range strings.Split(string(out), "\n") {
 		p := strings.Fields(line)
-		if len(p) < 7 || !strings.EqualFold(filepath.Base(p[1]), provider) {
+		if len(p) < 7 || !providerProcessMatches(provider, p[1]) {
 			continue
 		}
 		sum := sha256.Sum256([]byte(p[0] + " " + strings.Join(p[len(p)-5:], " ")))
@@ -439,6 +493,10 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 	names := map[string]string{}
 	for _, s := range local.Sessions {
 		names[s.Provider+":"+s.SessionID] = s.AgentName
+	}
+	for _, s := range discoverMuseSessions(root) {
+		s.name = names["muse:"+s.session]
+		found = append(found, s)
 	}
 	files, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
 	for _, file := range files {

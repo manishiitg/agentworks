@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -37,7 +38,7 @@ type pluginHookInput struct {
 func pluginCommand(o *options) *cobra.Command {
 	root := &cobra.Command{Use: "plugin", Short: "Local coding-agent hooks and MCP delivery"}
 	hook := &cobra.Command{Use: "hook PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if args[0] != "claude" && args[0] != "codex" {
+		if !messagingPluginProvider(args[0]) {
 			return errors.New("unsupported hook provider")
 		}
 		var input pluginHookInput
@@ -52,12 +53,16 @@ func pluginCommand(o *options) *cobra.Command {
 			return err
 		}
 		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID}
-		req.HostKey, _ = providerHostKey(args[0])
+		pid, host, _ := providerHostProcess(args[0])
+		req.HostKey = host
+		if args[0] == "muse" && req.HostKey != "" {
+			observeMuseSession(root, pid, host, input)
+		}
 		var out agentworksclient.LocalBridgeReply
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
 		defer cancel()
 		personPrompt := input.Event == "UserPromptSubmit" || args[0] == "claude" && input.Event == "UserPromptExpansion"
-		if personPrompt && (input.Prompt == "/agentworks" || input.Prompt == "/agentworks:agentworks" || strings.HasPrefix(input.Prompt, "/agentworks ") || strings.HasPrefix(input.Prompt, "/agentworks:agentworks ")) {
+		if personPrompt && pluginPersonPrompt(args[0], input.Prompt) {
 			if input.Queued || strings.Contains(input.Prompt, agentDeliveryHeader) {
 				return pluginBlock(o, "Agent messages cannot attach or detach a conversation. The person must submit this command directly.")
 			}
@@ -149,8 +154,8 @@ func pluginCommand(o *options) *cobra.Command {
 	}}
 	root.AddCommand(hook)
 	root.AddCommand(&cobra.Command{Use: "mcp PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if args[0] != "claude" && args[0] != "codex" {
-			return errors.New("local messaging child supports Claude and Codex")
+		if !messagingPluginProvider(args[0]) {
+			return errors.New("local messaging child supports Claude, Codex and Muse")
 		}
 		host, err := providerHostKey(args[0])
 		if err != nil {
@@ -162,7 +167,12 @@ func pluginCommand(o *options) *cobra.Command {
 		}
 		ctx, cancel := context.WithCancel(cmd.Context())
 		defer cancel()
-		bridge, err := agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", os.Getenv("CODEX_THREAD_ID"))
+		var bridge *server.MCPServer
+		if args[0] == "muse" {
+			bridge, err = agentworksclient.NewMusePluginMCPServer(ctx, dir, host, func() (string, error) { return museSessionForHost(dir, host) })
+		} else {
+			bridge, err = agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", os.Getenv("CODEX_THREAD_ID"))
+		}
 		if err != nil {
 			return err
 		}
@@ -176,6 +186,23 @@ func pluginBlock(o *options, text string) error {
 }
 
 const agentDeliveryHeader = "AgentWorks messages from other agents."
+
+func messagingPluginProvider(provider string) bool {
+	return provider == "claude" || provider == "codex" || provider == "muse"
+}
+
+func pluginPersonPrompt(provider, prompt string) bool {
+	commands := []string{"/agentworks", "/agentworks:agentworks"}
+	if provider == "muse" {
+		commands = append(commands, "/agentworks-muse:agentworks")
+	}
+	for _, command := range commands {
+		if prompt == command || strings.HasPrefix(prompt, command+" ") {
+			return true
+		}
+	}
+	return false
+}
 
 func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) string {
 	if out.SetupContext != "" {
@@ -250,10 +277,29 @@ func providerProcessField(provider string) string {
 	// macOS comm truncates the executable path (including desktop Codex's
 	// bundle path). ucomm gives its kernel basename. Claude rewrites its
 	// process title, so retain its existing comm identity instead.
-	if runtime.GOOS == "darwin" && provider == "codex" {
+	if runtime.GOOS == "darwin" && (provider == "codex" || provider == "muse") {
 		return "ucomm="
 	}
 	return "comm="
+}
+
+var museExecutableName = regexp.MustCompile(`^muse-bin-[0-9]+\.[0-9]+\.[0-9]+(?:-R[0-9]+(?:\.[0-9]+)?)?$`)
+var museTruncatedExecutableName = regexp.MustCompile(`^muse-bin-[0-9]+\.[0-9]+\.[0-9]+(?:-R?[0-9]*)?$`)
+
+func providerProcessMatches(provider, command string) bool {
+	return providerProcessMatchesOnOS(provider, command, runtime.GOOS)
+}
+
+func providerProcessMatchesOnOS(provider, command, goos string) bool {
+	name := filepath.Base(command)
+	if strings.EqualFold(name, provider) {
+		return true
+	}
+	if provider != "muse" {
+		return false
+	}
+	truncated := goos == "linux" && len(name) == 15 || goos == "darwin" && len(name) == 16
+	return museExecutableName.MatchString(name) || truncated && museTruncatedExecutableName.MatchString(name)
 }
 
 func proposedAgentIdentity(provider, session, cwd string) (string, string, error) {
@@ -421,29 +467,34 @@ func codexDesktopHost(command string) bool {
 }
 
 func providerHostKey(provider string) (string, error) {
+	_, host, err := providerHostProcess(provider)
+	return host, err
+}
+
+func providerHostProcess(provider string) (int, string, error) {
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", providerProcessField(provider), "-o", "lstart=").Output()
 		cancel()
 		if err != nil {
-			return "", errors.New("cannot identify provider ancestor")
+			return 0, "", errors.New("cannot identify provider ancestor")
 		}
 		fields := strings.Fields(string(out))
 		if len(fields) < 7 {
-			return "", errors.New("invalid provider process metadata")
+			return 0, "", errors.New("invalid provider process metadata")
 		}
 		parent, err := strconv.Atoi(fields[0])
 		if err != nil {
-			return "", err
+			return 0, "", err
 		}
-		if strings.EqualFold(filepath.Base(fields[1]), provider) {
+		if providerProcessMatches(provider, fields[1]) {
 			h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[len(fields)-5:], " ")))
-			return hex.EncodeToString(h[:]), nil
+			return pid, hex.EncodeToString(h[:]), nil
 		}
 		pid = parent
 	}
-	return "", errors.New("not running inside an exact provider session")
+	return 0, "", errors.New("not running inside an exact provider session")
 }
 
 func bridgeCommand(o *options) *cobra.Command {
@@ -659,7 +710,7 @@ func providerPIDHostKey(provider string, pid int) (string, error) {
 		return "", err
 	}
 	fields := strings.Fields(string(out))
-	if len(fields) < 6 || !strings.EqualFold(filepath.Base(fields[0]), provider) {
+	if len(fields) < 6 || !providerProcessMatches(provider, fields[0]) {
 		return "", errors.New("registered provider process is unavailable")
 	}
 	h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[len(fields)-5:], " ")))

@@ -1,16 +1,16 @@
 # AgentWorks for Muse
 
-**Packaging preview:** do not install or approve this plugin for messaging until
-the shared AgentWorks CLI supports Muse. Current shared releases reject
-`agentworks plugin hook muse` and `agentworks plugin mcp muse`; installation and
-inspection can be tested now, but attachment and live delivery cannot work yet.
-The observed startup error (exit 1) is:
+**Update the AgentWorks CLI before approving this plugin.** Muse support includes
+`agentworks plugin hook muse` and `agentworks plugin mcp muse`. Older CLI releases
+reject both commands; approving the plugin with those releases can prevent Muse
+from starting. The observed startup error (exit 1) is:
 
 ```text
 Required MCP server `agentworks` failed during startup: the transport closed unexpectedly.
 ```
 
-See the diagnostic details below.
+See the diagnostic details below. Native idle push remains unavailable; the
+plugin delivers through hooks at turn boundaries.
 
 This native Muse plugin packages an AgentWorks MCP connection, messaging skill,
 person command and UserPromptSubmit, Stop and SessionEnd hooks. It uses the shared
@@ -36,8 +36,8 @@ muse plugins install agentworks-muse@agentworks
 muse plugins inspect agentworks-muse --json
 ```
 
-For an installation-only preview, stop after inspection. Once shared Muse
-support is available, approve with `muse plugins approve agentworks-muse --json`
+For an installation-only preview, stop after inspection. With a compatible
+AgentWorks CLI installed, approve with `muse plugins approve agentworks-muse --json`
 after reviewing and restart Muse. Installation alone does not approve hooks or MCP execution.
 
 The same GitHub repository serves each provider's catalog. Muse reads
@@ -73,33 +73,44 @@ Approve only after reviewing the hook commands and MCP connection. Restart Muse
 to load newly approved hooks. Nothing in this package approves its own trust or
 attaches a conversation automatically.
 
-Once the shared support is available, in the intended conversation, type:
+In the intended conversation, type one of these person commands:
 
 ```text
 /agentworks attach
-/agentworks attach --confirm
-/agentworks status
+/agentworks attach implementation
+/agentworks agents
 /agentworks detach
 ```
 
-The first command proposes a name and purpose for the exact conversation. Review
-the proposal before confirming: attachment accepts all senders in your
-AgentWorks account. Alternatively, choose both explicitly with
-`/agentworks attach implementation "Implement the requested change"`. Sender
-allow flags are no longer supported.
+Attach connects or reconnects the exact conversation in one step. The person
+submitting it supplies approval for all senders in their AgentWorks account.
+A name is optional; the attached agent can describe its purpose separately.
+Sender allow flags and separate confirmation/resume commands are not supported.
 
-The shared UserPromptSubmit handler must consume the literal person command
-before model execution. It binds Muse's hook-provided session UUID and owns the
-attachment lease. The command template refuses to perform attachment if that
-interception fails. Muse's native namespaced command is
-`/agentworks-muse:agentworks`. Do not substitute another provider for `muse`.
-Session close retains the identity offline. The person can use
-`/agentworks resume` in that exact session; `/agentworks cleanup` retires offers
-while retaining the receive watermark and pending inbox bodies.
+The shared UserPromptSubmit handler consumes the literal person command before
+model execution and binds Muse's hook-provided UUID to its process/start time.
+The command template refuses to perform attachment if interception fails. Muse's
+native namespaced command is `/agentworks-muse:agentworks`. Session close retains
+the identity offline; the person reconnects with `/agentworks attach`.
+
+`agentworks attach [NAME]` in a person terminal selects a live chat; `muse` as
+NAME names that chat, rather than selecting a provider. A missing Muse plugin
+uses the marketplace commands above after explicit installation consent. No
+installer approves hooks or workspace trust. A Muse chat becomes discoverable
+after an approved native hook observes its UUID and exact process. Discovery
+records contain only UUID, PID/start-time fence and cwd, are mode0600, and never
+register an identity, read transcripts, start the bridge or store credentials.
+A native prompt establishes the active UUID after a chat switch; a late Stop
+from the old chat cannot replace it. The MCP child resolves that UUID on every
+call, so an old lease is never inferred from the process alone. Process restart,
+death or one UUID observed on multiple live processes prevents selection. If the chat is absent, install/review the plugin, restart Muse and
+submit `/agentworks attach` directly in that chat. These records are inside the
+documented same-OS-user trust boundary: another process running as the same
+user can plant metadata; they are not isolation against that user.
 
 ## Recognizing an unavailable MCP connection
 
-On the currently installed CLI, `agentworks plugin mcp muse` exits with
+On older CLI releases, `agentworks plugin mcp muse` exits with
 `Error: local messaging child supports Claude and Codex`. A real Muse 1.4.4
 headless run with that command configured as a required MCP server exits with
 status 1 and reports:

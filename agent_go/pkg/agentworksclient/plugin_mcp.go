@@ -14,10 +14,20 @@ import (
 )
 
 // NewPluginMCPServer has no credentials and cannot attach a session. The host
-// key identifies its exact Claude process; the person hook supplies session_id
+// key identifies its exact Claude or Muse process; the person hook supplies session_id
 // when attaching. Native is enabled only by the person's channel launcher.
 func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs ...string) (*server.MCPServer, error) {
-	if provider != "claude" && provider != "codex" || native && provider != "claude" {
+	return newPluginMCPServer(ctx, root, provider, hostKey, native, sessionIDs, nil)
+}
+
+// Muse can switch chats within one process. Resolve its current native-hook
+// UUID on each call instead of inferring whichever old lease shares the host.
+func NewMusePluginMCPServer(ctx context.Context, root, hostKey string, session func() (string, error)) (*server.MCPServer, error) {
+	return newPluginMCPServer(ctx, root, "muse", hostKey, false, nil, session)
+}
+
+func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs []string, museSession func() (string, error)) (*server.MCPServer, error) {
+	if provider != "claude" && provider != "codex" && provider != "muse" || native && provider != "claude" {
 		return nil, errors.New("unsupported plugin provider")
 	}
 	if hostKey == "" {
@@ -30,6 +40,19 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 	s := server.NewMCPServer("AgentWorks local delivery", "1.0.0", opts...)
 	call := func(callCtx context.Context, in LocalBridgeRequest, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		in.Provider, in.HostKey = provider, hostKey
+		if provider == "muse" {
+			if museSession == nil {
+				return mcp.NewToolResultError("Muse messaging requires its exact native-hook session UUID"), nil
+			}
+			var err error
+			in.SessionID, err = museSession()
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			if _, err = uuid.Parse(in.SessionID); err != nil {
+				return mcp.NewToolResultError("Muse did not supply a valid exact session UUID"), nil
+			}
+		}
 		if provider == "codex" {
 			var err error
 			in.SessionID, err = codexMCPThread(req, sessionIDs)
