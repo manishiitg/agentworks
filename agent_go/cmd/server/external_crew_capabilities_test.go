@@ -146,6 +146,12 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	}
 	// A pre-existing custom URL with a catalog-like account name cannot be
 	// attached through catalog reuse either.
+	stale := personal[0]
+	stale.Transport = "sse"
+	if _, err = addPlaceMCPServer("owner", stale); err != nil {
+		t.Fatal(err)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "Example"}, 400)
 	if _, _, err = f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: personal[0].Name, URL: "https://custom.example.com/mcp", Headers: customHeaders}, ""); err != nil {
 		t.Fatal(err)
 	}
