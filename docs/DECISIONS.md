@@ -1,5 +1,27 @@
 # Decisions and open issues
 
+## 2026-10-11 — Delivered-message identity comes from the server (PLAT-825)
+
+Choose the agent-message card only from metadata stamped during authorized
+server delivery. Carry the sender, body and reply details in that metadata;
+typed envelope text and old unmarked rows remain ordinary messages. Bind the
+stamp to the admitted main input and clear it before the turn lane is released.
+Why: message wording cannot establish who sent it.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).
+
+## 2026-10-11 — Closing a chat stops its background runs (PLAT-825)
+
+Terminal session stop cancels the chat's background runs before registry cleanup.
+Warn in the interactive tab-close confirmation and stop even an idle chat, since
+background work can outlive its foreground turn. New chat and the waiting-for-input
+auto-stop use the same terminal-stop behavior. A preserved conversation without
+explicit cancellation, minimizing to background and closing a run/inspection view
+keep the underlying work. Why: closing a conversation must not discard the only
+place that can receive its background results while that work still runs.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).
+
 ## 2026-10-11 — Quick navigation ranks names before search context (PLAT-746)
 
 Rank Ctrl+K results by exact name, name prefix, other name matches, then
@@ -11,6 +33,7 @@ Why: relevant names should stay above incidental context matches, while
 equally matching work should follow the user's activity rather than its name.
 
 Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 
 ## 2026-10-11 — Crew diagnostics use existing read access (PLAT-856)
 
@@ -53,7 +76,7 @@ Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/ti
 Render explicit incoming messages as a sender-labelled agent card in the chat
 transcript. Put reply addresses, message IDs and delivery instructions under
 Message details; long message expansion reveals the message body independently.
-Recognize the existing server envelope so saved conversations get the same view.
+Use server-marked delivery metadata so saved marked conversations get the same view.
 Keep the original agent prompt and optional, explicit reply semantics unchanged.
 Why: delivery instructions should not obscure the message or look like user text.
 

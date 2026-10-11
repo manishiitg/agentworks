@@ -5603,6 +5603,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// true next turn waits here, preventing overlapping cleanup/state writes.
 		releaseInputLane = nil
 	}
+	clearDeliveredSender := func() {}
 
 	// Process the query in the background
 	go func() {
@@ -5632,6 +5633,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				api.updateSessionStatus(sessionID, "running")
 			}
 			api.observeRuntimeSnapshot(sessionID)
+			clearDeliveredSender()
 			if queryInputLaneRelease != nil {
 				queryInputLaneRelease()
 			}
@@ -8352,6 +8354,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
 		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, currentUserIsReadOnly), chatQuery)
+		clearDeliveredSender = api.expectDeliveredAgentMessage(r.Context(), sessionID, chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)

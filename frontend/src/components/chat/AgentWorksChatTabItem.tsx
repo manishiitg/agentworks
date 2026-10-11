@@ -15,6 +15,7 @@ export interface AgentWorksChatTabItemProps {
   productSurface?: ProductSurface
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
+  closeStopsSession?: boolean
   onRenameTab?: (tab: ChatTab, name: string) => Promise<boolean | void>
   onMakeInteractive?: (tabId: string) => void
 }

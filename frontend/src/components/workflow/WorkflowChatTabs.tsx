@@ -120,7 +120,8 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
       ? activeWorkflowTabs.find(tab => tab.tabId !== tabId)?.tabId ?? null
       : null
 
-    void closeTab(tabId, false).then(() => {
+    const stopsSession = useChatStore.getState().chatTabs[tabId]?.metadata?.isViewOnly !== true
+    void closeTab(tabId, stopsSession).then(() => {
       if (nextWorkflowTabId) {
         activateTab(nextWorkflowTabId)
       }
@@ -211,6 +212,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
                 productSurface={isPersistentChat ? (isRelaySurface ? 'relays' : 'agentworks') : undefined}
                 onTabClick={handleTabClick}
                 onCloseTab={handleCloseTab}
+                closeStopsSession={tab.metadata?.isViewOnly !== true}
                 onMakeInteractive={handleMakeInteractive}
               />
             )

@@ -663,9 +663,8 @@ type EventStore struct {
 	// expectedClientMessages: sessionID -> client identity for the next
 	// main-agent user_message (see ExpectClientUserMessage). Guarded by mu.
 	expectedClientMessages map[string]expectedClientMessage
-	// expectedSenders: sessionID -> the agent sending the next user_message
-	// (Pulse messaging a Builder chat), so the chat can show who sent it.
-	expectedSenders map[string]expectedSender
+	// expectedSenders: sessionID -> attribution for an admitted agent input.
+	expectedSenders map[string]*expectedSender
 	mu              sync.RWMutex
 	maxEvents       int // Maximum events per session
 	cleanupTicker   *time.Ticker

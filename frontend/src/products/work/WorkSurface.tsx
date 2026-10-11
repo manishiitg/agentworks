@@ -620,7 +620,8 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
           if (status !== 404) throw cause
         }
       }
-      await closeTab(closingTabId, side)
+      // Side chats have already been stopped above; view tabs only hide the view.
+      await closeTab(closingTabId, false)
       if (activeTabId === closingTabId) activateTab(canonicalTabId)
     })().catch(() => {
       useChatStore.getState().addToast('Could not stop this chat. Try closing it again.', 'error')
@@ -706,6 +707,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         productSurface={tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileId === 'code' ? 'code' : 'work') : undefined}
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}
+        closeStopsSession={isWorkSideChatTab(tab, projectId)}
         onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
       />)}
       {allowSideChats && (

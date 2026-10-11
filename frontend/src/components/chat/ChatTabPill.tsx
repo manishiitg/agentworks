@@ -5,6 +5,7 @@ import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
+import ConfirmationDialog from '../ui/ConfirmationDialog'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -17,6 +18,8 @@ export interface ChatTabPillProps {
   readOnly?: boolean
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
+  /** False for a run/inspection tab whose close only hides a view. */
+  closeStopsSession?: boolean
   onRename?: (name: string) => Promise<boolean | void>
   onMakeInteractive?: (tabId: string) => void
 }
@@ -36,7 +39,7 @@ const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
 /** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface,
-  onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false,
+  onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false, closeStopsSession = false,
 }) => {
   const displayName = displayNameOverride ?? tab.name
   // The same signal as the activity monitor and the chat's own footer.
@@ -53,6 +56,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(tab.name)
   const [isSavingName, setIsSavingName] = useState(false)
+  const [closingSessionId, setClosingSessionId] = useState<string | null>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (rawStatus === status) return
@@ -87,7 +91,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     }
   }
 
-  return (
+  return (<>
     <div
       onClick={() => onTabClick(tab.tabId)}
       onKeyDown={(event) => event.key === 'Enter' && onTabClick(tab.tabId)}
@@ -149,7 +153,12 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         <button
           type="button"
           disabled={isBusy}
-          onClick={(event) => { event.stopPropagation(); if (!isBusy) onCloseTab(tab.tabId) }}
+          onClick={(event) => {
+            event.stopPropagation()
+            if (isBusy) return
+            if (closeStopsSession && tab.sessionId) setClosingSessionId(tab.sessionId)
+            else onCloseTab(tab.tabId)
+          }}
           className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 transition-colors ${isBusy ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'}`}
           aria-label={isBusy ? `${displayName} is still running — stop it before closing` : `Close ${displayName}`}
           title={isBusy ? 'Still running — stop the run before closing' : 'Close tab'}
@@ -158,7 +167,15 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         </button>
       )}
     </div>
-  )
+    <ConfirmationDialog isOpen={closingSessionId !== null} onClose={() => setClosingSessionId(null)}
+      onConfirm={() => {
+        setClosingSessionId(null)
+        if (tab.sessionId === closingSessionId) onCloseTab(tab.tabId)
+      }}
+      title={`Close ${displayName}?`}
+      message="Closing this chat stops its background runs. Your saved conversation remains available in history."
+      confirmText="Close chat" type="warning" />
+  </>)
 })
 
 ChatTabPill.displayName = 'ChatTabPill'

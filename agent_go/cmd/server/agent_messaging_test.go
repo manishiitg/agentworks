@@ -2,15 +2,19 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 // Exercise delivery with the real workspace transport and permissions, while
 // replacing only the model turn. Final prose never becomes a conversational reply.
 func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) {
 	env := newTriggerLinkEnv(t)
+	env.api.eventStore = openClientIdentityTestStore(t, "attribution-test")
 	ctx := internalBotRequestContext(context.Background(), "owner")
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workflow:Reports")
 	if err != nil {
@@ -18,7 +22,14 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: "owner"}, Label: "External agent"}
 	old := agentMessageTurn
-	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, _ map[string]interface{}, _, _ string) (internalSessionTurnResult, error) {
+	agentMessageTurn = func(api *StreamingAPI, turnCtx context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		if err := api.eventStore.SetSessionPersistenceClass(session, internalevents.SessionPersistenceInteractiveChat); err != nil {
+			return internalSessionTurnResult{}, err
+		}
+		query, _ := request["query"].(string)
+		clear := api.expectDeliveredAgentMessage(turnCtx, session, query)
+		defer clear()
+		api.eventStore.AddEvent(session, testUserMessage("delivered-input", query))
 		return internalSessionTurnResult{FinalResponse: "implicit final answer must not be forwarded"}, nil
 	}
 	t.Cleanup(func() { agentMessageTurn = old })
@@ -55,6 +66,30 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	page, err := env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("final chat leaked: %v %v", page, err)
+	}
+	chat := conv.Endpoints[1].Session
+	// Request JSON and pasted text cannot manufacture the private delivery context.
+	clear := env.api.expectDeliveredAgentMessage(ctx, chat, agentMessageText(conv, conv.Messages[0]))
+	env.api.eventStore.AddEvent(chat, testUserMessage("typed-envelope", agentMessageText(conv, conv.Messages[0])))
+	clear()
+	saved, err := env.api.eventStore.ReadDurableChatPage(chat, internalevents.DurableEventPageOptions{Limit: 10, FromStart: true})
+	if err != nil || len(saved.Events) != 2 {
+		t.Fatalf("durable inputs: %d %v", len(saved.Events), err)
+	}
+	for index, event := range saved.Events {
+		raw, _ := json.Marshal(event.Data.Data)
+		var payload struct {
+			Metadata map[string]interface{} `json:"metadata"`
+		}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 && (payload.Metadata["source"] != "agent_message" || payload.Metadata["agent_message_inbox"] != id || payload.Metadata["display_content"] != "Please check this") {
+			t.Fatalf("missing trusted durable fields: %#v", payload.Metadata)
+		}
+		if index == 1 && payload.Metadata["source"] == "agent_message" {
+			t.Fatal("typed envelope acquired agent identity")
+		}
 	}
 	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: target.stampID()}, Label: target.Label, Path: target.Path, Chat: &codeChat{SessionID: conv.Endpoints[1].Session}}
 	if _, err = env.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {

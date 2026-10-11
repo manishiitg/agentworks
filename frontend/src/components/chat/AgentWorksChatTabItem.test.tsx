@@ -49,6 +49,37 @@ it("shows the stored name on hover when a shorter display name is shown", async 
   expect(label?.getAttribute("title")).toBe("Daily Notion status for the web team");
 });
 
+it('warns before stopping a chat, while view tabs close without stopping confirmation', async () => {
+  const onClose = vi.fn()
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const tab = { tabId: 'close-chat', name: 'Reports', sessionId: 'chat-session' } as ChatTab
+  const render = async (stops: boolean) => act(async () => root.render(
+    <AgentWorksChatTabItem tab={tab} isActive canClose isBlank={false} closeStopsSession={stops} onTabClick={() => {}} onCloseTab={onClose} />,
+  ))
+  try {
+    await render(true)
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="Close Reports"]')!.click() })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Closing this chat stops its background runs.')
+    const button = (name: string) => Array.from(document.body.querySelectorAll('button')).find(el => el.textContent === name)!
+    await act(async () => { button('Cancel').click() })
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="Close Reports"]')!.click() })
+    await act(async () => { button('Close chat').click() })
+    expect(onClose).toHaveBeenCalledWith('close-chat')
+    onClose.mockClear()
+    await render(false)
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="Close Reports"]')!.click() })
+    expect(onClose).toHaveBeenCalledWith('close-chat')
+    expect(document.body.textContent).not.toContain('Closing this chat stops its background runs.')
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+  }
+})
+
 // Owner, 2026-10-06: the state must read at a glance on a tab you are not
 // looking at: a spinner while working, amber when it waits for you.
 it("shows working, waiting and idle on an unfocused tab", async () => {

@@ -380,12 +380,18 @@ describe('useChatStore hydration bootstrap', () => {
     vi.spyOn(agentApi, 'stopSession').mockImplementation(() => new Promise(resolve => { resolveStop = () => resolve({} as never) }))
     switchChatAccount('alice')
     const closing = await useChatStore.getState().createChatTab('Closing', { mode: 'workflow', presetQueryId: 'closing' }, 'closing-session')
-    useChatStore.getState().setTabStreaming(closing, true)
+    // A background-only/idle foreground chat still needs a terminal stop.
+    expect(useChatStore.getState().chatTabs[closing].isStreaming).toBeFalsy()
     const pending = useChatStore.getState().closeTab(closing)
     const newTab = await useChatStore.getState().createChatTab('New', { mode: 'workflow', presetQueryId: 'new' }, 'new-session')
     resolveStop()
     await pending
     expect(useChatStore.getState().chatTabs[newTab]).toBeDefined()
+    // Dismissing a read-only view must leave the underlying session running.
+    const view = await useChatStore.getState().createChatTab('View', { mode: 'workflow', isViewOnly: true }, 'view-session')
+    const callsBeforeViewClose = vi.mocked(agentApi.stopSession).mock.calls.length
+    await useChatStore.getState().closeTab(view, false)
+    expect(vi.mocked(agentApi.stopSession).mock.calls.length).toBe(callsBeforeViewClose)
     useChatStore.getState().setTabStreaming(newTab, true)
     const oldAccountClose = useChatStore.getState().closeTab(newTab)
     switchChatAccount('bob')

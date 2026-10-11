@@ -502,7 +502,22 @@ func agentMessageText(c agentConversation, m agentMessage) string {
 	if m.Wakeup {
 		return "[Your explicitly requested wakeup. Decide whether to read your inbox, follow up or continue work; no message was automatically resent.]\n\n" + m.Text
 	}
-	return fmt.Sprintf("[Agent message from %s. Conversation/reply address: %s; message: %s. Replies are optional. If you choose to send a message back, use send_message(inbox_id=%q, message=...). Your final chat answer is NOT forwarded. Decide yourself whether to reply, request a wakeup, follow up or continue work.]\n\n%s", c.Endpoints[m.From].Label, c.ID, m.ID, c.ID, m.Text)
+	return fmt.Sprintf("[Agent message from %s. Conversation/reply address: %s; message: %s. %s]\n\n%s", c.Endpoints[m.From].Label, c.ID, m.ID, agentMessageInstructions(c.ID), m.Text)
+}
+
+func agentMessageInstructions(inboxID string) string {
+	return fmt.Sprintf("Replies are optional. If you choose to send a message back, use send_message(inbox_id=%q, message=...). Your final chat answer is NOT forwarded. Decide yourself whether to reply, request a wakeup, follow up or continue work.", inboxID)
+}
+
+// This key is set only by admitted agent delivery, never from HTTP/JSON fields.
+type deliveredAgentMessageKey struct{}
+
+func (api *StreamingAPI) expectDeliveredAgentMessage(ctx context.Context, sessionID, query string) func() {
+	metadata, ok := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
+	if !ok || api.eventStore == nil {
+		return func() {}
+	}
+	return api.eventStore.ExpectAgentMessageSender(sessionID, query, metadata)
 }
 func (api *StreamingAPI) recoverAgentMessages() {
 	agentMessageMu.Lock()
@@ -738,6 +753,13 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	if dest.Session != "" && api.agentMessageSessionClosed(dest.Session) {
 		return dest.Session, fmt.Errorf("receiving conversation was stopped or replaced")
+	}
+	if !m.Wakeup {
+		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{
+			"source": "agent_message", "sender_label": source.Label,
+			"agent_message_inbox": c.ID, "message_id": m.ID,
+			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
+		})
 	}
 	if dest.Kind == triggerCallerWorkflow && dest.ChatKey == pulseBuilderChatKey {
 		_, session, err := api.runGoalLeadTurn(ctx, dest.Path, goalLeadTurn{Kind: goalLeadTurnAgentMessage, From: source.Label, Body: text, ExpectedSessionID: dest.Session})

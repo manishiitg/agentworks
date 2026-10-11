@@ -2597,8 +2597,9 @@ export const useChatStore = create<ChatState>()(
           return
         }
 
-        // Stop session if streaming (unless explicitly disabled, e.g., when minimizing to background)
-        if (stopSession && tab.isStreaming && tab.sessionId) {
+        // A terminal close stops the chat and its background work even between
+        // foreground turns. Explicit view-only close/minimize keeps it running.
+        if (stopSession && tab.sessionId) {
           try {
             await agentApi.stopSession(tab.sessionId)
           } catch (error) {

@@ -3,15 +3,16 @@ import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { PulseIcon } from './workflow/pulseIcon'
 
-// Recognize the server's complete delivery envelope, including saved rows.
-// This is presentation only: the original prompt still reaches the agent.
-export function parseAgentInboxMessage(content: string) {
-  const match = content.match(/^\[Agent message from ([^\n]+?)\. Conversation\/reply address: (inbox-[\da-f-]+); message: (msg-[\da-f-]+)\. ([^\n]+)\]\r?\n\r?\n([\s\S]+)$/)
-  if (!match) return null
-  return { sender: match[1], inboxID: match[2], messageID: match[3], instructions: match[4], body: match[5] }
+// Only server-stamped delivery metadata selects this presentation. Unmarked
+// saved rows and typed envelope text remain ordinary messages.
+export function agentInboxMessage(metadata?: Record<string, unknown>) {
+  if (metadata?.source !== 'agent_message') return null
+  const { sender_label: sender, agent_message_inbox: inboxID, message_id: messageID, agent_message_instructions: instructions, display_content: body } = metadata
+  if ([sender, inboxID, messageID, instructions, body].some(value => typeof value !== 'string' || !value.trim())) return null
+  return { sender: sender as string, inboxID: inboxID as string, messageID: messageID as string, instructions: instructions as string, body: body as string }
 }
 
-type AgentInboxContent = NonNullable<ReturnType<typeof parseAgentInboxMessage>>
+type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 const PREVIEW_LIMIT = 600
 
 export function AgentInboxMessage({ message, timestamp }: { message: AgentInboxContent; timestamp: string }) {
