@@ -125,7 +125,7 @@ func TestOptimizerPromptDocumentsAgentRoutePatterns(t *testing.T) {
 	docMustContain := []string{
 		"## AGENT ROUTE PATTERNS",
 		"Use these patterns when designing or repairing an agent's `predefined_routes`",
-		"Use a `agent` route when the parent agent should preserve specialist memory",
+		"Use an `agent` route when the parent agent should preserve specialist memory",
 		"restart only when the prior conversation is stale, wrong, or contaminated",
 	}
 	for _, snippet := range docMustContain {

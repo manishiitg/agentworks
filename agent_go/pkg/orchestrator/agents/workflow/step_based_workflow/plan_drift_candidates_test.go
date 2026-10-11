@@ -197,7 +197,7 @@ func TestCollectPlanDriftCandidatesReflagsSupportedTypesForContractVersionThree(
 }
 
 func TestRequiredPlanDriftContractVersionIsTypeSpecific(t *testing.T) {
-	for _, stepType := range []string{"regular", "agent", "todo_task", "routing", "branch"} {
+	for _, stepType := range []string{"regular", "agent", "routing", "branch"} {
 		if got := requiredPlanDriftReviewContractVersion(stepType); got != 3 {
 			t.Fatalf("required version for %s = %d, want 3", stepType, got)
 		}

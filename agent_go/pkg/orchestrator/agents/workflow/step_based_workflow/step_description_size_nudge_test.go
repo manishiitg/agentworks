@@ -105,7 +105,7 @@ func TestAddAgentStepIncludesSizeNudgeRelativeToSiblings(t *testing.T) {
 	}
 }
 
-func TestUpdateOrchestratorStepIncludesSizeNudge(t *testing.T) {
+func TestUpdateAgentStepIncludesSizeNudge(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		&AgentPlanStep{
 			Type:             StepTypeAgent,
@@ -118,6 +118,7 @@ func TestUpdateOrchestratorStepIncludesSizeNudge(t *testing.T) {
 				ID: "target-orchestrator", Title: "Target orchestrator",
 				Description: "Investigate the failure.", ContextDependencies: []string{},
 			},
+			Items:      []AgentItem{{ID: "investigate", Type: "user_message", Message: "Investigate the failure and verify the result."}},
 			NextStepID: "end",
 		},
 	}}
@@ -142,7 +143,7 @@ func TestUpdateOrchestratorStepIncludesSizeNudge(t *testing.T) {
 		"reason":           "test",
 	})
 	if err != nil {
-		t.Fatalf("update_orchestrator_step failed: %v", err)
+		t.Fatalf("update_agent_step failed: %v", err)
 	}
 	if !strings.Contains(result, "Description should stay WHAT to achieve") {
 		t.Fatalf("orchestrator update response missing size nudge for an oversized description: %s", result)

@@ -45,7 +45,7 @@ func (f *externalPlanTestFiles) execute(ctx context.Context, name string, args m
 
 func TestExternalPlanToolsExposeStrictDetachedAllowlist(t *testing.T) {
 	definitions := ExternalPlanToolDefinitions()
-	if len(definitions) != 17 {
+	if len(definitions) != 15 {
 		t.Fatalf("got %d tool definitions", len(definitions))
 	}
 	names := map[string]bool{}

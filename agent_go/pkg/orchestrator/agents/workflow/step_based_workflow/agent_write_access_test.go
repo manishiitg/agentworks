@@ -55,8 +55,8 @@ func TestAgentExecutionRelPath_UsesNormalStepFolder(t *testing.T) {
 		if got != want {
 			t.Fatalf("agentSequenceExecutionRelPath(%q,%q) = %q, want normal step folder %q", tc.stepPath, tc.stepID, got, want)
 		}
-		if strings.Contains(got, "agents") {
-			t.Fatalf("sequence still writes to isolated agents folder: %q", got)
+		if strings.Contains(got, "message_sequences") {
+			t.Fatalf("sequence still writes to isolated legacy conversation folder: %q", got)
 		}
 	}
 }
