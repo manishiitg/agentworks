@@ -20,9 +20,17 @@ Available tools include `execute_shell_command`, `agent_browser`,
 `mutate_workflow_db`, `apply_workflow_db_migration` and
 `create_workflow_database_snapshot` and `call_selected_mcp_tool`. For connected
 MCP, discover this Crew's actual servers/tools first through `crew_mcp` and
-`crew_diagnostics`; live attachment, selected-tool and Vault checks apply.
+`crew_diagnostics`; live attachment, selected-tool and Vault checks apply; authorized Vault defaults
+remain available under their current account/group permissions.
 `crew_integrations action=list` exposes the enabled shared Slack, Google account
-and incoming-email tools with their native schemas. Account-wide Google grant
+and incoming-email tools with their native schemas. Attached workflow tools also
+appear in `crew_execution`: list attachments/triggers, run a trigger with a stable
+`delivery_id`, then poll its returned `run_id` and `trigger_id`. The attachment,
+exact Crew binding and current workflow access are checked. Workflow read/file
+consent and target bounds apply; a run additionally requires `runs:execute`.
+Function progress is reported only by the receiving execution, whose final
+message or checked result file completes the call; external callers use
+`functions action=status` and `reply` for their own pending questions. Account-wide Google grant
 changes require a current administrator and all-Crew consent; Google sign-in
 and incoming sender approval retain their human app flows. Every call requires Crew ownership,
 existing `crews:write` consent and a current editable account. Shell commands

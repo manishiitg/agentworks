@@ -71,12 +71,22 @@ func crewExecutionDefinitions() []llmtypes.Tool {
 	tools := append(workspace.GetAdvancedToolDefinitions(), virtualtools.CreateWorkspaceBrowserTools()...)
 	tools = append(tools, virtualtools.CreateWorkflowDBToolRegistry("", "", "").Tools...)
 	tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
-		Name: "call_selected_mcp_tool", Description: "Call a tool from this Crew's attached MCP connection or selected governed server. Discover attached tools with crew_mcp action=discover and diagnostics. Supply only the returned server and tool names plus the tool's arguments; live connection, selection and Vault checks apply. No other project's or personal unattached connection is reachable.",
-		Parameters: llmtypes.NewParameters(map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"server": externalString("Exact attached or selected server name."), "tool": externalString("Exact tool name."), "args": map[string]any{"type": "object"}}, "required": []string{"server", "tool", "args"}}),
+		Name: "call_selected_mcp_tool", Description: "Call a tool from this Crew's attached MCP connection, selected governed server or authorized Vault default. Discover attached tools with crew_mcp action=discover and diagnostics. Supply only the returned server and tool names plus the tool's arguments; live connection, selection and Vault checks apply. No other project's or personal unattached connection is reachable.",
+		Parameters: llmtypes.NewParameters(map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"server": externalString("Exact attached or selected server name, including authorized Vault defaults."), "tool": externalString("Exact tool name."), "args": map[string]any{"type": "object"}}, "required": []string{"server", "tool", "args"}}),
 	}})
+	// Capture the current native reference tools without executing a scheduler.
+	native := &StreamingAPI{scheduler: &SchedulerService{}}
+	refs := crewCapabilityRegistrar{}
+	if err := native.registerCrewWorkflowRunTools(refs, "", "", "Crew/catalog"); err != nil {
+		panic(err)
+	}
+	for _, name := range []string{"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
+		tool := refs[name]
+		tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name, Description: tool.description, Parameters: llmtypes.NewParameters(tool.schema)}})
+	}
 	selected := []llmtypes.Tool{}
 	for _, tool := range tools {
-		if tool.Function != nil && crewExecutionMembers[tool.Function.Name] {
+		if tool.Function != nil && (crewExecutionMembers[tool.Function.Name] || crewWorkflowExecutionMembers[tool.Function.Name]) {
 			selected = append(selected, tool)
 		}
 	}
@@ -307,6 +317,21 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 			return
 		}
 		executors[action] = tool.execute
+	} else if crewWorkflowExecutionMembers[action] {
+		if api.scheduler == nil {
+			externalError(w, 503, "scheduler_unavailable", "Workflow trigger service is unavailable.")
+			return
+		}
+		if action == "run_workflow_trigger" && claims.AccessToken != nil && !claims.AccessToken.Allows("runs:execute") {
+			externalError(w, 403, "insufficient_scope", "Invoking an attached workflow also requires runs:execute consent.")
+			return
+		}
+		reg := crewCapabilityRegistrar{}
+		if err = api.registerCrewWorkflowRunTools(reg, claims.UserID, session, root); err != nil {
+			externalFailure(w, err)
+			return
+		}
+		executors[action] = reg[action].execute
 	} else if action == "execute_shell_command" {
 		if params["timeout"] == nil {
 			params["timeout"] = float64(25)

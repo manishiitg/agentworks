@@ -28,6 +28,20 @@ evidence as needing review. Provider API allowances may differ from MCP limits.
 Why: help people choose tools without implying remaining credits or changing setup.
 
 Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-37.
+## 2026-10-11 — Direct Crew workflow triggers retain connection ceilings (PLAT-856)
+
+Expose native attachment/trigger discovery, invocation and polling through
+Crew execution. Preserve the external identity and token, filter workflow
+references by current access and read/file consent, and require runs:execute
+for dispatch. Reuse the exact Crew's secretless internal binding and its native
+idempotent delivery; detached, revoked or foreign targets fail before dispatch.
+Human sign-in, infrastructure consent and incoming sender approvals keep their
+existing website flows. Function progress/results remain bound to their actual
+receiving execution; callers inspect status and answer their pending questions.
+Why: typed parity must preserve project, session and human approval authority.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Direct workflow plans use existing Builder consent (PLAT-856)
 
 Expose the native typed plan executors directly over MCP. Require the combined
