@@ -851,26 +851,9 @@ func teamSourceOwners(t *WorkflowTeam, plan map[string]interface{}, rel string) 
 				used = true
 			}
 		}
-		var contains func(interface{})
-		contains = func(v interface{}) {
-			switch x := v.(type) {
-			case string:
-				if strings.EqualFold(strings.TrimPrefix(x, "./"), rel) {
-					used = true
-				}
-			case map[string]interface{}:
-				for _, c := range x {
-					contains(c)
-				}
-			case []interface{}:
-				for _, c := range x {
-					contains(c)
-				}
-			}
-		}
 		teamWalk(plan, func(s map[string]interface{}) {
 			if id, _ := s["id"].(string); ids[id] {
-				contains(s)
+				used = used || teamSourceReferenced(s, rel)
 			}
 		})
 		if used {
@@ -883,6 +866,15 @@ func teamSourceAuthority(t *WorkflowTeam, actor string, plan map[string]interfac
 	for _, id := range t.ReadOnlyStepIDs {
 		if strings.HasPrefix(strings.ToLower(rel), "code/"+strings.ToLower(id)+"/") || strings.HasPrefix(strings.ToLower(rel), "learnings/"+strings.ToLower(id)+"/") {
 			return fmt.Errorf("source belongs to a read-only step")
+		}
+		used := false
+		teamWalk(plan, func(step map[string]interface{}) {
+			if step["id"] == id && teamSourceReferenced(step, rel) {
+				used = true
+			}
+		})
+		if used {
+			return fmt.Errorf("source is referenced by a read-only step")
 		}
 	}
 	owners := teamSourceOwners(t, plan, rel)
@@ -898,6 +890,26 @@ func teamSourceAuthority(t *WorkflowTeam, actor string, plan map[string]interfac
 		}
 	}
 	return nil
+}
+
+func teamSourceReferenced(value interface{}, rel string) bool {
+	switch v := value.(type) {
+	case string:
+		return strings.EqualFold(strings.TrimPrefix(v, "./"), rel)
+	case map[string]interface{}:
+		for _, child := range v {
+			if teamSourceReferenced(child, rel) {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, child := range v {
+			if teamSourceReferenced(child, rel) {
+				return true
+			}
+		}
+	}
+	return false
 }
 func (api *StreamingAPI) registerWorkflowTeamTools(reg definitionToolRegistrar, root, user string, readOnly bool) error {
 	if root == "" {

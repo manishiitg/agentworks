@@ -31,6 +31,18 @@ func stageTeamWrite(ctx context.Context, path, content string) (bool, error) {
 	if len(content) > 8<<20 {
 		return true, fmt.Errorf("team edit exceeds size limit")
 	}
+	if _, replacing := r.pending[path]; !replacing && len(r.pending) >= 128 {
+		return true, fmt.Errorf("team edit exceeds file limit")
+	}
+	total := len(content)
+	for p, previous := range r.pending {
+		if p != path {
+			total += len(previous)
+		}
+	}
+	if total > 32<<20 {
+		return true, fmt.Errorf("team edit exceeds total size limit")
+	}
 	r.pending[path] = content
 	return true, nil
 }

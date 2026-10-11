@@ -54,7 +54,7 @@ var findPulseBuilderChat = func(api *StreamingAPI, ctx context.Context, userID s
 			return "", fmt.Errorf("builder_session_id %q is not a Builder chat", requested)
 		}
 		if active, ok := api.getActiveSession(requested); ok && active != nil && active.AgentMode == "workflow_phase" &&
-			(active.UserID == "" || active.UserID == userID) && strings.Trim(active.WorkspacePath, "/") == workspacePath {
+			(active.UserID == userID || manifest.Team == nil && active.UserID == "") && strings.Trim(active.WorkspacePath, "/") == workspacePath {
 			return requested, nil
 		}
 		if _, found, err := findWorkflowBuilderConversationPathForSession(userCtx, userID, requested, workspacePath); err == nil && found {

@@ -11,7 +11,7 @@ const capabilities: Array<{ key: Exclude<keyof WorkflowTeamMember, 'user_id' | '
 ]
 
 export default function WorkflowTeamView({ workspacePath, readOnly }: { workspacePath: string; readOnly: boolean }) {
-    const [info, setInfo] = useState<WorkflowTeamInfo | null>(null)
+  const [info, setInfo] = useState<WorkflowTeamInfo | null>(null)
   const [draft, setDraft] = useState<WorkflowTeamPolicy | null>(null)
   const [directory, setDirectory] = useState<WorkflowAccessUser[]>([])
   const [error, setError] = useState('')
