@@ -27,6 +27,22 @@ var agentLiveEvents = struct {
 	online  map[string]string
 }{changed: make(chan struct{}), online: map[string]string{}}
 
+// Attachment is a person-configured CLI operation, not an agent MCP tool.
+// The native bridge gets this credential from its explicit launch config.
+func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) {
+		externalError(w, 403, "attachment_refused", "Configure attachment through your signed-in AgentWorks CLI, not an agent tool.")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	var args map[string]any
+	if json.NewDecoder(r.Body).Decode(&args) != nil || (externalArg(args, "action") != "attach" && externalArg(args, "action") != "detach") {
+		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
+		return
+	}
+	api.externalAgentAttachment(w, r, args)
+}
+
 // A closed generation wakes all listeners; they recheck the store and current
 // authority. Capture the generation before reading to avoid a lost wakeup.
 func agentLiveChanged() <-chan struct{} {

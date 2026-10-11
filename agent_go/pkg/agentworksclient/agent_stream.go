@@ -33,6 +33,31 @@ type AgentLiveMessage struct {
 	Delivery     string `json:"delivery"`
 }
 
+type AgentAttachmentOptions struct {
+	AgentName      string   `json:"agent_name"`
+	Purpose        string   `json:"purpose"`
+	Provider       string   `json:"provider"`
+	SessionID      string   `json:"native_session_id"`
+	AllowedSenders []string `json:"allowed_senders"`
+}
+
+// AttachAgent is deliberately outside the MCP tool catalog. Its arguments
+// come from the person's explicit native bridge configuration.
+func (c *Client) AttachAgent(ctx context.Context, opts AgentAttachmentOptions) (AgentAttachment, error) {
+	raw, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", struct {
+		Action string `json:"action"`
+		AgentAttachmentOptions
+	}{"attach", opts}, true)
+	if err != nil {
+		return AgentAttachment{}, err
+	}
+	var a AgentAttachment
+	if err = json.Unmarshal(raw, &a); err != nil || a.ID == "" {
+		return a, errors.New("invalid attachment response")
+	}
+	return a, nil
+}
+
 // StreamAgentMessages keeps one authenticated connection open. The server
 // pushes on durable writes; this never polls the messages tool. Reconnect and
 // adapter de-duplication belong to the caller, which owns its native session.

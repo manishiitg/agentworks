@@ -34,6 +34,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 	mux.HandleFunc("/api/external/v1/tools", env.api.handleExternalTools)
 	mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
+	mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
 	srv := httptest.NewServer(AuthMiddleware(mux))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
@@ -201,7 +202,19 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("reply split the conversation")
 	}
 	// Moving a stable address revokes the old session lease immediately.
-	replacement := call(receiver, map[string]any{"action": "attach", "agent_name": "reviewer", "purpose": "New review session", "provider": "claude", "native_session_id": "exact-session-two", "allowed_senders": []string{"sender"}})
+	replacementAttachment, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "New review session", Provider: "claude", SessionID: "exact-session-two", AllowedSenders: []string{"sender"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := map[string]any{}
+	replacementJSON, _ := json.Marshal(replacementAttachment)
+	if err = json.Unmarshal(replacementJSON, &replacement); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = receiver.Call(context.Background(), "messages", map[string]any{"action": "attach", "agent_name": "reviewer", "purpose": "Agent takeover", "provider": "claude", "native_session_id": "other-session", "allowed_senders": []string{"sender"}}); err == nil {
+		t.Fatal("agent tool could attach a session")
+	}
+
 	if replacement["attachment_id"] == meta["attachment_id"] {
 		t.Fatal("attachment did not rotate")
 	}

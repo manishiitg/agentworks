@@ -169,7 +169,8 @@ listener and its receipts. The directory reports purpose, provider and whether a
 listener is connected; connected does not prove that the native client accepted
 a notification. Names and messages remain in the selected workspace across restart.
 
-For Claude Code, configure a **private connection config for this agent** and a
+For Claude Code, the person signs in with `agentworks login` using a **private
+connection config for this agent**, then configures a
 stdio MCP server named `agentworks-live` with command `agentworks` and arguments:
 
 ```json
@@ -181,7 +182,8 @@ stdio MCP server named `agentworks-live` with command `agentworks` and arguments
 Start or resume **that exact Claude session** with
 `--dangerously-load-development-channels server:agentworks-live`, and approve
 Claude's per-session channel confirmation. Channels are in research preview;
-Team/Enterprise organizations must enable them. An ordinary remote MCP connection
+Team/Enterprise organizations must enable them. Attachment uses a dedicated CLI API outside the agent tool catalog; agents cannot
+attach or move a chat through the messages tool. An ordinary remote MCP connection
 alone supplies tools and does not enable push. The bridge declares
 `experimental["claude/channel"]` and emits `notifications/claude/channel` through
 Claude's native input queue, preserving its handling of tools and typed drafts.
