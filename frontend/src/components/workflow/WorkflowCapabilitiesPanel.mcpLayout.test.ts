@@ -100,7 +100,7 @@ describe('Workflow MCP panel layout', () => {
 
     expect(chips).toContain('This route answers for another workflow')
     // One question per workflow; platform settings live with the admin panel.
-    expect(slack).toContain('Who answers for this')
+    expect(slack).toContain('Which bot answers')
     expect(slack).not.toContain('Save platform settings')
     expect(readFileSync('src/components/admin/SlackAdminPanel.tsx', 'utf8')).toContain('Shared bot enabled')
     const gmail = readFileSync('src/components/workflow/bots/GmailNotifications.tsx', 'utf8')

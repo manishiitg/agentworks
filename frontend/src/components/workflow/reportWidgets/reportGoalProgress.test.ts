@@ -24,6 +24,7 @@ const metric: GoalMetric = {
   target: 300,
 };
 function fixture(status = "ok", value: number | null = 400) {
+  const now = Date.now();
   return vi.fn(async (sql: string): Promise<Record<string, unknown>[]> => {
     if (sql.includes("sqlite_master"))
       return [
@@ -45,7 +46,9 @@ function fixture(status = "ok", value: number | null = 400) {
         run_id: "run-2",
         value,
         status,
-        observed_at: new Date().toISOString(),
+        observed_at: new Date(now).toISOString(),
+        window_start: new Date(now - 86400000).toISOString(),
+        window_end: new Date(now).toISOString(),
         evidence_json: '["db/sample.json"]',
       },
       {
@@ -58,8 +61,10 @@ function fixture(status = "ok", value: number | null = 400) {
         run_id: "run-1",
         value: 600,
         status: "ok",
-        observed_at: new Date(Date.now() - 86400000).toISOString(),
-        evidence_json: "[]",
+        observed_at: new Date(now - 86400000).toISOString(),
+        window_start: new Date(now - 2 * 86400000).toISOString(),
+        window_end: new Date(now - 86400000).toISOString(),
+        evidence_json: '["db/previous-sample.json"]',
       },
     ];
   });
@@ -87,6 +92,7 @@ describe("report goal metrics", () => {
       "unit = 'ms'",
       "COALESCE(route, '') = 'learner'",
       "COALESCE(environment, '') = 'production'",
+      "window_start, window_end",
       "LIMIT 120",
     ])
       expect(sql).toContain(part);

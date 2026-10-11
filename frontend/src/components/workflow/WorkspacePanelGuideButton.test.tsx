@@ -221,7 +221,7 @@ describe('Panel walkthroughs', () => {
   it.each(INTEGRATION_HOW_TO_TOPICS)('shows %s task answers in the larger walkthrough bubble', async topic => {
     const expectedAnswer = {
       MCPs: 'Connect a new app',
-      Skills: 'GitHub URL',
+      Skills: 'install or create a skill',
       Slack: 'xapp-',
       WhatsApp: 'Linked Devices',
       Gmail: 'Connect Google account',
@@ -239,7 +239,7 @@ describe('Panel walkthroughs', () => {
       const dialog = host.querySelector('[role="dialog"]')!
       expect(dialog.className).toContain('w-[min(40rem,calc(100vw-1.5rem))]')
       expect(dialog.querySelector(`[aria-label="${topic} how-to answers"]`)).not.toBeNull()
-      expect(dialog.querySelectorAll('details').length).toBeGreaterThanOrEqual(6)
+      expect(dialog.querySelectorAll('details').length).toBeGreaterThanOrEqual(topic === 'Skills' ? 4 : 6)
       expect(dialog.textContent).toContain(expectedAnswer)
 
       await act(async () => button.click())
@@ -253,8 +253,9 @@ describe('Panel walkthroughs', () => {
   it('keeps project and workflow how-to answers specific to their controls', () => {
     const projectSkills = renderToStaticMarkup(<IntegrationHowToGuide topic="Skills" scopeNoun="project" />)
     const workflowSkills = renderToStaticMarkup(<IntegrationHowToGuide topic="Skills" scopeNoun="workflow" />)
-    expect(projectSkills).toContain('Skills for this project')
-    expect(workflowSkills).toContain('Builder opens in chat')
+    expect(projectSkills).toContain('install or create a skill in this project')
+    expect(workflowSkills).toContain('install or create a skill in this workflow')
+    expect(workflowSkills).toContain('Builder to attach it to the steps')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="Slack" scopeNoun="project" />)).toContain('this project')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="WhatsApp" scopeNoun="workflow" />)).toContain('Workflow routes')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="Connect" scopeNoun="workflow" />)).toContain('Remote MCP URL')

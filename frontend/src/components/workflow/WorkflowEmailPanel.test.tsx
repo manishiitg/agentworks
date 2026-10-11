@@ -38,7 +38,8 @@ it.each(['Chats/Code/projects/app', '_users/alice/Chats/Code/projects/app', 'Cha
 it('retains shared-account management restrictions in the unified flow', async () => {
   access.readOnly = true
   const host = await render('Workflow/support')
-  const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account') as HTMLButtonElement
+  const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Only an admin can connect') as HTMLButtonElement
+  expect(host.querySelector('[role="note"]')?.textContent).toContain('only an administrator can connect')
   expect(button.disabled).toBe(true)
   await act(async () => button.click())
   expect(connect).not.toHaveBeenCalled()
