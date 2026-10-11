@@ -202,28 +202,6 @@ function presentationActivity(event: PollingEvent): { label: string; title: stri
 	return { label, title, destination, detail }
 }
 
-// A final response can be represented by two different protocol events during
-// a restore (for example `llm_generation_end` plus `unified_completion`). The
-// event selector normally removes that pair, but a mixed live/history tail can
-// still carry both. The conversation should never make the reader see the
-// identical reply twice, so retain just the first adjacent response card.
-function removeAdjacentDuplicateAssistantResponses(items: TranscriptItem[]): TranscriptItem[] {
-  let previousAnswer = ''
-  return items.filter((item) => {
-    if (item.kind !== 'event') return true
-    if (item.event.type === 'user_message') {
-      previousAnswer = ''
-      return true
-    }
-    const answer = assistantResponseText(item.event)
-    if (!answer) return true
-    const comparable = answer.replace(/\s+/g, ' ').trim().toLowerCase()
-    if (comparable && comparable === previousAnswer) return false
-    previousAnswer = comparable
-    return true
-  })
-}
-
 function transcriptTimestamp(event: PollingEvent): string {
   const payload = transcriptEventPayload(event)
   const rawTimestamp = event.timestamp || (typeof payload.timestamp === 'string' ? payload.timestamp : '')
@@ -1021,7 +999,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const items = useMemo<TranscriptRenderItem[]>(
-    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
+    () => withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))),
     [scoped, questions],
   )
   // Retry belongs to the latest human turn, never an older failed message

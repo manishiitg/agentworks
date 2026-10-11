@@ -40,6 +40,20 @@ function footer(host: HTMLElement) { return host.querySelector('[data-testid="tr
 function headers(host: HTMLElement) { return host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]') }
 
 describe('activity belongs to the current agent turn', () => {
+  it('renders one six-call group across duplicate native progress updates', async () => {
+    const calls = Array.from({ length: 6 }, (_, index) => [
+      event(`progress-${index}`, 'streaming_chunk', { source: 'transcript', content: 'The download finished; the full run is still in progress.' }),
+      event(`call-${index}`, 'tool_call_start', { tool_call_id: `call-${index}`, tool_name: 'execute_shell_command' }),
+      event(`result-${index}`, 'tool_call_end', { tool_call_id: `call-${index}`, tool_name: 'execute_shell_command', result: 'ok' }),
+    ]).flat()
+    const { host } = await mount({ events: [user, ...calls] })
+    const groups = host.querySelectorAll('[data-testid="terminal-clear-tool-batch-toggle"]')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].textContent).toBe('6 tool calls')
+    await act(async () => { (groups[0] as HTMLButtonElement).click() })
+    expect(host.textContent?.match(/execute_shell_command/g)).toHaveLength(6)
+  })
+
   it('keeps the header loading through idle polls and replayed older completions until the new turn ends', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const original = useChatStore.getState()
