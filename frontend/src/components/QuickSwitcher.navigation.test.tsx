@@ -40,6 +40,7 @@ afterEach(() => {
   useAuthStore.setState({ user: null, isMultiUserMode: false })
   useCommandDialogStore.getState().closeAll()
   usePanelSwitcherStore.setState({ entries: {}, toolbarMinimized: false })
+  useGlobalPresetStore.setState({ recentPresetAccessedAt: {} })
   vi.unstubAllEnvs()
 })
 
@@ -100,7 +101,7 @@ it('keeps a running scheduled Crew visible when its view-only tab has no project
   expect(host.querySelector('[data-navigation-id^="active:"]')?.textContent).toContain('Scheduled Crew')
 })
 
-it('ranks name matches before keywords, then running, current and recent work within each match class', async () => {
+it('ranks exact names first, then recency before match strength and activity, with scopes preserved', async () => {
   const { host } = await renderNavigation('  REPORT  ', undefined, true, () => {
     useProductSurfaceStore.setState({ productSurface: 'code' })
     useChatStore.setState({ activeTabId: 'current', chatTabs: {
@@ -112,11 +113,12 @@ it('ranks name matches before keywords, then running, current and recent work wi
       olderA: { tabId: 'olderA', name: 'Report A older', createdAt: 1, metadata: { agentProfileId: 'code' } },
       substring: { tabId: 'substring', name: 'Weekly Report', createdAt: 10000, metadata: { agentProfileId: 'code' } },
     } as never })
-    // A running keyword-only match must still follow every name match.
+    // The most recently opened keyword match outranks old prefix matches,
+    // but even an old exact name stays first.
     useChatStore.setState({ activeSessionsCache: [
       { session_id: 'keyword-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'keyword' },
     ] as never })
-    useGlobalPresetStore.setState({ workflowPresets: [
+    useGlobalPresetStore.setState({ recentPresetAccessedAt: { keyword: 11000 }, workflowPresets: [
       { id: 'keyword', label: 'A inventory', selectedFolder: { filepath: 'Workflow/report' } },
     ] as never })
     usePanelSwitcherStore.getState().register('code', { panels: [{ id: 'analytics', label: 'Analytics', sections: [
@@ -128,9 +130,9 @@ it('ranks name matches before keywords, then running, current and recent work wi
   const rowIds = () => [...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))
   expect(rowIds()).toEqual([
     'code:exact', 'panel:analytics:exact',
-    'code:running', 'code:current', 'code:recent', 'code:olderA', 'code:olderB',
-    'code:substring', 'panel:analytics:name',
-    'workflow:keyword', 'panel:analytics:keywords',
+    'workflow:keyword', 'code:substring', 'code:recent',
+    'code:running', 'code:current', 'code:olderA', 'code:olderB',
+    'panel:analytics:name', 'panel:analytics:keywords',
   ])
   expect(host.querySelector('[data-navigation-id="code:exact"]')?.className).toContain('bg-blue-50')
 

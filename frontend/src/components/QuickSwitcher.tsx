@@ -212,8 +212,8 @@ const itemSearchMatchRank = (item: QuickSwitcherItem, query: string): number => 
   const label = item.label.toLowerCase()
   if (label === query) return 0
   if (label.startsWith(query)) return 1
-  // Panel search also accepts words in any order. Keep those name matches
-  // ahead of matches that need a parent label, description or keyword.
+  // Panel search also accepts words in any order. At equal recency, keep
+  // name matches ahead of parent-label, description or keyword matches.
   if (label.includes(query) || (item.type === 'panel' && query.split(/\s+/).every(word => label.includes(word)))) return 2
   return 3
 }
@@ -575,7 +575,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     )
 
     filtered.sort((a, b) => {
-      const matchOrder = itemSearchMatchRank(a, q) - itemSearchMatchRank(b, q)
+      const aRank = itemSearchMatchRank(a, q)
+      const bRank = itemSearchMatchRank(b, q)
+      if ((aRank === 0) !== (bRank === 0)) return aRank === 0 ? -1 : 1
+      const recencyOrder = b.lastAccessedAt - a.lastAccessedAt
+      if (recencyOrder) return recencyOrder
+      const matchOrder = aRank - bRank
       if (matchOrder) return matchOrder
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder

@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-11 — Recency follows exact names in quick navigation (PLAT-746)
+
+Keep exact name matches first in Ctrl+K search, then order matches by their
+existing last-access time. At equal recency, prefer name prefixes, other name
+matches, then description/keyword matches; running work and the current item
+break remaining ties before alphabetical order. This replaces the earlier
+match-class-first search order so recently opened work is easier to return to.
+Blank browse ordering and panel searches with words in any order are unchanged.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 ## 2026-10-11 — Delete private Relay journals as their owning slots (PLAT-847)
 
 Before moving a deleted Relay to service-owned staging, remove its slot-owned
