@@ -106,8 +106,14 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	body := externalTestBody(t, f.call(t, "owner", "list_guidance_topics", map[string]any{}), 200)
 	topics, _ := body["topics"].([]any)
-	if len(topics) != len(externalGuidanceTopics) {
-		t.Fatalf("got %d topics, want %d", len(topics), len(externalGuidanceTopics))
+	if len(topics) < 9 {
+		t.Fatalf("got %d topics, want at least the 9 original ones", len(topics))
+	}
+	for _, raw := range topics {
+		topic, _ := raw.(map[string]any)
+		if topic["version"] == "" || topic["version"] == nil {
+			t.Fatalf("topic without a version: %v", topic)
+		}
 	}
 	body = externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "plan-change-impact"}), 200)
 	content, _ := body["content"].(string)
@@ -116,6 +122,15 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	}
 	if _, ok := body["external_note"]; !ok {
 		t.Fatal("missing external mapping note")
+	}
+	// A client holding the current version is told so without the text.
+	version, _ := body["version"].(string)
+	if version == "" {
+		t.Fatal("topic has no version")
+	}
+	same := externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "plan-change-impact", "known_version": version}), 200)
+	if same["unchanged"] != true || same["content"] != nil {
+		t.Fatalf("unchanged topic was resent: %v", same)
 	}
 	// A topic outside the external profile is rejected even though it exists
 	// in the builder reference.
@@ -224,7 +239,7 @@ func TestExternalGuidanceTopicsDiscloseUnavailableTools(t *testing.T) {
 				continue
 			}
 			covered[name] = true
-			if !externalGuidanceMentions(topic.ExternalNote, name) {
+			if !externalGuidanceMentions(externalTopicNote(topic), name) {
 				t.Errorf("topic %s names unavailable %s without disclosing it in the external note", topic.Name, name)
 			}
 		}

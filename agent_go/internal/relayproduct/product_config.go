@@ -192,3 +192,17 @@ func PlatformStoresEnabled() (bool, error) {
 	}
 	return *manifest.Execution.PlatformStores, nil
 }
+
+// ExternalSkill returns a Relay Builder skill's text for external agents, which
+// serve it as guidance. Only the skills the Relay Builder itself attaches are
+// available.
+func ExternalSkill(name string) (string, bool) {
+	if strings.Contains(name, "/") || name == "" {
+		return "", false
+	}
+	if loadProduct() != nil {
+		return "", false
+	}
+	text, ok := skills[name]
+	return text, ok
+}
