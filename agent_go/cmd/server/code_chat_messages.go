@@ -6,90 +6,20 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
 
-// Chats of one Code ask each other (PLAT-648). A Code has a main chat and
-// side chats (`<projectId>:chat:<id>`, PLAT-571), each a full Builder chat.
-// One chat lists its sibling chats and asks one (ask_project_chat). The ask
-// is a function call like any cross-product call (crew_functions.go): it gets
-// a call_id and a saved record, runs as a turn in the target chat's own
-// conversation (queued behind its current turn, visible in its tab), and the
-// target answers with return_function_result; the answer comes back to the
-// sender as the standard call [AUTO-NOTIFICATION]. Loops are stopped by the
-// shared call-chain guards, where each chat is its own participant.
-//
-// The sender and the project come from the trusted turn (its session and
-// verified workspace), never from tool arguments, and targets are read from
-// the owner's own conversation registry: only chats of the same Code, of the
-// same person (a Code is owner-only), are reachable.
+// Chats of one Code explicitly send messages to sibling chats. Delivery
+// waits behind an occupied conversation; replies are optional messages.
+// Targets come from the owner's registry and stay within this same Code.
 
 const (
 	codeChatMainName       = "main"
 	codeChatSideMarker     = ":chat:"
 	codeChatMessageMaxRune = 20000
-	// codeChatAsksPerHour caps asks between one Code's chats (owner, 2026-10-07):
-	// two chats can trade asks forever, because each answer starts a fresh call
-	// chain that the shared loop guards do not count.
-	codeChatAsksPerHour = 20
 )
-
-// codeChatAsks remembers each Code's recent asks between its chats, by call
-// id, so a joined or resubmitted ask (the same call) counts once.
-var codeChatAsks = struct {
-	sync.Mutex
-	byCode map[string][]codeChatAsk
-}{byCode: map[string][]codeChatAsk{}}
-
-type codeChatAsk struct {
-	callID string
-	at     time.Time
-}
-
-func codeChatAskKey(project codeChatProject) string { return project.OwnerID + "/" + project.ProjectID }
-
-func recentCodeChatAsksLocked(key string, now time.Time) []codeChatAsk {
-	kept := codeChatAsks.byCode[key][:0]
-	for _, ask := range codeChatAsks.byCode[key] {
-		if now.Sub(ask.at) < time.Hour {
-			kept = append(kept, ask)
-		}
-	}
-	codeChatAsks.byCode[key] = kept
-	return kept
-}
-
-// admitCodeChatAsk refuses a new ask once this Code's chats made
-// codeChatAsksPerHour asks in the last hour.
-func admitCodeChatAsk(project codeChatProject, now time.Time) error {
-	codeChatAsks.Lock()
-	defer codeChatAsks.Unlock()
-	if len(recentCodeChatAsksLocked(codeChatAskKey(project), now)) >= codeChatAsksPerHour {
-		return fmt.Errorf("refused: this Code's chats already asked each other %d times in the last hour; stop and tell the person what the chats are doing instead of asking again", codeChatAsksPerHour)
-	}
-	return nil
-}
-
-// recordCodeChatAsk counts a call once, however often it is joined or resubmitted.
-func recordCodeChatAsk(project codeChatProject, callID string, now time.Time) {
-	codeChatAsks.Lock()
-	defer codeChatAsks.Unlock()
-	key := codeChatAskKey(project)
-	for _, ask := range recentCodeChatAsksLocked(key, now) {
-		if ask.callID == callID {
-			return
-		}
-	}
-	codeChatAsks.byCode[key] = append(codeChatAsks.byCode[key], codeChatAsk{callID: callID, at: now})
-}
-
-// codeChatTurn, when set (tests), replaces the turn in the target chat.
-var codeChatTurn func(ctx context.Context, call *crewFunctionCall, text string) (internalSessionTurnResult, error)
 
 type codeChat struct {
 	Key       string // conversation key: <projectId> or <projectId>:chat:<id>
@@ -210,75 +140,6 @@ func codeChatTarget(project codeChatProject, chat codeChat, codePath string) tri
 		CrewID: project.ProjectID, CrewProfile: codeproduct.ProfileID, CrewOwner: project.OwnerID, Chat: &chat}
 }
 
-func codeChatCallTaskText(call *crewFunctionCall, message string, handoff bool) string {
-	ending := fmt.Sprintf("Chat %q is waiting for this result; it does not see this conversation.", call.CallerLabel)
-	if handoff {
-		ending = fmt.Sprintf("Chat %q handed this over and is not waiting for an answer, but still finish the call so the hand-off is recorded.", call.CallerLabel)
-	}
-	return fmt.Sprintf(`[Function call %[1]s] Chat %[2]q, another chat of this Code (same folder, same person), asks:
-
-%[3]s
-
-%[4]s Report milestones with report_function_progress(call_id=%[1]q, message=...). When you are done, call return_function_result(call_id=%[1]q, result={"answer": "<your self-contained answer>"}); if you cannot do it, call return_function_result(call_id=%[1]q, error="<why>"). Do not ask that chat back with ask_project_chat; the result reaches it on its own.`,
-		call.ID, call.CallerLabel, strings.TrimSpace(message), ending)
-}
-
-// runCodeChatCall runs a sibling chat call as a turn in the target chat's own
-// conversation. The target settles it with return_function_result; a turn
-// that ends without one settles it with its final reply as the answer. As
-// with any ask, the timeout counts from the chat's last sign of life and only
-// releases the caller; a late answer is still delivered.
-func (api *StreamingAPI) runCodeChatCall(call *crewFunctionCall, target triggerTarget, args map[string]interface{}, timeout time.Duration) {
-	hardCap := crewFunctionHardCap(timeout)
-	ctx, cancel := context.WithTimeout(internalBotRequestContext(context.Background(), call.UserID), hardCap)
-	defer cancel()
-	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
-	message, _ := args["message"].(string)
-	handoff := args["reply"] == false
-	text := codeChatCallTaskText(call, message, handoff)
-	sessionID := target.Chat.SessionID
-	var reqMap map[string]interface{}
-	if codeChatTurn == nil {
-		var err error
-		if reqMap, sessionID, err = api.codeChatTurnRequest(ctx, call.UserID, target, text, call.CallerLabel); err != nil {
-			call.settle("failed", nil, err.Error())
-			return
-		}
-	}
-	call.mu.Lock()
-	call.Status = "running"
-	call.RunID, call.RunIDs = sessionID, []string{sessionID}
-	call.mu.Unlock()
-	call.persist()
-	turnDone := make(chan struct{})
-	go api.watchAskActivity(call, sessionID, fmt.Sprintf("chat %q", call.TargetLabel), timeout, turnDone)
-	var result internalSessionTurnResult
-	var err error
-	if codeChatTurn != nil {
-		result, err = codeChatTurn(ctx, call, text)
-	} else {
-		result, err = api.startSessionInternalWithResult(ctx, reqMap, sessionID, call.UserID, nil)
-	}
-	close(turnDone)
-	if call.settled() {
-		return
-	}
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			call.settle("failed", nil, fmt.Sprintf("chat %q was still not done after %s", call.TargetLabel, hardCap))
-			return
-		}
-		call.settle("failed", nil, fmt.Sprintf("chat %q did not answer: %v", call.TargetLabel, err))
-		return
-	}
-	answer := strings.TrimSpace(result.FinalResponse)
-	if answer == "" {
-		call.settle("failed", nil, fmt.Sprintf("chat %q finished without return_function_result or a reply", call.TargetLabel))
-		return
-	}
-	call.settle("completed", map[string]interface{}{"answer": truncateTriggerTargetResult(answer)}, "")
-}
-
 // codeChatTurnRequest builds the turn in the target chat's existing
 // conversation, re-checking that it is still that chat of the same Code.
 func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string, target triggerTarget, text, fromLabel string) (map[string]interface{}, string, error) {
@@ -347,13 +208,12 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"ask_project_chat", "Ask another chat (tab) of this Code, as a function call. It runs there as a turn, after that chat's current turn if it is busy, and the person sees it in that tab; that chat answers with return_function_result. Returns a call_id and status at once; by default the result arrives in this chat as an [AUTO-NOTIFICATION], so end your turn after asking. Check it with get_function_call(call_id). Set reply=false for a hand-off you do not wait for (no notification; the call is still recorded). The other chat shares this folder but not this conversation, so make the message self-contained. Only chats of this Code are reachable.", map[string]interface{}{
+		{"ask_project_chat", "Send an explicit message to another chat (tab) of this Code. Busy chats receive it after their current turn. Returns an inbox/reply address, not a function call. The recipient chooses whether and when to reply with send_message; final chat text is not forwarded. Read messages with read_agent_messages(inbox_id). Other chats share this folder but not this conversation, so make the message self-contained.", map[string]interface{}{
 			"type": "object", "required": []string{"chat", "message"}, "properties": map[string]interface{}{
-				"chat":            map[string]interface{}{"type": "string", "description": "The chat's id or name from list_project_chats (\"main\" for the main chat)."},
-				"message":         map[string]interface{}{"type": "string", "description": "Self-contained question, request or hand-off."},
-				"reply":           map[string]interface{}{"type": "boolean", "description": "Send its result back to this chat as an [AUTO-NOTIFICATION] (default true)."},
-				"submission_id":   map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this intended ask; reuse it after an uncertain retry to get the original call_id."},
-				"timeout_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": int(triggerTargetMaxTimeout / time.Minute), "description": "How long that chat may go without activity before you stop waiting (default 60); a late answer still arrives."},
+				"chat":          map[string]interface{}{"type": "string", "description": "Chat id or name from list_project_chats."},
+				"message":       map[string]interface{}{"type": "string"},
+				"inbox_id":      map[string]interface{}{"type": "string", "description": "Existing conversation/reply address."},
+				"submission_id": map[string]interface{}{"type": "string", "maxLength": 128, "description": "Stable message ID for uncertain transport retries."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
@@ -363,14 +223,6 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				if len([]rune(message)) > codeChatMessageMaxRune {
 					return "", fmt.Errorf("message is longer than %d characters; put the detail in a file in the folder and point to it", codeChatMessageMaxRune)
-				}
-				wantReply := true
-				if value, ok := args["reply"].(bool); ok {
-					wantReply = value
-				}
-				timeout, err := triggerTargetTimeout(args["timeout_minutes"])
-				if err != nil {
-					return "", err
 				}
 				submissionID, _ := args["submission_id"].(string)
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
@@ -390,33 +242,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				caller, target := codeChatCaller(project, base), codeChatTarget(project, chat, agentProfileRuntimeWorkspace(userID, base.Path))
-				if err := admitCodeChatAsk(project, time.Now()); err != nil {
-					return "", err
-				}
-				busy := api.conversationTurnOccupied(chat.SessionID)
-				call, err := api.startCrewFunctionCall(ctx, userID, caller, target, defaultAskCrewFunction(), map[string]interface{}{"message": strings.TrimSpace(message), "reply": wantReply}, timeout, submissionID)
+				out, err := api.sendAgentMessage(ctx, userID, caller, target, strings.TrimSpace(message), stringToolArg(args, "inbox_id"), submissionID)
 				if err != nil {
 					return "", err
-				}
-				recordCodeChatAsk(project, call.ID, time.Now())
-				out := call.snapshot()
-				addFunctionCallPending(out, call)
-				select {
-				case <-call.done: // already settled (a joined or resubmitted call)
-					return jsonOut(out)
-				default:
-				}
-				if _, joined := out["joined"]; !joined && busy {
-					out["note"] = "That chat is busy; the ask runs right after its current turn."
-				}
-				if wantReply {
-					executionID, watchErr := api.startCrewFunctionWatch(QueryRequest{SelectedFolder: workspacePath}, sessionID, userID, call, timeout)
-					if watchErr != nil {
-						out["auto_notification"] = "unavailable: " + watchErr.Error() + "; poll with get_function_call"
-					} else {
-						out["auto_notification"] = map[string]interface{}{"execution_id": executionID}
-						out["next"] = "End your turn; the result arrives in this chat as an [AUTO-NOTIFICATION]."
-					}
 				}
 				return jsonOut(out)
 			}},

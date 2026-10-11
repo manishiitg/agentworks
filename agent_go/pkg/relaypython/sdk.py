@@ -18,6 +18,10 @@ def _json_write(path, value):
     temporary.replace(path)
 
 
+class ToolReconciliationError(RuntimeError):
+    """An uncertain tool outcome must stop the agent, not become model input."""
+
+
 def tool(function=None, *, description=None, schema=None):
     """Expose a Python callable to an agent; provide schema for complex inputs."""
     def decorate(fn):
@@ -97,7 +101,9 @@ class Context:
 
     async def call_agent(self, *, system_prompt, user_message=None, messages=None,
                          model=None, name=None, tools=(), skills=(), mcp=(),
-                         output_schema=None, max_turns=20):
+                         output_schema=None, max_turns=20, recovery=None):
+        if recovery not in (None, "restart"):
+            raise ValueError("Unknown agent recovery mode")
         if messages is None:
             messages = [user_message] if user_message is not None else []
         elif user_message is not None:
@@ -128,6 +134,7 @@ class Context:
                 "messages": messages, "model": model, "tools": definitions,
                 "skills": list(skills), "mcp": list(mcp), "output_schema": output_schema,
                 "max_turns": max_turns,
+                "recovery": recovery,
             })
             handled = set()
             try:
@@ -165,6 +172,8 @@ class Context:
                             json.dumps(value, allow_nan=False)
                             receipt["result"] = value
                             reply = {"output": value}
+                        except ToolReconciliationError:
+                            raise
                         except Exception as exc:
                             receipt["error"] = str(exc)
                             reply = {"error": str(exc)}

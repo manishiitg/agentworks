@@ -69,6 +69,7 @@ func externalTools() ([]externalTool, error) {
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Pulse state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
+		externalAgentMessageDefinition(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and the caller's access level.", false, true, nil)
 		for _, name := range []string{"list_files", "search_files"} {
@@ -154,14 +155,14 @@ func externalTools() ([]externalTool, error) {
 			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
 		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
-		addRun("list_schedules", "List the workflow's schedules: IDs, type, cron or calendar shape, timezone, enabled state, and groups.", false, nil)
+		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: global/product pause flags, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
 		p = page()
 		p["schedule_id"] = externalString("Schedule ID from list_schedules.")
 		p["offset"] = externalInteger(0, 1000000)
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, status, times, duration, error and run folder per run. Pass false for group lists, final responses and usage."}
 		addRun("get_schedule_runs", "Page a schedule's retained run history with limit and offset, including after schedule deletion: status, duration, run folder, errors, and webhook deploy metadata when present. Workflow runs are kept for at least 90 days.", false, p, "schedule_id")
 		addRun("trigger_schedule", "Trigger a schedule to run immediately, outside its normal timing. Requires the runs:execute scope.", true, map[string]any{"schedule_id": externalString("Schedule ID from list_schedules.")}, "schedule_id")
-		addRun("chat", "Chat with the workflow assistant in a pinned Run-mode session: ask questions, request analysis, or direct runs conversationally. Starts a new session, or continues session_id for multi-turn conversation. Requires the runs:execute scope. Pass wait_seconds to get the reply in the same call; otherwise poll runs action=status for it.", true, map[string]any{"message": externalString("The question or instruction to send."), "session_id": map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new conversation."}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the reply or a question before returning (default 0: return at once; max 25). The result then carries final_answer, or pending_inputs if the assistant asked something."}}, "message")
+		addRun("chat", "Send a conversational message to the workflow assistant. Returns an inbox delivery receipt, without call_id or automatic answer capture. The agent explicitly chooses whether and what to send back; read messages action=read with inbox_id. Requires runs:execute.", true, map[string]any{"message": externalString("Message to send."), "inbox_id": externalString("Inbox from an earlier send to continue this external conversation."), "submission_id": externalString("Unique message submission ID; reuse after uncertain delivery.")}, "message")
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
@@ -191,22 +192,22 @@ func externalTools() ([]externalTool, error) {
 		}
 		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
 		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
-		add("read_crew_file", "Read one text file from a Crew's project (crew-relative path, up to 256 KiB). Private areas are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
-		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, including the built-in ask. Requires crews:read.", false, false, crewID(nil), "crew_id")
+		add("read_crew_file", "Read a Crew project file up to 2 MiB. UTF-8 text returns content; binary files return content_base64. Private areas and symlinks are refused; larger files return a size error. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
+		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, declared internal triggers only; conversational ask uses messages. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.
 		wait := map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the result before returning a call_id to poll (default 0: return at once; max 25, proxies cut requests near 30s)."}
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
-		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions) with arguments matching its input schema. The Crew does the work in your own continuing conversation with it (never its main chat); the result is validated against the function's result schema. Returns at once with status=running and a call_id for get_crew_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the result. Repeating the same call while it runs returns the same call_id. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait, "submission_id": submission, "run_mode": map[string]any{"type": "boolean", "description": "Owner only, for testing: run this call in Run mode, as any other caller would experience it (the Crew's files read-only, output only in the call's run folder). Never grants anything."}}), "crew_id", "function")
-		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. It is your message in your own chat of that Crew (the chat your web chat, Slack DMs and WhatsApp continue; for your own Crew, its main chat), so you can chat with it and see the exchange in the app. Returns at once with status=running and a call_id for get_crew_function_call; pass wait_seconds to wait up to 25s for the answer. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait, "submission_id": submission, "chat_id": externalString("Optional: one of your side chats from manage_crew_chats (default: your main chat)."), "run_mode": map[string]any{"type": "boolean", "description": "Owner only, for testing: run this call in Run mode, as any other caller would experience it (the Crew's files read-only, output only in the call's run folder). Never grants anything."}}), "crew_id", "message")
+		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions) with arguments matching its input schema. Each new call runs in a fresh isolated execution with its own output folder. Calls run in parallel by default; when the running limit is reached, a busy error is returned without queueing. Declared output schemas use a validated result file; otherwise the final message is the result. Returns at once with status=running and a call_id for get_crew_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the result. Repeating the same call while it runs returns the same call_id. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait, "submission_id": submission, "run_mode": map[string]any{"type": "boolean", "description": "Owner only, for testing: run this call in Run mode, as any other caller would experience it (the Crew's files read-only, output only in the call's run folder). Never grants anything."}}), "crew_id", "function")
+		add("ask_crew", "Send a conversational message to a Crew. Returns inbox_id, conversation_id and message_id, not call_id. The Crew explicitly decides whether to reply; read messages action=read with inbox_id. Agent messaging off refuses incoming messages, including replies. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("Conversational message."), "inbox_id": externalString("Inbox from an earlier send; omit for a fresh external conversation."), "submission_id": submission}), "crew_id", "message")
 		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its role, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
 			"about":      map[string]any{"type": "string", "description": "Optional part of the Crew it concerns, e.g. a function or schedule name.", "maxLength": 200},
 		}), "crew_id", "suggestion")
-		add("get_crew_function_call", "Poll a call started with call_crew_function or ask_crew: status, progress, result or error, and pending_inputs. MCP clients with elicitation support may receive a question form; otherwise answer a pending request_id with reply_crew_function_call. Requires crews:read or crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function or ask_crew."), "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the call to finish; it returns as soon as it does, so a poll costs little. Default: return at once."}}, "call_id")
-		add("list_crew_function_calls", "List recent calls to a Crew's functions, newest first: which function, who called it, status, when it started and finished. The Crew's owner sees every call (not other people's arguments or results); anyone else sees only their own calls, in full. Kept in memory, so it is empty after a server restart. Requires crews:read.", false, false, crewID(map[string]any{"limit": externalInteger(1, 25)}), "crew_id")
-		add("reply_crew_function_call", "Answer a pending question on this Crew function call. Use the request_id from get_crew_function_call. Requires crews:run.", false, false, map[string]any{"call_id": externalString("Call ID from ask_crew or call_crew_function."), "request_id": externalString("Pending question ID."), "response": externalString("Answer or exact listed choice.")}, "call_id", "request_id", "response")
+		add("get_crew_function_call", "Poll an isolated trigger started with call_crew_function: status, progress, result or error, and pending_inputs. MCP clients with elicitation support may receive a question form; otherwise answer a pending request_id with reply_crew_function_call. Requires crews:read or crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function."), "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the call to finish; it returns as soon as it does, so a poll costs little. Default: return at once."}}, "call_id")
+		add("list_crew_function_calls", "List recent calls to a Crew's functions, newest first: which function, who called it, status, when it started and finished. The Crew's owner sees every call (not other people's arguments or results); anyone else sees only their own calls, in full. Saved calls and results remain readable after a server restart. Requires crews:read.", false, false, crewID(map[string]any{"limit": externalInteger(1, 25)}), "crew_id")
+		add("reply_crew_function_call", "Answer a pending question on this Crew function call. Use the request_id from get_crew_function_call. Requires crews:run.", false, false, map[string]any{"call_id": externalString("Call ID from call_crew_function."), "request_id": externalString("Pending question ID."), "response": externalString("Answer or exact listed choice.")}, "call_id", "request_id", "response")
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
@@ -289,6 +290,17 @@ func externalTools() ([]externalTool, error) {
 		// yaml order. Go defines implementations (schemas, dispatch);
 		// yaml admits them. Both mismatch directions fail here so drift
 		// between the two can never ship silently.
+		for i := range defined {
+			if defined[i].Name == "get_crew_function_call" || defined[i].Name == "get_workflow_function_call" {
+				props := defined[i].InputSchema["properties"].(map[string]any)
+				props["after"] = externalInteger(-1, 1000000000)
+				props["after_event"] = externalInteger(-1, 1000000000)
+				props["message_limit"] = externalInteger(1, 100)
+				props["file"] = externalString("Private output file name listed on this call; reads return a bounded file page.")
+				props["offset"] = externalInteger(0, 1000000000)
+				props["limit"] = externalInteger(1, 2<<20)
+			}
+		}
 		byName := make(map[string]externalTool, len(defined))
 		for _, tool := range defined {
 			byName[tool.Name] = tool
@@ -459,6 +471,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if tool.Name == "messages" {
+		api.externalAgentMessages(w, r, call.Arguments)
 		return
 	}
 	if isExternalVaultTool(tool.Name) {

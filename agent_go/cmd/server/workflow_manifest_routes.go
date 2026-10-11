@@ -182,6 +182,7 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	manifest.Kind = strings.TrimSpace(req.Kind)
 	if manifest.Kind == "relay" {
 		manifest.RelayRuntime = "python"
+		manifest.RelayDurability = "dbos"
 	}
 	manifest.Icon = strings.TrimSpace(req.Icon)
 	manifest.CreatedBy = GetUserIDFromContext(r.Context())
@@ -205,7 +206,7 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	}
 
 	if isPythonRelay(manifest) {
-		if err := initializePythonRelayWorkspace(r.Context(), req.WorkspacePath); err != nil {
+		if err := initializePythonRelayWorkspaceWithSource(r.Context(), req.WorkspacePath, defaultNativeDBOSRelaySource); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to initialize Relay: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -242,6 +243,7 @@ type UpdateWorkflowManifestRequest struct {
 	WorkspacePath              string                                       `json:"workspace_path"`
 	Label                      *string                                      `json:"label,omitempty"`
 	RelayOutputStepID          *string                                      `json:"relay_output_step_id,omitempty"`
+	RelayDurability            *string                                      `json:"relay_durability,omitempty"`
 	Icon                       *string                                      `json:"icon,omitempty"`
 	Capabilities               *WorkflowCapabilities                        `json:"capabilities,omitempty"`
 	ExecutionDefaults          *WorkflowExecutionDefaults                   `json:"execution_defaults,omitempty"`
@@ -423,6 +425,9 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			return
 		}
 		manifest.RelayOutputStepID = strings.TrimSpace(*req.RelayOutputStepID)
+	}
+	if req.RelayDurability != nil {
+		manifest.RelayDurability = strings.TrimSpace(*req.RelayDurability)
 	}
 	if req.Icon != nil {
 		manifest.Icon = strings.TrimSpace(*req.Icon)

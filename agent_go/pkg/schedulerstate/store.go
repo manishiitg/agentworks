@@ -178,6 +178,11 @@ func (s *Store) init(ctx context.Context) error {
 		`PRAGMA journal_mode=WAL`,
 		`PRAGMA busy_timeout=5000`,
 		`PRAGMA foreign_keys=ON`,
+		`CREATE TABLE IF NOT EXISTS relay_dbos_runs (
+			run_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, release_hash TEXT NOT NULL,
+			input_json TEXT NOT NULL, variables_json TEXT NOT NULL,
+			deadline TEXT NOT NULL, attempts INTEGER NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS schedule_runs (
 			run_id TEXT PRIMARY KEY,
 			scope_type TEXT NOT NULL,

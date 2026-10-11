@@ -6,6 +6,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 const fixture = vi.hoisted(() => ({
   source: 'async def run(INPUT, ctx):\n    # Keep literal escapes and blank lines.\n\n    return {"text": "a\\nb"}\n',
   paths: [] as string[],
+  durable: false,
+  native: false,
   annotations: '# @relay node {"id":"extract","type":"agent","label":"Invoice assistant","system_prompt":"Extract fields","tools":["lookup_customer"]}\n',
   openWorkspaceView: vi.fn(),
 }))
@@ -13,10 +15,10 @@ vi.mock('../../services/api', () => ({ agentApi: {
   getRunFolders: async (path: string) => ({ folders: [{ name: path.includes('RelayReleases/') ? 'relay-published' : 'relay-test', metadata: { status: 'completed' } }] }),
   getPlannerFileContent: async (path: string) => {
     fixture.paths.push(path)
-    return ({ success: true, data: { content: path.endsWith('relay.py') ? (path.includes('RelayReleases/') ? fixture.annotations.replace('"label":"Invoice assistant"', '"label":"Published graph","call":"published-extract"') : fixture.annotations) + fixture.source : path.endsWith('relay_result.json') ? '{"answer":42}' : JSON.stringify({ version: 1, status: 'completed', calls: [{ id: 'call-1', name: path.includes('RelayReleases/') ? 'published-extract' : 'extract', status: 'completed', model: 'test-model', started_at: 1791300000, output: { total: 42 }, tools: [{ name: 'lookup_customer', args: { id: 'C123' }, result: { found: true } }] }] }) } })
+    return ({ success: true, data: { content: path.endsWith('relay.py') ? fixture.native ? 'from dbos import DBOS\n@DBOS.workflow()\nasync def run(\n    INPUT,\n):\n    return await verify_order(INPUT)\n' : (path.includes('RelayReleases/') ? fixture.annotations.replace('"label":"Invoice assistant"', '"label":"Published graph","call":"published-extract"') : fixture.annotations) + fixture.source : path.endsWith('relay_result.json') ? '{"answer":42}' : JSON.stringify({ version: 1, status: 'completed', ...(fixture.native ? { durability: 'dbos', execution_model: 'native-dbos', workflow_id: 'native-run' } : {}), ...(fixture.durable ? { durability: 'dbos', attempt_number: 2 } : {}), calls: [{ id: 'call-1', checkpoint_reused: fixture.durable, name: path.includes('RelayReleases/') ? 'published-extract' : 'extract', status: 'completed', model: 'test-model', started_at: 1791300000, output: { total: 42 }, tools: [{ name: 'lookup_customer', args: { id: 'C123' }, result: { found: true } }] }] }) } })
   },
 } }))
-vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { relayReleases: async () => ({ active_version: 'v1', releases: [{ version: 'v1', workspace_path: 'RelayReleases/id/v1' }] }) } }))
+vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { relayGraph: async () => fixture.native ? ({ native: true, nodes: [{ id: 'verify-6', call: 'verify_order', type: 'agent', label: 'Check order', line: 6 }], edges: [], errors: [] }) : ({ native: false, nodes: [], edges: [], errors: [] }), relayReleases: async () => ({ active_version: 'v1', releases: [{ version: 'v1', workspace_path: 'RelayReleases/id/v1' }] }) } }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: Object.assign((selector: (state: { selectedRunFolder: null; workspaceViewRefreshToken: number }) => unknown) => selector({ selectedRunFolder: null, workspaceViewRefreshToken: 0 }), { getState: () => ({ openWorkspaceView: fixture.openWorkspaceView, setSelectedRunFolder: vi.fn() }) }) }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 // DOM wiring uses the real source parser, layout, node cards and detail panel.
@@ -33,7 +35,16 @@ import RelayPythonView from './RelayPythonView'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const host = document.createElement('div')
 const root = createRoot(host)
-afterEach(async () => { await act(async () => root.render(null)); vi.clearAllMocks(); fixture.paths.length = 0 })
+afterEach(async () => { await act(async () => root.render(null)); vi.clearAllMocks(); fixture.paths.length = 0; fixture.durable = false; fixture.native = false })
+
+it('shows recovered checkpoints and the actual process attempt in Runs', async () => {
+  fixture.durable = true
+  await act(async () => root.render(<RelayPythonView workspacePath="Workflow/python-relay" relayID="id" onBuild={() => {}} />))
+  const runs = Array.from(host.querySelectorAll('[role="tab"]')).find(button => button.textContent === 'Runs') as HTMLButtonElement
+  await act(async () => runs.click())
+  expect(host.textContent).toContain('DBOS recovery enabled · Attempt 2 · 1 checkpoints reused')
+  expect(host.textContent).toContain('Reused checkpoint')
+})
 
 it('builds the graph from source, keeps code optional, and matches recorded calls to the frozen published graph', async () => {
   await act(async () => root.render(<RelayPythonView workspacePath="Workflow/python-relay" relayID="id" onBuild={() => {}} />))
@@ -83,4 +94,16 @@ it('offers chat guidance when existing Python has no graph comments', async () =
   } finally {
     fixture.annotations = saved
   }
+})
+
+it('derives the native overview from AST inspection without requiring Relay annotations', async () => {
+  fixture.native = true
+  await act(async () => root.render(<RelayPythonView workspacePath="Workflow/native" relayID="id" onBuild={() => {}} />))
+  expect(host.textContent).toContain('Python source overview')
+  expect(host.textContent).toContain('Check order')
+  expect(host.textContent).not.toContain('Add graph in chat')
+  const code = Array.from(host.querySelectorAll('[role="tab"]')).find(button => button.textContent === 'Code') as HTMLButtonElement
+  await act(async () => code.click())
+  expect(host.querySelector('[aria-label="Relay Python source"]')?.textContent).toContain('@DBOS.workflow()')
+  expect(host.querySelector('[aria-label="Relay Python source"]')?.textContent).not.toContain('@relay')
 })

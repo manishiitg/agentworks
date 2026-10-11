@@ -33,7 +33,10 @@ export interface CrewFunctionCall {
   status: 'queued' | 'running' | 'completed' | 'failed' | string
   latest_progress?: CrewFunctionProgress
   progress?: CrewFunctionProgress[]
+  answer?: string
   result?: unknown
+  isolated_execution?: boolean
+  files?: { name: string; size: number; mime_type: string }[]
   error?: string
   started_at: string
   finished_at?: string

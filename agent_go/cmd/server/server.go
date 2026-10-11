@@ -3029,6 +3029,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// for those same session lanes. Both services are already wired so a
 	// recovered turn sees the normal runtime capabilities.
 	api.recoverConversationTurnQueue(schedulerCtx)
+	api.recoverAgentMessages()
 	if os.Getenv("SCHEDULER_ENABLED") == "false" {
 		log.Printf("[SCHEDULER] Disabled via SCHEDULER_ENABLED=false — skipping cron execution on this machine")
 	} else {
@@ -3091,6 +3092,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
 	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
+	apiRouter.HandleFunc("/relays/{id}/releases", api.handlePublishRelayRelease).Methods("POST")
+	apiRouter.HandleFunc("/relays/{id}/graph", api.handleInspectRelayGraph).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")
@@ -4285,11 +4288,25 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else {
 			releaseInputLane = api.lockSessionInputLane(sessionID)
 		}
-		defer func() {
-			if releaseInputLane != nil {
-				releaseInputLane()
+	}
+	defer func() {
+		if releaseInputLane != nil {
+			releaseInputLane()
+		}
+	}()
+	if _, delegated := r.Context().Value(agentMessageAdmissionKey{}).(func(string) (func(), error)); delegated {
+		releaseAuthority, admissionErr := acquireAgentMessageAuthority(r.Context(), sessionID)
+		if admissionErr != nil {
+			http.Error(w, admissionErr.Error(), http.StatusForbidden)
+			return
+		}
+		releaseLane := releaseInputLane
+		releaseInputLane = func() {
+			releaseAuthority()
+			if releaseLane != nil {
+				releaseLane()
 			}
-		}()
+		}
 	}
 
 	// Builder-chat single-runner constraint: only one workflow-builder chat
@@ -5831,6 +5848,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		recordSessionSecretScope(sessionID, req.secretsWorkspacePath)
 		codingAgentSecretEnvironment := make(map[string]string)
+		for _, name := range []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"} {
+			if value := common.GetSessionShellEnv(sessionID)[name]; value != "" {
+				codingAgentSecretEnvironment[name] = value
+			}
+		}
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
@@ -6353,6 +6375,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					guardWrite := []string{profileWrite}
 					guardBlocked := []string(nil)
 					crewRunOutput, ownerOutput := "", ""
+					// A trusted isolated function has one output folder. Run
+					// mode can write that folder without widening project access.
+					functionOutput := ""
+					if id := common.GetSessionShellEnv(sessionID)["FUNCTION_CALL_ID"]; id != "" {
+						if call := lookupCrewFunctionCall(id); call != nil {
+							call.mu.Lock()
+							if call.IsolatedExecution && call.SessionID == sessionID && workspacePathsMatchForUser(currentUserID, call.TargetPath, profileRoot) {
+								functionOutput = call.outputFolder() + "/"
+							}
+							call.mu.Unlock()
+						}
+					}
+					outputFolder := crewOutputFolder(profileRoot)
+					if functionOutput != "" {
+						outputFolder = functionOutput
+					}
+
 					if crewReadOnlyTurn {
 						guardWriteRoot = ""
 						guardReadOnly = append([]string{profileWrite}, profileReadOnly...)
@@ -6360,7 +6399,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// Run mode runs what the owner built and saves what it produces in the Crew's output folder,
 						// made here; the rest of the Crew stays unwritable (PLAT-756, PLAT-812). The project root is then
 						// not a blocked-write root: blocked writes win in every layer and would close the folder.
-						if folder := crewOutputFolder(profileRoot); folder != "" {
+						if folder := outputFolder; folder != "" {
 							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
 								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
 							} else {
@@ -6373,7 +6412,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					} else if isCrewProjectPath(profileRoot) {
 						// The owner's turn names the same folder, so a function saves its output in one place for everyone.
-						if folder := crewOutputFolder(profileRoot); folder != "" {
+						if folder := outputFolder; folder != "" {
 							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
 								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
 							} else {
@@ -6540,11 +6579,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// like its workshop children. Give the dedicated DB tools their
 				// trusted logical capability and hard-block raw db.sqlite/WAL/SHM
 				// access so a denied migration cannot fall back to the sqlite CLI.
-				todo_creation_human.ConfigureManagedWorkflowDBSession(
-					sessionID,
-					workflowPhaseFolder,
-					!currentUserIsReadOnly,
-				)
+				if relayChat {
+					if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly); err != nil {
+						sendError(fmt.Sprintf("Could not prepare Relay dashboard authoring: %v", err), true)
+						return
+					}
+				} else {
+					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
+				}
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
 				if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -7287,11 +7329,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
-					todo_creation_human.ConfigureManagedWorkflowDBSession(
-						sessionID,
-						phaseWorkspacePath,
-						!currentUserIsReadOnly,
-					)
+					if relayChat {
+						if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly); err != nil {
+							sendError(fmt.Sprintf("Could not prepare Relay dashboard authoring: %v", err), true)
+							return
+						}
+					} else {
+						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
+					}
 					if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}
@@ -12141,13 +12186,22 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 		},
 		ListSchedules: func(ctx context.Context, workspacePath string) (string, error) {
 			manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-			if err != nil || !found {
-				return "No workflow manifest found.", nil
+			if err != nil {
+				return "", fmt.Errorf("current workflow schedules unavailable: %w", err)
 			}
-			if len(manifest.Schedules) == 0 {
-				return "No schedules found for this workflow.", nil
+			if !found || manifest == nil {
+				return "No workflow manifest found; current schedule state is unknown.", nil
+			}
+			current := readWorkflowSchedulerState(ctx, manifest, time.Now().UTC())
+			encoded, err := json.MarshalIndent(current, "", "  ")
+			if err != nil {
+				return "", err
 			}
 			var sb strings.Builder
+			sb.WriteString("## Current scheduler state\n\n```json\n" + string(encoded) + "\n```\n\n")
+			if len(manifest.Schedules) == 0 {
+				sb.WriteString("No schedules found for this workflow.\n")
+			}
 			sb.WriteString(fmt.Sprintf("## Schedules (%d found)\n\n", len(manifest.Schedules)))
 			for _, sched := range manifest.Schedules {
 				status := "disabled"
@@ -12180,7 +12234,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 						sb.WriteString(fmt.Sprintf("- **Last Run**: %v (status: %s)\n", state.LastRunAt, state.LastStatus))
 					}
 					if state.NextRunAt != nil {
-						sb.WriteString(fmt.Sprintf("- **Next Run**: %v\n", state.NextRunAt))
+						sb.WriteString(fmt.Sprintf("- **Nominal Next Run** (runtime projection; see current scheduler state for pause blockers): %v\n", state.NextRunAt))
 					}
 					sb.WriteString(fmt.Sprintf("- **Run Count**: %d\n", state.RunCount))
 				}

@@ -118,6 +118,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	manifest.ID = workflowID
 	manifest.Kind = "relay"
 	manifest.RelayRuntime = "python"
+	manifest.RelayDurability = "dbos"
 	manifest.CreatedBy = claims.UserID
 	manifest.Access = &WorkflowAccess{Owners: []string{claims.UserID}, Readers: []string{}}
 	manifest.RelayOutputStepID = ""
@@ -138,7 +139,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
-	if err = initializePythonRelayWorkspace(r.Context(), workspace); err != nil {
+	if err = initializePythonRelayWorkspaceWithSource(r.Context(), workspace, defaultNativeDBOSRelaySource); err != nil {
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
@@ -146,7 +147,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
-	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder action=chat to build relay.py. The returned value of run(INPUT, ctx) is the API result; function: " + function + "."})
+	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder action=chat to build relay.py with native DBOS workflows and steps. The returned value of run(INPUT) is the API result; function: " + function + "."})
 }
 
 func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, selected DiscoveredWorkflow) {

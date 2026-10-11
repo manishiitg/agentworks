@@ -8,10 +8,8 @@ import (
 	"time"
 )
 
-// The pilot that motivated PLAT-697: Substack's subscriber goal went
-// unmeasured and its growth route stopped completing while publish_review runs
-// went on, and nothing flagged it. The fixture is a read-only copy of only the
-// relevant rows of the owner's data on 2026-10-07.
+// The retained fixture pins measurement staleness and actual run silence.
+// Which recorded work advances the goal is now agent judgment (PLAT-822).
 func TestSilenceAlarmOnSubstackData(t *testing.T) {
 	raw, err := os.ReadFile("testdata/substack_2026-10-07.json")
 	if err != nil {
@@ -43,15 +41,15 @@ func TestSilenceAlarmOnSubstackData(t *testing.T) {
 	}
 	for _, want := range []struct{ kind, text string }{
 		{AlarmMeasurementStale, "subscriber_delta measurement is stale: last reading 17 Sep"},
-		{AlarmGoalWorkNotMeasuring, "ran 6 time(s) since 17 Sep without a reading linked to that execution"},
-		{AlarmGoalWorkSkipped, "(growth_funnel) has not completed for 11 days (last on 26 Sep)"},
-		{AlarmGoalWorkSkipped, "publish_review ×6"},
-		{AlarmGoalWorkSkipped, "1 goal run(s) failed"},
 		{AlarmNoRun, "No workflow run for 7 days (last on 30 Sep). Its schedules are paused."},
 	} {
 		if !strings.Contains(byKind[want.kind].Message, want.text) {
 			t.Errorf("%s alarm %q lacks %q", want.kind, byKind[want.kind].Message, want.text)
 		}
+	}
+
+	if len(facts.Alarms) != 2 || len(facts.RecentRuns) == 0 {
+		t.Fatalf("expected only measurement/run-silence alarms and retained execution evidence: %+v", facts)
 	}
 
 	// A deliberate pause is reported once, then stays quiet until something

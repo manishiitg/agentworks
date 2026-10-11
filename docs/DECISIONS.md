@@ -11,11 +11,94 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Goal contribution is agent judgment, not metric-route equality (PLAT-822)
+
+Metric definitions need no executable-work mapping. Go reports source-backed DB
+measurements, freshness and actual run status/route evidence; Pulse and Builder
+judge which work advances the goal, using step outputs and the plan as needed.
+Remove route-based goal-work alarms and derived goal-work booleans/timestamps,
+including the run recorder's classification. A metric scope label or missing
+match never proves that work ran, stopped or caused progress. Measurement/run
+silence facts remain separate. Existing metric meaning and history stay intact;
+this requires no workflow migration. Older checks retain their historical text.
+[PLAT-822](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/metrics/plat-822.md).
+
+### 2026-10-10 — Managed browser socket parents belong to each deployment
+
+Deployments with a browser staging namespace use a short private socket root
+derived from that namespace, keeping each browser's existing owner boundary.
+This avoids one service account's 0700 parent blocking another deployment on
+the same host. Unconfigured local paths stay compatible. Named headless outputs
+use that browser's shared artifact folder across private temporary mounts.
+See [PLAT-850](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/browser/browser/plat-850.md).
+
+### 2026-10-10 — Relay dashboard authoring is independent of execution stores
+
+Builder chat can author dashboard HTML/assets/scripts and use an optional managed
+database while Relay execution continues without implicit DB/KB/learnings access.
+Keep raw SQLite and KB/learnings blocked; materialize authored folders before
+compiling the CLI sandbox. Dashboard remains an allowed Relay pane. Read recorded
+run summaries through `window.report.getRelayRuns`, bound to current project access
+and an explicit draft/published version, rather than exposing private run directories
+to slot shells. The reader excludes prompts, tool arguments and DBOS journals.
+Why: dashboard authoring tools must agree with filesystem and navigation policy.
+Ticket: [PLAT-847](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/reports/plat-847.md).
+
 Design references for the linked runtime decisions:
 
 - [Crew Run/Builder roles and private project links](design/project_instruction_files.md#crew-linked-runtimes).
 - [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
+
+### 2026-10-10 — Agents read current scheduler flags before pause claims (PLAT-821)
+
+Builder's `list_schedules`, the external schedule API and Pulse's goal context
+share a read-only snapshot of current global/product pause flags and individual
+schedule blockers, with observation/configuration timestamps and relevant
+pause/resume history. Historical skipped runs and earlier goal verdicts never
+establish a current pause; failed reads remain unknown. All individual schedules
+disabled remains a separate goal fact. This changes neither owner pause authority
+nor execution policy and requires no workflow migration.
+[PLAT-821](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/schedules/pause/plat-821.md).
+
+### 2026-10-10 — Connected email accounts precede incoming email fetch
+
+Show account connections and delivery settings first, then Incoming email and
+its Fetch emails action at the bottom of the shared email pane. Why: people
+should see their connections before the less frequent incoming-mail actions.
+[PLAT-848](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/gmail/plat-848.md).
+
+### 2026-10-10 — Conversations use explicit messages; functions are isolated triggers (PLAT-840, PLAT-841)
+
+General agent conversations, including Pulse and Builder, store explicit messages
+and inbox addresses. Replies are optional; final chat text is never captured as a
+reply, and there is no conversational call ID. Only agent-requested timers prompt
+follow-up turns. Incoming Crew messaging can be disabled while declared functions
+remain callable. Authenticated external clients read their inboxes with cursors.
+This supersedes PLAT-825's automatic chat-reply capture.
+[PLAT-840](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/chat/agent-messaging/plat-840.md).
+
+Declared functions are internal triggers, each in a fresh isolated execution with
+its own output folder. Parallel calls are the default (three active Crew calls);
+capacity returns busy without queueing. Stable submission keys recover accepted
+calls. Terminal answer/file validation replaces `return_function_result`, with one
+correction in the same execution for a declared JSON result. Call IDs still track
+execution status, history and authorized file reads.
+[PLAT-841](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/chat/agent-messaging/plat-841.md).
+See [the communication contract](design/agent_messaging.md).
+
+### 2026-10-10 — New Python Relays use native DBOS recovery (PLAT-842–844)
+
+New Relays start with a native DBOS workflow so completed steps can be reused
+after a process failure; uncertain external effects still need reconciliation.
+Existing saved runtimes keep their selected contract. Shared deployments install
+a pinned interpreter in a managed directory and grant the Relay sandbox read
+access only to that runtime, keeping slot write restrictions intact. Recovery
+settings stay locked when source loading or inspection fails, because the UI
+cannot establish whether the source requires DBOS.
+[Runtime](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/execution/plat-842.md),
+[creation](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/plans-contracts/plat-843.md),
+[settings](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/relays/frontend-chat/plat-844.md).
 
 ### 2026-10-10 — Anyone who can run a Crew may leave files in its `shared/<their id>/` folder (PLAT-837)
 

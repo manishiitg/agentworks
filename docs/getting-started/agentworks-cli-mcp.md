@@ -23,8 +23,48 @@ author workflows it owns or may edit; see [Workflow Builder MCP](../mcp/workflow
 for the grant and operation flow. Function calls that pause for a question
 expose it through `get_crew_function_call` or `get_workflow_function_call` and
 accept an answer through the matching `reply_*_function_call` tool.
-Pass a unique `submission_id` for each new function call or Crew ask; reuse it
-when retrying an uncertain request to recover the same call ID.
+Pass a unique `submission_id` for each new function call or message; reuse it
+when retrying an uncertain delivery. A function returns `call_id`; a conversational
+send returns an inbox acknowledgement, with optional explicit replies.
+
+## Messages and function calls
+
+Use `messages` action=send to talk to an agent, and action=read to read explicit
+replies from the returned inbox. Replies are optional. Keep `inbox_id` for this
+external agent's continuing conversation; create a different inbox for a different
+external agent using the same account. Reads use `after` / `next_cursor`, are
+non-destructive, and optionally wait up to 25 seconds. The platform never captures
+an agent's ordinary final chat answer as a conversational reply.
+
+```sh
+agentworks messages send --crew <crew-id> --message 'Please review the report' --submission-id <message-id>
+agentworks messages read --inbox <inbox-id> --after 0 --limit 20 --wait 25
+agentworks messages send --crew <crew-id> --inbox <inbox-id> --message 'Use the latest version' --submission-id <new-message-id>
+```
+
+`agentworks crews ask` and `agentworks chat ask` are conversational send aliases.
+They return `inbox_id`, `conversation_id` and `message_id`, without `call_id`.
+A Crew can disable incoming **Agent messaging**, including replies; its declared
+functions remain accessible under their own permissions.
+
+Use `functions` action=call for a defined task with checked inputs. Each invocation
+runs as an isolated internal trigger and returns `call_id`. Poll action=status for
+execution messages, final answer/result and output file metadata. Page conversation
+text separately with `after_event` (initial -1) and `next_after_event`; raw tool
+arguments/results are excluded. Calls run in
+parallel by default; a full running-call limit returns a busy error, without a queue.
+Read files with action=read and `call_id`, `file`, byte `offset` and `limit`.
+The response’s `file` page uses `content_base64` for binary data or `content` for text.
+
+```sh
+agentworks crews call --crew <crew-id> --function review_report --args '{"report":"shared/report.md"}'
+agentworks crews call-status --call <call-id> --after -1 --message-limit 20
+agentworks crews call-file --call <call-id> --file report.pdf --offset 0 --limit 262144
+```
+
+Functions with declared output schemas write their result file; other functions
+return their final text and any produced files. See [agent messaging and function
+contracts](../design/agent_messaging.md) for lifecycle and output rules.
 
 ## Legacy CLI for existing installations
 

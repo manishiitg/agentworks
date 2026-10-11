@@ -38,7 +38,7 @@ function FieldList({ label, schema }: { label: string; schema?: CrewFunctionSche
   return <div className="min-w-0 text-xs">
     <span className="font-medium text-foreground">{label}</span>{' '}
     {fields.length === 0
-      ? <span className="text-muted-foreground">{schema?.type ? schemaType(schema) : 'none'}</span>
+      ? <span className="text-muted-foreground">{schema?.type ? schemaType(schema) : label === 'Returns' ? 'final message and output files' : 'none'}</span>
       : <span className="text-muted-foreground">{fields.map(field => `${field.name}: ${field.type}${field.required ? '' : '?'}`).join(', ')}</span>}
   </div>
 }
@@ -53,7 +53,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
   const [functions, setFunctions] = useState<CrewFunction[]>([])
   const [calls, setCalls] = useState<CrewFunctionCall[]>([])
   // Caller bindings: one per Crew, workflow or external connection that has
-  // called this Crew, each with its own continuing conversation.
+  // called this Crew; each function invocation has its own isolated execution.
   const [callers, setCallers] = useState<ProductAPITrigger[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -63,7 +63,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
   const refresh = useCallback(async () => {
     try {
       const data = await crewFunctionsApi.list(scope)
-      setFunctions(data.functions ?? [])
+      setFunctions((data.functions ?? []).filter(fn => !fn.implicit))
       setCalls(data.calls ?? [])
       const triggers = await productWebhooksApi.list(scope).then(result => result.triggers).catch(() => [] as ProductAPITrigger[])
       setCallers(triggers.filter(trigger => trigger.kind === 'internal'))
@@ -96,7 +96,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
 
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4">
-      <p className="text-xs leading-relaxed text-muted-foreground">Functions are how other Crews, workflows and external tools (MCP, CLI) call this Crew. Every Crew answers the built-in <code>ask</code>; typed functions add checked inputs and results. Each caller gets its own continuing conversation here, never the main chat. Ask the Crew chat to add or change a function.</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">Functions are internal triggers with checked inputs. Each call runs in a fresh isolated chat and has its own output folder. Calls run in parallel within the running-call limit. Agent conversations use messaging separately. Ask the Crew chat to add or change a function.</p>
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       <div className="min-w-0 max-w-full space-y-2">
         {functions.map(fn => <section key={fn.name} data-testid={`crew-function-${fn.name}`} className="min-w-0 max-w-full space-y-2 overflow-hidden rounded-lg border border-border p-3">
@@ -122,12 +122,12 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
           <span className="min-w-0 truncate">{caller.name}<span className="text-muted-foreground"> · {CALLER_KIND[caller.caller?.type ?? ''] ?? 'Caller'}{caller.enabled ? '' : ' · disabled'}</span></span>
           <button type="button" disabled={busy} className={buttonClass} title="Remove this caller's binding; its next call creates a new one" onClick={() => void disconnect(caller.id)}>Disconnect</button>
         </div>)}
-        {callers.length > 0 && <p className="text-[11px] text-muted-foreground">Each caller's conversation is listed under Chats.</p>}
+        {callers.length > 0 && <p className="text-[11px] text-muted-foreground">Each accepted function call starts a separate execution; calls do not continue these bindings’ chats.</p>}
       </section>
 
       <section className="space-y-2">
         <h3 className="text-sm font-medium">Recent calls</h3>
-        {calls.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">No calls since the server started.</p>}
+        {calls.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">No recent function calls.</p>}
         {calls.map(call => {
           const open = expanded === call.call_id
           return <div key={call.call_id} data-testid={`crew-function-call-${call.call_id}`} className="min-w-0 rounded-lg border border-border">
@@ -140,6 +140,9 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
               <p className="text-muted-foreground">Started {formatTime(call.started_at)}{call.finished_at ? ` · finished ${formatTime(call.finished_at)}` : ''}</p>
               {(call.progress ?? []).length > 0 && <ul className="space-y-1">{call.progress!.map((entry, index) => <li key={index} className="text-muted-foreground">{formatTime(entry.at)} — {entry.message}{typeof entry.percent === 'number' ? ` (${entry.percent}%)` : ''}</li>)}</ul>}
               {call.error && <p className="text-destructive">{call.error}</p>}
+              {call.answer && <p className="whitespace-pre-wrap break-words">{call.answer}</p>}
+              {!!call.files?.length && <ul className="space-y-1" aria-label="Output files">{call.files.map(file => <li key={file.name} className="flex flex-wrap items-center gap-2"><code>{file.name}</code><span className="text-muted-foreground">{file.size.toLocaleString()} bytes · {file.mime_type}</span></li>)}</ul>}
+              {call.isolated_execution && <p className="text-muted-foreground">Isolated execution · <code>{call.call_id}</code></p>}
               {call.result !== undefined && call.result !== null && <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2">{JSON.stringify(call.result, null, 2)}</pre>}
             </div>}
           </div>

@@ -425,7 +425,21 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		ownerID = owner
 	}
 	var conversationBinding productConversationBinding
-	if strings.EqualFold(caller.Stamp.Type, triggerCallerCrew) {
+	functionCallID := ""
+	crewFunctionCalls.Lock()
+	for _, call := range crewFunctionCalls.m {
+		call.mu.Lock()
+		same := call.IsolatedExecution && call.RunID == runID && call.TriggerID == triggerID && call.TargetID == target.CrewID && call.SessionID == status.SessionID
+		call.mu.Unlock()
+		if same {
+			functionCallID = call.ID
+			break
+		}
+	}
+	crewFunctionCalls.Unlock()
+	if functionCallID != "" {
+		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "function", crewCallIsolatedKey(trigger.ID, functionCallID), manifest.displayTitle()+" · "+trigger.Name)
+	} else if strings.EqualFold(caller.Stamp.Type, triggerCallerCrew) {
 		// Same routing as the call itself: the owner's own call is in the
 		// Crew's chat, another person's in their own conversation.
 		if guest := crewGuestCaller(userID, ownerID); guest != "" {

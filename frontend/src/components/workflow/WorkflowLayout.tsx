@@ -135,7 +135,7 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean; pythonRelay?: boolea
   </div>
 )
 
-const RELAY_WORKSPACE_VIEWS = new Set(['flow', 'workshop', 'costs', 'execution-logs', 'files', 'identity', 'mcp', 'access'])
+const RELAY_WORKSPACE_VIEWS = new Set(['flow', 'report', 'workshop', 'costs', 'execution-logs', 'files', 'identity', 'mcp', 'access'])
 import { agentApi, workflowManifestApi } from '../../services/api'
 import {
   type ActiveSessionInfo,

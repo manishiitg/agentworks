@@ -67,7 +67,7 @@ func TestCrewFunctionResultOnlyRegistrar(t *testing.T) {
 		_ = reg.RegisterCustomTool(name, "", nil, exec, "")
 		_ = reg.RegisterCustomToolWithTimeout(name, "", nil, exec, time.Second, "")
 	}
-	if len(inner.tools) != 2 || inner.tools["return_function_result"].exec == nil || inner.tools["report_function_progress"].exec == nil {
+	if len(inner.tools) != 1 || inner.tools["return_function_result"].exec != nil || inner.tools["report_function_progress"].exec == nil {
 		t.Fatalf("registered = %v", inner.tools)
 	}
 }

@@ -29,7 +29,7 @@ export type ProjectProductConfig = {
   listsSharedProjects: boolean
   /** The "Native agent tools" (hybrid) switch. */
   hasNativeAgentToolsSetting: boolean
-  /** The Crew owner's switch for the built-in free-text ask. */
+  /** The Crew owner's switch for the agent messaging. */
   hasFreeTextAskSetting: boolean
   /** View a project opens on before the user picks one. */
   defaultView: WorkWorkspaceView

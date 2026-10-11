@@ -76,7 +76,11 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
 		// A poll that waits is cheap: it returns the moment the call finishes (PLAT-837).
-		out["next"] = fmt.Sprintf("Still running in the Crew's chat. Call get_crew_function_call with this call_id and wait_seconds=%d: it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", externalCrewMaxWaitSeconds)
+		where := "in the Crew's chat"
+		if call.IsolatedExecution {
+			where = "in its own isolated run"
+		}
+		out["next"] = fmt.Sprintf("Still running %s. Read the call again with this call_id and wait_seconds=%d (get_crew_function_call, or functions action=status): it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", where, externalCrewMaxWaitSeconds)
 	}
 	return out
 }
@@ -191,17 +195,18 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// Only this user's own calls to a Crew: a workflow call is read with
 		// get_workflow_function_call, under workflow access. Without the kind
 		// check a Crew-only token read the user's workflow results (PLAT-366).
-		owned := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser && call.TargetKind == triggerCallerCrew
+		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
+		isCrew := call.TargetKind == triggerCallerCrew && call.TargetProfileID != codeproduct.ProfileID
 		targetID := call.TargetID
 		call.mu.Unlock()
-		if !owned || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(targetID)) {
+		if !isCrew || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(targetID)) {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
 		// The caller must still be able to use that Crew now, not only when
 		// the call was made.
 		callCrew, _, _, ok := api.externalCrewResolve(ctx, claims, targetID)
-		if !ok {
+		if !ok || !mine && (name == "reply_crew_function_call" || !callCrew.OwnedByCaller) {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
@@ -210,6 +215,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			return
 		}
 		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
+		if !api.externalFunctionReadDetails(w, ctx, args, call, out) {
+			return
+		}
 		api.addCrewCallCommands(ctx, callCrew.OwnedByCaller, call, out)
 		externalJSON(w, out)
 		return
@@ -248,37 +256,24 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			return
 		}
 		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
-	case "call_crew_function", "ask_crew":
+	case "ask_crew":
+		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
+		api.externalSendMessage(w, r, args, target)
+	case "call_crew_function":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
 			externalError(w, 502, "workspace_unavailable", "Cannot read the Crew's functions.")
 			return
 		}
-		fnName, callArgs := crewFunctionAskName, map[string]interface{}{"message": str("message")}
-		if name == "call_crew_function" {
-			fnName = str("function")
-			callArgs, _ = args["args"].(map[string]interface{})
-		}
+		fnName := str("function")
+		callArgs, _ := args["args"].(map[string]interface{})
 		fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), fnName)
-		if !found && fnName == crewFunctionAskName && crewFreeTextAskOff(ctx, target) {
-			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has turned off free-text ask; call one of its functions (list_crew_functions).", label))
-			return
-		}
 		if !found {
 			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see list_crew_functions.", label, fnName))
 			return
 		}
-		// A side chat of this person's (manage_crew_chats) instead of the main one.
-		if chat, ok := api.crewAskChat(r, claims.UserID, manifest.ID, crew.Binding.WorkspacePath, str("chat_id")); !ok {
-			externalError(w, 404, "chat_not_found", "No chat with that chat_id; see manage_crew_chats list.")
-			return
-		} else if chat != nil {
-			target.Chat = chat
-			target.Label = label + " · " + chat.Name
-		}
-		// The call outlives this request; the Crew works in this user's own
-		// conversation with it.
+		// Each declared function gets a fresh isolated trigger execution.
 		callCtx := context.WithoutCancel(ctx)
 		// An owner can run a call in Run mode to see how it behaves for anyone else (PLAT-756). It only narrows the turn.
 		if runMode, _ := args["run_mode"].(bool); runMode {
@@ -287,13 +282,18 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		submissionID, _ := args["submission_id"].(string)
 		call, err := api.startCrewFunctionCall(callCtx, claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout, submissionID)
 		if err != nil {
-			externalError(w, 400, "call_refused", err.Error())
+			status := http.StatusBadRequest
+			if strings.Contains(err.Error(), "busy") {
+				status = http.StatusConflict
+			}
+			externalError(w, status, "call_refused", err.Error())
 			return
 		}
 		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
 		api.addCrewCallCommands(ctx, crew.OwnedByCaller, call, out)
 		externalJSON(w, out)
 	case "list_crew_function_calls":
+		loadExternalSavedFunctionCalls(ctx)
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(manifest.ID, claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
 	case "list_crew_functions":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
@@ -316,25 +316,26 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "result": result})
 	case "read_crew_file":
-		full, confined := confineSharedProjectPath(crew.Binding.WorkspacePath, str("path"))
-		if !confined {
+		if _, confined := confineSharedProjectPath(crew.Binding.WorkspacePath, str("path")); !confined {
 			externalError(w, 404, "not_found", "File not found or private.")
 			return
 		}
-		raw, found, err := readFileFromWorkspace(ctx, full)
-		if err != nil || !found {
+		result, err := externalFileRequest(ctx, wf.Request{Root: agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), Path: str("path"), Operation: "read"})
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		if !result.Exists {
 			externalError(w, 404, "not_found", "File not found or private.")
 			return
 		}
-		if isSharedProjectBinaryContent(raw) {
-			externalError(w, 415, "unsupported", "File is not readable as text.")
-			return
+		out := map[string]any{"crew_id": manifest.ID, "path": str("path"), "encoding": result.Encoding, "size": result.Size, "revision": result.Revision, "truncated": false}
+		if result.Encoding == "base64" {
+			out["content_base64"] = result.Content
+		} else {
+			out["content"] = result.Content
 		}
-		truncated := false
-		if len(raw) > sharedProjectFileContentCap {
-			raw, truncated = raw[:sharedProjectFileContentCap], true
-		}
-		externalJSON(w, map[string]any{"crew_id": manifest.ID, "path": str("path"), "content": raw, "truncated": truncated})
+		externalJSON(w, out)
 	default:
 		externalError(w, 404, "unknown_tool", "Tool is not exposed by this API.")
 	}
@@ -352,7 +353,7 @@ func externalCrewAccessLabel(access interface{}) interface{} {
 
 // externalCrewFunctionCalls lists recent calls to one Crew, newest first. The Crew's owner sees every call (who made it,
 // which function, when, how it ended) but not the arguments or results of other people's calls; anyone else sees only the
-// calls they made themselves, in full. The record is kept in memory, so it starts empty after a server restart.
+// calls they made themselves, in full. Saved records are loaded before listing.
 func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []map[string]any {
 	if limit <= 0 || limit > crewFunctionRecentCallsLimit {
 		limit = crewFunctionRecentCallsLimit
@@ -387,6 +388,8 @@ func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []m
 			entry["finished_at"] = call.UpdatedAt
 		}
 		if mine {
+			entry["answer"] = call.Answer
+			entry["files"] = call.Files
 			if call.Result != nil {
 				entry["result"] = call.Result
 			}

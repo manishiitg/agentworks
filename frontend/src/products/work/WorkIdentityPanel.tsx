@@ -510,17 +510,17 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
 }
 
 /**
- * Crew "Free-text ask" switch (workflow.json capabilities.free_text_ask). Off: programs (MCP, CLI, other Crews,
+ * Crew "Agent messaging" switch (workflow.json capabilities.free_text_ask). Off: programs (MCP, CLI, other Crews,
  * workflows) can call only the Crew's functions; people chatting here are not affected.
  */
 function FreeTextAskSetting({ enabled, onChange }: { enabled: boolean; onChange?: (enabled: boolean) => Promise<unknown> }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   return (
-    <SettingsCard title="Calls from programs" ariaLabel="Free-text ask">
+    <SettingsCard title="Calls from programs" ariaLabel="Agent messaging">
       <ToggleRow
-        label="Free-text ask"
-        description="Let MCP, the CLI, other Crews and workflows ask this Crew anything in free text. Off: they can call only its functions. Chatting here is not affected."
+        label="Agent messaging"
+        description="Let agents send this Crew conversational messages. Off: all incoming agent messages, including replies, are refused; declared functions remain available. Human chat here is unaffected."
         checked={enabled}
         disabled={!onChange || saving}
         disabledTitle={onChange ? 'Saving…' : 'Only the owner can change this.'}

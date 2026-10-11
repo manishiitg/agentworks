@@ -8,7 +8,7 @@ it('neither Crew nor Code shows a "Native agent tools" switch', () => {
   expect(CODE_PRODUCT.hasNativeAgentToolsSetting).toBe(false)
 })
 
-it('only a Crew shows the "Free-text ask" switch', () => {
+it('only a Crew shows the "Agent messaging" switch', () => {
   expect(CREW_PRODUCT.hasFreeTextAskSetting).toBe(true)
   expect(CODE_PRODUCT.hasFreeTextAskSetting).toBe(false)
 })

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
@@ -160,8 +159,8 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "review_pr") || !strings.Contains(out, `"ask"`) {
-		t.Fatalf("workflow functions = %s, want review_pr and the assistant ask", out)
+	if !strings.Contains(out, "review_pr") || strings.Contains(out, `"ask"`) {
+		t.Fatalf("workflow functions = %s, want only the declared review_pr trigger", out)
 	}
 	if _, err := env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "function": "review_pr", "args": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
 		t.Fatalf("missing input must fail before running: err = %v", err)
@@ -204,7 +203,7 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 	}
 	code, out := request("list_workflow_functions", map[string]any{}, WorkflowAccessOwner)
 	functions, _ := out["functions"].([]any)
-	if code != 200 || len(functions) != 2 || functions[0].(map[string]any)["name"] != "review_pr" || functions[1].(map[string]any)["name"] != "ask" {
+	if code != 200 || len(functions) != 1 || functions[0].(map[string]any)["name"] != "review_pr" {
 		t.Fatalf("list = %d %v", code, out)
 	}
 	code, out = request("call_workflow_function", map[string]any{"function": "review_pr", "args": map[string]any{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}, WorkflowAccessOwner)
@@ -221,54 +220,6 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 
 // ask on a workflow goes to its Run-mode assistant in one continuing thread
 // per caller; it never starts a run by itself.
-func TestWorkflowAskUsesCallersAssistantThread(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	// Different project owners retain a private continuing assistant chat.
-	manifest, _, _ := ReadWorkflowManifest(context.Background(), "Workflow/reports")
-	manifest.Access = &WorkflowAccess{Owners: []string{"other"}, Editors: []string{"owner"}}
-	raw, _ := json.Marshal(manifest)
-	env.mock.mu.Lock()
-	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
-	env.mock.mu.Unlock()
-	var mu sync.Mutex
-	var turns []map[string]interface{}
-	var sessions []string
-	previous := workflowAskTurn
-	workflowAskTurn = func(_ *StreamingAPI, _ context.Context, reqMap map[string]interface{}, sessionID, _ string) (internalSessionTurnResult, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		turns = append(turns, reqMap)
-		sessions = append(sessions, sessionID)
-		return internalSessionTurnResult{FinalResponse: "It reviews pull requests: review_pr(owner, repo, pr)."}, nil
-	}
-	t.Cleanup(func() { workflowAskTurn = previous })
-
-	out, err := env.alpha["list_functions"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports"})
-	if err != nil || !strings.Contains(out, `"ask"`) || !strings.Contains(out, "assistant") {
-		t.Fatalf("workflow functions = %s err=%v, want the assistant ask", out, err)
-	}
-	for i := 0; i < 2; i++ {
-		out, err = env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "function": "ask", "args": map[string]interface{}{"message": "what can you do?"}, "wait_seconds": 3})
-		if err != nil || !strings.Contains(out, "It reviews pull requests") || !strings.Contains(out, `"completed"`) {
-			t.Fatalf("ask = %s err=%v", out, err)
-		}
-	}
-	if _, err := env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "function": "ask", "args": map[string]interface{}{"message": " "}}); err == nil {
-		t.Fatal("an empty ask must be refused")
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(sessions) != 2 || sessions[0] != sessions[1] || !strings.HasPrefix(sessions[0], "wfask-") {
-		t.Fatalf("sessions = %v, want one continuing thread", sessions)
-	}
-	req := turns[0]
-	if req["pin_run_mode"] != true || req["agent_mode"] != "workflow_phase" || !strings.Contains(fmt.Sprint(req["query"]), "Alpha Bot") || !strings.Contains(fmt.Sprint(req["query"]), "submit_workflow_suggestion") {
-		t.Fatalf("assistant request = %v", req)
-	}
-	if other := workflowAskSessionID("reports", triggerCaller{Type: triggerCallerCrew, ID: "beta", ProfileID: "work"}, "owner"); other == sessions[0] {
-		t.Fatal("another caller must get its own thread")
-	}
-}
 
 // The run-start check must accept a function's own inputs (server A 2026-09-24:
 // review_pr failed with "GITHUB_OWNER is no longer allowed" because function

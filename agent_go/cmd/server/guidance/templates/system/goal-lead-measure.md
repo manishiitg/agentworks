@@ -6,18 +6,18 @@ missing, before concluding anything about the goal. A broken measure is not a
 stuck goal.
 
 **Setting it up properly** (the `measurement-plan` guide has the platform
-rules): the metric is defined with `configure_goal_metrics` (name, unit,
-direction, which route moves it); the step that already produces the number
-records it with `record_goal_observations`, once per run, scoped to that run;
-a dedicated measurement step only when no existing step can own it; the
-reading cadence matches the schedule that drives the goal (a daily route reads
-daily); the target and its date are in `soul.md`. Work with Builder to choose the best measurement for the goal, agree its
-source, formula, unit, scope and windows, and verify actual DB readings and
+rules): define the metric with `configure_goal_metrics` (meaning, source,
+unit, scope, window, freshness and direction). An ordinary workflow step or
+separate measurement route records source-backed observations at the appropriate
+cadence. No declaration of which execution drives the metric is required.
+Saved metric `route` metadata must match observations when present; it is not
+proof of executable work or goal contribution. Work with Builder to choose the
+best measurement for the goal and verify actual DB readings and
 history after implementation. Ask for a bounded repair within autonomy;
 definitions alone do not establish that measurement works.
 
 1. **What is measured.** `get_goal_metrics`: the primary metric, its unit,
-   route and how readings are made. Compare with the objective in
+   scope and how readings are made. Compare with the objective in
    `soul/soul.md`: does this number move when the goal moves?
 2. **Where readings come from.** Read source-backed DB history, independently
    of run-folder names. `run_id` identifies provenance; missing execution

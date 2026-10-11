@@ -509,6 +509,8 @@ type productWebhookMatch struct {
 	PinRunMode bool
 	// RunAsOwner: the turn is not a guest's, although another person called (a typed function; PLAT-812).
 	RunAsOwner bool
+	// FunctionCallID forces a fresh internal-trigger conversation for a typed call.
+	FunctionCallID string
 	// SharedProjectOwner comes from the source and target ownership records.
 	SharedProjectOwner bool
 	ProjectCallerPath  string
@@ -692,7 +694,9 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 	if !claimed {
 		return internalTriggerDeliveryResult{RunID: runID, DeliveryID: deliveryID, Duplicate: true, Status: existing.Status}, nil
 	}
-	if projectCallConversation(match) {
+	if match.FunctionCallID != "" {
+		match.Trigger.Message = strings.Replace(match.Trigger.Message, crewCallPrivateConversationNote, "This is a fresh isolated function execution; no earlier conversation is included.", 1)
+	} else if projectCallConversation(match) {
 		match.Trigger.Message = crewCallMessage(match.Trigger.Message, match.SharedProjectOwner)
 	}
 	message := ""
@@ -712,11 +716,17 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 		job.ProjectCaller = match.Trigger.Caller
 		job.ProjectCallerPath = match.ProjectCallerPath
 	}
-	functionCallID := ""
-	if match.Trigger.IsInternal() && strings.HasPrefix(deliveryID, "fn-") {
+	if match.FunctionCallID != "" {
+		job.Schedule.Isolated = true
+		job.AutomationKind = "function"
+		job.ConversationKey = match.FunctionCallID
+		job.ProjectCaller = nil // function isolation never depends on changing project owners
+	}
+	functionCallID := match.FunctionCallID
+	if functionCallID == "" && match.Trigger.IsInternal() && strings.HasPrefix(deliveryID, "fn-") {
 		functionCallID = deliveryID
 	}
-	_, dispatchErr := s.runWithOptions(context.Background(), job, "webhook", time.Time{}, productScheduleRunOptions{RunID: runID, Webhook: metadata, FunctionCallID: functionCallID, Detach: true, AllowQueue: true})
+	_, dispatchErr := s.runWithOptions(context.Background(), job, "webhook", time.Time{}, productScheduleRunOptions{RunID: runID, Webhook: metadata, FunctionCallID: functionCallID, Detach: true, AllowQueue: match.FunctionCallID == ""})
 	switch {
 	case dispatchErr == nil:
 		return internalTriggerDeliveryResult{RunID: runID, DeliveryID: deliveryID, Status: "accepted"}, nil
@@ -778,6 +788,17 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 	// Someone other than the owner is calling: the turn runs in the owner's
 	// namespace but as their guest, so it cannot change the Crew for them.
 	match.GuestCallerID = crewGuestCaller(call.UserID, matchUserID)
+	if call.Event == crewFunctionEvent {
+		var body struct {
+			Payload struct {
+				CallID string `json:"call_id"`
+			} `json:"payload"`
+		}
+		_ = json.Unmarshal(call.Payload, &body)
+		if fnCall := lookupCrewFunctionCall(body.Payload.CallID); fnCall != nil && fnCall.IsolatedExecution && !fnCall.FreeText && fnCall.TriggerID == call.TriggerID && fnCall.TargetID == call.ProjectID {
+			match.FunctionCallID = fnCall.ID
+		}
+	}
 	match.PinRunMode = call.PinRunMode
 	match.RunAsOwner = call.RunAsOwner && !call.PinRunMode
 	if projectCallConversation(match) {

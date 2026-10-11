@@ -98,9 +98,9 @@ func TestCrewFunctionQuestionIsBoundToCallAndRunScope(t *testing.T) {
 func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	seed := func(id, user string) {
-		call := &crewFunctionCall{ID: id, UserID: user, CallerKind: triggerCallerUser, CallerLabel: user + " connection", Function: "ask", TargetKind: triggerCallerCrew, TargetID: "beta",
-			Status: "completed", Result: map[string]any{"answer": "answer-for-" + user}, CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+	seed := func(id, user string, isolated bool) {
+		call := &crewFunctionCall{ID: id, UserID: user, CallerKind: triggerCallerUser, CallerLabel: user + " connection", Function: "review", TargetKind: triggerCallerCrew, TargetID: "beta",
+			Status: "completed", IsolatedExecution: isolated, Answer: "answer-for-" + user, Result: map[string]any{"answer": "answer-for-" + user}, Files: []structuredFunctionFile{{Name: "report.pdf", Size: 32, MIMEType: "application/pdf"}}, CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
 		crewFunctionCalls.Lock()
 		crewFunctionCalls.m[id] = call
 		crewFunctionCalls.Unlock()
@@ -110,8 +110,8 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 			crewFunctionCalls.Unlock()
 		})
 	}
-	seed("fn-list-owner", "owner")
-	seed("fn-list-someone", "someone")
+	seed("fn-list-owner", "owner", false)
+	seed("fn-list-someone", "someone", true)
 	token := func(user string) *UserClaims {
 		return &UserClaims{UserID: user, AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 	}
@@ -123,11 +123,20 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 	}
 	for _, raw := range calls {
 		call := raw.(map[string]any)
-		_, hasResult := call["result"]
 		mine := call["caller"].(map[string]any)["you"] == true
-		if hasResult != mine {
-			t.Fatalf("the owner sees a result only on their own call, got %v", call)
+		for _, field := range []string{"answer", "result", "files"} {
+			if _, present := call[field]; present != mine {
+				t.Fatalf("the list exposes %s only on the caller's own call, got %v", field, call)
+			}
 		}
+	}
+	code, detail := externalCrewRequest(t, env, token("owner"), "get_crew_function_call", map[string]any{"call_id": "fn-list-someone"})
+	if code != 200 || detail["answer"] != "answer-for-someone" || detail["result"] == nil {
+		t.Fatalf("the owner can directly read another caller's result (PLAT-841): %d %v", code, detail)
+	}
+	code, detail = externalCrewRequest(t, env, token("owner"), "get_crew_function_call", map[string]any{"call_id": "fn-list-owner"})
+	if code != 200 || detail["result"] == nil || detail["answer"] != nil {
+		t.Fatalf("a legacy call retains its original result envelope: %d %v", code, detail)
 	}
 	code, out = externalCrewRequest(t, env, token("someone"), "list_crew_function_calls", map[string]any{"crew_id": "beta"})
 	calls, _ = out["calls"].([]any)

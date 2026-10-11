@@ -135,6 +135,7 @@ type WorkflowManifest struct {
 	// same manifest, schedules, access rules, runner, and run history.
 	Kind                   string                                `json:"kind,omitempty"`
 	RelayRuntime           string                                `json:"relay_runtime,omitempty"`
+	RelayDurability        string                                `json:"relay_durability,omitempty"`
 	RelayOutputStepID      string                                `json:"relay_output_step_id,omitempty"`
 	Version                string                                `json:"version,omitempty"`
 	ContractUpgradeHistory []WorkflowContractUpgradeHistoryEntry `json:"contract_upgrade_history,omitempty"`
@@ -1080,6 +1081,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 	}
 	if m.RelayRuntime != "" && (m.Kind != "relay" || m.RelayRuntime != "python") {
 		return fmt.Errorf("relay_runtime must be python on a Relay")
+	}
+	if m.RelayDurability != "" && (!isPythonRelay(m) || m.RelayDurability != "dbos") {
+		return fmt.Errorf("relay_durability must be dbos on a Python Relay")
 	}
 	if isPythonRelay(m) && m.RelayOutputStepID != "" {
 		return fmt.Errorf("Python Relays return run(INPUT, ctx); relay_output_step_id is not supported")

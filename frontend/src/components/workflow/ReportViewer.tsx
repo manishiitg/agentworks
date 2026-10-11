@@ -113,6 +113,10 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
     }
     return {
       workspacePath,
+      getRelayRuns: async (options = {}) => {
+        const response = await api.get('/api/workflow/report-preview/relay-runs', { params: { workspace: workspacePath, ...options } })
+        return response.data
+      },
       getCosts: (options) => agentApi.getCosts(workspacePath, { ...options, view: 'summary' }),
       sendChatMessage: (...args: Parameters<ReportDataApi['sendChatMessage']>) => sendChatMessageRef.current(...args),
       query: createReportQuery(workspacePath, async body => {

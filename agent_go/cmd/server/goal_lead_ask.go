@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/manishiitg/mcpagent/executor"
@@ -15,12 +14,9 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// ask_pulse: a chat or step of the workflow talks to its Pulse. The message
-// goes into the Pulse conversation as plain text from the asking chat, and
-// Pulse's reply comes back as the answer: two agents talking, nothing more
-// (owner, 2026-10-08). It uses the function-call mechanism of ask_project_chat
-// (call id, saved record, chain guard) and an hourly cap per workflow. The
-// caller and the workflow come from the trusted session, never from arguments.
+// ask_pulse sends a conversational message to the workflow's Pulse. Replies
+// are explicit messages, never captured from the recipient's final chat turn.
+// The caller and workflow come from the trusted session, not tool arguments.
 
 const (
 	goalLeadAskCreatedBy     = "platform (goal lead)"
@@ -29,52 +25,11 @@ const (
 	goalLeadAskMaxWaitSecond = 120
 )
 
-func goalLeadAskFunction() crewFunction {
-	return crewFunction{
-		Name:        crewFunctionAskName,
-		Description: "Talk to the workflow's Pulse.",
-		InputSchema: map[string]interface{}{"type": "object", "required": []interface{}{"message"}, "properties": map[string]interface{}{
-			"message": map[string]interface{}{"type": "string"},
-		}},
-		ResultSchema: map[string]interface{}{"type": "object", "required": []interface{}{"answer"}, "properties": map[string]interface{}{
-			"answer": map[string]interface{}{"type": "string"},
-		}},
-		CreatedBy: goalLeadAskCreatedBy,
-	}
-}
-
 func isGoalLeadAsk(target triggerTarget, fn crewFunction) bool {
 	return target.Kind == triggerCallerWorkflow && target.Chat != nil && fn.CreatedBy == goalLeadAskCreatedBy
 }
 
-var goalLeadAsks = struct {
-	sync.Mutex
-	byWorkflow map[string][]time.Time
-}{byWorkflow: map[string][]time.Time{}}
-
-// admitGoalLeadAsk caps asks to one workflow's Pulse per hour: chats and
-// steps can otherwise ask it in a loop.
-func admitGoalLeadAsk(workspacePath string, now time.Time) error {
-	goalLeadAsks.Lock()
-	defer goalLeadAsks.Unlock()
-	kept := goalLeadAsks.byWorkflow[workspacePath][:0]
-	for _, at := range goalLeadAsks.byWorkflow[workspacePath] {
-		if now.Sub(at) < time.Hour {
-			kept = append(kept, at)
-		}
-	}
-	if len(kept) >= goalLeadAsksPerHour {
-		goalLeadAsks.byWorkflow[workspacePath] = kept
-		return fmt.Errorf("refused: this workflow's Pulse was asked %d times in the last hour; continue with what you have and leave the question in your result", goalLeadAsksPerHour)
-	}
-	goalLeadAsks.byWorkflow[workspacePath] = append(kept, now)
-	return nil
-}
-
-// askGoalLead sends message from callerLabel (a chat or step of the workflow
-// at workspacePath, callerSession its session) to the Pulse and waits up to
-// wait for its reply.
-func (api *StreamingAPI) askGoalLead(ctx context.Context, userID, workspacePath, callerSession, callerLabel, message string, wait time.Duration, submissionID string) (map[string]interface{}, error) {
+func (api *StreamingAPI) messageGoalLead(ctx context.Context, userID, workspacePath, callerSession, callerLabel, message, inboxID, submissionID string) (map[string]interface{}, error) {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return nil, fmt.Errorf("message is required")
@@ -86,85 +41,19 @@ func (api *StreamingAPI) askGoalLead(ctx context.Context, userID, workspacePath,
 	if err != nil || !found || manifest == nil {
 		return nil, fmt.Errorf("cannot read this workflow")
 	}
+	if !manifest.PulseEnabled() || !workflowHasSoul(ctx, workspacePath) {
+		return nil, fmt.Errorf("this workflow's Pulse is off or has no goal")
+	}
 	conv, err := ensureGoalLeadConversation(ctx, workspacePath, firstNonEmptyTrimmed(manifest.ID, workspacePath), time.Now().UTC(), false, nil)
 	if err != nil {
 		return nil, err
 	}
 	label := firstNonEmptyTrimmed(manifest.Label, workspacePath)
-	// The caller is one chat (session) of the workflow, as a sibling chat is in
-	// ask_project_chat: the workflow and its Pulse are both participants
-	// of the call chain, so the chain guard does not read the ask as a loop.
-	callerChat := &codeChat{Key: "session:" + firstNonEmptyTrimmed(callerSession, "unknown"), Name: firstNonEmptyTrimmed(callerLabel, label+" chat"), SessionID: callerSession}
+	callerChat := &codeChat{Key: "session:" + callerSession, Name: firstNonEmptyTrimmed(callerLabel, label+" chat"), SessionID: callerSession}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: callerChat.Name, Path: workspacePath, Chat: callerChat}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: workspacePath, Label: label + " Pulse", Manifest: manifest,
 		Chat: &codeChat{Key: "goal-lead", ID: "goal-lead", Name: label + " Pulse", SessionID: conv.SessionID}}
-	if err := admitGoalLeadAsk(workspacePath, time.Now()); err != nil {
-		return nil, err
-	}
-	call, err := api.startCrewFunctionCall(ctx, userID, caller, target, goalLeadAskFunction(), map[string]interface{}{"message": message}, triggerTargetDefaultTimeout, submissionID)
-	if err != nil {
-		return nil, err
-	}
-	if wait > 0 {
-		select {
-		case <-call.done:
-		case <-time.After(wait):
-		case <-ctx.Done():
-		}
-	}
-	out := call.snapshot()
-	addFunctionCallPending(out, call)
-	if out["status"] != "completed" && out["status"] != "failed" {
-		out["next"] = "Pulse is still replying. Read it later with get_function_call(call_id), or continue without it."
-		// A workflow step owns its execution, not a retained server chat. Do
-		// not redirect its reply to an unrelated Builder or parent session.
-		if _, step := stepworkflow.LookupWorkshopToolSession(callerSession); !step && callerSession != "" && !isScheduledSession(callerSession) {
-			id, watchErr := api.startCrewFunctionWatch(QueryRequest{SelectedFolder: workspacePath, PresetQueryID: manifest.ID}, callerSession, userID, call, triggerTargetDefaultTimeout)
-			if watchErr != nil {
-				out["auto_notify_error"] = watchErr.Error()
-			} else {
-				out["execution_id"], out["auto_notify"] = id, true
-				out["next"] = "Pulse is still replying. Its result will be delivered automatically to this chat."
-			}
-		}
-	}
-	return out, nil
-}
-
-// runGoalLeadAsk runs an ask as a turn in the Pulse conversation and
-// settles the call with its final reply.
-func (api *StreamingAPI) runGoalLeadAsk(call *crewFunctionCall, target triggerTarget, caller triggerLinkCaller, args map[string]interface{}, timeout time.Duration) {
-	message, _ := args["message"].(string)
-	message = strings.TrimSpace(message)
-	hardCap := crewFunctionHardCap(timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), hardCap)
-	defer cancel()
-	call.mu.Lock()
-	call.Status = "running"
-	if target.Chat != nil {
-		call.RunID, call.RunIDs = target.Chat.SessionID, []string{target.Chat.SessionID}
-	}
-	call.mu.Unlock()
-	call.persist()
-	turnDone := make(chan struct{})
-	if target.Chat != nil {
-		go api.watchAskActivity(call, target.Chat.SessionID, fmt.Sprintf("the Pulse of %q", target.Label), timeout, turnDone)
-	}
-	reply, _, err := api.runGoalLeadTurn(ctx, target.Path, goalLeadTurn{Kind: goalLeadTurnAsk, From: caller.Label, Body: message})
-	close(turnDone)
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			call.settle("failed", nil, fmt.Sprintf("the Pulse was still not done after %s", hardCap))
-			return
-		}
-		call.settle("failed", nil, fmt.Sprintf("the Pulse did not answer: %v", err))
-		return
-	}
-	if strings.TrimSpace(reply) == "" {
-		call.settle("failed", nil, "the Pulse finished without a reply")
-		return
-	}
-	call.settle("completed", map[string]interface{}{"answer": truncateTriggerTargetResult(reply)}, "")
+	return api.sendAgentMessage(ctx, userID, caller, target, message, inboxID, submissionID)
 }
 
 // Ask tool names: ask_pulse; ask_goal_lead is its old name, kept working for
@@ -192,9 +81,7 @@ func createGoalLeadAskTools() []goalLeadAskTool {
 
 // createGoalLeadAskTool is one name of the ask tool.
 func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
-	description := "Talk to this workflow's Pulse, the agent that owns the workflow's goal. Your message goes into Pulse's conversation as a message from this chat, and Pulse's reply comes back. " +
-		"Use it for anything about the goal: how it is doing, what to prioritise, why Pulse did something, or to pass on the owner's direction. Pulse is the goal expert: act on what it says unless it says the owner must decide. " +
-		"Waits up to wait_seconds (default 60) for the reply. A later reply is automatically delivered to this chat; workflow steps and scheduled execution sessions retain their own call_id to read with get_function_call. Capped per workflow per hour. Only for workflows with a goal."
+	description := "Send an explicit message to this workflow's Pulse, the agent that owns its goal. Use it to discuss progress, priorities or the owner's direction. Returns an inbox/reply address and a transport acknowledgement. Pulse chooses whether and when to reply with a message; its final chat answer is not forwarded. Read replies with read_agent_messages(inbox_id). Only for workflows with Pulse enabled and a goal."
 	if name == goalLeadAskToolAliasName {
 		description = "Old name of ask_pulse, kept for one release; use ask_pulse. " + description
 	}
@@ -205,8 +92,8 @@ func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, ma
 			"type": "object",
 			"properties": map[string]interface{}{
 				"message":       map[string]interface{}{"type": "string", "minLength": 1, "description": "Your message to Pulse, as you would write it to a colleague."},
-				"wait_seconds":  map[string]interface{}{"type": "integer", "minimum": 0, "maximum": goalLeadAskMaxWaitSecond},
-				"submission_id": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this ask; reuse it after an uncertain retry to get the original call."},
+				"inbox_id":      map[string]interface{}{"type": "string", "description": "Existing conversation/reply address, when continuing a conversation."},
+				"submission_id": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this message; reuse it after an uncertain retry to get the original acknowledgement."},
 			},
 			"required": []string{"message"},
 		}),
@@ -235,16 +122,8 @@ func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, ma
 		if !workflowHasGoal(ctx, workspacePath) {
 			return "", fmt.Errorf("this workflow's Pulse is off or has no goal yet (Pulse on and soul/soul.md)")
 		}
-		wait := 60 * time.Second
-		if raw, ok := args["wait_seconds"]; ok {
-			seconds := intToolArg(map[string]interface{}{"v": raw}, "v")
-			if seconds < 0 || seconds > goalLeadAskMaxWaitSecond {
-				return "", fmt.Errorf("wait_seconds must be 0-%d", goalLeadAskMaxWaitSecond)
-			}
-			wait = time.Duration(seconds) * time.Second
-		}
 		callerLabel := api.goalLeadAskCaller(ctx, workspacePath, sessionID, claims)
-		out, err := api.askGoalLead(ctx, claims.UserID, workspacePath, sessionID, callerLabel, stringToolArg(args, "message"), wait, stringToolArg(args, "submission_id"))
+		out, err := api.messageGoalLead(ctx, claims.UserID, workspacePath, sessionID, callerLabel, stringToolArg(args, "message"), stringToolArg(args, "inbox_id"), stringToolArg(args, "submission_id"))
 		if err != nil {
 			return "", err
 		}

@@ -248,6 +248,7 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	apiRouter.HandleFunc("/workflows/overview", api.handleGetWorkflowsOverview).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/report-preview/file", api.handleReportPreviewFile).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/costs", api.handleReportPreviewMetrics).Methods("GET")
+	apiRouter.HandleFunc("/workflow/report-preview/relay-runs", api.handleReportRelayRuns).Methods("GET")
 }
 
 // activeExecutionsReadableBy keeps the running executions on workflows

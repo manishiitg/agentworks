@@ -15,6 +15,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -212,6 +213,9 @@ func scheduleStateKey(job productScheduleJob) string {
 
 // ProductScheduleService runs product schedules for every user.
 type ProductScheduleService struct {
+	// automationTurnRunner replaces only the model boundary in trigger-path regression checks.
+	automationTurnRunner func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
+
 	api      *StreamingAPI
 	registry *agentprofiles.Registry
 
@@ -846,6 +850,10 @@ func (s *ProductScheduleService) Start(ctx context.Context) {
 }
 
 func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
+	if s.api != nil && s.api.agentProfiles != nil {
+		s.api.resumeAgentMessages()
+	}
+
 	users := map[string]struct{}{}
 	profiles := append(s.profilesWithSchedules(), s.profilesWithProjectSchedules()...)
 	for _, profile := range profiles {
@@ -1039,6 +1047,9 @@ func conversationKeyForJob(job productScheduleJob) string {
 		// A schedule set from a side chat queues with that chat, not the main one.
 		return "conversation:" + strings.TrimSpace(job.Profile.ID) + ":" + firstNonEmptyTrimmed(scheduleChatKey(job), job.ProjectID)
 	}
+	if job.AutomationKind == "function" {
+		return job.ID() + "#" + job.ConversationKey
+	}
 	return job.ID()
 }
 
@@ -1086,6 +1097,9 @@ type automationClaim struct {
 // delivery behind the live turn when options allow it.
 func (s *ProductScheduleService) claimAutomationRun(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted []func(sessionID string)) (*automationClaim, error) {
 	jobKey := job.UserID + "\x1f" + job.ID()
+	if job.AutomationKind == "function" {
+		jobKey += "#" + job.ConversationKey
+	}
 	convKey := job.UserID + "\x1f" + conversationKeyForJob(job)
 	runCtx, cancel := context.WithCancel(ctx)
 	s.mu.Lock()
@@ -1185,6 +1199,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	if options.FunctionCallID != "" {
 		runCtx = virtualtools.WithFeedbackOperation(runCtx, options.FunctionCallID)
 	}
+	if job.AutomationKind == "function" {
+		defer releaseStructuredFunctionAdmission(lookupCrewFunctionCall(options.FunctionCallID))
+	}
 	defer func() {
 		s.finishAutomationRun(jobKey, convKey)
 		cancel()
@@ -1225,6 +1242,18 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		return "", setupErr
 	}
 	sessionID := conversation.SessionID
+	var functionCall *crewFunctionCall
+	if job.AutomationKind == "function" && options.FunctionCallID != "" {
+		functionCall = lookupCrewFunctionCall(options.FunctionCallID)
+		if functionCall != nil {
+			functionCall.mu.Lock()
+			functionCall.SessionID = sessionID
+			functionCall.mu.Unlock()
+			functionCall.persist()
+			common.SetSessionShellEnv(sessionID, structuredFunctionShellEnvironment(functionCall))
+		}
+		defer retireProductCodingCLI(sessionID, "isolated function execution ended")
+	}
 	s.mu.Lock()
 	run.SessionID = sessionID
 	s.mu.Unlock()
@@ -1273,7 +1302,8 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	var runErr error
 	finalResponse := ""
 	tokenUsage := &workflowtypes.CrewRunTokenUsage{}
-	for i, message := range messages {
+	for i := 0; i < len(messages); i++ {
+		message := messages[i]
 		if err := runCtx.Err(); err != nil {
 			runErr = err
 			break
@@ -1304,7 +1334,10 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		applyAutomationCostSource(reqMap, job, runID)
 		reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, job.Profile.Name)
 		scheduleLogf("[PRODUCT-SCHEDULE] %s turn %d/%d for %s", job.ID(), i+1, len(messages), job.UserID)
-		turnResult, err := s.api.startSessionInternalWithResult(runCtx, reqMap, sessionID, job.UserID, nil)
+		if functionCall != nil {
+			functionCall.appendExecutionMessage("user", message)
+		}
+		turnResult, err := s.executeAutomationTurn(runCtx, reqMap, sessionID, job.UserID)
 		if err != nil {
 			runErr = fmt.Errorf("message %d/%d: %w", i+1, len(messages), err)
 			break
@@ -1313,6 +1346,24 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			finalResponse = strings.TrimSpace(turnResult.FinalResponse)
 		}
 		accumulateAutomationTurnUsage(s.api.costLedger, tokenUsage, turnResult.QueryID)
+		if functionCall != nil {
+			functionCall.appendExecutionMessage("assistant", turnResult.FinalResponse)
+			if i == len(messages)-1 && len(functionCall.ResultSchema) > 0 {
+				_, problems := readStructuredFunctionResult(runCtx, functionCall, finalResponse)
+				if len(problems) > 0 {
+					functionCall.mu.Lock()
+					retried := functionCall.Retried
+					functionCall.Retried = true
+					functionCall.mu.Unlock()
+					functionCall.persist()
+					if !retried {
+						messages = append(messages, "[Function output correction] The work already finished, but its required result is missing or invalid: "+strings.Join(problems, "; ")+". Do not redo the work. Write the result of the work already done to the required result file.\n"+structuredFunctionOutputInstructions(functionCall))
+					} else {
+						runErr = fmt.Errorf("function output failed validation after one correction: %s", strings.Join(problems, "; "))
+					}
+				}
+			}
+		}
 	}
 
 	status := "success"
@@ -1358,10 +1409,13 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 // Cost Analysis separates them from the person's own chatting (PLAT-702).
 func applyAutomationCostSource(reqMap map[string]interface{}, job productScheduleJob, runID string) {
 	label := strings.TrimSpace(job.Schedule.Name)
-	if job.AutomationKind == "trigger" {
+	if job.AutomationKind == "trigger" || job.AutomationKind == "function" {
 		label = "Trigger: " + firstNonEmptyTrimmed(label, job.Schedule.ID)
 	}
 	reqMap["cost_source_id"] = job.ID()
+	if job.AutomationKind == "function" {
+		reqMap["cost_source_id"] = job.ConversationKey
+	}
 	reqMap["cost_source_label"] = firstNonEmptyTrimmed(label, job.Schedule.ID)
 	reqMap["cost_source_run_id"] = runID
 }
@@ -1484,4 +1538,11 @@ func projectChatExists(ctx context.Context, userID, profileID, projectID, chatKe
 		}
 	}
 	return false
+}
+
+func (s *ProductScheduleService) executeAutomationTurn(ctx context.Context, request map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
+	if s.automationTurnRunner != nil {
+		return s.automationTurnRunner(ctx, request, sessionID, userID)
+	}
+	return s.api.startSessionInternalWithResult(ctx, request, sessionID, userID, nil)
 }

@@ -6205,7 +6205,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool: list_schedules — List schedules for this workflow
 	if err := mcpAgent.RegisterCustomTool(
 		"list_schedules",
-		"List all schedules for this workflow from workflow.json, including IDs, type, cron/calendar shape, timezone, enabled state, mode, workshop_mode, groups, and recent runtime state. Use this before update_schedule/delete_schedule/trigger_schedule/get_schedule_runs.",
+		"List all schedules for this workflow from workflow.json, including IDs, type, cron/calendar shape, timezone, enabled state, mode, workshop_mode, groups, and recent runtime state. Includes current global/product pause flags, individual blockers, observation time and relevant pause/resume history; unknown reads remain unknown. Historical skipped runs do not establish a current pause. Use this before update_schedule/delete_schedule/trigger_schedule/get_schedule_runs.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},

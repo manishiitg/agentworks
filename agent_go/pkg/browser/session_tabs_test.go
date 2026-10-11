@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 // fakeTabBrowser is a stateful stand-in for one agent-browser session: it
@@ -234,6 +236,34 @@ func TestSessionTabsGiveEachConversationItsOwnTab(t *testing.T) {
 	if urls[crewTab] != "https://crew.example/" || urls[askTab] != "https://ask.example/" {
 		t.Fatalf("one conversation moved another's page: %v", urls)
 	}
+}
+
+func TestHeadlessScreenshotUsesItsTrustedBrowserArtifactScope(t *testing.T) {
+	fake, e := setupSessionTabTest(t)
+	const owner = "preview-artifact-regression"
+	common.SetSessionBrowserNamespace(owner, "workflow-bbbbbbbbbbbbbbbb")
+	common.SetSessionFolderGuard(owner, []string{"Workflow/demo"}, []string{"Workflow/demo"})
+	session := common.SandboxBrowserSession(owner)
+	staging := browserconfig.ArtifactDirForSession(session)
+	t.Cleanup(func() {
+		common.ClearSessionShellConfig(owner)
+		clearSessionTabScope(session)
+		GetSessionTracker().Remove(session)
+		_ = os.RemoveAll(staging)
+		browserconfig.RemoveEmptySessionSocketDirs(session)
+	})
+	// The model-supplied session must not select a different artifact scope.
+	mustRunAs(t, e, owner, "screenshot", "Workflow/demo/db/reports/preview/dark.png")
+	calls, _, _ := fake.snapshot()
+	for _, call := range calls {
+		if strings.HasPrefix(call, "screenshot ") {
+			if !strings.Contains(call, staging+"/") || strings.Contains(call, browserArtifactStagingDir()+"/") {
+				t.Fatalf("screenshot used an unshared or untrusted staging directory: %s", call)
+			}
+			return
+		}
+	}
+	t.Fatalf("screenshot did not reach the browser: %v", calls)
 }
 
 func TestSessionTabsCloseOnlyClosesOwnTab(t *testing.T) {

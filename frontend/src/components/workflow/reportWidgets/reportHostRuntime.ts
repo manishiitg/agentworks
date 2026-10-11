@@ -82,7 +82,7 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
       });
     };
   }
-  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
+  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'getRelayRuns', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
     api[name] = queueCall(name);
   });
   api.openFile = function(){
@@ -463,6 +463,10 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
 
   if (!dataApi) return
 
+  const getRelayRuns = (options?: { version?: string; limit?: number }) => {
+    if (!dataApi.getRelayRuns) return Promise.reject(new Error('Relay run history is unavailable.'))
+    return dataApi.getRelayRuns(options)
+  }
   const getCosts = (costOptions?: ReportCostOptions) => getReportCosts(dataApi, costOptions)
   const renderCosts = (target: string | HTMLElement, costOptions?: ReportCostOptions) => renderReportCosts(doc, dataApi, target, costOptions)
   const getGoalMetrics = () => getReportGoalMetrics(dataApi.query)
@@ -471,7 +475,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   const renderActivity = (target: string | HTMLElement, activityOptions?: ReportActivityOptions) => renderReportActivity(doc, dataApi, target, activityOptions)
 
   win.report = {
-    getCosts, renderCosts,
+    getCosts, getRelayRuns, renderCosts,
     getGoalMetrics,
     renderGoalProgress,
     renderTable,
@@ -506,6 +510,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   // array is drained and cleared here, so it stays empty on every later
   // re-injection (data refresh, theme change).
   const realReportMethods: Record<string, ((...args: unknown[]) => unknown) | undefined> = {
+    getRelayRuns: getRelayRuns as (...args: unknown[]) => unknown,
     getCosts: getCosts as (...args: unknown[]) => unknown,
     renderCosts: renderCosts as (...args: unknown[]) => unknown,
     getGoalMetrics,

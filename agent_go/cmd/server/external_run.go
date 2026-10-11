@@ -116,47 +116,8 @@ func (api *StreamingAPI) externalRunProxy(w http.ResponseWriter, r *http.Request
 // Sessions are shared with the run tools, so one conversation can ask,
 // run, and ask about the run.
 func (api *StreamingAPI) externalChat(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
-	sessionID, persisted, ok := api.externalRunSessionSetup(w, r, args, workflow)
-	if !ok {
-		return
-	}
-	message, err := externalBuilderString(args, "message")
-	if err != nil || message == "" {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "message is required")
-		return
-	}
-	query := QueryRequest{
-		Query: message, AgentMode: "workflow_phase", PhaseID: "workflow-builder",
-		PresetQueryID: workflow.Manifest.ID, SelectedFolder: workflow.WorkspacePath,
-		PinRunMode: true, TriggeredBy: "external", SessionTitle: "External chat",
-		ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"},
-	}
-	if persisted {
-		query.RestoredConversationSessionID = sessionID
-	}
-	wait := time.Duration(externalInt(args, "wait_seconds", 0)) * time.Second
-	if wait <= 0 {
-		api.forwardRunTurn(w, r, query, sessionID, workflow)
-		return
-	}
-	if wait > time.Duration(externalCrewMaxWaitSeconds)*time.Second {
-		wait = time.Duration(externalCrewMaxWaitSeconds) * time.Second
-	}
-	// Wait for the reply (or a question) so a short question needs one call.
-	afterIndex := -1
-	if api.eventStore != nil {
-		afterIndex = api.eventStore.LastIndex(sessionID)
-	}
-	buffered := &externalBufferedResponse{}
-	api.forwardRunTurn(buffered, r, query, sessionID, workflow)
-	var started map[string]interface{}
-	if buffered.status >= 400 || json.Unmarshal(buffered.body.Bytes(), &started) != nil || started == nil {
-		buffered.flushTo(w)
-		return
-	}
-	started["session_id"] = sessionID
-	api.externalWaitForTurn(started, sessionID, afterIndex, wait)
-	externalJSON(w, started)
+	target := triggerTarget{Kind: triggerCallerWorkflow, Path: workflow.WorkspacePath, Label: firstNonEmptyTrimmed(workflow.Manifest.Label, workflow.Manifest.ID), Manifest: workflow.Manifest}
+	api.externalSendMessage(w, r, args, target)
 }
 
 func (api *StreamingAPI) forwardRunTurn(w http.ResponseWriter, r *http.Request, query QueryRequest, sessionID string, workflow DiscoveredWorkflow) {
@@ -512,7 +473,7 @@ func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Re
 			CalendarItems: len(sched.CalendarItems), ConcurrencyMode: sched.ConcurrencyMode,
 		})
 	}
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedules": schedules})
+	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "schedules": schedules, "scheduler_state": readWorkflowSchedulerState(r.Context(), manifest, time.Now().UTC())})
 }
 
 func (api *StreamingAPI) externalScheduleRuns(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {

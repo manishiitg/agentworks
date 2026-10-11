@@ -14,8 +14,8 @@ import (
 )
 
 // After-run goal facts (PLAT-697 phase 1, code only): when a workflow run with
-// a configured goal finishes, record which route it took, whether that was the
-// goal's route, and whether the run recorded a primary goal reading. Run
+// a configured goal finishes, record its actual route selections and whether
+// the run recorded a primary goal reading. Goal contribution is agent judgment. Run
 // folders rotate away; this keeps the silence alarm's history. The readings
 // themselves stay in pulse_goal_observations.
 const goalRunFactsSchema = `CREATE TABLE IF NOT EXISTS goal_run_facts (
@@ -24,7 +24,6 @@ const goalRunFactsSchema = `CREATE TABLE IF NOT EXISTS goal_run_facts (
 	started_at TEXT NOT NULL DEFAULT '',
 	status TEXT NOT NULL,
 	routes_json TEXT NOT NULL DEFAULT '[]',
-	goal_work_ran INTEGER NOT NULL DEFAULT 0,
 	goal_measured INTEGER NOT NULL DEFAULT 0,
 	recorded_at TEXT NOT NULL,
 	PRIMARY KEY (run_folder, finished_at)
@@ -77,14 +76,10 @@ func RecordGoalRunFacts(ctx context.Context, workspacePath, runFolder, status st
 	if err != nil {
 		return err
 	}
-	goalRoutes := map[string]bool{}
 	primary := []interface{}{}
 	for _, m := range metrics {
 		if m.Role == "primary" {
 			primary = append(primary, m.ID)
-			if r := strings.TrimSpace(m.Route); r != "" {
-				goalRoutes[r] = true
-			}
 		}
 	}
 	if len(primary) == 0 {
@@ -94,14 +89,6 @@ func RecordGoalRunFacts(ctx context.Context, workspacePath, runFolder, status st
 		return err
 	}
 	routes := RunRouteSelections(workspacePath, runFolder)
-	goalWorkRan := false
-	if status == "completed" {
-		for _, r := range routes {
-			if goalRoutes[r] {
-				goalWorkRan = true
-			}
-		}
-	}
 	// Measured: a primary reading from this run's folder recorded while it ran.
 	top := strings.Trim(runFolder, "/")
 	if i := strings.Index(top, "/"); i >= 0 {
@@ -114,9 +101,9 @@ func RecordGoalRunFacts(ctx context.Context, workspacePath, runFolder, status st
 		measured = 0
 	}
 	routesJSON, _ := json.Marshal(routes)
-	_, err = db.ExecContext(ctx, `INSERT OR REPLACE INTO goal_run_facts (run_folder,finished_at,started_at,status,routes_json,goal_work_ran,goal_measured,recorded_at) VALUES (?,?,?,?,?,?,?,?)`,
+	_, err = db.ExecContext(ctx, `INSERT OR REPLACE INTO goal_run_facts (run_folder,finished_at,started_at,status,routes_json,goal_measured,recorded_at) VALUES (?,?,?,?,?,?,?)`,
 		strings.Trim(runFolder, "/"), finishedAt.UTC().Format(time.RFC3339Nano), startedAt.UTC().Format(time.RFC3339Nano), status, string(routesJSON),
-		boolInt(goalWorkRan), boolInt(measured > 0), time.Now().UTC().Format(time.RFC3339Nano))
+		boolInt(measured > 0), time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 

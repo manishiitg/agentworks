@@ -19,19 +19,19 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
-// Crew functions (PLAT-357): a Crew or workflow declares typed functions in
+// Crew functions (PLAT-841): a Crew or workflow declares typed functions in
 // <target>/functions.json; other Crews and workflows call them with
 // call_function (or a generated per-function tool). Arguments and results
 // are validated against the declared schemas. A call rides the existing
 // internal-trigger binding (see trigger_link_tools.go), so it gets the same
-// durable run, turn queue, and auto-notification path as any internal trigger.
+// durable run and notification paths as any internal trigger. Each function
+// has a fresh isolated conversation and output folder; admission never queues.
 
 const (
 	crewFunctionsFileName          = "functions.json"
 	crewFunctionMaxDepth           = 4
 	crewFunctionChainBudget        = 20
 	crewFunctionProgressKeep       = 10
-	crewFunctionMaxInvalidResults  = 2
 	crewFunctionEvent              = "agentworks.function_call"
 	crewFunctionToolCategory       = "crew_function_tools"
 	crewFunctionActivityTextLimit  = 600
@@ -195,16 +195,15 @@ func defaultAskCrewFunction() crewFunction {
 }
 
 // callableFunctions is what a target offers callers. A Crew offers its
-// declared functions plus the built-in ask. A workflow offers its function
-// triggers plus ask, which goes to the workflow's assistant (never straight
-// into a run, where free text has no inputs to set).
+// declared functions. A workflow offers its function triggers. Conversational
+// asks use explicit agent messages and are never offered as implicit functions.
 func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunction, error) {
 	if target.Kind == triggerCallerWorkflow {
 		manifest, exists, err := ReadWorkflowManifest(ctx, target.Path)
 		if err != nil || !exists || manifest == nil {
 			return nil, fmt.Errorf("workflow %q is unavailable", target.Label)
 		}
-		return append(workflowFunctions(manifest), workflowAskFunction()), nil
+		return workflowFunctions(manifest), nil
 	}
 	functions, err := readCrewFunctions(ctx, target)
 	if err != nil {
@@ -214,7 +213,7 @@ func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	if target.CrewProfile == codeproduct.ProfileID {
 		return functions, nil
 	}
-	return offeredCrewFunctions(ctx, target, functions), nil
+	return functions, nil
 }
 
 // crewFreeTextAskOff reports whether the Crew's owner turned off the built-in free-text ask. A Crew whose manifest
@@ -240,28 +239,16 @@ func crewFreeTextAskOff(ctx context.Context, target triggerTarget) bool {
 	return manifest.Capabilities.FreeTextAsk != nil && !*manifest.Capabilities.FreeTextAsk
 }
 
-// offeredCrewFunctions is what a Crew offers callers: its declared functions plus the built-in ask, unless the
-// owner turned the built-in off. A declared function named ask stays: the owner wrote it.
-func offeredCrewFunctions(ctx context.Context, target triggerTarget, functions []crewFunction) []crewFunction {
-	if crewFreeTextAskOff(ctx, target) {
-		return functions
-	}
-	return withDefaultAskFunction(functions)
+// offeredCrewFunctions contains only owner-declared functions. Conversational
+// messaging is a separate capability, so toggling it never hides functions.
+func offeredCrewFunctions(_ context.Context, _ triggerTarget, functions []crewFunction) []crewFunction {
+	return functions
 }
 
 // errWorkflowFunctionsAreTriggers refuses define/delete_function on a
 // workflow: its functions are function triggers owned by its Builder.
 func errWorkflowFunctionsAreTriggers(target triggerTarget) error {
 	return fmt.Errorf("workflow %q defines its functions as function triggers in its Builder chat (manage_workflow_webhook kind=function: a route plus typed inputs bound to workflow variables); ask its Builder to add or change one", target.Label)
-}
-
-// withDefaultAskFunction returns the declared functions plus the implicit
-// ask, unless the target declared its own ask.
-func withDefaultAskFunction(functions []crewFunction) []crewFunction {
-	if _, declared := findCrewFunction(functions, crewFunctionAskName); declared {
-		return functions
-	}
-	return append(append([]crewFunction(nil), functions...), defaultAskCrewFunction())
 }
 
 func findCrewFunction(functions []crewFunction, name string) (crewFunction, bool) {
@@ -377,30 +364,37 @@ type crewFunctionCall struct {
 	CallerPath      string `json:"-"`
 	CallerLabel     string `json:"caller_label"`
 	// RunMode: the owner asked for this call to run in Run mode, to test it as another caller would see it.
-	RunMode         bool                   `json:"run_mode,omitempty"`
-	TargetKind      string                 `json:"target_kind"`
-	TargetID        string                 `json:"target_id"`
-	TargetProfileID string                 `json:"target_profile_id,omitempty"`
-	TargetLabel     string                 `json:"target_label"`
-	TargetPath      string                 `json:"target_path"`
-	Chain           []string               `json:"chain"`
-	Root            string                 `json:"root"`
-	TriggerID       string                 `json:"trigger_id"`
-	RunID           string                 `json:"run_id"`
-	RunIDs          []string               `json:"run_ids"`
-	Status          string                 `json:"status"`
-	Result          interface{}            `json:"result,omitempty"`
-	Error           string                 `json:"error,omitempty"`
-	Progress        []crewFunctionProgress `json:"progress,omitempty"`
-	InvalidResults  int                    `json:"invalid_results,omitempty"`
+	RunMode           bool                        `json:"run_mode,omitempty"`
+	TargetKind        string                      `json:"target_kind"`
+	TargetID          string                      `json:"target_id"`
+	TargetProfileID   string                      `json:"target_profile_id,omitempty"`
+	TargetLabel       string                      `json:"target_label"`
+	TargetPath        string                      `json:"target_path"`
+	Chain             []string                    `json:"chain"`
+	Root              string                      `json:"root"`
+	TriggerID         string                      `json:"trigger_id"`
+	RunID             string                      `json:"run_id"`
+	RunIDs            []string                    `json:"run_ids"`
+	Status            string                      `json:"status"`
+	Result            interface{}                 `json:"result,omitempty"`
+	Answer            string                      `json:"answer,omitempty"`
+	WorkflowRunFolder string                      `json:"workflow_run_folder,omitempty"`
+	Usage             interface{}                 `json:"usage,omitempty"`
+	SessionID         string                      `json:"session_id,omitempty"`
+	IsolatedExecution bool                        `json:"isolated_execution,omitempty"`
+	Files             []structuredFunctionFile    `json:"files,omitempty"`
+	Messages          []structuredFunctionMessage `json:"messages,omitempty"`
+	MessagesBase      int                         `json:"messages_base,omitempty"`
+	Error             string                      `json:"error,omitempty"`
+	Progress          []crewFunctionProgress      `json:"progress,omitempty"`
+	InvalidResults    int                         `json:"invalid_results,omitempty"`
 	// PartialResult / FinalReply keep what the target actually produced when
 	// the call fails on the result contract, so the caller never loses real
 	// work (e.g. test outcomes and video links) to a formatting mistake.
 	PartialResult interface{} `json:"partial_result,omitempty"`
 	FinalReply    string      `json:"final_reply,omitempty"`
 	Retried       bool        `json:"retried,omitempty"`
-	// FreeText marks the implicit ask: the result is the target's final
-	// reply ({"answer": ...}) and return_function_result is optional.
+	// FreeText is retained only to read saved records from the former builtin ask.
 	FreeText     bool                   `json:"free_text,omitempty"`
 	ResultSchema map[string]interface{} `json:"result_schema,omitempty"`
 	// TimedOut marks a call whose caller stopped waiting while the target
@@ -423,11 +417,12 @@ type crewFunctionCall struct {
 	TargetChatSession string `json:"target_chat_session,omitempty"`
 
 	// argsKey identifies the exact arguments, for joining identical calls.
-	argsKey string
-	target  triggerTarget
-	caller  triggerLinkCaller
-	done    chan struct{}
-	closed  bool
+	argsKey       string
+	target        triggerTarget
+	caller        triggerLinkCaller
+	done          chan struct{}
+	closed        bool
+	admissionHeld bool
 	// onLate tells the caller's chat about a late answer.
 	onLate func()
 	// poll is captured at start so a supervisor never reads the package
@@ -592,10 +587,14 @@ func (c *crewFunctionCall) finish(status string, result interface{}, errText str
 	}
 	c.Status, c.Result, c.Error, c.UpdatedAt = status, result, errText, time.Now().UTC()
 	withdraw := !c.TimedOut
+	if !c.TimedOut {
+		c.admissionHeld = false // a call that ended frees its Crew slot even if its run never did
+	}
 	c.closed = true
-	close(c.done)
+	done := c.done
 	c.mu.Unlock()
 	c.persist()
+	close(done)
 	if withdraw {
 		virtualtools.GetHumanFeedbackStore().WithdrawOperation(c.ID)
 	}
@@ -613,6 +612,12 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 	}
 	if c.TargetChat != "" {
 		out["target"] = map[string]interface{}{"kind": "chat", "name": c.TargetLabel, "chat": c.TargetChat}
+	}
+	if c.IsolatedExecution {
+		out["isolated_execution"] = true
+		out["answer"] = c.Answer
+		out["files"] = append([]structuredFunctionFile(nil), c.Files...)
+		out["usage"] = c.Usage
 	}
 	if c.Result != nil {
 		out["result"] = c.Result
@@ -640,56 +645,6 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 		}
 	}
 	return out
-}
-
-// joinInFlightCrewFunctionCallLocked returns an in-flight call from the same
-// caller for the same function and target with the same arguments. A caller
-// that retries a call it believes failed (a shell curl that timed out while
-// call_function was still waiting) joins the running call instead of starting
-// a duplicate run (server A 2026-09-27: one PR reviewed three times at once).
-// Needs crewFunctionCalls locked.
-func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerProfileID, callerID, callerPath, callerChat, targetKind, targetProfileID, targetID, targetPath, targetChat, function, argsKey string) *crewFunctionCall {
-	for _, call := range crewFunctionCalls.m {
-		call.mu.Lock()
-		same := !call.terminalLocked() && call.UserID == userID &&
-			call.CallerChat == callerChat && call.TargetChat == targetChat &&
-			crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(callerKind, callerProfileID, callerID) &&
-			call.TargetKind == targetKind && call.TargetID == targetID &&
-			(call.CallerProfileID != codeproduct.ProfileID || canonicalCrewWorkspaceRoot(call.CallerPath) == canonicalCrewWorkspaceRoot(callerPath)) &&
-			(targetProfileID != codeproduct.ProfileID || canonicalCrewWorkspaceRoot(call.TargetPath) == canonicalCrewWorkspaceRoot(targetPath)) &&
-			call.Function == function && call.argsKey == argsKey
-		if same {
-			call.Joined++
-			call.UpdatedAt = time.Now().UTC()
-		}
-		call.mu.Unlock()
-		if same {
-			return call
-		}
-	}
-	return nil
-}
-
-// crewFunctionFreeTextAnswer normalises an ask result to {"answer": text}:
-// a string answer passes through; any other answer (or a bare value) is kept
-// verbatim as indented JSON text.
-func crewFunctionFreeTextAnswer(result interface{}) interface{} {
-	asText := func(value interface{}) string {
-		if text, ok := value.(string); ok {
-			return text
-		}
-		encoded, err := json.MarshalIndent(value, "", "  ")
-		if err != nil {
-			return fmt.Sprint(value)
-		}
-		return string(encoded)
-	}
-	if object, ok := result.(map[string]interface{}); ok {
-		if answer, has := object["answer"]; has && len(object) == 1 {
-			return map[string]interface{}{"answer": asText(answer)}
-		}
-	}
-	return map[string]interface{}{"answer": asText(result)}
 }
 
 // crewFunctionFailureDetail renders what a failed call still produced, for
@@ -724,6 +679,9 @@ func (c *crewFunctionCall) persist() {
 }
 
 func (c *crewFunctionCall) recordPath() string {
+	if c.IsolatedExecution {
+		return "_system/function_call_records/" + c.ID + ".json"
+	}
 	if c.TargetProfileID == codeproduct.ProfileID {
 		return workspaceref.PhysicalPath(c.UserID, "chat_history", "code-peer-calls", c.ID+".json")
 	}
@@ -768,7 +726,7 @@ func (c *crewFunctionCall) targetChainKeyLocked() string {
 // of: the longest chain among in-flight calls whose target is the caller. A
 // caller that is not a specific chat (a Code's call_function) is part of the
 // chains of calls into any of its chats.
-func crewFunctionChainFor(callerKey string) (chain []string, root string) {
+func crewFunctionChainFor(callerKey string, sessionIDs ...string) (chain []string, root string) {
 	crewFunctionCalls.Lock()
 	defer crewFunctionCalls.Unlock()
 	scoped := strings.Contains(callerKey, crewFunctionChatMarker)
@@ -777,6 +735,9 @@ func crewFunctionChainFor(callerKey string) (chain []string, root string) {
 		inFlight := !call.terminalLocked()
 		targetKey := call.targetChainKeyLocked()
 		matches := targetKey == callerKey || (!scoped && crewFunctionChainBase(targetKey) == callerKey)
+		if call.IsolatedExecution && call.TargetKind == triggerCallerCrew {
+			matches = matches && len(sessionIDs) > 0 && sessionIDs[0] != "" && call.SessionID == sessionIDs[0]
+		}
 		if inFlight && matches && len(call.Chain) > len(chain) {
 			chain, root = append([]string(nil), call.Chain...), call.Root
 		}
@@ -844,42 +805,30 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 }
 
 func crewFunctionTaskText(call *crewFunctionCall, fn crewFunction, args map[string]interface{}) string {
-	if call.FreeText {
-		message, _ := args["message"].(string)
-		return fmt.Sprintf(`[Function call %[1]s] The %[2]s %[3]q asks:
-
-%[4]s
-
-Reply with your answer: your final reply in this turn is returned to the caller as the answer. For longer work, report milestones with report_function_progress(call_id=%[1]q, message=...). If you notice the same kind of ask arriving repeatedly, suggest to the user that it be exposed as a typed function (define_function).`,
-			call.ID, call.CallerKind, call.CallerLabel, strings.TrimSpace(message))
-	}
 	encodedArgs, _ := json.MarshalIndent(args, "", "  ")
-	resultShape := "any JSON value"
-	if len(fn.ResultSchema) > 0 {
-		encoded, _ := json.MarshalIndent(fn.ResultSchema, "", "  ")
-		resultShape = "JSON matching this schema:\n" + string(encoded)
-	}
 	instructions := strings.TrimSpace(fn.Instructions)
 	if instructions == "" {
 		instructions = strings.TrimSpace(fn.Description)
 	}
-	return fmt.Sprintf(`[Function call %[1]s] The %[2]s %[3]q called your function %[4]q.
+	return fmt.Sprintf(`[Function call %s] The %s %q called your function %q.
 
 What to do:
-%[5]s
+%s
 
 Arguments (validated against the function's input schema):
-%[6]s
+%s
 
-Report progress at meaningful milestones with report_function_progress(call_id=%[1]q, message=..., percent=...), so the caller can follow along without interrupting you.
-A single shell call can be cut off after about a minute. Start anything that may take longer in the background (nohup, its output to a file in the output folder, then poll that file with short calls) instead of waiting on it in one call, so the call finishes the first time.
-When you are done you MUST call return_function_result(call_id=%[1]q, result=<%[7]s>). If you cannot do it, call return_function_result(call_id=%[1]q, error="<why>"). The caller receives exactly that result, not your chat reply.`,
-		call.ID, call.CallerKind, call.CallerLabel, fn.Name, instructions, string(encodedArgs), resultShape)
+This is a fresh isolated internal trigger execution. Read the Crew's MEMORY.md and relevant skills/files before assuming information is unknown. Shared project files remain available under the owner's existing authority. Your output folder is %s; put files for this caller there. Do not assume an isolated chat isolates shared files.
+Report meaningful progress with report_function_progress(call_id=%q, message=...). Complete required work and await any background outcome required by the function before ending. Your final assistant message is automatically returned to the caller; do not call a result-return tool.
+%s`, call.ID, call.CallerKind, call.CallerLabel, fn.Name, instructions, string(encodedArgs), call.outputRelativeFolder(), call.ID, structuredFunctionOutputInstructions(call))
 }
 
 // startCrewFunctionCall validates, records and dispatches one call and
 // starts its supervisor.
 func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
+	if isBuiltinConversationalFunction(target, fn) || target.Chat != nil {
+		return nil, fmt.Errorf("conversations use send_message; call_function accepts declared internal triggers only")
+	}
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
 	}
@@ -896,12 +845,6 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// encoding/json sorts map keys, so equal arguments give equal keys.
 	argsJSON, _ := json.Marshal(args)
 	argsKey := string(argsJSON)
-	if isWorkflowAsk(target, fn) || isPersonCrewAsk(target, caller, fn) || target.Chat != nil {
-		message, _ := args["message"].(string)
-		if strings.TrimSpace(message) == "" {
-			return nil, fmt.Errorf("ask needs a message")
-		}
-	}
 	callerChat, callerChatSession, targetChat, targetChatSession := "", "", "", ""
 	if caller.Chat != nil {
 		callerChat, callerChatSession = caller.Chat.Key, caller.Chat.SessionID
@@ -924,18 +867,10 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 			return existing, err
 		}
 	}
-	crewFunctionCalls.Lock()
-	var joined *crewFunctionCall
-	if submissionID == "" {
-		joined = joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), callerChat, target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), targetChat, fn.Name, argsKey)
-	}
-	crewFunctionCalls.Unlock()
-	if joined != nil {
-		return joined, nil
-	}
 	callerKey := crewFunctionChatChainKey(crewFunctionScopedKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path)), callerChat)
 	targetKey := crewFunctionChatChainKey(crewFunctionScopedKey(target.Kind, target.CrewProfile, target.stampID(), target.Path), targetChat)
-	chain, root := crewFunctionChainFor(callerKey)
+	callerSession, _ := ctx.Value(structuredFunctionCallerSessionKey{}).(string)
+	chain, root := crewFunctionChainFor(callerKey, callerSession)
 	if len(chain) == 0 {
 		chain = []string{callerKey}
 	} else if last := chain[len(chain)-1]; last != callerKey && crewFunctionChainBase(last) != callerKey {
@@ -962,7 +897,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	triggerID := fn.TriggerID
 	// A person's ask runs in their own chat, and a sibling chat call in that
 	// chat, not through a trigger binding.
-	if target.Kind != triggerCallerWorkflow && !isPersonCrewAsk(target, caller, fn) && target.Chat == nil {
+	if target.Kind != triggerCallerWorkflow {
 		var err error
 		triggerID, _, err = api.connectTriggerTarget(ctx, userID, caller, target)
 		if err != nil {
@@ -974,14 +909,13 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		ID: id, Function: fn.Name, UserID: userID,
 		CallerKind: caller.Stamp.Type, CallerID: caller.Stamp.ID, CallerProfileID: caller.Stamp.ProfileID, CallerPath: agentProfileRuntimeWorkspace(userID, caller.Path), CallerLabel: caller.Label,
 		TargetKind: target.Kind, TargetID: target.stampID(), TargetProfileID: target.CrewProfile, TargetLabel: target.Label, TargetPath: crewFunctionRoot(ctx, target),
-		Chain: append(chain, targetKey), Root: root, TriggerID: triggerID, Status: "queued",
+		Chain: append(chain, targetKey), Root: root, TriggerID: triggerID, Status: "running", IsolatedExecution: true,
 		ResultSchema: fn.ResultSchema, CreatedAt: now, UpdatedAt: now,
-		FreeText:     fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
 		SubmissionID: submissionID, ArgumentsKey: crewFunctionArgumentsFingerprint(argsKey),
 		CallerChat: callerChat, CallerChatSession: callerChatSession, TargetChat: targetChat, TargetChatSession: targetChatSession,
 		target: target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
 		argsKey: argsKey,
-		RunMode: crewRunModeFromContext(ctx),
+		RunMode: crewRunModeFromContext(ctx), admissionHeld: target.Kind == triggerCallerCrew,
 	}
 	fromPath := caller.Path
 	if caller.Stamp.ProfileID == codeproduct.ProfileID {
@@ -1006,60 +940,36 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 			return existing, err
 		}
 	}
-	// Re-check under the same lock as the insert: two identical calls racing
-	// past the early check must still start one run.
-	if submissionID == "" {
-		if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), callerChat, target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), targetChat, fn.Name, argsKey); joined != nil {
-			crewFunctionCalls.Unlock()
-			return joined, nil
-		}
+	if err := admitStructuredFunctionLocked(call); err != nil {
+		crewFunctionCalls.Unlock()
+		return nil, err
 	}
 	crewFunctionCalls.m[id] = call
 	crewFunctionCalls.Unlock()
+	if target.Kind == triggerCallerCrew {
+		go sweepStructuredFunctionOutputs(call.TargetPath)
+	}
+	if err := persistStructuredFunctionAdmission(ctx, call); err != nil {
+		releaseStructuredFunctionAdmission(call)
+		call.finish("failed", nil, "cannot save function admission: "+err.Error())
+		return nil, fmt.Errorf("cannot save function admission: %w", err)
+	}
+	if err := writeFileToWorkspace(ctx, call.outputFolder()+"/.output", "Function outputs for "+id+"\n"); err != nil {
+		releaseStructuredFunctionAdmission(call)
+		call.finish("failed", nil, "cannot create function output folder: "+err.Error())
+		return call, nil
+	}
 	if submissionID != "" {
 		if err := saveCrewFunctionSubmission(ctx, call, caller.Stamp); err != nil {
 			// Another retry may have joined this in-memory call while the
 			// submission index was being written. Settle it so that retry's
 			// call_id cannot hang or disappear under its feet.
+			releaseStructuredFunctionAdmission(call)
 			call.finish("failed", nil, "cannot record submission_id: "+err.Error())
 			return nil, fmt.Errorf("cannot record submission_id: %w", err)
 		}
 		call.saveIndex()
 		call.persist()
-	}
-	if isPulseBuilderAsk(target, fn) {
-		// ask_builder: a turn in the workflow's Builder chat.
-		call.saveIndex()
-		call.persist()
-		go api.runPulseBuilderAsk(call, target, caller, args, timeout)
-		return call, nil
-	}
-	if isGoalLeadAsk(target, fn) {
-		// ask_pulse: a turn in the workflow's Pulse conversation.
-		call.saveIndex()
-		call.persist()
-		go api.runGoalLeadAsk(call, target, caller, args, timeout)
-		return call, nil
-	}
-	if isWorkflowAsk(target, fn) {
-		message, _ := args["message"].(string)
-		call.saveIndex()
-		call.persist()
-		go api.runWorkflowAsk(call, target, caller, message, timeout)
-		return call, nil
-	}
-	if isPersonCrewAsk(target, caller, fn) {
-		message, _ := args["message"].(string)
-		call.saveIndex()
-		call.persist()
-		go api.runCrewOwnChatAsk(call, target, strings.TrimSpace(message), timeout)
-		return call, nil
-	}
-	if target.Chat != nil {
-		call.saveIndex()
-		call.persist()
-		go api.runCodeChatCall(call, target, args, timeout)
-		return call, nil
 	}
 	var delivery internalTriggerDeliveryResult
 	var err error
@@ -1077,15 +987,11 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		delivery, err = api.dispatchTargetTrigger(ctx, userID, caller, target, triggerID, id, crewFunctionEvent, body)
 	}
 	if err != nil {
-		if submissionID != "" {
-			call.finish("failed", nil, err.Error())
-			return call, nil
-		}
-		crewFunctionCalls.Lock()
-		delete(crewFunctionCalls.m, id)
-		crewFunctionCalls.Unlock()
-		return nil, err
+		releaseStructuredFunctionAdmission(call)
+		call.finish("failed", nil, err.Error())
+		return call, nil
 	}
+
 	call.mu.Lock()
 	call.RunID, call.RunIDs = delivery.RunID, []string{delivery.RunID}
 	call.mu.Unlock()
@@ -1096,9 +1002,8 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 }
 
 // superviseCrewFunctionCall watches the call's trigger run. A workflow run's
-// outcome is the result. A Crew run must deliver its result through
-// return_function_result; one that ends without it gets one retry turn,
-// then the call fails.
+// outcome is the result. Crew file results are checked before the isolated
+// execution ends, with at most one correction turn in the same session.
 //
 // The timeout counts from the target's last sign of life (a progress report
 // or any event in its session), bounded by crewFunctionHardCap. When it
@@ -1130,6 +1035,7 @@ func (api *StreamingAPI) superviseCrewFunctionCall(call *crewFunctionCall, timeo
 				call.Status = "running"
 			}
 			call.mu.Unlock()
+			captureStructuredFunctionRunState(call, state)
 			if state.Terminal {
 				if api.settleCrewFunctionRun(ctx, call, state) {
 					return
@@ -1194,73 +1100,42 @@ func (api *StreamingAPI) settleCrewFunctionRun(ctx context.Context, call *crewFu
 	if call.settled() {
 		return true
 	}
-	if call.TargetKind == triggerCallerWorkflow {
-		if state.Failed {
-			call.settle("failed", nil, truncateTriggerTargetResult(state.Result))
-			return true
-		}
-		if call.FreeText {
-			call.settle("completed", map[string]interface{}{"answer": truncateTriggerTargetResult(state.Result)}, "")
-			return true
-		}
-		var decoded interface{}
-		if json.Unmarshal([]byte(state.Result), &decoded) != nil {
-			decoded = state.Result
-		}
-		call.settle("completed", decoded, "")
-		return true
-	}
-	// Give a result delivered at the very end of the turn a moment to land.
-	time.Sleep(minDuration(call.poll, 2*time.Second))
-	if call.settled() {
-		return true
-	}
 	if state.Failed {
+		call.mu.Lock()
+		call.Answer = state.Result
+		if status, ok := state.Raw.(productWebhookRunStatus); ok {
+			call.Answer = status.FinalResponse
+			call.Usage = status.Usage
+			call.SessionID = status.SessionID
+		}
+		call.FinalReply = call.Answer
+		call.PartialResult = call.Answer
+		call.mu.Unlock()
 		call.settle("failed", nil, fmt.Sprintf("%s %q run ended %s: %s", call.TargetKind, call.TargetLabel, state.Status, truncateTriggerTargetResult(state.Result)))
 		return true
 	}
-	if call.FreeText {
-		answer := strings.TrimSpace(state.Result)
-		if answer == "" {
-			call.settle("failed", nil, "the target finished without a reply")
-			return true
-		}
-		call.settle("completed", map[string]interface{}{"answer": truncateTriggerTargetResult(answer)}, "")
-		return true
-	}
 	call.mu.Lock()
-	retried := call.Retried
-	call.Retried = true
+	call.Answer = state.Result
+	call.FinalReply = state.Result
+	call.SessionID = firstNonEmptyTrimmed(crewTargetRunSessionID(state), call.SessionID)
+	if status, ok := state.Raw.(productWebhookRunStatus); ok {
+		call.Usage = status.Usage
+	}
 	call.mu.Unlock()
-	if retried {
-		reason := "the target finished without returning a valid result"
-		if final := strings.TrimSpace(state.Result); final != "" {
-			call.mu.Lock()
-			call.FinalReply = final
-			call.mu.Unlock()
-			reason += "; its final reply is included"
-		}
-		call.settle("failed", nil, reason)
-		return true
+	result, problems := readStructuredFunctionResult(ctx, call, state.Result)
+	if len(problems) > 0 {
+		call.mu.Lock()
+		call.PartialResult = state.Result
+		call.mu.Unlock()
+		call.settle("failed", nil, "result does not match the declared schema: "+strings.Join(problems, "; "))
+	} else {
+		files, _ := listStructuredFunctionFiles(call)
+		call.mu.Lock()
+		call.Files = files
+		call.mu.Unlock()
+		call.settle("completed", result, "")
 	}
-	retry := map[string]interface{}{
-		"task": fmt.Sprintf("[Function call %[1]s — result missing] You finished the %[2]q call from %[3]q without calling return_function_result. Call return_function_result(call_id=%[1]q, result=...) now with the result of the work you already did (or error=\"...\" if it failed). Do not redo the work.", call.ID, call.Function, call.CallerLabel),
-		"from": map[string]interface{}{"kind": call.CallerKind, "name": call.CallerLabel},
-		"payload": map[string]interface{}{
-			"function": call.Function, "call_id": call.ID, "retry": true,
-		},
-	}
-	delivery, err := api.dispatchTargetTrigger(ctx, call.UserID, call.caller, call.target, call.TriggerID, call.ID+"-retry", crewFunctionEvent, retry)
-	if err != nil {
-		call.settle("failed", nil, "the target finished without a result and the retry could not be sent: "+err.Error())
-		return true
-	}
-	call.mu.Lock()
-	call.RunID = delivery.RunID
-	call.RunIDs = append(call.RunIDs, delivery.RunID)
-	call.mu.Unlock()
-	call.persist()
-	return false
+	return true
 }
 
 func minDuration(a, b time.Duration) time.Duration {
@@ -1444,6 +1319,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	if api == nil || api.scheduler == nil || api.productSchedules == nil {
 		return nil
 	}
+	if err := api.registerAgentMessagingTools(registrar, userID, sessionID, parentReq, resolveCaller, declare); err != nil {
+		return err
+	}
 	claims := &UserClaims{UserID: strings.TrimSpace(userID)}
 	withClaims := func(ctx context.Context) context.Context {
 		copy := *claims
@@ -1477,7 +1355,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			}
 			return "", fmt.Errorf("%s %q has no function %q; it has: %s", target.Kind, target.Label, function, strings.Join(crewFunctionNames(functions), ", "))
 		}
-		call, err := api.startCrewFunctionCall(ctx, userID, caller, target, fn, args, timeout, submissionID)
+		call, err := api.startCrewFunctionCall(context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID), userID, caller, target, fn, args, timeout, submissionID)
 		if err != nil {
 			return "", err
 		}
@@ -1638,7 +1516,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target works in its own chat and returns a result validated against its result schema. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target starts a fresh isolated trigger execution and returns its final message plus file outputs, validated when a result schema is declared. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
@@ -1686,7 +1564,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		id, _ := args["call_id"].(string)
 		call := lookupCrewFunctionCall(id)
 		if call == nil {
-			return nil, caller, fmt.Errorf("unknown function call %q (calls are tracked while the server runs)", id)
+			return nil, caller, fmt.Errorf("unknown function call %q (saved call history is retained across restarts)", id)
 		}
 		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
 			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
@@ -1748,7 +1626,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	callIDSchema := map[string]interface{}{"type": "string", "description": "call_id from call_function, or from the [Function call ...] task you received."}
 
 	if err := register("get_function_call", "Check a function call you made: status, result or error, pending_inputs, the target's latest progress reports, and a short tail of what the target is doing right now. Answer a pending request with reply_function_call. Does not interrupt the target.", map[string]interface{}{
-		"type": "object", "required": []string{"call_id"}, "properties": map[string]interface{}{"call_id": callIDSchema},
+		"type": "object", "required": []string{"call_id"}, "properties": map[string]interface{}{"call_id": callIDSchema, "file": map[string]interface{}{"type": "string"}, "offset": map[string]interface{}{"type": "integer"}, "limit": map[string]interface{}{"type": "integer"}, "after": map[string]interface{}{"type": "integer"}, "after_event": map[string]interface{}{"type": "integer"}},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
 		call, caller, err := callRecord(ctx, args)
@@ -1759,6 +1637,14 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			return "", fmt.Errorf("function call %s belongs to another caller", call.ID)
 		}
 		out := call.snapshot()
+		api.addCrewFunctionReadDetails(ctx, out, call, externalInt(args, "after", -1), externalInt(args, "limit", 50), externalInt(args, "after_event", -1))
+		if name, _ := args["file"].(string); name != "" {
+			file, err := readCrewFunctionOutput(ctx, call, name, externalInt(args, "offset", 0), externalInt(args, "limit", 256<<10))
+			if err != nil {
+				return "", err
+			}
+			out["file"] = file
+		}
 		addFunctionCallPending(out, call)
 		call.mu.Lock()
 		terminal, runID := call.terminalLocked(), call.RunID
@@ -1877,6 +1763,12 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if !isTargetOf(call, caller) {
 			return "", fmt.Errorf("only the target of function call %s can report its progress", call.ID)
 		}
+		call.mu.Lock()
+		wrongSession := call.IsolatedExecution && call.TargetKind == triggerCallerCrew && call.SessionID != sessionID
+		call.mu.Unlock()
+		if wrongSession {
+			return "", fmt.Errorf("progress belongs to the receiving isolated execution")
+		}
 		message, _ := args["message"].(string)
 		if strings.TrimSpace(message) == "" {
 			return "", fmt.Errorf("message is required")
@@ -1899,63 +1791,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		}
 		call.UpdatedAt = entry.At
 		call.mu.Unlock()
-		call.persist()
+		call.appendExecutionMessage("progress", entry.Message)
 		return jsonOut(map[string]interface{}{"call_id": call.ID, "recorded": true})
-	}); err != nil {
-		return err
-	}
-
-	if err := register("return_function_result", "Finish a function call you received ([Function call <call_id>] task): pass result as JSON matching the function's result schema, or error to report that it could not be done. The caller receives exactly this, not your chat reply. An invalid result is rejected with the reason so you can fix it.", map[string]interface{}{
-		"type": "object", "required": []string{"call_id"}, "properties": map[string]interface{}{
-			"call_id": callIDSchema,
-			"result":  map[string]interface{}{"description": "The result, matching the function's result schema."},
-			"error":   map[string]interface{}{"type": "string", "description": "Set instead of result when the call could not be completed."},
-		},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		call, caller, err := callRecord(ctx, args)
-		if err != nil {
-			return "", err
-		}
-		if !isTargetOf(call, caller) {
-			return "", fmt.Errorf("only the target of function call %s can return its result", call.ID)
-		}
-		if errText, _ := args["error"].(string); strings.TrimSpace(errText) != "" {
-			if !call.settle("failed", nil, strings.TrimSpace(errText)) {
-				return "", fmt.Errorf("function call %s already finished", call.ID)
-			}
-			return jsonOut(map[string]interface{}{"call_id": call.ID, "status": "failed"})
-		}
-		result, present := args["result"]
-		if !present {
-			return "", fmt.Errorf("pass result (or error)")
-		}
-		call.mu.Lock()
-		schema := call.ResultSchema
-		freeText := call.FreeText
-		call.mu.Unlock()
-		if freeText {
-			// The implicit ask is free text by contract: never reject a real
-			// answer over its shape. Structured answers are kept as JSON text.
-			result = crewFunctionFreeTextAnswer(result)
-		}
-		if problems := validateCrewFunctionValue(schema, result); len(problems) > 0 {
-			call.mu.Lock()
-			call.InvalidResults++
-			invalid := call.InvalidResults
-			call.PartialResult = result
-			call.mu.Unlock()
-			reason := "result does not match the result schema: " + strings.Join(problems, "; ")
-			if invalid >= crewFunctionMaxInvalidResults {
-				call.settle("failed", nil, "the target returned invalid results twice; last: "+reason)
-				return "", fmt.Errorf("%s. The call has now failed", reason)
-			}
-			return "", fmt.Errorf("%s. Your submission is kept for the caller; fix the shape and call return_function_result again (put anything that doesn't fit, like extra links, into an existing string field or error)", reason)
-		}
-		if !call.settle("completed", result, "") {
-			return "", fmt.Errorf("function call %s already finished", call.ID)
-		}
-		return jsonOut(map[string]interface{}{"call_id": call.ID, "status": "completed"})
 	}); err != nil {
 		return err
 	}
@@ -1993,7 +1830,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if len(params) == 0 {
 				params = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
 			}
-			description := fmt.Sprintf("Function %q of %s %q: %s Returns at once with status=running and a call_id; the result, validated against its result schema, arrives later as an [AUTO-NOTIFICATION] in this chat. Do not call again for the same work.", fn.Name, target.Kind, target.Label, fn.Description)
+			description := fmt.Sprintf("Function %q of %s %q: %s Returns at once with status=running and a call_id; its final answer and file result, validated when a schema is declared, arrives later as an [AUTO-NOTIFICATION] in this chat. Do not call again for the same work.", fn.Name, target.Kind, target.Label, fn.Description)
 			if declare != nil {
 				declare(toolName)
 			}

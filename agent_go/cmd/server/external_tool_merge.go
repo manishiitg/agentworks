@@ -1,6 +1,7 @@
 package server
 
 import (
+	"reflect"
 	"fmt"
 	"sort"
 	"strings"
@@ -50,9 +51,9 @@ var externalToolMerges = []externalToolMerge{
 		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
 		{"write", "write_file|write_crew_file"}, {"code", "list_step_code"},
 	}},
-	{"functions", "A workflow's or Crew's typed entry points (workflow_id or crew_id): list them, call one, check a call and answer its question.", [][2]string{
+	{"functions", "Workflow and Crew internal function triggers: isolated executions with checked inputs. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
-		{"status", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
+		{"status", "get_workflow_function_call|get_crew_function_call"}, {"read", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
 		{"calls", "list_crew_function_calls"},
 	}},
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
@@ -114,9 +115,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				}
 				member.hidden = true
 				for key, value := range member.InputSchema["properties"].(map[string]any) {
-					if _, seen := props[key]; !seen {
-						props[key] = value
-					}
+					externalMergeProperty(props, key, value)
 				}
 			}
 			if found {
@@ -213,9 +212,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 		lines = append(lines, line)
 		for _, member := range members {
 			for key, value := range member.InputSchema["properties"].(map[string]any) {
-				if _, seen := props[key]; !seen {
-					props[key] = value
-				}
+				externalMergeProperty(props, key, value)
 			}
 		}
 	}
@@ -299,4 +296,31 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		rest[key] = value
 	}
 	return member, rest, nil
+}
+
+// externalMergeProperty adds a member's argument to a merged tool. When two
+// actions use the same name with different shapes (create_crew takes functions
+// as an array, update_crew as {upsert, delete}), both stay visible as anyOf
+// instead of the first one hiding the other.
+func externalMergeProperty(props map[string]any, key string, value any) {
+	existing, seen := props[key]
+	if !seen {
+		props[key] = value
+		return
+	}
+	if reflect.DeepEqual(existing, value) {
+		return
+	}
+	if merged, ok := existing.(map[string]any); ok {
+		if options, isUnion := merged["anyOf"].([]any); isUnion && len(merged) == 1 {
+			for _, option := range options {
+				if reflect.DeepEqual(option, value) {
+					return
+				}
+			}
+			props[key] = map[string]any{"anyOf": append(append([]any{}, options...), value)}
+			return
+		}
+	}
+	props[key] = map[string]any{"anyOf": []any{existing, value}}
 }

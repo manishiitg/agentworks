@@ -27,6 +27,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 const (
@@ -236,9 +238,7 @@ func DefaultDirs() []string {
 		dirs = append(dirs, filepath.Join(home, ".agent-browser"))
 	}
 	dirs = append(dirs, SocketRoot)
-	if owners, err := filepath.Glob(filepath.Join(SocketRoot, "o", "*")); err == nil {
-		dirs = append(dirs, owners...)
-	}
+	dirs = append(dirs, browserconfig.ManagedSocketDirs()...)
 	return dirs
 }
 

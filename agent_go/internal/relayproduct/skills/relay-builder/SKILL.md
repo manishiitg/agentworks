@@ -1,99 +1,71 @@
 ---
 name: relay-builder
-description: Author, test and publish Python Relays with fresh platform agents, Python tools and authorized MCP calls.
+description: Author, test and publish native DBOS Python Relays with platform agents and authorized tools.
 ---
 
 # Python Relay contract
 
 Read relay.py, workflow.json and variables/variables.json before editing. New Relays
-have kind: relay and relay_runtime: python. Keep source separate from workflow plans.
-The only entrypoint is async def run(INPUT, ctx). INPUT is the API caller's JSON object.
-Return a JSON serializable value (128 KiB limit); it becomes the final API response.
-The platform records relay_result.json and relay_trace.json under runs/iteration-N-hook.
+have kind: relay, relay_runtime: python and relay_durability: dbos. Author native
+DBOS Python: `from dbos import DBOS`, `@DBOS.workflow()` and `@DBOS.step()`.
+The entrypoint is `@DBOS.workflow()` followed by `async def run(INPUT)`.
+INPUT is the caller's JSON object. Return JSON (128 KiB limit).
+Keep source separate from workflow plans. No custom Relay workflow decorators are needed.
 
-## Graph comments in the source
+## Graph and execution logs
 
-Users build in chat without writing code. The right pane defaults to Graph; Runs shows
-actual agent calls/results and Code is optional. Describe behaviour in everyday language.
-Create and maintain graph comments inside relay.py; do not create or require relay.md.
-Old Markdown files are unused; do not remove a user's existing files without a request.
-
-Use a standalone Python comment containing exactly one JSON object per line:
-
-```python
-# @relay node {"id":"input","type":"input","label":"Receive invoice","input":{"text":"required invoice text"}}
-# @relay node {"id":"extract","type":"agent","label":"Extract invoice","description":"Extract supplier, invoice number and amount.","tools":["lookup_customer"],"model":"claude-code:sonnet"}
-# @relay node {"id":"check","type":"decision","label":"Large invoice?","description":"Review amounts over 1000."}
-# @relay node {"id":"review","type":"agent","label":"Review invoice"}
-# @relay node {"id":"result","type":"output","label":"Return invoice","output":{"invoice":"extracted invoice fields"}}
-# @relay edge {"from":"input","to":"extract"}
-# @relay edge {"from":"extract","to":"check"}
-# @relay edge {"from":"check","to":"review","label":"Amount > 1000"}
-# @relay edge {"from":"check","to":"result","label":"Amount <= 1000"}
-# @relay edge {"from":"review","to":"result"}
-```
-
-- Node fields: id (stable, starts with a letter; letters/digits/underscore/hyphen,
-  max 64 characters), type (input, agent, script, decision, output), label (readable).
-  Optional description, input/output (JSON descriptions), system_prompt, user_message,
-  messages (ordered text list), model, tools/skills (text lists), mcp (JSON description).
-  These document saved choices; do not substitute comments for implementation.
-- An agent node's id must match call_agent(name="id"). For a different saved call name,
-  set call to that exact name. Preserve the name when revising its implementation.
-  Loops may record multiple calls with the same name; each appears under that node.
-- Edges use from/to existing node ids and an optional readable condition label.
-  Keep both branch outcomes and loops consistent with actual code. Max 200 nodes/400
-  edges. Unique node ids; no duplicate identical edges. Comments inside strings or
-  docstrings are examples and do not define the graph.
-- Place each node comment beside its code, or group the records above run for a small
-  Relay. Update annotations with every behaviour change. Never include secret values;
-  use placeholders to describe runtime inputs and selected credentials.
-- The parser renders display metadata without importing/executing code. Annotation
-  errors never block a run or publish. Runs overlay only recorded named agent calls;
-  scripts/decisions and unobserved edges have no inferred execution status. Published
-  run graphs use frozen relay.py; draft run graphs show the current draft, labelled so.
-- Existing Python source without annotations: read it and add comments preserving
-  its behaviour when the user requests a graph. No separate plan or Markdown file.
+Users describe behaviour in chat; Code is optional. The Graph is a read-only source
+overview derived from Python's AST without importing/executing it. It recognizes
+module-level DBOS-decorated functions in relay.py, conditions, loops and returns.
+Use readable function names and docstrings. Imported helpers and dynamic dispatch
+may not appear in this static overview. Runs and Execution Logs show actual DBOS
+step history, including repeated calls, step IDs, timestamps and reused checkpoints.
+Agent and tool receipts are linked to those step IDs. DBOS.logger messages appear
+in Execution Logs. Never put secrets in step arguments, results, prompts or logs.
+Do not create # @relay comments, relay.md or a separate plan for native DBOS source.
 
 ## Authoring example
 
 ```python
 import json
-from relay_sdk import tool
+from dbos import DBOS
+from agentworks import agent
 
-@tool
-def lookup_customer(customer_id: str):
-    """Look up a customer in the explicitly configured external service."""
-    # Use the admitted secret and your API/database client here.
-    return {"id": customer_id, "tier": "standard"}
-
-async def run(INPUT, ctx):
-    extracted = await ctx.call_agent(
-        name="extract",
-        system_prompt="Extract invoice fields. Return JSON only.",
-        messages=["Invoice text: " + INPUT["text"], "Check the amounts and return the final JSON."],
-        model={"provider": "claude-code", "model_id": "sonnet"},
-        tools=[lookup_customer],
+@DBOS.step(name="extract_invoice")
+async def extract_invoice(text):
+    """Extract the invoice fields."""
+    return await agent(
+        name="extract", system_prompt="Extract invoice fields. Return JSON only.",
+        user_message=text,
         output_schema={"type": "object", "required": ["amount"],
                        "properties": {"amount": {"type": "number"}}},
     )
-    if extracted["amount"] > 1000:
-        extracted = await ctx.call_agent(
-            name="review",
-            system_prompt="Review the supplied invoice. Return JSON only.",
-            user_message=json.dumps(extracted),
-        )
-    return {"invoice": extracted}
+
+@DBOS.step(name="review_invoice")
+async def review_invoice(invoice):
+    """Review invoices over 1000."""
+    return await agent(name="review", system_prompt="Review the invoice. Return JSON.",
+                       user_message=json.dumps(invoice))
+
+@DBOS.workflow(max_recovery_attempts=3)
+async def run(INPUT):
+    invoice = await extract_invoice(INPUT["text"])
+    if invoice["amount"] > 1000:
+        invoice = await review_invoice(invoice)
+    return {"invoice": invoice}
 ```
 
-The lookup_customer body above is an illustration, not a production implementation.
-Implement and test the requested service; do not leave placeholder responses in a Relay.
+The thin `agentworks` module supplies agent, mcp, tool, vault, variables, run_dir
+and async admit. It supplies no workflow or step decorators. Use `from agentworks
+import tool` for model-callable Python tools. Implement real services; do not leave
+placeholder responses. Platform agent/MCP calls must run within a step of the root
+run workflow; platform calls in child workflows are currently unsupported.
 
 ## Agent calls and tools
 
-- call_agent is keyword-only. system_prompt is text. Pass user_message or messages
+- agent is keyword-only. system_prompt is text. Pass user_message or messages
   (nonempty ordered text list), never both. Each call gets a new session. Messages inside
-  that call share context; separate calls do not. No resume_agent or checkpoint recovery.
+  that call share context; separate calls do not. There is no resume_agent.
 - model is provider:model_id or {provider, model_id, connection_id, options}; omitted
   uses the configured Builder model. Use current supported provider/model names.
 - tools=[decorated_callable] executes that function in the live Relay Python process
@@ -103,17 +75,55 @@ Implement and test the requested service; do not leave placeholder responses in 
 - mcp=[{"server":"exact connection","tools":["exact tool"]}] exposes selected tools
   to the agent. Omit tools to select all tools on that explicitly named connection.
   Resolve names/schemas using list_mcp_servers first. Live access/grants are rechecked.
-- await ctx.call_mcp(server="exact connection", tool="exact tool", arguments={...})
+- await mcp(server="exact connection", tool="exact tool", arguments={...})
   calls the shared platform MCP executor directly from Python with the run's authority.
-- ctx.vault("NAME") returns an admitted SECRET_NAME. Missing/deselected secrets fail.
+- vault("NAME") returns an admitted SECRET_NAME. Missing/deselected secrets fail.
   Do not print or embed secrets in source, inputs, traces or returned JSON.
-- ctx.variables["NAME"] is a string from flat variables[].value. INPUT is per-call
+- variables["NAME"] is a string from flat variables[].value. INPUT is per-call
   data; Python does not use workflow group batching or template variables.
 - output_schema validates the final parsed JSON; invalid/missing JSON raises. There
   are no automatic repair messages. Without it, JSON responses become Python values
   and other responses stay text. Include JSON-only requirements in the authored prompts.
 - max_turns defaults to 20, range 1-100. Calls are serialized in MVP. Python can loop
-  and branch; no claim of parallel agents or crash resume.
+  and branch. Use DBOS steps for external I/O as described below.
+
+## Native DBOS recovery
+
+DBOS owns workflow execution, durable steps, replay and native retry policies. Keep
+imports and workflow orchestration deterministic and free of external effects.
+Branch on INPUT, configuration and saved step results. External I/O, clock/random
+reads and file writes belong inside @DBOS.step functions. Use DBOS.sleep_async for
+durable waiting. Do not instantiate, launch or destroy DBOS in authored source;
+the platform owns process startup and binds the original invocation identity.
+
+Completed steps return their saved results on recovery. An interrupted ordinary
+DBOS step can execute again: service writes must use a stable idempotency key and
+service-side deduplication. Never claim exactly-once external effects solely from
+checkpointing. Before custom external service operations, `await admit()` checks
+live invocation access. Read selected credentials with vault inside the step; do
+not persist them in DBOS arguments/results. Agent/MCP admission is automatic.
+
+The platform bridge records intent for agent/MCP calls. Uncertain bridge calls
+stop for reconciliation by default. Set replay_safe=True only after verifying the
+call is read-only or every possible tool/service effect deduplicates a stable key.
+This rule also applies to DBOS automatic step retries. Native service steps retain
+DBOS semantics; they do not acquire the bridge's uncertain-action protection.
+
+Each invocation has at most three Python process attempts and keeps its original
+one-hour deadline. Source/helpers/configuration and runtime identity must match
+for recovery; editing a draft during its test fails recovery closed. Published
+versions are immutable. Credentials and grants are admitted live on each attempt.
+Runtime installation is platform configuration (RELAY_DBOS_PYTHON).
+SQLite recovery is currently single-host; distributed execution is not provided.
+
+## Existing programs
+
+Preserve existing `async def run(INPUT, ctx)` programs unless migration is requested.
+Their relay_sdk Context and optional # @relay graph comments remain supported.
+Legacy DBOS-enabled programs checkpoint ctx.call_agent, ctx.call_mcp and ctx.step;
+unsafe uncertain operations stop. Do not silently enable recovery on legacy source.
+For an explicit migration, move calls into native @DBOS.step functions, import
+platform helpers from agentworks, change run to one argument and enable DBOS.
 
 ## Build, test and publish
 
@@ -122,7 +132,7 @@ installation uses the existing sandbox dependency mechanism; never install into 
 published snapshot. Preserve Python whitespace and literal escapes.
 
 Configure function triggers through manage_workflow_webhook with required object
-INPUT. Python Relays invoke run(INPUT, ctx) and have no step_id, route_selections or
+INPUT. Python Relays invoke run(INPUT) and have no step_id, route_selections or
 payload routing mappings. If no function is saved yet, create one before testing.
 Use test_relay(input={...}, function="...") for the draft; it returns a run_id.
 Inspect get_relay_run(run_id="...") for completion/output/error and recorded calls.
@@ -143,7 +153,7 @@ and tool list. Vault/MCP tools retain their normal authorization. Brain is not a
 implicit Relay store or runtime. Do not create workflow knowledgebase assets.
 A requested Dashboard may use an optional managed database as described by relay-dashboard.
 
-MVP custom Python tools must not call `ctx.call_agent` or `ctx.call_mcp` inside
-the tool callback; nested calls fail immediately. Put those calls in `run`, or
+MVP custom Python tools must not call `agent` or `mcp` inside
+the tool callback; nested calls fail immediately. Put those calls in separate DBOS steps, or
 attach an MCP tool directly to the agent. Tools can call their authorized
 external services using ordinary Python clients.

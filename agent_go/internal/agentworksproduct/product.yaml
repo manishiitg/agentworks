@@ -179,6 +179,9 @@ pulse:
     - resolve_run_concern
     - record_goal_observations
     - ask_builder
+    - send_message
+    - read_agent_messages
+    - schedule_message_wakeup
     - get_function_call
 
 # Prompt text stays in Markdown. Includes contain named Go-template definitions;
@@ -430,6 +433,7 @@ chat:
       - get_logs
       - run_status
       - chat
+      - messages
       - run_reply_input
       # Workflow functions (function triggers): typed calls with checked inputs.
       - list_workflow_functions

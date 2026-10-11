@@ -169,44 +169,6 @@ func TestQueuedProjectCallRejectsChangedOwners(t *testing.T) {
 	}
 }
 
-func TestWorkflowAskSharedOwnerUsesMainChat(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
-	manifest.Access.Owners = []string{"other", "owner"}
-	raw, _ := json.Marshal(manifest)
-	env.mock.mu.Lock()
-	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
-	for _, saved := range []struct{ id, user, date string }{
-		{"main-reports", "owner", "2026-10-01T00:00:00Z"},
-		{"other-owners-private-chat", "other", "2026-10-05T00:00:00Z"},
-		{"wfask-previous-isolated", "owner", "2026-10-05T01:00:00Z"},
-		{"schedule-cron--briefing_1", "owner", "2026-10-05T02:00:00Z"},
-	} {
-		content, _ := json.Marshal(builderConversationLog{SessionID: saved.id, UserID: saved.user, PhaseID: "workflow-builder", UpdatedAt: saved.date,
-			ConversationHistory: []builderConversationMessage{{Role: "human", Parts: []builderConversationPart{{Text: "Previous main chat"}}}}})
-		env.mock.files[workflowBuilderConversationLogPath("Workflow/reports", saved.id, time.Now())] = string(content)
-	}
-	env.mock.mu.Unlock()
-	caller, err := crewTriggerLinkCaller(linkAlphaPath)(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	previous := workflowAskTurn
-	workflowAskTurn = func(_ *StreamingAPI, _ context.Context, req map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
-		if sessionID != "main-reports" || userID != "owner" || req["restored_conversation_session_id"] != "main-reports" || req["pin_run_mode"] != true {
-			t.Fatalf("wrong main chat/principal/capabilities: session=%s user=%s req=%v", sessionID, userID, req)
-		}
-		return internalSessionTurnResult{FinalResponse: "Answer"}, nil
-	}
-	t.Cleanup(func() { workflowAskTurn = previous })
-	call := &crewFunctionCall{ID: "fn-test-main", UserID: "owner", poll: time.Second, done: make(chan struct{})}
-	env.api.runWorkflowAsk(call, triggerTarget{Kind: triggerCallerWorkflow, Path: "Workflow/reports", Manifest: manifest}, caller, "Question", time.Minute)
-	if call.Status != "completed" || call.RunID != "main-reports" {
-		t.Fatalf("call=%+v", call)
-	}
-}
-
 func TestProjectCallsRouteByProjectOwners(t *testing.T) {
 	for _, tc := range []struct {
 		name, source, target string

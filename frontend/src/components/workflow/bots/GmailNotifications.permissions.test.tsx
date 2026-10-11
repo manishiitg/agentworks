@@ -82,13 +82,13 @@ describe('Gmail management permissions with either OAuth source', () => {
     await render()
     expect(host.querySelector('[data-testid="google-account-list"]')).not.toBeNull()
     expect(button('Change access').disabled).toBe(true)
-    expect(button('Connect Google account').disabled).toBe(true)
+    expect(button('Only an admin can connect').disabled).toBe(true)
     expect(button('Save').disabled).toBe(true)
     expect((host.querySelector('[aria-label="Google sign-in app"]') as HTMLSelectElement).disabled).toBe(true)
     expect(host.textContent).toContain('An admin manages shared Gmail accounts')
     expect(host.textContent).toContain('Workflow email notifications')
     expect(host.textContent).not.toContain('Enable Gmail')
-    await act(async () => button('Connect Google account').click())
+    await act(async () => button('Only an admin can connect').click())
     expect(agentApi.createGmailOAuthClient).not.toHaveBeenCalled()
   })
 
@@ -99,7 +99,7 @@ describe('Gmail management permissions with either OAuth source', () => {
     }] })
     await render(); await openMenu()
     expect(button('Remove').disabled).toBe(false)
-    for (const label of ['Change access', 'Connect Google account', 'Reconnect', 'Make default', 'Send a test email', 'Turn off', 'Save']) expect(button(label).disabled, label).toBe(true)
+    for (const label of ['Change access', 'Only an admin can connect', 'Reconnect', 'Make default', 'Send a test email', 'Turn off', 'Save']) expect(button(label).disabled, label).toBe(true)
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
     expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
@@ -125,7 +125,7 @@ describe('Gmail management permissions with either OAuth source', () => {
     expect(button('Change access').disabled).toBe(false)
     await render('_users/bob/Chats/Code/projects/app-1')
     expect(button('Change access').disabled).toBe(true)
-    expect(button('Connect Google account').disabled).toBe(true)
+    expect(button('Only the owner can connect').disabled).toBe(true)
   })
 
   it('fails closed until auth mode is known and allows the local installation owner', async () => {

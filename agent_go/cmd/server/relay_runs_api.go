@@ -66,6 +66,53 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 	api.startRelayRun(w, r, false)
 }
 
+func (api *StreamingAPI) handlePublishRelayRelease(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	workspace, manifest, claims, ok := api.relayForRequest(w, r, "relays:write")
+	if !ok {
+		return
+	}
+	access := workflowAccessForManifest(claims, manifest)
+	if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+		http.Error(w, "Publishing requires Relay write access", http.StatusForbidden)
+		return
+	}
+	release, err := publishRelayRelease(r.Context(), workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(release)
+}
+
+// Graph inspection uses the exact draft/frozen source displayed by the UI.
+// The standard-library AST parser never imports or executes that source.
+func (api *StreamingAPI) handleInspectRelayGraph(w http.ResponseWriter, r *http.Request) {
+	workspace, _, _, ok := api.relayForRequest(w, r, "files:read")
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
+	var body struct {
+		Source string `json:"source"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		http.Error(w, "invalid source request", 400)
+		return
+	}
+	graph, err := inspectPythonRelaySource(r.Context(), workspace, body.Source)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(graph)
+}
+
 // draft is supplied only by the authenticated MCP authoring adapter.
 func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, draft bool) {
 	w.Header().Set("Cache-Control", "no-store")

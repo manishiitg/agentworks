@@ -4,30 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// ask_builder: the Pulse talks to the workflow's Builder chat, the reverse of
-// ask_pulse and by the same function-call mechanism (call id, saved record,
-// chain guard, 20 an hour per workflow, a bounded wait). The message arrives
-// in the owner's most recently active Builder chat as plain text from the
-// Pulse, where the owner can watch, and the chat's reply comes back. While
-// that turn runs, the Builder chat's tools are held to the Pulse's own
-// permission levels (the phase 2 guard), so the Pulse cannot get done through
-// the Builder what it may not do itself; deleting, replacing the plan and
-// migrations stay refused either way (owner, 2026-10-08: two agents talking).
+// ask_builder sends a conversational message to the owner's Builder chat.
+// The receiving turn stays within current Pulse authority. Replies are
+// optional explicit messages and are never captured from final chat text.
 
 const (
 	pulseBuilderAskCreatedBy = "platform (pulse ask builder)"
@@ -35,51 +26,9 @@ const (
 	pulseBuilderChatKey      = "goal-lead"
 )
 
-func pulseBuilderAskFunction() crewFunction {
-	return crewFunction{
-		Name:        crewFunctionAskName,
-		Description: "The workflow's Pulse asks its Builder chat a question or for a bounded fix.",
-		InputSchema: map[string]interface{}{"type": "object", "required": []interface{}{"message"}, "properties": map[string]interface{}{
-			"message": map[string]interface{}{"type": "string"},
-		}},
-		ResultSchema: map[string]interface{}{"type": "object", "required": []interface{}{"answer"}, "properties": map[string]interface{}{
-			"answer": map[string]interface{}{"type": "string"},
-		}},
-		CreatedBy: pulseBuilderAskCreatedBy,
-	}
-}
-
 func isPulseBuilderAsk(target triggerTarget, fn crewFunction) bool {
 	return target.Kind == triggerCallerWorkflow && target.Chat != nil && fn.CreatedBy == pulseBuilderAskCreatedBy
 }
-
-// hourlyAskLimiter caps asks per workflow per hour.
-type hourlyAskLimiter struct {
-	sync.Mutex
-	byWorkflow map[string][]time.Time
-}
-
-func (l *hourlyAskLimiter) admit(workspacePath string, now time.Time, perHour int) bool {
-	l.Lock()
-	defer l.Unlock()
-	if l.byWorkflow == nil {
-		l.byWorkflow = map[string][]time.Time{}
-	}
-	kept := l.byWorkflow[workspacePath][:0]
-	for _, at := range l.byWorkflow[workspacePath] {
-		if now.Sub(at) < time.Hour {
-			kept = append(kept, at)
-		}
-	}
-	if len(kept) >= perHour {
-		l.byWorkflow[workspacePath] = kept
-		return false
-	}
-	l.byWorkflow[workspacePath] = append(kept, now)
-	return true
-}
-
-var pulseBuilderAsks = &hourlyAskLimiter{}
 
 type pulseBuilderAskRequest struct {
 	UserID        string
@@ -90,6 +39,7 @@ type pulseBuilderAskRequest struct {
 	Perms         stepworkflow.GoalWorkPermissions
 	Wait          time.Duration
 	SubmissionID  string
+	InboxID       string
 }
 
 // findPulseBuilderChat returns the Builder chat ask_builder targets: the one
@@ -113,10 +63,7 @@ var findPulseBuilderChat = func(api *StreamingAPI, ctx context.Context, userID s
 	return api.userWorkflowChat(ctx, userID, services.ChannelRoute{WorkflowID: manifest.ID, WorkspacePath: workspacePath}), nil
 }
 
-// pulseBuilderAskTurn, when set (tests), replaces the Builder chat turn.
-var pulseBuilderAskTurn func(ctx context.Context, reqMap map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error)
-
-// askBuilder runs one ask_builder call.
+// askBuilder admits one explicit message to the Builder conversation.
 func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequest) (map[string]interface{}, error) {
 	req.Message = strings.TrimSpace(req.Message)
 	if req.Message == "" {
@@ -129,9 +76,6 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 	if err != nil || !found || manifest == nil {
 		return nil, fmt.Errorf("cannot read this workflow")
 	}
-	if err := pulseBuilderPingPong(manifest.ID); err != nil {
-		return nil, err
-	}
 	builderSession, err := findPulseBuilderChat(api, ctx, req.UserID, manifest, req.WorkspacePath, req.BuilderChat)
 	if err != nil {
 		return nil, err
@@ -139,173 +83,22 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 	if builderSession == "" {
 		return map[string]interface{}{"status": "no_builder_chat", "note": "The owner has no Builder chat for this workflow yet. Read planning/changelog and the run records yourself, or ask the owner."}, nil
 	}
-	if api.conversationTurnOccupied(builderSession) {
-		return nil, fmt.Errorf("the Builder chat is busy with another turn now (the owner may be using it); try again on a later turn")
-	}
-	if !pulseBuilderAsks.admit(req.WorkspacePath, time.Now(), goalLeadAsksPerHour) {
-		return nil, fmt.Errorf("refused: the Builder chat was asked %d times in the last hour; continue with what you have", goalLeadAsksPerHour)
-	}
 	label := firstNonEmptyTrimmed(manifest.Label, req.WorkspacePath)
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: label + " Pulse", Path: req.WorkspacePath,
 		Chat: &codeChat{Key: pulseBuilderChatKey, ID: pulseBuilderChatKey, Name: label + " Pulse", SessionID: req.PulseSession}}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: req.WorkspacePath, Label: label + " Builder chat", Manifest: manifest,
 		Chat: &codeChat{Key: "session:" + builderSession, ID: builderSession, Name: label + " Builder chat", SessionID: builderSession}}
-	args := map[string]interface{}{"message": req.Message, "level": req.Perms.Level, "run": req.Perms.Run,
-		"outward": req.Perms.Outward, "change": req.Perms.Change, "reshape": req.Perms.Reshape}
-	call, err := api.startCrewFunctionCall(ctx, req.UserID, caller, target, pulseBuilderAskFunction(), args, triggerTargetDefaultTimeout, req.SubmissionID)
+	out, err := api.sendAgentMessage(ctx, req.UserID, caller, target, req.Message, req.InboxID, req.SubmissionID)
 	if err != nil {
 		return nil, err
 	}
-	if req.Wait > 0 {
-		select {
-		case <-call.done:
-		case <-time.After(req.Wait):
-		case <-ctx.Done():
-		}
-	}
-	out := call.snapshot()
 	out["builder_session_id"] = builderSession
-	if out["status"] != "completed" && out["status"] != "failed" {
-		id, watchErr := api.startCrewFunctionWatch(QueryRequest{SelectedFolder: req.WorkspacePath, PresetQueryID: manifest.ID}, req.PulseSession, req.UserID, call, triggerTargetDefaultTimeout)
-		if watchErr != nil {
-			out["auto_notify_error"] = watchErr.Error()
-			out["next"] = "The Builder chat is still replying. Automatic delivery is unavailable; read get_function_call(call_id). The saved reply also appears as builder_asks on your next goal check."
-		} else {
-			out["execution_id"] = id
-			out["auto_notify"] = true
-			out["next"] = "The Builder chat is still replying. Its result will resume this Pulse conversation once it is idle, using current Pulse permissions. A reply saying work started is not evidence that the work finished."
-		}
-	}
+	_ = appendGoalLeadMessage(ctx, req.WorkspacePath, GoalLeadMessage{Role: "ask_builder", Text: "To the Builder chat: " + req.Message})
 	return out, nil
 }
 
-// pulseBuilderPingPong refuses an ask_builder from a Pulse turn that a
-// Builder chat started with ask_pulse: the answer goes back on its own. The
-// chain guard already refuses the same chat; this also covers the owner's
-// other Builder chats. Steps that asked the Pulse may still be followed by a
-// question to the Builder.
-func pulseBuilderPingPong(workflowID string) error {
-	pulseKey := crewFunctionChatChainKey(crewFunctionScopedKey(triggerCallerWorkflow, "", workflowID, ""), pulseBuilderChatKey)
-	chain, _ := crewFunctionChainFor(pulseKey)
-	marker := crewFunctionChatMarker + "session:"
-	for _, key := range chain {
-		i := strings.Index(key, marker)
-		if i < 0 {
-			continue
-		}
-		session := key[i+len(marker):]
-		if _, background := stepworkflow.LookupWorkshopToolSession(session); background {
-			continue
-		}
-		return fmt.Errorf("not sent: the Builder chat that asked you (ask_pulse) is waiting for your reply, so it cannot take a new message now. Put what you need from it in your reply (what to do, what to tell you back, the decision id you need); it acts on your reply and reports back to you with ask_pulse")
-	}
-	return nil
-}
-
-// pulseBuilderAskText is the Builder chat's turn: the Pulse's message, with
-// its sender.
-func pulseBuilderAskText(label, message string) string {
-	return label + ": " + strings.TrimSpace(message)
-}
-
-// runPulseBuilderAsk runs the ask as a turn in the Builder chat and settles
-// the call with its final reply.
-func (api *StreamingAPI) runPulseBuilderAsk(call *crewFunctionCall, target triggerTarget, caller triggerLinkCaller, args map[string]interface{}, timeout time.Duration) {
-	hardCap := crewFunctionHardCap(timeout)
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
-	defer cancel()
-	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
-	message, _ := args["message"].(string)
-	// The exact levels Pulse is held to travel with the call; the Builder chat
-	// is held to the same ones.
-	level := 0
-	switch v := args["level"].(type) {
-	case int:
-		level = v
-	case float64:
-		level = int(v)
-	}
-	run, _ := args["run"].(bool)
-	outward, _ := args["outward"].(bool)
-	change, _ := args["change"].(bool)
-	reshape, _ := args["reshape"].(bool)
-	perms := stepworkflow.GoalWorkPermissions{Level: level, Run: run, Outward: outward, Change: change, Reshape: reshape}
-	session := target.Chat.SessionID
-	recordPulseBuilderAsk(ctx, target.Path, call.ID, "message", session, message)
-	// The record comes first: a waiting caller reads it as soon as the call
-	// settles.
-	settle := func(status, answer, failure string) {
-		finishPulseBuilderAsk(context.WithoutCancel(ctx), target.Path, call.ID, status, firstNonEmptyTrimmed(answer, failure))
-		text := "The Builder chat answered: " + answer
-		if status != "completed" {
-			text = "The Builder chat did not answer: " + failure
-		}
-		_ = appendGoalLeadMessage(context.WithoutCancel(ctx), target.Path, GoalLeadMessage{Role: "builder_answer", Text: text})
-		if status == "completed" {
-			call.settle(status, map[string]interface{}{"answer": truncateTriggerTargetResult(answer)}, "")
-		} else {
-			call.settle(status, nil, failure)
-		}
-	}
-	if target.Manifest == nil {
-		settle("failed", "", "workflow is unavailable")
-		return
-	}
-	_ = appendGoalLeadMessage(ctx, target.Path, GoalLeadMessage{Role: "ask_builder", Text: "To the Builder chat: " + message})
-	query := QueryRequest{
-		Query: pulseBuilderAskText(caller.Label, message), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
-		PresetQueryID: target.Manifest.ID, SelectedFolder: target.Path,
-		TriggeredBy: "external", TriggeredByLabel: "Pulse",
-		ExecutionOptions: &ExecutionOptions{WorkshopMode: "workshop"},
-	}
-	if api.workflowAskSessionExists(session, target.Path) {
-		query.RestoredConversationSessionID = session
-	}
-	reqMap, err := queryRequestToMap(query)
-	if err != nil {
-		settle("failed", "", "cannot build the request: "+err.Error())
-		return
-	}
-	call.mu.Lock()
-	call.Status = "running"
-	call.RunID, call.RunIDs = session, []string{session}
-	call.mu.Unlock()
-	call.persist()
-	// The chat shows this message as sent by Pulse, with its icon.
-	if api.eventStore != nil {
-		api.eventStore.ExpectUserMessageSender(session, "pulse", caller.Label)
-	}
-	// The Builder chat's tools for this turn are held to the Pulse's own
-	// levels; deleting, replacing the plan and migrations stay refused.
-	release := beginGoalWorkTurn(session, perms)
-	defer release()
-	turnDone := make(chan struct{})
-	go api.watchAskActivity(call, session, fmt.Sprintf("the Builder chat of %q", target.Manifest.Label), timeout, turnDone)
-	var result internalSessionTurnResult
-	if pulseBuilderAskTurn != nil {
-		result, err = pulseBuilderAskTurn(ctx, reqMap, session, call.UserID)
-	} else {
-		result, err = api.startSessionInternalWithResult(ctx, reqMap, session, call.UserID, nil)
-	}
-	close(turnDone)
-	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			settle("failed", "", fmt.Sprintf("the Builder chat was still not done after %s", hardCap))
-			return
-		}
-		settle("failed", "", fmt.Sprintf("the Builder chat did not answer: %v", err))
-		return
-	}
-	answer := strings.TrimSpace(result.FinalResponse)
-	if answer == "" {
-		settle("failed", "", "the Builder chat finished without a reply")
-		return
-	}
-	settle("completed", answer, "")
-}
-
-// The asks and answers, kept with the Pulse state so a late answer reaches the
-// next goal check (builder_asks).
+// Historical request/result records remain readable in goal checks. New
+// conversational messages live in the durable messaging store.
 const goalLeadBuilderAsksSchema = `CREATE TABLE IF NOT EXISTS goal_lead_builder_asks (
 	call_id TEXT PRIMARY KEY,
 	asked_at TEXT NOT NULL,
@@ -327,25 +120,6 @@ func withGoalLeadBuilderAsks(ctx context.Context, workspacePath string, create b
 		return err
 	}
 	return fn(db)
-}
-
-func recordPulseBuilderAsk(ctx context.Context, workspacePath, callID, kind, session, message string) {
-	_ = withGoalLeadBuilderAsks(ctx, workspacePath, true, func(db *sql.DB) error {
-		_, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO goal_lead_builder_asks (call_id, asked_at, kind, builder_session, message) VALUES (?,?,?,?,?)`,
-			callID, formatStoredTime(time.Now().UTC()), kind, session, goalLeadShortText(message))
-		return err
-	})
-}
-
-func finishPulseBuilderAsk(ctx context.Context, workspacePath, callID, status, answer string) {
-	if runes := []rune(answer); len(runes) > goalLeadMessageMaxRunes {
-		answer = string(runes[:goalLeadMessageMaxRunes]) + "…"
-	}
-	_ = withGoalLeadBuilderAsks(ctx, workspacePath, true, func(db *sql.DB) error {
-		_, err := db.ExecContext(ctx, `UPDATE goal_lead_builder_asks SET status=?, answer=?, answered_at=? WHERE call_id=?`,
-			status, answer, formatStoredTime(time.Now().UTC()), callID)
-		return err
-	})
 }
 
 // recentPulseBuilderAsks are the asks since since, newest first.
@@ -373,16 +147,15 @@ func recentPulseBuilderAsks(ctx context.Context, workspacePath string, since tim
 // createPulseBuilderAskTool is ask_builder, for the Pulse conversation only.
 func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
-		Name: pulseBuilderAskToolName,
-		Description: "Talk to this workflow's Builder chat (the owner's most recently active one, where they can watch): ask what changed and why or what the owner decided, or ask it to make a change. It works within your own permission levels, and its reply comes back. " +
-			"Waits up to wait_seconds (default 90) for the reply; a later reply automatically resumes this Pulse conversation when idle, using current permissions. Reconcile its evidence with Goal Work, goal status and memory. A started background run is still pending until its actual result arrives. Replies are also saved as builder_asks. Capped at 20 an hour per workflow.",
+		Name:        pulseBuilderAskToolName,
+		Description: "Send an explicit message to this workflow's Builder chat (the owner's most recently active one, where they can watch). Ask what changed or request a change within your permission levels. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"message":            map[string]interface{}{"type": "string", "minLength": 1, "description": "Your message to the Builder chat, as you would write it to a colleague."},
 				"builder_session_id": map[string]interface{}{"type": "string", "description": "Optional: one of the owner's Builder chats of this workflow (e.g. a plan change's session_id); default the most recently active one."},
-				"wait_seconds":       map[string]interface{}{"type": "integer", "minimum": 0, "maximum": goalLeadAskMaxWaitSecond},
-				"submission_id":      map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this message; reuse it after an uncertain retry to get the original call."},
+				"inbox_id":           map[string]interface{}{"type": "string", "description": "Existing conversation/reply address when continuing a conversation."},
+				"submission_id":      map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this message; reuse it after an uncertain retry to get the original acknowledgement."},
 			},
 			"required": []string{"message"},
 		}),
@@ -407,18 +180,10 @@ func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[strin
 		if !held {
 			perms, _ = goalWorkAutonomy(ctx, workspacePath)
 		}
-		wait := 90 * time.Second
-		if raw, ok := args["wait_seconds"]; ok {
-			seconds := intToolArg(map[string]interface{}{"v": raw}, "v")
-			if seconds < 0 || seconds > goalLeadAskMaxWaitSecond {
-				return "", fmt.Errorf("wait_seconds must be 0-%d", goalLeadAskMaxWaitSecond)
-			}
-			wait = time.Duration(seconds) * time.Second
-		}
 		out, err := api.askBuilder(ctx, pulseBuilderAskRequest{
 			UserID: claims.UserID, WorkspacePath: workspacePath, PulseSession: sessionID,
 			Message: stringToolArg(args, "message"), BuilderChat: stringToolArg(args, "builder_session_id"),
-			Perms: perms, Wait: wait, SubmissionID: stringToolArg(args, "submission_id"),
+			Perms: perms, InboxID: stringToolArg(args, "inbox_id"), SubmissionID: stringToolArg(args, "submission_id"),
 		})
 		if err != nil {
 			return "", err

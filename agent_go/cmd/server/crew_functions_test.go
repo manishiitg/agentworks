@@ -81,8 +81,7 @@ func newCrewFunctionEnv(t *testing.T) crewFunctionEnv {
 	triggerTargetPollInterval = 10 * time.Millisecond
 	crewFunctionFastWait = 3 * time.Second
 	t.Cleanup(func() { triggerTargetPollInterval, crewFunctionFastWait = previousPoll, previousWait })
-	// Calls are process-wide; a call left in flight by an earlier test would
-	// otherwise be joined by an identical call here.
+	// Calls are process-wide; each fixture starts with independent admission state.
 	crewFunctionCalls.Lock()
 	crewFunctionCalls.m = map[string]*crewFunctionCall{}
 	crewFunctionCalls.Unlock()
@@ -344,7 +343,7 @@ func TestFunctionSubmissionSaveFailureSettlesConcurrentRetry(t *testing.T) {
 	}
 	firstErr := make(chan error, 1)
 	start := func() (*crewFunctionCall, error) {
-		return env.api.startCrewFunctionCall(ctx, "owner", caller, target, defaultAskCrewFunction(), map[string]interface{}{"message": "status"}, time.Minute, "same-submission")
+		return env.api.startCrewFunctionCall(ctx, "owner", caller, target, crewFunction{Name: "status", Instructions: "Check status."}, map[string]interface{}{}, time.Minute, "same-submission")
 	}
 	go func() { _, err := start(); firstErr <- err }()
 	select {
@@ -383,206 +382,6 @@ var loginFlowArgs = map[string]interface{}{
 	"result_schema": map[string]interface{}{"type": "object", "required": []interface{}{"passed"}, "properties": map[string]interface{}{
 		"passed": map[string]interface{}{"type": "boolean"}, "failed_step": map[string]interface{}{"type": "integer"},
 	}},
-}
-
-// waitForCall returns the in-flight call of function from the registry.
-func waitForCall(t *testing.T, function string) *crewFunctionCall {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		crewFunctionCalls.Lock()
-		for _, call := range crewFunctionCalls.m {
-			call.mu.Lock()
-			match := call.Function == function && !call.terminalLocked() && call.RunID != ""
-			call.mu.Unlock()
-			if match {
-				crewFunctionCalls.Unlock()
-				return call
-			}
-		}
-		crewFunctionCalls.Unlock()
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("no in-flight call of %s", function)
-	return nil
-}
-
-// Alpha declares a function on Beta, calls it, Beta reports progress and
-// returns a valid result within the fast window: the caller's tool call
-// returns the validated result directly.
-func TestCrewFunctionFastPathReturnsValidatedResult(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	ctx := context.Background()
-	defined, err := env.alpha["define_function"].exec(ctx, loginFlowArgs)
-	if err != nil {
-		t.Fatalf("define: %v", err)
-	}
-	if got := decodeToolJSON(t, defined); got["tool_name_for_callers"] != "beta__run_login_flow" {
-		t.Fatalf("define = %v", got)
-	}
-	env.mock.mu.Lock()
-	stored := env.mock.files[agentProfileRuntimeWorkspace("owner", linkBetaPath)+"/functions.json"]
-	env.mock.mu.Unlock()
-	if !strings.Contains(stored, `"run_login_flow"`) || !strings.Contains(stored, `"created_by": "crew:alpha (Alpha Bot)"`) {
-		t.Fatalf("functions.json = %s", stored)
-	}
-	listed, err := env.alpha["list_functions"].exec(ctx, map[string]interface{}{"target": "#crew:Beta"})
-	if err != nil || !strings.Contains(listed, "run_login_flow") {
-		t.Fatalf("list = %s, %v", listed, err)
-	}
-
-	if _, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"env": "qa"}}); err == nil || !strings.Contains(err.Error(), "$.build: required") {
-		t.Fatalf("invalid args: err = %v", err)
-	}
-
-	go func() {
-		call := waitForCall(t, "run_login_flow")
-		if _, err := env.alpha["return_function_result"].exec(ctx, map[string]interface{}{"call_id": call.ID, "result": map[string]interface{}{"passed": true}}); err == nil {
-			t.Error("the caller must not be able to return the target's result")
-		}
-		if _, err := env.beta["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "login page loaded", "percent": float64(40)}); err != nil {
-			t.Errorf("progress: %v", err)
-		}
-		if _, err := env.beta["return_function_result"].exec(ctx, map[string]interface{}{"call_id": call.ID, "result": map[string]interface{}{"passed": "yes"}}); err == nil || !strings.Contains(err.Error(), "$.passed: expected boolean") {
-			t.Errorf("invalid result: err = %v", err)
-		}
-		if _, err := env.beta["return_function_result"].exec(ctx, map[string]interface{}{"call_id": call.ID, "result": map[string]interface{}{"passed": false, "failed_step": float64(3)}}); err != nil {
-			t.Errorf("valid result: %v", err)
-		}
-	}()
-	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "812", "env": "staging"}, "wait_seconds": 3})
-	if err != nil {
-		t.Fatalf("call: %v", err)
-	}
-	result := decodeToolJSON(t, out)
-	if result["status"] != "completed" {
-		t.Fatalf("call = %v", result)
-	}
-	if got, _ := json.Marshal(result["result"]); string(got) != `{"failed_step":3,"passed":false}` {
-		t.Fatalf("result = %s", got)
-	}
-	progress, _ := result["progress"].([]interface{})
-	if len(progress) != 1 || !strings.Contains(out, "login page loaded") {
-		t.Fatalf("progress = %v", result["progress"])
-	}
-	// The delivery carried the call ID, the validated args and the contract.
-	callID, _ := result["call_id"].(string)
-	env.mock.mu.Lock()
-	var delivery string
-	for path, content := range env.mock.files {
-		if strings.HasPrefix(path, linkBetaPath+"/triggers/deliveries/") && strings.Contains(content, callID) {
-			delivery = content
-		}
-	}
-	env.mock.mu.Unlock()
-	for _, want := range []string{`"build":"812"`, "return_function_result", "report_function_progress"} {
-		if !strings.Contains(delivery, want) {
-			t.Fatalf("delivery missing %q: %s", want, delivery)
-		}
-	}
-}
-
-// A call slower than the fast window returns running and resumes the
-// caller's chat with the result; get_function_call shows progress while it
-// runs; a Crew target accepts update questions only once its run started.
-func TestCrewFunctionSlowPathAutoNotifiesAndReportsProgress(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	crewFunctionFastWait = 20 * time.Millisecond
-	ctx := context.Background()
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
-		t.Fatal(err)
-	}
-	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "900"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	running := decodeToolJSON(t, out)
-	callID, _ := running["call_id"].(string)
-	notify, ok := running["auto_notification"].(map[string]interface{})
-	if running["status"] != "running" || callID == "" || !ok {
-		t.Fatalf("slow call = %v", running)
-	}
-	executionID, _ := notify["execution_id"].(string)
-
-	if _, err := env.alpha["ask_function_update"].exec(ctx, map[string]interface{}{"call_id": callID, "question": "how far along?"}); err == nil || !strings.Contains(err.Error(), "has not started yet") {
-		t.Fatalf("update before start: err = %v", err)
-	}
-	if _, err := env.beta["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": callID, "message": "step 2 of 5"}); err != nil {
-		t.Fatal(err)
-	}
-	polled, err := env.alpha["get_function_call"].exec(ctx, map[string]interface{}{"call_id": callID})
-	if err != nil || !strings.Contains(polled, "step 2 of 5") {
-		t.Fatalf("poll = %s, %v", polled, err)
-	}
-	if _, err := env.beta["return_function_result"].exec(ctx, map[string]interface{}{"call_id": callID, "result": map[string]interface{}{"passed": true}}); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		snapshot := env.api.bgAgentRegistry.Get("sess-caller", executionID).GetSnapshot()
-		if snapshot.Status == BGAgentCompleted {
-			if !strings.Contains(snapshot.Result, `"passed": true`) || !strings.Contains(snapshot.Result, "completed") {
-				t.Fatalf("notification = %q", snapshot.Result)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("notification not delivered: %+v", snapshot)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
-// A Crew run that ends without return_function_result gets one retry turn;
-// if that also ends without a result the call fails with the final answer.
-func TestCrewFunctionRunWithoutResultRetriesThenFails(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	crewFunctionFastWait = 20 * time.Millisecond
-	ctx := context.Background()
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
-		t.Fatal(err)
-	}
-	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "1"}, "notify": false, "wait_seconds": 0.02})
-	if err != nil {
-		t.Fatal(err)
-	}
-	call := lookupCrewFunctionCall(decodeToolJSON(t, out)["call_id"].(string))
-	runs := agentProfileRuntimeWorkspace("owner", linkBetaPath)
-	finishRun := func(runID, answer string) {
-		if err := UpdateScheduleRunFinalResponse(ctx, runs, runID, answer); err != nil {
-			t.Fatal(err)
-		}
-		if err := UpdateScheduleRun(ctx, runs, runID, "success", "", nil, "", "sess-beta"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	call.mu.Lock()
-	first := call.RunID
-	call.mu.Unlock()
-	finishRun(first, "I ran it, all good.")
-	deadline := time.Now().Add(5 * time.Second)
-	var retry string
-	for retry == "" {
-		call.mu.Lock()
-		if call.RunID != first {
-			retry = call.RunID
-		}
-		call.mu.Unlock()
-		if time.Now().After(deadline) {
-			t.Fatal("no retry turn was dispatched")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	finishRun(retry, "Still no result, sorry.")
-	select {
-	case <-call.done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("call did not fail after the retry")
-	}
-	snapshot := call.snapshot()
-	if snapshot["status"] != "failed" || !strings.Contains(snapshot["error"].(string), "without returning a valid result") || snapshot["final_reply"] != "Still no result, sorry." {
-		t.Fatalf("snapshot = %v", snapshot)
-	}
 }
 
 // Self-calls, cycles and deep chains are refused; mid-run questions are for
@@ -654,74 +453,8 @@ func crewFunctionToolKeys(tools map[string]recordedTool) []string {
 	return out
 }
 
-// A Crew that declares no functions is still callable through the implicit
-// ask function: it is listed, generated as a tool for tagged Crews, and its
-// result is the target's final free-text reply.
-func TestCrewFunctionDefaultAskUsesFinalReply(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	ctx := context.Background()
-	listed, err := env.alpha["list_functions"].exec(ctx, map[string]interface{}{"target": "Beta"})
-	if err != nil || !strings.Contains(listed, `"name": "ask"`) {
-		t.Fatalf("list = %s, %v", listed, err)
-	}
-	tagged := env.functionTools(t, linkAlphaPath, "sess-caller-ask", []string{linkBetaPath})
-	if _, ok := tagged["beta__ask"]; !ok {
-		t.Fatalf("beta__ask not generated: %v", crewFunctionToolKeys(tagged))
-	}
-	if _, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "ask", "args": map[string]interface{}{}}); err == nil || !strings.Contains(err.Error(), "$.message: required") {
-		t.Fatalf("ask without message: err = %v", err)
-	}
-
-	crewFunctionFastWait = 5 * time.Second
-	go func() {
-		call := waitForCall(t, crewFunctionAskName)
-		call.mu.Lock()
-		runID, freeText := call.RunID, call.FreeText
-		call.mu.Unlock()
-		if !freeText {
-			t.Error("default ask must be a free-text call")
-		}
-		runs := agentProfileRuntimeWorkspace("owner", linkBetaPath)
-		if err := UpdateScheduleRunFinalResponse(ctx, runs, runID, "Three open bugs: A, B, C."); err != nil {
-			t.Error(err)
-		}
-		if err := UpdateScheduleRun(ctx, runs, runID, "success", "", nil, "", "sess-beta"); err != nil {
-			t.Error(err)
-		}
-	}()
-	out, err := tagged["beta__ask"].exec(ctx, map[string]interface{}{"message": "How many open bugs?"})
-	if err != nil {
-		t.Fatalf("ask: %v", err)
-	}
-	// Generated tools return at once; the answer is read from the call.
-	result := decodeToolJSON(t, out)
-	if call := lookupCrewFunctionCall(result["call_id"].(string)); call != nil {
-		select {
-		case <-call.done:
-		case <-time.After(3 * time.Second):
-		}
-		result = call.snapshot()
-	}
-	answer, _ := result["result"].(map[string]interface{})
-	if result["status"] != "completed" || answer["answer"] != "Three open bugs: A, B, C." {
-		t.Fatalf("ask result = %v", result)
-	}
-	env.mock.mu.Lock()
-	found := false
-	for path, content := range env.mock.files {
-		if strings.HasPrefix(path, linkBetaPath+"/triggers/deliveries/") && strings.Contains(content, "How many open bugs?") && strings.Contains(content, "exposed as a typed function") {
-			found = true
-		}
-	}
-	env.mock.mu.Unlock()
-	if !found {
-		t.Fatal("ask delivery did not carry the message and the offer-a-function hint")
-	}
-}
-
 // The Automation panel's Functions tab lists declared functions plus the
-// implicit ask and the Crew's recent calls; the owner can delete a function
-// but not the built-in ask.
+// declared functions and recent calls; owners can remove their declarations.
 func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.Background()
@@ -750,7 +483,7 @@ func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 	for _, fn := range listed.Functions {
 		names[fn.Name] = fn.Implicit
 	}
-	if implicit, ok := names["ask"]; !ok || !implicit {
+	if _, ok := names["ask"]; ok {
 		t.Fatalf("functions = %+v", listed.Functions)
 	}
 	if implicit, ok := names["run_login_flow"]; !ok || implicit {
@@ -759,7 +492,7 @@ func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		code int
-	}{{"ask", http.StatusBadRequest}, {"run_login_flow", http.StatusNoContent}, {"run_login_flow", http.StatusNotFound}} {
+	}{{"ask", http.StatusNotFound}, {"run_login_flow", http.StatusNoContent}, {"run_login_flow", http.StatusNotFound}} {
 		del := httptest.NewRequest(http.MethodDelete, "/api/crew-functions/"+tc.name+"?profile_id=work&project_id=beta", nil)
 		del = del.WithContext(context.WithValue(del.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
 		recorder := httptest.NewRecorder()
@@ -767,25 +500,6 @@ func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 		if recorder.Code != tc.code {
 			t.Fatalf("delete %s = %d, want %d: %s", tc.name, recorder.Code, tc.code, recorder.Body.String())
 		}
-	}
-}
-
-func TestCrewFunctionFreeTextAnswerNeverRejectsStructuredAnswers(t *testing.T) {
-	schema := map[string]interface{}{"type": "object", "required": []interface{}{"answer"}, "properties": map[string]interface{}{"answer": map[string]interface{}{"type": "string"}}}
-	for _, in := range []interface{}{
-		map[string]interface{}{"answer": "plain"},
-		map[string]interface{}{"answer": map[string]interface{}{"WEB-1764": "PASS", "video": "https://x/v.mp4"}},
-		map[string]interface{}{"tickets": []interface{}{"WEB-1764"}},
-		"bare text",
-	} {
-		out := crewFunctionFreeTextAnswer(in)
-		if problems := validateCrewFunctionValue(schema, out); len(problems) > 0 {
-			t.Fatalf("%v -> %v rejected: %v", in, out, problems)
-		}
-	}
-	got := crewFunctionFreeTextAnswer(map[string]interface{}{"answer": map[string]interface{}{"video": "https://x/v.mp4"}}).(map[string]interface{})["answer"].(string)
-	if !strings.Contains(got, "https://x/v.mp4") {
-		t.Fatalf("structured answer lost its content: %q", got)
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
@@ -45,14 +44,13 @@ func externalCodeRunDefinitions(add func(name, description string, write, scoped
 	project := map[string]any{"project_id": externalString("Code project ID from code action=projects.")}
 	add("list_my_code_projects", "List your own Code projects: id, title, last update."+suffix, false, false, nil)
 	add("list_my_code_chats", "List the chats (tabs) of one of your Code projects: the main chat and its side chats, with id, name and whether each is working now."+suffix, false, false, project, "project_id")
-	add("ask_my_code", "Send a message into one of your Code project's chats and get the reply, like ask_crew: it runs as a turn in that chat, after its current turn if busy, and you see it in that tab. It returns at once with a call_id unless wait_seconds is set (up to 25); poll with call_id. Use it to test what the agent can and cannot do (commands, files, folder guards)."+suffix, true, false, map[string]any{
+	add("ask_my_code", "Send an explicit conversational message into one of your own Code chats. Returns an inbox delivery receipt; replies are optional agent-sent messages read with messages action=read. No call_id or automatic final-answer capture."+suffix, true, false, map[string]any{
 		"project_id":    externalString("Code project ID from code action=projects."),
-		"message":       externalString("What to ask or tell the chat."),
-		"chat_id":       externalString("A chat id from code action=chats; default is the main chat."),
-		"wait_seconds":  map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the reply."},
-		"call_id":       externalString("Poll a call started earlier instead of sending a new message."),
-		"submission_id": externalString("Stable id for this intended ask; reuse it after an uncertain retry to get the same call."),
-	})
+		"message":       externalString("Message to send."),
+		"chat_id":       externalString("Chat ID from code action=chats; default main."),
+		"inbox_id":      externalString("Inbox from a previous send to this Code chat."),
+		"submission_id": externalString("Unique message submission ID; reuse after uncertain delivery."),
+	}, "project_id", "message")
 	chatArg := map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats.")}
 	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to 4), as the + in the app does; talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, project, "project_id")
 	add("close_my_code_chat", "Close one of your Code project's side chats (tab). The main chat cannot be closed, and a chat that is still working must be stopped first."+suffix, true, false, chatArg, "project_id", "chat_id")
@@ -143,22 +141,6 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			projects = append(projects, map[string]any{"project_id": summary.ID, "title": summary.Title, "updated_at": summary.UpdatedAt})
 		}
 		externalJSON(w, map[string]any{"projects": projects})
-		return
-	}
-	if name == "ask_my_code" && str("call_id") != "" {
-		call := lookupCrewFunctionCall(str("call_id"))
-		if call == nil {
-			externalError(w, http.StatusNotFound, "not_found", "Call not found.")
-			return
-		}
-		call.mu.Lock()
-		owned := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser && call.TargetProfileID == codeproduct.ProfileID
-		call.mu.Unlock()
-		if !owned {
-			externalError(w, http.StatusNotFound, "not_found", "Call not found.")
-			return
-		}
-		externalJSON(w, api.externalCodeRunCallResponse(ctx, call, externalCrewWait(args)))
 		return
 	}
 	binding, projectID, ok := api.externalCodeRunOwnProject(ctx, claims.UserID, str("project_id"))
@@ -261,26 +243,10 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		target := triggerTarget{Kind: triggerCallerCrew, Path: binding.WorkspacePath, Label: "Code " + projectID + " · " + chat.Name, CrewID: projectID, CrewProfile: codeproduct.ProfileID, CrewOwner: claims.UserID}
-		if chat.ID != codeChatMainName {
-			target.Chat = chat
-		}
-		log.Printf("[CODE_RUN] %s asks Code %s chat %s via an external connection", claims.UserID, projectID, chat.ID)
-		call, err := api.startCrewFunctionCall(context.WithoutCancel(ctx), claims.UserID, externalCrewCaller(claims), target, defaultAskCrewFunction(), map[string]interface{}{"message": message}, externalCrewCallTimeout, str("submission_id"))
-		if err != nil {
-			externalError(w, http.StatusBadRequest, "call_refused", err.Error())
-			return
-		}
-		externalJSON(w, api.externalCodeRunCallResponse(ctx, call, externalCrewWait(args)))
+		target.Chat = chat
+		log.Printf("[CODE_RUN] %s sends to Code %s chat %s via an external connection", claims.UserID, projectID, chat.ID)
+		api.externalSendMessage(w, r, args, target)
 	default:
 		externalError(w, http.StatusNotFound, "unknown_tool", "Tool is not exposed by this API.")
 	}
-}
-
-// externalCodeRunCallResponse is the call's state after waiting up to wait, with a Code-specific poll hint.
-func (api *StreamingAPI) externalCodeRunCallResponse(ctx context.Context, call *crewFunctionCall, wait time.Duration) map[string]interface{} {
-	out := externalCrewCallResponse(ctx, call, wait)
-	if _, hasNext := out["next"]; hasNext {
-		out["next"] = "Still running in the Code chat. Poll with code action=ask and this call_id."
-	}
-	return out
 }

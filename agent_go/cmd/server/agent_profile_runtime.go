@@ -956,10 +956,17 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
 			log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
 		}
-		// A guest turn still answers the call it was started for.
+		// A reader or guest can reply within its existing conversation. This
+		// does not grant permission to initiate work in another agent.
+		messageReq := QueryRequest{SelectedFolder: workspacePath}
+		if err := api.registerAgentMessagingTools(agentReplyOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), gate.Declare); err != nil {
+			return err
+		}
 		if guest != "" {
-			functionReq := QueryRequest{SelectedFolder: workspacePath}
-			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
+			// Isolated function guests may report progress on the invocation
+			// they received, while result completion remains platform-owned.
+			gate.Declare("report_function_progress")
+			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
 		}

@@ -157,6 +157,12 @@ RUN if [ "$INSTALL_PI_CLI" = "true" ]; then \
 # themselves via execute_shell_command + python; there is no dedicated PDF tool)
 RUN pip3 install --break-system-packages uv pypdf
 
+# Platform-owned Relay interpreter. Published code never installs dependencies.
+COPY --from=builder /app/agent_go/pkg/relaypython/requirements-dbos.txt /opt/relay-dbos-requirements.txt
+RUN python3 -m venv /opt/relay-dbos \
+    && /opt/relay-dbos/bin/python -m pip install --no-cache-dir -r /opt/relay-dbos-requirements.txt
+ENV RELAY_DBOS_PYTHON=/opt/relay-dbos/bin/python
+
 # Verify npx and docker are available
 RUN which npx && which docker && which tmux && npm --version && npx --version && docker --version
 

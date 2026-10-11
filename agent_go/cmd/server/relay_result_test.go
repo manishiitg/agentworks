@@ -241,3 +241,33 @@ func TestRelayManifestUpdateRejectsInvalidGroupsAsBadRequest(t *testing.T) {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
 }
+
+func TestDBOSRelayResultDiscardsSnapshotFromBeforeRecovery(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	const workspace = "Workflow/recovered-relay"
+	const folder = "iteration-1-hook"
+	root := filepath.Join(docs, workspace, "runs", folder)
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".webhook-run-id"), []byte("recovered-run"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	interruptedAt := time.Now().Add(-time.Minute)
+	run := schedulerstate.Run{RunID: "recovered-run", RunFolder: folder, State: schedulerstate.StateInterrupted, CompletedAt: &interruptedAt, ErrorMessage: "interrupted: server restarted"}
+	cached, err := readWebhookRunResult(workspace, run)
+	if err != nil || cached.Status != "interrupted" {
+		t.Fatalf("initial snapshot: %+v %v", cached, err)
+	}
+	completedAt := time.Now()
+	run.State, run.CompletedAt, run.ErrorMessage = schedulerstate.StateCompleted, &completedAt, ""
+	result, err := readWebhookRunResult(workspace, run)
+	if err != nil || result.Status != "completed" || result.Error != "" || !result.FinishedAt.Equal(completedAt) {
+		t.Fatalf("recovered ledger hidden by stale snapshot: %+v %v", result, err)
+	}
+	again, err := readWebhookRunResult(workspace, run)
+	if err != nil || again.Status != "completed" {
+		t.Fatalf("replacement snapshot: %+v %v", again, err)
+	}
+}

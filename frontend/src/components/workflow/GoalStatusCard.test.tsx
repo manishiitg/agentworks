@@ -10,7 +10,7 @@ vi.mock('../../utils/pulseChatTab', () => ({ openWorkflowPulseChatTab: vi.fn() }
 it('shows a DB measurement without a folder link and waits for an agent progress verdict', () => {
   const html = renderToStaticMarkup(<GoalStatusCard goal={{
     facts: { status: 'ok', has_goal: true, summary: 'Measured', key_metric: 'responses', key_value: 0,
-      last_measured_at: '2026-10-09T00:00:00Z', days_since_run_measured: -1, alarms: [], schedules_paused: false },
+      last_measured_at: '2026-10-09T00:00:00Z', days_since_run_measured: -1, days_since_run: 0, alarms: [], schedules_paused: false },
     latest_check: { status: 'not_measured', checked_at: '2026-10-08T00:00:00Z', summary: 'Old measurement verdict' },
   }} />)
   expect(html).toContain('Last measured')

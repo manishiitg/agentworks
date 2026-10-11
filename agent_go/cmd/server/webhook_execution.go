@@ -89,6 +89,9 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 		if sctx.CapacityResumeRunID != "" {
 			return "", "", fmt.Errorf("Python Relays do not support execution recovery")
 		}
+		if sctx.DBOSResumeRunID != "" && !isDBOSRelay(manifest) {
+			return "", "", fmt.Errorf("Relay does not enable DBOS recovery")
+		}
 		if err := validatePythonRelaySource(ctx, sctx.WorkspacePath); err != nil {
 			return "", "", err
 		}
@@ -139,6 +142,17 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 // Resume must reuse the recorded folder. If its binding disappeared, fail
 // instead of allocating an empty folder and replaying completed side effects.
 func webhookExecutionRunFolder(sctx *ScheduleContext, runID string) (string, error) {
+	if sctx.DBOSResumeRunID != "" {
+		if sctx.DBOSResumeRunID != runID {
+			return "", fmt.Errorf("DBOS recovery run identity changed")
+		}
+		root, err := openWebhookRunRoot(sctx.WorkspacePath, schedulerstate.Run{RunID: runID, RunFolder: sctx.DBOSResumeRunFolder})
+		if err != nil {
+			return "", fmt.Errorf("DBOS recovery run folder unavailable: %w", err)
+		}
+		root.Close()
+		return sctx.DBOSResumeRunFolder, nil
+	}
 	if sctx.CapacityResumeRunID == "" {
 		return allocateWebhookRunFolder(sctx.WorkspacePath, runID)
 	}

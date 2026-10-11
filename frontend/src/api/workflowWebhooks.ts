@@ -1,4 +1,5 @@
 import type { GmailInboundFilters } from '../services/api-types'
+import type { RelaySourceGraph } from '../components/workflow/relayGraphAnnotations'
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 
@@ -86,6 +87,7 @@ function config() {
 }
 
 export const workflowWebhooksApi = {
+  relayGraph: (relayID: string, source: string) => axios.post<RelaySourceGraph>(`/api/relays/${encodeURIComponent(relayID)}/graph`, { source }, config()).then(r => r.data),
   relayReleases: (relayID: string) => axios.get<RelayReleasesResponse>(`/api/relays/${encodeURIComponent(relayID)}/releases`, config()).then(r => r.data),
   list: (workspacePath: string) => axios.get<APITriggerOptions>('/api/workflow-webhooks', {
     ...config(), params: { workspace_path: workspacePath },

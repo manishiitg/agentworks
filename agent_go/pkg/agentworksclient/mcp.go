@@ -23,7 +23,8 @@ const MCPInstructions = `You are connected to an AgentWorks server: tools read, 
 	`Discover workflow IDs with list_workflows first; IDs are never filesystem paths. ` +
 	`Call get_agent_context for token capabilities and the guidance version, and load only the guidance topics relevant to the task via list_guidance_topics/get_guidance_topic. ` +
 	`To run: call a run-mode tool such as execute_step (its reply carries session_id), then poll run_status for completion. ` +
-	`Chat with the chat tool for questions and analysis; pass session_id to continue a conversation. ` +
+	`Send conversational messages with messages action=send (chat and ask_crew are aliases). Keep inbox_id to continue and read explicit optional replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. ` +
+	`Declared functions are isolated internal triggers: call one, then read status, execution messages and output files using its call_id. ` +
 	`Answer from what you read; if the task needs a change, say so instead of attempting one.`
 
 const MCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection: every tool reads; nothing creates, edits, or runs. ` +
@@ -43,7 +44,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller) (*server.MCPServer, er
 	for _, definition := range definitions {
 		// The server omits run tools from catalogs whose token lacks
 		// runs:execute, so execute_step's presence proves this bridge runs.
-		if definition.Name == "execute_step" || definition.Name == "manage_vault_access" {
+		if definition.Name == "execute_step" || definition.Name == "call_crew_function" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" {
 			instructions = MCPInstructions
 			break
 		}
