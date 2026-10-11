@@ -130,16 +130,21 @@ How the pieces fit:
 - One local bridge process per computer holds a server stream per attachment
   (not yet one multiplexed stream), keeps an outbox with submission IDs while
   the server is down, and catches up from its saved cursor after a reconnect,
-  oldest first in batches of 20 for approved senders only. Rationale:
+  oldest first in batches of 20 for authorized senders in the same account.
+  Existing restricted attachments wait for a person to confirm `/agentworks resume`
+  before accepting all account senders. Upgrade the server before the CLI. Rationale:
   [the 2026-10-11 bridge decision](DECISIONS.md)
   ("Person-attached plugins use a durable local message bridge").
 - The person signs in once. Each attached agent gets its own revocable
   connection created by the CLI.
-- Attachment is opt-in per session and person-only: `agentworks attach PROVIDER
-  --session UUID --name <name> --purpose "<what it works on>" --allow-sender
-  NAME`. An agent cannot attach itself, and attach text inside a delivered
-  agent message is refused. It installs that CLI's hook or extension
-  (merging, never replacing, existing hooks); `agentworks detach` removes it.
+- Attachment is opt-in per session and person-only. In a Codex or Claude chat,
+  `/agentworks attach` proposes a name and purpose; the person confirms with
+  `/agentworks attach --confirm` or chooses `/agentworks attach NAME "PURPOSE"`.
+  All same-account senders are accepted; there are no sender allow flags.
+  An agent cannot attach itself, and attach text inside a delivered agent
+  message is refused. `agentworks attach PROVIDER` installs the provider plugin;
+  bare terminal discovery of all sessions remains planned (861-56).
+  `/agentworks detach` revokes the current chat attachment.
   A name is a stable address that moves to the newest attached session and shows
   offline when no session holds it; waiting messages arrive on attach.
 - A stop hook asks the local daemon over a local socket (no network call) for
@@ -152,7 +157,8 @@ How the pieces fit:
 - The person stays in control. Nothing is attached by default, and only a
   person attaches a chat: typing `/agentworks attach <name> "<purpose>"` in that
   chat (caught by the CLI's prompt-submit hook, linked to that chat's
-  conversation ID, never sent to the model) or running `agentworks attach`.
+  conversation ID, never sent to the model). Bare `agentworks attach` from a
+  separate terminal is still planned.
   `/agentworks detach`, `agentworks detach` or closing the chat ends it. Attachment is absent from agent MCP tools. This is a tool-surface boundary;
   an agent with shell access to the person's CLI credentials can still exercise
   that credential. It is not OS isolation from that agent. `agentworks status --agents` lists attached
