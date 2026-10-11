@@ -14,9 +14,8 @@ import "strings"
 //
 //	kind                    OwnsTerminal  FoldsIntoParent  notes
 //	full_run                     no             no         container only; not an agent
-//	orchestrator                 yes            no         todo_task; dispatches sub-agents
 //	sub_agent                    yes            no         delegated LLM agent
-//	message_sequence             yes            no         one terminal for the whole step
+//	agent                        yes            no         one terminal for the whole step
 //	agent_item        no             yes        internal turn of its step
 //	scripted_step                yes            no         python main.py — a real output pane
 //	router                       no             no         a decision record; emits no pane
@@ -134,7 +133,7 @@ func ParseExecutionKind(value string) ExecutionKind {
 	case "full_run", "workflow_full", "workflow_run":
 		return ExecutionKindFullRun
 		// Sub-agent aliases are numerous because five call sites each invented
-	// their own: controller_todo_task declares workflow_sub_agent /
+	// their own: controller_agent_delegation declares workflow_sub_agent /
 	// workflow_generic_agent, interactive_workshop_manager declares
 	// generic_agent / pulse_reviewer, the delegate tool declares delegation,
 	// and cmd/server defaults anything unlabelled to workshop_background.

@@ -1079,8 +1079,7 @@ type PartialPlanStep struct {
 	MaxIterations       *int                  `json:"max_iterations,omitempty"`       // DEPRECATED: loop feature removed
 	LoopDescription     string                `json:"loop_description,omitempty"`     // DEPRECATED: loop feature removed
 	// Todo task step fields
-	OrchestratorStep map[string]interface{}   `json:"todo_task_step,omitempty"`    // Optional: Updated todo task step - will be converted to PlanStepInterface
-	PredefinedRoutes []PlanOrchestrationRoute `json:"predefined_routes,omitempty"` // Optional: Updated predefined routes for todo task steps
+	PredefinedRoutes []PlanOrchestrationRoute `json:"predefined_routes,omitempty"` // Optional: Updated predefined routes for agent steps
 	// Routing fields
 	NextStepID string `json:"next_step_id,omitempty"` // Optional: Updated next_step_id (for routing steps)
 	// Routing step fields
@@ -1330,7 +1329,7 @@ func completePlanChangelogEntry(entry *PlanChangelogEntry) {
 		case len(entry.DeletedSteps) > 0:
 			// No explicit snapshot, but the caller captured the real
 			// pre-mutation content as DeletedSteps (e.g. delete_plan_steps,
-			// delete_todo_task_route) — hash that instead of collapsing to
+			// delete_agent_route) — hash that instead of collapsing to
 			// the empty-Changes placeholder (PLAT-074).
 			entry.BeforeRef = artifactContentRef(entry.DeletedSteps)
 		default:
@@ -1998,14 +1997,14 @@ func getAddHumanInputStepSchema() string {
 	}`
 }
 
-// getAddAgentRouteSchema returns the JSON schema for add_todo_task_route tool
+// getAddAgentRouteSchema returns the JSON schema for add_agent_route tool
 func getAddAgentRouteSchema() string {
 	return `{
 		"type": "object",
 		"properties": {
 			"parent_step_id": {
 				"type": "string",
-				"description": "REQUIRED: The ID of the todo task step (parent step). Use the step's id field from the plan."
+				"description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
 			},
 			"new_route": {
 				"type": "object",
@@ -2060,14 +2059,14 @@ func getAddAgentRouteSchema() string {
 	}`
 }
 
-// getUpdateAgentRouteSchema returns the JSON schema for update_todo_task_route tool
+// getUpdateAgentRouteSchema returns the JSON schema for update_agent_route tool
 func getUpdateAgentRouteSchema() string {
 	return `{
 		"type": "object",
 		"properties": {
 			"parent_step_id": {
 				"type": "string",
-				"description": "REQUIRED: The ID of the todo task step (parent step). Use the step's id field from the plan."
+				"description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
 			},
 			"existing_route_id": {
 				"type": "string",
@@ -2087,7 +2086,7 @@ func getUpdateAgentRouteSchema() string {
 			},
 			"sub_agent_step": {
 				"type": "object",
-				"description": "OPTIONAL: Updated inline sub-agent step. Use agent for conversational or judgment-heavy work, regular only for deterministic scripted work, or todo_task for one nested orchestrator layer. Omit this when using orphan_step_ref.",
+				"description": "OPTIONAL: Updated inline sub-agent step. Use agent for conversational or judgment-heavy work, regular only for deterministic scripted work, optional predefined_routes for one nested delegation layer. Omit this when using orphan_step_ref.",
 				"properties": {
 					"type": {"type": "string", "enum": ["agent", "regular"]},
 					"id": {"type": "string"},
@@ -2098,7 +2097,7 @@ func getUpdateAgentRouteSchema() string {
 					"items": {"type": "array", "description": "Required when type='agent'. Replaces the entire ordered user-message queue — a full replacement, not a merge. The description is the system charter; items explain how to execute and verify it. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
 					"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 					"context_output": {"type": "string"},
-					"predefined_routes": {"type": "array", "description": "When type='todo_task': nested routes may use agent or scripted regular, but not another todo_task layer."},
+					"predefined_routes": {"type": "array", "description": "Optional routes for an agent specialist. Children may use agent or scripted regular; a second nested delegation layer is not allowed."},
 						"validation_schema": {"type": "object"}
 				},
 				"required": ["type", "id", "title"]
@@ -2112,14 +2111,14 @@ func getUpdateAgentRouteSchema() string {
 	}`
 }
 
-// getDeleteAgentRouteSchema returns the JSON schema for delete_todo_task_route tool
+// getDeleteAgentRouteSchema returns the JSON schema for delete_agent_route tool
 func getDeleteAgentRouteSchema() string {
 	return `{
 		"type": "object",
 		"properties": {
 			"parent_step_id": {
 				"type": "string",
-				"description": "REQUIRED: The ID of the todo task step (parent step). Use the step's id field from the plan."
+				"description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
 			},
 			"deleted_route_id": {
 				"type": "string",
@@ -3362,28 +3361,12 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 		}
 	}
 	// Loop fields ignored (feature removed)
-	// Legacy todo_task_step field — extract fields and track them as top-level changes
-	if partialUpdate.OrchestratorStep != nil {
-		if desc, ok := partialUpdate.OrchestratorStep["description"].(string); ok && desc != "" {
-			changedFields = append(changedFields, "description (via todo_task_step)")
-			if orchestratorStep, ok := existingStep.(*AgentPlanStep); ok {
-				*fieldChanges = append(*fieldChanges, PlanFieldChange{
-					StepID:   partialUpdate.ExistingStepID,
-					Field:    "description",
-					OldValue: orchestratorStep.Description,
-					NewValue: desc,
-				})
-			}
-		}
-	}
 	if partialUpdate.PredefinedRoutes != nil {
 		changedFields = append(changedFields, "predefined_routes")
 		// Get old routes
 		var oldRoutes []PlanOrchestrationRoute
 		if orchestratorStep, ok := existingStep.(*AgentPlanStep); ok {
 			oldRoutes = orchestratorStep.PredefinedRoutes
-		} else if sequenceStep, ok := existingStep.(*AgentPlanStep); ok {
-			oldRoutes = sequenceStep.PredefinedRoutes
 		}
 		// Compare routes in detail
 		if !equalOrchestrationRoutes(oldRoutes, partialUpdate.PredefinedRoutes) {
@@ -5772,7 +5755,7 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 		if scriptedRegularCount > 0 {
 			setupNotice += fmt.Sprintf("\n\nConfigured %d new scripted execution boundary/boundaries (regular plan type, code execution on). Author and test each code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py) before production use.", scriptedRegularCount)
 		}
-		if stepType == "agent" || stepType == "orchestrator" || stepType == "todo_task" {
+		if stepType == "agent" {
 			planMedian := planMedianOtherStepDescriptionLen(oldPlan.Steps, typedStep.GetID())
 			setupNotice += stepDescriptionSizeNudge(0, len(typedStep.GetDescription()), planMedian)
 			setupNotice += descriptionReferencesEditNotice(workspacePath, typedStep.GetDescription())
@@ -5813,7 +5796,7 @@ func createCreatePlanExecutor(workspacePath string, logger loggerv2.Logger, read
 Before adding it, decide the step type by who decides the work, not by habit:
 - add_agent_step is the DEFAULT for conversational/judgment work, including one-turn work. Default to one large agent per shared-context span; split only for a concrete boundary (distinct durable output, independent retry/failure domain, different credentials/tools, a downstream consumer needing the intermediate artifact, or a human checkpoint) — not because there are several known sub-tasks or many tool calls.
 - add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE agent, not one scripted/agentic step per action.
-- add optional predefined_routes to the agent only when the agent must interpret runtime evidence and adaptively choose specialist work — a fixed child set/order does not qualify. Do not create a new orchestrator/todo_task compatibility step.
+- add optional predefined_routes to the agent only when the agent must interpret runtime evidence and adaptively choose specialist work — a fixed child set/order does not qualify. Use the same agent type for plain conversations and specialist delegation.
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
 - add_human_input_step only for a free-form value the workflow cannot otherwise obtain.
 
@@ -5853,7 +5836,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"create_plan",
-		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_human_input_step / add_todo_task_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments. Note: workflow objective lives in soul/soul.md — edit that file separately; plan.json no longer stores it.",
+		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_human_input_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments. Note: workflow objective lives in soul/soul.md — edit that file separately; plan.json no longer stores it.",
 		createPlanParams,
 		createCreatePlanExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6210,16 +6193,16 @@ func registerNativePlanModificationTools(
 
 	// NOTE: add/update/delete_orchestration_route tools removed (deprecated in favor of todo_task).
 
-	// Register todo task step update tool
+	// Register agent step update tool
 	// Register todo task route management tools
 	addOrchestratorRouteSchema := getAddAgentRouteSchema()
 	addOrchestratorRouteParams, err := parseSchemaForToolParameters(addOrchestratorRouteSchema)
 	if err != nil {
-		return fmt.Errorf("failed to parse add_todo_task_route schema: %w", err)
+		return fmt.Errorf("failed to parse add_agent_route schema: %w", err)
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_agent_route",
-		"Add a new predefined route (sub-agent) to an Orchestrator step (orchestrator type; todo_task is the legacy alias). New conversational routes must use sub_agent_step.type=agent, even for one turn. Use regular only for a deterministic scripted boundary; it is automatically configured as scripted. Provide parent_step_id and new_route with route_id, route_name, and condition, plus either sub_agent_step or orphan_step_ref. The plan.json file is updated immediately.",
+		"Add a new predefined route (sub-agent) to an agent step. New conversational routes must use sub_agent_step.type=agent, even for one turn. Use regular only for a deterministic scripted boundary; it is automatically configured as scripted. Provide parent_step_id and new_route with route_id, route_name, and condition, plus either sub_agent_step or orphan_step_ref. The plan.json file is updated immediately.",
 		addOrchestratorRouteParams,
 		createAddAgentRouteExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6230,11 +6213,11 @@ func registerNativePlanModificationTools(
 	updateOrchestratorRouteSchema := getUpdateAgentRouteSchema()
 	updateOrchestratorRouteParams, err := parseSchemaForToolParameters(updateOrchestratorRouteSchema)
 	if err != nil {
-		return fmt.Errorf("failed to parse update_todo_task_route schema: %w", err)
+		return fmt.Errorf("failed to parse update_agent_route schema: %w", err)
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_agent_route",
-		"Update an existing predefined route (sub-agent) within an Orchestrator step (orchestrator type; todo_task is the legacy alias). Conversational route definitions use agent; regular is reserved for deterministic scripted work. Provide parent_step_id, existing_route_id, and only the fields to change. Use orphan_step_ref for a reusable orphan step. The plan.json file is updated immediately.",
+		"Update an existing predefined route (sub-agent) within an agent step. Conversational route definitions use agent; regular is reserved for deterministic scripted work. Provide parent_step_id, existing_route_id, and only the fields to change. Use orphan_step_ref for a reusable orphan step. The plan.json file is updated immediately.",
 		updateOrchestratorRouteParams,
 		createUpdateAgentRouteExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6245,11 +6228,11 @@ func registerNativePlanModificationTools(
 	deleteOrchestratorRouteSchema := getDeleteAgentRouteSchema()
 	deleteOrchestratorRouteParams, err := parseSchemaForToolParameters(deleteOrchestratorRouteSchema)
 	if err != nil {
-		return fmt.Errorf("failed to parse delete_todo_task_route schema: %w", err)
+		return fmt.Errorf("failed to parse delete_agent_route schema: %w", err)
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"delete_agent_route",
-		"Delete a predefined route (sub-agent) from an Orchestrator step (orchestrator type; todo_task is the legacy alias). Provide parent_step_id and deleted_route_id. Unlike routing steps, Orchestrator steps may have 0 predefined routes (generic-agent-only). The plan.json file is updated immediately when this tool is called.",
+		"Delete a predefined route (sub-agent) from an agent step. Provide parent_step_id and deleted_route_id. Unlike routing steps, Agent steps may have 0 predefined routes (generic-agent-only). The plan.json file is updated immediately when this tool is called.",
 		deleteOrchestratorRouteParams,
 		createDeleteAgentRouteExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6494,7 +6477,7 @@ func mutableAgentRoutes(step PlanStepInterface) (*[]PlanOrchestrationRoute, stri
 	}
 }
 
-// createAddAgentRouteExecutor creates an executor function for add_todo_task_route tool
+// createAddAgentRouteExecutor creates an executor function for add_agent_route tool
 func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
 		reason, err := requireReason(args)
@@ -6563,7 +6546,7 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 			return "", fmt.Errorf("failed to read plan: %w", err)
 		}
 
-		// Find the parent todo task step by ID. Recurses into nested steps
+		// Find the parent agent step by ID. Recurses into nested steps
 		// (e.g. a todo_task sitting in another todo_task's predefined_routes.sub_agent_step).
 		parentStep, _, _ := findStepByID(plan.Steps, parentStepID)
 		if parentStep == nil {
@@ -6579,7 +6562,7 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 
 		routes, parentTitle, validateParent, ok := mutableAgentRoutes(parentStep)
 		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not an agent step (agent or legacy orchestrator)", parentStepID)
+			return "", fmt.Errorf("step with ID '%s' is not an agent step (type agent)", parentStepID)
 		}
 
 		// Validate that the new route has a route_id
@@ -6590,7 +6573,7 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 		// Check if route_id already exists
 		for _, existingRoute := range *routes {
 			if existingRoute.RouteID == newRoute.RouteID {
-				return "", fmt.Errorf("route with route_id '%s' already exists in todo task step '%s'", newRoute.RouteID, parentStepID)
+				return "", fmt.Errorf("route with route_id '%s' already exists in agent step '%s'", newRoute.RouteID, parentStepID)
 			}
 		}
 
@@ -6649,7 +6632,7 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 	}
 }
 
-// createUpdateAgentRouteExecutor creates an executor function for update_todo_task_route tool
+// createUpdateAgentRouteExecutor creates an executor function for update_agent_route tool
 func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
 		reason, err := requireReason(args)
@@ -6680,7 +6663,7 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 			return "", fmt.Errorf("failed to read plan: %w", err)
 		}
 
-		// Find the parent todo task step by ID.
+		// Find the parent agent step by ID.
 		parentStep, _, _ := findStepByID(plan.Steps, parentStepID)
 		if parentStep == nil {
 			parentStep, _, _ = findStepByID(plan.OrphanSteps, parentStepID)
@@ -6695,7 +6678,7 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 
 		routes, parentTitle, validateParent, ok := mutableAgentRoutes(parentStep)
 		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not an agent step (agent or legacy orchestrator)", parentStepID)
+			return "", fmt.Errorf("step with ID '%s' is not an agent step (type agent)", parentStepID)
 		}
 
 		// Find the route to update
@@ -6711,7 +6694,7 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 			for _, route := range *routes {
 				availableRouteIDs = append(availableRouteIDs, route.RouteID)
 			}
-			return "", fmt.Errorf("route with route_id '%s' not found in todo task step '%s'. Available route IDs: %v", existingRouteID, parentStepID, availableRouteIDs)
+			return "", fmt.Errorf("route with route_id '%s' not found in agent step '%s'. Available route IDs: %v", existingRouteID, parentStepID, availableRouteIDs)
 		}
 
 		// Capture the pre-mutation route content so the changelog can record a
@@ -6821,7 +6804,7 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 	}
 }
 
-// createDeleteAgentRouteExecutor creates an executor function for delete_todo_task_route tool
+// createDeleteAgentRouteExecutor creates an executor function for delete_agent_route tool
 func createDeleteAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
 		reason, err := requireReason(args)
@@ -6849,7 +6832,7 @@ func createDeleteAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 			return "", fmt.Errorf("failed to read plan: %w", err)
 		}
 
-		// Find the parent todo task step by ID. Recurses into nested steps
+		// Find the parent agent step by ID. Recurses into nested steps
 		// (e.g. a todo_task sitting in another todo_task's predefined_routes.sub_agent_step).
 		parentStep, _, _ := findStepByID(plan.Steps, parentStepID)
 		if parentStep == nil {
@@ -6865,7 +6848,7 @@ func createDeleteAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 
 		routes, parentTitle, _, ok := mutableAgentRoutes(parentStep)
 		if !ok {
-			return "", fmt.Errorf("step with ID '%s' is not an agent step (agent or legacy orchestrator)", parentStepID)
+			return "", fmt.Errorf("step with ID '%s' is not an agent step (type agent)", parentStepID)
 		}
 
 		// Find the route to delete
@@ -6883,10 +6866,10 @@ func createDeleteAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 			for _, route := range *routes {
 				availableRouteIDs = append(availableRouteIDs, route.RouteID)
 			}
-			return "", fmt.Errorf("route with route_id '%s' not found in todo task step '%s'. Available route IDs: %v", deletedRouteID, parentStepID, availableRouteIDs)
+			return "", fmt.Errorf("route with route_id '%s' not found in agent step '%s'. Available route IDs: %v", deletedRouteID, parentStepID, availableRouteIDs)
 		}
 
-		// Note: Unlike orchestration steps, todo task steps may have 0 predefined routes (generic-agent-only)
+		// Note: Unlike orchestration steps, agent steps may have 0 predefined routes (generic-agent-only)
 
 		// Remove the route
 		*routes = append(

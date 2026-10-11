@@ -7,7 +7,7 @@ import (
 )
 
 func TestAgentStepMigrationPreservesNestedRoutesAndContracts(t *testing.T) {
-	input := `{"unknown":{"type":"message_sequence"},"steps":[{"id":"owner","type":"orchestrator","description":"Keep the words todo_task and message_sequence in user text.","messages":[{"id":"work","type":"message","message":"Do the work","custom":true}],"next_step_id":"end","predefined_routes":[{"route_id":"specialist","sub_agent_step":{"id":"child","type":"todo_task","todo_task_step":{"type":"regular","description":"Specialist charter","context_output":"proof.json"},"messages":[{"id":"verify","type":"prevalidation","validation_schema":{"files":[]}}]}},{"route_id":"script","sub_agent_step":{"id":"fetch","type":"regular","description":"Fetch data"}}]}],"orphan_steps":[{"id":"reusable","type":"message_sequence","items":[{"id":"once","type":"user_message","message":"Analyze"}],"custom":{"kept":true}}]}`
+	input := `{"unknown":{"type":"message_sequence"},"steps":[{"id":"owner","type":"orchestrator","description":"Keep the words todo_task and message_sequence in user text.","messages":[{"id":"work","type":"message","message":"Do the work","custom":true}],"next_step_id":"end","predefined_routes":[{"route_id":"specialist","sub_agent_step":{"id":"child","type":"todo_task","todo_task_step":{"type":"regular","description":"Specialist charter","context_output":"proof.json"},"messages":[{"id":"verify","type":"prevalidation","validation_schema":{"files":[]}}]}},{"route_id":"script","sub_agent_step":{"id":"fetch","type":"regular","description":"Fetch data"}}]}],"orphan_steps":[{"id":"reusable","type":"message_sequence","items":[{"id":"once","type":"user_message","message":"Analyze"}],"custom":{"kept":true},"shared_with":{"orchestrator_ids":["owner"]}}]}`
 	output, count, err := MigrateAgentStepContent(input)
 	if err != nil || count != 3 {
 		t.Fatalf("migration count=%d err=%v", count, err)
@@ -31,6 +31,9 @@ func TestAgentStepMigrationPreservesNestedRoutesAndContracts(t *testing.T) {
 	child := owner.PredefinedRoutes[0].SubAgentStep.(*AgentPlanStep)
 	if child.Description != "Specialist charter" || child.ContextOutput != "proof.json" || child.Items[0].Type != "prevalidation" {
 		t.Fatalf("child contract lost: %#v", child)
+	}
+	if got := plan.OrphanSteps[0].GetCommonFields().SharedWith; got == nil || len(got.AgentIDs) != 1 || got.AgentIDs[0] != "owner" {
+		t.Fatal("orphan sharing lost during migration")
 	}
 	if owner.PredefinedRoutes[1].SubAgentStep.StepType() != StepTypeRegular {
 		t.Fatal("script became agent")

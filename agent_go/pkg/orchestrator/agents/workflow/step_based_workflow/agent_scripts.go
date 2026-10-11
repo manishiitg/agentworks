@@ -199,7 +199,7 @@ func sequenceSavedScriptError(result *ScriptedFastPathResult) error {
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Context, step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, session *agentSequenceSession) (string, error) {
-	if session == nil || session.delegation != nil {
+	if session == nil {
 		return "", fmt.Errorf("scripted batch items require an agent")
 	}
 	calls, err := resolveSequenceScripts(item, session.scriptedPlan)

@@ -220,20 +220,21 @@ function isContainerTranscriptNoise(event: PollingEvent): boolean {
 // task/result card. The generic rows add no content ("Running" / "completed")
 // and remain visually loud after the useful card has appeared. Keep failures
 // and cancellations visible, but remove the redundant happy-path wrapper.
-const MESSAGE_SEQUENCE_WRAPPER_TYPES = new Set([
+const AGENT_ITEM_WRAPPER_TYPES = new Set([
   'background_agent_started',
   'background_agent_completed',
 ])
 
-function isMessageSequenceWrapperEvent(event: PollingEvent): boolean {
-  if (!MESSAGE_SEQUENCE_WRAPPER_TYPES.has(event.type || '')) return false
+function isAgentItemWrapperEvent(event: PollingEvent): boolean {
+  if (!AGENT_ITEM_WRAPPER_TYPES.has(event.type || '')) return false
   const fields = eventFields(event)
   const metadata = fields.metadata && typeof fields.metadata === 'object'
     ? fields.metadata as Record<string, unknown>
     : undefined
   const name = textField(fields.name).toLowerCase()
   const agentID = textField(fields.agent_id) || textField(metadata?.agent_id)
-  return name.startsWith('message sequence item') ||
+  return name.startsWith('agent item') || name.startsWith('message sequence item') ||
+    metadata?.agent_item === true || metadata?.agent_item === 'true' ||
     agentID.toLowerCase().startsWith('msgseq-') ||
     metadata?.message_sequence_item === true ||
     metadata?.message_sequence_item === 'true'
@@ -615,7 +616,7 @@ function isTranscriptEvent(event: PollingEvent): boolean {
   if (NON_TRANSCRIPT_TYPES.has(event.type || '')) return false
   if (isRunToolEnd(event)) return false
   if (isContainerTranscriptNoise(event)) return false
-  if (isMessageSequenceWrapperEvent(event)) return false
+  if (isAgentItemWrapperEvent(event)) return false
   if (event.type === 'agent_end' || event.type === 'unified_completion') {
     const fields = eventFields(event)
     const failed = fields.success === false || Boolean(textField(fields.error))

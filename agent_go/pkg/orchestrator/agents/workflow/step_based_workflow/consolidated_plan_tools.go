@@ -357,10 +357,10 @@ func ConsolidatedPlanToolName(n string) string {
 
 func consolidatedPlanToolText(text string) string {
 	names := []string{}
-	for _, typ := range append(append([]string{}, consolidatedStepTypes...), "todo_task") {
+	for _, typ := range consolidatedStepTypes {
 		names = append(names, "add_"+typ+"_step", "update_"+typ+"_step")
 	}
-	for _, typ := range []string{"orchestrator", "todo_task"} {
+	for _, typ := range []string{"agent"} {
 		for _, action := range []string{"add", "update", "delete"} {
 			names = append(names, action+"_"+typ+"_route")
 		}

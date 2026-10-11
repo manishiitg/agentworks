@@ -51,7 +51,7 @@ func TestAgentParsesBoundedAgentRoutes(t *testing.T) {
 	}
 }
 
-func TestDelegatingAgentUsesAgentRuntimeAdapter(t *testing.T) {
+func TestDelegatingAgentUsesCanonicalAgentContract(t *testing.T) {
 	sequence := &AgentPlanStep{
 		Type: StepTypeAgent,
 		CommonStepFields: CommonStepFields{
@@ -73,15 +73,8 @@ func TestDelegatingAgentUsesAgentRuntimeAdapter(t *testing.T) {
 		NextStepID: "end",
 	}
 
-	adapted := sequence
-	if adapted == nil || adapted.ID != sequence.ID {
-		t.Fatalf("adapter did not preserve sequence identity: %#v", adapted)
-	}
-	if len(adapted.PredefinedRoutes) != 1 || adapted.PredefinedRoutes[0].RouteID != "specialist" {
-		t.Fatalf("adapter routes = %#v", adapted.PredefinedRoutes)
-	}
-	if len(adapted.Items) != 1 || adapted.Items[0].ID != "verify" {
-		t.Fatalf("adapter messages = %#v", adapted.Items)
+	if err := validateAgentStepFieldsTyped(sequence); err != nil {
+		t.Fatalf("delegating agent should use the canonical agent validator: %v", err)
 	}
 	if !agentSequenceDelegationItemAllowed(AgentItem{Type: "scripted"}) {
 		t.Fatal("delegating agent sequence should retain safe declared scripted batches")
