@@ -231,7 +231,7 @@ func suppressRepeatedChildFailureNotification(registry *BackgroundAgentRegistry,
 }
 
 // suppressParentOwnedAgentSuccess keeps successful completion at the
-// workflow-step boundary. A agent item is an implementation detail
+// workflow-step boundary. An agent item is an implementation detail
 // of that step; publishing both the child success and the parent success creates
 // two identical "Step complete" turns. Failures deliberately take the opposite
 // path above so the specific child error remains visible. A standalone item is

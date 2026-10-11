@@ -122,7 +122,7 @@ type ExecutionContext struct {
 	// substitute; executable steps receive it as high-priority prompt context.
 	WorkshopHumanInput string
 
-	// AgentRestart forces a agent step to archive any existing
+	// AgentRestart forces an agent step to archive any existing
 	// session and run its configured item queue from scratch.
 	AgentRestart bool
 

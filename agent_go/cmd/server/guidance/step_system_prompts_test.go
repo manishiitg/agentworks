@@ -46,7 +46,7 @@ func TestStepSystemPromptsShareRuntimeAndBuilderSource(t *testing.T) {
 		}
 	}
 	legacy := materializedFileContent(t, skill, "references/agent.md")
-	for _, marker := range []string{"compatibility", "agent", "predefined_routes"} {
+	for _, marker := range []string{"canonical agent step", "agent", "predefined_routes"} {
 		if !strings.Contains(legacy, marker) {
 			t.Fatalf("orchestrator migration guidance missing %q", marker)
 		}

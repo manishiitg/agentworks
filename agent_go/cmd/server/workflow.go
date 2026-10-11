@@ -4720,7 +4720,7 @@ func routeSegmentEndIndexRaw(steps []map[string]interface{}, start int) int {
 }
 
 // plannedAgentItemsJSON keeps only the operator-meaningful part of
-// a agent. The full runtime prompt can include large injected
+// an agent. The full runtime prompt can include large injected
 // context, but this is the message explicitly authored in the workflow plan.
 func plannedAgentItemsJSON(step map[string]interface{}) string {
 	var rawItems []interface{}

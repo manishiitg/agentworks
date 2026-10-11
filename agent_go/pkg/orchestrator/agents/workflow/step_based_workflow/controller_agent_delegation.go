@@ -855,12 +855,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeRoutedSubAgentStep(
 	}
 
 	delegatingStep := stepToExecute
-	delegatingSequence := false
-	if sequence, ok := stepToExecute.(*AgentPlanStep); ok && len(sequence.PredefinedRoutes) > 0 {
-		delegatingStep = sequence
-		delegatingSequence = true
-	}
-	if isDelegatingAgentStep(stepToExecute) || delegatingSequence {
+	if isDelegatingAgentStep(stepToExecute) {
 		if orchestratorStep, ok := delegatingStep.(*AgentPlanStep); ok {
 			stepCopy := *orchestratorStep
 			stepCopy.Items = append([]AgentItem(nil), orchestratorStep.Items...)

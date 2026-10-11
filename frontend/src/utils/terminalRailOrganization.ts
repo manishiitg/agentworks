@@ -144,7 +144,7 @@ export function terminalRailVisualKind(terminal: TerminalSnapshot): TerminalRail
     executionKind === 'todo_task'
   ) return 'orchestrator'
   // A predefined route can use agent internally, but its
-  // user-facing role is still a child agent of the owning orchestrator.
+  // user-facing role is still a child agent of the owning agent.
   if (hasDistinctParentStep) return 'sub-agent'
   if (
     stepType === 'agent' ||

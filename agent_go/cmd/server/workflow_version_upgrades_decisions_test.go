@@ -82,7 +82,7 @@ func TestNoParallelContractUpgradeDecisionChannel(t *testing.T) {
 // migration. Guard the complete upgrade chain so a mandatory route, step,
 // table, or retired evaluation turn cannot silently return.
 func TestNoUpgradeMandatesMeasurementTopology(t *testing.T) {
-	if WorkflowContractCurrentVersion != workflowContractStepDescriptionLayoutVersion {
+	if WorkflowContractCurrentVersion != workflowContractUnifiedAgentVersion {
 		t.Fatalf("current contract = %s, want step description layout marker %s", WorkflowContractCurrentVersion, workflowContractStepDescriptionLayoutVersion)
 	}
 	plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion})

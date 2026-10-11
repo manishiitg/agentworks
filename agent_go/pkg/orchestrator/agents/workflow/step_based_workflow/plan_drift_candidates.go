@@ -33,12 +33,8 @@ const planDriftReviewContractVersion = 3
 const (
 	agentSequenceBestPracticesDriftCheckID = "agent_best_practices"
 	scriptedBestPracticesDriftCheckID      = "scripted_best_practices"
-	orchestratorBestPracticesDriftCheckID  = "orchestrator_best_practices"
-	// legacyOrchestratorBestPracticesDriftCheckID is the pre-v1.0.35 ID; records
-	// already carrying it still satisfy the orchestrator requirement.
-	legacyOrchestratorBestPracticesDriftCheckID = "todo_task_best_practices"
-	routingBestPracticesDriftCheckID            = "routing_best_practices"
-	branchBestPracticesDriftCheckID             = "branch_best_practices"
+	routingBestPracticesDriftCheckID       = "routing_best_practices"
+	branchBestPracticesDriftCheckID        = "branch_best_practices"
 )
 
 func requiredStepTypeBestPracticesCheckID(stepType string) string {
@@ -47,8 +43,6 @@ func requiredStepTypeBestPracticesCheckID(stepType string) string {
 		return scriptedBestPracticesDriftCheckID
 	case string(StepTypeAgent):
 		return agentSequenceBestPracticesDriftCheckID
-	case string(StepTypeAgent):
-		return orchestratorBestPracticesDriftCheckID
 	case string(StepTypeRouting):
 		return routingBestPracticesDriftCheckID
 	case string(StepTypeBranch):

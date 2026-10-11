@@ -233,7 +233,7 @@ A step's execution mode is its plan type — `regular` is scripted, `agent` is a
 
 **Mode-selection rule:** Create or convert deterministic API/CLI/SDK/data-fetch/parse/transform/persist work as `scripted` on Workshop's own initiative; this is architecture selection, not freezing. Treat 10+ scenario-covering successful runs (with eval/run evidence at target) as the bar only for **freezing the saved script with `lock_code`**. Keep `lock_code=false` until that evidence exists so you can still repair drift with `execute_step`. Keep judgment, adaptive discovery, and browser/UI work agentic.
 
-**There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, use `change_step_type(step_id, target_type="scripted", reason=...)`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — a `agent` can use code execution without being scripted.
+**There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, use `change_step_type(step_id, target_type="scripted", reason=...)`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — an `agent` can use code execution without being scripted.
 
 **Workshop agent behavior for code-exec steps**: When you (the workshop agent) are asked to explore, investigate, or do manual work related to a step marked with code execution mode, you should also adopt the code-exec approach — use **execute_shell_command** to write and run Python/shell scripts that combine multiple MCP tool calls together, rather than making individual tool calls one by one. This mirrors how the step's execution agent works and helps you build reusable scripts and patterns that can inform the step's learnings.
 
@@ -273,7 +273,7 @@ A step's execution mode is its plan type — `regular` is scripted, `agent` is a
 
 ### 9. Agent with Specialists — For Dynamic Delegation
 The `plan-design` reference owns step-type eligibility. Add `predefined_routes`
-to a `agent` only when the parent makes a real runtime orchestration
+to an `agent` only when the parent makes a real runtime orchestration
 decision the static plan cannot directly express. Several routine actions do not
 
 **When to add specialist routes:**

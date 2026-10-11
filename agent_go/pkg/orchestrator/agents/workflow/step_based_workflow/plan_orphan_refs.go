@@ -100,7 +100,7 @@ func resolveOrphanRefsInAgentRoutes(agentID string, routes []PlanOrchestrationRo
 				return fmt.Errorf("agent step %q route %q cannot define both orphan_step_ref and sub_agent_step", agentID, route.RouteID)
 			}
 			if containsString(orphanChain, route.OrphanStepRef) {
-				return fmt.Errorf("orphan step reference cycle detected while resolving %q via agent step %q route %q", route.OrphanStepRef, agentID, route.RouteID)
+				return fmt.Errorf("orphan step reference cycle detected while resolving %q vian agent step %q route %q", route.OrphanStepRef, agentID, route.RouteID)
 			}
 
 			sourceStep, ok := orphanByID[route.OrphanStepRef]

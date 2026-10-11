@@ -1563,7 +1563,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 						ID:                progressID,
 						ParentExecutionID: b.parentID,
 						Name:              workflowProgressDisplayName(stepName),
-						Kind:              string(orchestrator_events.ExecutionKindOrchestrator),
+						Kind:              string(orchestrator_events.ExecutionKindAgent),
 					})
 				}
 				b.session.executionNotifier.OnExecutionComplete(progressID, workflowProgressDisplayName(stepName), result, meta, nil)
@@ -1599,7 +1599,7 @@ func workflowProgressTracksAgent(agentType string, agentName string) bool {
 // to re-derive it from the "Step -> " name convention below.
 func workflowProgressExecutionKind(agentType string) orchestrator_events.ExecutionKind {
 	if agentType == "todo_task_orchestrator" {
-		return orchestrator_events.ExecutionKindOrchestrator
+		return orchestrator_events.ExecutionKindAgent
 	}
 	return orchestrator_events.ExecutionKindSubAgent
 }
@@ -2091,7 +2091,7 @@ func RegisterRunFullWorkflowTool(
 				// own lifecycle notifications directly (message_sequence items,
 				// kb-update, continuation recovery) actually reach the main agent
 				// during a full-workflow run. Without this the notifier is nil and
-				// those notifications silently no-op — e.g. a agent step
+				// those notifications silently no-op — e.g. an agent step
 				// (login/discovery/retrieval phases) ran for many minutes with the
 				// main agent never told it started, progressed, or finished.
 				workflowController.SetWorkshopExecutionNotifier(session.executionNotifier)

@@ -104,7 +104,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 - **Update steps**: `update_step` (for `regular` steps — the type alone makes them scripted), `update_step`, `update_step`, `update_step`, `update_step`, `update_step`. Each updater accepts only its own step type. To move a step between the scripted and conversational models use `change_step_type(step_id, target_type="scripted"|"agent", reason)` — in place, same id, dependencies and routes kept, recorded in the plan changelog. Never `add_*` + `delete_plan_steps` for that, and never `update_step_config`: there is no execution-mode config field.
 - **Reclassify routing/branch**: `change_step_type(existing_step_id, target_type, reason)` atomically relabels an existing `routing` step as `branch` or vice versa — same id, same routes, only the question-field name changes. `reason` is the one-sentence classification rationale written to the plan changelog. Never use `add_step`/`add_step` + `delete_plan_steps` to do this by hand: deleting the old step prunes its `step_config.json` row (`drift_review`, `execution_tier`, etc.) before the id can be reused, so it does not actually preserve history.
 - **Agent specialist routes**: `manage_step_route` adds, updates, or deletes
-  `predefined_routes` on a agent agent (and on persisted legacy
+  `predefined_routes` on an agent (and on persisted legacy
   agent records). Choose one worker pattern per route: inline
   `sub_agent_step`, or `orphan_step_ref` to reuse an allowlisted shared orphan.
   Do not set both.

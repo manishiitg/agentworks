@@ -8,7 +8,7 @@ The step may declare `predefined_routes`. Those routes are bounded specialist
 capabilities, not a prescribed checklist: the sequence agent receives
 `call_sub_agent` and decides at runtime whether, when, and how often to call a
 specialist. With no routes it remains a single-agent sequence. Legacy
-`orchestrator` steps are still read and run for compatibility.
+Saved legacy step names normalize to `agent` on read and are rewritten by the v1.0.47 contract migration.
 
 Routed and non-routed sequences use the same execution system prompt and the
 same default tool policy. Declaring routes does not switch the sequence to a

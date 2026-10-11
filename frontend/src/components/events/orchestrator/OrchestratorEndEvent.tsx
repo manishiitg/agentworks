@@ -28,7 +28,7 @@ export const OrchestratorEndEventDisplay: React.FC<OrchestratorEndEventDisplayPr
     const t = event.orchestrator_type
     if (t === 'planner') return 'Planner Orchestrator'
     if (t === 'workflow') return 'Automation Orchestrator'
-    return 'Orchestrator'
+    return 'Agent'
   }
 
   return (

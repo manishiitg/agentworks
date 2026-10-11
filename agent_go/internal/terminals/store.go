@@ -286,7 +286,7 @@ func (s *Store) handleEvent(sessionID string, event storeevents.Event) bool {
 		}
 		if structuredLifecycleIsNestedSequence(event, metadata) {
 			s.appendStructuredLifecycleResult(sessionID, event, metadata)
-			// A agent item reuses the owning step transcript. Settle
+			// An agent item reuses the owning step transcript. Settle
 			// the transcript when the item ends so a completed final item does
 			// not remain in the Live rail forever. A later item start/chunk
 			// reactivates the same transcript through the normal upsert path.

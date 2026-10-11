@@ -253,7 +253,7 @@ func canonicalDeclaredExecutionMode(mode string) string {
 
 // isScriptedStep reports whether a step runs through the scripted executor
 // (a persistent learnings/{step-id}/main.py, replayed across runs). The plan
-// decides (PLAT-287): a regular step IS scripted, a agent is
+// decides (PLAT-287): a regular step IS scripted, an agent is
 // conversational. The one exception is transitional: a regular step whose
 // step_config.json still carries the retired declared_execution_mode="agentic"
 // key (not yet stripped by v1.0.39) is a legacy agentic step the runtime keeps
@@ -7853,7 +7853,7 @@ This is a **read-only review** — do not modify any files.
    - Uses agent_browser `+"`snapshot`"+` before interacting — never clicks or types blindly
    - Ref-based interaction is acceptable ONLY when the ref value is parsed from a snapshot taken earlier in the SAME run (`+"`ref = extract_ref(snapshot, role=..., name=...)` then `browser('click', [ref])`"+`). Hardcoded refs in main.py must be flagged.
    - Does NOT use raw page JavaScript for actions when a dedicated agent_browser command exists. Read-only eval for discovery is fine.
-   - Uses wait loops that check page state via agent_browser `+"`snapshot`"+`, not hardcoded time.sleep()
+   - Uses wait loops that check page state vian agent_browser `+"`snapshot`"+`, not hardcoded time.sleep()
    - Prints diagnostic snapshots/state on failure so the fix loop can debug what went wrong
    - Avoids structural CSS selectors (nth-child chains, deep descendant paths) — flag those in favor of durable hooks
 

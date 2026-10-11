@@ -71,6 +71,8 @@ For each step, confirm it's the right type, and flag mis-modeling:
 - **routing** — a DETERMINISTIC N-way switch: no agent, **no description**, decided upstream (a prior agent writes `route_selection.json`, or the caller passes `route_selections`); `default_route_id` is the missing-file fallback. **Every branch must converge** to the shared downstream step via `next_step_id` (or end). "Loop/if in a description" is not routing.
 - **agent** — the canonical agent step: `description` is its stable system charter and ordered `items` are user turns in one conversation. Use it for one substantial same-context reasoning job plus focused validation/critique/repair follow-ups, or as a re-entrant specialist. Items are not a checklist of routine sub-actions and should not issue fixed API/CLI calls or parse stable response shapes. Feed it persisted results from upstream scripted fetchers. As a top-level step the queue runs once; as a specialist route it can be re-entered during the same run.
 
+- **agent with specialists** (`agent` + `predefined_routes`) — add routes when the agent interprets evidence and adaptively chooses whether, when and how to delegate. A fixed child set/order does not justify routes. The description is the system charter and items are user turns. Conversational specialists use `agent`; deterministic specialists use `regular`. Only one nested delegation layer is allowed.
+
 - **orphan** — a reusable plan-local definition or manual utility agent (data checks, env validation, one-off investigations, or a shared sub-agent several orchestrators reuse). Reuse is explicit: `shared_with.orchestrator_ids` + a route's `orphan_step_ref`.
 
 PART 4 — STORES FITNESS (when to use db vs kb vs learnings; cite the step)

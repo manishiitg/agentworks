@@ -379,9 +379,9 @@ const upgradePulseActionableBacklog = `WORKFLOW CONTRACT UPGRADE: RETIRED PULSE 
 
 The legacy Pulse actionable-backlog migration for this version has been retired. Do not inspect or modify Pulse data and do not run the workflow. Call set_workflow_contract_version(version="1.0.34") and stop.`
 
-const upgradeOrchestratorStepType = `WORKFLOW CONTRACT UPGRADE: ORCHESTRATOR STEP TYPE.
+const upgradeOrchestratorStepType = `WORKFLOW CONTRACT UPGRADE: RETIRED STEP-TYPE CHECKPOINT.
 
-Do only this migration. The plan step type formerly called todo_task is now named orchestrator; the runtime reads both names, so nothing changes in behavior. Call migrate_orchestrator_step_type once. It rewrites every legacy "type": "todo_task" discriminator in planning/plan.json to "orchestrator", validates the plan, and records the change; a plan already on the new name is a no-op. Do not edit plan.json by hand and do not run the workflow. If the tool reports an error, do not stamp. Otherwise call set_workflow_contract_version(version="1.0.35") and stop.`
+This historical rename is superseded by the agent migration at v1.0.47. Do not rewrite plan types here or run the workflow. Call set_workflow_contract_version(version="1.0.35") and stop.`
 
 const upgradeActivityTabFromRunSummary = `WORKFLOW CONTRACT UPGRADE: THE ACTIVITY TAB CAN READ THE RUN SUMMARIES YOU ALREADY SEND.
 

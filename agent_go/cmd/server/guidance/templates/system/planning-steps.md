@@ -42,9 +42,8 @@ For a fixed choice the user already gave the builder, prefer a deterministic
 switch instead of asking again — `branch` for a small in-flow decision,
 `routing` when the choice forks into a major, self-contained sub-workflow —
 and pass `route_selections` when running either.
-Add `predefined_routes` to a `agent` only when the agent must choose
-specialist work adaptively from runtime evidence; several known actions in one
-compatibility shapes for this routed agent. Do not add a
+Add `predefined_routes` to an `agent` only when the agent must choose
+specialist work adaptively from runtime evidence. Several known actions in one shared context belong in its ordered items. Do not add a
 `human_input` step just to ask the same branch choice again.
 
 ## Step types
@@ -56,8 +55,6 @@ compatibility shapes for this routed agent. Do not add a
   parsing, normalization, and mechanical persistence; batch related calls
   rather than making micro-steps. Conversational work uses `agent`,
   even for one turn
-- **`agent`** — legacy compatibility records for a
-  `agent` with `predefined_routes`; do not author new plans in this shape
 - **`routing`** — choose next step from a fixed route map; a major,
   self-contained sub-workflow fork
 - **`branch`** — same deterministic route-map mechanics as `routing`, for a
@@ -74,7 +71,7 @@ step-types reference, inner steps, reusable orphan-route pattern),
 call **`read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`** — this is the entry
 point for any plan-composition decision. From there:
 
-- **Per-step-type deep dives**: `orchestrator` (legacy compatibility + route
+- **Per-step-type deep dives**: `agent` (conversation and route
   migration), `human-input` (input types + routing
   pairing + unattended schedules), `agent` (full pattern
   catalog: Stateful Specialist, Test/Fix Loop, Maker+Reviewer, Panel,
@@ -82,6 +79,6 @@ point for any plan-composition decision. From there:
 	  (deterministic route_selection.json contract, anti-patterns), `branch`
 	  (same mechanics as `routing`, for a small in-flow decision).
 - **Combining steps**: examples live with their owning contracts in `plan-design`,
-  `agent` (script batches, verification, SQL iteration), `orchestrator`
+  `agent` (script batches, verification, SQL iteration and specialist routes)
   (adaptive investigations), `human-in-the-loop` (review/approval), and `stores`
   (durable persistence).

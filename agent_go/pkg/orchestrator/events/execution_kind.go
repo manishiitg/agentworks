@@ -49,15 +49,11 @@ const (
 	// must never occupy a rail slot beside the real agents it contains.
 	ExecutionKindFullRun ExecutionKind = "full_run"
 
-	// ExecutionKindOrchestrator is a todo_task orchestrator: a real LLM agent
-	// that also dispatches sub-agents.
-	ExecutionKindOrchestrator ExecutionKind = "orchestrator"
-
 	// ExecutionKindSubAgent is a delegated LLM agent (call_sub_agent,
 	// call_generic_agent, background delegation).
 	ExecutionKindSubAgent ExecutionKind = "sub_agent"
 
-	// ExecutionKindAgent is a agent step — one multi-turn
+	// ExecutionKindAgent is an agent step — one multi-turn
 	// conversation. The STEP owns exactly one terminal; its items do not.
 	ExecutionKindAgent ExecutionKind = "agent"
 
@@ -89,7 +85,6 @@ const (
 func (k ExecutionKind) OwnsTerminal() bool {
 	switch k {
 	case ExecutionKindMainAgent,
-		ExecutionKindOrchestrator,
 		ExecutionKindSubAgent,
 		ExecutionKindAgent,
 		ExecutionKindWorkflowStep:
@@ -121,7 +116,7 @@ func (k ExecutionKind) FoldsIntoParent() bool {
 // IsContainer reports whether this kind groups other executions beneath it.
 func (k ExecutionKind) IsContainer() bool {
 	switch k {
-	case ExecutionKindFullRun, ExecutionKindOrchestrator:
+	case ExecutionKindFullRun, ExecutionKindAgent:
 		return true
 	default:
 		return false
@@ -138,9 +133,7 @@ func ParseExecutionKind(value string) ExecutionKind {
 		return ExecutionKindMainAgent
 	case "full_run", "workflow_full", "workflow_run":
 		return ExecutionKindFullRun
-	case "orchestrator", "todo_task":
-		return ExecutionKindOrchestrator
-	// Sub-agent aliases are numerous because five call sites each invented
+		// Sub-agent aliases are numerous because five call sites each invented
 	// their own: controller_todo_task declares workflow_sub_agent /
 	// workflow_generic_agent, interactive_workshop_manager declares
 	// generic_agent / pulse_reviewer, the delegate tool declares delegation,
@@ -149,9 +142,9 @@ func ParseExecutionKind(value string) ExecutionKind {
 		"workflow_sub_agent", "workflow_generic_agent", "generic_agent",
 		"pulse_reviewer", "workshop_background":
 		return ExecutionKindSubAgent
-	case "agent", "message_sequence", "message-sequence":
+	case "agent", "message_sequence", "message-sequence", "orchestrator", "todo_task":
 		return ExecutionKindAgent
-	case "agent_item", "agent-item":
+	case "agent_item", "agent-item", "message_sequence_item", "message-sequence-item":
 		return ExecutionKindAgentItem
 	case "scripted_step", "scripted", "learn_code":
 		return ExecutionKindScriptedStep

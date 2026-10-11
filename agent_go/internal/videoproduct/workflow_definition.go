@@ -34,7 +34,7 @@ func planForAll(pipelines []*Pipeline) map[string]interface{} {
 	return map[string]interface{}{"steps": steps}
 }
 
-// stageStep is one production stage. Always a agent — every stage
+// stageStep is one production stage. Always an agent — every stage
 // here is conversational and judgment-heavy, which is what the plan-authoring
 // guidance reserves that type for.
 func stageStep(p *Pipeline, stage PipelineStage, deps []string, last bool) map[string]interface{} {

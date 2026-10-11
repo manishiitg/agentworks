@@ -95,12 +95,12 @@ A routing step jumps execution **into** the selected branch, but it does not sto
 - A branch whose terminal step has **no** `next_step_id` falls through to the next step in the list — the classic "the non-selected branch also ran" bug. Always wire the convergence.
 
 If an agent must decide whether or which specialists to call from live evidence,
-use a `agent` with `predefined_routes`. Use routing when an already
+use an `agent` with `predefined_routes`. Use routing when an already
 made decision selects exactly one genuinely different downstream path.
 
 ### Routing vs. other primitives
 
-- **Routing vs. agent with specialists**: a routed agent agent may call
+- **Routing vs. agent with specialists**: a routed agent may call
   zero, one, or several specialists adaptively. Routing runs exactly one fixed
   downstream alternative.
 - **Routing vs. plain agent**: a plain sequence is one ordered conversation; add `predefined_routes` only for adaptive delegation.

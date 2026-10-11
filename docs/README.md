@@ -184,7 +184,7 @@ this is the complete map.
 - [Learn Code and Code Execution Modes](workflow/learn_code_flow.md)
 - [Learning Architecture](workflow/learning_architecture.md)
 - [LinkedIn Pulse Review Audit — 2026-08-02](workflow/linkedin_pulse_review_audit_2026-08-02.md)
-- [Message Sequence Steps](workflow/message_sequence_step_design.md)
+- [Message Sequence Steps](workflow/agent_step_design.md)
 - [Orchestrator Step Type](workflow/orchestrator-step-type.md)
 - [Org Dashboard — design](workflow/org_dashboard_design.md)
 - [Persistent Stores Design](workflow/persistent_stores_design.md)

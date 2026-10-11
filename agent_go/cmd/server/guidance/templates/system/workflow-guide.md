@@ -78,7 +78,7 @@ or tool names.
 - **Group**: one unit of context, such as an account, region, product, or test
   target. Selected plan steps run for each selected group.
 - **Step**: one bounded unit of work. It may use an agent conversation, a saved
-  deterministic script, a agent agent (with optional specialist
+  deterministic script, an agent (with optional specialist
   routes), a route or branch,
   or a human decision.
 - **Route**: a major choice between sub-workflows. A **branch** is a smaller
