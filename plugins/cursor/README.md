@@ -4,6 +4,8 @@ This package formats turn-boundary messages for one explicitly attached Cursor
 conversation. It requires the shared PLAT-861 local bridge and its `cursor_hook`
 transport. It does not implement a daemon, sign in, hold credentials, poll a
 mailbox, type into the app, or claim that writing stdout admits a message.
+The shared bridge on main supports Cursor hook receipts and attachment fencing;
+Cursor-specific narrow MCP/process binding is still pending under PLAT-861.
 
 ## Prerequisites and installation
 
@@ -16,8 +18,11 @@ create isolated per-agent credentials.
 The person can load this directory with Cursor CLI's `--plugin-dir` option, or
 install it locally in the desktop app through its documented local plugin
 directory. Approve workspace, plugin, hooks and MCP trust prompts personally.
-The default MCP entry uses the CLI's existing config. Configure it separately if
-the person uses a dedicated connection. Loading a plugin does not attach a chat.
+The MCP manifest intentionally registers no server until PLAT-861 supports the
+messaging-only Cursor child. This package must not enable the full-account
+`agentworks mcp serve` connection. Broader tool access is a separate person opt-in.
+The attached hook/helper route uses only the local socket. Loading a plugin does
+not attach a chat.
 
 ```sh
 cursor-agent --plugin-dir /absolute/path/to/plugins/cursor --workspace /absolute/project/path
@@ -33,16 +38,15 @@ default). Replace the script path with the actual absolute plugin path:
 {
   "version": 1,
   "hooks": {
-    "beforeSubmitPrompt": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 5}],
-    "stop": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 5, "loop_limit": 5}],
-    "sessionEnd": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 5}]
+    "beforeSubmitPrompt": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20}],
+    "stop": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20, "loop_limit": 5}],
+    "sessionEnd": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20}]
   }
 }
 ```
 
-Install either plugin hooks or project hooks; avoid duplicate registrations. The
-shared offer journal prevents automatic duplicate offers if both accidentally
-run, but competing stop hooks can overwrite `followup_message`. Cursor merges
+Install exactly one of plugin hooks or project hooks. Duplicate registration is
+unsupported: competing stop hooks can overwrite `followup_message`. Cursor merges
 responses with the last follow-up winning; a returned offer is not acceptance.
 
 ## Person-controlled attachment
@@ -75,10 +79,24 @@ boundary, not protection against another program running under your OS account.
 
 The bridge must own current sender/connection checks, catch-up, ordering,
 reconnect, restart deduplication, rotation and a durable offer journal. The
-adapter checks attachment identity before formatting the returned JSON. A hook
+adapter snapshots attachment identity before draining and passes that ID to the
+bridge. It checks individual messages independently, so a malformed or stale
+item cannot discard valid neighbors. Drains get a ten-second socket timeout
+within a twenty-second hook budget; the attachment lookup has three seconds.
+If a drain times out or a batch cannot be fully rendered, the hook returns an
+explicit mailbox-recovery prompt. It does not automatically replay an uncertain
+offer. The receiving agent uses `cursor_hook.py recover --session SESSION
+--attachment-id ATTACHMENT` to read through the shared bridge and deduplicates
+message IDs before acting. Further requested pages use `--after next_cursor`.
+No adapter body journal, automatic retry loop or admission receipt is introduced.
+
+A hook
 offer remains `stored`; the receiving agent explicitly acknowledges `admitted`
 after reading it and `processed` after handling it. The messaging skill describes
 acknowledgements and replies through the bridge, retaining the original inbox.
+Both helper commands require `--attachment-id` from the original offer, forward
+it to the bridge before any operation, and reject a mismatching response. They
+cannot follow a moved address or substitute the newest attachment for an old one.
 
 Cursor's stop hook submits a new message only when a turn ends. Busy tools finish
 first. No documented exact-session idle input API was established in this
