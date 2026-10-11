@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-11 — People choose attachment names; agents describe their purpose (PLAT-861)
+
+The person attaches with `/agentworks attach NAME` or confirms a proposed name.
+Purpose is optional at attachment; the attached agent updates its own purpose
+through the restricted messaging child. Updating purpose cannot create names,
+move attachments, change connections or grant access. Why: the person chooses
+an address, while the agent knows the work it is doing.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue861-76.
+
+
 ## 2026-10-11 — Attached local agents accept all account senders (PLAT-861)
 
 Remove sender allow fields from attachment commands and runtime state. An opt-in

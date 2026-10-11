@@ -40,6 +40,7 @@ type LocalBridgeRequest struct {
 
 type LocalBridgeReply struct {
 	Attached           bool               `json:"attached"`
+	NativeDelivery     bool               `json:"native_delivery"`
 	IncludeGuidance    bool               `json:"include_guidance,omitempty"`
 	Attachment         AgentAttachment    `json:"attachment,omitempty"`
 	Messages           []AgentLiveMessage `json:"messages,omitempty"`
@@ -386,20 +387,30 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.ConfigPath = s.ParentConfigPath
 		in.AgentName = s.Attachment.AgentName
 		in.Purpose = s.Attachment.Purpose
-		in.NativeRemote = s.NativeRemote
+		if in.NativeRemote == "" {
+			in.NativeRemote = s.NativeRemote
+		}
 	}
 	if in.Action == "attach" {
 		if in.NativeRemote != "" && (!((in.Provider == "codex" && !strings.HasPrefix(in.NativeRemote, "claude+session://")) || (in.Provider == "claude" && strings.HasPrefix(in.NativeRemote, "claude+session://"))) || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
-		if in.SessionID == "" || in.HostKey == "" || in.Purpose == "" {
-			return LocalBridgeReply{Error: "explicit session, provider process key, purpose required"}
+		if in.SessionID == "" || in.HostKey == "" {
+			return LocalBridgeReply{Error: "explicit session and provider process key required"}
 		}
 		client, err := localConfiguredClient(in.ConfigPath)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		if _, err = client.Call(callCtx, "messages", map[string]any{"action": "register", "agent_name": in.AgentName, "purpose": in.Purpose}); err != nil {
+		registration := map[string]any{"action": "register", "agent_name": in.AgentName}
+		if in.Purpose != "" {
+			registration["purpose"] = in.Purpose
+		}
+		if _, err = client.Call(callCtx, "messages", registration); err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.Code == "unknown_tool" {
+				return LocalBridgeReply{Error: "AgentWorks at " + client.baseURL + " does not expose agent messaging. Sign in to an updated server with agentworks --server SERVER login, then retry attach."}
+			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		connectionDir := filepath.Join(b.root, "connections")
@@ -494,7 +505,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.start(serverCtx, next)
 		b.wake()
-		return LocalBridgeReply{Attached: true, Attachment: a}
+		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != ""}
 	}
 	if s == nil {
 		return LocalBridgeReply{}
@@ -508,7 +519,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if s.client == nil {
 		return LocalBridgeReply{Error: "attached connection is unavailable; sign in and explicitly reattach"}
 	}
-	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError}
+	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != ""}
 	if s.Offline && in.Action != "status" && in.Action != "detach" && in.Action != "cleanup" && in.Action != "offline" {
 		return out
 	}
@@ -521,6 +532,21 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.Action = "reply_inbox"
 	}
 	switch in.Action {
+	case "purpose":
+		if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		}
+		raw, err := s.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": s.Attachment.AgentName, "purpose": in.Purpose})
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		s.Attachment.Purpose = strings.TrimSpace(in.Purpose)
+		if err := b.save(); err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		out.Attachment = s.Attachment
+		out.Result = raw
+		return out
 	case "peers", "send", "read", "reply_inbox":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.

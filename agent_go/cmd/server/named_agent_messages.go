@@ -260,6 +260,45 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	externalJSON(w, out)
 }
 
+// Updating purpose cannot create a name, move an attachment or widen its connections.
+func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	claims := GetUserFromContext(r.Context())
+	purpose, ok := args["purpose"].(string)
+	purpose = strings.TrimSpace(purpose)
+	if !ok || purpose == "" || len(purpose) > 512 {
+		externalError(w, 400, "invalid_arguments", "purpose must be 1 to 512 bytes")
+		return
+	}
+	if !namedAgentOperationAllowed(claims, true) {
+		externalError(w, 403, "insufficient_scope", "Connection lacks messaging write access.")
+		return
+	}
+	name, err := normalizeMessageAgentName(externalArg(args, "agent_name"))
+	if err != nil {
+		externalError(w, 400, "invalid_arguments", "Invalid agent name.")
+		return
+	}
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	s, err := readAgentMessageStore(r.Context())
+	if err != nil {
+		externalCommunicationError(w, 400, "purpose_refused", err)
+		return
+	}
+	for i, a := range s.Agents {
+		if a.UserID == claims.UserID && a.Name == name && namedAgentConnectionAllowed(a, claims) {
+			s.Agents[i].Purpose = purpose
+			if err = saveAgentMessageStore(r.Context(), s); err != nil {
+				externalCommunicationError(w, 400, "purpose_refused", err)
+				return
+			}
+			externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "status": "updated"})
+			return
+		}
+	}
+	externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
+}
+
 // A global delivery cursor lets one named mailbox read first contacts from
 // multiple conversations without confusing their independent reply cursors.
 func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *UserClaims, args map[string]any) (map[string]interface{}, error) {

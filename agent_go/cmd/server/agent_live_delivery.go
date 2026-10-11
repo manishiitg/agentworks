@@ -112,11 +112,13 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
-		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || purpose == "" || len(purpose) > 512 {
-			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and purpose (1 to 512 bytes).")
+		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || len(purpose) > 512 {
+			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and an optional purpose (at most 512 bytes).")
 			return
 		}
-		a.Purpose = purpose
+		if purpose != "" {
+			a.Purpose = purpose
+		}
 		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID}
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {

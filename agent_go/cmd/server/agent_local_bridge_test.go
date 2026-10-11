@@ -181,6 +181,17 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{}); e != nil || out.IsError {
 		t.Fatalf("attached directory failed: %+v %v", out, e)
 	}
+	// Purpose updates use only this exact child's existing identity, without attachment authority.
+	purposeTool := plugin.GetTool("agent_message_set_purpose")
+	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Review workflow communication"}}}); e != nil || result.IsError {
+		t.Fatalf("own purpose update failed: %+v %v", result, e)
+	}
+	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "update_purpose", "agent_name": "other-agent", "purpose": "Take over"}); e == nil {
+		t.Fatal("child changed another agent purpose")
+	}
+	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "register", "agent_name": "hook-reviewer", "purpose": "Register"}); e == nil {
+		t.Fatal("purpose child acquired registration authority")
+	}
 	// A desktop MCP child is shared, so only host metadata chooses the chat.
 	codexPlugin, e := agentworksclient.NewPluginMCPServer(context.Background(), root, "codex", "desktop-parent", false)
 	if e != nil {

@@ -24,9 +24,9 @@ never grants hook trust. The SessionEnd hook uses Codex's three-second
 timeout limit so the provider does not report a clamped-timeout loading warning. A command reaching the model instead of the hook has
 not attached the chat; do not ask the model to execute it as a workaround.
 
-In the chat type `/agentworks attach`. The hook proposes a stable name and purpose;
+In the chat type `/agentworks attach`. The hook proposes a stable name;
 confirm with `/agentworks attach --confirm`, or choose
-`/agentworks attach NAME "PURPOSE"`. All senders in your AgentWorks account
+`/agentworks attach NAME`. All senders in your AgentWorks account
 can message the attached session; there is no sender allow field.
 Use `/agentworks status` or `/agentworks detach` to manage this exact chat.
 Claude also accepts the namespaced `/agentworks:agentworks` spelling.
@@ -73,3 +73,5 @@ a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbo
 recovery. Session moves reuse the restricted child; expired/revoked children are
 replaced once from the person's current login. Cleanup retires message-ID reply
 metadata; recover with an inbox read and reply using the original `--inbox`.
+
+The person chooses only the attachment name. The attached agent can describe its work with `agent_message_set_purpose` or `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. On macOS, optional `terminal-notifier` provides a notification click action for the exact Codex thread; without it, the basic alert must be followed by opening the chat manually.
