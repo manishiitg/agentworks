@@ -14,6 +14,11 @@ type DeleteWorkspaceFileParams struct {
 
 // DeleteWorkspaceFile deletes a file from the workspace
 func (c *Client) DeleteWorkspaceFile(ctx context.Context, params DeleteWorkspaceFileParams) (DeleteFileResult, error) {
+	if BeforePathMutation != nil {
+		if err := BeforePathMutation(ctx, params.Filepath); err != nil {
+			return DeleteFileResult{}, err
+		}
+	}
 	if params.Filepath == "" {
 		return DeleteFileResult{}, fmt.Errorf("filepath is required")
 	}

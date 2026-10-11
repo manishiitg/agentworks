@@ -144,6 +144,70 @@ func validateTeamQuery(ctx context.Context, req QueryRequest) error {
 	return nil
 }
 func init() {
+	workspacepkg.BeforePathMutation = teamStructuralMutation
 	workspacepkg.FileReadOverlay = stagedTeamRead
 	workspacepkg.FileWriteInterceptor = stageTeamWrite
+}
+
+func teamStructuralMutation(ctx context.Context, paths ...string) error {
+	if trusted, _ := ctx.Value(teamCommitPermitKey{}).(bool); trusted {
+		return nil
+	}
+	for _, p := range paths {
+		root, rel := teamWorkspacePath(p)
+		if root == "" || !teamProtectedSource(rel) {
+			continue
+		}
+		m, found, e := ReadWorkflowManifest(ctx, root)
+		if e != nil {
+			return e
+		}
+		if found && m.Team != nil {
+			return fmt.Errorf("team source moves and raw deletions are disabled; use scoped plan/source edits")
+		}
+	}
+	return nil
+}
+
+// Manual triggering has run and housekeeping grants, independent of who
+// authored the schedule. Standing authorization is still checked at firing.
+func authorizeTeamScheduleTrigger(ctx context.Context, root, id string) error {
+	m, found, e := ReadWorkflowManifest(ctx, root)
+	if e != nil {
+		return e
+	}
+	if !found || m.Team == nil {
+		return nil
+	}
+	actor := teamActor(ctx)
+	if actor == m.Team.LeaderID {
+		return nil
+	}
+	member := m.Team.member(actor)
+	if member == nil || !member.Run {
+		return fmt.Errorf("route run permission is required")
+	}
+	if a := userAccessForClaims(&UserClaims{UserID: actor}); a.Disabled || !a.Known {
+		return fmt.Errorf("account is unavailable")
+	}
+	var schedule *WorkflowSchedule
+	for i := range m.Schedules {
+		if m.Schedules[i].ID == id {
+			schedule = &m.Schedules[i]
+			break
+		}
+	}
+	if schedule == nil {
+		return fmt.Errorf("schedule not found")
+	}
+	// Reuse the route/action checks with a copy: this check does not confer or
+	// persist schedule-management permission.
+	policy := *m.Team
+	policy.Contributors = append([]WorkflowContributor{}, m.Team.Contributors...)
+	for i := range policy.Contributors {
+		if policy.Contributors[i].UserID == actor {
+			policy.Contributors[i].ManageSchedules = true
+		}
+	}
+	return teamScheduleAuthority(&policy, actor, *schedule)
 }

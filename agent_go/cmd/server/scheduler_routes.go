@@ -1238,6 +1238,10 @@ func triggerScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if !requireWorkflowVisible(w, r, result.WorkspacePath) {
 			return
 		}
+		if err := authorizeTeamScheduleTrigger(r.Context(), result.WorkspacePath, id); err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
 		trigResult, err := svc.TriggerNow(result.WorkspacePath, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

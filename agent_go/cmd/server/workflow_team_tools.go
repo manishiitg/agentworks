@@ -44,13 +44,14 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 			if access.Disabled || workflowAccessForManifest(&UserClaims{UserID: r.user}, m) == WorkflowAccessNone {
 				return "", fmt.Errorf("no current workflow team access")
 			}
+			ctx = withTeamPlanReceipt(ctx)
 			member := m.Team.member(r.user)
 			if r.user != m.Team.LeaderID {
 				if teamRunTool(n) {
 					if member == nil || !member.Run {
 						return "", fmt.Errorf("route run permission is required")
 					}
-					if n != "execute_step" {
+					if n != "execute_step" && n != "debug_step" {
 						return "", fmt.Errorf("Contributors execute assigned steps; whole-workflow runs require the Leader")
 					}
 					raw, _, err := readFileFromWorkspace(ctx, r.root+"/planning/plan.json")
@@ -72,7 +73,7 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 						return "", fmt.Errorf("step is not in your assigned route")
 					}
 				}
-				if n == "execute_sql" || n == "configure_goal_metrics" || strings.HasPrefix(n, "configure_workflow") || n == "set_workflow_identity" {
+				if n == "execute_sql" || n == "configure_goal_metrics" || n == "update_variable" || n == "add_group" || n == "update_group" || n == "delete_group" || n == "update_workflow_config" || n == "set_workflow_contract_version" || n == "set_workflow_llm_config" || strings.HasPrefix(n, "configure_workflow") || n == "set_workflow_identity" {
 					return "", fmt.Errorf("shared goal and workflow settings require the Leader")
 				}
 			}
@@ -98,8 +99,8 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 	}, t, g)
 }
 func teamPlanTool(n string) bool {
-	return n == "add_step" || n == "update_step" || n == "delete_plan_steps" || n == "manage_step_route" || n == "change_step_type" || n == "update_step_config" || n == "update_step_configs" || n == "maintain_plan" || n == "create_plan" || strings.HasPrefix(n, "migrate_") || n == "restore_step_from_changelog" || n == "update_validation_schema" || strings.HasPrefix(n, "delete_") && (strings.Contains(n, "step") || strings.Contains(n, "route")) || strings.HasPrefix(n, "add_") && strings.Contains(n, "route") || strings.HasPrefix(n, "update_") && strings.Contains(n, "route") || strings.HasPrefix(n, "add_") && strings.Contains(n, "step") || strings.HasPrefix(n, "update_") && strings.Contains(n, "step")
+	return n == "add_step" || n == "update_step" || n == "delete_plan_steps" || n == "manage_step_route" || n == "change_step_type" || n == "update_step_config" || n == "update_step_configs" || n == "maintain_plan" || n == "cleanup_orphan_step_configs" || n == "convert_routing_branch_step_type" || n == "strip_declared_execution_mode" || n == "create_plan" || strings.HasPrefix(n, "migrate_") || n == "restore_step_from_changelog" || n == "update_validation_schema" || strings.HasPrefix(n, "delete_") && (strings.Contains(n, "step") || strings.Contains(n, "route")) || strings.HasPrefix(n, "add_") && strings.Contains(n, "route") || strings.HasPrefix(n, "update_") && strings.Contains(n, "route") || strings.HasPrefix(n, "add_") && strings.Contains(n, "step") || strings.HasPrefix(n, "update_") && strings.Contains(n, "step")
 }
 func teamRunTool(n string) bool {
-	return n == "execute_step" || n == "execute_workflow" || n == "start_workflow_execution" || n == "run_workflow" || n == "run_workflow_groups" || n == "run_full_workflow"
+	return n == "execute_step" || n == "execute_workflow" || n == "start_workflow_execution" || n == "run_workflow" || n == "run_workflow_groups" || n == "run_full_workflow" || n == "debug_step"
 }

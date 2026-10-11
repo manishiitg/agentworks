@@ -16,6 +16,11 @@ type MoveWorkspaceFileParams struct {
 
 // MoveWorkspaceFile moves a file from one location to another
 func (c *Client) MoveWorkspaceFile(ctx context.Context, params MoveWorkspaceFileParams) (MoveFileResult, error) {
+	if BeforePathMutation != nil {
+		if err := BeforePathMutation(ctx, params.SourceFilepath, params.DestinationFilepath); err != nil {
+			return MoveFileResult{}, err
+		}
+	}
 	if params.SourceFilepath == "" {
 		return MoveFileResult{}, fmt.Errorf("source_filepath is required")
 	}

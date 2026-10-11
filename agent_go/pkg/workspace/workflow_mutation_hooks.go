@@ -15,3 +15,6 @@ var FileWriteReceipt func(context.Context, string, string)
 // ordinary clients. FileReadOverlay supplies their own uncommitted contents.
 var FileWriteInterceptor func(context.Context, string, string) (bool, error)
 var FileReadOverlay func(context.Context, string) (string, bool, bool)
+
+// Structural operations must not bypass content authorization through a move or delete.
+var BeforePathMutation func(context.Context, ...string) error

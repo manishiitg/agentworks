@@ -822,7 +822,10 @@ func teamScheduleAuthority(t *WorkflowTeam, actor string, s WorkflowSchedule) er
 			return fmt.Errorf("schedule selects a route not assigned to you")
 		}
 	}
-	a := s.EffectiveAfterRun()
+	if s.AfterRun == nil {
+		return fmt.Errorf("Contributor schedules require explicit after_run choices")
+	}
+	a := *s.AfterRun
 	if a.Backup && !member.Backup || a.Publish && !member.Publish || a.Notify && !member.Notify {
 		return fmt.Errorf("after-run action requires its own grant")
 	}
@@ -915,7 +918,7 @@ func (api *StreamingAPI) registerWorkflowTeamTools(reg definitionToolRegistrar, 
 			return "", fmt.Errorf("no workflow access")
 		}
 		rel := filepath.ToSlash(filepath.Clean(stringToolArg(args, "path")))
-		if strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) || !(strings.HasPrefix(rel, "code/") || strings.HasPrefix(rel, "learnings/") || strings.HasPrefix(rel, "instructions/") || strings.HasPrefix(rel, "skills/") || rel == "soul/soul.md") {
+		if strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) || !(strings.HasPrefix(rel, "code/") || strings.HasPrefix(rel, "learnings/") || strings.HasPrefix(rel, "instructions/") || strings.HasPrefix(rel, "skills/") || strings.HasPrefix(rel, "variables/") || rel == "soul/soul.md") {
 			return "", fmt.Errorf("unsupported source path")
 		}
 		raw, exists, err := readFileFromWorkspace(ctx, root+"/"+rel)
@@ -937,7 +940,7 @@ func (api *StreamingAPI) registerWorkflowTeamTools(reg definitionToolRegistrar, 
 	props := map[string]interface{}{"path": map[string]interface{}{"type": "string"}, "content": map[string]interface{}{"type": "string"}, "expected_revision": map[string]interface{}{"type": "string"}}
 	return reg.RegisterCustomTool("edit_team_source", "Edit a team workflow source file after reading it. expected_revision is the SHA256 of the exact saved UTF-8 content (missing for a new file). Only the route assignee edits referenced source; the Leader edits shared source and soul/soul.md. Plans and membership use typed tools. Changes fail if the revision or assignment changed.", map[string]interface{}{"type": "object", "properties": props, "required": []string{"path", "content", "expected_revision"}, "additionalProperties": false}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		rel := filepath.ToSlash(filepath.Clean(stringToolArg(args, "path")))
-		if strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) || !(strings.HasPrefix(rel, "code/") || strings.HasPrefix(rel, "learnings/") || strings.HasPrefix(rel, "instructions/") || strings.HasPrefix(rel, "skills/") || rel == "soul/soul.md") {
+		if strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) || !(strings.HasPrefix(rel, "code/") || strings.HasPrefix(rel, "learnings/") || strings.HasPrefix(rel, "instructions/") || strings.HasPrefix(rel, "skills/") || strings.HasPrefix(rel, "variables/") || rel == "soul/soul.md") {
 			return "", fmt.Errorf("only code/, instructions/ or soul/soul.md sources may be edited")
 		}
 		if level, _ := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: user}, root); level != WorkflowAccessOwner && level != WorkflowAccessWrite {

@@ -298,7 +298,7 @@ func readFileFromWorkspaceQuery(ctx context.Context, filePath, rawQuery string) 
 // deleteWorkspaceFile deletes a file from the workspace via the workspace API.
 // Returns nil if the file doesn't exist (404) or was successfully deleted.
 func deleteWorkspaceFile(ctx context.Context, configPath string) error {
-	if e := teamRawPathPolicy(ctx, configPath, true); e != nil {
+	if e := teamStructuralMutation(ctx, configPath); e != nil {
 		return e
 	}
 	noteWorkspaceMutation(configPath, false)
@@ -4917,7 +4917,7 @@ func deleteWorkspaceFolder(ctx context.Context, folderPath string) error {
 }
 
 func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (bool, error) {
-	if e := teamRawPathPolicy(ctx, folderPath, true); e != nil {
+	if e := teamStructuralMutation(ctx, folderPath); e != nil {
 		return false, e
 	}
 	noteWorkspaceMutation(folderPath, true)

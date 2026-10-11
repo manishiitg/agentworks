@@ -763,6 +763,11 @@ func (c *Client) CreateFolder(ctx context.Context, folderPath string) error {
 // workspace API. The user id on the client is forwarded so per-user product
 // paths resolve under the same _users/<id> root used when they were created.
 func (c *Client) DeleteFolder(ctx context.Context, folderPath string) error {
+	if BeforePathMutation != nil {
+		if err := BeforePathMutation(ctx, folderPath); err != nil {
+			return err
+		}
+	}
 	if err := c.ValidatePathWithContext(ctx, folderPath, true); err != nil {
 		return err
 	}
