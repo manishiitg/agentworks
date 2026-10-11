@@ -104,6 +104,10 @@ func externalTools() ([]externalTool, error) {
 		add("get_agent_context", "Describe this connection for an external agent: token capabilities, available tools, and guidance version. No workflow required; pass workflow_id for the caller's role on it.", false, false, map[string]any{"workflow_id": map[string]any{"type": "string", "description": "Optional workflow ID to report the caller's role on."}})
 		add("list_guidance_topics", "List the server-owned external guidance topics and their descriptions.", false, false, nil)
 		add("get_guidance_topic", "Read one external guidance topic (Builder reference, Crew authoring, Relay Builder contract). Each has its own version. Load only topics relevant to the task.", false, false, map[string]any{"topic": externalString("Topic name from list_guidance_topics."), "known_version": externalString("Optional version you already hold for this topic; an unchanged topic returns unchanged:true without its text.")}, "topic")
+		add("get_guidance_skills", "Discover versioned server guidance skill files. By default returns names, descriptions, versions and file paths only. Pass topics to fetch selected files; known_versions omits unchanged bodies. Uses this connection's existing access; no workflow required.", false, false, map[string]any{
+			"topics":         map[string]any{"type": "array", "maxItems": 64, "uniqueItems": true, "items": externalString("Topic name returned in skills.")},
+			"known_versions": map[string]any{"type": "object", "maxProperties": 64, "additionalProperties": externalString("Previously saved topic version.")},
+		})
 		add("get_skill", "Return the AgentWorks skill (SKILL.md) for this server so you can install it: save `content` to <your skills folder>/agentworks/SKILL.md (Claude Code: ~/.claude/skills/agentworks/SKILL.md). Read-only; no workflow required.", false, false, nil)
 		add("list_workflow_knowledge", "List a workflow's learnings, knowledgebase notes, workspace skills, and skill wiring (workflow-selected skills plus per-step enabled_skills). Page the file inventories with limit and offset; has_more signals another page.", false, true, page())
 		add("read_workflow_knowledge", "Read one knowledge file: learnings/ or knowledgebase/ paths from the workflow, or skills/<folder>/<file> from the workspace skill catalog. Nothing else is addressable.", false, true, map[string]any{"path": externalString("Knowledge path: learnings/..., knowledgebase/..., or skills/<folder>/<file>.")}, "path")
@@ -650,6 +654,9 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	case "list_guidance_topics":
 		api.externalGuidanceTopicList(w, r)
+		return
+	case "get_guidance_skills":
+		api.externalGuidanceSkills(w, r, args)
 		return
 	case "get_guidance_topic":
 		api.externalGuidanceTopicBody(w, r, args)

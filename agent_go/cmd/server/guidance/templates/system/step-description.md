@@ -1,3 +1,9 @@
+---
+name: "step-description"
+description: "How to write an optimized step description and validation_schema: earn every word, let the schema name the output shape. Load before writing or editing any step description."
+external: true
+external_note: "External mapping: get_step_prompts uses a workflow Run session when runs:execute is allowed. Use runs action=get/logs and guarded file reads for saved-run evidence. It does not preview unsaved plan edits; delegate those through builder action=chat when available."
+---
 ## Writing Optimized Step Descriptions (Prompt Engineering)
 
 A step's `description` is the durable system-level charter the execution agent

@@ -48,7 +48,7 @@ var cliOperationGroups = []struct {
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "list_schedules"}, {"runs", "get_schedule_runs"}, {"trigger", "trigger_schedule"}}},
 	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
 	{"messages", "Send agent messages and read explicit replies from your inbox", []struct{ command, tool string }{{"send", "messages"}, {"read", "messages"}}},
-	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}}},
+	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"call-file", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
 	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"call-file", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
@@ -94,6 +94,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 func newCommand(o *options) *cobra.Command {
 	root := &cobra.Command{Use: "agentworks", Short: "Control a hosted AgentWorks server or expose its tools over MCP", SilenceUsage: true, SilenceErrors: true}
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) { o.checkGuidanceAtStart(cmd) }
 	root.SetIn(o.stdin)
 	root.SetOut(o.stdout)
 	root.SetErr(o.stderr)
@@ -159,7 +160,7 @@ func newCommand(o *options) *cobra.Command {
 	plan := &cobra.Command{
 		Use: "plan get", Args: cobra.MaximumNArgs(1),
 		Short: "Read a workflow plan and configuration",
-		Long:  "Read with 'plan get'. Plan mutations are not exposed: tokens read and run, never author.",
+		Long:  "Read with 'plan get'. Direct plan mutations are not exposed. Use Builder authoring tools when your existing consent and current role allow them.",
 	}
 	addOperationFlags(plan, "get_plan")
 	plan.RunE = func(cmd *cobra.Command, args []string) error {
@@ -410,7 +411,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	// Global guidance topics accept no workflow_id; offering the flag would
 	// only produce an avoidable invalid_arguments response.
 	crewTool := strings.Contains(tool, "crew")
-	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && !crewTool {
+	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && tool != "get_guidance_skills" && !crewTool {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
 	if crewTool && tool != "list_crews" && tool != "get_crew_function_call" && tool != "create_crew" && tool != "import_crew" {
@@ -464,6 +465,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	}
 	if tool == "get_guidance_topic" {
 		f.String("topic", "", "Guidance topic from guidance topics")
+		f.String("known-version", "", "Saved topic version; unchanged bodies are omitted")
 	}
 	if tool == "list_workflows" || tool == "list_files" || tool == "search_files" || tool == "list_step_code" || tool == "list_runs" || tool == "get_run" || tool == "get_logs" || tool == "run_status" || tool == "get_schedule_runs" {
 		f.Int("limit", 0, "Maximum results")
@@ -580,7 +582,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id"} {
+	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value

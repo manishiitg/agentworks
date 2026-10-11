@@ -1,3 +1,8 @@
+---
+name: "dashboard-authoring"
+description: "Dashboard MCP operations, revisioned bundles, live HTML data APIs, Python/JS scripts, validation, preview and authenticated team links."
+external: true
+---
 # Dashboard API usage
 
 Follow the user’s design and motion preferences. These instructions describe

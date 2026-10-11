@@ -1008,3 +1008,25 @@ service-owned while retaining the original group and effective ACL permissions,
 including the former owner’s access. Masked entries do not gain new access.
 Replacement fails before rename if the group or required ACL cannot be retained. Receipt storage has no automatic pruning;
 operators must include it in their retention and storage policy.
+
+
+### Refreshing server guidance
+
+Server tool commands check `guidance_version` at startup. When it changes, the
+CLI prints a refresh notice on stderr; JSON and stdio MCP output remain clean.
+The private sidecar `<config>.guidance.json` stores only the server and observed
+version. An unavailable guidance check does not prevent the requested command.
+
+Use `agentworks guidance topics` to list access-filtered descriptions and topic
+versions. Fetch a relevant topic with `agentworks guidance topic --topic agent
+--known-version <saved-version>`; unchanged replies omit the body. The legacy
+`message-sequence` topic resolves to canonical `agent` guidance.
+
+`agentworks guidance skills` (or MCP `help action=skills`) returns a small catalog
+of installable reference files. To fetch selected changed files, pass
+`--set 'topics=["agent","scripted"]'` and
+`--set 'known_versions={"agent":"<saved-version>"}'`. Preserve each topic's
+mapping note: internal runtime tools, bridge variables and reference paths do
+not confer external access. Only explicitly marked sources are served. Adding
+an external topic requires metadata in its canonical source, not a second
+external Go registration. Existing account roles and consent still gate calls.

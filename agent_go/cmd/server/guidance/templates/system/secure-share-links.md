@@ -1,3 +1,9 @@
+---
+name: "secure-share-links"
+description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing."
+external: true
+external_note: "External mapping: get_file_link IS in your catalog; the dashboard tool (action=link) requires dashboards:read and returns authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."
+---
 # Secure file and folder share links
 
 Use this reference when a user wants a link to an existing workflow artifact

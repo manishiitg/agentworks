@@ -1,6 +1,10 @@
 ---
 name: relay-dashboard
 description: Create or update a Relay Dashboard using the shared HTML runtime, project data and read-only scripts.
+external: true
+external_description: "How a Relay's dashboard is authored and fed with recorded run data."
+external_scopes: ["relays:write"]
+external_note: "External mapping: dashboard action=list|get|link|create|update|validate|preview|publish|restore uses the shared revisioned dashboard handlers and existing project authoring consent. Read/write Relay helper source through files when allowed, or delegate broader changes through builder action=chat. Internal Relay bridge variables and client URLs are server execution context, not externally usable credentials."
 ---
 
 # Relay Dashboard usage

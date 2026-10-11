@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -205,4 +206,9 @@ func ExternalSkill(name string) (string, bool) {
 	}
 	text, ok := skills[name]
 	return text, ok
+}
+
+// ExternalTopics reads exposure metadata from the Relay skills themselves.
+func ExternalTopics() ([]externalguidance.Topic, error) {
+	return externalguidance.Load(files, "skills/*/SKILL.md")
 }

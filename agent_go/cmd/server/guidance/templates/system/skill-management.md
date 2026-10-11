@@ -1,3 +1,9 @@
+---
+name: "skill-management"
+description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills."
+external: true
+external_note: "External mapping: for workflows, install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config remain unavailable as direct tools; list_skills and search_skills use runs:execute. Use list_workflow_knowledge to inspect workflow wiring. For a Crew, use crew_skills action=list/search/install/import/uninstall with crew_id, then existing settings to select installed skills. Crew package changes require its owner and crews:write; reads require crews:read. Read the crew-authoring topic for folder guards and package boundaries."
+---
 ## Skill Management — install skills and attach them to workflows
 
 Skills are reusable instruction sets (a `SKILL.md` plus optional bundled files) injected into step agents at runtime only when the step explicitly enables them. This doc covers the full lifecycle: find → install → attach to the main chat → enable per step → remove. To *author* a new skill from scratch, use the `skill-creator` skill (install `anthropics/skills@skill-creator` in this workspace first if missing) — do not hand-write `SKILL.md` content.

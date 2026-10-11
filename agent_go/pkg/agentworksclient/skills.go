@@ -32,3 +32,12 @@ func InstallSkill(dir string, force bool) (string, error) {
 	}
 	return target, nil
 }
+
+// EntrySkill is the same small pointer installed locally and served remotely.
+func EntrySkill() string {
+	content, err := installedSkillFile.ReadFile("skills/agentworks/SKILL.md")
+	if err != nil {
+		panic(err)
+	}
+	return string(content)
+}

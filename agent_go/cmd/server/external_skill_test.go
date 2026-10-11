@@ -118,11 +118,9 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 		"description: " + hostedSkillDescription,
 		"https://skills.test",
 		"help", "action=context",
-		"brain_browse", "brain_read", "brain_update", "brain_access", "agentworks-local",
-		"`workflow` action=list",
-		"`runs` action=status",
-		"`dashboard`", "`settings`", "`needs_you`", "`manage_vault_tools`",
-		"If Builder is absent",
+		"help action=skills", "known_versions", "external_note", "guidance_version",
+		"functions action=calls", "commands_run", "builder action=chat",
+		"current MCP connection",
 	} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("skill.md missing %q", want)

@@ -1,3 +1,9 @@
+---
+name: "plan-design"
+description: "Plan-design playbook: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns. Load when designing a new plan or restructuring one."
+external: true
+external_note: "External mapping: read_skill, add_step, update_step, and update_step_config are not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic. execute_step and run_full_workflow ARE in your catalog when the token allows runs:execute: validate a design by running it and polling runs action=status. If builder action=chat is available, delegate plan edits to it and poll builder action=status; otherwise describe or suggest the change."
+---
 **Plan-editing tool arguments:** Before a plan mutation, read `builder-reference/references/plan-editing-tools.md`. Step fields described below belong inside `add_step.step` or `update_step.changes`; route/group/maintenance fields belong inside `parameters`. Use the live type/action-specific schema; these field descriptions do not authorize flat arguments or extra fields.
 
 ## PLAN DESIGN — From Requirements to Steps (DESIGN phase)

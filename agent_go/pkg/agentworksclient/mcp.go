@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -19,15 +20,15 @@ type ToolCaller interface {
 // instructions — not an installable skill file — are the reliable channel
 // telling the agent how to obtain AgentWorks guidance. The bridge serves
 // the run variant when the scope-filtered catalog carries run tools.
-const MCPInstructions = `You are connected to an AgentWorks server: tools read, and run-mode tools execute in pinned Run-mode sessions; nothing creates, edits, or authors. ` +
+const MCPInstructions = `You are connected to an AgentWorks server: use only currently listed tools/actions. Workflow run tools use pinned model sessions; direct project edits use existing authoring consent, current roles and guarded handlers.  Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.` +
 	`Discover workflow IDs with list_workflows first; IDs are never filesystem paths. ` +
 	`Call get_agent_context for token capabilities and the guidance version, and load only the guidance topics relevant to the task via list_guidance_topics/get_guidance_topic. ` +
 	`To run: call a run-mode tool such as execute_step (its reply carries session_id), then poll run_status for completion. ` +
 	`Send conversational messages with messages action=send (chat and ask_crew are aliases). Keep inbox_id to continue and read explicit optional replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. ` +
 	`Declared functions are isolated internal triggers: call one, then read status, execution messages and output files using its call_id. ` +
-	`Answer from what you read; if the task needs a change, say so instead of attempting one.`
+	`Answer from what you read and make requested changes only through listed tools/actions within current consent and project roles.`
 
-const MCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection: every tool reads; nothing creates, edits, or runs. ` +
+const MCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection: every tool reads; nothing creates, edits, or runs.  Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.` +
 	`Discover workflow IDs with list_workflows first; IDs are never filesystem paths. ` +
 	`Call get_agent_context for token capabilities and the guidance version, and load only the guidance topics relevant to the task via list_guidance_topics/get_guidance_topic. ` +
 	`Answer from what you read; if the task needs a change, say so instead of attempting one.`
@@ -44,7 +45,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller) (*server.MCPServer, er
 	for _, definition := range definitions {
 		// The server omits run tools from catalogs whose token lacks
 		// runs:execute, so execute_step's presence proves this bridge runs.
-		if definition.Name == "execute_step" || definition.Name == "call_crew_function" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" {
+		if definition.Name == "execute_step" || definition.Name == "call_crew_function" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" || definition.Name == "crew" || definition.Name == "functions" || definition.Name == "builder" || strings.HasPrefix(definition.Name, "crew_") || definition.Name == "manage_crew_commands" {
 			instructions = MCPInstructions
 			break
 		}

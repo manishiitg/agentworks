@@ -12,7 +12,7 @@ func TestBuilderPromptLoadsProductManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"relay.py", "@relay node", "@relay edge", "readable Graph", "ctx.call_agent", "system_prompt", "output_schema"} {
+	for _, required := range []string{"relay.py", "@DBOS.workflow()", "@DBOS.step", "readable Graph", "agentworks", "output_schema"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay product prompt is missing %q", required)
 		}
@@ -32,7 +32,7 @@ func TestBuilderPromptRendersRelayVariableExamples(t *testing.T) {
 	if err := tmpl.Execute(&rendered, nil); err != nil {
 		t.Fatal(err)
 	}
-	for _, variable := range []string{"ctx.call_agent", "ctx.variables", "ctx.vault(name)"} {
+	for _, variable := range []string{"@DBOS.workflow()", "from agentworks", "actual INPUT"} {
 		if !strings.Contains(rendered.String(), variable) {
 			t.Fatalf("rendered Relay prompt is missing %q", variable)
 		}

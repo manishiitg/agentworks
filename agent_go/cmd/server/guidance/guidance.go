@@ -29,6 +29,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -243,7 +244,7 @@ func renderFromRegistry(kind string, data tmplData, registry map[string]kindMeta
 		return renderFromRegistry(meta.AliasOf, data, registry)
 	}
 	rel := path.Join("templates", meta.Group, kind+".md")
-	body, err := templatesFS.ReadFile(rel)
+	body, err := readTemplate(rel)
 	if err != nil {
 		return "", fmt.Errorf("read template %s: %w", rel, err)
 	}
@@ -574,7 +575,7 @@ func RenderSystemDoc(kind string) string {
 		panic(fmt.Sprintf("guidance: RenderSystemDoc called with unknown kind %q", kind))
 	}
 	rel := path.Join("templates", meta.Group, kind+".md")
-	body, err := templatesFS.ReadFile(rel)
+	body, err := readTemplate(rel)
 	if err != nil {
 		panic(fmt.Sprintf("guidance: read %s: %v", rel, err))
 	}
@@ -604,4 +605,18 @@ func RenderReferenceKindForTest(kind, mode string) (string, error) {
 // test ergonomics ("ForTest" suffix signals "use from tests only").
 func ListReferenceKindsForTest() []string {
 	return ReferenceKindNames()
+}
+
+// ExternalTopics selects only source files explicitly marked for MCP exposure.
+func ExternalTopics() ([]externalguidance.Topic, error) {
+	return externalguidance.Load(templatesFS, "templates/system/*.md")
+}
+
+func readTemplate(path string) ([]byte, error) {
+	raw, err := templatesFS.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	_, body, err := externalguidance.Parse(raw)
+	return []byte(body), err
 }

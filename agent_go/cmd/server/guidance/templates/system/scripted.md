@@ -1,3 +1,9 @@
+---
+name: "scripted"
+description: "Scripted step design: deterministic API, CLI and data work, script parameters and defaults, validation, permissions, and reuse from agent steps. The canonical plan type is scripted."
+external: true
+external_note: "External mapping: plan and step configuration edits use builder action=chat when available. Source files can be read and written with files under existing workflow or Relay authoring consent, roles and file guards; planning and database files remain protected. Read the corresponding help action=topic for any references/<name>.md pointer, only when listed."
+---
 **Plan-editing tool arguments:** Before a plan mutation, read `builder-reference/references/plan-editing-tools.md`. Step fields described below belong inside `add_step.step` or `update_step.changes`; route/group/maintenance fields belong inside `parameters`. Use the live type/action-specific schema; these field descriptions do not authorize flat arguments or extra fields.
 
 ## scripted — Deterministic Worker

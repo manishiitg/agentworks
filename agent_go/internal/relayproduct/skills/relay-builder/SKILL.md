@@ -1,6 +1,10 @@
 ---
 name: relay-builder
 description: Author, test and publish native DBOS Python Relays with platform agents and authorized tools.
+external: true
+external_description: "The Python Relay contract the Relay Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Relay."
+external_scopes: ["relays:write"]
+external_note: "External mapping: files action=read/write accepts a Relay workflow_id for relay.py, memory, local skills and helper source, with existing authoring consent, current owner/editor access, revisions and file guards. Direct plan tools are unavailable. builder action=chat can delegate broader changes when listed; relay action=test|publish|run|get_run|releases tests drafts, publishes versions and inspects executions. The Relay Python runtime and its internal bridge environment described here belong to server-side Relay execution; do not copy its internal URLs, environment or authentication into external client commands."
 ---
 
 # Python Relay contract

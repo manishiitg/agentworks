@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -20,33 +21,26 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// externalGuidanceVersion identifies the served guidance profile. It is
-// computed from the topic allowlist, mapping notes, and rendered canonical
-// content, so cached clients detect a stale profile as soon as canonical
-// guidance changes — no manual bump needed.
-var externalGuidanceVersion string
-
-// Computed in init so it can use the tool catalog, which package-level
-// initialization order cannot promise.
-func init() { externalGuidanceVersion = externalComputeGuidanceVersion() }
-
-func externalComputeGuidanceVersion() string {
+// Versions include visible source content, scope metadata and effective mapping notes.
+func externalGuidanceVersionFor(claims *UserClaims) string {
 	h := sha256.New()
 	for _, topic := range externalGuidanceTopics {
-		h.Write([]byte(topic.Name + "\n" + externalTopicVersion(topic) + "\n"))
+		if externalTopicVisible(claims, topic) {
+			h.Write([]byte(topic.Name + "\n" + externalTopicVersionFor(claims, topic) + "\n"))
+		}
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
-// externalTopicVersion is a short hash of one topic's description, note and
-// rendered text, so a client can refresh only the topics that changed.
-func externalTopicVersion(topic externalGuidanceTopic) string {
+func externalTopicVersionFor(claims *UserClaims, topic externalGuidanceTopic) string {
 	h := sha256.New()
-	h.Write([]byte(topic.Name + "\n" + topic.Description + "\n" + externalTopicNote(topic) + "\n"))
+	h.Write([]byte(topic.Name + "\n" + topic.Description + "\n" + externalTopicNoteFor(claims, topic) + "\n" + strings.Join(topic.Scopes, ",") + "\n"))
 	if _, body, err := externalGuidanceContent(topic.Name); err == nil {
 		h.Write([]byte(body))
 	}
@@ -61,7 +55,8 @@ type externalGuidanceTopic struct {
 	// a file under external_topics/ ("embedded") or a Relay Builder skill ("relay").
 	Source string
 	// Scopes the token must allow for the topic to be listed and served.
-	Scopes []string
+	Scopes  []string
+	Content string
 }
 
 //go:embed external_topics/*.md
@@ -127,12 +122,14 @@ var externalToolWord = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+)+`)
 // externalNamedOperations returns the operation names a text mentions: the
 // known Builder and Run tools, and any snake_case word that starts with a tool
 // verb (Builder tools registered in code are not all in the product lists).
-func externalNamedOperations(body string) []string {
+func externalNamedOperationsFor(claims *UserClaims, body string) []string {
 	// call_tool and get_api_spec are this connection's own entry points.
 	exposed := map[string]bool{"call_tool": true, "get_api_spec": true}
 	if catalog, err := externalTools(); err == nil {
 		for _, tool := range catalog {
-			exposed[tool.Name] = true
+			if claims == nil || externalTokenAllows(claims, tool) {
+				exposed[tool.Name] = true
+			}
 		}
 	}
 	found := map[string]bool{}
@@ -179,13 +176,17 @@ func externalNamedOperations(body string) []string {
 // externalTopicNote is the topic's hand-written mapping note plus an automatic
 // list of every operation its text names that this connection does not have.
 func externalTopicNote(topic externalGuidanceTopic) string {
-	note := topic.ExternalNote
+	return externalTopicNoteFor(nil, topic)
+}
+
+func externalTopicNoteFor(claims *UserClaims, topic externalGuidanceTopic) string {
+	note := "Reference material does not grant permission or establish live runtime context. Use only tools/actions present in this connection. Use project-relative paths with workflow_id or crew_id; server bridge variables and URLs are not external client credentials. " + topic.ExternalNote
 	_, body, err := externalGuidanceContent(topic.Name)
 	if err != nil {
 		return note
 	}
 	var named []string
-	for _, name := range externalNamedOperations(body) {
+	for _, name := range externalNamedOperationsFor(claims, body) {
 		if !externalTextMentions(topic.ExternalNote, name) {
 			named = append(named, name)
 		}
@@ -219,32 +220,50 @@ func externalTextMentions(text, name string) bool {
 	return false
 }
 
-// externalGuidanceTopics is the allowlist of builder-reference topics served
-// to external agents. Every entry must name a referenceKinds topic whose
-// content applies to the external tool surface; topics that document internal
-// adapter tools (e.g. plan-editing-tools, which names create_plan/add_step
-// rather than the external typed plan tools) are excluded, and topics that
-// mix internal and external tools carry an ExternalNote with the mapping.
-var externalGuidanceTopics = []externalGuidanceTopic{
-	{Name: "dashboard-authoring", Description: "Dashboard MCP operations, revisioned bundles, live HTML data APIs, Python/JS scripts, validation, preview and authenticated team links."},
-	{Name: "plan-change-impact", Description: "Plan-change impact analysis: trace and reconcile the blast radius across downstream steps, measurement, reports, db, learnings, and KB. Load before treating a plan change as done.", ExternalNote: "External mapping: read_skill, get_goal_metrics, mark_changelog_artifact_reviewed, and review-artifact-drift are not in your catalog. Do the combined compatibility check yourself with search_files/read_file and report dispositions in your reply. read_skill pointers to builder-reference files outside this topic list (measurement-plan, reporting-policy, stores) have no external equivalent; describe the needed change in your reply instead of attempting it. Never edit changelog files directly."},
-	{Name: "plan-design", Description: "Plan-design playbook: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns. Load when designing a new plan or restructuring one.", ExternalNote: "External mapping: read_skill, add_step, update_step, and update_step_config are not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic. execute_step and run_full_workflow ARE in your catalog when the token allows runs:execute: validate a design by running it and polling runs action=status. If builder action=chat is available, delegate plan edits to it and poll builder action=status; otherwise describe or suggest the change."},
-	{Name: "planning-steps", Description: "Workshop plan composition: take-action-by-default discipline, step-type selection, validation_schema requirements, forward-only context flow. Load before adding or editing plan steps.", ExternalNote: "External mapping: read_skill is not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic."},
-	{Name: "step-description", Description: "How to write an optimized step description and validation_schema: earn every word, let the schema name the output shape. Load before writing or editing any step description.", ExternalNote: "External mapping: get_step_prompts is not in your catalog; verify saved-run prompts through runs action=get/logs and file reads instead."},
-	{Name: "step-config", Description: "Per-step config reference: store-access modes, locks, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step.", ExternalNote: "External mapping: update_step_config, add_step, update_step, change_step_type, and update_validation_schema are not direct external tools. Delegate edits through builder action=chat only when it is available. read_skill, query_workflow_db, mutate_workflow_db, and other config tools named here are not either; describe the needed change in your reply instead of attempting it."},
-	{Name: "skill-management", Description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills.", ExternalNote: "External mapping: for workflows, install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config remain unavailable as direct tools; list_skills and search_skills use runs:execute. Use list_workflow_knowledge to inspect workflow wiring. For a Crew, use crew_skills action=list/search/install/import/uninstall with crew_id, then existing settings to select installed skills. Crew package changes require its owner and crews:write; reads require crews:read. Read the crew-authoring topic for folder guards and package boundaries."},
-	{Name: "file-layout", Description: "Workspace file layout reference and path discipline."},
-	{Name: "agent", Description: "Agent steps: the system-level charter, ordered user-message items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
-	{Name: "routing", Description: "Routing step design: deterministic major sub-workflow selection versus branch, a plain agent step, or an agent with adaptive routes; route selection, convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
-	{Name: "branch", Description: "Branch step design: a small in-flow next-step decision versus routing, human input or an agent step; convergence and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
-	{Name: "scripted", Description: "Scripted step design: deterministic API, CLI and data work, script parameters and defaults, validation, permissions, and reuse from agent steps. The canonical plan type is scripted.", ExternalNote: "External mapping: plan, step and code edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
-	{Name: "human-input", Description: "human_input step design: free-form text input, human-decided branches, route selections, unattended runs and anti-patterns.", ExternalNote: "External mapping: plan and step edits go through builder action=chat when it is available. Answer a waiting human-input step with runs action=reply_input. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."},
-	{Name: "schedules", Description: "Schedule reference: cron and calendar schedules, collision queues, after-schedule chains, Pulse policy, backup coverage and unattended message design.", ExternalNote: "External mapping: list_schedules, get_schedule_runs, trigger_schedule and manage_schedules ARE in your catalog (manage_schedules covers create, change, enable, disable, run and stop); changes need the workflow's owner."},
-	{Name: "webhook-triggers", Description: "Inbound route webhooks: authentication, payload mappings, testing and how a step reads its trigger input, including Crew and Code function calls.", ExternalNote: "External mapping: manage_triggers (workflow_id or crew_id) lists, creates, updates and tests triggers and reads their deliveries (a webhook secret is shown once); manage_workflow_webhook, list_workflow_triggers and run_workflow_trigger map to it. Function calls use the functions tool (action=list|call|status|read) instead of list_functions and call_function."},
-	{Name: "crew-authoring", Source: "embedded", Scopes: []string{"crews:write"}, Description: "Author a Crew over MCP: create and update, typed functions with input and result schemas, isolated calls and result files, messages and memory, files and shared folders, schedules and settings."},
-	{Name: "relay-builder", Source: "relay", Scopes: []string{"relays:write"}, Description: "The Python Relay contract the Relay Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Relay.", ExternalNote: "External mapping: you do not edit relay.py yourself; ask builder action=chat to change a Relay, test the draft with relay action=test, publish with relay action=publish and run with relay action=run. Tools named here belong to the Relay Builder: test_relay, publish_relay, get_relay_run and get_relay_releases map to relay action=test|publish|get_run|releases."},
-	{Name: "relay-dashboard", Source: "relay", Scopes: []string{"relays:write"}, Description: "How a Relay's dashboard is authored and fed with recorded run data.", ExternalNote: "External mapping: the dashboard tool (action=list|get|link|create|update|validate|preview|publish|restore) replaces create_dashboard, get_dashboard, update_dashboard, validate_dashboard, preview_dashboard, publish_dashboard, restore_dashboard, list_dashboards and get_dashboard_link; ask builder action=chat for Relay code changes."},
-	{Name: "secure-share-links", Description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing.", ExternalNote: "External mapping: get_file_link IS in your catalog; the dashboard tool (action=link) requires dashboards:read and returns authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."},
+// externalGuidanceTopics discovers explicitly marked canonical references.
+// Unmarked files remain private; mapping notes explain internal operations
+// that are unavailable through the current external connection.
+var externalGuidanceTopics = loadExternalGuidanceTopics()
+
+func loadExternalGuidanceTopics() []externalGuidanceTopic {
+	builder, err := guidance.ExternalTopics()
+	if err != nil {
+		panic(err)
+	}
+	relay, err := relayproduct.ExternalTopics()
+	if err != nil {
+		panic(err)
+	}
+	embedded, err := externalguidance.Load(externalTopicFiles, "external_topics/*.md")
+	if err != nil {
+		panic(err)
+	}
+	seen := map[string]bool{}
+	var topics []externalGuidanceTopic
+	for _, source := range []struct {
+		name   string
+		topics []externalguidance.Topic
+	}{{"", builder}, {"relay", relay}, {"embedded", embedded}} {
+		for _, item := range source.topics {
+			if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(item.Name) || seen[item.Name] {
+				panic("invalid or duplicate external guidance topic: " + item.Name)
+			}
+			for _, scope := range item.Scopes {
+				if !slices.Contains(accesstokens.Scopes, scope) {
+					panic("invalid external guidance scope: " + scope)
+				}
+			}
+			if source.name == "" {
+				if _, err := guidance.MaterializeReferenceKindsAsSkills("workshop", []string{item.Name}); err != nil {
+					panic(err)
+				}
+			}
+			seen[item.Name] = true
+			topics = append(topics, externalGuidanceTopic{Name: item.Name, Description: item.Description, ExternalNote: item.ExternalNote, Scopes: item.Scopes, Source: source.name, Content: item.Content})
+		}
+	}
+	sort.Slice(topics, func(i, j int) bool { return topics[i].Name < topics[j].Name })
+	return topics
 }
 
 // externalToolMutates reports whether a catalog tool performs mutations.
@@ -258,6 +277,9 @@ func externalToolMutates(name string, catalog []externalTool) bool {
 }
 
 func externalGuidanceTopicByName(name string) *externalGuidanceTopic {
+	if name == "message-sequence" {
+		name = "agent"
+	}
 	for i := range externalGuidanceTopics {
 		if externalGuidanceTopics[i].Name == name {
 			return &externalGuidanceTopics[i]
@@ -271,22 +293,14 @@ func externalGuidanceTopicByName(name string) *externalGuidanceTopic {
 // external guidance can never drift from the builder's copy.
 func externalGuidanceContent(topic string) (description, body string, err error) {
 	meta := externalGuidanceTopicByName(topic)
-	if meta != nil {
-		switch meta.Source {
-		case "embedded":
-			raw, readErr := externalTopicFiles.ReadFile("external_topics/" + topic + ".md")
-			if readErr != nil {
-				return "", "", readErr
-			}
-			return meta.Description, string(raw), nil
-		case "relay":
-			text, ok := relayproduct.ExternalSkill(topic)
-			if !ok {
-				return "", "", fmt.Errorf("topic %q not available", topic)
-			}
-			return meta.Description, text, nil
-		}
+	if meta == nil {
+		return "", "", fmt.Errorf("topic %q is not exposed", topic)
 	}
+	topic = meta.Name
+	if meta.Source != "" {
+		return meta.Description, meta.Content, nil
+	}
+
 	skills, err := guidance.MaterializeReferenceKindsAsSkills("workshop", []string{topic})
 	if err != nil {
 		return "", "", err
@@ -294,7 +308,11 @@ func externalGuidanceContent(topic string) (description, body string, err error)
 	if len(skills) != 1 {
 		return "", "", fmt.Errorf("topic %q not available in workshop mode", topic)
 	}
-	return skills[0].Description, skills[0].Content, nil
+	body = skills[0].Content
+	if index := strings.Index(body, "\n\n"); strings.HasPrefix(body, "PATH DISCIPLINE\n") && index >= 0 {
+		body = body[index+2:]
+	}
+	return meta.Description, body, nil
 }
 
 // externalAgentContext serves get_agent_context. It is a global tool: no
@@ -315,7 +333,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 	}
 	sort.Strings(available)
 	out := map[string]any{
-		"guidance_version": externalGuidanceVersion,
+		"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())),
 		"available_tools":  available,
 		"preparation":      externalPreparation(claims),
 	}
@@ -368,7 +386,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 // additionally operate the run-mode tools in pinned Run-mode sessions.
 func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
-		"This connection reads and runs: tools read, and run-mode tools execute in pinned Run-mode sessions. Nothing creates, edits, or authors.",
+		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Workflow Run-session tools start model turns; direct Crew and project handlers execute without a model turn.",
 		"Call list_workflows to discover workflow IDs; IDs are never filesystem paths.",
 		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
 		"Use get_file_link for preview/download URLs; links identify a file and never grant permission.",
@@ -389,7 +407,7 @@ func externalPreparation(claims *UserClaims) []string {
 		steps[0] = "This connection can build selected workflows where you currently have write access: builder action=chat continues your existing workflow chat. Poll builder action=status and reply with builder action=reply_input using the operation_id. Native shell/account tools are unavailable. Changes use the configured Builder model."
 	}
 	if claims != nil && claims.AccessToken != nil {
-		steps = append(steps, "For Relays (kind=relay), use builder action=chat for editing, relay action=test for draft testing, relay action=publish for an immutable version, and relay action=run/relay action=get_run for published execution. There is no Relay Run chat. relay action=create requires explicit relays:write consent covering all accessible workflows.")
+		steps = append(steps, "For Relays (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or builder action=chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. There is no Relay Run chat. Creation requires relays:write consent covering all accessible workflows.")
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}
 	return steps
@@ -403,9 +421,9 @@ func (api *StreamingAPI) externalGuidanceTopicList(w http.ResponseWriter, r *htt
 		if !externalTopicVisible(claims, topic) {
 			continue
 		}
-		topics = append(topics, map[string]string{"name": topic.Name, "description": topic.Description, "version": externalTopicVersion(topic)})
+		topics = append(topics, map[string]string{"name": topic.Name, "description": topic.Description, "version": externalTopicVersionFor(claims, topic)})
 	}
-	externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersion, "topics": topics, "refresh": "Each topic has its own version. Fetch a topic again only when its version differs from the one you saved; pass known_version to get_guidance_topic to skip an unchanged body."})
+	externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topics": topics, "refresh": "Each topic has its own version. Fetch a topic again only when its version differs from the one you saved; pass known_version to get_guidance_topic to skip an unchanged body."})
 }
 
 // externalGuidanceTopicBody serves get_guidance_topic.
@@ -416,9 +434,9 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		externalError(w, 404, "unknown_topic", "Topic is not part of the external guidance profile. Use help action=topics.")
 		return
 	}
-	version := externalTopicVersion(*allowed)
+	version := externalTopicVersionFor(GetUserFromContext(r.Context()), *allowed)
 	if known := externalArg(args, "known_version"); known != "" && known == version {
-		externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersion, "topic": name, "version": version, "unchanged": true})
+		externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topic": name, "version": version, "unchanged": true})
 		return
 	}
 	description, body, err := externalGuidanceContent(name)
@@ -426,8 +444,8 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		externalError(w, 500, "guidance_unavailable", err.Error())
 		return
 	}
-	out := map[string]any{"guidance_version": externalGuidanceVersion, "topic": name, "version": version, "description": description, "content": body}
-	if note := externalTopicNote(*allowed); note != "" {
+	out := map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topic": name, "version": version, "description": description, "content": body}
+	if note := externalTopicNoteFor(GetUserFromContext(r.Context()), *allowed); note != "" {
 		out["external_note"] = note
 	}
 	externalJSON(w, out)

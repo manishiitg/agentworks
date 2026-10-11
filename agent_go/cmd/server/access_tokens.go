@@ -458,9 +458,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	case "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_needs_you", "answer_needs_you", "manage_project":
 		// Workflow or Crew settings: each target rechecks its own scope and role.
 		return reads || t.Allows("crews:read") || t.Allows("crews:write")
-	case "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill":
+	case "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_guidance_skills", "get_skill":
 		// Canonical server-owned guidance carries no workflow content.
-		return reads || t.Allows("dashboards:read") || t.Allows("vault:manage") || t.Allows("vault:read")
+		return reads || t.Allows("dashboards:read") || t.Allows("vault:manage") || t.Allows("vault:read") || t.Allows("crews:read") || t.Allows("crews:run") || t.Allows("crews:write") || t.Allows("knowledgebase:read") || externalCodeRunAllowed(c)
 	case "list_workflow_knowledge", "read_workflow_knowledge":
 		// Workflow-authored learnings, notes, and skills are workflow content.
 		return t.Allows("files:read")

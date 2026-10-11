@@ -73,7 +73,7 @@ func TestExternalAgentContextGlobalAndScoped(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	// No workflow required.
 	body := externalTestBody(t, f.call(t, "owner", "get_agent_context", map[string]any{}), 200)
-	if body["guidance_version"] != externalGuidanceVersion {
+	if body["guidance_version"] != externalGuidanceVersionFor(&UserClaims{UserID: "owner", Username: "owner"}) {
 		t.Fatalf("missing guidance version: %v", body)
 	}
 	prep, _ := body["preparation"].([]any)
@@ -108,6 +108,15 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	topics, _ := body["topics"].([]any)
 	if len(topics) < 9 {
 		t.Fatalf("got %d topics, want at least the 9 original ones", len(topics))
+	}
+	original := map[string]bool{}
+	for _, raw := range topics {
+		original[raw.(map[string]any)["name"].(string)] = true
+	}
+	for _, name := range []string{"dashboard-authoring", "plan-change-impact", "plan-design", "planning-steps", "step-description", "step-config", "skill-management", "file-layout", "secure-share-links"} {
+		if !original[name] {
+			t.Fatalf("original reference lost during source migration: %s", name)
+		}
 	}
 	for _, raw := range topics {
 		topic, _ := raw.(map[string]any)
@@ -311,7 +320,7 @@ func TestExternalPreparationMentionsGuidanceAndRuns(t *testing.T) {
 	for _, item := range prep {
 		joined += item.(string) + "\n"
 	}
-	if !strings.Contains(joined, "reads and runs") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "runs action=status") {
+	if !strings.Contains(joined, "existing consent") || !strings.Contains(joined, "account/project roles") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "runs action=status") {
 		t.Fatalf("preparation does not describe guidance and run flow: %v", prep)
 	}
 }

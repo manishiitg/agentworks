@@ -1,3 +1,9 @@
+---
+name: "planning-steps"
+description: "Workshop plan composition: take-action-by-default discipline, step-type selection, validation_schema requirements, forward-only context flow. Load before adding or editing plan steps."
+external: true
+external_note: "External mapping: read_skill is not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic."
+---
 ## Planning Steps
 
 When a user describes what to automate: take action. Create or update

@@ -1,3 +1,9 @@
+---
+name: "human-input"
+description: "human_input step design: free-form text input, human-decided branches, route selections, unattended runs and anti-patterns."
+external: true
+external_note: "External mapping: plan and step edits go through builder action=chat when it is available. Answer a waiting human-input step with runs action=reply_input. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."
+---
 **Plan-editing tool arguments:** Before a plan mutation, read `builder-reference/references/plan-editing-tools.md`. Step fields described below belong inside `add_step.step` or `update_step.changes`; route/group/maintenance fields belong inside `parameters`. Use the live type/action-specific schema; these field descriptions do not authorize flat arguments or extra fields.
 
 ## human_input — Asking the User a Question Mid-Workflow

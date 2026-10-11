@@ -46,7 +46,7 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 	} {
 		t.Run(tc.tool, func(t *testing.T) {
 			var called bool
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called = true
 				if r.URL.Path != "/api/external/v1/call" || r.Header.Get("Authorization") != "Bearer jwt" {
 					t.Errorf("request %s auth=%q", r.URL.Path, r.Header.Get("Authorization"))
@@ -112,7 +112,7 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 	} {
 		t.Run(tc.tool, func(t *testing.T) {
 			var called bool
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called = true
 				var body struct {
 					Name      string
@@ -172,7 +172,7 @@ func TestSkillsInstallWritesBundledSkill(t *testing.T) {
 		t.Fatalf("code=%d err=%s", code, &stderr)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "agentworks", "SKILL.md"))
-	if err != nil || !strings.Contains(string(data), "`help` action=context") {
+	if err != nil || !strings.Contains(string(data), "help action=context") || !strings.Contains(string(data), "known_versions") {
 		t.Fatalf("installed skill missing guidance entrypoint: %v", err)
 	}
 	// A second install refuses to clobber; --force overwrites.
@@ -198,7 +198,7 @@ func TestInvalidInputDoesNotCallServer(t *testing.T) {
 
 func TestLoginLogoutAndServerCredentialIsolation(t *testing.T) {
 	var requests atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.Header.Get("Authorization") != "Bearer aw_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
 			t.Error("wrong login token")
@@ -221,7 +221,7 @@ func TestLoginLogoutAndServerCredentialIsolation(t *testing.T) {
 		t.Fatalf("saved: %#v %v", cfg, err)
 	}
 	var targetCalls atomic.Int32
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { targetCalls.Add(1) }))
+	target := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { targetCalls.Add(1) }))
 	defer target.Close()
 	stdout.Reset()
 	stderr.Reset()
@@ -244,7 +244,7 @@ func TestLoginLogoutAndServerCredentialIsolation(t *testing.T) {
 func TestBrowserLoginRefreshAndLogout(t *testing.T) {
 	var serverURL string
 	var polls, refreshes, revokes atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/oauth/cli/device":
 			_ = json.NewEncoder(w).Encode(map[string]any{"device_code": "cli_device_example", "verification_uri_complete": serverURL + "/oauth/cli?code=cli_verify_" + strings.Repeat("a", 64), "user_code": "AAAAAAAA", "expires_in": 30, "interval": 1})
@@ -323,7 +323,7 @@ func TestBrowserLoginRefreshAndLogout(t *testing.T) {
 }
 
 func TestStructuredConflictExit(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(409)
 		_, _ = w.Write([]byte(`{"error":{"code":"revision_conflict","message":"stale revision"}}`))
 	}))
@@ -362,7 +362,7 @@ func TestArgumentPrecisionAndInputOverride(t *testing.T) {
 // Exercise actual stdio framing from a client, including discovery and a call
 // forwarded to the hosted HTTP API. Any non-protocol stdout breaks this test.
 func TestMCPStdioRoundtrip(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer jwt" {
 			t.Error("missing hosted token")
 		}
@@ -478,7 +478,7 @@ func TestUpdateCommand(t *testing.T) {
 	mux.HandleFunc("/api/downloads/cli/"+asset+".sha256", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", hexSum, asset)
 	})
-	server := httptest.NewServer(mux)
+	server := cliTestServer(mux)
 	defer server.Close()
 
 	runUpdate := func(t *testing.T, target, version string, extra ...string) (int, string) {
@@ -555,7 +555,7 @@ func TestUpdateCommand(t *testing.T) {
 		badMux.HandleFunc("/api/downloads/cli/"+asset+".sha256", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s  %s\n", hexSum, asset)
 		})
-		bad := httptest.NewServer(badMux)
+		bad := cliTestServer(badMux)
 		defer bad.Close()
 		target := filepath.Join(t.TempDir(), "agentworks")
 		if err := os.WriteFile(target, []byte("current"), 0o755); err != nil {
@@ -649,4 +649,21 @@ func TestCrewsPutReadsTheLocalFile(t *testing.T) {
 	if err != nil || args["content"] != nil || args["content_base64"] != "iVBORwABAv8=" {
 		t.Fatalf("binary file arguments = %v (%v)", args, err)
 	}
+}
+
+// Existing operation tests observe business requests independently of the new
+// read-only startup probe. The dedicated startup test drives both paths.
+func cliTestServer(handler http.Handler) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/external/v1/call" {
+			data, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(data))
+			var call struct{ Name string }
+			if json.Unmarshal(data, &call) == nil && call.Name == "get_agent_context" {
+				_, _ = w.Write([]byte(`{"guidance_version":"test-guidance"}`))
+				return
+			}
+		}
+		handler.ServeHTTP(w, r)
+	}))
 }

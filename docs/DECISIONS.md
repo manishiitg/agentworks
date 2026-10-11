@@ -1,5 +1,21 @@
 # Decisions and open issues
 
+## 2026-10-11 — MCP guidance is an opt-in, versioned source catalog (PLAT-852)
+
+Mark public reference files and product skills at their source with `external: true`,
+explicit descriptions, mapping notes and existing scope requirements. Discover
+those files instead of maintaining a second Go allowlist; unmarked sources stay
+private and invalid metadata fails startup. Versions include current visible
+content and effective tool mappings, so narrowed connections cannot reuse an
+inappropriate cached note. `help action=skills` supplies a small catalog and only
+selected changed installable files. Share one short entry pointer between local
+and hosted clients. CLI server-tool commands check versions at startup without
+blocking on a failed probe or writing protocol messages to stdout. Why: guidance
+must refresh as the server changes without reinstalling a copied client manual.
+
+Ticket: [PLAT-852](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-852.md).
+
+
 ## 2026-10-11 — Crew setup capabilities execute directly over MCP (PLAT-856)
 
 Expose grouped Crew file lifecycle, skill packages, MCP connections, attached

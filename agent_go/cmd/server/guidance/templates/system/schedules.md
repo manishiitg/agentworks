@@ -1,3 +1,9 @@
+---
+name: "schedules"
+description: "Schedule reference: cron and calendar schedules, collision queues, after-schedule chains, Pulse policy, backup coverage and unattended message design."
+external: true
+external_note: "External mapping: manage_schedules with workflow_id or crew_id handles list, create, update, enable, disable, run, stop and history. Changes require the owner and existing product consent. Workflow Run-session tools list_schedules, get_schedule_runs and trigger_schedule require their workflow execution consent. Crew schedules send messages; Relays use API triggers."
+---
 ## Schedule Management (Workshop mode)
 
 For the operational cheat sheet on creating / editing / deleting schedules

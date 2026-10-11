@@ -1,3 +1,9 @@
+---
+name: "plan-change-impact"
+description: "Plan-change impact analysis: trace and reconcile the blast radius across downstream steps, measurement, reports, db, learnings, and KB. Load before treating a plan change as done."
+external: true
+external_note: "External mapping: use help action=topic for listed reference topics, files action=search/read for source evidence, and query_database for read-only managed database inspection. Plan/configuration edits and changelog dispositions remain with builder action=chat when available. Do not call an internal operation merely because this reference names it, and never edit changelog files directly."
+---
 # Plan-change impact analysis
 
 A workflow is a web of **implicit dependencies**: a step's output feeds downstream steps, evals score it, the report dashboard queries its data, db stores it, and learnings/KB describe its behavior. Change a step and those silently rot — a downstream step reads a field you renamed, a report query returns nothing, an eval scores the wrong thing, a learning teaches the old behavior.
