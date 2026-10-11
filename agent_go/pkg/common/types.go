@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -820,9 +819,6 @@ func CopySessionFolderGuard(fromSessionID, toSessionID string) bool {
 
 // ClearSessionShellConfig removes all shell config for a session.
 func ClearSessionShellConfig(sessionID string) {
-	if strings.HasPrefix(sessionID, "external-crew-") {
-		log.Printf("[CREW_DEBUG] cleanup %q: %s", sessionID, debug.Stack())
-	}
 	sessionShellConfigsMu.Lock()
 	defer sessionShellConfigsMu.Unlock()
 	delete(sessionShellConfigs, sessionID)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
-	"log"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -471,9 +470,6 @@ func resolveWorkflowDBSession(ctx context.Context, fallbackSessionID string) (st
 		return "", nil, fmt.Errorf("workflow database context is unavailable: missing trusted session")
 	}
 	cfg := common.GetSessionShellConfig(sessionID)
-	if strings.HasPrefix(sessionID, "external-crew-") {
-		log.Printf("[CREW_DEBUG] DB session=%q config=%v", sessionID, cfg != nil)
-	}
 	if cfg == nil {
 		return "", nil, fmt.Errorf("workflow database context is unavailable for session %q", sessionID)
 	}
@@ -585,6 +581,11 @@ func workflowDBWorkspacePathFromCandidate(candidate string) string {
 	for i := 0; i+3 < len(parts); i++ {
 		if parts[i] == "Chats" && (parts[i+1] == "Work" || parts[i+1] == "Code") && parts[i+2] == "projects" && strings.TrimSpace(parts[i+3]) != "" {
 			return filepath.ToSlash(filepath.Join("Chats", parts[i+1], "projects", parts[i+3]))
+		}
+	}
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "Crew" && strings.TrimSpace(parts[i+1]) != "" {
+			return filepath.ToSlash(filepath.Join("Crew", parts[i+1]))
 		}
 	}
 	for i := 0; i+1 < len(parts); i++ {
