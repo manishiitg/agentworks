@@ -412,7 +412,10 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending human_feedback requests with runs action=reply_input.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "builder_chat"}) {
-		steps[0] = "This connection can build selected workflows where you currently have write access: builder action=chat continues your existing workflow chat. Poll builder action=status and reply with builder action=reply_input using the operation_id. Native shell/account tools are unavailable. Changes use the configured Builder model."
+		steps = append(steps, "For direct workflow edits, plan action=list returns native operation schemas. Read get_plan for expected_revision, then call plan with that revision, a unique request_id and the exact arguments. Existing Builder consent and current owner/editor/team roles apply; native validation and plan changelog remain. Builder action=chat can delegate an editing request to the configured model when requested; poll action=status and answer action=reply_input by operation_id.")
+	}
+	if claims != nil && externalTokenAllows(claims, externalTool{Name: "crew_execution"}) {
+		steps = append(steps, "Crew owners with current editable access and crews:write consent use crew_execution and crew_integrations directly. action=list returns enabled native schemas; action=history returns redacted owner audit. manage_crew_chats tools/tool uses only your own named chat; background work needs its initialized native sandbox and UI actions require browser receipts. Human authorization and confirmations remain in their existing app flows.")
 	}
 	if claims != nil && claims.AccessToken != nil {
 		if productEnabled("relays") {

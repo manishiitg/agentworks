@@ -313,6 +313,7 @@ func TestExternalWorkflowKnowledgeRequiresFilesRead(t *testing.T) {
 }
 
 func TestExternalPreparationMentionsGuidanceAndRuns(t *testing.T) {
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
 	f := newExternalToolsFixture(t)
 	body := externalTestBody(t, f.call(t, "owner", "get_agent_context", map[string]any{}), 200)
 	prep, _ := body["preparation"].([]any)
@@ -322,5 +323,16 @@ func TestExternalPreparationMentionsGuidanceAndRuns(t *testing.T) {
 	}
 	if !strings.Contains(joined, "existing consent") || !strings.Contains(joined, "account/project roles") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "runs action=status") {
 		t.Fatalf("preparation does not describe guidance and run flow: %v", prep)
+	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator","products":["agentworks","work"]}]}`)
+	writer := patClaims("owner", append(append([]string{}, builderConsentScopes...), "crews:write"))
+	prepared := strings.Join(externalPreparation(writer), "\n")
+	for _, want := range []string{"plan action=list", "expected_revision", "crew_execution", "existing consent", "plan changelog"} {
+		if !strings.Contains(prepared, want) {
+			t.Fatalf("direct authoring guidance missing %q: %s", want, prepared)
+		}
+	}
+	if strings.Contains(prepared, "Native shell/account tools are unavailable") {
+		t.Fatal("direct authoring still denied by old Builder-only guidance")
 	}
 }
