@@ -99,7 +99,8 @@ connection's Crew bounds apply. These calls execute directly without a model tur
   and installation; uninstall across native-provider folders needs unrestricted
   Crew file consent.
 - `crew_mcp action=list|search|install|remove|discover`: search takes `query`;
-  install takes `name` with optional `url`, `catalog`, `label`; remove/discover
+  install takes `name` with optional `catalog` and `label` (catalog servers only;
+  custom URLs use Integrations); remove/discover
   take the exact connection `name`. Install attaches the authenticated person's
   connection to this Crew. Complete sign-in and credentials in Integrations.
   Remove detaches only this Crew, preserving other projects and its login.
