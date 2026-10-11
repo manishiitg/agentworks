@@ -82,7 +82,8 @@ type ReportHumanInput struct {
 	ApplyMessage string `json:"apply_message,omitempty"`
 	// Recommendation is the Pulse's recommended answer (PLAT-697 phase
 	// 3), kept apart from the owner's answer; list responses only.
-	Recommendation *PulseRecommendation `json:"recommendation,omitempty"`
+	Recommendation *PulseRecommendation        `json:"recommendation,omitempty"`
+	Withdrawal     *ReportHumanInputWithdrawal `json:"withdrawal,omitempty"`
 }
 
 type ReportHumanInputCreateRequest struct {
@@ -257,6 +258,7 @@ func ensureReportHumanInputSchema(ctx context.Context, db *sql.DB) error {
 			claim_token TEXT NOT NULL DEFAULT '',
 			claimed_at TEXT NOT NULL DEFAULT '',
 			claim_expires_at TEXT NOT NULL DEFAULT '',
+			withdrawal_json TEXT NOT NULL DEFAULT '',
 			apply_contract_json TEXT NOT NULL DEFAULT '{}'
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_report_human_inputs_status ON report_human_inputs(status, updated_at)`,
@@ -291,6 +293,7 @@ func ensureReportHumanInputSchema(ctx context.Context, db *sql.DB) error {
 		"answered_via":        "TEXT NOT NULL DEFAULT ''",
 		"answered_session_id": "TEXT NOT NULL DEFAULT ''",
 		"apply_contract_json": "TEXT NOT NULL DEFAULT '{}'",
+		"withdrawal_json":     "TEXT NOT NULL DEFAULT ''",
 	} {
 		if err := ensureReportHumanInputColumn(ctx, db, name, definition); err != nil {
 			return err
@@ -567,7 +570,7 @@ func listReportHumanInputs(ctx context.Context, workspacePath, status, source st
 	}
 	query := `SELECT id, workspace_path, source, priority, question, context, options_json, allow_free_text, status,
 		selected_option_id, note, run_id, evidence, created_by, answered_by, answered_by_kind, answered_via, answered_session_id, consumed_by, outcome_summary,
-		created_at, updated_at, answered_at, consumed_at, dismissed_at, claim_token, claimed_at, claim_expires_at, apply_contract_json
+		created_at, updated_at, answered_at, consumed_at, dismissed_at, claim_token, claimed_at, claim_expires_at, apply_contract_json, withdrawal_json
 		FROM report_human_inputs WHERE ` + strings.Join(clauses, " AND ") + `
 		ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'answered' THEN 1 WHEN 'claimed' THEN 2 WHEN 'dismissed' THEN 3 ELSE 4 END,
 			datetime(updated_at) DESC, id DESC`
@@ -630,7 +633,7 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	if err := requireSuggestionOwner(ctx, normalized, input); err != nil {
 		return nil, err
 	}
-	if input.Status == "consumed" || input.Status == "dismissed" || input.Status == "claimed" {
+	if input.Status == "consumed" || input.Status == "dismissed" || input.Status == "claimed" || input.Status == "withdrawn" {
 		return nil, fmt.Errorf("input_id %q is %s", inputID, input.Status)
 	}
 
@@ -669,7 +672,7 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	// "consumed" — exactly the state loop_closure observed live.
 	result, err := tx.ExecContext(ctx, `UPDATE report_human_inputs
 		SET status='answered', selected_option_id=?, note=?, answered_by=?, answered_by_kind=?, answered_via=?, answered_session_id=?, answered_at=?, updated_at=?
-		WHERE id=? AND workspace_path=? AND status NOT IN ('consumed', 'dismissed', 'claimed')`,
+		WHERE id=? AND workspace_path=? AND status NOT IN ('consumed', 'dismissed', 'claimed', 'withdrawn')`,
 		selected, note, strings.TrimSpace(req.AnsweredBy), normalizeReportHumanInputActorKind(req.AnsweredByKind),
 		strings.TrimSpace(req.AnsweredVia), strings.TrimSpace(req.SessionID), now, now, input.ID, normalized)
 	if err != nil {
@@ -678,7 +681,7 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	if affected, err := result.RowsAffected(); err != nil {
 		return nil, err
 	} else if affected == 0 {
-		return nil, fmt.Errorf("input_id %q was consumed, dismissed, or claimed by another writer before this answer could be saved", inputID)
+		return nil, fmt.Errorf("input_id %q was consumed, dismissed, claimed, or withdrawn by another writer before this answer could be saved", inputID)
 	}
 	if err := step_based_workflow.SyncPulseImprovementDecisionTx(ctx, tx, input.ID, selected, false, "", now); err != nil {
 		return nil, err
@@ -739,7 +742,7 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	if err := requireSuggestionOwner(ctx, normalized, input); err != nil {
 		return nil, err
 	}
-	if input.Status == "consumed" || input.Status == "claimed" {
+	if input.Status == "consumed" || input.Status == "claimed" || input.Status == "withdrawn" {
 		return nil, fmt.Errorf("input_id %q is %s and cannot be dismissed", inputID, input.Status)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -751,7 +754,7 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	// Same concurrent-writer guard as answerReportHumanInput (PLAT-073 cluster I).
 	result, err := tx.ExecContext(ctx, `UPDATE report_human_inputs
 		SET status='dismissed', answered_by=?, answered_by_kind=?, answered_via=?, answered_session_id=?, dismissed_at=?, updated_at=?
-		WHERE id=? AND workspace_path=? AND status NOT IN ('consumed', 'claimed')`,
+		WHERE id=? AND workspace_path=? AND status NOT IN ('consumed', 'claimed', 'withdrawn')`,
 		strings.TrimSpace(req.AnsweredBy), normalizeReportHumanInputActorKind(req.AnsweredByKind),
 		strings.TrimSpace(req.AnsweredVia), strings.TrimSpace(req.SessionID), now, now, input.ID, normalized)
 	if err != nil {
@@ -760,7 +763,7 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	if affected, err := result.RowsAffected(); err != nil {
 		return nil, err
 	} else if affected == 0 {
-		return nil, fmt.Errorf("input_id %q was consumed or claimed by another writer before it could be dismissed", inputID)
+		return nil, fmt.Errorf("input_id %q was consumed, claimed, or withdrawn by another writer before it could be dismissed", inputID)
 	}
 	if err := recordPulseOwnerResponseTx(ctx, tx, normalized, input.ID, "dismissed", "", now); err != nil {
 		return nil, err
@@ -851,7 +854,7 @@ func consumeReportHumanInput(ctx context.Context, workspacePath, inputID string,
 func getReportHumanInputByID(ctx context.Context, db *sql.DB, workspacePath, inputID string) (*ReportHumanInput, error) {
 	row := db.QueryRowContext(ctx, `SELECT id, workspace_path, source, priority, question, context, options_json, allow_free_text, status,
 		selected_option_id, note, run_id, evidence, created_by, answered_by, answered_by_kind, answered_via, answered_session_id, consumed_by, outcome_summary,
-		created_at, updated_at, answered_at, consumed_at, dismissed_at, claim_token, claimed_at, claim_expires_at, apply_contract_json
+		created_at, updated_at, answered_at, consumed_at, dismissed_at, claim_token, claimed_at, claim_expires_at, apply_contract_json, withdrawal_json
 		FROM report_human_inputs WHERE workspace_path=? AND id=?`, workspacePath, strings.TrimSpace(inputID))
 	input, err := scanReportHumanInput(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -870,14 +873,14 @@ type reportHumanInputScanner interface {
 func scanReportHumanInput(row reportHumanInputScanner) (*ReportHumanInput, error) {
 	var input ReportHumanInput
 	var optionsJSON string
-	var applyContractJSON string
+	var applyContractJSON, withdrawalJSON string
 	var allowFreeText int
 	if err := row.Scan(
 		&input.ID, &input.WorkspacePath, &input.Source, &input.Priority, &input.Question, &input.Context,
 		&optionsJSON, &allowFreeText, &input.Status, &input.SelectedOptionID, &input.Note, &input.RunID,
 		&input.Evidence, &input.CreatedBy, &input.AnsweredBy, &input.AnsweredByKind, &input.AnsweredVia, &input.AnsweredSessionID, &input.ConsumedBy, &input.OutcomeSummary,
 		&input.CreatedAt, &input.UpdatedAt, &input.AnsweredAt, &input.ConsumedAt, &input.DismissedAt,
-		&input.ClaimToken, &input.ClaimedAt, &input.ClaimExpiresAt, &applyContractJSON,
+		&input.ClaimToken, &input.ClaimedAt, &input.ClaimExpiresAt, &applyContractJSON, &withdrawalJSON,
 	); err != nil {
 		return nil, err
 	}
@@ -887,6 +890,11 @@ func scanReportHumanInput(row reportHumanInputScanner) (*ReportHumanInput, error
 	}
 	input.AllowFreeText = allowFreeText != 0
 	_ = json.Unmarshal([]byte(applyContractJSON), &input.ApplyContract)
+	if withdrawalJSON != "" {
+		if err := json.Unmarshal([]byte(withdrawalJSON), &input.Withdrawal); err != nil {
+			return nil, fmt.Errorf("invalid withdrawal record for %s: %w", input.ID, err)
+		}
+	}
 	return &input, nil
 }
 
@@ -991,7 +999,9 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			"keep_input_id": map[string]interface{}{"type": "string"}, "reason": map[string]interface{}{"type": "string"},
 		}, "required": []string{"workspace_path", "input_id", "keep_input_id", "reason"}}),
 	}}
+	withdrawTool := createHumanInputWithdrawalTool()
 	executors := map[string]interface{}{
+		"withdraw_human_input_request": withdrawHumanInputFromToolArgs,
 		"dismiss_duplicate_human_input_request": func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ws, _ := args["workspace_path"].(string)
 			id, _ := args["input_id"].(string)
@@ -1100,12 +1110,13 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 	}
 	categories := map[string]string{
 		"dismiss_duplicate_human_input_request": "human_tools",
+		"withdraw_human_input_request":          "human_tools",
 		"get_human_input_request":               "human_tools",
 		"create_human_input_request":            "human_tools",
 		"answer_human_input_request":            "human_tools",
 		"mark_human_input_consumed":             "human_tools",
 	}
-	return []llmtypes.Tool{getTool, createTool, answerTool, consumeTool, dismissDuplicateTool}, executors, categories
+	return []llmtypes.Tool{getTool, createTool, answerTool, consumeTool, dismissDuplicateTool, withdrawTool}, executors, categories
 }
 
 func reportHumanInputCreateRequestFromToolArgs(args map[string]interface{}) (ReportHumanInputCreateRequest, error) {

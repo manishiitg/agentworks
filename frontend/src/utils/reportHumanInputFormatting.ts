@@ -23,6 +23,7 @@ export function reportHumanInputStatusLabel(input: ReportHumanInput): string {
 	}
   if (input.status === 'consumed') return 'Action completed'
   if (input.status === 'dismissed') return 'Dismissed'
+  if (input.status === 'withdrawn') return 'Withdrawn'
   return 'Needs answer'
 }
 

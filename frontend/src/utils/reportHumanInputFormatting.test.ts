@@ -81,6 +81,7 @@ describe('report human input context formatting', () => {
 		expect(reportHumanInputStatusLabel({ ...input('claimed'), source: 'strategy_auditor' })).toBe('Decision action is running')
     expect(reportHumanInputStatusLabel(input('consumed'))).toBe('Action completed')
     expect(reportHumanInputStatusLabel(input('dismissed'))).toBe('Dismissed')
+    expect(reportHumanInputStatusLabel(input('withdrawn'))).toBe('Withdrawn')
   })
 
   it('joins an applied decision to its newest durable impact assessment', () => {

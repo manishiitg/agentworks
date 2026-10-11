@@ -116,6 +116,7 @@ export function NeedsYouCard({ input, workspacePath, onAnswered }: {
 }
 
 function ownerText(entry: PulseDecisionLogEntry): string {
+  if (entry.decision_status === 'withdrawn') return 'Withdrawn by Builder'
   switch (entry.owner_response) {
     case 'accepted': return `You accepted${entry.responded_at ? ` on ${shortDate(entry.responded_at)}` : ''}`
     case 'changed': return `You chose ${entry.owner_answer || 'another option'} instead`

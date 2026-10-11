@@ -488,7 +488,7 @@ export interface ReportHumanInput {
   context?: string
   options: ReportHumanInputOption[]
   allow_free_text: boolean
-	status: 'pending' | 'answered' | 'claimed' | 'consumed' | 'dismissed' | string
+	status: 'pending' | 'answered' | 'claimed' | 'consumed' | 'dismissed' | 'withdrawn' | string
   selected_option_id?: string
   note?: string
   run_id?: string
@@ -513,6 +513,13 @@ export interface ReportHumanInput {
   apply_message?: string
   /** The Pulse's recommended answer (PLAT-697), kept apart from the owner's answer. */
   recommendation?: PulseRecommendation
+  withdrawal?: {
+    reason: string
+    evidence: string[]
+    actor_id: string
+    session_id: string
+    withdrawn_at: string
+  }
 }
 
 /** The Pulse's recommendation on one decision; also that decision's log entry (PLAT-697). */

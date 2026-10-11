@@ -1,5 +1,12 @@
 # Pulse as the goal owner
 
+Builder can retire an obsolete unanswered agent-issued proposal through
+`withdraw_human_input_request`, with its reason and evidence references. Pulse
+can discuss this with Builder. Withdrawal is visible in history and is separate
+from owner approval; it grants no action authority. Go verifies scope/provenance
+and protects answered decisions; agents judge whether the request is obsolete.
+
+
 Scheduled goal-check turns provide the task and permission context. Pulse and
 Builder act as colleagues with their own tools: they choose what to read, ask and
 share. Execution/measurement summaries are not automatically injected into those

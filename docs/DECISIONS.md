@@ -11,6 +11,18 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Builder may withdraw obsolete unanswered agent proposals (PLAT-814)
+
+Builder judges whether its workflow agents' pending proposal is obsolete and
+withdraws it through `withdraw_human_input_request` with reason/evidence. Go
+checks trusted Builder/workflow scope, original agent creation provenance and
+an atomic pending/unanswered state transition. Preserve the request, contract,
+recommendation and audit history; record withdrawal separately from owner answers,
+approval and consumed work. Human requests, suggestions, unknown provenance and
+answered/claimed requests remain protected. Pulse discusses obsolescence with
+Builder using messages. No automatic obsolescence inference or workflow migration.
+[PLAT-814](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/human-decisions/plat-814.md).
+
 ### 2026-10-11 — Pulse chooses evidence through tools and conversation (PLAT-853)
 
 Scheduled goal-check turns carry their task and permission context, without an
