@@ -10,7 +10,7 @@ import (
 func TestPlanAgentCodeMigrationsRejectsMixedSequence(t *testing.T) {
 	raw := json.RawMessage(`{
 		"id":"mixed",
-		"type":"agent",
+		"type":"message_sequence",
 		"title":"Mixed",
 		"description":"Conversation followed by code",
 		"items":[

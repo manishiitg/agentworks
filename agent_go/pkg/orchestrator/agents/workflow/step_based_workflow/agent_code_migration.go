@@ -230,7 +230,7 @@ func planAgentCodeMigrations(rawSteps []json.RawMessage, rawOrphans json.RawMess
 		if err := json.Unmarshal(raw, &header); err != nil {
 			return nil, nil, fmt.Errorf("parse step %d during agent migration: %w", index, err)
 		}
-		if header.Type != "agent" {
+		if header.Type != "agent" && header.Type != "message_sequence" {
 			if ids := rawAgentCodeItemIDs(raw); len(ids) > 0 {
 				blockers = append(blockers, fmt.Sprintf("nested code items under step %q: %v", header.ID, ids))
 			}
@@ -519,7 +519,7 @@ func rawAgentCodeItemIDs(raw json.RawMessage) []string {
 	walk = func(value interface{}) {
 		switch typed := value.(type) {
 		case map[string]interface{}:
-			if typed["type"] == "agent" {
+			if typed["type"] == "agent" || typed["type"] == "message_sequence" {
 				if items, ok := typed["items"].([]interface{}); ok {
 					for _, rawItem := range items {
 						if item, ok := rawItem.(map[string]interface{}); ok && item["type"] == "code" {
