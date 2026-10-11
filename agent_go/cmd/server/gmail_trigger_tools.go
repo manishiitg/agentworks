@@ -339,7 +339,8 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 	claims := GetUserFromContext(ctx)
 	active, _ := api.getActiveSession(session)
 	policy := resolveWorkflowChatPolicy(session, QueryRequest{}, active, false)
-	if claims == nil || claims.Provider == "bot_route" || claims.AccessToken != nil || claims.ExternalBuilderOperationID != "" || claims.BotRouteGrant != "" || policy.Origin != "interactive" || active != nil && active.TriggeredBy == "email" {
+	direct := isExternalCrewDirectCall(ctx) && api.externalCrewDirectOwner(ctx, workspace) == nil
+	if claims == nil || claims.Provider == "bot_route" || claims.ExternalBuilderOperationID != "" || claims.BotRouteGrant != "" || !direct && (claims.AccessToken != nil || policy.Origin != "interactive" || active != nil && active.TriggeredBy == "email") {
 		return "", fmt.Errorf("Gmail trigger management requires an interactive owner conversation")
 	}
 	config, err := readGmailInboundConfig()

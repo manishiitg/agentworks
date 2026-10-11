@@ -554,7 +554,7 @@ func (api *StreamingAPI) registerSlackBotTools(registrar definitionToolRegistrar
 		if err != nil {
 			return "", fmt.Errorf("Slack service unavailable")
 		}
-		if currentUserIsAdmin(request) {
+		if currentUserIsAdmin(request) && !isExternalCrewDirectCall(ctx) {
 			raw, err := json.Marshal(svc.GetConfig())
 			return string(raw), err
 		}

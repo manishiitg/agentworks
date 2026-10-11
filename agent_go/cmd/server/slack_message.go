@@ -213,6 +213,16 @@ func (api *StreamingAPI) authorizeSlackToolRoute(ctx context.Context, session, c
 			return "", fmt.Errorf("cross-route Slack send denied")
 		}
 		inheritedThread = execution.Request.BotThreadTS
+	} else if authority, direct := ctx.Value(externalCrewDirectAuthorityKey{}).(externalCrewDirectAuthority); direct {
+		if err := api.externalCrewDirectOwner(ctx, authority.root); err != nil {
+			return "", err
+		}
+		if normalizeConversationWorkspace(authority.root) != normalizeConversationWorkspace(route.WorkspacePath) {
+			return "", fmt.Errorf("route is outside this Crew")
+		}
+		if _, err := requireSlackRouteProfileOwner(ctx, api, route); err != nil {
+			return "", err
+		}
 	} else {
 		if parent := virtualtools.GetParentChat(session); parent != nil {
 			session = parent.SessionID

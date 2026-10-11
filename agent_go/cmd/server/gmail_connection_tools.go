@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 
@@ -129,6 +131,11 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 }
 
 func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context, sessionID, workspacePath string, args map[string]interface{}, scope services.GmailUseScope) (string, error) {
+	// Shared accounts use the same administrator gate as the Sending accounts
+	// routes; owning a Crew never grants account-wide credential management.
+	if scope.CodeWorkspace == "" && !currentUserIsAdmin(httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)) {
+		return "", fmt.Errorf("shared Google account grants require an administrator")
+	}
 	svc := services.GetGmailService()
 	if svc == nil {
 		return "", fmt.Errorf("gmail is not configured on this deployment")

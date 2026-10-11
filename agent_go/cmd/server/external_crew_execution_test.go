@@ -25,6 +25,7 @@ import (
 // policy that reaches the existing kernel sandbox rather than mocking it in Go.
 func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	f, upstream := newExternalCrewCommandFixture(t)
+	t.Setenv("AUTH_SECRET", "crew-execution-test-signing-secret")
 	f.write(t, externalCommandCrewRoot+"/db/migrations/2026-10-11-example.sql", "CREATE TABLE IF NOT EXISTS example (id INTEGER PRIMARY KEY, value TEXT);")
 	router := gin.New()
 	router.POST("/api/query", workspacehandlers.QueryWorkflowDB)
@@ -83,6 +84,11 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	if shellSession != "" && common.GetSessionShellConfig(shellSession) != nil {
 		t.Fatal("temporary shell policy leaked")
 	}
+	history := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "history"}, 200)
+	if !strings.Contains(history, "mutate_workflow_db") || !strings.Contains(history, "connection_id") || strings.Contains(history, "saved via MCP") || strings.Contains(history, "INSERT INTO") {
+		t.Fatalf("audit missing or exposed data: %s", history)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_execution", map[string]any{"action": "history"}, 403)
 	for _, denied := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, denied, "crew_execution", map[string]any{"action": "mutate_workflow_db", "arguments": map[string]any{"sql": "DELETE FROM example"}}, 403)
 	}
