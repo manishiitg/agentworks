@@ -1,5 +1,17 @@
 # Decisions and open issues
 
+## 2026-10-11 — Quick navigation ranks names before search context (PLAT-746)
+
+Rank Ctrl+K results by exact name, name prefix, other name matches, then
+description and keyword matches. Within each class, put running work first,
+then the current item, then recently opened work; use alphabetical order
+when those priorities tie. Preserve panel searches with words in any order
+and the existing browse order when no search text is entered.
+Why: relevant names should stay above incidental context matches, while
+equally matching work should follow the user's activity rather than its name.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 ## 2026-10-11 — Crew diagnostics use existing read access (PLAT-856)
 
 Expose browser capability status, the website's Crew-scoped browser inventory

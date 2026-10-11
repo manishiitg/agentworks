@@ -99,6 +99,50 @@ it('keeps a running scheduled Crew visible when its view-only tab has no project
   expect(host.querySelector('[data-navigation-id^="active:"]')?.textContent).toContain('Scheduled Crew')
 })
 
+it('ranks name matches before keywords, then running, current and recent work within each match class', async () => {
+  const { host } = await renderNavigation('  REPORT  ', undefined, true, () => {
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+    useChatStore.setState({ activeTabId: 'current', chatTabs: {
+      exact: { tabId: 'exact', name: 'Report', createdAt: 1, metadata: { agentProfileId: 'code' } },
+      running: { tabId: 'running', name: 'Report Z running', createdAt: 1, isStreaming: true, metadata: { agentProfileId: 'code' } },
+      current: { tabId: 'current', name: 'Report Y current', createdAt: 1, metadata: { agentProfileId: 'code' } },
+      recent: { tabId: 'recent', name: 'Report X recent', createdAt: 1, lastAccessedAt: 9000, metadata: { agentProfileId: 'code' } },
+      olderB: { tabId: 'olderB', name: 'Report B older', createdAt: 1, metadata: { agentProfileId: 'code' } },
+      olderA: { tabId: 'olderA', name: 'Report A older', createdAt: 1, metadata: { agentProfileId: 'code' } },
+      substring: { tabId: 'substring', name: 'Weekly Report', createdAt: 10000, metadata: { agentProfileId: 'code' } },
+    } as never })
+    // A running keyword-only match must still follow every name match.
+    useChatStore.setState({ activeSessionsCache: [
+      { session_id: 'keyword-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'keyword' },
+    ] as never })
+    useGlobalPresetStore.setState({ workflowPresets: [
+      { id: 'keyword', label: 'A inventory', selectedFolder: { filepath: 'Workflow/report' } },
+    ] as never })
+    usePanelSwitcherStore.getState().register('code', { panels: [{ id: 'analytics', label: 'Analytics', sections: [
+      { id: 'exact', label: 'Report' },
+      { id: 'name', label: 'Annual Report' },
+      { id: 'keywords', label: 'A summary', keywords: 'annual report' },
+    ] }], open: vi.fn() })
+  })
+  const rowIds = () => [...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))
+  expect(rowIds()).toEqual([
+    'code:exact', 'panel:analytics:exact',
+    'code:running', 'code:current', 'code:recent', 'code:olderA', 'code:olderB',
+    'code:substring', 'panel:analytics:name',
+    'workflow:keyword', 'panel:analytics:keywords',
+  ])
+  expect(host.querySelector('[data-navigation-id="code:exact"]')?.className).toContain('bg-blue-50')
+
+  // Preserve the panel scope and word-order-independent search, while giving
+  // words found entirely in the tab name priority over its keywords.
+  const input = host.querySelector('input')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '@panels report annual')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(rowIds()).toEqual(['panel:analytics:name', 'panel:analytics:keywords'])
+})
+
 it('browses all workflows or Relays from footer icons without requiring typed scopes', async () => {
   const { host, onClose } = await renderNavigation('', undefined, true, () => {
     useGlobalPresetStore.setState({ workflowPresets: [

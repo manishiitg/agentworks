@@ -200,6 +200,24 @@ const itemHasRunningWork = (item: QuickSwitcherItem): boolean => {
   return item.type !== 'active' && item.hasLocalActivity
 }
 
+const compareItemActivity = (a: QuickSwitcherItem, b: QuickSwitcherItem): number => {
+  const aRunning = itemHasRunningWork(a)
+  const bRunning = itemHasRunningWork(b)
+  if (aRunning !== bRunning) return aRunning ? -1 : 1
+  if (a.isActive !== b.isActive) return a.isActive ? -1 : 1
+  return b.lastAccessedAt - a.lastAccessedAt
+}
+
+const itemSearchMatchRank = (item: QuickSwitcherItem, query: string): number => {
+  const label = item.label.toLowerCase()
+  if (label === query) return 0
+  if (label.startsWith(query)) return 1
+  // Panel search also accepts words in any order. Keep those name matches
+  // ahead of matches that need a parent label, description or keyword.
+  if (label.includes(query) || (item.type === 'panel' && query.split(/\s+/).every(word => label.includes(word)))) return 2
+  return 3
+}
+
 // The row shows only the state (and a bot origin); the rest is debugging detail
 // that stays searchable through activeSessionSearchText (owner, 2026-10-07).
 const activeSessionSuffix = (session?: ActiveSessionInfo): string => {
@@ -503,11 +521,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     })
 
     const projectItems = [...activeItems, ...crewItems, ...codeItems, ...chatItems, ...workflowItems, ...directoryCrewItems, ...directoryCodeItems].sort((a, b) => {
-      const aRunning = itemHasRunningWork(a)
-      const bRunning = itemHasRunningWork(b)
-      if (aRunning !== bRunning) return aRunning ? -1 : 1
-      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1
-      if (a.lastAccessedAt !== b.lastAccessedAt) return b.lastAccessedAt - a.lastAccessedAt
+      const activityOrder = compareItemActivity(a, b)
+      if (activityOrder) return activityOrder
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)
       return a.label.localeCompare(b.label)
     })
@@ -560,14 +575,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     )
 
     filtered.sort((a, b) => {
-      const aExact = a.label.toLowerCase() === q
-      const bExact = b.label.toLowerCase() === q
-      if (aExact && !bExact) return -1
-      if (!aExact && bExact) return 1
-      const aStarts = a.label.toLowerCase().startsWith(q)
-      const bStarts = b.label.toLowerCase().startsWith(q)
-      if (aStarts && !bStarts) return -1
-      if (!aStarts && bStarts) return 1
+      const matchOrder = itemSearchMatchRank(a, q) - itemSearchMatchRank(b, q)
+      if (matchOrder) return matchOrder
+      const activityOrder = compareItemActivity(a, b)
+      if (activityOrder) return activityOrder
       return a.label.localeCompare(b.label)
     })
 
