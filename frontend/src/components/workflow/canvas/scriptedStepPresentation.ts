@@ -1,5 +1,5 @@
 export function planStepTypeLabel(type: string): string {
-  if (type === 'regular') return 'scripted step'
+  if ((type === 'scripted' || type === 'regular')) return 'scripted step'
   if (type === 'agent' || type === 'orchestrator' || type === 'todo_task') return 'Agent'
   if (type === 'crew') return 'Crew'
   return type

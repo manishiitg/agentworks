@@ -265,9 +265,6 @@ func (r *consolidatedPlanRegistrar) flush() error {
 				return "", fmt.Errorf("step %q not found", id)
 			}
 			typ := string(step.StepType())
-			if typ == "regular" {
-				typ = "scripted"
-			}
 			v, err := toolObjectArg(args, "changes")
 			if err != nil {
 				return "", err

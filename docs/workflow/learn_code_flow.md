@@ -298,7 +298,7 @@ Choose `code_exec` when:
 
 ## Orchestrator (todo_task) learn_code
 
-This doc covers regular-step learn_code. Todo-task orchestrators also have a learn_code fast path with different semantics:
+This doc covers scripted-step learn_code. Todo-task orchestrators also have a learn_code fast path with different semantics:
 
 - **Read-only at runtime** — builder writes `main.py` once; no repair loop, no save-back, no fix iterations
 - Eligibility: `declared_execution_mode="learn_code"` + `len(predefined_routes) >= 1`

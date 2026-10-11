@@ -19,7 +19,7 @@ import (
 )
 
 func sequenceScriptFixture() (*PlanningResponse, AgentItem) {
-	child := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{
+	child := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{
 		ID: "fetch", Title: "Fetch", Description: "Fetch evidence",
 		ValidationSchema: &ValidationSchema{Files: []FileValidationRule{{FileName: "result.json", MustExist: true}}},
 		ScriptParameters: map[string]ScriptParameterDefinition{
@@ -63,8 +63,8 @@ func TestSequenceScriptsPlanRoundTripAndInvalidReferences(t *testing.T) {
 		{"agentic target", func(p *PlanningResponse, _ *AgentItem) {
 			p.OrphanSteps[0] = &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "fetch"}}
 		}},
-		{"legacy agentic regular", func(p *PlanningResponse, _ *AgentItem) {
-			p.OrphanSteps[0].(*RegularPlanStep).AgentConfigs = &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic}
+		{"legacy agentic scripted", func(p *PlanningResponse, _ *AgentItem) {
+			p.OrphanSteps[0].(*ScriptedPlanStep).AgentConfigs = &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic}
 		}},
 		{"main-flow target", func(p *PlanningResponse, _ *AgentItem) {
 			p.Steps = append(p.Steps, p.OrphanSteps...)
@@ -74,7 +74,7 @@ func TestSequenceScriptsPlanRoundTripAndInvalidReferences(t *testing.T) {
 		{"wrong parameter type", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].Parameters["market"] = 1 }},
 		{"unknown parameter", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].Parameters["invented"] = true }},
 		{"no validation", func(p *PlanningResponse, _ *AgentItem) {
-			p.OrphanSteps[0].(*RegularPlanStep).ValidationSchema = nil
+			p.OrphanSteps[0].(*ScriptedPlanStep).ValidationSchema = nil
 		}},
 		{"path traversal", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].ID = "../outside" }},
 		{"duplicate ID", func(_ *PlanningResponse, i *AgentItem) {

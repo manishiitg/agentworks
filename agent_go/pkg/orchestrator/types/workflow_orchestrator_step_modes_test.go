@@ -259,7 +259,7 @@ func TestWorkflowAgentItemTypeInvalidRejected(t *testing.T) {
 //
 //	(1) pre-seed learnings/<step-id>/main.py with a known Python script
 //	    that prints a deterministic token to stdout.
-//	(2) leave the step a regular plan step -- since PLAT-287 a regular
+//	(2) leave the step a scripted plan step -- since PLAT-287 a regular
 //	    step IS a scripted step; nothing in step_config declares it.
 //	(3) run the workflow.
 //	(4) assert the engine ran the script — proof is the script's token
@@ -315,7 +315,7 @@ with open(os.path.join(out_dir, "computed.txt"), "w") as f:
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "regular",
+				"type":                 "scripted",
 				"id":                   stepID,
 				"title":                "Learn-code fast path",
 				"description":          "Use the saved Python script under learnings/learn-code-step/main.py to compute 6*7.",
@@ -400,7 +400,7 @@ with open(os.path.join(out_dir, "computed.txt"), "w") as f:
 }
 
 // TestWorkflowScriptedControlNoModeWritesNoScript is the control
-// counterpart of the test above: run the same regular step, but with a
+// counterpart of the test above: run the same scripted step, but with a
 // step_config.json that still carries the RETIRED
 // declared_execution_mode="agentic" key (a workflow the v1.0.38/1.0.39
 // migrations have not reached). The transitional shim keeps such a step
@@ -421,7 +421,7 @@ func TestWorkflowScriptedControlNoModeWritesNoScript(t *testing.T) {
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "regular",
+				"type":                 "scripted",
 				"id":                   stepID,
 				"title":                "Control: no learn_code",
 				"description":          "Reply with RESULT=42 and stop.",
@@ -450,9 +450,9 @@ func TestWorkflowScriptedControlNoModeWritesNoScript(t *testing.T) {
 	mainPyPath := filepath.Join(wo.workspaceDisk, "learnings", stepID, "main.py")
 	if _, err := os.Stat(mainPyPath); err == nil {
 		body, _ := os.ReadFile(mainPyPath)
-		t.Fatalf("control: learnings/%s/main.py exists for a legacy agentic regular step — the transitional shim is not holding it off the scripted path. main.py:\n%s", stepID, string(body))
+		t.Fatalf("control: learnings/%s/main.py exists for a legacy agentic scripted step — the transitional shim is not holding it off the scripted path. main.py:\n%s", stepID, string(body))
 	}
-	t.Logf("✅ control: legacy agentic regular step → no main.py written")
+	t.Logf("✅ control: legacy agentic scripted step → no main.py written")
 }
 
 // TestWorkflowScriptedStepConfigIDMismatchNotApplied proves that a
@@ -473,7 +473,7 @@ func TestWorkflowScriptedStepConfigIDMismatchNotApplied(t *testing.T) {
 	writeEdgePlan(t, wo.workspaceDisk, map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "regular",
+				"type":                 "scripted",
 				"id":                   planStepID,
 				"title":                "Plain step",
 				"description":          "Reply with RESULT=42 and stop.",
@@ -508,12 +508,12 @@ func TestWorkflowScriptedStepConfigIDMismatchNotApplied(t *testing.T) {
 	}
 
 	if _, err := os.Stat(filepath.Join(wo.workspaceDisk, "learnings", planStepID, "main.py")); err != nil {
-		t.Fatalf("learnings/%s/main.py missing — the mismatched step_config entry (id \"step-y\", legacy agentic) was applied to the regular step and kept it off the scripted path: %v", planStepID, err)
+		t.Fatalf("learnings/%s/main.py missing — the mismatched step_config entry (id \"step-y\", legacy agentic) was applied to the scripted step and kept it off the scripted path: %v", planStepID, err)
 	}
 	if _, err := os.Stat(filepath.Join(wo.workspaceDisk, "learnings", "step-y", "main.py")); err == nil {
 		t.Fatalf("learnings/step-y/main.py exists — engine wrote artifacts for a step that doesn't appear in plan.json")
 	}
-	t.Logf("✅ step_config.json with mismatched id: regular step ran scripted, no artifacts for the phantom id")
+	t.Logf("✅ step_config.json with mismatched id: scripted step ran scripted, no artifacts for the phantom id")
 }
 
 // ──────────────────────────────────────────────────────────────────────

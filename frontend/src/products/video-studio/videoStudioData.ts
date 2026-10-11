@@ -319,7 +319,7 @@ export function parseWorkflowSteps(content: string): VideoWorkflowStep[] {
             return [{ id: asString(value.route_id), title: asString(value.route_name), nextStepId: asString(value.next_step_id) }]
           })
         : undefined
-      return [{ id, title: asString(step.title) || id, type: asString(step.type) || 'regular', routes }]
+      return [{ id, title: asString(step.title) || id, type: asString(step.type) || 'scripted', routes }]
     })
   } catch {
     return []

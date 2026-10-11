@@ -32,7 +32,7 @@ const KnowledgebaseFolderName = "knowledgebase"
 const KnowledgebaseContextFolderName = "context"
 
 // DBFolderName is the name of the persistent structured-data folder at workspace root.
-// Always created on workspace init (no preset toggle, unlike knowledgebase). All regular steps
+// Always created on workspace init (no preset toggle, unlike knowledgebase). All scripted steps
 // get read+write by default. State lives in db/db.sqlite (one table per entity); steps should upsert via
 // INSERT ... ON CONFLICT rather than recreate tables. See docs/workflow/persistent_stores_design.md section 1.
 const DBFolderName = "db"
@@ -1392,7 +1392,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			}
 		}
 		isScriptedMode = isScriptedStep(step, agentCfgs)
-		if regular, ok := step.(*RegularPlanStep); ok && regular.ScriptOnly {
+		if regular, ok := step.(*ScriptedPlanStep); ok && regular.ScriptOnly {
 			isScriptedMode = true
 		}
 		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] step=%s type=%s scripted=%v",
@@ -1407,7 +1407,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 	learnCodeFastPathDone := false      // set when saved script ran successfully (skip execution loop)
 
 	// Initialize variables for step execution.
-	// Regular steps get 3 retries on pre-validation failure.
+	// Scripted steps get 3 retries on pre-validation failure.
 	// Sub-agents and workshop single-step mode get 2 — if it can't fix in 2 tries,
 	// better to return to the orchestrator/user with feedback than burn more tokens.
 	maxRetryAttempts := 3
@@ -3110,7 +3110,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) refreshStepAgentConfigsBeforeExecutio
 // getAgentConfigs returns AgentConfigs from a PlanStepInterface
 func getAgentConfigs(step PlanStepInterface) *AgentConfigs {
 	switch s := step.(type) {
-	case *RegularPlanStep:
+	case *ScriptedPlanStep:
 		return s.AgentConfigs
 	case *HumanInputPlanStep:
 		return s.AgentConfigs
@@ -3130,12 +3130,12 @@ func getValidationSchema(step PlanStepInterface) *ValidationSchema {
 	return step.GetValidationSchema()
 }
 
-var _ = getRegularPlanStep
+var _ = getScriptedPlanStep
 
-// getRegularPlanStep returns a pointer to RegularPlanStep if the step is a regular step, nil otherwise
+// getScriptedPlanStep returns a pointer to ScriptedPlanStep if the step is a scripted step, nil otherwise
 // This allows modification of step fields
-func getRegularPlanStep(step PlanStepInterface) *RegularPlanStep {
-	if regularStep, ok := step.(*RegularPlanStep); ok {
+func getScriptedPlanStep(step PlanStepInterface) *ScriptedPlanStep {
+	if regularStep, ok := step.(*ScriptedPlanStep); ok {
 		return regularStep
 	}
 	return nil
@@ -3456,9 +3456,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 		}
 
 		sequenceExecutionStep := step
-		if shouldNormalizeRegularStepToAgent(step) {
-			sequenceExecutionStep = normalizeRegularStepToAgent(step.(*RegularPlanStep))
-			hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing non-scripted regular step %q to the agent runtime", step.GetID()))
+		if shouldNormalizeScriptedStepToAgent(step) {
+			sequenceExecutionStep = normalizeScriptedStepToAgent(step.(*ScriptedPlanStep))
+			hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing non-scripted step %q to the agent runtime", step.GetID()))
 		}
 		if isAgentStep(sequenceExecutionStep) {
 			hcpo.GetLogger().Info(fmt.Sprintf("💬 Starting agent step execution: %s", sequenceExecutionStep.GetTitle()))
@@ -3695,7 +3695,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 			continue
 		}
 
-		// Execute regular step using executeSingleStep
+		// Execute scripted step using executeSingleStep
 		// Note: previousContextFiles is still needed for executeSingleStep (for context dependencies)
 		// Previous execution outputs are kept in memory for downstream context.
 		previousContextFiles = make([]string, 0)
@@ -3747,9 +3747,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 			false, // isNestedExecution = false
 			stepExecCtx,
 			breakdownSteps,           // allSteps
-			false,                    // isSubAgent = false (regular step)
+			false,                    // isSubAgent = false (scripted step)
 			previousExecutionResults, // Execution outputs from previous steps
-			nil,                      // orchestrationRoutes - nil for regular steps (not sub-agents)
+			nil,                      // orchestrationRoutes - nil for scripted steps (not sub-agents)
 		)
 		if err != nil {
 			// A provider capacity wall is not a step failure. The steps before
@@ -3796,8 +3796,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 		// Scripted steps may explicitly chain within a selected route and then
 		// converge on a shared downstream step. Empty preserves legacy
 		// sequential execution.
-		if regularStep, ok := step.(*RegularPlanStep); ok {
-			outcome, navErr := hcpo.navigateAfterRegularStep(ctx, regularStep, breakdownSteps, progress, &i, &startFromStep)
+		if regularStep, ok := step.(*ScriptedPlanStep); ok {
+			outcome, navErr := hcpo.navigateAfterScriptedStep(ctx, regularStep, breakdownSteps, progress, &i, &startFromStep)
 			if navErr != nil {
 				return navErr
 			}
@@ -3830,9 +3830,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 	return nil
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) navigateAfterRegularStep(
+func (hcpo *StepBasedWorkflowOrchestrator) navigateAfterScriptedStep(
 	ctx context.Context,
-	step *RegularPlanStep,
+	step *ScriptedPlanStep,
 	breakdownSteps []PlanStepInterface,
 	progress *StepProgress,
 	i *int,
@@ -3943,7 +3943,7 @@ func buildValidationContinuationUserMessage(vr *ValidationResponse, attempt int)
 // That is every run; only the Builder's own execute_step may repair, and never
 // for a step marked script_only or a fast_path_only test.
 func scriptedRunIsStrict(execCtx *ExecutionContext, step PlanStepInterface) bool {
-	if regular, ok := step.(*RegularPlanStep); ok && regular.ScriptOnly {
+	if regular, ok := step.(*ScriptedPlanStep); ok && regular.ScriptOnly {
 		return true
 	}
 	return execCtx == nil || execCtx.SavedScriptOnly || !execCtx.AllowScriptRepair

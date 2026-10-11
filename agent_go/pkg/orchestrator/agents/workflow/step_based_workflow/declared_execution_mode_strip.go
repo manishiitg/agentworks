@@ -42,16 +42,16 @@ func stripDeclaredExecutionModeFromConfigs(scope string, configs []StepConfig) [
 	return stripped
 }
 
-// legacyAgenticRegularStepIDs lists the regular steps that still run as a
+// legacyAgenticScriptedStepIDs lists the scripted steps that still run as a
 // agent only because of the retired key. Stripping it would flip
 // them to scripted, so the v1.0.38 migration has to have converted them first.
-func legacyAgenticRegularStepIDs(plan *PlanningResponse, configs []StepConfig) []string {
+func legacyAgenticScriptedStepIDs(plan *PlanningResponse, configs []StepConfig) []string {
 	var ids []string
 	for _, info := range append(collectAllSteps(plan.Steps), collectAllSteps(plan.OrphanSteps)...) {
 		if info.Step == nil {
 			continue
 		}
-		if isLegacyAgenticRegularStep(info.Step, MatchStepConfigByID(info.Step.GetID(), configs)) {
+		if isLegacyAgenticScriptedStep(info.Step, MatchStepConfigByID(info.Step.GetID(), configs)) {
 			ids = append(ids, info.Step.GetID())
 		}
 	}
@@ -80,8 +80,8 @@ func createStripDeclaredExecutionModeExecutor(
 		if err != nil {
 			return "", fmt.Errorf("read planning/step_config.json: %w", err)
 		}
-		if legacy := legacyAgenticRegularStepIDs(plan, configs); len(legacy) > 0 {
-			return "", fmt.Errorf("refusing to strip declared_execution_mode: regular step(s) %s still carry declared_execution_mode=\"agentic\" and would flip to scripted without it; run migrate_declared_execution_mode (workflow contract v1.0.38) first so they become explicit agent steps", strings.Join(legacy, ", "))
+		if legacy := legacyAgenticScriptedStepIDs(plan, configs); len(legacy) > 0 {
+			return "", fmt.Errorf("refusing to strip declared_execution_mode: scripted step(s) %s still carry declared_execution_mode=\"agentic\" and would flip to scripted without it; run migrate_declared_execution_mode (workflow contract v1.0.38) first so they become explicit agent steps", strings.Join(legacy, ", "))
 		}
 
 		planningStripped := stripDeclaredExecutionModeFromConfigs("planning", configs)

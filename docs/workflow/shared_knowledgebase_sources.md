@@ -186,7 +186,7 @@ the duration of the write turn.
 Shell reads, supported file-read tools, and subprocesses use the session grants.
 The Knowledge UI reads through `GET /api/workflows/knowledgebase-sources`, scoped
 to the consumer's `workspace_path`. With no alias it returns attachment statuses;
-with `alias` and a relative `path`, it reads a regular file inside the authorized
+with `alias` and a relative `path`, it reads a scripted file inside the authorized
 source KB (maximum 2 MB). It rechecks current attachments and access on each call.
 Generic report endpoints do not acquire access to other workflows.
 

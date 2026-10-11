@@ -155,7 +155,7 @@ describe('terminal rail organization', () => {
   it('collapses direct and orchestrated executions of the same logical child step', () => {
     const direct = terminal('direct-calc', {
       execution_kind: 'workflow_step',
-      step_type: 'regular',
+      step_type: 'scripted',
       step_execution_mode: 'agentic',
       step_id: 'calc-task',
       parent_step_id: 'nested-manager',
@@ -199,12 +199,12 @@ describe('terminal rail organization', () => {
     }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('legacy-sequence', {
       execution_kind: 'sub_agent',
-      step_type: 'regular',
+      step_type: 'scripted',
       agent_name: 'agent-word-task',
     }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('regular-compat-sequence', {
       execution_kind: 'workflow_step',
-      step_type: 'regular',
+      step_type: 'scripted',
       step_execution_mode: 'agentic',
       step_id: 'prepare-test-fixtures',
       parent_step_id: 'main_agent:session-1',
@@ -489,7 +489,7 @@ describe('terminal rail organization', () => {
       ['step-end', 'Workflow Complete'],
     ].map(([stepID, stepName], index) => terminal(`session-1:workflow-step:workflow-full-1:${stepID}`, {
       execution_kind: 'workflow_step',
-      step_type: 'regular',
+      step_type: 'scripted',
       step_id: stepID,
       step_name: stepName,
       step_index: index,

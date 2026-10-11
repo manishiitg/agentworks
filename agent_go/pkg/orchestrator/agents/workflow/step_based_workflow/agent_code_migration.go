@@ -110,7 +110,7 @@ func createMigrateAgentCodeItemsExecutor(
 		if len(blockers) > 0 {
 			sort.Strings(blockers)
 			return "", fmt.Errorf(
-				"MESSAGE_SEQUENCE_CODE_MIGRATION_BLOCKED: no files were changed. Explicitly split these ambiguous usages into agent -> standalone scripted regular step -> agent with durable context: %s",
+				"MESSAGE_SEQUENCE_CODE_MIGRATION_BLOCKED: no files were changed. Explicitly split these ambiguous usages into agent -> standalone scripted step -> agent with durable context: %s",
 				strings.Join(blockers, "; "),
 			)
 		}
@@ -385,8 +385,8 @@ func convertLegacyCodeSequence(
 			item.ID,
 			migration.stepDescription,
 		)
-		regular := &RegularPlanStep{
-			Type: StepTypeRegular,
+		regular := &ScriptedPlanStep{
+			Type: StepTypeScripted,
 			CommonStepFields: CommonStepFields{
 				ID:                  item.ID,
 				Title:               title,
@@ -455,7 +455,7 @@ func cloneMigrationStepConfig(parent *StepConfig, item legacyAgentCodeItem, titl
 		data, _ := json.Marshal(parent.AgentConfigs)
 		_ = json.Unmarshal(data, &agent)
 	}
-	// The new standalone step's plan type (regular) is what makes it scripted
+	// The new standalone step's plan type (scripted) is what makes it scripted
 	// (PLAT-287); only the code-execution flag is carried on the config.
 	useCode := true
 	agent.UseCodeExecutionMode = &useCode

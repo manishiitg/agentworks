@@ -23,9 +23,9 @@ func cardinalityTestRoutingStep(id string) *RoutingPlanStep {
 	}
 }
 
-func cardinalityTestRegularStep(id string) *RegularPlanStep {
-	return &RegularPlanStep{
-		Type:             StepTypeRegular,
+func cardinalityTestScriptedStep(id string) *ScriptedPlanStep {
+	return &ScriptedPlanStep{
+		Type:             StepTypeScripted,
 		CommonStepFields: CommonStepFields{ID: id, Title: "Setup " + id, Description: "deterministic setup"},
 	}
 }
@@ -42,8 +42,8 @@ func cardinalityTestRoutesArg() []interface{} {
 
 func cardinalityTestRouteTargets() []PlanStepInterface {
 	return []PlanStepInterface{
-		cardinalityTestRegularStep("audit-chain"),
-		cardinalityTestRegularStep("apply-chain"),
+		cardinalityTestScriptedStep("audit-chain"),
+		cardinalityTestScriptedStep("apply-chain"),
 	}
 }
 
@@ -52,7 +52,7 @@ func cardinalityTestNoopMove(_ context.Context, _, _ string) error { return nil 
 // A routing route straight to end is the tell for a simple if-condition
 // (skip/continue, probe ok/failed): that belongs in a branch step.
 func TestAddRoutingStepRejectsRouteToEnd(t *testing.T) {
-	plan := &PlanningResponse{Steps: []PlanStepInterface{cardinalityTestRegularStep("audit")}}
+	plan := &PlanningResponse{Steps: []PlanStepInterface{cardinalityTestScriptedStep("audit")}}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
 	add := createSingleStepAdder("workflow", loggerv2.NewNoop(), readFile, writeFile, cardinalityTestNoopMove, "routing")
 
@@ -114,7 +114,7 @@ func TestConvertBranchWithEndRouteToRoutingRejected(t *testing.T) {
 func TestAddRoutingStepRejectsSecondRoutingStep(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		cardinalityTestRoutingStep("workflow-entry-route"),
-		cardinalityTestRegularStep("audit"),
+		cardinalityTestScriptedStep("audit"),
 	}}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
 	add := createSingleStepAdder("workflow", loggerv2.NewNoop(), readFile, writeFile, cardinalityTestNoopMove, "routing")
@@ -142,7 +142,7 @@ func TestAddRoutingStepRejectsSecondRoutingStep(t *testing.T) {
 
 func TestAddRoutingStepRejectsWhenExistingRoutingStepIsOrphan(t *testing.T) {
 	plan := &PlanningResponse{
-		Steps:       []PlanStepInterface{cardinalityTestRegularStep("audit")},
+		Steps:       []PlanStepInterface{cardinalityTestScriptedStep("audit")},
 		OrphanSteps: []PlanStepInterface{cardinalityTestRoutingStep("parked-router")},
 	}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
@@ -165,7 +165,7 @@ func TestAddRoutingStepRejectsWhenExistingRoutingStepIsOrphan(t *testing.T) {
 }
 
 func TestAddRoutingStepAllowedWhenPlanHasNone(t *testing.T) {
-	plan := &PlanningResponse{Steps: append([]PlanStepInterface{cardinalityTestRegularStep("login")}, cardinalityTestRouteTargets()...)}
+	plan := &PlanningResponse{Steps: append([]PlanStepInterface{cardinalityTestScriptedStep("login")}, cardinalityTestRouteTargets()...)}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
 	add := createSingleStepAdder("workflow", loggerv2.NewNoop(), readFile, writeFile, cardinalityTestNoopMove, "routing")
 
@@ -200,7 +200,7 @@ func TestAddRoutingStepAllowedWhenPlanHasNone(t *testing.T) {
 func TestExistingPlanWithTwoRoutingStepsStillAcceptsBranchSteps(t *testing.T) {
 	plan := &PlanningResponse{Steps: append([]PlanStepInterface{
 		cardinalityTestRoutingStep("workflow-entry-route"),
-		cardinalityTestRegularStep("audit"),
+		cardinalityTestScriptedStep("audit"),
 		cardinalityTestRoutingStep("run-remediation-route"),
 	}, cardinalityTestRouteTargets()...)}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)

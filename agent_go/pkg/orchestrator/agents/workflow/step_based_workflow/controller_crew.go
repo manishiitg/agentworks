@@ -130,7 +130,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeCrewStep(
 	}
 
 	// Crew responses are written directly by the runner, so they do not pass
-	// through the regular step executor's pre-validation gate. Apply the same
+	// through the scripted step executor's pre-validation gate. Apply the same
 	// declared schema here before the output is made available to consumers.
 	if schema := crewStep.GetValidationSchema(); schema != nil && (len(schema.Files) > 0 || len(schema.DB) > 0) {
 		validation, validationErr := RunPreValidation(ctx, schema, stepExecutionPath, hcpo.BaseOrchestrator)

@@ -47,7 +47,7 @@ async function mount(stepLogs: Record<string, unknown>, extra: Record<string, un
 }
 
 const scriptStep = {
-  type: 'regular', title: 'Run script', description: 'Run the thing.',
+  type: 'scripted', title: 'Run script', description: 'Run the thing.',
   execution_tier: 'high',
   executions: [{
     attempt: 1, iteration: 0, fast_path: true,
@@ -73,7 +73,7 @@ it('shows detail chips and explains script errors', async () => {
 it('explains failed validations', async () => {
   const { host, unmount } = await mount(
     {
-      type: 'regular', title: 'Gate check',
+      type: 'scripted', title: 'Gate check',
       executions: [],
       validations: [{
         kind: 'final', attempt: 1, phase: 'gate',

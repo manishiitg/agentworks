@@ -330,7 +330,7 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		// dropping the argument.
 		for _, retired := range []string{"declared_execution_mode", "declared_execution_mode_reason"} {
 			if val, ok := args[retired]; ok && val != nil {
-				return "", fmt.Errorf("%s is retired (PLAT-287): a step's plan type decides how it runs (regular = scripted main.py, agent = conversational) -- use change_step_type(step_id=%q, target_type=\"scripted\"|\"agent\", reason=...)", retired, stepID)
+				return "", fmt.Errorf("%s is retired (PLAT-287): a step's plan type decides how it runs (scripted = scripted main.py, agent = conversational) -- use change_step_type(step_id=%q, target_type=\"scripted\"|\"agent\", reason=...)", retired, stepID)
 			}
 		}
 		if val, ok := args["description_reviewed"]; ok && val != nil {
@@ -717,8 +717,8 @@ func externalPlanToolRegistry() []externalPlanTool {
 			}
 			externalPlanTools = append(externalPlanTools, externalPlanTool{ExternalPlanToolDefinition{name, description, encoded}, compiled, factory})
 		}
-		add("update_scripted_step", "Update an existing scripted step contract.", getUpdateRegularStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createUpdateRegularStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
+		add("update_scripted_step", "Update an existing scripted step contract.", getUpdateScriptedStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
+			return createUpdateScriptedStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
 		add("update_agent_step", "Update an existing conversational agent step.", getUpdateAgentStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateAgentStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
@@ -735,8 +735,8 @@ func externalPlanToolRegistry() []externalPlanTool {
 		add("update_crew_step", "Update an existing crew step.", getUpdateCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
-		add("add_scripted_step", "Add a scripted step to an existing plan.", getAddRegularStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createAddRegularStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
+		add("add_scripted_step", "Add a scripted step to an existing plan.", getAddScriptedStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
+			return createAddScriptedStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
 		add("add_agent_step", "Add an agent step whose description is the system charter and whose items are user turns; optional predefined_routes enable adaptive specialist delegation.", getAddAgentStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddAgentStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)

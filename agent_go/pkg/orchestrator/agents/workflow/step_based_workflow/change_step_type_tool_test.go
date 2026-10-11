@@ -101,9 +101,9 @@ func TestChangeStepTypeConvertsASequenceToScriptedInPlace(t *testing.T) {
 
 	updated, configs := readTestPlanAndConfigs(t, readFile)
 	step, _, _ := findStepByID(updated.Steps, "place-paper-trades")
-	regular, ok := step.(*RegularPlanStep)
+	regular, ok := step.(*ScriptedPlanStep)
 	if !ok {
-		t.Fatalf("step type after conversion = %T, want *RegularPlanStep", step)
+		t.Fatalf("step type after conversion = %T, want *ScriptedPlanStep", step)
 	}
 	if regular.Title != "Place paper trades" || regular.Description == "" || regular.NextStepID != "verify-fills" {
 		t.Fatalf("conversion must keep id/title/description/next_step_id, got %+v", regular)
@@ -126,12 +126,12 @@ func TestChangeStepTypeConvertsASequenceToScriptedInPlace(t *testing.T) {
 	if len(entry.DeletedSteps) != 1 || len(entry.AddedSteps) != 1 {
 		t.Fatalf("changelog entry must carry the full step JSON before and after for a revert, got deleted=%d added=%d", len(entry.DeletedSteps), len(entry.AddedSteps))
 	}
-	if !strings.Contains(string(entry.DeletedSteps[0]), `"agent"`) || !strings.Contains(string(entry.AddedSteps[0]), `"regular"`) {
-		t.Fatalf("revert data must hold the old sequence and the new regular step, got deleted=%s added=%s", entry.DeletedSteps[0], entry.AddedSteps[0])
+	if !strings.Contains(string(entry.DeletedSteps[0]), `"agent"`) || !strings.Contains(string(entry.AddedSteps[0]), `"scripted"`) {
+		t.Fatalf("revert data must hold the old sequence and the new scripted step, got deleted=%s added=%s", entry.DeletedSteps[0], entry.AddedSteps[0])
 	}
 	sawType := false
 	for _, change := range entry.Changes {
-		if change.Field == "type" && change.OldValue == string(StepTypeAgent) && change.NewValue == string(StepTypeRegular) {
+		if change.Field == "type" && change.OldValue == string(StepTypeAgent) && change.NewValue == string(StepTypeScripted) {
 			sawType = true
 		}
 	}
@@ -142,7 +142,7 @@ func TestChangeStepTypeConvertsASequenceToScriptedInPlace(t *testing.T) {
 
 func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "collect-price", Title: "Collect price", Description: "Collect prices."}, NextStepID: "judge"},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "collect-price", Title: "Collect price", Description: "Collect prices."}, NextStepID: "judge"},
 		testSequenceStep("judge", "Judge"),
 	}}
 	lock := true
@@ -163,7 +163,7 @@ func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T)
 	if !ok {
 		t.Fatalf("step type after conversion = %T, want *AgentPlanStep", step)
 	}
-	if len(seq.Items) != 1 || seq.Items[0].ID != normalizedRegularSequenceItemID || seq.NextStepID != "judge" {
+	if len(seq.Items) != 1 || seq.Items[0].ID != normalizedScriptedSequenceItemID || seq.NextStepID != "judge" {
 		t.Fatalf("expected one execute-and-verify item and the chain kept, got %+v", seq)
 	}
 	cfg := MatchStepConfigByID("collect-price", configs)
@@ -172,13 +172,13 @@ func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T)
 	}
 }
 
-func TestChangeStepTypeClearsTheLegacyAgenticKeyOnARegularStep(t *testing.T) {
-	// A regular step still carrying the retired declared_execution_mode=
+func TestChangeStepTypeClearsTheLegacyAgenticKeyOnAScriptedStep(t *testing.T) {
+	// A scripted step still carrying the retired declared_execution_mode=
 	// "agentic" runs as a agent through the transitional shim;
 	// converting it to scripted means clearing that key (the plan type
 	// already says scripted).
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "legacy"}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "legacy"}},
 	}}
 	_, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{{ID: "legacy", AgentConfigs: &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic, LegacyDeclaredExecutionModeReason: "needs judgment"}}})
 
@@ -187,8 +187,8 @@ func TestChangeStepTypeClearsTheLegacyAgenticKeyOnARegularStep(t *testing.T) {
 	}
 	updated, configs := readTestPlanAndConfigs(t, readFile)
 	step, _, _ := findStepByID(updated.Steps, "legacy")
-	if step.StepType() != StepTypeRegular {
-		t.Fatalf("plan type must stay regular, got %s", step.StepType())
+	if step.StepType() != StepTypeScripted {
+		t.Fatalf("plan type must stay scripted, got %s", step.StepType())
 	}
 	cfg := MatchStepConfigByID("legacy", configs)
 	if cfg == nil || cfg.LegacyDeclaredExecutionMode != "" || cfg.LegacyDeclaredExecutionModeReason != "" {
@@ -199,9 +199,9 @@ func TestChangeStepTypeClearsTheLegacyAgenticKeyOnARegularStep(t *testing.T) {
 	}
 }
 
-func TestChangeStepTypeToScriptedIsANoOpOnAPlainRegularStep(t *testing.T) {
+func TestChangeStepTypeToScriptedIsANoOpOnAPlainScriptedStep(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "already"}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "already"}},
 	}}
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, nil)
 	before := len(files)
@@ -210,7 +210,7 @@ func TestChangeStepTypeToScriptedIsANoOpOnAPlainRegularStep(t *testing.T) {
 		t.Fatalf("no-op conversion errored: %v", err)
 	}
 	if !strings.Contains(out, "already") || len(files) != before {
-		t.Fatalf("a regular step is scripted by type; nothing to do, got %q with %d files", out, len(files))
+		t.Fatalf("a scripted step is scripted by type; nothing to do, got %q with %d files", out, len(files))
 	}
 }
 
@@ -255,8 +255,8 @@ func TestChangeStepTypeConvertsAnOrphanStep(t *testing.T) {
 		t.Fatalf("an orphan step must be convertible: %v", err)
 	}
 	updated, _ := readTestPlanAndConfigs(t, readFile)
-	if step, _, _ := findStepByID(updated.OrphanSteps, "orphan"); step == nil || step.StepType() != StepTypeRegular {
-		t.Fatalf("orphan step should now be regular, got %v", step)
+	if step, _, _ := findStepByID(updated.OrphanSteps, "orphan"); step == nil || step.StepType() != StepTypeScripted {
+		t.Fatalf("orphan step should now be scripted, got %v", step)
 	}
 	if step, _, _ := findStepByID(updated.Steps, "main"); step == nil || step.StepType() != StepTypeAgent {
 		t.Fatalf("the untouched step must keep its type, got %v", step)

@@ -263,7 +263,7 @@ func TestExternalPlanToolsAddScriptedStepCreatesNativeConfig(t *testing.T) {
 	if err := json.Unmarshal([]byte(files.files[externalPlanTestWorkspace+"/planning/plan.json"]), &plan); err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Steps) != 2 || plan.Steps[1].GetID() != "validate" || plan.Steps[1].StepType() != StepTypeRegular {
+	if len(plan.Steps) != 2 || plan.Steps[1].GetID() != "validate" || plan.Steps[1].StepType() != StepTypeScripted {
 		t.Fatalf("unexpected added plan %+v", plan)
 	}
 	configs, err := ParseStepConfigContent(files.files[externalPlanTestWorkspace+"/planning/step_config.json"])

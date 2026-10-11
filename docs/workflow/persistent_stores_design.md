@@ -90,17 +90,17 @@ For reliability a typed helper (`db_upsert(file, key, rows)`) is preferable to r
 
 ### Evaluation runs and `db/` (retired — eval subsystem removed; kept as history)
 
-Evaluation steps can read and write `db/` — write access is opt-in per step via a `DBWrite` flag. There is no hard folder-guard split between regular and eval writes; the folder guard grants read and (optionally) write on all of `db/`. How `db/` is organized is up to the plan author.
+Evaluation steps can read and write `db/` — write access is opt-in per step via a `DBWrite` flag. There is no hard folder-guard split between scripted and eval writes; the folder guard grants read and (optionally) write on all of `db/`. How `db/` is organized is up to the plan author.
 
 **Best practice (builder prompt guidance, not enforcement)**
 
-The workflow interactive builder prompt should recommend — but not enforce — that eval output goes to a dedicated namespace so it doesn't clobber regular-step data that the live report displays:
+The workflow interactive builder prompt should recommend — but not enforce — that eval output goes to a dedicated namespace so it doesn't clobber scripted-step data that the live report displays:
 
 - Suggest `db/eval/` as the default subfolder for eval writes
 - Suggest JSON or markdown under that path (narrative score summaries, structured scores, etc.)
-- Suggest that regular `db/` files and eval output files have disjoint names
+- Suggest that scripted `db/` files and eval output files have disjoint names
 
-If a plan deliberately wants evaluation output mixed into the same `db/` files as regular steps (e.g. the eval step is producing the canonical data, not just scoring it), the builder lets that through. The tradeoff is on the plan author: enabling `DBWrite` on an evaluation step means that step's output is free to mutate whatever `db/` files it touches, including ones the live report reads. The builder should flag this when enabling the toggle.
+If a plan deliberately wants evaluation output mixed into the same `db/` files as scripted steps (e.g. the eval step is producing the canonical data, not just scoring it), the builder lets that through. The tradeoff is on the plan author: enabling `DBWrite` on an evaluation step means that step's output is free to mutate whatever `db/` files it touches, including ones the live report reads. The builder should flag this when enabling the toggle.
 
 Add a `db_write` boolean to `EvaluationStep` in `evaluation_types.go`:
 
@@ -196,7 +196,7 @@ Inside `widget:row`, each line is `- {type} | source: {path} | path: {key}`.
 
 Both are workspace-scoped. The report always reflects the latest state.
 
-Widgets can point at any path under `db/` — including eval outputs if the plan writes them under `db/eval/` (the recommended convention, see section 1). The report does not distinguish "regular" vs "eval" data automatically; if the builder wants an Evaluation section in the report, it adds widgets pointed at the eval files explicitly.
+Widgets can point at any path under `db/` — including eval outputs if the plan writes them under `db/eval/` (the recommended convention, see section 1). The report does not distinguish "scripted" vs "eval" data automatically; if the builder wants an Evaluation section in the report, it adds widgets pointed at the eval files explicitly.
 
 **If `db/` has no data yet**, the report is not shown — no empty state, no placeholder widgets.
 

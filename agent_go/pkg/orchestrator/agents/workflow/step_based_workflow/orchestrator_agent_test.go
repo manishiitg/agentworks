@@ -171,7 +171,7 @@ func TestFormatAgentRoutePromptBlock(t *testing.T) {
 		}
 	}
 
-	if got := formatAgentRoutePromptBlock(&RegularPlanStep{}); got != "" {
+	if got := formatAgentRoutePromptBlock(&ScriptedPlanStep{}); got != "" {
 		t.Fatalf("expected non-agent routes to produce no block, got %q", got)
 	}
 }

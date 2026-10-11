@@ -189,7 +189,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) checkExistingPlan(ctx context.Context
 
 func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex int, allowLegacyAgentCode bool) error {
 	switch step := typedStep.(type) {
-	case *RegularPlanStep:
+	case *ScriptedPlanStep:
 		if err := validateScriptParameterContract(&step.CommonStepFields); err != nil {
 			return fmt.Errorf("invalid script_parameters: %w", err)
 		}
@@ -440,7 +440,7 @@ func validateNextStepIDReferences(plan *PlanningResponse) error {
 	walk = func(steps []PlanStepInterface) {
 		for _, step := range steps {
 			switch s := step.(type) {
-			case *RegularPlanStep:
+			case *ScriptedPlanStep:
 				ref(s.GetID(), "next_step_id", s.NextStepID)
 			case *RoutingPlanStep:
 				for _, route := range s.Routes {
@@ -568,8 +568,8 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 
 	// Use type switch to handle different step types
 	switch step := typedStep.(type) {
-	case *RegularPlanStep:
-		// Regular step (may have loops)
+	case *ScriptedPlanStep:
+		// Scripted step (may have loops)
 		// Populate runtime field directly on plan step
 		step.AgentConfigs = agentConfigs
 		if validationSchemaOverride != nil {

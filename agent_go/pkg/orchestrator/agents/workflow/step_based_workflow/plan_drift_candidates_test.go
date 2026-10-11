@@ -47,7 +47,7 @@ func planDriftCandidateWorkspace(t *testing.T, workspacePath, planJSON, stepConf
 	_ = db.Close()
 }
 
-const twoStepPlan = `{"steps":[{"id":"step-a","type":"regular"},{"id":"step-b","type":"regular"}]}`
+const twoStepPlan = `{"steps":[{"id":"step-a","type":"scripted"},{"id":"step-b","type":"scripted"}]}`
 
 const reviewedStepConfig = `{"steps":[
   {"id":"step-a","agent_configs":{"drift_review":{"reviewed_at":"2026-08-01T00:00:00Z","reviewed_by":"pulse:plan_drift_review","contract_version":3,"checks":[{"check_id":"report_query_compatibility","status":"pass","evidence":"all report queries ran cleanly"}]}}},
@@ -171,11 +171,11 @@ func TestCollectPlanDriftCandidatesReflagsStaleContractVersion(t *testing.T) {
 
 func TestCollectPlanDriftCandidatesReflagsSupportedTypesForContractVersionThree(t *testing.T) {
 	planJSON := `{"steps":[
-  {"id":"regular-a","type":"regular"},
+  {"id":"scripted-a","type":"scripted"},
   {"id":"sequence-b","type":"agent","description":"Complete and verify the outcome.","items":[{"id":"verify","type":"user_message","message":"Re-open the evidence and repair verified gaps."}]}
 ]}`
 	stepConfig := `{"steps":[
-  {"id":"regular-a","agent_configs":{"drift_review":{"needs_review":false,"contract_version":2,"checks":[{"check_id":"step_description_accuracy","status":"pass","evidence":"regular step was reviewed under the still-current contract"}]}}},
+  {"id":"scripted-a","agent_configs":{"drift_review":{"needs_review":false,"contract_version":2,"checks":[{"check_id":"step_description_accuracy","status":"pass","evidence":"scripted step was reviewed under the still-current contract"}]}}},
   {"id":"sequence-b","agent_configs":{"drift_review":{"needs_review":false,"contract_version":2,"checks":[{"check_id":"step_description_accuracy","status":"pass","evidence":"sequence predates its type-specific best-practices check"}]}}}
 ]}`
 	planDriftCandidateWorkspace(t, "Workflow/drift-candidates-agent-v3", planJSON, stepConfig)
@@ -185,19 +185,19 @@ func TestCollectPlanDriftCandidatesReflagsSupportedTypesForContractVersionThree(
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("CollectPlanDriftCandidates = %#v, want regular-a and sequence-b due for their type-specific v3 contracts", got)
+		t.Fatalf("CollectPlanDriftCandidates = %#v, want scripted-a and sequence-b due for their type-specific v3 contracts", got)
 	}
 	byID := map[string]string{}
 	for _, candidate := range got {
 		byID[candidate.StepID] = candidate.StepType
 	}
-	if byID["regular-a"] != "regular" || byID["sequence-b"] != "agent" {
+	if byID["scripted-a"] != "scripted" || byID["sequence-b"] != "agent" {
 		t.Fatalf("candidate types = %#v, want both supported step types", byID)
 	}
 }
 
 func TestRequiredPlanDriftContractVersionIsTypeSpecific(t *testing.T) {
-	for _, stepType := range []string{"regular", "agent", "routing", "branch"} {
+	for _, stepType := range []string{"scripted", "agent", "routing", "branch"} {
 		if got := requiredPlanDriftReviewContractVersion(stepType); got != 3 {
 			t.Fatalf("required version for %s = %d, want 3", stepType, got)
 		}
@@ -211,14 +211,14 @@ func TestRequiredPlanDriftContractVersionIsTypeSpecific(t *testing.T) {
 
 func TestContextDependencyFilenameCheckRejectsStepIDs(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "producer", ContextOutput: FlexibleContextOutput("result.json")}},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "consumer", ContextDependencies: []string{"producer"}}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "producer", ContextOutput: FlexibleContextOutput("result.json")}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "consumer", ContextDependencies: []string{"producer"}}},
 	}}
 	check := checkContextDependencyFilenames(plan, "consumer")
 	if check.Status != stepDriftCheckStatusFail || !strings.Contains(check.Evidence, "result") && !strings.Contains(check.Evidence, "producer") {
 		t.Fatalf("step-ID dependency was not rejected: %+v", check)
 	}
-	plan.Steps[1].(*RegularPlanStep).ContextDependencies = []string{"result.json"}
+	plan.Steps[1].(*ScriptedPlanStep).ContextDependencies = []string{"result.json"}
 	if check := checkContextDependencyFilenames(plan, "consumer"); check.Status != stepDriftCheckStatusPass {
 		t.Fatalf("artifact filename dependency was rejected: %+v", check)
 	}
@@ -324,7 +324,7 @@ func TestCollectPlanDriftCandidatesIncludesFlaggedSteps(t *testing.T) {
 // that case rather than being omitted, so a reviewer always sees a result for
 // every check id it's responsible for filling in the gaps around.
 func TestCollectPlanDriftCandidatesIncludesWorkflowWideAndScriptedChecks(t *testing.T) {
-	singleStepPlan := `{"steps":[{"id":"step-b","type":"regular"}]}`
+	singleStepPlan := `{"steps":[{"id":"step-b","type":"scripted"}]}`
 	planDriftCandidateWorkspace(t, "Workflow/drift-candidates", singleStepPlan, "")
 	got, err := CollectPlanDriftCandidates(context.Background(), "Workflow/drift-candidates")
 	if err != nil {
@@ -351,7 +351,7 @@ func TestCollectPlanDriftCandidatesIncludesWorkflowWideAndScriptedChecks(t *test
 // validation_schema.db[] override — a plan.json-only declared schema is out
 // of scope for this precompute pass (documented as a known coverage gap).
 func TestCollectPlanDriftCandidatesIncludesDBRuleCheckWhenOverridePresent(t *testing.T) {
-	singleStepPlan := `{"steps":[{"id":"step-b","type":"regular"}]}`
+	singleStepPlan := `{"steps":[{"id":"step-b","type":"scripted"}]}`
 	stepConfig := `{"steps":[{"id":"step-b","validation_schema":{"db":[{"name":"emails exist","sql":"SELECT id FROM emails","min_rows":0}]}}]}`
 	planDriftCandidateWorkspace(t, "Workflow/drift-candidates", singleStepPlan, stepConfig)
 	got, err := CollectPlanDriftCandidates(context.Background(), "Workflow/drift-candidates")
@@ -389,9 +389,9 @@ func TestCollectPlanDriftCandidatesTrimsWorkspacePath(t *testing.T) {
 // sub-agent steps are real steps that also need drift review.
 func TestPlanStepIDsFromPlanJSONRecursesIntoRoutingSubAgentSteps(t *testing.T) {
 	planJSON := `{"steps":[
-  {"id":"step-a","type":"regular"},
+  {"id":"step-a","type":"scripted"},
   {"id":"step-router","type":"routing","predefined_routes":[
-    {"route":"x","sub_agent_step":{"id":"step-nested","type":"regular"}}
+    {"route":"x","sub_agent_step":{"id":"step-nested","type":"scripted"}}
   ]}
 ]}`
 	ids, err := planStepIDsFromPlanJSON(planJSON)
@@ -406,7 +406,7 @@ func TestPlanStepIDsFromPlanJSONRecursesIntoRoutingSubAgentSteps(t *testing.T) {
 }
 
 func TestPlanStepIDsFromPlanJSONExcludesOrphanSteps(t *testing.T) {
-	planJSON := `{"steps":[{"id":"step-a","type":"regular"}],"orphan_steps":[{"id":"step-orphan","type":"regular"}]}`
+	planJSON := `{"steps":[{"id":"step-a","type":"scripted"}],"orphan_steps":[{"id":"step-orphan","type":"scripted"}]}`
 	ids, err := planStepIDsFromPlanJSON(planJSON)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -430,7 +430,7 @@ func TestPlanStepIDsFromPlanJSONRejectsMalformedSteps(t *testing.T) {
 }
 
 // StepType is precomputed per candidate (PLAT-259) so the reviewer turn can
-// tell routing steps apart from branch/regular without an extra lookup.
+// tell routing steps apart from branch/scripted without an extra lookup.
 func TestCollectPlanDriftCandidatesPopulatesStepTypeFromPlanJSON(t *testing.T) {
 	const workspacePath = "Workflow/drift-candidates-types"
 	planJSON := `{"steps":[
@@ -438,9 +438,9 @@ func TestCollectPlanDriftCandidatesPopulatesStepTypeFromPlanJSON(t *testing.T) {
     {"route_id":"r1","route_name":"One","condition":"c","next_step_id":"end"},
     {"route_id":"r2","route_name":"Two","condition":"c","next_step_id":"end"}
   ]},
-  {"type":"regular","id":"regular-b","title":"Regular","description":"d","validation_schema":{}}
+  {"type":"scripted","id":"scripted-b","title":"Scripted","description":"d","validation_schema":{}}
 ]}`
-	stepConfig := `{"steps":[{"id":"router-a"},{"id":"regular-b"}]}`
+	stepConfig := `{"steps":[{"id":"router-a"},{"id":"scripted-b"}]}`
 	planDriftCandidateWorkspace(t, workspacePath, planJSON, stepConfig)
 
 	got, err := CollectPlanDriftCandidates(context.Background(), workspacePath)
@@ -457,8 +457,8 @@ func TestCollectPlanDriftCandidatesPopulatesStepTypeFromPlanJSON(t *testing.T) {
 	if byID["router-a"].StepType != "routing" {
 		t.Fatalf("router-a StepType = %q, want %q", byID["router-a"].StepType, "routing")
 	}
-	if byID["regular-b"].StepType != "regular" {
-		t.Fatalf("regular-b StepType = %q, want %q", byID["regular-b"].StepType, "regular")
+	if byID["scripted-b"].StepType != "scripted" {
+		t.Fatalf("scripted-b StepType = %q, want %q", byID["scripted-b"].StepType, "scripted")
 	}
 }
 

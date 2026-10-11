@@ -19,7 +19,7 @@ func TestBuilderWebhookToolCreatesAndTestsSignedPing(t *testing.T) {
 	raw, _ := json.Marshal(manifest)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/test"):            string(raw),
-		"Workflow/test/planning/plan.json":       `{"steps":[{"type":"routing","id":"route","title":"Choose","routing_question":"Which?","routes":[{"route_id":"issue","route_name":"Issue","next_step_id":"component-branch"},{"route_id":"other","route_name":"Other","next_step_id":"work"}]},{"type":"branch","id":"component-branch","title":"Choose component","routes":[{"route_id":"review","route_name":"Review","next_step_id":"work"},{"route_id":"other-component","route_name":"Other","next_step_id":"work"}]},{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/planning/plan.json":       `{"steps":[{"type":"routing","id":"route","title":"Choose","routing_question":"Which?","routes":[{"route_id":"issue","route_name":"Issue","next_step_id":"component-branch"},{"route_id":"other","route_name":"Other","next_step_id":"work"}]},{"type":"branch","id":"component-branch","title":"Choose component","routes":[{"route_id":"review","route_name":"Review","next_step_id":"work"},{"route_id":"other-component","route_name":"Other","next_step_id":"work"}]},{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/test/variables/variables.json": `{"variables":[{"name":"base_url"}],"groups":[{"name":"default"}]}`,
 	}}
 	ws := httptest.NewServer(mock)

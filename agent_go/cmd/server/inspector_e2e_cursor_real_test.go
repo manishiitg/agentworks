@@ -56,7 +56,7 @@ func TestInspectorHTTPCapturesRealCursorEvents(t *testing.T) {
 	stepCtx := llmtypes.StepContext{
 		SessionID:     sessionID,
 		StepID:        "cursor-cli-call",
-		StepType:      "regular",
+		StepType:      "scripted",
 		Phase:         "execution",
 		StepName:      "Cursor CLI call",
 		StepIndex:     1,

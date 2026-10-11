@@ -211,8 +211,8 @@ func TestValidateBranchStepRejectsUnknownRouteSource(t *testing.T) {
 
 func TestAddBranchStepPersistsRouteSourceHuman(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		cardinalityTestRegularStep("draft"),
-		cardinalityTestRegularStep("publish"),
+		cardinalityTestScriptedStep("draft"),
+		cardinalityTestScriptedStep("publish"),
 	}}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
 	add := createSingleStepAdder("workflow", loggerv2.NewNoop(), readFile, writeFile, cardinalityTestNoopMove, "branch")
@@ -267,7 +267,7 @@ func TestAddHumanInputStepRejectsDecisionTypesAndKeepsText(t *testing.T) {
 		t.Fatalf("updates must preserve legacy choice support, got %s", got)
 	}
 
-	plan := &PlanningResponse{Steps: []PlanStepInterface{cardinalityTestRegularStep("draft")}}
+	plan := &PlanningResponse{Steps: []PlanStepInterface{cardinalityTestScriptedStep("draft")}}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
 	add := createSingleStepAdder("workflow", loggerv2.NewNoop(), readFile, writeFile, cardinalityTestNoopMove, "human_input")
 

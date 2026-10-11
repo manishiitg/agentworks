@@ -46,7 +46,7 @@ func TestSlackTriggerSharesWebhookMappingExecutor(t *testing.T) {
 	server, workspace := newFakeWorkspaceServer(t)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"regular","id":"analyze","title":"Analyze","description":"Analyze"}]}`
+	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"analyze","title":"Analyze","description":"Analyze"}]}`
 	route := ChannelRoute{WorkspacePath: "Workflow/example", Trigger: &services.SlackTrigger{GroupNames: []string{"prod", "staging"}, PayloadMappings: &workflowtrigger.PayloadMappings{Group: &workflowtrigger.ValueMapping{Source: "message.attachments.0.title", Values: map[string]string{"Production": "prod"}}, Step: &workflowtrigger.ValueMapping{Source: "text", Values: map[string]string{"incident": "analyze"}}}}}
 	payload := []byte(`{"text":"incident","message":{"attachments":[{"title":"Production"}]},"group":"unauthorized","variables":{"SECRET":"untrusted"}}`)
 	schedule, input, err := resolveSlackTriggerDelivery(context.Background(), route, "delivery", payload)

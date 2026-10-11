@@ -253,15 +253,15 @@ func canonicalDeclaredExecutionMode(mode string) string {
 
 // isScriptedStep reports whether a step runs through the scripted executor
 // (a persistent learnings/{step-id}/main.py, replayed across runs). The plan
-// decides (PLAT-287): a regular step IS scripted, an agent is
-// conversational. The one exception is transitional: a regular step whose
+// decides (PLAT-287): a scripted step IS scripted, an agent is
+// conversational. The one exception is transitional: a scripted step whose
 // step_config.json still carries the retired declared_execution_mode="agentic"
 // key (not yet stripped by v1.0.39) is a legacy agentic step the runtime keeps
 // running as a agent.
 // cfg may be nil.
 func isScriptedStep(step PlanStepInterface, cfg *AgentConfigs) bool {
 	switch step.(type) {
-	case *RegularPlanStep:
+	case *ScriptedPlanStep:
 		return cfg.legacyDeclared() != StepModeAgentic
 	default:
 		return false
@@ -296,14 +296,14 @@ func executionModeLabel(scripted bool) string {
 	return StepModeAgentic
 }
 
-// isLegacyAgenticRegularStep is the transitional shim's predicate: a regular
+// isLegacyAgenticScriptedStep is the transitional shim's predicate: a scripted
 // step whose unstripped step_config.json still declares agentic. Such a step
 // executed as a agent before PLAT-287 and must keep doing so until
 // the v1.0.38 migration rewrites its plan type -- which the scheduler's
 // preflight runs before a scheduled workflow, but a manual run does not wait
 // for.
-func isLegacyAgenticRegularStep(step PlanStepInterface, cfg *AgentConfigs) bool {
-	_, regular := step.(*RegularPlanStep)
+func isLegacyAgenticScriptedStep(step PlanStepInterface, cfg *AgentConfigs) bool {
+	_, regular := step.(*ScriptedPlanStep)
 	return regular && cfg.legacyDeclared() == StepModeAgentic
 }
 
@@ -7473,13 +7473,13 @@ Modern agents can handle long context and many tool calls. Do not flag a step me
 
 Start from one large `+"`agent`"+` per coherent shared-context span. Prefer the fewest durable steps that preserve real control boundaries. One agentic step may own a substantial end-to-end outcome when the work shares one objective, context, tool/security envelope, output contract, retry domain, and final validation gate. Do not require a separate scripted step for each subtask, checklist item, source, tool, proof check, double-check, or intermediate thought.
 
-When that coherent outcome needs staged assurance, prefer one `+"`agent`"+` over several regular steps. Its `+"`description`"+` is the durable system-level charter (objective, boundaries, definition of done); its `+"`items[]`"+` are the actual user turns that execute and verify that charter. Do not repeat the description as item 0. Give the first work item the whole outcome; add only decision-useful follow-up turns that inspect evidence, challenge completion, and repair gaps (for example: `+"`re-open the result, verify every success criterion, and fix anything unsupported or incomplete`"+`). Do not turn a large task into one tiny sequence item per routine action.
+When that coherent outcome needs staged assurance, prefer one `+"`agent`"+` over several scripted steps. Its `+"`description`"+` is the durable system-level charter (objective, boundaries, definition of done); its `+"`items[]`"+` are the actual user turns that execute and verify that charter. Do not repeat the description as item 0. Give the first work item the whole outcome; add only decision-useful follow-up turns that inspect evidence, challenge completion, and repair gaps (for example: `+"`re-open the result, verify every success criterion, and fix anything unsupported or incomplete`"+`). Do not turn a large task into one tiny sequence item per routine action.
 
 Treat validation as an improvement to that large step before treating it as a topology change. Require run-specific proof/provenance in the output, tighten the top-level `+"`validation_schema`"+`, and add evidence-based double-check and repair turns. Flag a separate validation/reviewer step unless it needs an independently rerunnable artifact/failure domain, different permissions/tools, or genuine clean-room independence from the maker.
 
 Multiple large sequences are correct when their contexts should not be shared—for example different credentials/security exposure, independent durable outputs/retries, clean-room independence, human or routing boundaries, or unrelated context that would distract or contaminate the next agent. The builder should decide this intelligently from workflow semantics, and the plan should make the boundary explainable. Flag action-count splitting that has no context-boundary rationale.
 
-Separate deterministic acquisition from agentic processing even when both serve one business outcome. Fixed API/SDK requests, CLI commands, data fetching, known pagination, stable parsing/normalization, and mechanical persistence belong in one or a few scripted regular fetcher steps, batched by source/auth/retry/output contract. Their validated DB rows or artifacts feed a large agent for judgment, synthesis, semantic verification, and repair. Flag LLM turns that repeatedly perform deterministic retrieval/parsing, and flag one-scripted-step-per-endpoint fragmentation.
+Separate deterministic acquisition from agentic processing even when both serve one business outcome. Fixed API/SDK requests, CLI commands, data fetching, known pagination, stable parsing/normalization, and mechanical persistence belong in one or a few scripted fetcher steps, batched by source/auth/retry/output contract. Their validated DB rows or artifacts feed a large agent for judgment, synthesis, semantic verification, and repair. Flag LLM turns that repeatedly perform deterministic retrieval/parsing, and flag one-scripted-step-per-endpoint fragmentation.
 
 Flag **over-merged** steps when one step mixes unrelated durable outputs, validation gates, retry/failure domains, tool/security contexts, downstream contracts, persistent stores, human approvals, or routing decisions.
 

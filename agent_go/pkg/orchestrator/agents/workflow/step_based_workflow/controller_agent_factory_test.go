@@ -539,7 +539,7 @@ func TestApplyStepConfigToAgentConfigEnablesWorkspaceIsolation(t *testing.T) {
 // agent factory that produces a long-lived coding-CLI session flips
 // IsolateCodingAgentWorkspace=true so the session runs in os.MkdirTemp instead
 // of CodingAgentWorkingDir. These factories live in two files:
-//   - controller_agent_factory.go (2): regular-step path (applyStepConfigToAgentConfig)
+//   - controller_agent_factory.go (2): scripted-step path (applyStepConfigToAgentConfig)
 //     and the todo-task orchestrator (createOrchestratorAgent).
 //   - interactive_workshop_manager.go (5): the workshop background agents — the
 //     `run_in_background` task agent plus the review-plan / review-timing /
@@ -561,7 +561,7 @@ func TestAllWorkflowAgentFactoriesEnableWorkspaceIsolation(t *testing.T) {
 		path string
 		want int
 	}{
-		{path: "controller_agent_factory.go", want: 2},     // regular + todo-task orchestrator
+		{path: "controller_agent_factory.go", want: 2},     // scripted + todo-task orchestrator
 		{path: "interactive_workshop_manager.go", want: 3}, // review workshop agents
 	}
 	const needle = "config.IsolateCodingAgentWorkspace = true"

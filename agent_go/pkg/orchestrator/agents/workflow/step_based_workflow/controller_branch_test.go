@@ -118,8 +118,8 @@ func TestIsRoutingStepRecognizesBranchStep(t *testing.T) {
 	if !isRoutingStep(&RoutingPlanStep{}) {
 		t.Fatal("isRoutingStep should still recognize *RoutingPlanStep")
 	}
-	if isRoutingStep(&RegularPlanStep{}) {
-		t.Fatal("isRoutingStep should not recognize *RegularPlanStep")
+	if isRoutingStep(&ScriptedPlanStep{}) {
+		t.Fatal("isRoutingStep should not recognize *ScriptedPlanStep")
 	}
 }
 
@@ -325,9 +325,9 @@ func TestBranchStepEndToEndLifecycle(t *testing.T) {
 			{"route_id":"route-a","route_name":"A","condition":"c","next_step_id":"step-a"},
 			{"route_id":"route-b","route_name":"B","condition":"c","next_step_id":"step-b"}
 		]},
-		{"type":"regular","id":"step-a","title":"Step A","description":"d","validation_schema":{},"next_step_id":"converge"},
-		{"type":"regular","id":"step-b","title":"Step B","description":"d","validation_schema":{},"next_step_id":"converge"},
-		{"type":"regular","id":"converge","title":"Converge","description":"d","validation_schema":{}}
+		{"type":"scripted","id":"step-a","title":"Step A","description":"d","validation_schema":{},"next_step_id":"converge"},
+		{"type":"scripted","id":"step-b","title":"Step B","description":"d","validation_schema":{},"next_step_id":"converge"},
+		{"type":"scripted","id":"converge","title":"Converge","description":"d","validation_schema":{}}
 	]}`
 
 	// 2. Persist + reload: unmarshal exactly as loadPlanFromFile/checkExistingPlan
@@ -647,8 +647,8 @@ func TestConvertRoutingBranchStepTypeFromBranchToRouting(t *testing.T) {
 			},
 			DefaultRouteID: "route-a",
 		},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "audit-chain", Title: "Audit", Description: "audit sub-workflow"}},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "apply-chain", Title: "Apply", Description: "apply sub-workflow"}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "audit-chain", Title: "Audit", Description: "audit sub-workflow"}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "apply-chain", Title: "Apply", Description: "apply sub-workflow"}},
 	}}
 	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
 	executor := createConvertRoutingBranchStepTypeExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)

@@ -18,8 +18,8 @@ func TestWorkflowGraphPreflightModes(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := `{"steps":[
-	 {"type":"regular","id":"step-a","description":"A.","context_output":"a.json"},
-	 {"type":"regular","id":"step-b","description":"B.","context_dependencies":["a.json","ghost.json"],"context_output":"b.json"}]}`
+	 {"type":"scripted","id":"step-a","description":"A.","context_output":"a.json"},
+	 {"type":"scripted","id":"step-b","description":"B.","context_dependencies":["a.json","ghost.json"],"context_output":"b.json"}]}`
 	if err := os.WriteFile(filepath.Join(planning, "plan.json"), []byte(plan), 0o644); err != nil {
 		t.Fatal(err)
 	}

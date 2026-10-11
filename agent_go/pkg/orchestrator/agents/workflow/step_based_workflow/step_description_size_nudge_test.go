@@ -17,7 +17,7 @@ func TestPlanMedianOtherStepDescriptionLen(t *testing.T) {
 		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "b", Description: strings.Repeat("x", 200)}},
 		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "c", Description: strings.Repeat("x", 300)}},
 		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "target", Description: strings.Repeat("x", 99999)}},
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "no-description"}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "no-description"}},
 	}
 	if got := planMedianOtherStepDescriptionLen(steps, "target"); got != 200 {
 		t.Fatalf("median = %d, want 200 (target excluded, no-description skipped)", got)

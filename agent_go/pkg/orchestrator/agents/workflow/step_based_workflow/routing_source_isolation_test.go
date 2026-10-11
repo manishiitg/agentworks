@@ -7,8 +7,8 @@ import (
 
 func routeIsolationTestPlan(routeSource string, dependencies []string) *PlanningResponse {
 	return &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{
-			Type: StepTypeRegular,
+		&ScriptedPlanStep{
+			Type: StepTypeScripted,
 			CommonStepFields: CommonStepFields{
 				ID:                  "gate",
 				Title:               "Gate",
@@ -30,8 +30,8 @@ func routeIsolationTestPlan(routeSource string, dependencies []string) *Planning
 				{RouteID: "skip", RouteName: "Skip", NextStepID: "skip"},
 			},
 		},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "review", Title: "Review", ContextDependencies: []string{}}, NextStepID: "end"},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "skip", Title: "Skip", ContextDependencies: []string{}}, NextStepID: "end"},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "review", Title: "Review", ContextDependencies: []string{}}, NextStepID: "end"},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "skip", Title: "Skip", ContextDependencies: []string{}}, NextStepID: "end"},
 	}}
 }
 

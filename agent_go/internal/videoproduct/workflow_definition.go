@@ -62,9 +62,9 @@ func stageStep(p *Pipeline, stage PipelineStage, deps []string, last bool) map[s
 // or adaptive step, even when it needs only one message. Non-scripted regular
 // steps are unsupported." (frontend/src/commands/builtin-commands.tsx).
 //
-// These stages were authored as `regular` and only ran because the runtime
-// rewrites every non-scripted regular step into a sequence exactly like this one
-// (normalizeRegularStepToAgent). Declaring it makes the stored plan
+// These stages were authored as `scripted` and only ran because the runtime
+// rewrites every non-scripted scripted step into a sequence exactly like this one
+// (normalizeScriptedStepToAgent). Declaring it makes the stored plan
 // say what actually executes, so the plan UI no longer has to reconstruct it and
 // a stage that later wants a second turn — a critique pass, a repair gate — can
 // simply add an item instead of needing a different step type.

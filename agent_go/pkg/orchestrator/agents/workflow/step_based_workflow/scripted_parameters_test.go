@@ -7,7 +7,7 @@ import (
 )
 
 func TestValidateAndResolveScriptParametersAppliesDefaults(t *testing.T) {
-	step := &RegularPlanStep{CommonStepFields: CommonStepFields{
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
 		ID: "collector",
 		ScriptParameters: map[string]ScriptParameterDefinition{
 			"market": {Type: "string", Description: "Market", Required: true, Enum: []interface{}{"india", "dubai"}},
@@ -24,7 +24,7 @@ func TestValidateAndResolveScriptParametersAppliesDefaults(t *testing.T) {
 }
 
 func TestApplyWorkshopScriptParametersUsesDirectExecuteContract(t *testing.T) {
-	step := &RegularPlanStep{CommonStepFields: CommonStepFields{
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
 		ID: "collector",
 		ScriptParameters: map[string]ScriptParameterDefinition{
 			"market": {Type: "string", Description: "Market", Required: true},
@@ -45,7 +45,7 @@ func TestApplyWorkshopScriptParametersUsesDirectExecuteContract(t *testing.T) {
 }
 
 func TestApplyWorkshopScriptParametersRejectsMissingAndNonScriptedValues(t *testing.T) {
-	scripted := &RegularPlanStep{CommonStepFields: CommonStepFields{
+	scripted := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
 		ID: "collector",
 		ScriptParameters: map[string]ScriptParameterDefinition{
 			"market": {Type: "string", Description: "Market", Required: true},
@@ -62,7 +62,7 @@ func TestApplyWorkshopScriptParametersRejectsMissingAndNonScriptedValues(t *test
 }
 
 func TestValidateAndResolveScriptParametersRejectsBadCalls(t *testing.T) {
-	step := &RegularPlanStep{CommonStepFields: CommonStepFields{
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
 		ID: "collector",
 		ScriptParameters: map[string]ScriptParameterDefinition{
 			"market": {Type: "string", Description: "Market", Required: true},
@@ -87,7 +87,7 @@ func TestValidateAndResolveScriptParametersRejectsBadCalls(t *testing.T) {
 }
 
 func TestLoadedPlanRejectsInvalidScriptParameterContract(t *testing.T) {
-	step := &RegularPlanStep{CommonStepFields: CommonStepFields{
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
 		ID: "collector",
 		ScriptParameters: map[string]ScriptParameterDefinition{
 			"market-name": {Type: "string", Description: "Market"},

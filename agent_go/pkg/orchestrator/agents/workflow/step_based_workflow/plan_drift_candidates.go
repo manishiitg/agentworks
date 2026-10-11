@@ -26,7 +26,7 @@ import (
 // checks + step-description/learnings/KB/DB-normalization judgment checks
 // (PLAT-258 phases 1-6). 2 = adds route_structural_isolation/
 // route_eval_pairing for routing steps (PLAT-259 phase B). 3 adds canonical
-// reference-backed checks for regular/scripted, agent, todo_task,
+// reference-backed checks for scripted, agent, todo_task,
 // routing, and branch steps. Step types without a new check keep version 2.
 const planDriftReviewContractVersion = 3
 
@@ -39,7 +39,7 @@ const (
 
 func requiredStepTypeBestPracticesCheckID(stepType string) string {
 	switch strings.TrimSpace(stepType) {
-	case string(StepTypeRegular):
+	case string(StepTypeScripted):
 		return scriptedBestPracticesDriftCheckID
 	case string(StepTypeAgent):
 		return agentSequenceBestPracticesDriftCheckID
@@ -105,7 +105,7 @@ func checkContextDependencyFilenames(plan *PlanningResponse, stepID string) Step
 // current step_config.json.
 type PlanDriftCandidate struct {
 	StepID string `json:"step_id"`
-	// StepType is the plan.json step type ("routing", "branch", "regular",
+	// StepType is the plan.json step type ("routing", "branch", "scripted",
 	// ...), precomputed so the reviewer turn can tell which candidates are
 	// routing steps (the "route"/major-fork concept, PLAT-259) without an
 	// extra lookup -- routing steps get two additional judgment checks

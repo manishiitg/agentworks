@@ -140,7 +140,7 @@ func TestConvertLegacyCodeSequenceCreatesStandaloneScriptedSteps(t *testing.T) {
 		t.Fatal("prepare script was not copied to its scripted-step location")
 	}
 
-	var first, second RegularPlanStep
+	var first, second ScriptedPlanStep
 	if err := json.Unmarshal(converted[0], &first); err != nil {
 		t.Fatalf("decode first step: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestExplicitConversationScriptConversationPlanValidates(t *testing.T) {
 			},
 			{
 				"id":"transform-input",
-				"type":"regular",
+				"type":"scripted",
 				"title":"Transform input",
 				"description":"Run the standalone deterministic transform from learnings/transform-input/main.py.",
 				"context_dependencies":["db/prepared-input.json"],
@@ -251,8 +251,8 @@ func TestLegacyAgentCodeCanLoadOnlyForMigration(t *testing.T) {
 		t.Fatalf("migration-only loader rejected legacy code item: %v", err)
 	}
 
-	plan.Steps = append(plan.Steps, &RegularPlanStep{
-		Type: StepTypeRegular,
+	plan.Steps = append(plan.Steps, &ScriptedPlanStep{
+		Type: StepTypeScripted,
 		CommonStepFields: CommonStepFields{
 			ID:          "legacy",
 			Title:       "Duplicate",

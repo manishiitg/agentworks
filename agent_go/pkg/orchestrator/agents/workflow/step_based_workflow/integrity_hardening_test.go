@@ -17,7 +17,7 @@ func TestPlanningResponseRejectsLegacyConditionalStep(t *testing.T) {
 		t.Fatal("expected legacy conditional step to be rejected")
 	}
 	if !strings.Contains(err.Error(), `unknown step type "conditional"`) ||
-		!strings.Contains(err.Error(), "regular, human_input, agent, routing, branch, or crew") {
+		!strings.Contains(err.Error(), "scripted, human_input, agent, routing, branch, or crew") {
 		t.Fatalf("unexpected legacy conditional error: %v", err)
 	}
 }
@@ -26,7 +26,7 @@ func TestPlanValidationRejectsNestedMissingAndDuplicateIDs(t *testing.T) {
 	const missingNestedID = `{"steps":[{
 		"type":"todo_task","id":"orchestrator","title":"Orchestrator","description":"d",
 		"predefined_routes":[{"route_id":"route","route_name":"Route","condition":"always",
-			"sub_agent_step":{"type":"regular","title":"Nested","description":"d"}}]
+			"sub_agent_step":{"type":"scripted","title":"Nested","description":"d"}}]
 	}]}`
 	var missingPlan PlanningResponse
 	if err := json.Unmarshal([]byte(missingNestedID), &missingPlan); err != nil {
@@ -37,11 +37,11 @@ func TestPlanValidationRejectsNestedMissingAndDuplicateIDs(t *testing.T) {
 	}
 
 	const duplicateNestedID = `{"steps":[{
-		"type":"regular","id":"shared-id","title":"Top","description":"d"
+		"type":"scripted","id":"shared-id","title":"Top","description":"d"
 	},{
 		"type":"todo_task","id":"orchestrator","title":"Orchestrator","description":"d",
 		"predefined_routes":[{"route_id":"route","route_name":"Route","condition":"always",
-			"sub_agent_step":{"type":"regular","id":"shared-id","title":"Nested","description":"d"}}]
+			"sub_agent_step":{"type":"scripted","id":"shared-id","title":"Nested","description":"d"}}]
 	}]}`
 	var duplicatePlan PlanningResponse
 	if err := json.Unmarshal([]byte(duplicateNestedID), &duplicatePlan); err != nil {

@@ -18,7 +18,7 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	planJSON := `{"steps":[{
 		"type":"todo_task","id":"orch","title":"o","description":"d",
 		"predefined_routes":[{"route_id":"w","route_name":"W","condition":"c",
-			"sub_agent_step":{"type":"regular","id":"w","title":"w","description":"d"}}],
+			"sub_agent_step":{"type":"scripted","id":"w","title":"w","description":"d"}}],
 		"messages":[
 			{"id":"m1","type":"message","message":"hello","max_corrections":2},
 			{"id":"m2","type":"foreach","source_sql":"SELECT id FROM t","max_iterations":5,"message":"row {{.id}}"},
@@ -57,7 +57,7 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 // Verifies a standalone agent gets synthetic learnings/KB contribution
 // turns appended when (and only when) the step is configured for those writes —
 // so it honors step-level learning_objective / knowledgebase_contribution like a
-// regular step instead of silently skipping the post-step learnings/KB phase.
+// scripted step instead of silently skipping the post-step learnings/KB phase.
 func TestAgentClosingItems(t *testing.T) {
 	hcpo := newAgentClosingTestOrchestrator(t)
 

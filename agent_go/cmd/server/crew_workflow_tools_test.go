@@ -69,10 +69,10 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	}
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/test"):               string(raw),
-		"Workflow/test/planning/plan.json":          `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/planning/plan.json":          `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/test/variables/variables.json":    `{"variables":[],"groups":[{"name":"default"}]}`,
 		manifestPath("Workflow/other"):              string(otherRaw),
-		"Workflow/other/planning/plan.json":         `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/other/planning/plan.json":         `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/other/variables/variables.json":   `{"variables":[],"groups":[{"name":"default"}]}`,
 		crewWorkflowTestCrewPath + "/product.json":  crewProduct,
 		crewWorkflowTestCrewPath + "/workflow.json": crewRuntime,
@@ -194,7 +194,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	plain.Access = &WorkflowAccess{Owners: []string{"stranger"}, Readers: []string{"owner"}}
 	plainRaw, _ := json.Marshal(plain)
 	mock.files[manifestPath("Workflow/plain")] = string(plainRaw)
-	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`
+	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`
 	mock.files["Workflow/plain/variables/variables.json"] = `{"variables":[],"groups":[{"name":"default"}]}`
 	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"project-a","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
 	createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")

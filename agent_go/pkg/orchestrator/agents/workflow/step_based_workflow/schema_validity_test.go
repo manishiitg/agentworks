@@ -7,9 +7,9 @@ import (
 
 func TestAllSchemaFunctionsReturnValidJSON(t *testing.T) {
 	schemas := map[string]func() string{
-		"UpdateRegularStep":       getUpdateRegularStepSchema,
+		"UpdateScriptedStep":      getUpdateScriptedStepSchema,
 		"DeletePlanSteps":         getDeletePlanStepsSchema,
-		"AddRegularStep":          getAddRegularStepSchema,
+		"AddScriptedStep":         getAddScriptedStepSchema,
 		"AddAgentStep":            getAddAgentStepSchema,
 		"UpdateAgentStep":         getUpdateAgentStepSchema,
 		"AddRoutingStep":          getAddRoutingStepSchema,

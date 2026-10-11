@@ -169,7 +169,7 @@ type ContextAwareEventBridge struct {
 	currentPhase     string
 	currentStep      int    // Step index within the current phase
 	currentStepID    string // Step ID (e.g., "fetch-data", "process-results")
-	currentStepType  string // Plan step type (e.g., "regular", "todo_task", "routing")
+	currentStepType  string // Plan step type (e.g., "scripted", "todo_task", "routing")
 	currentAgentName string
 
 	// Rich step-context fields — surfaced on every event's metadata so

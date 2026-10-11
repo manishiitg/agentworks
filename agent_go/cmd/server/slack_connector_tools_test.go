@@ -87,7 +87,7 @@ func TestSlackRouteToolAcceptsAuthenticatedCLIBridgeOwner(t *testing.T) {
 	if !found || route.WorkflowID != "example" || route.BotGrant != "run" || len(route.BlockedEmails) != 0 {
 		t.Fatalf("unexpected persisted route: %+v", routes)
 	}
-	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"regular","id":"analyze","title":"Analyze","description":"Analyze the event"}]}`
+	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"analyze","title":"Analyze","description":"Analyze the event"}]}`
 	workspace.files["Workflow/example/variables/variables.json"] = `{"variables":[],"groups":[{"name":"default"}]}`
 	update := reg.tools["update_slack_bot_route_permission"]
 	operatorCtx, err := resolve(ctx, "update_slack_bot_route_permission")

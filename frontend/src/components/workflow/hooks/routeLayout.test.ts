@@ -4,7 +4,7 @@ import { distributePrimaryRouteLanes, type WorkflowNode } from './usePlanToFlow'
 import type { PlanningResponse } from '../../../utils/stepConfigMatching'
 vi.mock('../../../hooks/useActiveWorkflowPreset', () => ({ useActiveWorkflowPreset: () => null }))
 vi.mock('../../../stores/useLLMStore', () => ({ useLLMStore: () => ({}) }))
-const step = (id: string, next_step_id = 'end') => ({ id, type: 'regular', title: id, next_step_id })
+const step = (id: string, next_step_id = 'end') => ({ id, type: 'scripted', title: id, next_step_id })
 const route = (id: string) => ({ route_id: id, route_name: id, next_step_id: id })
 describe('major route layout', () => {
   it('gives six routes distinct lanes, orders edges instead of array order, and separates joins', () => {

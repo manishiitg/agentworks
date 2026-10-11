@@ -32,7 +32,7 @@ Use multiple large sequences when their contexts should not be shared: distinct
 credentials/security exposure, independent durable outputs or retries,
 clean-room independence, human/routing boundaries, or unrelated context that
 would distract or contaminate the next agent. The builder must decide this from
-the workflow semantics and be able to state the boundary. Use `regular` only for
+the workflow semantics and be able to state the boundary. Use `scripted` only for
 deterministic work implemented as a saved script. Every conversational or
 judgment-heavy outcome, including one turn, uses `agent`. Every producing step still needs a
 `validation_schema`; context flow stays forward-only via
@@ -51,7 +51,7 @@ specialist work adaptively from runtime evidence. Several known actions in one s
 - **`agent`** (canonical agent step) — a system-level description
   charter plus ordered user-message items in one conversation; optional
   `predefined_routes` expose bounded specialists the agent chooses adaptively
-- **`regular`** — a scripted deterministic boundary for API/SDK/CLI fetching,
+- **`scripted`** — a scripted deterministic boundary for API/SDK/CLI fetching,
   parsing, normalization, and mechanical persistence; batch related calls
   rather than making micro-steps. Conversational work uses `agent`,
   even for one turn

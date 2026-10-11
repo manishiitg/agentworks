@@ -252,7 +252,7 @@ func createWorkflowAutoNotificationFixture(workspaceDocs string, keep bool, prov
 	plan := map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				// Under the current contract a "regular" step is a scripted step (the
+				// Under the current contract a "scripted" step is a scripted step (the
 				// agent authors main.py). This smoke step is conversational, so it is a
 				// one-turn agent, the default step type.
 				"type":        "agent",

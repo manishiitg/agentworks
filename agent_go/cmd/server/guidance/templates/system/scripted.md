@@ -2,12 +2,12 @@
 
 ## scripted — Deterministic Worker
 
-A `regular` step is the scripted boundary for one deterministic unit of work. It owns one
+A `scripted` step is the scripted boundary for one deterministic unit of work. It owns one
 coherent output and deterministic final gate and runs through the saved `main.py` path.
-Do not create an agentic regular step: every new conversational or judgment-heavy step uses
-**`agent`**, even when it needs only one work turn. Persisted non-scripted regular
+Do not create an agentic scripted step: every new conversational or judgment-heavy step uses
+**`agent`**, even when it needs only one work turn. Persisted non-scripted
 steps are normalized to a one-turn agent at runtime; they never use the removed
-direct regular-agent path. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
+direct scripted-agent path. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
 Use the others for branching (`branch` for a small in-flow decision, `routing` for a major
 sub-workflow fork), adaptive specialist coordination (`agent` with
 `predefined_routes`), or operator input (`human_input`).
@@ -70,12 +70,12 @@ for the exact item schema, permissions, parallelism, Stop behavior, and limits.
 
 ## Execution mode
 
-- **Scripted / code-execution mode** is the only mode for new regular steps. Create one with `add_step`; the internal plan type remains `regular`. The builder authors a `main.py` saved under
+- **Scripted / code-execution mode** is the only mode for new scripted steps. Create one with `add_step`; the internal plan type remains `scripted`. The builder authors a `main.py` saved under
   `code/{step-id}/` when workflow.json has `code_layout_version: 1`; absent/0 stays at `learnings/{step-id}/`. Prefer an explicit migration to `code/` for legacy scripted workflows using the "Deliberate migration to code/" procedure in `references/code-authoring.md`; never silently move files or change the layout flag. Test using `execute_step(fast_path_only=true)` so the actual runner supplies the selected group's environment, inputs, permissions and working directory. New-layout source and shared helpers are edited in place, not copied into a run. Use for
   deterministic, repeatable execution. No run-history threshold is required to declare an obviously deterministic step scripted; 10+ representative successful runs are required only before `lock_code=true` freezes it. See `read_skill(skills=[{"name":"builder-reference","path":"references/code-authoring.md"}])`.
 - Judgment, adaptive discovery, ambiguous live evidence, and browser/UI work use `agent`.
 
-Preferred data shape: `regular scripted fetcher(s) → agent processor`. Fetchers own credentials, calls, retries/rate limits, provenance, freshness, idempotency, response parsing, and authoritative DB/file output. The agent reads that output and owns semantic analysis, synthesis, critique, and repair.
+Preferred data shape: `scripted fetcher(s) → agent processor`. Fetchers own credentials, calls, retries/rate limits, provenance, freshness, idempotency, response parsing, and authoritative DB/file output. The agent reads that output and owns semantic analysis, synthesis, critique, and repair.
 
 ## Parameterized script calls
 

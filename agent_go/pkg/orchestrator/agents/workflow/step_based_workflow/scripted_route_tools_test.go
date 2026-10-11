@@ -85,8 +85,8 @@ func TestScriptedRouteDirectToolsOfferOnlyScriptedRoutesWithoutShadowing(t *test
 	}
 	base.SetWorkspacePath("Workflow/demo")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
-	scripted := func(id string, params map[string]ScriptParameterDefinition) *RegularPlanStep {
-		return &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "Look up one customer by id", ScriptParameters: params}}
+	scripted := func(id string, params map[string]ScriptParameterDefinition) *ScriptedPlanStep {
+		return &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "Look up one customer by id", ScriptParameters: params}}
 	}
 	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, PredefinedRoutes: []PlanOrchestrationRoute{
 		{RouteID: "lookup-customer", Condition: "When a customer id is known", SubAgentStep: scripted("lookup", map[string]ScriptParameterDefinition{"customer_id": {Type: "string", Description: "Id", Required: true}})},
@@ -137,7 +137,7 @@ func TestScriptParametersSchemaContract(t *testing.T) {
 			"limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 50},
 		},
 	}
-	step := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup", ScriptParametersSchema: schema}}
+	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "lookup", ScriptParametersSchema: schema}}
 	if err := validateScriptParameterContract(&step.CommonStepFields); err != nil {
 		t.Fatalf("valid schema refused: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestScriptedRouteToolUsesTheFullSchema(t *testing.T) {
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 	schema := map[string]interface{}{"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "additionalProperties": false}
 	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, PredefinedRoutes: []PlanOrchestrationRoute{
-		{RouteID: "lookup", SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup", Description: "d", ScriptParametersSchema: schema}}},
+		{RouteID: "lookup", SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "lookup", Description: "d", ScriptParametersSchema: schema}}},
 	}}
 	execCtx := &SubAgentExecutionContext{OrchestratorStep: step}
 	tools, toolsErr := hcpo.scriptedRouteDirectTools(execCtx, map[string]bool{})
@@ -265,7 +265,7 @@ func TestAuthoredScriptToolCollisionsFailInsteadOfBeingAdvertised(t *testing.T) 
 	base.SetWorkspacePath("Workflow/demo")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 	script := func(id string) PlanOrchestrationRoute {
-		return PlanOrchestrationRoute{RouteID: id, RouteName: id, Condition: "when " + id, SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Description: "d"}, ScriptOnly: true}}
+		return PlanOrchestrationRoute{RouteID: id, RouteName: id, Condition: "when " + id, SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: id, Description: "d"}, ScriptOnly: true}}
 	}
 	authored := func(routes ...PlanOrchestrationRoute) *SubAgentExecutionContext {
 		return &SubAgentExecutionContext{OrchestratorStep: &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, AuthoredPrompt: true, SystemPrompt: "x", PredefinedRoutes: routes}}

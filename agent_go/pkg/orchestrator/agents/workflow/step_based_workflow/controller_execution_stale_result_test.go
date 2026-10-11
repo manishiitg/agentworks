@@ -100,8 +100,8 @@ func TestLoadSingleStepResultFromLogsPrefersRecentCompletionOverHigherAttemptNum
 	bo.SetWorkspacePath("Workflow/instagram")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: bo, selectedRunFolder: "test-run"}
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{
-			Type:             StepTypeRegular,
+		&ScriptedPlanStep{
+			Type:             StepTypeScripted,
 			CommonStepFields: CommonStepFields{ID: "step-create-reel", Title: "Master Reel Orchestrator"},
 		},
 	}}
@@ -129,8 +129,8 @@ func TestLoadSingleStepResultFromLogsFallsBackToAttemptOrderingWithoutTimestamps
 	bo.SetWorkspacePath("Workflow/instagram")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: bo, selectedRunFolder: "test-run"}
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{
-			Type:             StepTypeRegular,
+		&ScriptedPlanStep{
+			Type:             StepTypeScripted,
 			CommonStepFields: CommonStepFields{ID: "step-create-reel", Title: "Master Reel Orchestrator"},
 		},
 	}}

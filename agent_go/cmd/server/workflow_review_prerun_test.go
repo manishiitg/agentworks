@@ -33,7 +33,7 @@ func TestWorkflowReviewRunsOncePerPlanRevisionBeforeARun(t *testing.T) {
 		}
 		return `{"steps":[{"id":"step-a","agent_configs":{"drift_review":{"needs_review":` + flag + `,"reviewed_at":"` + reviewedAt + `","reviewed_by":"workflow-review","contract_version":3,"checks":[]}}}]}`
 	}
-	write("plan.json", `{"steps":[{"id":"step-a","type":"regular"}]}`)
+	write("plan.json", `{"steps":[{"id":"step-a","type":"scripted"}]}`)
 	write("step_config.json", stepConfig(false, "2026-10-01T00:00:00Z"))
 
 	reviews := 0

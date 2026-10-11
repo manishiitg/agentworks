@@ -800,7 +800,7 @@ func TestTerminalRoutesDeriveMissingStepTypeFromWorkflowPlan(t *testing.T) {
 	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
 		"Workflow/upwork/planning/plan.json": `{
 			"steps": [
-				{"type": "regular", "id": "check-cdp", "title": "Check CDP"},
+				{"type": "scripted", "id": "check-cdp", "title": "Check CDP"},
 				{"type": "routing", "id": "route-by-mode", "title": "Route by mode"}
 			]
 		}`,

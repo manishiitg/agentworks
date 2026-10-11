@@ -87,7 +87,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 	plan := map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type":                 "regular",
+				"type":                 "scripted",
 				"id":                   stepIDs[0],
 				"title":                "Compute the answer",
 				"description":          "Compute the value of 6 times 7. Reply with EXACTLY the line RESULT=<value> on a line by itself, then stop. Do not perform any other action.",
@@ -109,7 +109,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 				"default_route_id": "route_even",
 			},
 			{
-				"type":                 "regular",
+				"type":                 "scripted",
 				"id":                   stepIDs[2],
 				"title":                "Confirm the answer equals 42",
 				"description":          "The previous steps computed and classified the value 42 (six times seven). Confirm that the value 42 equals 42. Reply with EXACTLY the line CONFIRM_42_OK on a line by itself and stop.",
@@ -135,7 +135,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 						"route_name": "Verify via addition",
 						"condition":  "Use this route to verify 42 = 21 + 21",
 						"sub_agent_step": map[string]interface{}{
-							"type":                 "regular",
+							"type":                 "scripted",
 							"id":                   "verify-add",
 							"title":                "Verify via addition",
 							"description":          "Verify that 21 + 21 equals 42. If they are equal, reply with EXACTLY the line VERIFY_ADD_OK on a line by itself and stop. If not equal, reply VERIFY_ADD_FAIL.",
@@ -148,7 +148,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 						"route_name": "Verify via multiplication",
 						"condition":  "Use this route to verify 42 = 6 * 7",
 						"sub_agent_step": map[string]interface{}{
-							"type":                 "regular",
+							"type":                 "scripted",
 							"id":                   "verify-mul",
 							"title":                "Verify via multiplication",
 							"description":          "Verify that 6 multiplied by 7 equals 42. If they are equal, reply with EXACTLY the line VERIFY_MUL_OK on a line by itself and stop. If not equal, reply VERIFY_MUL_FAIL.",

@@ -18,7 +18,7 @@ import { StepList } from './StepList'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const failedStep = {
-  step_id: 'step-1', type: 'regular', title: 'Classify intent',
+  step_id: 'step-1', type: 'scripted', title: 'Classify intent',
   description: 'Classify the inbound message.',
   execution_tier: 'high',
   executions: [{
@@ -28,7 +28,7 @@ const failedStep = {
   validations: [{ content: { execution_status: 'FAILED', errors: [{ message: 'gate says no' }] } }],
 }
 const okStep = {
-  step_id: 'step-2', type: 'regular', title: 'Draft reply',
+  step_id: 'step-2', type: 'scripted', title: 'Draft reply',
   executions: [{ attempt: 1, iteration: 0, content: { execution_result: 'Drafted three variants.', model: 'model-one' } }],
 }
 const logs = { steps: { 'step-1': failedStep, 'step-2': okStep } } as unknown as ExecutionLogsResponse

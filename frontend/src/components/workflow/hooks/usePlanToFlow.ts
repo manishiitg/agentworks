@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
-import { isHumanInputStep, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isRegularStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
+import { isHumanInputStep, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -1165,7 +1165,7 @@ function stepToNode(
     }
   }
 
-  // Covers authored agent steps AND stored `regular` steps, which the
+  // Covers authored agent steps AND stored `scripted` steps, which the
   // runtime normalizes into a sequence before running (see runsAsAgent).
   // Showing the latter as a plain step card described an execution path that no
   // longer exists.
@@ -1327,7 +1327,7 @@ function processSteps(
           todoTaskEdges.push(...nestedTodoGraph.edges)
         } else if (runsAsAgent(subAgentStep)) {
           // A agent sub-agent must render as a AgentNode so its
-          // ordered items show — not as a generic step card. A stored `regular`
+          // ordered items show — not as a generic step card. A stored `scripted`
           // sub-agent runs as one too, so it gets the same treatment.
           const seqNode: WorkflowNode = {
             id: subAgentNodeId,
@@ -1424,7 +1424,7 @@ function processSteps(
             id: subAgentNodeId,
             title: 'Generic Agent',
             description: 'Executes ad-hoc tasks using workspace tools',
-            type: 'regular',
+            type: 'scripted',
             agent_configs: {
               disable_learning: true
             }
@@ -1758,12 +1758,12 @@ function processSteps(
     // step (e.g. each portal -> normalize), only the last one linked and the
     // shared step looked unconnected. Now every explicit successor draws its own edge, so
     // the convergence (shared finish line) is visible.
-    if ((isAgentStep(step) || isRegularStep(step)) && step.next_step_id) {
+    if ((isAgentStep(step) || isScriptedStep(step)) && step.next_step_id) {
       const sourceNodeId = (typeof lastExitNodeId === 'string' ? lastExitNodeId : node.id)
       const targetNodeId = step.next_step_id === 'end' ? 'end' : stepIdToNodeIdMap?.get(step.next_step_id)
       if (targetNodeId) {
         edges.push({
-          id: `${sourceNodeId}-${isRegularStep(step) ? 'scripted' : 'msgseq'}-next-to-${targetNodeId}`,
+          id: `${sourceNodeId}-${isScriptedStep(step) ? 'scripted' : 'msgseq'}-next-to-${targetNodeId}`,
           source: sourceNodeId,
           target: targetNodeId,
           type: 'smoothstep',

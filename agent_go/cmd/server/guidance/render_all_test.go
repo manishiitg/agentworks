@@ -1213,7 +1213,7 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 			wants: []string{
 				"Deterministic fetcher → agentic processor",
 				"do not create one step per endpoint or command",
-				"scripted regular step executes it",
+				"scripted step executes it",
 				"Consume deterministic evidence; do not fetch it conversationally",
 			},
 		},
@@ -1222,7 +1222,7 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 			wants: []string{
 				"Declare these steps `scripted` from initial design",
 				"No run-history threshold is required",
-				"regular scripted fetcher(s) → agent processor",
+				"scripted fetcher(s) → agent processor",
 				// PLAT-436: scripts are built by the Builder, not healed by a run.
 				"Scripts are built by you, not healed by the run",
 				"no LLM rewrites",

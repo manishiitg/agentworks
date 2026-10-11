@@ -4,8 +4,8 @@ import "testing"
 
 // PLAT-436: scripted steps never self-heal in a run.
 func TestScriptedRunIsStrictUnlessTheBuilderRepairs(t *testing.T) {
-	scripted := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "fetch"}}
-	scriptOnly := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "fetch"}, ScriptOnly: true}
+	scripted := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "fetch"}}
+	scriptOnly := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "fetch"}, ScriptOnly: true}
 	for name, tc := range map[string]struct {
 		ctx    *ExecutionContext
 		step   PlanStepInterface

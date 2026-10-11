@@ -302,7 +302,7 @@ func TestArtifactReviewNotices(t *testing.T) {
 		t.Fatalf("update notice should not warn about a flag failure when driftReviewFlagFailed is false:\n%s", updateNotice)
 	}
 
-	addNotice := buildAddedStepArtifactSetupNotice("new-step", "regular")
+	addNotice := buildAddedStepArtifactSetupNotice("new-step", "scripted")
 	for _, want := range []string{"New step artifact setup required", "planning/step_config.json", "learnings/new-step/main.py"} {
 		if !strings.Contains(addNotice, want) {
 			t.Fatalf("add notice missing %q:\n%s", want, addNotice)

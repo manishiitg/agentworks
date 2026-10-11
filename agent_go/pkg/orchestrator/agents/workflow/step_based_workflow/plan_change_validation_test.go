@@ -10,8 +10,8 @@ import (
 
 func TestValidatePlanChangeProvesDeclaredStructuralInvariants(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{
-			Type: StepTypeRegular,
+		&ScriptedPlanStep{
+			Type: StepTypeScripted,
 			CommonStepFields: CommonStepFields{
 				ID:            "producer",
 				Title:         "Producer",

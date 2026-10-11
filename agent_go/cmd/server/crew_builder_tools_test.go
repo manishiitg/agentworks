@@ -28,7 +28,7 @@ func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWor
 	}
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/test"):                             string(raw),
-		"Workflow/test/planning/plan.json":                        `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/planning/plan.json":                        `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/test/variables/variables.json":                  `{"variables":[],"groups":[{"name":"default"}]}`,
 		"_users/owner/Chats/Work/projects/project-a/product.json": productJSON,
 	}}

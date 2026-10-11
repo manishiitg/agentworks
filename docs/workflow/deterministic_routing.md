@@ -71,7 +71,7 @@ The step keeps its existing shape (`routes[]`, `default_route_id`,
 `next_step_id` per route). What is removed is the LLM evaluation
 (`routing_question` is no longer evaluated by a model). A routing step's
 `description` must be empty; any agent/probe/judgment work belongs in a prior
-regular step that writes `route_selection.json`.
+scripted step that writes `route_selection.json`.
 
 ### Where the route file comes from (producers)
 
@@ -178,7 +178,7 @@ Active `upwork` plan migration is applied.
   `{ "select_route": "..." }` in its own output folder, and the routing step reads
   that file through an explicit `route_selection.json` dependency.
 - Pure all-routes-to-`end` terminators: out of scope here, but they should be
-  collapsed to a plain end/regular step rather than a routing step.
+  collapsed to a plain end/scripted step rather than a routing step.
 
 ### Migrating another laptop / workspace
 

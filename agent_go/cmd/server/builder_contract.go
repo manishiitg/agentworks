@@ -212,7 +212,7 @@ var builderInvariantCertifications = map[BuilderInvariantID]BuilderInvariantCert
 		TestFile:    "agent_go/pkg/orchestrator/types/workflow_orchestrator_e2e_real_test.go",
 		TestName:    "TestWorkflowE2ESingleRegularStepPiCLI",
 		Env:         []string{"RUN_WORKFLOW_REAL_E2E=1", "RUN_PI_CLI_WORKFLOW_E2E=1"},
-		Description: "Real workflow run with a single regular step on Pi CLI. Proves the coding agent launches in the workflow execution directory, calls the session-scoped MCP bridge, and writes the expected output file — closing the invariant from the contract doc's 'Workflow step cwd/MCP' P1 row.",
+		Description: "Real workflow run with a single scripted step on Pi CLI. Proves the coding agent launches in the workflow execution directory, calls the session-scoped MCP bridge, and writes the expected output file — closing the invariant from the contract doc's 'Workflow step cwd/MCP' P1 row.",
 		RealE2E:     true,
 	},
 	InvNoDuplicateUnifiedCompletion: {

@@ -23,7 +23,7 @@ Supported item types:
 - `foreach`: render and send one follow-up instruction for each row returned by a read-only SQLite query.
 - `prevalidation`: run a backend validation gate and send concrete repair feedback to the same conversation when it fails.
 
-Deterministic code is not a sequence item. Put code in a standalone `regular` step configured with `declared_execution_mode: "scripted"`. Connect it to adjacent conversational steps through explicit `context_dependencies`, `context_output`, and validation schemas.
+Deterministic code is not a sequence item. Put code in a standalone `scripted` step configured with `declared_execution_mode: "scripted"`. Connect it to adjacent conversational steps through explicit `context_dependencies`, `context_output`, and validation schemas.
 
 ## Shape
 
@@ -79,7 +79,7 @@ out and verify that charter.
 
 The top-level `validation_schema` is the sequence's final contract. When it is present, the runtime automatically runs it after the configured work turns and before synthetic learning/knowledge closing turns. A failed gate is returned to the same conversation as a repair turn and retried. Explicit `prevalidation` items are only needed for intermediate checkpoints; a final explicit gate with the same schema is not run twice.
 
-Every agent turn is persisted through the normal execution-log pipeline, including its conversation, tool and LLM calls, model, timing, token usage, and failure details. The sequence also writes the standard final execution summary after all turns and final validation complete, so Pulse and cost analysis read it like any regular step.
+Every agent turn is persisted through the normal execution-log pipeline, including its conversation, tool and LLM calls, model, timing, token usage, and failure details. The sequence also writes the standard final execution summary after all turns and final validation complete, so Pulse and cost analysis read it like any scripted step.
 
 ## Foreach
 
@@ -99,7 +99,7 @@ Use `foreach` when every selected database row must receive the same conversatio
 
 ## Write Access
 
-Reads and writes inherit the step-level DB, knowledgebase, and learnings configuration, matching regular execution steps. Most items require no access declaration.
+Reads and writes inherit the step-level DB, knowledgebase, and learnings configuration, matching scripted execution steps. Most items require no access declaration.
 
 Use a non-empty item override only to narrow a turn to selected stores:
 
@@ -120,7 +120,7 @@ The override cannot grant access that the step does not have. Write access is fo
 Use explicit plan steps:
 
 ```text
-regular scripted: fetch-and-normalize-authoritative-data
+scripted: fetch-and-normalize-authoritative-data
   -> agent: analyze-verify-and-repair-from-fetched-data
 ```
 
@@ -166,7 +166,7 @@ Contract v1.0.11 then upgrades `builder/improve.html` to the schema-2 Pulse hist
 The migration automatically converts only unambiguous top-level sequences containing code items and their immediately following prevalidation gates. It:
 
 1. Copies each script to `learnings/<step-id>/main.py`.
-2. Creates a standalone scripted regular step for each code item.
+2. Creates a standalone scripted step for each code item.
 3. Preserves cumulative dependencies, outputs, validation, and step configuration.
 4. Replaces the legacy sequence only after the migrated plan validates.
 
@@ -181,6 +181,6 @@ The runtime also rejects any remaining code item with a precise v1.0.10 upgrade 
 - Use the same conversation only when shared context is valuable.
 - Put the final deterministic acceptance contract in the top-level `validation_schema`. Use explicit prevalidation items only for intermediate checks, not subjective review.
 - Use `foreach` only with bounded, read-only queries.
-- Put all deterministic code in standalone scripted regular steps.
+- Put all deterministic code in standalone scripted steps.
 - Put fixed API/SDK/CLI fetching, pagination, stable parsing/normalization, and mechanical persistence in coherent scripted fetchers; feed their durable outputs to large agents.
 - Pass data between steps through declared files or the workflow database, never hidden in terminal context.

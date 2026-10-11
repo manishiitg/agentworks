@@ -33,7 +33,7 @@ entry point already exists, and does not check whether execution or repair is
 currently active. All of that is this migration's judgment call, not something
 the tool enforces; get it right before calling it, since the runtime resolves
 canonical source from the new value on the very next execution of every
-regular-type step. If a future workflow's migration needs a mechanism this
+scripted-type step. If a future workflow's migration needs a mechanism this
 tool does not provide, identify that as an implementation gap rather than
 bypassing a protected manifest write to work around it.
 

@@ -25,7 +25,7 @@ func TestWebhookRunBindingKeepsRouteGroupAndHumanInputsScoped(t *testing.T) {
 		t.Fatal("tool can mutate saved route binding")
 	}
 	var plan PlanningResponse
-	if err = json.Unmarshal([]byte(`{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"},{"type":"human_input","id":"approve","title":"Approval","question":"Approve?"}]}`), &plan); err != nil {
+	if err = json.Unmarshal([]byte(`{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"},{"type":"human_input","id":"approve","title":"Approval","question":"Approve?"}]}`), &plan); err != nil {
 		t.Fatal(err)
 	}
 	original := map[string]string{"work": "Existing instruction"}

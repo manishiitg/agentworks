@@ -23,20 +23,20 @@ Supported item types:
 - `user_message`: one focused follow-up instruction.
 - `foreach`: one templated follow-up per row from a read-only query against `db/db.sqlite`.
 - `prevalidation`: a deterministic backend validation gate with corrective feedback sent to the same conversation.
-- `scripted`: a finite batch of saved regular scripts; the runtime executes and validates every call before advancing, without creating agent sessions.
+- `scripted`: a finite batch of saved scripted scripts; the runtime executes and validates every call before advancing, without creating agent sessions.
 
-`type: "code"` was removed in workflow contract v1.0.10. Deterministic code lives in a saved `regular` step definition — the type alone makes it scripted; create it with `add_step`, or move existing conversational work there with `change_step_type` — with its script at `<script-dir>/main.py`. Connect conversational and scripted steps through explicit `context_dependencies`, `context_output`, database contracts, and validation.
+`type: "code"` was removed in workflow contract v1.0.10. Deterministic code lives in a saved `scripted` step definition — the type alone makes it scripted; create it with `add_step`, or move existing conversational work there with `change_step_type` — with its script at `<script-dir>/main.py`. Connect conversational and scripted steps through explicit `context_dependencies`, `context_output`, database contracts, and validation.
 
 Preferred split when deterministic data is needed:
 
 ```text
-regular scripted: fetch-and-normalize-authoritative-data
+scripted: fetch-and-normalize-authoritative-data
   -> agent: analyze-verify-and-repair-from-fetched-data
 ```
 
 Batch related API/SDK calls or CLI commands into the fetcher when they share credentials, retry/rate-limit behavior, source, and output contract. The fetcher owns pagination, stable parsing, provenance/freshness, idempotency, fail-closed errors, and deterministic DB/file validation. Do not use one step per endpoint, and do not spend sequence turns reissuing known requests or parsing stable response shapes.
 
-When the request itself needs judgment, use `agent: decide-and-write-request-spec -> regular scripted: execute-request-spec -> agent: interpret-and-verify-result`.
+When the request itself needs judgment, use `agent: decide-and-write-request-spec -> scripted: execute-request-spec -> agent: interpret-and-verify-result`.
 
 Do not hide durable computation, side effects, retries, or file handoffs inside conversation state.
 
@@ -52,8 +52,8 @@ Use it when:
 Do not use it when:
 
 - A phase has an independent artifact, independently rerunnable validation/failure domain, model, credential, downstream consumer, or context that should be isolated.
-- Work is deterministic code; use a scripted regular step.
-- Work is a fixed API/SDK call, CLI command, data fetch, stable parse/normalize operation, or mechanical write; use a scripted regular step and consume its durable result here.
+- Work is deterministic code; use a scripted step.
+- Work is a fixed API/SDK call, CLI command, data fetch, stable parse/normalize operation, or mechanical write; use a scripted step and consume its durable result here.
 - The workflow needs deterministic branching; use `branch` (small in-flow
   decision) or `routing` (major sub-workflow fork).
 - The agent must choose or revise strategy from evidence; add bounded specialist
@@ -90,7 +90,7 @@ runtime, not merely a system-prompt preference. There is no separate mode field:
 Create saved script definitions with `add_step(is_orphan=true, ...)`,
 using `insert_after_step_id: ""`. Declare `script_parameters`, explicit dependencies,
 and a non-empty `validation_schema`; author and test `<script-dir>/main.py` in
-Workshop. An orphan is callable here only if it is a scripted regular step.
+Workshop. An orphan is callable here only if it is a scripted step.
 Then reference it from `add_step` / `update_step`:
 
 ```json
@@ -105,7 +105,7 @@ Then reference it from `add_step` / `update_step`:
 }
 ```
 
-**Parameter contract:** `script_parameters` belongs on the saved regular script
+**Parameter contract:** `script_parameters` belongs on the saved scripted script
 **definition**; each sequence call supplies its values in `parameters`. The runtime
 applies declared defaults and rejects missing required names, unknown names, wrong
 types, and values outside an `enum` before launching any script in the batch.
@@ -157,7 +157,7 @@ the next conversational item, while the description remains the system charter.
 
 ## WRITE ACCESS
 
-Items inherit the step-level DB, knowledgebase, and learnings permissions, matching a regular execution step. Usually no item-level access declaration is needed.
+Items inherit the step-level DB, knowledgebase, and learnings permissions, matching a scripted execution step. Usually no item-level access declaration is needed.
 
 Use a non-empty `write_access` object, or `kind`, only when one turn should be narrowed to selected stores:
 
@@ -260,7 +260,7 @@ a cap, a failed row, or an accidental filter must not look like full completion.
 
 ## ROUTE PATTERNS
 
-Conversational route sub-agents use `agent`, including stateless one-turn work. Use `regular` only for an explicitly scripted deterministic route.
+Conversational route sub-agents use `agent`, including stateless one-turn work. Use `scripted` only for an explicitly scripted deterministic route.
 
 A saved scripted route is also offered to its Agent step as a named tool (route id `lookup-customer` → tool `lookup_customer(...)`), with its parameters as the tool's input schema; this is how an agent calls a script of the workflow, e.g. a customer lookup. Declare inputs with `script_parameters` (flat typed list) or `script_parameters_schema` (one full JSON Schema for nested or constrained inputs), never both. The script reads them from `STEP_PARAMS_JSON` and returns a value by writing `route_result.json` in `$STEP_OUTPUT_DIR`; the agent receives exactly that JSON. Use these patterns when designing or repairing an agent's `predefined_routes`.
 
@@ -288,5 +288,5 @@ Use an `agent` route when the parent agent should preserve specialist memory acr
 - Declare item write access before execution.
 - Put the final deterministic acceptance contract in the step-level `validation_schema`; use explicit prevalidation items only for intermediate checks.
 - Create another large sequence only when its context should be intentionally isolated, and record the boundary rationale in the plan description/review.
-- Keep code and its permissions/validation in saved regular script definitions; use standalone steps or explicit scripted batch items to execute them.
+- Keep code and its permissions/validation in saved scripted script definitions; use standalone steps or explicit scripted batch items to execute them.
 - Never add a legacy code item. If an old plan contains one, require the v1.0.10 workflow preflight migration.

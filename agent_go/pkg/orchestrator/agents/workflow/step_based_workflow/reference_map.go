@@ -479,7 +479,7 @@ func (m *referenceMap) checkDependencies() {
 // and the file is not there (bid-record, 2026-10-06). outreach-record resolves
 // relative inputs against STEP_OUTPUT_DIR, which is what makes the form valid.
 func (m *referenceMap) checkRelativeScriptDependency(s *refStep, dep string) {
-	if s.typ != string(StepTypeRegular) || filepath.IsAbs(dep) || strings.HasPrefix(dep, "$") {
+	if s.typ != string(StepTypeScripted) || filepath.IsAbs(dep) || strings.HasPrefix(dep, "$") {
 		return
 	}
 	raw, err := os.ReadFile(filepath.Join(m.root, "code", s.id, "main.py"))

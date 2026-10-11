@@ -2064,7 +2064,7 @@ type PlanStepUpdate struct {
 	ContextDependencies *[]string                                  `json:"context_dependencies,omitempty"`
 	ContextOutput       *todo_creation_human.FlexibleContextOutput `json:"context_output,omitempty"`
 
-	// Regular step fields
+	// Scripted step fields
 	HasLoop         *bool   `json:"has_loop,omitempty"`
 	LoopCondition   *string `json:"loop_condition,omitempty"`
 	MaxIterations   *int    `json:"max_iterations,omitempty"`
@@ -2436,7 +2436,7 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 	// Apply updates based on step type
 	var updatedStep todo_creation_human.PlanStepInterface
 	switch s := step.(type) {
-	case *todo_creation_human.RegularPlanStep:
+	case *todo_creation_human.ScriptedPlanStep:
 		updated := *s // Copy the step
 		applyCommonFields(&updated.CommonStepFields, updates)
 		if updates.HasLoop != nil {
@@ -3128,7 +3128,7 @@ func (api *StreamingAPI) handleAddStep(w http.ResponseWriter, r *http.Request) {
 	// Determine step type and unmarshal to typed step
 	stepType, ok := req.Step["type"].(string)
 	if !ok {
-		http.Error(w, "step must have 'type' field (regular, human_input, todo_task, routing, or branch)", http.StatusBadRequest)
+		http.Error(w, "step must have 'type' field (scripted, human_input, agent, routing, branch, or crew)", http.StatusBadRequest)
 		return
 	}
 
@@ -3141,17 +3141,17 @@ func (api *StreamingAPI) handleAddStep(w http.ResponseWriter, r *http.Request) {
 
 	var newStep todo_creation_human.PlanStepInterface
 	switch stepType {
-	case "regular":
-		var s todo_creation_human.RegularPlanStep
+	case "scripted", "regular":
+		var s todo_creation_human.ScriptedPlanStep
 		if err := json.Unmarshal(stepJSON, &s); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to parse regular step: %v", err), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Failed to parse scripted step: %v", err), http.StatusBadRequest)
 			return
 		}
 		newStep = &s
 	case "agent":
 		var s todo_creation_human.AgentPlanStep
 		if err := json.Unmarshal(stepJSON, &s); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to parse todo_task step: %v", err), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Failed to parse agent step: %v", err), http.StatusBadRequest)
 			return
 		}
 		newStep = &s
@@ -3450,7 +3450,7 @@ func (api *StreamingAPI) handleGetExecutionLogs(w http.ResponseWriter, r *http.R
 			title := stepId
 			desc := ""
 			originalId := ""
-			stepType := "regular"
+			stepType := "scripted"
 			contextOutput := ""
 			successCriteria := ""
 			executionTier := ""

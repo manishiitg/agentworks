@@ -25,7 +25,7 @@ func relayTestPlan() *PlanningResponse {
 			ValueCases: map[string]string{"quick": "quick", "deep": "deep"},
 			Routes:     []RoutingRoute{{RouteID: "quick", RouteName: "Quick", Condition: "quick", NextStepID: "quick-script"}, {RouteID: "deep", RouteName: "Deep", Condition: "deep", NextStepID: "deep-agent"}},
 		},
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "quick-script", Title: "Quick script", Description: "Produce JSON"}, ScriptOnly: true, NextStepID: "answer"},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "quick-script", Title: "Quick script", Description: "Produce JSON"}, ScriptOnly: true, NextStepID: "answer"},
 		agent("deep-agent", "answer"),
 		agent("answer", "end"),
 	}}
@@ -36,7 +36,7 @@ func TestValidateRelayPlanStructure(t *testing.T) {
 	if err := ValidateRelayPlanStructure(plan, "answer"); err != nil {
 		t.Fatalf("valid Relay graph rejected: %v", err)
 	}
-	plan.Steps[2].(*RegularPlanStep).ScriptOnly = false
+	plan.Steps[2].(*ScriptedPlanStep).ScriptOnly = false
 	if err := ValidateRelayPlanStructure(plan, "answer"); err == nil || !strings.Contains(err.Error(), "script_only") {
 		t.Fatalf("script with agent fallback accepted: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestRelayAgentMayOwnScriptToolsButNotSubAgents(t *testing.T) {
 	route := func(step PlanStepInterface) PlanOrchestrationRoute {
 		return PlanOrchestrationRoute{RouteID: step.GetID(), RouteName: step.GetID(), Condition: "When a customer id is known", SubAgentStep: step}
 	}
-	lookup := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
+	lookup := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
 
 	plan := relayTestPlan()
 	plan.Steps[3].(*AgentPlanStep).PredefinedRoutes = []PlanOrchestrationRoute{route(lookup)}
@@ -102,7 +102,7 @@ func TestRelayAgentMayOwnScriptToolsButNotSubAgents(t *testing.T) {
 }
 
 func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
-	lookup := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
+	lookup := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "lookup-customer", Title: "Lookup", Description: "Look up one customer"}, ScriptOnly: true}
 	agent := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "deep-agent", Title: "Deep", Description: "Produce JSON"},
 		AuthoredPrompt:   true, SystemPrompt: "Return JSON about {{input.kind}}",
@@ -133,7 +133,7 @@ func TestAuthoredAgentKeepsItsPromptThroughDelegation(t *testing.T) {
 // PLAT-444: two route ids that become one tool name are refused at validation.
 func TestRelayRejectsRoutesThatShareAToolName(t *testing.T) {
 	script := func(id string) PlanOrchestrationRoute {
-		return PlanOrchestrationRoute{RouteID: id, RouteName: id, SubAgentStep: &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "d"}, ScriptOnly: true}}
+		return PlanOrchestrationRoute{RouteID: id, RouteName: id, SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: id, Title: id, Description: "d"}, ScriptOnly: true}}
 	}
 	plan := relayTestPlan()
 	plan.Steps[3].(*AgentPlanStep).PredefinedRoutes = []PlanOrchestrationRoute{script("a-b"), script("a_b")}

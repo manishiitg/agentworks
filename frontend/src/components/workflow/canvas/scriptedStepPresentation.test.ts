@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { planStepTypeLabel, scriptedStepFilePath } from './scriptedStepPresentation'
 
 describe('scripted step presentation', () => {
-  it('uses the user-facing scripted step label for regular plan steps', () => {
+  it('uses the user-facing scripted step label for scripted plan steps', () => {
+    expect(planStepTypeLabel('scripted')).toBe('scripted step')
     expect(planStepTypeLabel('regular')).toBe('scripted step')
     expect(planStepTypeLabel('routing')).toBe('routing')
   })

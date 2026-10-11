@@ -112,11 +112,11 @@ export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly =
 
                               <div className="flex flex-col items-start text-left min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="flex-shrink-0" title={getStepTypeDescription(stepLogs.type || 'regular')}>
+                                  <span className="flex-shrink-0" title={getStepTypeDescription(stepLogs.type || 'scripted')}>
                                     {getStepIcon(stepLogs.type)}
                                   </span>
                                   <span className="text-sm font-semibold text-foreground truncate">{displayTitle}</span>
-                                  <span title={getStepTypeDescription(stepLogs.type || 'regular')} className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${getStepTypeBadgeStyle(stepLogs.type)}`}>
+                                  <span title={getStepTypeDescription(stepLogs.type || 'scripted')} className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${getStepTypeBadgeStyle(stepLogs.type)}`}>
                                     {getStepTypeLabel(stepLogs.type)}
                                   </span>
                                   <span className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${pill.className}`}>

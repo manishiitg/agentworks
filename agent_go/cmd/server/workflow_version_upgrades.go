@@ -121,7 +121,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractPulseActionableBacklogVersion,
 		workflowContractOrchestratorStepTypeVersion,
 		workflowContractActivityTabFromRunSummaryVersion,
-		workflowContractScriptedTypeStaysRegularVersion,
+		workflowContractScriptedPlanTypeVersion,
 		workflowContractDeclaredExecutionModeRetiredVersion,
 		workflowContractDeclaredExecutionModeStrippedVersion,
 		workflowContractRouteSummariesVersion,
@@ -399,25 +399,25 @@ Otherwise read the report and find what feeds its activity tab:
 
 Do not delete a step or table without the parent agreeing in this conversation. Do not run the workflow. Call validate_report_html after any edit and repair every error. Then call set_workflow_contract_version(version="1.0.36") and stop — stamp it whichever way the parent chose, including "keep what we have".`
 
-const upgradeScriptedTypeStaysRegular = `WORKFLOW CONTRACT UPGRADE: A DECLARED-SCRIPTED STEP'S PLAN TYPE MUST BE REGULAR, NEVER MESSAGE_SEQUENCE.
+const upgradeScriptedPlanType = `WORKFLOW CONTRACT UPGRADE: A DECLARED-SCRIPTED STEP'S PLAN TYPE MUST BE SCRIPTED, NEVER AGENT.
 
-Do only this migration. Read planning/step_config.json and planning/plan.json. Find every step whose step_config declares declared_execution_mode="scripted" but whose plan.json type is "agent" instead of "regular" -- that combination is invalid (PLAT-280): the real scripted executor only runs true regular-type steps and reliably injects $DB_PATH/STEP_OUTPUT_DIR there, which the agent runtime does not guarantee even when its config claims to be scripted. This caused a live production step to silently lose database access.
+Do only this migration. Read planning/step_config.json and planning/plan.json. Find every step whose step_config declares declared_execution_mode="scripted" but whose plan.json type is "agent" instead of "scripted" -- that combination is invalid (PLAT-280): the real scripted executor only runs true scripted-type steps and reliably injects $DB_PATH/STEP_OUTPUT_DIR there, which the agent runtime does not guarantee even when its config claims to be scripted. This caused a live production step to silently lose database access.
 
-For each matching step, call change_step_type(step_id=<its id>, target_type="scripted", reason="PLAT-280 migration: agent type with declared scripted mode is not a valid combination"). It atomically converts the step's plan type to regular in place -- same id, step_config.json history preserved -- and drops its agent items, since a scripted step's real work is the checked-in learnings/{step-id}/main.py, not plan-authored items. Do not hand-edit plan.json or step_config.json. Do not run the workflow.
+For each matching step, call change_step_type(step_id=<its id>, target_type="scripted", reason="PLAT-280 migration: agent type with declared scripted mode is not a valid combination"). It atomically converts the step's plan type to scripted in place -- same id, step_config.json history preserved -- and drops its agent items, since a scripted step's real work is the checked-in learnings/{step-id}/main.py, not plan-authored items. Do not hand-edit plan.json or step_config.json. Do not run the workflow.
 
 If no step matches, this is a no-op. If change_step_type reports an error for any matching step, do not stamp -- leave the mismatch as-is and report what blocked it. Otherwise call set_workflow_contract_version(version="1.0.37") and stop.`
 
 const upgradeDeclaredExecutionModeRetired = `WORKFLOW CONTRACT UPGRADE: EVERY STEP'S PLAN TYPE STATES ITS EXECUTION MODEL EXPLICITLY (PLAT-287, HALF 1).
 
-Do only this migration. A "regular" plan step is a scripted step (its work is the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. Until now a "regular" step WITHOUT a declared scripted mode was a legacy agentic step that the runtime silently ran as a agent. Call migrate_declared_execution_mode once. It rewrites planning/plan.json so that shape is explicit -- every legacy agentic regular step becomes the agent it already ran as (same id, description, dependencies, validation, position), and any agent still declared scripted becomes regular -- validates the plan, and records the change. It touches only plan.json: planning/step_config.json is left exactly as it is, declared_execution_mode included, because the current runtime still reads that field; a later contract version retires it. Behavior does not change. A workflow already in this shape is a no-op.
+Do only this migration. A "scripted" plan step is a scripted step (its work is the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. Until now a "scripted" step WITHOUT a declared scripted mode was a legacy agentic step that the runtime silently ran as a agent. Call migrate_declared_execution_mode once. It rewrites planning/plan.json so that shape is explicit -- every legacy agentic scripted step becomes the agent it already ran as (same id, description, dependencies, validation, position), and any agent still declared scripted becomes scripted -- validates the plan, and records the change. It touches only plan.json: planning/step_config.json is left exactly as it is, declared_execution_mode included, because the current runtime still reads that field; a later contract version retires it. Behavior does not change. A workflow already in this shape is a no-op.
 
 Do not hand-edit plan.json or step_config.json and do not run the workflow. The tool refuses, without changing anything, when a step is declared scripted but has no learnings/<step-id>/main.py: that step is already broken, and this migration will not guess whether it should become a sequence or get a script. If it refuses, report exactly which step and why and do not stamp. Otherwise call set_workflow_contract_version(version="1.0.38") and stop.`
 
 const upgradeDeclaredExecutionModeStripped = `WORKFLOW CONTRACT UPGRADE: THE RETIRED declared_execution_mode KEY IS REMOVED (PLAT-287, HALF 2).
 
-Do only this migration. Since contract v1.0.38 every step's plan type states its execution model, and the runtime now reads only that: a "regular" step is scripted (it runs the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. The declared_execution_mode and declared_execution_mode_reason keys in planning/step_config.json are therefore dead and are removed. Call strip_declared_execution_mode() once. It removes both keys from planning/step_config.json only -- evaluation files are retired and left untouched -- and records every removed reason in planning/changelog. It is idempotent and a no-op when nothing is left to strip.
+Do only this migration. Since contract v1.0.38 every step's plan type states its execution model, and the runtime now reads only that: a "scripted" step is scripted (it runs the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. The declared_execution_mode and declared_execution_mode_reason keys in planning/step_config.json are therefore dead and are removed. Call strip_declared_execution_mode() once. It removes both keys from planning/step_config.json only -- evaluation files are retired and left untouched -- and records every removed reason in planning/changelog. It is idempotent and a no-op when nothing is left to strip.
 
-Do not hand-edit plan.json or step_config.json, and do not run the workflow. The tool refuses, without changing anything, while a regular step still carries declared_execution_mode="agentic": that means the v1.0.38 migration (migrate_declared_execution_mode) did not complete -- run it, then retry; if it still refuses, do not stamp and report what blocked it. Otherwise call set_workflow_contract_version(version="1.0.39") and stop.`
+Do not hand-edit plan.json or step_config.json, and do not run the workflow. The tool refuses, without changing anything, while a scripted step still carries declared_execution_mode="agentic": that means the v1.0.38 migration (migrate_declared_execution_mode) did not complete -- run it, then retry; if it still refuses, do not stamp and report what blocked it. Otherwise call set_workflow_contract_version(version="1.0.39") and stop.`
 
 const upgradeManagedDBScripts = `WORKFLOW CONTRACT UPGRADE: SCRIPTS USE THE MANAGED DATABASE HELPER (PLAT-428).
 
@@ -448,7 +448,7 @@ Do only this migration. Every agent step's description (type agent or orchestrat
 ## Rules      — binding business constraints, approval limits, actions outside its authority
 ## Done when  — the success boundary, including what counts as a valid no-op
 ## Guides     — the skill/learning references to use, named only, never copied
-Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Leave every other step type as it is: scripted (regular), routing, branch, human_input and crew steps are driven by code, routes, a question to a person or a Crew, and do not use the layout; an empty description on them is fine. Read that reference once before you start.
+Goal, Inputs, Output and Done when are required; Rules and Guides may be omitted only when there is nothing to say. Leave every other step type as it is: scripted (scripted), routing, branch, human_input and crew steps are driven by code, routes, a question to a person or a Crew, and do not use the layout; an empty description on them is fine. Read that reference once before you start.
 
 THIS IS A TEXT REORGANIZATION. NEVER CHANGE BEHAVIOUR: do not change outputs, context_dependencies, context_output, validation_schema, items, routes, step type, or any other step field; only the description moves.
 
@@ -561,9 +561,9 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 35 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractActivityTabFromRunSummaryVersion, label: "upgrade-activity-tab-from-run-summary", query: upgradeActivityTabFromRunSummary})
 	}
-	// workflowContractScriptedTypeStaysRegularVersion ("1.0.37") sits at rank 36.
+	// workflowContractScriptedPlanTypeVersion ("1.0.37") sits at rank 36.
 	if rank < 36 {
-		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractScriptedTypeStaysRegularVersion, label: "upgrade-scripted-type-stays-regular", query: upgradeScriptedTypeStaysRegular})
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractScriptedPlanTypeVersion, label: "upgrade-scripted-type-stays-regular", query: upgradeScriptedPlanType})
 	}
 	// workflowContractDeclaredExecutionModeRetiredVersion ("1.0.38") sits at rank 37.
 	if rank < 37 {

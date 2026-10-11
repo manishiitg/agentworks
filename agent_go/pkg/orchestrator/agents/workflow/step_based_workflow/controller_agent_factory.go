@@ -91,7 +91,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyWorkflowTransportToAgentConfig(c
 
 // publishWorkflowTransportContext tags the live event stream with the
 // transport and, when the caller knows the plan step, its execution mode
-// (PLAT-287: derived from the step type — "scripted" for regular,
+// (PLAT-287: derived from the step type — "scripted" for scripted,
 // "agentic" for agents; "" when no
 // step is in scope, e.g. KB maintenance agents).
 func (hcpo *StepBasedWorkflowOrchestrator) publishWorkflowTransportContext(effectiveTransport string, executionMode string) {
@@ -1758,7 +1758,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	hcpo.disableParentAgentTimeout(config, "todo task orchestrator agent")
 
 	// Run the coding-CLI session in a fresh os.MkdirTemp dir instead of
-	// CodingAgentWorkingDir — same protection the regular execution-step
+	// CodingAgentWorkingDir — same protection the scripted execution-step
 	// path gets via applyStepConfigToAgentConfig. Without this, a
 	// todo-task orchestrator agent collides with any other coding-CLI
 	// session already attached to the workflow folder (notably the

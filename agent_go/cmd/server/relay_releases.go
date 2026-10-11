@@ -318,15 +318,15 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	}
 	// Script nodes and the scripts agents call as tools (scripted routes,
 	// PLAT-441) both run saved code; a release must carry it.
-	var scripts []*stepworkflow.RegularPlanStep
+	var scripts []*stepworkflow.ScriptedPlanStep
 	if plan != nil {
 		for _, step := range plan.Steps {
-			if script, ok := step.(*stepworkflow.RegularPlanStep); ok && script.ScriptOnly {
+			if script, ok := step.(*stepworkflow.ScriptedPlanStep); ok && script.ScriptOnly {
 				scripts = append(scripts, script)
 			}
 			if agent, ok := step.(*stepworkflow.AgentPlanStep); ok {
 				for _, route := range agent.PredefinedRoutes {
-					if script, ok := route.SubAgentStep.(*stepworkflow.RegularPlanStep); ok {
+					if script, ok := route.SubAgentStep.(*stepworkflow.ScriptedPlanStep); ok {
 						scripts = append(scripts, script)
 					}
 				}

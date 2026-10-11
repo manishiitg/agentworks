@@ -95,16 +95,16 @@ const workflowContractPulseBacklogTriageVersion = "1.0.33"
 const workflowContractPulseActionableBacklogVersion = "1.0.34"
 const workflowContractOrchestratorStepTypeVersion = "1.0.35"
 const workflowContractActivityTabFromRunSummaryVersion = "1.0.36"
-const workflowContractScriptedTypeStaysRegularVersion = "1.0.37"
+const workflowContractScriptedPlanTypeVersion = "1.0.37"
 
 // workflowContractDeclaredExecutionModeRetiredVersion (PLAT-287, half 1):
 // every step's plan type states its execution model explicitly -- legacy
-// agentic regular steps become the agent they already ran as,
+// agentic scripted steps become the agent they already ran as,
 // declared-scripted sequences become regular -- so that after this version
-// every regular step is a declared scripted one. declared_execution_mode
+// every scripted step is a declared scripted one. declared_execution_mode
 // itself is NOT touched here: the runtime still reads it. A later version
 // flips the runtime to "regular means scripted", stops every writer, and
-// strips and deletes the field, gated on no legacy agentic regular step
+// strips and deletes the field, gated on no legacy agentic scripted step
 // remaining on any live workflow.
 const workflowContractDeclaredExecutionModeRetiredVersion = "1.0.38"
 
@@ -113,7 +113,7 @@ const workflowContractDeclaredExecutionModeRetiredVersion = "1.0.38"
 // (regular = scripted, agent = conversational),
 // so the retired declared_execution_mode / _reason keys are stripped from
 // planning/step_config.json by
-// strip_declared_execution_mode, which refuses while any regular step still
+// strip_declared_execution_mode, which refuses while any scripted step still
 // carries declared_execution_mode="agentic" (i.e. v1.0.38 did not complete).
 const workflowContractDeclaredExecutionModeStrippedVersion = "1.0.39"
 
@@ -1957,7 +1957,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 // This does not touch, move, or verify any step source itself. The caller (an
 // authoring/repair agent following that skill) is responsible for staging a
 // complete code/<step-id>/main.py (and script_metadata.json) for every
-// regular-type step BEFORE switching to 1 -- the runtime resolves canonical
+// scripted-type step BEFORE switching to 1 -- the runtime resolves canonical
 // source from this field immediately on the next execution, with no
 // execution-copy fallback for anything left in learnings/. Nothing under
 // learnings/ is ever deleted by this call, so switching back to 0 is an

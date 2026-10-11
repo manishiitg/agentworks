@@ -188,7 +188,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation). It no longer owns root objective/success fields; use ` + "`soul/soul.md`" + ` for that.
 - ` + "`planning/step_config.json`" + ` — per-step settings. Each step's ` + "`agent_configs`" + ` object controls execution mode:
   - ` + "`use_code_execution_mode`" + ` (bool) — ` + "`false`" + ` = direct tool calls, ` + "`true`" + ` = scripted Python (main.py)
-  - the execution model itself is the plan step type, not a config field: a ` + "`regular`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`agent`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
+  - the execution model itself is the plan step type, not a config field: a ` + "`scripted`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`agent`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
 
 **Variables:**
 - ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value,group}], groups:[{id,name,enabled}]}`" + `. Groups enable batch execution with different value sets. ` + "`workflow.json`" + ` does NOT carry variable definitions.
@@ -232,7 +232,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - **List workflows:** ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `
 - **Objective + success criteria:** ` + "`execute_shell_command(command: \"sed -n '1,160p' '" + absWorkflow + "/<name>/soul/soul.md'\")`" + `
 - **Step list (IDs + titles):** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; steps=json.load(open('" + absWorkflow + "/<name>/planning/plan.json')).get('steps',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s.get(\\\\\\\"label\\\\\\\",s.get(\\\\\\\"title\\\\\\\",\\\\\\\"\\\\\\\"))}') for s in steps]\\\"\")`" + `
-- **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (regular = scripted main.py, agent = conversational)
+- **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (scripted = scripted main.py, agent = conversational)
 - **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
 - **Variables + groups:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
 - **Global workflow learnings:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/learnings/_global/SKILL.md\")`" + `
@@ -437,7 +437,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 {
   "steps": [
     {
-      "type": "regular",
+      "type": "scripted",
       "id": "fetch-authoritative-data",
       "title": "Fetch authoritative data",
       "description": "Deterministically call the configured API/SDK/CLI source, follow known pagination and retry rules, normalize the stable response shape, record provenance and freshness, fail closed on source errors, and write the authoritative result.",
@@ -497,7 +497,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 **Plan-shape rule — use this for every new workflow:**
 - Start with one large ` + "`agent`" + ` per coherent shared-context span. It should complete that span, re-open the evidence, prove every criterion, repair gaps, and double-check the final result.
 - Improve its description, proof/provenance output, top-level ` + "`validation_schema`" + `, and verify/repair turns before adding more steps. Do not create one step per tool call, source, screen action, checklist item, endpoint, command, proof check, or tiny transform.
-- Fixed API/SDK calls, CLI commands, known pagination, deterministic fetching, stable parsing/normalization, and mechanical persistence belong in one or a few coherent ` + "`regular`" + ` fetcher steps, batched by source/auth/retry/output contract.
+- Fixed API/SDK calls, CLI commands, known pagination, deterministic fetching, stable parsing/normalization, and mechanical persistence belong in one or a few coherent ` + "`scripted`" + ` fetcher steps, batched by source/auth/retry/output contract.
 - Feed those fetchers' validated DB rows or artifacts into one large ` + "`agent`" + ` for reasoning, synthesis, evidence-based verification, and repair. Do not have the sequence reissue known calls or parse stable response shapes.
 - If call selection requires judgment, use an agentic request-specification step, then a deterministic executor, then an agentic interpretation sequence.
 - Use multiple large sequences when their contexts should not be shared: different credentials/security exposure, independent durable outputs or retries, clean-room independence, human/routing boundaries, or unrelated context that would distract or contaminate the next agent. Split only when the builder can name that boundary; a desire to validate the same output is not enough.
@@ -506,7 +506,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 
 **Step types**:
 - ` + "`agent`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
-- ` + "`regular`" + ` — scripted deterministic API/CLI/data work only. New conversational or judgment-heavy work always uses ` + "`agent`" + `, even for one turn.
+- ` + "`scripted`" + ` — scripted deterministic API/CLI/data work only. New conversational or judgment-heavy work always uses ` + "`agent`" + `, even for one turn.
 - ` + "`routing`" + ` — N-way branching. Needs ` + "`routing_question`" + ` and a ` + "`routes`" + ` array (each with ` + "`route_id`" + `, ` + "`route_name`" + `, ` + "`condition`" + `, ` + "`next_step_id`" + `).
 - ` + "`human_input`" + ` — Pause for user response. Needs ` + "`question`" + `, ` + "`response_type`" + ` (` + "`text`" + `/` + "`yesno`" + `/` + "`multiple_choice`" + `), ` + "`next_step_id`" + `, and (for yesno) ` + "`if_yes_next_step_id`" + `/` + "`if_no_next_step_id`" + `.
 

@@ -510,12 +510,12 @@ export const calculateCostSummary = (tokenUsage: TokenUsageFile | null, evaluati
       // Step-wise costs - group by stepID with "eval-" prefix
       const stepInfo = findStepInfo(stepID)
       const { stepNum, stepTitle } = stepInfo
-      const stepKey = `eval-${stepID}`  // Prefix with eval- to distinguish from regular steps
+      const stepKey = `eval-${stepID}`  // Prefix with eval- to distinguish from scripted steps
 
       if (!stepCosts[stepKey]) {
         stepCosts[stepKey] = {
           stepID: stepKey,
-          stepNum: stepNum > 0 ? stepNum + 1000 : 0, // Put eval steps after regular steps
+          stepNum: stepNum > 0 ? stepNum + 1000 : 0, // Put eval steps after scripted steps
           stepTitle: `[Eval] ${stepTitle}`,
           routeId: stepInfo.routeId,
           routeName: stepInfo.routeName,

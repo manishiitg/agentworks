@@ -25,9 +25,9 @@ func TestReferenceMapReportsChangesNotCarriedThrough(t *testing.T) {
 		}
 	}
 	write("planning/plan.json", `{"steps":[
-	 {"type":"regular","id":"find-jobs","description":"Find jobs.","context_output":"jobs.json",
+	 {"type":"scripted","id":"find-jobs","description":"Find jobs.","context_output":"jobs.json",
 	  "validation_schema":{"files":[{"file_name":"jobs.json"},{"file_name":"details.json"}]}},
-	 {"type":"regular","id":"save-jobs","description":"## Inputs\n- scores from `+"`score-jobs`"+`, `+"`details.json`"+`, `+"`ranking.json`"+`\n- Guide: `+"`learnings/_global/references/save.md`"+`",
+	 {"type":"scripted","id":"save-jobs","description":"## Inputs\n- scores from `+"`score-jobs`"+`, `+"`details.json`"+`, `+"`ranking.json`"+`\n- Guide: `+"`learnings/_global/references/save.md`"+`",
 	  "context_dependencies":["jobs.json","details.json"],"context_output":"saved.json"}]}`)
 	write("planning/changelog/changelog-1.json", `{"entries":[{"tool":"delete_plan_steps","step_ids":["score-jobs"]}]}`)
 	write("evaluation/evaluation_plan.json", `{"steps":[{"id":"eval-save","description":"Read $VAR_TARGET_RUN_PATH/score-jobs/scores.json and $VAR_TARGET_RUN_PATH/save-jobs/saved.json."}]}`)
@@ -79,9 +79,9 @@ func TestReferenceMapAcceptsStepIDDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := `{"steps":[
-	 {"type":"regular","id":"step-a","description":"A.","context_output":"a.json"},
-	 {"type":"regular","id":"step-quiet","description":"Q."},
-	 {"type":"regular","id":"step-c","description":"C.","context_dependencies":["step-a","step-quiet"],"context_output":"c.json"}]}`
+	 {"type":"scripted","id":"step-a","description":"A.","context_output":"a.json"},
+	 {"type":"scripted","id":"step-quiet","description":"Q."},
+	 {"type":"scripted","id":"step-c","description":"C.","context_dependencies":["step-a","step-quiet"],"context_output":"c.json"}]}`
 	if err := os.WriteFile(filepath.Join(root, "planning", "plan.json"), []byte(plan), 0o644); err != nil {
 		t.Fatal(err)
 	}

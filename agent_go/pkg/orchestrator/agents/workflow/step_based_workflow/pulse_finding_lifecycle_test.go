@@ -672,26 +672,26 @@ func TestPulseFindingLifecycleLoadsStructuredHarnessReproduction(t *testing.T) {
 	ctx := context.Background()
 	workspacePath := concernsWorkspace(t)
 	module := pulsemodules.TechnicalReviewID
-	concernText := "plan updater rejects the effective agent step because its saved type is legacy regular"
+	concernText := "plan updater rejects the effective agent step because its saved type is legacy scripted"
 	if _, err := RecordPulseReviewFinding(ctx, workspacePath, "pulse-structured", "pulse-structured", PulseReviewFindingInput{
 		Concern: concernText,
 		Module:  module,
 		PulseFindingDetails: PulseFindingDetails{
 			FindingID:      "HARNESS-PLAN-EDIT-1",
-			TargetKey:      "harness:plan-editor:legacy-agentic-regular",
+			TargetKey:      "harness:plan-editor:legacy-agentic-scripted",
 			IssueKind:      IssueKindHarness,
 			Classification: "correctness_bug",
 			Severity:       "critical",
 			Summary:        "Runtime and editing APIs disagree about the step type.",
 			Impact:         "Pulse can diagnose the workflow defect but cannot apply its repair.",
 			Workaround:     "Persist the step as agent manually.",
-			Evidence:       []string{"update_scripted_step rejected the agentic step", "update_agent_step rejected the saved regular type"},
+			Evidence:       []string{"update_scripted_step rejected the agentic step", "update_agent_step rejected the saved scripted type"},
 			Reproduction: PulseFindingReproduction{
 				Safe:        true,
-				Setup:       "Use a copied plan with a regular step and declared_execution_mode=agentic.",
+				Setup:       "Use a copied plan with a scripted step and declared_execution_mode=agentic.",
 				Action:      "Call update_agent_step for that step.",
 				Expected:    "The harness upgrades the type and applies the edit.",
-				Observed:    "The updater rejects the saved regular type.",
+				Observed:    "The updater rejects the saved scripted type.",
 				Limitations: "No production workflow execution is required.",
 			},
 		},
@@ -709,7 +709,7 @@ func TestPulseFindingLifecycleLoadsStructuredHarnessReproduction(t *testing.T) {
 	if finding.FindingID != "HARNESS-PLAN-EDIT-1" || finding.Details == nil {
 		t.Fatalf("structured identity missing: %+v", finding)
 	}
-	if finding.Details.IssueKind != "harness_issue" || finding.Details.TargetKey != "harness:plan-editor:legacy-agentic-regular" {
+	if finding.Details.IssueKind != "harness_issue" || finding.Details.TargetKey != "harness:plan-editor:legacy-agentic-scripted" {
 		t.Fatalf("harness classification missing: %+v", finding.Details)
 	}
 	if !finding.Details.Reproduction.Safe ||

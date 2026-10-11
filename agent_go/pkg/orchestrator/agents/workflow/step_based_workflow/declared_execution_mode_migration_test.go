@@ -16,10 +16,10 @@ func runDeclaredModeMigration(t *testing.T, readFile func(context.Context, strin
 
 func TestMigrateDeclaredExecutionModeMakesEveryPlanTypeExplicitAndLeavesConfigAlone(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		// Legacy agentic regular: no declared scripted mode -> the runtime ran it as a sequence; becomes one.
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "legacy", Title: "Legacy", Description: "Legacy agentic work."}, NextStepID: "scripted"},
+		// Legacy agentic scripted: no declared scripted mode -> the runtime ran it as a sequence; becomes one.
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "legacy", Title: "Legacy", Description: "Legacy agentic work."}, NextStepID: "scripted"},
 		// True scripted step with its script: untouched.
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
 		// Plain sequence: untouched.
 		testSequenceStep("talk", "Talk"),
 	}}
@@ -44,10 +44,10 @@ func TestMigrateDeclaredExecutionModeMakesEveryPlanTypeExplicitAndLeavesConfigAl
 	legacy, _, _ := findStepByID(updated.Steps, "legacy")
 	seq, ok := legacy.(*AgentPlanStep)
 	if !ok || seq.NextStepID != "scripted" || seq.Description != "Legacy agentic work." || len(seq.Items) != 1 {
-		t.Fatalf("legacy agentic regular step must become an explicit sequence with its fields kept, got %T %+v", legacy, legacy)
+		t.Fatalf("legacy agentic scripted step must become an explicit sequence with its fields kept, got %T %+v", legacy, legacy)
 	}
-	if scripted, _, _ := findStepByID(updated.Steps, "scripted"); scripted.StepType() != StepTypeRegular {
-		t.Fatalf("a true scripted step must stay regular, got %s", scripted.StepType())
+	if scripted, _, _ := findStepByID(updated.Steps, "scripted"); scripted.StepType() != StepTypeScripted {
+		t.Fatalf("a true scripted step must stay scripted, got %s", scripted.StepType())
 	}
 	if talk, _, _ := findStepByID(updated.Steps, "talk"); talk.StepType() != StepTypeAgent {
 		t.Fatalf("a plain sequence must be untouched, got %s", talk.StepType())
@@ -84,7 +84,7 @@ func TestMigrateDeclaredExecutionModeMakesEveryPlanTypeExplicitAndLeavesConfigAl
 	if !strings.Contains(out, `"status":"no_op"`) {
 		t.Fatalf("second run must be a no-op, got %s", out)
 	}
-	if again, _, _ := findStepByID(updated.Steps, "scripted"); again.StepType() != StepTypeRegular {
+	if again, _, _ := findStepByID(updated.Steps, "scripted"); again.StepType() != StepTypeScripted {
 		t.Fatal("a second run must not touch the scripted step")
 	}
 }
@@ -99,8 +99,8 @@ func TestMigrateDeclaredExecutionModeRepairsADeclaredScriptedSequence(t *testing
 		t.Fatalf("migration failed: %v", err)
 	}
 	updated, configs := readTestPlanAndConfigs(t, readFile)
-	if step, _, _ := findStepByID(updated.Steps, "drifted"); step.StepType() != StepTypeRegular {
-		t.Fatalf("a declared-scripted sequence must become regular (PLAT-280 drift), got %s", step.StepType())
+	if step, _, _ := findStepByID(updated.Steps, "drifted"); step.StepType() != StepTypeScripted {
+		t.Fatalf("a declared-scripted sequence must become scripted (PLAT-280 drift), got %s", step.StepType())
 	}
 	if cfg := MatchStepConfigByID("drifted", configs); cfg == nil || cfg.LegacyDeclaredExecutionMode != StepModeScripted {
 		t.Fatalf("its scripted declaration must survive so the runtime keeps running main.py, got %+v", cfg)
@@ -109,8 +109,8 @@ func TestMigrateDeclaredExecutionModeRepairsADeclaredScriptedSequence(t *testing
 
 func TestMigrateDeclaredExecutionModeRefusesADeclaredScriptedStepWithoutAScript(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "legacy", Title: "Legacy", Description: "Would be converted."}},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "no-script", Title: "No script", Description: "Declared scripted, no main.py."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "legacy", Title: "Legacy", Description: "Would be converted."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "no-script", Title: "No script", Description: "Declared scripted, no main.py."}},
 	}}
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{{ID: "no-script", AgentConfigs: &AgentConfigs{LegacyDeclaredExecutionMode: StepModeScripted}}})
 	planBefore := files[normalizePathForWorkspaceAPI("planning/plan.json", changeStepTypeTestWorkspace)]
@@ -127,7 +127,7 @@ func TestMigrateDeclaredExecutionModeRefusesADeclaredScriptedStepWithoutAScript(
 func TestMigrateDeclaredExecutionModeIsANoOpOnACleanWorkflow(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		testSequenceStep("talk", "Talk"),
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
 	}}
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{{ID: "scripted", AgentConfigs: &AgentConfigs{LegacyDeclaredExecutionMode: StepModeScripted}}})
 	files[normalizePathForWorkspaceAPI("learnings/scripted/main.py", changeStepTypeTestWorkspace)] = "print('ok')"

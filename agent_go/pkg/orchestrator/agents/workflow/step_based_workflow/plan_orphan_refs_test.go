@@ -29,7 +29,7 @@ func TestResolvePlanOrphanStepRefs_ResolvesSharedRouteRef(t *testing.T) {
 		],
 		"orphan_steps": [
 			{
-				"type": "regular",
+				"type": "scripted",
 				"id": "shared-env-check",
 				"title": "Shared Environment Check",
 				"description": "Validate environment prerequisites.",
@@ -104,7 +104,7 @@ func TestResolvePlanOrphanStepRefs_RejectsUnsharedRouteRef(t *testing.T) {
 		],
 		"orphan_steps": [
 			{
-				"type": "regular",
+				"type": "scripted",
 				"id": "shared-env-check",
 				"title": "Shared Environment Check",
 				"description": "Validate environment prerequisites.",

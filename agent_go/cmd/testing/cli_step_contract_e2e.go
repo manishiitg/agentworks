@@ -223,7 +223,7 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 	}
 	plan := map[string]interface{}{"steps": []map[string]interface{}{
 		{
-			"type": "regular", "id": stepContractScriptID, "title": "Contract scripted step",
+			"type": "scripted", "id": stepContractScriptID, "title": "Contract scripted step",
 			"description":          "Run the harness file-access script from saved code and leave the agent step's script in the output folder.",
 			"context_dependencies": []string{}, "context_output": agentScriptName,
 		},
@@ -240,7 +240,7 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 				"route_id": stepContractRouteID, "route_name": "Contract lookup",
 				"condition": "When a customer record is needed by id",
 				"sub_agent_step": map[string]interface{}{
-					"type": "regular", "id": stepContractRouteStepID, "title": "Contract lookup",
+					"type": "scripted", "id": stepContractRouteStepID, "title": "Contract lookup",
 					"description":          "Return the customer record for one id as JSON.",
 					"context_dependencies": []string{}, "context_output": "",
 					"script_parameters": map[string]interface{}{
@@ -264,7 +264,7 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 				"route_id": stepContractAuthoredRouteID, "route_name": "Authored lookup",
 				"condition": "When a customer record is needed by id",
 				"sub_agent_step": map[string]interface{}{
-					"type": "regular", "id": stepContractAuthoredRouteID, "title": "Authored lookup",
+					"type": "scripted", "id": stepContractAuthoredRouteID, "title": "Authored lookup",
 					"description":          "Return the customer record for one id as JSON.",
 					"context_dependencies": []string{}, "context_output": "", "script_only": true,
 					"script_parameters": map[string]interface{}{

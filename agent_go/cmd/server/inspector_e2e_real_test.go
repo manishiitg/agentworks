@@ -71,7 +71,7 @@ func TestInspectorHTTPCapturesRealAnthropicEvents(t *testing.T) {
 	stepCtx := llmtypes.StepContext{
 		SessionID:     sessionID,
 		StepID:        "fetch-customer-data",
-		StepType:      "regular",
+		StepType:      "scripted",
 		Phase:         "execution",
 		StepName:      "Fetch customer data",
 		StepIndex:     1,

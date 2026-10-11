@@ -11,7 +11,7 @@ func TestBuildPromptHealthReportCountsNestedStepsAndTriggersReview(t *testing.T)
 			CommonStepFields: CommonStepFields{ID: "parent", Description: "parent description"},
 			PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "child", SubAgentStep: &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "child", Description: shared}}}},
 		},
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "other", Description: shared}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "other", Description: shared}},
 	}
 
 	report := BuildPromptHealthReport(steps)
@@ -36,10 +36,10 @@ func TestBuildPromptHealthReportCountsNestedStepsAndTriggersReview(t *testing.T)
 func TestBuildPromptHealthReportTriggersForBroadWarningDistribution(t *testing.T) {
 	steps := make([]PlanStepInterface, 0, 10)
 	for i := 0; i < 3; i++ {
-		steps = append(steps, &RegularPlanStep{CommonStepFields: CommonStepFields{ID: string(rune('a' + i)), Description: makeDescription(5_001)}})
+		steps = append(steps, &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: string(rune('a' + i)), Description: makeDescription(5_001)}})
 	}
 	for i := 0; i < 7; i++ {
-		steps = append(steps, &RegularPlanStep{CommonStepFields: CommonStepFields{ID: string(rune('k' + i)), Description: "small"}})
+		steps = append(steps, &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: string(rune('k' + i)), Description: "small"}})
 	}
 
 	report := BuildPromptHealthReport(steps)

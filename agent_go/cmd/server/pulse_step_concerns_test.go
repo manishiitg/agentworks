@@ -45,7 +45,7 @@ func TestCollectStepConcernsReadsBothSummaryKindsSinceTheWindow(t *testing.T) {
 	fresh := since.Add(2 * time.Hour)
 	later := since.Add(26 * time.Hour)
 
-	// Scripted/regular step: script stdout is the execution_result.
+	// Scripted/scripted step: script stdout is the execution_result.
 	writeStepSummary(t, filepath.Join(runs, "iteration-5", "default", "logs", "collect", "execution", "execution-final-summary.json"),
 		map[string]string{"step_id": "collect", "run_folder": "iteration-5", "execution_result": "done\nCONCERNS: prospect source returned 0 rows"}, fresh)
 	// Same concern again in a later run: grouped, counted twice.

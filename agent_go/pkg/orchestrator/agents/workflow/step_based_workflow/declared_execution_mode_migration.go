@@ -34,16 +34,16 @@ func (r *declaredModeMigrationResult) noOp() bool {
 }
 
 // migrateDeclaredExecutionModeInPlan makes the plan say explicitly what the
-// runtime already did (PLAT-287, half 1): a regular step without a declared
+// runtime already did (PLAT-287, half 1): a scripted step without a declared
 // scripted mode is the legacy agentic shape that the runtime normalizes to a
-// agent at execution time (shouldNormalizeRegularStepToAgent),
+// agent at execution time (shouldNormalizeScriptedStepToAgent),
 // so it becomes one on disk; a agent still declared scripted
-// (PLAT-280 drift) becomes regular. After this, every regular step in the
+// (PLAT-280 drift) becomes scripted. After this, every scripted step in the
 // plan is a declared scripted step, which is what lets a later release make
 // the plan type alone decide the model and delete the field.
 //
 // It deliberately does NOT strip declared_execution_mode from step_config:
-// today's runtime still reads it to tell a scripted regular step from a
+// today's runtime still reads it to tell a scripted step from a
 // legacy agentic one, so removing it here would turn every real scripted
 // step into a agent whose main.py never runs -- caught in review
 // before this ever ran anywhere. The field goes in the same release as the
@@ -52,15 +52,15 @@ func (r *declaredModeMigrationResult) noOp() bool {
 // Two passes: the first only looks for the one case this refuses to guess
 // about -- a step declared scripted with no learnings/<id>/main.py, which is
 // already broken -- so a refusal leaves the plan untouched. Idempotent: a
-// second run finds every regular step declared scripted and does nothing.
+// second run finds every scripted step declared scripted and does nothing.
 func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepConfig, scriptExists func(stepID string) bool) (*declaredModeMigrationResult, error) {
 	if plan == nil {
 		return nil, fmt.Errorf("plan is unavailable")
 	}
 	infos := append(collectAllSteps(plan.Steps), collectAllSteps(plan.OrphanSteps)...)
 
-	// Pre-1.0.38 semantics on purpose: a regular step counted as scripted
-	// only when its step_config declared it, so a regular step with no
+	// Pre-1.0.38 semantics on purpose: a scripted step counted as scripted
+	// only when its step_config declared it, so a scripted step with no
 	// declaration is a legacy agentic one that ran as a agent.
 	declaredScripted := func(stepID string) bool {
 		return MatchStepConfigByID(stepID, configs).legacyDeclared() == StepModeScripted
@@ -74,7 +74,7 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 			continue
 		}
 		switch step.(type) {
-		case *RegularPlanStep, *AgentPlanStep:
+		case *ScriptedPlanStep, *AgentPlanStep:
 			if declaredScripted(step.GetID()) && !scriptExists(step.GetID()) {
 				broken = append(broken, step.GetID())
 			}
@@ -84,7 +84,7 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 		return nil, fmt.Errorf("refusing to migrate: step(s) %s are declared scripted but have no learnings/<step-id>/main.py -- they are already broken, and this migration will not guess whether each should become a agent (change_step_type target_type=agent) or get its script written (update_scripted_step code=...); fix them first, then re-run", strings.Join(broken, ", "))
 	}
 
-	// Pass 2: rewrite plan types so every regular step is a declared scripted one.
+	// Pass 2: rewrite plan types so every scripted step is a declared scripted one.
 	result := &declaredModeMigrationResult{}
 	replace := func(stepID string, replacement PlanStepInterface) error {
 		replaced, _ := replaceStepRecursively(plan.Steps, stepID, replacement)
@@ -98,27 +98,27 @@ func migrateDeclaredExecutionModeInPlan(plan *PlanningResponse, configs []StepCo
 	}
 	for _, info := range infos {
 		switch step := info.Step.(type) {
-		case *RegularPlanStep:
+		case *ScriptedPlanStep:
 			if declaredScripted(step.GetID()) {
 				continue // a true scripted step: type and declaration agree
 			}
-			replacement := normalizeRegularStepToAgent(step)
+			replacement := normalizeScriptedStepToAgent(step)
 			if err := replace(step.GetID(), replacement); err != nil {
 				return nil, err
 			}
 			result.TypeChanges = append(result.TypeChanges, declaredModeTypeChange{
-				StepID: step.GetID(), From: string(StepTypeRegular), To: string(StepTypeAgent), before: step, after: replacement,
+				StepID: step.GetID(), From: string(StepTypeScripted), To: string(StepTypeAgent), before: step, after: replacement,
 			})
 		case *AgentPlanStep:
 			if !declaredScripted(step.GetID()) {
 				continue
 			}
-			replacement := normalizeAgentStepToRegular(step)
+			replacement := normalizeAgentStepToScripted(step)
 			if err := replace(step.GetID(), replacement); err != nil {
 				return nil, err
 			}
 			result.TypeChanges = append(result.TypeChanges, declaredModeTypeChange{
-				StepID: step.GetID(), From: string(StepTypeAgent), To: string(StepTypeRegular), before: step, after: replacement,
+				StepID: step.GetID(), From: string(StepTypeAgent), To: string(StepTypeScripted), before: step, after: replacement,
 			})
 		}
 	}
@@ -160,7 +160,7 @@ func createMigrateDeclaredExecutionModeExecutor(
 			return "", err
 		}
 		if result.noOp() {
-			return `{"status":"no_op","message":"Every regular step is already a declared scripted step and no agent is declared scripted; the plan already states each step's execution model."}`, nil
+			return `{"status":"no_op","message":"Every scripted step is already a declared scripted step and no agent is declared scripted; the plan already states each step's execution model."}`, nil
 		}
 
 		if err := validatePlanStepIDs(plan.Steps); err != nil {
@@ -180,7 +180,7 @@ func createMigrateDeclaredExecutionModeExecutor(
 		stepIDs := make([]string, 0, len(result.TypeChanges))
 		changes := make([]PlanFieldChange, 0, len(result.TypeChanges))
 		var deleted, added []json.RawMessage
-		toSequence, toRegular := 0, 0
+		toSequence, toScripted := 0, 0
 		for _, change := range result.TypeChanges {
 			stepIDs = append(stepIDs, change.StepID)
 			changes = append(changes, PlanFieldChange{StepID: change.StepID, Field: "type", OldValue: change.From, NewValue: change.To})
@@ -193,14 +193,14 @@ func createMigrateDeclaredExecutionModeExecutor(
 			if change.To == string(StepTypeAgent) {
 				toSequence++
 			} else {
-				toRegular++
+				toScripted++
 			}
 		}
 		logPlanChange(ctx, workspacePath, PlanChangelogEntry{
 			Tool: "migrate_declared_execution_mode",
 			Reason: fmt.Sprintf(
-				"Workflow contract v%s (PLAT-287, half 1): the plan type now states each step's execution model explicitly. %d legacy agentic regular step(s) made agent (the runtime already ran them as one), %d declared-scripted agent step(s) made regular; step_config.json untouched -- declared_execution_mode stays until the runtime stops reading it.",
-				workflowContractDeclaredExecutionModeRetiredVersionLabel, toSequence, toRegular,
+				"Workflow contract v%s (PLAT-287, half 1): the plan type now states each step's execution model explicitly. %d legacy agentic scripted step(s) made agent (the runtime already ran them as one), %d declared-scripted agent step(s) made scripted; step_config.json untouched -- declared_execution_mode stays until the runtime stops reading it.",
+				workflowContractDeclaredExecutionModeRetiredVersionLabel, toSequence, toScripted,
 			),
 			StepIDs:        stepIDs,
 			Changes:        changes,

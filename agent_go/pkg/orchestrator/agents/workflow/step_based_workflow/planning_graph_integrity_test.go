@@ -47,8 +47,8 @@ func TestValidatePlanStructureReportsEveryDanglingReference(t *testing.T) {
 			IfYesNextStepID: "missing-c",
 			IfNoNextStepID:  "end",
 		},
-		&RegularPlanStep{
-			Type:             StepTypeRegular,
+		&ScriptedPlanStep{
+			Type:             StepTypeScripted,
 			CommonStepFields: CommonStepFields{ID: "scripted"},
 			NextStepID:       "missing-d",
 		},

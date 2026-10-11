@@ -57,7 +57,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	if learningsAccessForGuard != LearningsAccessNone {
 		globalLearningsPath := filepath.Join(baseWorkspacePath, "learnings", GlobalLearningID)
 		readPaths = append(readPaths, globalLearningsPath)
-		// Unlike regular steps (which write learnings in a dedicated post-step turn),
+		// Unlike scripted steps (which write learnings in a dedicated post-step turn),
 		// the orchestrator writes its stores directly via the folder guard — same as it
 		// does for knowledgebase/notes below. Grant learnings write when access is read-write
 		// and the step's single access mode permits writes.
@@ -175,7 +175,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	// Agent steps have no scripted fast path. A fast_path_only request for one is a
 	// caller error rather than something to silently run through the LLM orchestrator.
 	if execCtx != nil && execCtx.SavedScriptOnly {
-		return false, "", fmt.Errorf("agent step %q does not support scripted execution; put deterministic delegation in a regular scripted step that calls its routes", stepID)
+		return false, "", fmt.Errorf("agent step %q does not support scripted execution; put deterministic delegation in a scripted step that calls its routes", stepID)
 	}
 
 	// Learnings read gate — default-on unless learnings_access="none" or routing/eval.
@@ -512,8 +512,8 @@ func routeStepTypeSummary(step PlanStepInterface) string {
 	switch step.StepType() {
 	case StepTypeAgent:
 		return "type: agent, stateful sequence worker"
-	case StepTypeRegular:
-		return "type: regular, stateless worker"
+	case StepTypeScripted:
+		return "type: scripted, stateless worker"
 	case StepTypeRouting:
 		return "type: routing"
 	case StepTypeHumanInput:
@@ -530,7 +530,7 @@ func routeStepBehaviorDetails(step PlanStepInterface) string {
 	switch step.StepType() {
 	case StepTypeAgent:
 		return "Stateful sequence worker. First call sends the configured item queue with the provided instructions as initial context. Later calls resume the same saved conversation and send instructions as the re-entry user message. Set agent_restart=true to archive the existing route session and replay the queue from the beginning."
-	case StepTypeRegular:
+	case StepTypeScripted:
 		return "Stateless worker. Each call executes the task as a normal one-off step."
 	default:
 		return fmt.Sprintf("Route step type: %s.", step.StepType())
@@ -541,7 +541,7 @@ func routeStepBehaviorDetails(step PlanStepInterface) string {
 //
 // Priority:
 //  1. step config ExecutionLLM — explicit override always wins (same knob used for
-//     regular step execution; sub-agents spawned by this orchestrator inherit it too)
+//     scripted step execution; sub-agents spawned by this orchestrator inherit it too)
 //  2. Tier 1 (High) — default for orchestrator (returns nil if tier resolver is unavailable)
 func (hcpo *StepBasedWorkflowOrchestrator) selectOrchestratorLLM(
 	ctx context.Context,
@@ -550,7 +550,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectOrchestratorLLM(
 	stepPath string,
 ) *orchestrator.LLMConfig {
 	// 1. Step config ExecutionLLM always takes highest precedence — one LLM knob
-	// covers regular step execution, todo-task orchestrator role, and sub-agents.
+	// covers scripted step execution, todo-task orchestrator role, and sub-agents.
 	if stepConfig != nil && stepConfig.ExecutionLLM != nil &&
 		stepConfig.ExecutionLLM.Provider != "" && stepConfig.ExecutionLLM.ModelID != "" {
 		hcpo.GetLogger().Info(fmt.Sprintf("🔧 [STEP OVERRIDE] Todo task orchestrator using step-config ExecutionLLM: %s/%s",
@@ -614,11 +614,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeGenericAgent(
 	useCodeExecutionMode := boolPtr(false)
 	todoIDPart := workflowSafeIDPart(response.TodoIDToExecute, "todo")
 
-	// Create a synthetic RegularPlanStep for the generic execution
+	// Create a synthetic ScriptedPlanStep for the generic execution
 	// Use the orchestrator's instructions and success criteria
 	genericStepID := fmt.Sprintf("generic-%s-%s", stepPath, todoIDPart)
-	genericStep := &RegularPlanStep{
-		Type: StepTypeRegular,
+	genericStep := &ScriptedPlanStep{
+		Type: StepTypeScripted,
 		CommonStepFields: CommonStepFields{
 			ID:            genericStepID,
 			Title:         taskTitle,
@@ -809,7 +809,7 @@ func cloneStepWithDelegationOverrides(
 	instructions string,
 ) (PlanStepInterface, error) {
 	switch s := step.(type) {
-	case *RegularPlanStep:
+	case *ScriptedPlanStep:
 		stepCopy := *s
 		applyDelegationOverridesToCommonFields(&stepCopy.CommonStepFields, instructions)
 		return &stepCopy, nil
@@ -901,9 +901,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeRoutedSubAgentStep(
 	}
 
 	sequenceExecutionStep := stepToExecute
-	if shouldNormalizeRegularStepToAgent(stepToExecute) {
-		sequenceExecutionStep = normalizeRegularStepToAgent(stepToExecute.(*RegularPlanStep))
-		hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing routed non-scripted regular step %q to the agent runtime", stepToExecute.GetID()))
+	if shouldNormalizeScriptedStepToAgent(stepToExecute) {
+		sequenceExecutionStep = normalizeScriptedStepToAgent(stepToExecute.(*ScriptedPlanStep))
+		hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing routed non-scripted step %q to the agent runtime", stepToExecute.GetID()))
 	}
 	if isAgentStep(sequenceExecutionStep) {
 		agentSequenceRestart, _ := ctx.Value(virtualtools.SubAgentAgentRestartKey).(bool)
@@ -1024,7 +1024,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	}
 
 	// Execute the sub-agent step using executeSingleStep
-	// This will include learning and prevalidation like regular orchestration sub-agents
+	// This will include learning and prevalidation like scripted orchestration sub-agents
 	var capturedHistory []llmtypes.MessageContent
 	// A run_full_workflow human_inputs entry keyed by this route's own step ID
 	// (as shown in the plan JSON's sub_agent_step.id) reaches this turn's

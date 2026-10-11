@@ -36,9 +36,9 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 			// script is never rewritten, like a Relay script node.
 			toolNames := map[string]string{}
 			for _, route := range s.PredefinedRoutes {
-				script, ok := route.SubAgentStep.(*RegularPlanStep)
+				script, ok := route.SubAgentStep.(*ScriptedPlanStep)
 				if !ok || !script.ScriptOnly {
-					return fmt.Errorf("Relay agent %q route %q must be a saved script (type regular, script_only: true); Relays do not support sub-agents", s.ID, route.RouteID)
+					return fmt.Errorf("Relay agent %q route %q must be a saved script (type scripted, script_only: true); Relays do not support sub-agents", s.ID, route.RouteID)
 				}
 				// Route ids become tool names (a-b and a_b both become a_b); two
 				// routes of one agent must not share one (PLAT-444).
@@ -53,7 +53,7 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 					return fmt.Errorf("Relay agent %q supports only authored user messages", s.ID)
 				}
 			}
-		case *RegularPlanStep:
+		case *ScriptedPlanStep:
 			if !s.ScriptOnly {
 				return fmt.Errorf("Relay script %q must set script_only to disable agent repair", s.ID)
 			}
@@ -111,7 +111,7 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 		switch s := step.(type) {
 		case *AgentPlanStep:
 			next = []string{s.NextStepID}
-		case *RegularPlanStep:
+		case *ScriptedPlanStep:
 			next = []string{s.NextStepID}
 		case *BranchPlanStep:
 			for _, route := range s.Routes {

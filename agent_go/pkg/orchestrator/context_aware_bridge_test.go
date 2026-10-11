@@ -187,7 +187,7 @@ func TestContextAwareBridgeUsesExecutionLocalContextForParallelChildren(t *testi
 
 	ctxA := WithEventContextOverride(context.Background(), "execution", 1, "child-a", "Child A", RichStepContext{
 		StepName:     "Child A",
-		StepType:     "regular",
+		StepType:     "scripted",
 		ParentStepID: "todo-parent",
 		TriggeredBy:  "todo_task_route",
 	})
@@ -225,10 +225,10 @@ func TestContextAwareBridgeUsesExecutionLocalContextForParallelChildren(t *testi
 
 	// Interleave the two contexts. Neither event may inherit the mutable global
 	// bridge state or the other child's metadata.
-	assertContext(ctxA, "child-a", "regular", "todo-parent")
+	assertContext(ctxA, "child-a", "scripted", "todo-parent")
 	bridge.SetOrchestratorContext("execution", 9, "unrelated-global", "other")
 	assertContext(ctxB, "child-b", "agent", "nested-todo")
-	assertContext(ctxA, "child-a", "regular", "todo-parent")
+	assertContext(ctxA, "child-a", "scripted", "todo-parent")
 }
 
 func TestContextAwareBridgeTimingCaptureIsExecutionLocal(t *testing.T) {

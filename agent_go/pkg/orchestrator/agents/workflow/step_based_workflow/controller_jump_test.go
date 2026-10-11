@@ -74,7 +74,7 @@ func TestNavigateToNextStepIDOutcomes(t *testing.T) {
 	}
 }
 
-func TestNavigateAfterRegularStepChainsAndConverges(t *testing.T) {
+func TestNavigateAfterScriptedStepChainsAndConverges(t *testing.T) {
 	hcpo := newJumpTestOrchestrator(t)
 	scriptA := regularStep("script-a")
 	scriptA.NextStepID = "script-b"
@@ -86,7 +86,7 @@ func TestNavigateAfterRegularStepChainsAndConverges(t *testing.T) {
 	progress := &StepProgress{}
 
 	i, startFrom := 0, 0
-	outcome, err := hcpo.navigateAfterRegularStep(context.Background(), scriptA, steps, progress, &i, &startFrom)
+	outcome, err := hcpo.navigateAfterScriptedStep(context.Background(), scriptA, steps, progress, &i, &startFrom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestNavigateAfterRegularStepChainsAndConverges(t *testing.T) {
 	}
 
 	i = 1
-	outcome, err = hcpo.navigateAfterRegularStep(context.Background(), scriptB, steps, progress, &i, &startFrom)
+	outcome, err = hcpo.navigateAfterScriptedStep(context.Background(), scriptB, steps, progress, &i, &startFrom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,14 +107,14 @@ func TestNavigateAfterRegularStepChainsAndConverges(t *testing.T) {
 
 	sequential := regularStep("sequential")
 	i = 0
-	outcome, err = hcpo.navigateAfterRegularStep(context.Background(), sequential, steps, progress, &i, &startFrom)
+	outcome, err = hcpo.navigateAfterScriptedStep(context.Background(), sequential, steps, progress, &i, &startFrom)
 	if err != nil || outcome != "none" || i != 0 {
 		t.Fatalf("omitted next_step_id must preserve sequential execution: outcome=%q i=%d err=%v", outcome, i, err)
 	}
 
 	terminal := regularStep("terminal")
 	terminal.NextStepID = "end"
-	outcome, err = hcpo.navigateAfterRegularStep(context.Background(), terminal, steps, progress, &i, &startFrom)
+	outcome, err = hcpo.navigateAfterScriptedStep(context.Background(), terminal, steps, progress, &i, &startFrom)
 	if err != nil || outcome != "end" {
 		t.Fatalf("end navigation = %q, err=%v", outcome, err)
 	}

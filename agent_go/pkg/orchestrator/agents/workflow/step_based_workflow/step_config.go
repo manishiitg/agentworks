@@ -542,7 +542,7 @@ func ApplyStepConfigFromFile(
 		if agentConfigs == nil {
 			// Need to set AgentConfigs on the step - this requires type assertion
 			switch s := step.(type) {
-			case *RegularPlanStep:
+			case *ScriptedPlanStep:
 				s.AgentConfigs = matchedConfig
 			case *HumanInputPlanStep:
 				s.AgentConfigs = matchedConfig
@@ -574,7 +574,7 @@ func ApplyStepConfigFromFile(
 		if currentConfigs == nil {
 			// Set overrides as the config
 			switch s := step.(type) {
-			case *RegularPlanStep:
+			case *ScriptedPlanStep:
 				s.AgentConfigs = overrides
 			case *HumanInputPlanStep:
 				s.AgentConfigs = overrides

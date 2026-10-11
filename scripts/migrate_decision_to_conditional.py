@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Migrate `decision` step type to `regular` + `conditional` pair.
+"""Migrate `decision` step type to `scripted` + `conditional` pair.
 
 Each decision step:
   { id, title, description, success_criteria, context_dependencies,
@@ -8,7 +8,7 @@ Each decision step:
 
 becomes two steps inserted consecutively in the plan:
 
-  1. regular: id=<orig>, keeps description/success_criteria/context_deps/
+  1. scripted: id=<orig>, keeps description/success_criteria/context_deps/
      context_output/validation_schema — it's the "do the work" half.
 
   2. conditional: id=<orig>-route, title="Route: <orig title>",
@@ -17,7 +17,7 @@ becomes two steps inserted consecutively in the plan:
      if_true_next_step_id=<orig>, if_false_next_step_id=<orig>.
      Empty if_true_steps/if_false_steps arrays — the ID fields drive routing.
 
-Upstream steps that pointed to <orig>'s ID still flow into <orig> (the regular
+Upstream steps that pointed to <orig>'s ID still flow into <orig> (the scripted
 half). Execution proceeds in array order → <orig>-route runs next and routes.
 
 Run:
@@ -60,9 +60,9 @@ def migrate_steps(steps):
         orig_id = step["id"]
         route_id = f"{orig_id}-route"
 
-        # Regular half: strip decision-only fields, keep execution fields.
-        regular = {
-            "type": "regular",
+        # Scripted half: strip decision-only fields, keep execution fields.
+        scripted = {
+            "type": "scripted",
             "id": orig_id,
             "title": step.get("title", ""),
             "description": step.get("description", ""),
@@ -73,10 +73,10 @@ def migrate_steps(steps):
             "loop_condition": "",
         }
         if "validation_schema" in step and step["validation_schema"] is not None:
-            regular["validation_schema"] = step["validation_schema"]
+            scripted["validation_schema"] = step["validation_schema"]
 
         # Conditional half: routing only. The evaluation question can reference
-        # either the regular half's output OR the original inputs (the decision
+        # either the scripted half's output OR the original inputs (the decision
         # step had both in scope), so mirror both into the conditional's deps.
         context_output = step.get("context_output", "")
         orig_deps = step.get("context_dependencies") or []
@@ -100,7 +100,7 @@ def migrate_steps(steps):
             "if_false_next_step_id": step.get("if_false_next_step_id", ""),
         }
 
-        new_steps.append(regular)
+        new_steps.append(scripted)
         new_steps.append(conditional)
         migrations.append((orig_id, route_id))
 
@@ -150,9 +150,9 @@ def main():
         migrations, src, out = result
         total += len(migrations)
         wf = src.split("/Workflow/")[1].split("/")[0]
-        print(f"[{wf}] {len(migrations)} decision → regular+conditional")
+        print(f"[{wf}] {len(migrations)} decision → scripted+conditional")
         for orig_id, route_id in migrations:
-            print(f"    {orig_id} → {orig_id} (regular) + {route_id} (conditional)")
+            print(f"    {orig_id} → {orig_id} (scripted) + {route_id} (conditional)")
         print(f"    wrote: {out}")
 
     if total == 0:

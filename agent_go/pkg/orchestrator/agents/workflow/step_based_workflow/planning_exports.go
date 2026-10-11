@@ -163,7 +163,7 @@ You are a **read-only** execution analysis assistant. Help the user understand w
 - **Todo task progress**: '{{.WorkspacePath}}/runs/{iteration}/{group}/execution/{step-id}/tasks.md'
 
 ## 📖 STEP FOLDER NAMING
-- Regular steps: '{step-id}/' using the declared ID from planning/plan.json
+- Scripted steps: '{step-id}/' using the declared ID from planning/plan.json
 - Conversational specialist calls: '{parent-step}/agents/{route-id}/calls/{call-id}/'
 - Generic agent calls: '{parent-step}/agents/generic/calls/{call-id}/'
 - Scripted Agent items: '{parent-step}/scripts/items/{item-id}/calls/{call-id}/'

@@ -229,7 +229,7 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 	if err := writeJSON(filepath.Join(workspaceDisk, "planning", "plan.json"), map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				// Agents are the agentic step type. Regular steps
+				// Agents are the agentic step type. Scripted steps
 				// now require a saved script and do not exercise CLI completion.
 				"type": "agent", "id": "p0-first", "title": "First P0 turn",
 				"description": "Create the first MCP bridge proof and complete the turn.",

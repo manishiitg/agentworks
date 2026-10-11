@@ -20,10 +20,10 @@ it('loads plan/config concurrently, shares requests and ignores a late previous 
   expect(agentApi.getPlannerFileContent).toHaveBeenCalledTimes(2)
   expect(pending.has('Workflow/slow-test/planning/step_config.json')).toBe(true)
   await act(async()=>root.render(<><Probe id="one" path="Workflow/fast-test"/><Probe id="two" path="Workflow/slow-test"/></>))
-  await act(async()=>{pending.get('Workflow/fast-test/planning/plan.json')!(response([{id:'fast',type:'regular',title:'Fast'}]));pending.get('Workflow/fast-test/planning/step_config.json')!(response([]))})
+  await act(async()=>{pending.get('Workflow/fast-test/planning/plan.json')!(response([{id:'fast',type:'scripted',title:'Fast'}]));pending.get('Workflow/fast-test/planning/step_config.json')!(response([]))})
   expect(results.one.loading).toBe(false)
   expect(results.one.plan?.steps[0].id).toBe('fast')
-  await act(async()=>{pending.get('Workflow/slow-test/planning/plan.json')!(response([{id:'slow',type:'regular',title:'Slow'}]));pending.get('Workflow/slow-test/planning/step_config.json')!(response([]))})
+  await act(async()=>{pending.get('Workflow/slow-test/planning/plan.json')!(response([{id:'slow',type:'scripted',title:'Slow'}]));pending.get('Workflow/slow-test/planning/step_config.json')!(response([]))})
   expect(results.one.plan?.steps[0].id).toBe('fast')
   expect(results.two.loading).toBe(false)
   expect(results.two.plan?.steps[0].id).toBe('slow')
@@ -49,7 +49,7 @@ it('keeps the current graph visible while a live refresh reads the edited plan',
  vi.mocked(agentApi.getPlannerFileContent).mockImplementation(path => {
   if (path.endsWith('/step_config.json')) return Promise.resolve({success:true,data:{content:'{"steps":[]}'}} as never)
   planReads += 1
-  if (planReads === 1) return Promise.resolve({success:true,data:{content:'{"steps":[{"id":"old","type":"regular","title":"Old"}]}'}} as never)
+  if (planReads === 1) return Promise.resolve({success:true,data:{content:'{"steps":[{"id":"old","type":"scripted","title":"Old"}]}'}} as never)
   return new Promise(resolve => { resolveFresh = resolve })
  })
  let data: ReturnType<typeof usePlanData>
@@ -62,14 +62,14 @@ it('keeps the current graph visible while a live refresh reads the edited plan',
   await act(async()=>{refreshed=data!.refresh()})
   expect(data!.plan?.steps[0].id).toBe('old')
   expect(data!.loading).toBe(false)
-  await act(async()=>{resolveFresh!({success:true,data:{content:'{"steps":[{"id":"new","type":"regular","title":"New"}]}'}});await refreshed})
+  await act(async()=>{resolveFresh!({success:true,data:{content:'{"steps":[{"id":"new","type":"scripted","title":"New"}]}'}});await refreshed})
   expect(data!.plan?.steps[0].id).toBe('new')
  }finally{act(()=>root.unmount())}
 })
 
 // A successful save must not read back the cached pre-save plan.
 it('reloads persisted edits, additions and deletions instead of the pre-write cache', async () => {
- let stored = [{id:'original',type:'regular' as const,title:'Before'}]
+ let stored = [{id:'original',type:'scripted' as const,title:'Before'}]
  vi.mocked(agentApi.getPlannerFileContent).mockImplementation(async path => ({
   success:true,data:{content:JSON.stringify({steps:path.endsWith('/plan.json') ? stored : []})},
  }))
@@ -78,7 +78,7 @@ it('reloads persisted edits, additions and deletions instead of the pre-write ca
   return {success:true,message:'Saved'}
  })
  vi.mocked(agentApi.addStep).mockImplementation(async () => {
-  stored = [...stored,{id:'added',type:'regular',title:'Added'}]
+  stored = [...stored,{id:'added',type:'scripted',title:'Added'}]
   return {success:true,message:'Added'}
  })
  vi.mocked(agentApi.deleteStep).mockImplementation(async () => {
@@ -93,7 +93,7 @@ it('reloads persisted edits, additions and deletions instead of the pre-write ca
   expect(data!.plan?.steps[0].title).toBe('Before')
   await act(async()=>{await data!.updateStep(0,{title:'After'})})
   expect(data!.plan?.steps[0].title).toBe('After')
-  await act(async()=>{await data!.addStep({id:'added',type:'regular',title:'Added',description:''})})
+  await act(async()=>{await data!.addStep({id:'added',type:'scripted',title:'Added',description:''})})
   expect(data!.plan?.steps.map(step=>step.id)).toEqual(['original','added'])
   await act(async()=>{await data!.deleteStep(0)})
   expect(data!.plan?.steps.map(step=>step.id)).toEqual(['added'])

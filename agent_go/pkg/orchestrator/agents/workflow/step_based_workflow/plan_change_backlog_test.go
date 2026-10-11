@@ -246,7 +246,7 @@ func TestWrongStepTypeRefusalNamesTheRightTool(t *testing.T) {
 		StepTypeAgent:      "update_agent_step",
 		StepTypeRouting:    "update_routing_step",
 		StepTypeHumanInput: "update_human_input_step",
-		StepTypeRegular:    "update_scripted_step",
+		StepTypeScripted:   "update_scripted_step",
 	} {
 		if got := updateToolForStepType(stepType); got != want {
 			t.Fatalf("step type %q maps to %q, want %q", stepType, got, want)

@@ -59,10 +59,10 @@ func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 		linkGammaPath + "/product.json": `{"schema_version":1,"product":"work","id":"gamma","title":"Gamma","session_id":"sess-gamma","triggers":[]}`,
 
 		manifestPath("Workflow/reports"):             workflow("Reports", &WorkflowAccess{Owners: []string{"owner"}}),
-		"Workflow/reports/planning/plan.json":        `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/reports/planning/plan.json":        `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/reports/variables/variables.json":  `{"variables":[],"groups":[{"name":"default"}]}`,
 		manifestPath("Workflow/pipeline"):            workflow("Pipeline", &WorkflowAccess{Owners: []string{"owner"}}),
-		"Workflow/pipeline/planning/plan.json":       `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/pipeline/planning/plan.json":       `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/pipeline/variables/variables.json": `{"variables":[],"groups":[{"name":"default"}]}`,
 		manifestPath("Workflow/shared"):              workflow("Shared", &WorkflowAccess{Owners: []string{"other"}, Readers: []string{"owner"}}),
 	}}

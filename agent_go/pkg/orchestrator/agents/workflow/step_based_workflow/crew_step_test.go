@@ -130,7 +130,7 @@ func TestCrewStepNextStepIDReferenceValidation(t *testing.T) {
 			CrewProfileID:    "work", CrewProjectID: "project-a", TriggerID: "trig-1",
 			Instruction: "Review it", NextStepID: "ship",
 		},
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "ship", Title: "Ship"}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "ship", Title: "Ship"}},
 	}}
 	if err := ValidatePlanStructure(good); err != nil {
 		t.Fatalf("valid crew next_step_id rejected: %v", err)
@@ -159,7 +159,7 @@ func TestPopulateRuntimeFieldsCrew(t *testing.T) {
 
 func TestWebhookStepIndexCrew(t *testing.T) {
 	steps := []PlanStepInterface{
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "first", Title: "First"}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "first", Title: "First"}},
 		&CrewPlanStep{CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review"}},
 	}
 	idx, err := WebhookStepIndex(steps, "crew-1")
@@ -190,7 +190,7 @@ func testCrewToolFiles(seedPlan string) (map[string]string, func(context.Context
 }
 
 func TestAddCrewStepTool(t *testing.T) {
-	seed := `{"objective": "test", "steps": [{"type": "regular", "id": "first", "title": "First"}]}`
+	seed := `{"objective": "test", "steps": [{"type": "scripted", "id": "first", "title": "First"}]}`
 	files, readFile, writeFile := testCrewToolFiles(seed)
 	moveFile := func(context.Context, string, string) error { return nil }
 	add := createAddCrewStepExecutor("Workflow/test", loggerv2.NewNoop(), readFile, writeFile, moveFile)
@@ -228,7 +228,7 @@ func TestAddCrewStepTool(t *testing.T) {
 }
 
 func TestAddCrewStepToolRejectsInvalid(t *testing.T) {
-	seed := `{"objective": "test", "steps": [{"type": "regular", "id": "first", "title": "First"}]}`
+	seed := `{"objective": "test", "steps": [{"type": "scripted", "id": "first", "title": "First"}]}`
 	_, readFile, writeFile := testCrewToolFiles(seed)
 	moveFile := func(context.Context, string, string) error { return nil }
 	add := createAddCrewStepExecutor("Workflow/test", loggerv2.NewNoop(), readFile, writeFile, moveFile)
@@ -280,7 +280,7 @@ func TestUpdateCrewStepTool(t *testing.T) {
 }
 
 func TestUpdateCrewStepToolRejectsNonCrew(t *testing.T) {
-	seed := `{"objective": "test", "steps": [{"type": "regular", "id": "first", "title": "First"}]}`
+	seed := `{"objective": "test", "steps": [{"type": "scripted", "id": "first", "title": "First"}]}`
 	_, readFile, writeFile := testCrewToolFiles(seed)
 	update := createUpdateCrewStepExecutor("Workflow/test", loggerv2.NewNoop(), readFile, writeFile)
 	_, err := update(context.Background(), map[string]interface{}{
@@ -425,7 +425,7 @@ func TestExecuteCrewStep(t *testing.T) {
 		variableValues:    map[string]string{"pr": "87"},
 		executionOptions:  &ExecutionOptions{CrewRunner: fake},
 	}
-	producer := &RegularPlanStep{CommonStepFields: CommonStepFields{ID: "step-pr", Title: "Prepare", ContextOutput: "pr.json"}}
+	producer := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "step-pr", Title: "Prepare", ContextOutput: "pr.json"}}
 	crew := &CrewPlanStep{
 		Type:             StepTypeCrew,
 		CommonStepFields: CommonStepFields{ID: "crew-1", Title: "Review", ContextDependencies: []string{"pr.json"}},

@@ -219,9 +219,9 @@ When the user runs a step, briefly note the highest-priority improvement needed.
 
 ### 7. Execution Modes: Agentic vs Scripted
 
-A step's execution mode is its plan type — `regular` is scripted, `agent` is agentic. Create with `add_step` / `add_step`; move an existing step between the two with **change_step_type(step_id, target_type="scripted"|"agent", reason)** — never via `update_step_config`:
+A step's execution mode is its plan type — `scripted` is scripted, `agent` is agentic. Create with `add_step` / `add_step`; move an existing step between the two with **change_step_type(step_id, target_type="scripted"|"agent", reason)** — never via `update_step_config`:
 
-- **Scripted** (`regular` type): Agent writes a reusable `main.py` that is saved and tried first on future runs (0 LLM tokens when stable). If the saved script fails, the LLM repairs it. This is the default execution mode for deterministic API/SDK calls, CLI commands, known pagination, data fetching, stable parsing/normalization/transforms, and mechanical persistence. Create or move that work to scripted immediately; no run-count gate applies to mode selection. The 10+-scenario-covering-runs evidence gates only *trusting and freezing* the script with `lock_code`.
+- **Scripted** (`scripted` type): Agent writes a reusable `main.py` that is saved and tried first on future runs (0 LLM tokens when stable). If the saved script fails, the LLM repairs it. This is the default execution mode for deterministic API/SDK calls, CLI commands, known pagination, data fetching, stable parsing/normalization/transforms, and mechanical persistence. Create or move that work to scripted immediately; no run-count gate applies to mode selection. The 10+-scenario-covering-runs evidence gates only *trusting and freezing* the script with `lock_code`.
 
   **Keep scripted steps coherent, not microscopic.** A good scripted fetcher owns one source/auth/retry/output contract and may batch several related endpoints, CLI commands, pagination passes, and transforms before writing its authoritative rows/artifact. Do not create one script per endpoint or tiny transform. Do not cram adaptive judgment or a branching business workflow into `main.py`; feed the validated deterministic output to one large agentic `agent` instead.
 
@@ -287,7 +287,7 @@ granular debugging can help choose boundaries **after** eligibility is proven;
 none is sufficient by itself. **A fixed child set and order does not justify adaptive routes.**
 
 **When NOT to add routes:**
-- Fixed API/SDK/CLI/data acquisition and stable transforms — use coherent scripted regular fetchers
+- Fixed API/SDK/CLI/data acquisition and stable transforms — use coherent scripted fetchers
 - One substantial reasoning outcome with same-context verification and repair — use one large agent
 - A known linear checklist whose items share one output/retry boundary — keep it inside the owning step rather than delegating micro-tasks
 - Known independent fixed work that can be expressed as explicit plan steps and dependencies

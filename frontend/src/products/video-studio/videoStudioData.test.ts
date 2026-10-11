@@ -47,7 +47,7 @@ describe('Video Studio workspace data', () => {
       id: 'route', type: 'routing', title: 'Route', routes: [
         { route_id: 'cinematic', route_name: 'Cinematic', next_step_id: 'story' },
       ],
-    }, { id: 'story', type: 'regular', title: 'Story' }] }))
+    }, { id: 'story', type: 'scripted', title: 'Story' }] }))
 
     expect(steps).toHaveLength(2)
     expect(steps[0].routes?.[0]).toEqual({ id: 'cinematic', title: 'Cinematic', nextStepId: 'story' })

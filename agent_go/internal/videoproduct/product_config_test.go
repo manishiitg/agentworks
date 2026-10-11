@@ -160,14 +160,14 @@ func TestVideoStudioIsPinnedToClaudeCodeWithoutProviderChoices(t *testing.T) {
 
 // Plan-authoring guidance (frontend/src/commands/builtin-commands.tsx): use
 // agent "for every conversational, judgment-heavy, browser-driven, or
-// adaptive step, even when it needs only one message. Non-scripted regular steps
+// adaptive step, even when it needs only one message. Non-scripted scripted steps
 // are unsupported." Every production stage here is exactly that — writing a
 // brief, a storyboard, a design, a critique — none is a deterministic script,
-// so none qualifies for `regular` (which since PLAT-287 means scripted).
+// so none qualifies for `scripted` (which since PLAT-287 means scripted).
 //
-// They previously authored as `regular` and ran only because the runtime
-// rewrites non-scripted regular steps into this same shape
-// (normalizeRegularStepToAgent), which left the stored plan
+// They previously authored as `scripted` and ran only because the runtime
+// rewrites non-scripted scripted steps into this same shape
+// (normalizeScriptedStepToAgent), which left the stored plan
 // describing an execution model that no longer exists and forced the plan UI to
 // reconstruct the real one.
 func TestGeneratedPlanAuthorsStagesAsAgents(t *testing.T) {

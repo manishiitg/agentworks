@@ -48,7 +48,7 @@ func gmailTriggerFixture(t *testing.T) (*StreamingAPI, context.Context, *mockWor
 	configRaw, _ := json.Marshal(config)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		"Workflow/mail/workflow.json":            string(raw),
-		"Workflow/mail/planning/plan.json":       `{"steps":[{"type":"routing","id":"triage","title":"Choose work","routing_question":"Which?","routes":[{"route_id":"support","route_name":"Support","next_step_id":"work"},{"route_id":"billing","route_name":"Billing","next_step_id":"work"}]},{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/mail/planning/plan.json":       `{"steps":[{"type":"routing","id":"triage","title":"Choose work","routing_question":"Which?","routes":[{"route_id":"support","route_name":"Support","next_step_id":"work"},{"route_id":"billing","route_name":"Billing","next_step_id":"work"}]},{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/mail/variables/variables.json": `{"groups":[{"name":"prod"}]}`,
 		"config/gmail-config.json":               string(configRaw),
 	}}
@@ -201,7 +201,7 @@ func TestGmailSavedBindingFailsClosedAndRejectsPublicWebhook(t *testing.T) {
 		t.Fatalf("email changed execution: %+v %v", opts, err)
 	}
 	mock.mu.Lock()
-	mock.files["Workflow/mail/planning/plan.json"] = `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`
+	mock.files["Workflow/mail/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`
 	mock.mu.Unlock()
 	if _, _, err := api.gmailWorkflowTrigger(ctx, route); err == nil {
 		t.Fatal("deleted route dispatched")

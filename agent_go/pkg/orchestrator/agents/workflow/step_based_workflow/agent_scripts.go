@@ -53,7 +53,7 @@ func validateAgentScriptItem(item AgentItem) error {
 
 type resolvedSequenceScript struct {
 	Call AgentScriptCall
-	Step *RegularPlanStep
+	Step *ScriptedPlanStep
 }
 
 func resolveSequenceScripts(item AgentItem, plan *PlanningResponse) ([]resolvedSequenceScript, error) {
@@ -71,9 +71,9 @@ func resolveSequenceScripts(item AgentItem, plan *PlanningResponse) ([]resolvedS
 	}
 	resolved := make([]resolvedSequenceScript, 0, len(item.ScriptedSteps))
 	for _, call := range item.ScriptedSteps {
-		step, ok := orphans[call.StepID].(*RegularPlanStep)
+		step, ok := orphans[call.StepID].(*ScriptedPlanStep)
 		if !ok || !isScriptedStep(step, step.AgentConfigs) {
-			return nil, fmt.Errorf("scripted item %q call %q: %q must reference a scripted regular step in orphan_steps; agentic workers are not supported", item.ID, call.ID, call.StepID)
+			return nil, fmt.Errorf("scripted item %q call %q: %q must reference a scripted step in orphan_steps; agentic workers are not supported", item.ID, call.ID, call.StepID)
 		}
 		if step.ValidationSchema == nil || (len(step.ValidationSchema.Files) == 0 && len(step.ValidationSchema.DB) == 0) {
 			return nil, fmt.Errorf("scripted step %q requires a non-empty validation_schema", step.ID)

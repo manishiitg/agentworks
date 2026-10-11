@@ -165,7 +165,7 @@ evaluation steps keep their Medium default. Existing explicit model and tier
 settings remain authoritative. Never silently replace a user pin or treat a
 historical `preferred_execution_tier` in learning metadata as current configuration.
 
-At a regular review or a meaningful quality/cost/latency change, select only steps
+At a scripted review or a meaningful quality/cost/latency change, select only steps
 worth investigating. Read `planning/step_config.json` and workflow LLM roles, then use
 `query_workflow_costs` plus execution/validation/evaluation records to compare the
 actual model, output quality, retries, duration, tokens and cost on representative

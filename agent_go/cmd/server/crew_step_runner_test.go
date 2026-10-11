@@ -435,7 +435,7 @@ func TestPreflightCrewSteps(t *testing.T) {
 	if err := preflightCrewSteps(ctx, unattached, "owner", "Workflow/wf1"); err == nil || !strings.Contains(err.Error(), "not attached") {
 		t.Fatalf("unattached plan err = %v, want attachment failure", err)
 	}
-	plain := `{"objective":"t","steps":[{"type":"regular","id":"a","title":"A"}]}`
+	plain := `{"objective":"t","steps":[{"type":"scripted","id":"a","title":"A"}]}`
 	if err := preflightCrewSteps(ctx, testPreflightWorkspace(t, plain, ""), "owner", "Workflow/wf1"); err != nil {
 		t.Fatalf("crew-free plan rejected: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestPreflightCrewSteps(t *testing.T) {
 
 func TestPreflightCrewAttachmentsWithoutCrewSteps(t *testing.T) {
 	ctx := context.Background()
-	plain := `{"objective":"t","steps":[{"type":"regular","id":"a","title":"A"}]}`
+	plain := `{"objective":"t","steps":[{"type":"scripted","id":"a","title":"A"}]}`
 	// A healthy attachment on a crew-free plan passes: downstream steps
 	// may read through the alias.
 	if err := preflightCrewSteps(ctx, testPreflightWorkspace(t, plain, testPreflightManifestAttached), "owner", "Workflow/wf1"); err != nil {

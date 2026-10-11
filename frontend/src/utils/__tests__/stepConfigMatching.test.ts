@@ -11,20 +11,20 @@ import {
 // PLAT-287: a step's execution model is decided by its plan type, not by the
 // retired agent_configs.declared_execution_mode key. The key may still be
 // present until a workflow's v1.0.39 migration strips it, and only one reading
-// of it survives: a `regular` step still declaring "agentic" is a legacy
+// of it survives: a `scripted` step still declaring "agentic" is a legacy
 // agentic step the runtime runs as a sequence.
 describe('effectiveExecutionMode', () => {
-  it('treats a regular step as scripted when no legacy key is present', () => {
-    const step: PlanStep = { id: 'fetch', type: 'regular', title: 'Fetch', description: 'Fetch prices.' }
+  it('treats a scripted step as scripted when no legacy key is present', () => {
+    const step: PlanStep = { id: 'fetch', type: 'scripted', title: 'Fetch', description: 'Fetch prices.' }
     expect(effectiveExecutionMode(step)).toBe('scripted')
     expect(runsAsAgent(step)).toBe(false)
     expect(configuredAgentItems(step)).toEqual([])
   })
 
-  it('keeps a regular step with the legacy "agentic" key as a sequence-run agentic step', () => {
+  it('keeps a scripted step with the legacy "agentic" key as a sequence-run agentic step', () => {
     const step: PlanStep = {
       id: 'judge',
-      type: 'regular',
+      type: 'scripted',
       title: 'Judge',
       description: 'Judge the result.',
       agent_configs: { declared_execution_mode: 'agentic', declared_execution_mode_reason: 'needs judgment' },
@@ -36,8 +36,8 @@ describe('effectiveExecutionMode', () => {
   })
 
   it('canonicalises the pre-rename legacy values the way the backend did', () => {
-    const codeExec: PlanStep = { id: 'a', type: 'regular', title: 'A', description: 'a', agent_configs: { declared_execution_mode: 'code_exec' } }
-    const learnCode: PlanStep = { id: 'b', type: 'regular', title: 'B', description: 'b', agent_configs: { declared_execution_mode: 'learn_code' } }
+    const codeExec: PlanStep = { id: 'a', type: 'scripted', title: 'A', description: 'a', agent_configs: { declared_execution_mode: 'code_exec' } }
+    const learnCode: PlanStep = { id: 'b', type: 'scripted', title: 'B', description: 'b', agent_configs: { declared_execution_mode: 'learn_code' } }
     expect(effectiveExecutionMode(codeExec)).toBe('agentic')
     expect(effectiveExecutionMode(learnCode)).toBe('scripted')
   })

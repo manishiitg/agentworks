@@ -55,7 +55,7 @@ func TestRelayGrouplessChainAndResumeRealWorkspace(t *testing.T) {
 	write("webhooks/deliveries/sample.json", `{}`)
 	write("workflow.json", `{"kind":"relay","code_layout_version":1}`)
 	write("variables/variables.json", `{"variables":[{"name":"INPUT","value":"{}"},{"name":"PREFIX","value":"Hello"}]}`)
-	write("planning/plan.json", `{"steps":[{"type":"regular","id":"first","title":"First","description":"Create greeting","script_only":true,"next_step_id":"second","context_output":"result.json"},{"type":"regular","id":"second","title":"Second","description":"Return greeting","script_only":true,"context_dependencies":["result.json"]}]}`)
+	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"first","title":"First","description":"Create greeting","script_only":true,"next_step_id":"second","context_output":"result.json"},{"type":"scripted","id":"second","title":"Second","description":"Return greeting","script_only":true,"context_dependencies":["result.json"]}]}`)
 	write("planning/step_config.json", `{"steps":[{"id":"first","agent_configs":{"lock_code":true}},{"id":"second","agent_configs":{"lock_code":true}}]}`)
 	write("code/first/main.py", `import json, os
 from pathlib import Path

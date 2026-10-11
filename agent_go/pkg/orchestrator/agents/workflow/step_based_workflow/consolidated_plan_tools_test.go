@@ -242,7 +242,7 @@ func TestConsolidatedConversionRetainsNativeRestrictions(t *testing.T) {
 	}
 	var after PlanningResponse
 	_ = json.Unmarshal([]byte(f.files[externalPlanTestWorkspace+"/planning/plan.json"]), &after)
-	if after.Steps[0].GetID() != "fetch" || after.Steps[0].StepType() != StepTypeRegular {
+	if after.Steps[0].GetID() != "fetch" || after.Steps[0].StepType() != StepTypeScripted {
 		t.Fatal("conversion lost identity or type")
 	}
 }

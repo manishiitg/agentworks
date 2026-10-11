@@ -92,8 +92,8 @@ func TestScriptedStepInvokedAsOrchestratorRouteReceivesDelegationEndToEnd(t *tes
 	}
 	hcpo.codeLayoutVersion.Store(1)
 
-	child := &RegularPlanStep{
-		Type: StepTypeRegular,
+	child := &ScriptedPlanStep{
+		Type: StepTypeScripted,
 		CommonStepFields: CommonStepFields{
 			ID:    "scripted-child",
 			Title: "Scripted child",

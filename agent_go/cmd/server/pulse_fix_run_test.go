@@ -16,7 +16,7 @@ func TestPulseFixRunWorklistMakesTechnicalDue(t *testing.T) {
 	if err := os.MkdirAll(planningDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(planningDir, "plan.json"), []byte(`{"steps":[{"id":"step-a","type":"regular"}]}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(planningDir, "plan.json"), []byte(`{"steps":[{"id":"step-a","type":"scripted"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(planningDir, "step_config.json"), []byte(`{"steps":[{"id":"step-a"}]}`), 0o644); err != nil {

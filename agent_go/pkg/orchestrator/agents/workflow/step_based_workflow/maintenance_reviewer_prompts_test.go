@@ -66,7 +66,7 @@ func TestReviewPlanPromptPrefersCoherentAgenticSteps(t *testing.T) {
 		"Give the first work item the whole outcome",
 		"tiny sequence item per routine action",
 		"Separate deterministic acquisition from agentic processing",
-		"scripted regular fetcher steps",
+		"scripted fetcher steps",
 		"one-scripted-step-per-endpoint fragmentation",
 		"run-specific proof/provenance",
 		"evidence-based double-check and repair turns",

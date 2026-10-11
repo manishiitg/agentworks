@@ -52,10 +52,10 @@ describe('getStepLatestError', () => {
 
 describe('saved script execution status', () => {
   it('shows a failed script as failed even when it stops before validation', () => {
-    expect(getStepStatus({ type: 'regular', executions: [{ fast_path: true, content: { success: false, exit_code: 1, error: 'script failed' } }], validations: [] } as never)).toBe('failed')
+    expect(getStepStatus({ type: 'scripted', executions: [{ fast_path: true, content: { success: false, exit_code: 1, error: 'script failed' } }], validations: [] } as never)).toBe('failed')
   })
 
   it('does not turn a recovered agent attempt into a failed step', () => {
-    expect(getStepStatus({ type: 'regular', executions: [{ content: { success: false } }, { content: { success: true } }], validations: [{ content: { execution_status: 'COMPLETED' } }] } as never)).toBe('completed')
+    expect(getStepStatus({ type: 'scripted', executions: [{ content: { success: false } }, { content: { success: true } }], validations: [{ content: { execution_status: 'COMPLETED' } }] } as never)).toBe('completed')
   })
 })

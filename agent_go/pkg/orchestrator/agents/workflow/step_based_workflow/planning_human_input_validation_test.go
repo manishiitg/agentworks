@@ -25,9 +25,9 @@ func planWith(steps ...PlanStepInterface) *PlanningResponse {
 	return &PlanningResponse{Steps: steps}
 }
 
-func regularStep(id string) *RegularPlanStep {
-	return &RegularPlanStep{
-		Type: StepTypeRegular,
+func regularStep(id string) *ScriptedPlanStep {
+	return &ScriptedPlanStep{
+		Type: StepTypeScripted,
 		CommonStepFields: CommonStepFields{
 			ID:    id,
 			Title: id,

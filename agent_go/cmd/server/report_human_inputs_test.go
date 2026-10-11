@@ -397,7 +397,7 @@ func TestAnsweredGoalAdvisorPlanProposalCarriesContext(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	workspacePath := "Workflow/proposal"
-	proposalContext := "Proposal: add a validation step before delivery. Exact edits: add regular step validate-offer after draft-offer; update delivery dependency. Rationale: two clean runs still sent weak offers. Expected impact: fewer off-goal deliveries. Risk: extra runtime. Evidence: runs/iteration-0/group-1/logs/deliver-offer/execution/execution-attempt-1-iteration-0.json"
+	proposalContext := "Proposal: add a validation step before delivery. Exact edits: add scripted step validate-offer after draft-offer; update delivery dependency. Rationale: two clean runs still sent weak offers. Expected impact: fewer off-goal deliveries. Risk: extra runtime. Evidence: runs/iteration-0/group-1/logs/deliver-offer/execution/execution-attempt-1-iteration-0.json"
 
 	_, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{
 		InputID:  "plan-proposal-validate-offer",
@@ -427,7 +427,7 @@ func TestAnsweredGoalAdvisorPlanProposalCarriesContext(t *testing.T) {
 	for _, want := range []string{
 		"plan-proposal-validate-offer",
 		"option=approve",
-		"add regular step validate-offer",
+		"add scripted step validate-offer",
 		"apply it only with normal plan modification/config/measurement/report tools",
 		"mark_human_input_consumed",
 	} {

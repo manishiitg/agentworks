@@ -226,7 +226,7 @@ func TestSaveWorkflowWebhookInternalBindsCrewWithoutSecret(t *testing.T) {
 	crewProduct := `{"schema_version":1,"product":"crewx","id":"project-a","title":"project-a","session_id":"sess-1"}`
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/test"):                             string(raw),
-		"Workflow/test/planning/plan.json":                        `{"steps":[{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/planning/plan.json":                        `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/test/variables/variables.json":                  `{"variables":[],"groups":[{"name":"default"}]}`,
 		"_users/owner/Chats/Work/projects/project-a/product.json": crewProduct,
 	}}

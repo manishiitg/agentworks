@@ -7,9 +7,9 @@ import (
 
 func TestWebhookStepBindingAndBatchIsolation(t *testing.T) {
 	steps := []PlanStepInterface{
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "prepare"}},
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "smoke"}},
-		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "publish"}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "prepare"}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "smoke"}},
+		&ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "publish"}},
 	}
 	opts := &ExecutionOptions{WebhookStepID: "smoke", WebhookInputFile: "delivery.json"}
 	if err := bindWebhookStep(opts, steps); err != nil {

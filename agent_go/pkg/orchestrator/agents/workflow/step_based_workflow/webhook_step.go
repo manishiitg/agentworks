@@ -10,7 +10,7 @@ func WebhookStepIndex(steps []PlanStepInterface, id string) (int, error) {
 			continue
 		}
 		switch step.StepType() {
-		case StepTypeRegular, StepTypeAgent, StepTypeCrew:
+		case StepTypeScripted, StepTypeAgent, StepTypeCrew:
 			return i, nil
 		default:
 			return 0, fmt.Errorf("step %q is not an executable webhook target; select a route instead", id)

@@ -218,6 +218,7 @@ export const getStepIcon = (type: string) => {
     case 'agent':
       return <MessageSquare className="w-4 h-4 text-teal-500" />
     case 'regular':
+    case 'scripted':
       return <FileText className="w-4 h-4 text-muted-foreground" />
     default:
       return <FileText className="w-4 h-4 text-muted-foreground" />
@@ -608,6 +609,7 @@ export const getStepTypeLabel = (type: string): string => {
     case 'crew':
       return 'Crew'
     case 'regular':
+    case 'scripted':
     default:
       return 'Scripted'
   }
@@ -631,6 +633,7 @@ export const getStepTypeDescription = (type: string): string => {
     case 'crew':
       return 'Crew step: invokes a persistent crew trigger and waits for its final response.'
     case 'regular':
+    case 'scripted':
     default:
       return 'Scripted step: runs deterministic Python code for this step.'
   }
@@ -656,6 +659,7 @@ export const getStepTypeBadgeStyle = (type: string): string => {
     case 'crew':
       return 'bg-sky-500/10 text-sky-600 border-sky-500/20 dark:bg-sky-500/20 dark:text-sky-300'
     case 'regular':
+    case 'scripted':
     default:
       return 'bg-slate-500/10 text-slate-600 border-slate-500/20 dark:bg-slate-500/20 dark:text-slate-300'
   }

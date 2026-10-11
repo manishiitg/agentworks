@@ -15,11 +15,11 @@ import (
 // to a deterministic scripted step was to rebuild it -- add_scripted_step +
 // delete_plan_steps + rewiring every dependency and route. The converters
 // already existed for the runtime's own compatibility paths
-// (normalizeRegularStepToAgent, normalizeAgentStepToRegular);
+// (normalizeScriptedStepToAgent, normalizeAgentStepToScripted);
 // this tool exposes them as one atomic plan change with a revertable
 // changelog entry.
 //
-// Since PLAT-287 the plan type alone decides how a step runs: a regular step
+// Since PLAT-287 the plan type alone decides how a step runs: a scripted step
 // IS a scripted step (its work is the checked-in learnings/<step-id>/main.py)
 // and an agent step is conversational. There is no separate mode
 // to keep in step; this tool only rewrites the plan and, for the scripted
@@ -34,7 +34,7 @@ func getChangeStepTypeSchema() string {
 		"type": "object",
 		"properties": {
 			"step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: id of the step to convert (its id field in the plan). Nested and orphan steps are accepted."},
-			"target_type": {"type": "string", "enum": ["scripted", "agent"], "description": "REQUIRED: scripted = deterministic work in a checked-in learnings/<step-id>/main.py (the internal regular plan type); agent = conversational turns."},
+			"target_type": {"type": "string", "enum": ["scripted", "agent"], "description": "REQUIRED: scripted = deterministic work in a checked-in learnings/<step-id>/main.py (the internal scripted plan type); agent = conversational turns."},
 			"reason": {"type": "string", "minLength": 1, "description": "REQUIRED: why this step's execution model changes. Recorded in planning/changelog."}
 		},
 		"required": ["step_id", "target_type", "reason"]
@@ -128,29 +128,29 @@ func changeStepTypeInPlan(plan *PlanningResponse, configs []StepConfig, stepID, 
 			return res, nil
 		}
 		res.droppedItems = len(step.Items)
-		if err := replace(normalizeAgentStepToRegular(step)); err != nil {
+		if err := replace(normalizeAgentStepToScripted(step)); err != nil {
 			return nil, err
 		}
-		res.newType = string(StepTypeRegular)
+		res.newType = string(StepTypeScripted)
 		configureScripted()
 		return res, nil
 
-	case *RegularPlanStep:
-		res.oldType = string(StepTypeRegular)
+	case *ScriptedPlanStep:
+		res.oldType = string(StepTypeScripted)
 		if target == changeStepTypeTargetScripted {
 			res.newType = res.oldType
 			if isScriptedStep(step, cfg) {
 				res.noOp = true
 				return res, nil
 			}
-			// A regular step still carrying the retired
+			// A scripted step still carrying the retired
 			// declared_execution_mode="agentic" runs as a agent
 			// through the transitional shim; clearing that key is the whole
 			// conversion (the plan type already says scripted).
 			configureScripted()
 			return res, nil
 		}
-		if err := replace(normalizeRegularStepToAgent(step)); err != nil {
+		if err := replace(normalizeScriptedStepToAgent(step)); err != nil {
 			return nil, err
 		}
 		res.newType = string(StepTypeAgent)
@@ -262,7 +262,7 @@ func createChangeStepTypeExecutor(
 		var b strings.Builder
 		switch target {
 		case changeStepTypeTargetScripted:
-			fmt.Fprintf(&b, "Converted step %q to a scripted step (plan type %s; a regular step runs its checked-in script).", stepID, result.newType)
+			fmt.Fprintf(&b, "Converted step %q to a scripted step (plan type %s; a scripted step runs its checked-in script).", stepID, result.newType)
 			if result.droppedItems > 0 {
 				fmt.Fprintf(&b, " Dropped %d conversational item(s): a scripted step's work lives entirely in %s/main.py.", result.droppedItems, scriptDir)
 			}

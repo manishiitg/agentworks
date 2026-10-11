@@ -69,7 +69,7 @@ func TestValidateStepDriftChecksRejectsFailWithoutFindingID(t *testing.T) {
 
 func TestRecordPlanDriftReviewAllowsCompatibilityOnlyCheckSet(t *testing.T) {
 	files := map[string]string{
-		"planning/plan.json":        `{"steps":[{"id":"step-a","type":"regular"}]}`,
+		"planning/plan.json":        `{"steps":[{"id":"step-a","type":"scripted"}]}`,
 		"planning/step_config.json": `{"steps":[{"id":"step-a"}]}`,
 	}
 	exec := newPlanDriftReviewTestExecutor(files)

@@ -42,8 +42,8 @@ func TestWorkflowEdgeDuplicateStepIDsRejected(t *testing.T) {
 
 	plan := map[string]interface{}{
 		"steps": []map[string]interface{}{
-			{"type": "regular", "id": "dup", "title": "First", "description": "Reply ACK", "context_dependencies": []string{}, "context_output": "a.json"},
-			{"type": "regular", "id": "dup", "title": "Second", "description": "Reply ACK", "context_dependencies": []string{}, "context_output": "b.json"},
+			{"type": "scripted", "id": "dup", "title": "First", "description": "Reply ACK", "context_dependencies": []string{}, "context_output": "a.json"},
+			{"type": "scripted", "id": "dup", "title": "Second", "description": "Reply ACK", "context_dependencies": []string{}, "context_output": "b.json"},
 		},
 	}
 	writeEdgePlan(t, wo.workspaceDisk, plan)

@@ -237,7 +237,7 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 	raw, _ := json.Marshal(manifest)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/test"):            string(raw),
-		"Workflow/test/planning/plan.json":       `{"steps":[{"type":"routing","id":"route","title":"Choose","routing_question":"Which?","routes":[{"route_id":"issue","route_name":"Issue","next_step_id":"work"},{"route_id":"other","route_name":"Other","next_step_id":"work"}]},{"type":"regular","id":"work","title":"Work","description":"Work"}]}`,
+		"Workflow/test/planning/plan.json":       `{"steps":[{"type":"routing","id":"route","title":"Choose","routing_question":"Which?","routes":[{"route_id":"issue","route_name":"Issue","next_step_id":"work"},{"route_id":"other","route_name":"Other","next_step_id":"work"}]},{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
 		"Workflow/test/variables/variables.json": `{"groups":[{"name":"default"}]}`,
 	}}
 	ws := httptest.NewServer(mock)

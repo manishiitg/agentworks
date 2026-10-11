@@ -6,7 +6,7 @@ import (
 )
 
 func planStep(id, title, output string, deps []string) PlanStepInterface {
-	return &RegularPlanStep{
+	return &ScriptedPlanStep{
 		CommonStepFields: CommonStepFields{
 			ID:                  id,
 			Title:               title,

@@ -72,7 +72,7 @@ func TestRelayToolsAndGuardsIgnoreExplicitStoreGrants(t *testing.T) {
 			t.Fatalf("store grant %s read=%v write=%v", store, read, write)
 		}
 	}
-	step := &RegularPlanStep{CommonStepFields: CommonStepFields{ID: "script"}, AgentConfigs: cfg}
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "script"}, AgentConfigs: cfg}
 	guard, err := c.resolveScriptedShellGuard(context.Background(), step, 0, "step-1", "", false)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestRelayPythonGuardBlocksAttachedKnowledgebase(t *testing.T) {
 	if err := c.configureExecutionProduct("relay"); err != nil {
 		t.Fatal(err)
 	}
-	step := &RegularPlanStep{CommonStepFields: CommonStepFields{ID: "script"}}
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "script"}}
 	guard, err := c.resolveScriptedShellGuard(context.Background(), step, 0, "step-1", "", false)
 	if err != nil {
 		t.Fatal(err)

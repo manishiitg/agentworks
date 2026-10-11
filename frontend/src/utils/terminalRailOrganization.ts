@@ -148,7 +148,7 @@ export function terminalRailVisualKind(terminal: TerminalSnapshot): TerminalRail
   if (hasDistinctParentStep) return 'sub-agent'
   if (
     (stepType === 'agent' || stepType === 'message_sequence') ||
-    (stepType === 'regular' && executionMode !== 'scripted') ||
+    ((stepType === 'scripted' || stepType === 'regular') && executionMode !== 'scripted') ||
     (executionKind === 'agent' || executionKind === 'message_sequence') ||
     (executionKind === 'agent_item' || executionKind === 'message_sequence_item') ||
     AGENT_PATTERN.test(agentName)

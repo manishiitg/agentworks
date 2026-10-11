@@ -42,12 +42,12 @@ import ExecutionLogsPopup from './ExecutionLogsPopup'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const failedStep = {
-  step_id: 'step-1', type: 'regular', title: 'Classify intent',
+  step_id: 'step-1', type: 'scripted', title: 'Classify intent',
   executions: [{ attempt: 1, iteration: 0, content: { error: 'rate limit exceeded', model: 'model-one' } }],
   validations: [{ content: { execution_status: 'FAILED', errors: [{ message: 'gate says no' }] } }],
 }
 const okStep = {
-  step_id: 'step-2', type: 'regular', title: 'Draft reply',
+  step_id: 'step-2', type: 'scripted', title: 'Draft reply',
   executions: [{ attempt: 1, iteration: 0, content: { execution_result: 'Drafted.', model: 'model-one' } }],
 }
 

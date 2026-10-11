@@ -42,7 +42,7 @@ func TestNewWorkflowInstructionsUseModernPlanShape(t *testing.T) {
 	}
 
 	for _, stale := range []string{
-		"use `regular` by default",
+		"use `scripted` by default",
 		"single atomic action with no verify-and-fix follow-up",
 		"one step per proof check",
 		`"id": "step-one"`,

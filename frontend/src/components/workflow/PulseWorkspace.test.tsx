@@ -12,7 +12,7 @@ describe('PulseWorkspace information hierarchy', () => {
   it('leads with Goal Work for the user and keeps platform upkeep one tap away', () => {
     const html = renderToStaticMarkup(<PulseWorkspace workspacePath="Workflow/example"
       moduleStates={[{ workspace_path: 'Workflow/example', module: 'plan_drift_review', last_pulse_run_id: 'pulse-1', last_gate_decision: 'due', last_reason: 'Changed steps need checking.' }]}
-      planDriftDue planDriftDueItems={[{ step_id: 'prepare-booking', step_type: 'regular', reason: 'The plan changed or a prior drift check remains unresolved.' }]}
+      planDriftDue planDriftDueItems={[{ step_id: 'prepare-booking', step_type: 'scripted', reason: 'The plan changed or a prior drift check remains unresolved.' }]}
       finalCommandStates={[]} reviewFocuses={[]} reviewFocusSelections={[]} statusError={null}
       goalWork={[
         { id: 'GW-1', kind: 'goal_work', title: 'Nobody replies to commenters', status: 'done', action_taken: 'Drafted replies for 12 commenters', detail: 'Own data: commenters we replied to followed back 22% vs 6% (n=40, 60 days).', links: ['pulse/work/2026-09-23/replies.md'], metric: 'followers', expected_direction: 'increase', check_at: '2026-09-30', created_at: '2026-09-23', updated_at: '2026-09-23' },

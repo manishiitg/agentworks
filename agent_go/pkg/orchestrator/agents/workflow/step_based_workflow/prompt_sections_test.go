@@ -8,10 +8,10 @@ import (
 
 func TestResolveDependencyPathCandidatesRepairsProducerIDDependency(t *testing.T) {
 	steps := []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{
 			ID: "step-engagement-performance", ContextOutput: FlexibleContextOutput("performance_checked.json"),
 		}},
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{
 			ID: "step-performance-analytics", ContextDependencies: []string{"step-engagement-performance"},
 		}},
 	}

@@ -37,7 +37,7 @@ const run = (group: string): DailyCostRun => ({
   steps: {
     login: {
       step_id: 'login',
-      type: 'regular',
+      type: 'scripted',
       title: 'Login',
       description: '',
       validations: [],
@@ -45,7 +45,7 @@ const run = (group: string): DailyCostRun => ({
     },
     scripted: {
       step_id: 'scripted',
-      type: 'regular',
+      type: 'scripted',
       title: 'Scripted processing',
       description: '',
       validations: [],

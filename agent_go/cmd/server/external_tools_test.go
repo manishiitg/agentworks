@@ -53,7 +53,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoice processing","created_by":"owner","access":{"owners":["owner","readonly-owner"],"readers":["reader"]},"capabilities":{"selected_servers":["accounting"]}}`)
 	f.write(t, "Workflow/secret/workflow.json", `{"id":"secret","label":"Private research","created_by":"outsider","access":{"owners":["outsider"]}}`)
-	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"fetch-invoices","type":"regular","title":"Fetch invoices","description":"Fetch invoices from accounting."}]}`)
+	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"fetch-invoices","type":"scripted","title":"Fetch invoices","description":"Fetch invoices from accounting."}]}`)
 	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[]}`)
 	f.write(t, "Workflow/invoices/docs/process.md", "Invoices are reviewed weekly.\n")
 	router := gin.New()

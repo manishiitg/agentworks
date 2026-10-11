@@ -777,7 +777,7 @@ function ReadOnlyStepDetailPanel({
   const routingQuestion = typeof data.routing_question === 'string' ? data.routing_question : undefined
   const [openingScript, setOpeningScript] = React.useState(false)
   const openScript = React.useCallback(async () => {
-    if (!step?.id || step.type !== 'regular' || openingScript) return
+    if (!step?.id || (step.type !== 'scripted' && step.type !== 'regular') || openingScript) return
 
     setOpeningScript(true)
     try {
@@ -814,7 +814,7 @@ function ReadOnlyStepDetailPanel({
             {step?.id && <span className="truncate font-mono text-[10px] text-muted-foreground">{step.id}</span>}
           </div>
           <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
-          {step?.type === 'regular' && (
+          {(step?.type === 'scripted' || step?.type === 'regular') && (
             <div className="mt-2">
               <button
                 type="button"

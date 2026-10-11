@@ -20,7 +20,7 @@ func TestStepDescriptionLayoutStampRefusedUntilEveryStepIsConverted(t *testing.T
 		t.Fatal(err)
 	}
 	write := func(nested string) {
-		plan := `{"steps":[{"id":"score","type":"regular","description":"Run the scoring script."},{"id":"route-mode","type":"routing","description":"","routing_question":"Which mode?"},
+		plan := `{"steps":[{"id":"score","type":"scripted","description":"Run the scoring script."},{"id":"route-mode","type":"routing","description":"","routing_question":"Which mode?"},
 {"id":"lead","type":"orchestrator","description":` + jsonString(layoutDescription) + `,"predefined_routes":[{"route_id":"r1","sub_agent_step":{"id":"research","type":"agent","description":` + jsonString(nested) + `}}]}],
 "orphan_steps":[{"id":"old","description":"free text"}]}`
 		if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {

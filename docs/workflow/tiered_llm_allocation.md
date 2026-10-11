@@ -23,7 +23,7 @@ The current resolver lives in `agent_go/pkg/orchestrator/agents/workflow/step_ba
 | Execution | Tier 1 (High) |
 | Learning | Tier 2 (Medium) |
 
-Regular execution steps can adapt from High to Medium after three successful
+Scripted execution steps can adapt from High to Medium after three successful
 runs with the same step-description hash. Tier selection does not inspect the
 contents of the learnings folder, and Low is never selected automatically.
 

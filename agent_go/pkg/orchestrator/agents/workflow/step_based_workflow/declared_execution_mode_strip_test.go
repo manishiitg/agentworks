@@ -17,7 +17,7 @@ func runStripDeclaredMode(t *testing.T, readFile func(context.Context, string) (
 
 func TestStripDeclaredExecutionModeRemovesTheKeysAndKeepsReasonsInTheChangelog(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
 		testSequenceStep("talk", "Talk"),
 	}}
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{
@@ -71,9 +71,9 @@ func TestStripDeclaredExecutionModeRemovesTheKeysAndKeepsReasonsInTheChangelog(t
 	}
 }
 
-func TestStripDeclaredExecutionModeRefusesWhileALegacyAgenticRegularStepRemains(t *testing.T) {
+func TestStripDeclaredExecutionModeRefusesWhileALegacyAgenticScriptedStepRemains(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "legacy", Title: "Legacy", Description: "Ran as a sequence."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "legacy", Title: "Legacy", Description: "Ran as a sequence."}},
 	}}
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{
 		{ID: "legacy", AgentConfigs: &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic, LegacyDeclaredExecutionModeReason: "needs judgment"}},
@@ -92,7 +92,7 @@ func TestStripDeclaredExecutionModeRefusesWhileALegacyAgenticRegularStepRemains(
 
 func TestStripDeclaredExecutionModeLeavesRetiredEvaluationFilesUntouched(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
+		&ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "scripted", Title: "Scripted", Description: "Deterministic."}},
 	}}
 	files, readFile, writeFile := changeStepTypeHarness(t, plan, []StepConfig{
 		{ID: "scripted", AgentConfigs: &AgentConfigs{LegacyDeclaredExecutionMode: StepModeScripted}},

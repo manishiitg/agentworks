@@ -10,7 +10,7 @@ func TestResolveExecutionLearningsAccessMatchesPromptGate(t *testing.T) {
 		step PlanStepInterface
 		want string
 	}{
-		{name: "regular", step: &RegularPlanStep{}, want: LearningsAccessReadWrite},
+		{name: "scripted", step: &ScriptedPlanStep{}, want: LearningsAccessReadWrite},
 		{name: "agent", step: &AgentPlanStep{}, want: LearningsAccessReadWrite},
 		{name: "todo orchestrator", step: &AgentPlanStep{}, want: LearningsAccessReadWrite},
 		{name: "deterministic routing", step: &RoutingPlanStep{}, want: LearningsAccessNone},
@@ -26,7 +26,7 @@ func TestResolveExecutionLearningsAccessMatchesPromptGate(t *testing.T) {
 
 func TestResolveExecutionLearningsAccessHonorsExplicitNone(t *testing.T) {
 	config := &AgentConfigs{LearningsAccess: LearningsAccessNone}
-	if got := resolveExecutionLearningsAccess(config, &RegularPlanStep{}); got != LearningsAccessNone {
+	if got := resolveExecutionLearningsAccess(config, &ScriptedPlanStep{}); got != LearningsAccessNone {
 		t.Fatalf("explicit none resolved to %q", got)
 	}
 }

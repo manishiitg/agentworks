@@ -120,7 +120,7 @@ type agentSequenceDelegation struct {
 // agentSequenceDelegationItemAllowed reports whether an item kind may run on an
 // delegating agent sequence. Inline code/file items remain forbidden, while a
 // declared scripted batch is safe because it can only invoke validated saved
-// regular-script definitions and never creates an agent session.
+// scripted-script definitions and never creates an agent session.
 func agentSequenceDelegationItemAllowed(item AgentItem) bool {
 	switch strings.TrimSpace(item.Type) {
 	case "", "user_message", "foreach", "prevalidation", "scripted":
@@ -160,13 +160,13 @@ func agentSequenceContinuationMessage(opts agentSequenceCallOptions) string {
 	return strings.TrimSpace(opts.ReentryMessage)
 }
 
-const normalizedRegularSequenceItemID = "execute-and-verify"
+const normalizedScriptedSequenceItemID = "execute-and-verify"
 
-// normalizeRegularStepToAgent routes persisted non-scripted regular
+// normalizeScriptedStepToAgent routes persisted non-scripted
 // steps through the canonical conversational runtime. New plans author these as
 // agent directly; this normalization keeps existing workflows
-// executable without reviving the removed direct regular-agent path.
-func normalizeRegularStepToAgent(step *RegularPlanStep) *AgentPlanStep {
+// executable without reviving the removed direct scripted-agent path.
+func normalizeScriptedStepToAgent(step *ScriptedPlanStep) *AgentPlanStep {
 	if step == nil {
 		return nil
 	}
@@ -175,7 +175,7 @@ func normalizeRegularStepToAgent(step *RegularPlanStep) *AgentPlanStep {
 		CommonStepFields: step.CommonStepFields,
 		NextStepID:       step.NextStepID,
 		Items: []AgentItem{{
-			ID:   normalizedRegularSequenceItemID,
+			ID:   normalizedScriptedSequenceItemID,
 			Type: "user_message",
 			Kind: "execution",
 			Message: "Complete the step described above. Re-open the produced evidence, verify the result against every stated requirement, " +
@@ -185,28 +185,28 @@ func normalizeRegularStepToAgent(step *RegularPlanStep) *AgentPlanStep {
 	}
 }
 
-// shouldNormalizeRegularStepToAgent is the transitional shim: only a
-// regular step whose unstripped step_config.json still declares the retired
-// agentic mode runs as a agent. Every other regular step is
+// shouldNormalizeScriptedStepToAgent is the transitional shim: only a
+// scripted step whose unstripped step_config.json still declares the retired
+// agentic mode runs as a agent. Every other scripted step is
 // scripted (PLAT-287). Retire together with AgentConfigs.legacyDeclaredMode.
-func shouldNormalizeRegularStepToAgent(step PlanStepInterface) bool {
-	return isLegacyAgenticRegularStep(step, getAgentConfigs(step))
+func shouldNormalizeScriptedStepToAgent(step PlanStepInterface) bool {
+	return isLegacyAgenticScriptedStep(step, getAgentConfigs(step))
 }
 
-// normalizeAgentStepToRegular is normalizeRegularStepToAgent's
+// normalizeAgentStepToScripted is normalizeScriptedStepToAgent's
 // mirror: an agent step whose step_config already declares scripted
 // mode (PLAT-280 — a checked-in learnings/{step-id}/main.py that needs the real
 // scripted executor's $DB_PATH/STEP_OUTPUT_DIR injection, which the
 // agent runtime does not reliably provide) has no in-place way to
-// become a true `regular` plan step. Items carry no information a scripted step
+// become a true `scripted` plan step. Items carry no information a scripted step
 // can use — its work lives entirely in the checked-in script — so they are
 // dropped, not migrated.
-func normalizeAgentStepToRegular(step *AgentPlanStep) *RegularPlanStep {
+func normalizeAgentStepToScripted(step *AgentPlanStep) *ScriptedPlanStep {
 	if step == nil {
 		return nil
 	}
-	return &RegularPlanStep{
-		Type:             StepTypeRegular,
+	return &ScriptedPlanStep{
+		Type:             StepTypeScripted,
 		CommonStepFields: step.CommonStepFields,
 		NextStepID:       step.NextStepID,
 		AgentConfigs:     step.AgentConfigs,
@@ -214,11 +214,11 @@ func normalizeAgentStepToRegular(step *AgentPlanStep) *RegularPlanStep {
 }
 
 // effectiveRuntimeStepType reports the execution model users actually see.
-// Persisted non-scripted regular steps run through agent for
-// compatibility, so exposing them as "regular" in terminal metadata is
+// Persisted non-scripted steps run through agent for
+// compatibility, so exposing them as "scripted" in terminal metadata is
 // misleading even though the saved plan still has the legacy type.
 func effectiveRuntimeStepType(step PlanStepInterface) string {
-	if shouldNormalizeRegularStepToAgent(step) {
+	if shouldNormalizeScriptedStepToAgent(step) {
 		return string(StepTypeAgent)
 	}
 	if step == nil {
@@ -229,7 +229,7 @@ func effectiveRuntimeStepType(step PlanStepInterface) string {
 
 // agentSequenceClosingItems builds synthetic trailing items so a standalone
 // agent honors its step-level learning_objective and
-// knowledgebase_contribution — the same post-step learnings/KB a regular step
+// knowledgebase_contribution — the same post-step learnings/KB a scripted step
 // runs (a agent otherwise skips the learning/KB phase entirely). Each
 // is a user_message turn carrying the matching write access; the item machinery
 // already grants learnings/_global or notes/ from kind + write_access.
@@ -244,7 +244,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(ctx context
 
 	// PLAT-055. One reflection item, not a learnings item followed by a
 	// knowledgebase item. Appending them separately reproduced the same defect
-	// the regular-step path had: the agent chose a destination based on which
+	// the scripted-step path had: the agent chose a destination based on which
 	// turn it happened to be in rather than on which store owns the content.
 	learningsDue := hcpo.shouldDirectWriteLearnings(cfg, seq)
 	kbAccess := resolveKnowledgebaseAccess(cfg, hcpo.UseKnowledgebase())
@@ -471,7 +471,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		// validation contract, then append synthetic learnings/KB contribution
 		// turns so a standalone agent honors its step-level
 		// learning_objective / knowledgebase_contribution — the same post-step
-		// learnings/KB a regular step runs. (Copy first so we never mutate the plan's
+		// learnings/KB a scripted step runs. (Copy first so we never mutate the plan's
 		// Items slice.)
 		configuredItems := append([]AgentItem(nil), sequenceStep.Items...)
 		// Live caller/operator input is conversational state, not part of the
@@ -531,7 +531,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		planCopy := *plan
 		planCopy.OrphanSteps = append([]PlanStepInterface(nil), plan.OrphanSteps...)
 		for i, orphan := range planCopy.OrphanSteps {
-			if script, ok := orphan.(*RegularPlanStep); ok {
+			if script, ok := orphan.(*ScriptedPlanStep); ok {
 				copy := *script
 				for _, config := range configs {
 					if config.ID == script.ID {
@@ -657,7 +657,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 }
 
 // appendAgentFinalValidation makes a agent obey the same
-// step-level validation contract as a regular step. Explicit prevalidation items
+// step-level validation contract as a scripted step. Explicit prevalidation items
 // remain useful as intermediate gates, but authors do not need to duplicate the
 // top-level schema as the final configured item. The synthetic gate deliberately
 // runs before learnings/KB closing turns, so those bookkeeping turns cannot make
@@ -846,7 +846,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentItem(ctx context.Context,
 			return "prevalidation skipped: no schema", nil
 		}
 		// Prevalidation is a self-validation gate with a repair loop, mirroring the
-		// retry-with-feedback behavior of regular steps: on failure we send the
+		// retry-with-feedback behavior of scripted steps: on failure we send the
 		// concrete validation errors back to the SAME conversation as a fix-it turn
 		// (the session continues, so the agent keeps full context and can re-create
 		// or correct the required output files), then re-run the same checks. Only
@@ -971,7 +971,7 @@ func summarizeAgentPrevalidationErrors(results *WorkspaceVerificationResult) str
 }
 
 // formatAgentPrevalidationFeedback builds the fix-it instruction sent
-// back to the agent when a prevalidation gate fails. It mirrors the regular-step
+// back to the agent when a prevalidation gate fails. It mirrors the scripted-step
 // "## Pre-Validation Failed" feedback: name the failing checks concretely and
 // instruct the agent to actually correct/recreate the output files (not merely
 // re-report success), since the same checks run again afterward.
@@ -1044,7 +1044,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	}
 	// The dedicated learnings closing turn diff_patches the SHARED
 	// learnings/_global files. Serialize it against every other direct-learnings
-	// writer (regular steps hold the same mutex across their learnings turn —
+	// writer (scripted steps hold the same mutex across their learnings turn —
 	// see controller_execution.go — and learnings_direct.go documents the
 	// contract). Without this, parallel agent steps race on SKILL.md.
 	// Scoped to Kind=="learning" only: locking every learnings-writable work
@@ -1194,7 +1194,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	trimmedResult := strings.TrimSpace(result)
 	// Freshness: agent is the primary execution path, so its synthetic
 	// learnings/KB closing turns are where store confirmation is recorded (the
-	// regular-step hooks in controller_execution.go rarely fire now). Best-effort.
+	// scripted-step hooks in controller_execution.go rarely fire now). Best-effort.
 	learningChanged := false
 	if strings.TrimSpace(item.Kind) == "learning" && writeAccess.Learnings {
 		learningRefAfter := hcpo.snapshotCanonicalArtifactRef(context.Background(), filepath.Join(hcpo.GetWorkspacePath(), LearningsFolderName, GlobalLearningID))
@@ -1332,7 +1332,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 	// (their diff_patch to learnings/_global fails even though the step is configured
 	// for it). Widen ONLY the frozen tool snapshot to the step's full granted write
 	// scope; shell writes stay per-item via the session guard set above. This mirrors
-	// what regular steps get, since a regular step's learnings turn enforces through
+	// what scripted steps get, since a scripted step's learnings turn enforces through
 	// the per-item session guard rather than a reused frozen snapshot.
 	_, snapshotWrite := hcpo.setupAgentFolderGuard(stepPath, step.GetID(), getAgentConfigs(step), hcpo.agentSequenceStepFullWriteAccess(step))
 	outputPath := filepath.Join(hcpo.GetWorkspacePath(), hcpo.agentSequenceExecutionRelPath(stepPath, step.GetID()))
@@ -1492,7 +1492,7 @@ func requestedAgentItemWriteAccess(item AgentItem) (AgentWriteAccess, bool) {
 }
 
 // resolveAgentItemWriteAccess applies the same step-level store
-// permissions as a regular execution step. A non-empty item write_access (or
+// permissions as a scripted execution step. A non-empty item write_access (or
 // kind) is an optional narrowing override; it can never escalate beyond the
 // step's configured permissions. This prevents a plain sequence turn from being
 // silently read-only when the step itself is configured to write.
@@ -1732,7 +1732,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceAbsPath(workflowRel stri
 }
 
 // agentSequenceExecutionRelPath returns the step's execution folder — the SAME
-// folder regular and Agent steps use (execution/<stepID>). The sequence's
+// folder scripted and Agent steps use (execution/<stepID>). The sequence's
 // per-item artifacts and session.json live in subfolders under it, and its
 // declared context_output lands directly here, so downstream context_dependencies
 // resolve it exactly like any other step's output.
@@ -1847,7 +1847,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveAgentSession(ctx context.Context,
 
 // summarizeAgentSession is the step's result: what the parent chat's
 // completion notification carries and what saveFinalExecutionSummary stores.
-// It is the last completed authored item's answer, the same thing a regular
+// It is the last completed authored item's answer, the same thing a scripted
 // step reports. A bare "N item(s) completed" count told the user nothing once
 // agent became the default step type. Prevalidation gates and
 // synthetic __...__ items are bookkeeping, not answers, so they are skipped. The

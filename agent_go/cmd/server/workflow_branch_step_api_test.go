@@ -14,7 +14,7 @@ import (
 // usePlanData.addStep/updateStep APIs accept a branch step, but this
 // platform-generic plan-mutation HTTP endpoint (distinct from the
 // Builder-native add_branch_step/update_branch_step tools) only unmarshaled
-// "regular" and "todo_task", returning "Unknown step type" for a branch
+// "scripted" and "todo_task", returning "Unknown step type" for a branch
 // payload -- an internally inconsistent contract between what the frontend
 // offers and what this API path actually accepts.
 func TestHandleAddStepAcceptsBranchStep(t *testing.T) {

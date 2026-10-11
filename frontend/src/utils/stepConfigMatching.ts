@@ -48,9 +48,9 @@ export interface AgentConfigs {
   description_reviewed?: boolean;
   review_notes?: string;
   // LEGACY, read-only (PLAT-287). A step's execution model is decided by its
-  // plan `type` now — `regular` is scripted, `agent` is agentic.
+  // plan `type` now — `scripted` is scripted, `agent` is agentic.
   // These two keys may still be present in a workflow's step_config.json until its
-  // v1.0.39 contract migration strips them; a `regular` step still carrying
+  // v1.0.39 contract migration strips them; a `scripted` step still carrying
   // "agentic" is a legacy agentic step the runtime runs as a sequence. Nothing
   // writes them any more. Use effectiveExecutionMode() instead of reading them.
   declared_execution_mode?: string;
@@ -178,9 +178,9 @@ interface CommonStepFields {
   shared_with?: StepSharing;
 }
 
-// Regular step (may have loops)
-export interface RegularPlanStep extends CommonStepFields {
-  type: 'regular';
+// Scripted step (may have loops)
+export interface ScriptedPlanStep extends CommonStepFields {
+  type: 'scripted' | 'regular'; // regular is a saved-plan compatibility alias.
   script_only?: boolean;
   next_step_id?: string;                    // Explicit successor for scripted route chains
   has_loop?: boolean;
@@ -307,7 +307,7 @@ export interface CrewPlanStep extends CommonStepFields {
 }
 
 // Discriminated union type for all step types
-export type PlanStep = RegularPlanStep | HumanInputPlanStep | LegacyAgentPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
+export type PlanStep = ScriptedPlanStep | HumanInputPlanStep | LegacyAgentPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
 
 // PlanRoutingRoute represents a possible route/sub-agent for planning
 export interface PlanRoutingRoute {
@@ -327,8 +327,8 @@ export interface PlanningResponse {
 }
 
 // Type guard functions for discriminated union
-export function isRegularStep(step: PlanStep): step is RegularPlanStep {
-  return step.type === 'regular';
+export function isScriptedStep(step: PlanStep): step is ScriptedPlanStep {
+  return step.type === 'scripted' || step.type === 'regular';
 }
 
 export function isHumanInputStep(step: PlanStep): step is HumanInputPlanStep {
@@ -370,9 +370,9 @@ function legacyDeclaredMode(step: ExecutionModeStepLike): string | undefined {
 }
 
 // The execution model a step actually runs with (PLAT-287): decided by the plan
-// type, not by a config field. `regular` is scripted — its work is the
+// type, not by a config field. `scripted` is scripted — its work is the
 // checked-in learnings/<id>/main.py — and `agent` is agentic. The
-// one transitional exception: a `regular` step whose config still carries the
+// one transitional exception: a `scripted` step whose config still carries the
 // legacy key with "agentic" (not yet stripped by the v1.0.39 migration) is a
 // legacy agentic step the runtime still normalises into a sequence.
 // Routing/branch/orchestrator/human-input/crew steps have no execution mode.
@@ -380,8 +380,8 @@ export function effectiveExecutionMode(
   step: ExecutionModeStepLike | null | undefined,
 ): EffectiveExecutionMode | undefined {
   if (!step) return undefined;
-  const type = step.type || 'regular';
-  if (type === 'regular') {
+  const type = step.type || 'scripted';
+  if (type === 'scripted' || type === 'regular') {
     return legacyDeclaredMode(step) === 'agentic' ? 'agentic' : 'scripted';
   }
   if (type === 'agent') return 'agentic';
@@ -395,7 +395,7 @@ export function effectiveExecutionModeReason(step: ExecutionModeStepLike | null 
   return reason || undefined;
 }
 
-// Which steps the agent runtime executes. A `regular` step is a
+// Which steps the agent runtime executes. A `scripted` step is a
 // scripted step and runs through the scripted executor — except a legacy
 // agentic one (config still carries declared_execution_mode "agentic", not yet
 // stripped by v1.0.39), which the runtime normalises into a single-turn
@@ -403,17 +403,17 @@ export function effectiveExecutionModeReason(step: ExecutionModeStepLike | null 
 // sequence keeps the canvas honest about the items it will report completing
 // ("execute-and-verify"), which exist nowhere in plan.json.
 //
-// Mirrors shouldNormalizeRegularStepToAgent / effectiveRuntimeStepType
+// Mirrors shouldNormalizeScriptedStepToAgent / effectiveRuntimeStepType
 // in controller_agent.go. The legacy key reaches us from
 // step_config.json, merged onto the step by usePlanData.
 export function runsAsAgent(step: PlanStep): boolean {
   if (isAgentStep(step)) return true;
-  return isRegularStep(step) && legacyDeclaredMode(step) === 'agentic';
+  return isScriptedStep(step) && legacyDeclaredMode(step) === 'agentic';
 }
 
 // The item list the runtime actually executes. An authored agent
-// supplies its own; a normalized regular step gets the single synthesized turn
-// from normalizeRegularStepToAgent, plus the validation gate
+// supplies its own; a normalized scripted step gets the single synthesized turn
+// from normalizeScriptedStepToAgent, plus the validation gate
 // appendAgentFinalValidation adds when the step declares a schema.
 //
 // Display only — these are never written back to plan.json, exactly as the Go
