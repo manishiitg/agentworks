@@ -31,7 +31,25 @@ try {
     assert.equal(await page.getByLabel('Install coding agent plugin', { exact: true }).textContent(), 'agentworks attach')
     assert.equal(await page.getByLabel('Attach this chat', { exact: true }).textContent(), '/agentworks attach claude-review')
     assert.doesNotMatch(await page.getByLabel('Coding agent setup').textContent(), /--confirm|\/agentworks resume|\/agentworks status/)
-    for (const provider of ['Cursor', 'Muse', 'Pi', 'agy']) {
+    await page.getByRole('button', { name: 'Muse Plugin installation preview', exact: true }).click()
+    await page.getByRole('heading', { name: 'Install the Muse plugin from GitHub', exact: true }).waitFor()
+    assert.equal(await page.getByLabel('Add Muse marketplace', { exact: true }).textContent(), 'muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks.git')
+    assert.equal(await page.getByLabel('Install Muse plugin', { exact: true }).textContent(), 'muse plugins install agentworks-muse@agentworks')
+    assert.equal(await page.getByLabel('Inspect Muse plugin', { exact: true }).textContent(), 'muse plugins inspect agentworks-muse --json')
+    await page.getByRole('button', { name: 'Copy Install Muse plugin', exact: true }).click()
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'muse plugins install agentworks-muse@agentworks')
+    assert.equal(await page.getByRole('heading', { name: 'Live attachment is not available yet', exact: true }).isVisible(), true)
+    assert.match(await page.getByLabel('Coding agent setup').textContent(), /Do not approve the plugin yet/)
+    assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 0)
+    assert.equal(await page.getByLabel('Install coding agent plugin', { exact: true }).count(), 0)
+    await page.getByText('Why did agentworks attach muse fail?', { exact: true }).click()
+    assert.match(await page.getByLabel('Coding agent setup').textContent(), /older installer, which only supports Claude and Codex/)
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${name}: Muse commands fit without horizontal overflow`)
+    await page.screenshot({ path: path.join(output, `agent-connect-muse-${name}.png`), fullPage: true })
+    await page.getByRole('button', { name: 'Use workflow and Crew tools', exact: true }).click()
+    await page.getByRole('button', { name: 'Create access token', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Agent messaging', exact: true }).click()
+    for (const provider of ['Cursor', 'Pi', 'agy']) {
       await page.getByRole('button', { name: `${provider} Other connection methods`, exact: true }).click()
       assert.match(await page.getByRole('heading', { name: `${provider} connection options` }).textContent(), /connection options/)
       assert.match(await page.getByLabel('Coding agent setup').textContent(), /installer is not available in this release/)
@@ -47,5 +65,5 @@ try {
     assert.deepEqual(errors, [], `${name}: no component errors`)
     await page.close()
   }
-  console.log('Agent connection Chromium checks passed: server-specific login, both plugin paths, copy, OS switching, adapter limits, MCP/token flow, responsive layout.')
+  console.log('Agent connection Chromium checks passed: server-specific login, Claude/Codex setup, native Muse marketplace preview/copy/approval hold, OS switching, adapter limits, MCP/token flow, responsive layout.')
 } finally { await browser?.close(); await server.close() }
