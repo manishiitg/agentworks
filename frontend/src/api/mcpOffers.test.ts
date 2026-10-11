@@ -1,9 +1,17 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import snapshot from './mcpOfferSnapshot.json'
 import { offerNeedsReview, parseMcpOffers } from './mcpOffers'
 
-afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); vi.resetModules() })
+// Node's optional storage global can shadow the DOM environment's storage.
+beforeEach(() => {
+  const values = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value) },
+  })
+})
+afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 it('requires current evidence and an exact connector mapping; rejects unsafe evidence and ambiguous mappings', () => {
   const catalog = parseMcpOffers(snapshot)!
   const exa = catalog.offers.exa
