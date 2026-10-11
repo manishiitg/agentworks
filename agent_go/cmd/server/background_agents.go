@@ -1194,6 +1194,7 @@ func (api *StreamingAPI) emitBackgroundAgentStarted(sessionID, agentID, name, in
 		Kind:              kind,
 		ParentExecutionID: resolvedParentExecutionID,
 	}
+	evt.Metadata = map[string]interface{}{"inspection": api.executionInspectionTarget(sessionID, agentID)}
 	api.emitTypedBackgroundEvent(sessionID, agentID, string(orchEvents.BackgroundAgentStarted), "", evt)
 	// PLAT-114: durable record, independent of the 200-event ui_events cap
 	// this same completion is also reported through.
@@ -1220,6 +1221,7 @@ func (api *StreamingAPI) emitBackgroundAgentCompleted(sessionID, agentID, name, 
 		ParentExecutionID: api.backfillParentExecutionID(sessionID, agentID, ""),
 		Kind:              kind,
 	}
+	evt.Metadata = map[string]interface{}{"inspection": api.executionInspectionTarget(sessionID, agentID)}
 	api.emitTypedBackgroundEvent(sessionID, agentID, string(orchEvents.BackgroundAgentCompleted), "", evt)
 	// PLAT-114: durable record, independent of the 200-event ui_events cap
 	// this same completion is also reported through.
@@ -1251,6 +1253,7 @@ func (api *StreamingAPI) emitBackgroundAgentTerminated(sessionID, agentID, name,
 		Status:            status,
 		ParentExecutionID: api.backfillParentExecutionID(sessionID, agentID, ""),
 	}
+	evt.Metadata = map[string]interface{}{"inspection": api.executionInspectionTarget(sessionID, agentID)}
 	api.emitTypedBackgroundEvent(sessionID, agentID, string(orchEvents.BackgroundAgentTerminated), "", evt)
 	// PLAT-164: a terminated/canceled agent never reaches
 	// emitBackgroundAgentCompleted, so this is the only terminal signal its

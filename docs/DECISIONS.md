@@ -1,5 +1,29 @@
 # Decisions and open issues
 
+## 2026-10-11 — Inspect step executions from chat (PLAT-861)
+
+Expose a small inspection action on execution activity and background-work rows.
+Open a read-only tab keyed by the owning workspace, session and server-issued
+execution ID; preserve the mounted parent chat and reuse the tab for that same
+execution. Persist only navigation targets in the account-scoped chat metadata.
+Load evidence only while selected, reject stale responses, and recover durable
+records through current workflow access and chat-author checks after restart.
+
+Reuse the durable background transcript and conversation renderer for recorded
+system/user messages and tool lifecycles. Keep exact execution evidence separate
+from the saved step-log view, which explicitly lists all attempts in the pinned
+run. Closing an inspector has no execution side effects. Why: users need a short
+path from a launch receipt to the actual work without changing their chat or
+silently selecting a newer dispatch. Internal terminal inventories remain gated.
+
+Apply the shared chat/terminal credential redactor before saving execution
+prompts, tool arguments/results and errors; scrub older records on inspection.
+Delete the private execution directory with explicit chat deletion and history
+retention, and fence late writers so deleted records cannot be recreated.
+Why: inspection must follow the parent chat's privacy and retention policy.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-19.
+
 ## 2026-10-11 — Named agents share the message contract (PLAT-861)
 
 Register account-owned names for local and external agents in the durable message

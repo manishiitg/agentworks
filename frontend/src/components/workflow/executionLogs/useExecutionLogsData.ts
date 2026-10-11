@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../../utils/chatIdentity'
 import { agentApi } from '../../../services/api'
 import type { ExecutionLogsResponse } from '../../../services/api-types'
 import { formatLogFileContent, getDefaultRunFolder } from './helpers'
@@ -9,9 +10,10 @@ export interface UseExecutionLogsDataArgs {
   initialRunFolder: string | null | undefined
   allowDefaultRunFolder?: boolean
   runFolders: string[]
+  initialStepId?: string
 }
 
-export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolders, allowDefaultRunFolder = true }: UseExecutionLogsDataArgs) {
+export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolders, allowDefaultRunFolder = true, initialStepId }: UseExecutionLogsDataArgs) {
   const defaultRunFolder = !allowDefaultRunFolder && !initialRunFolder ? '' : getDefaultRunFolder(initialRunFolder, runFolders)
   const runFolderOptions = useMemo(() => {
     if (!defaultRunFolder || runFolders.includes(defaultRunFolder)) return runFolders
@@ -21,7 +23,7 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
   const [loading, setLoading] = useState(false)
   const [logs, setLogs] = useState<ExecutionLogsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set(initialStepId ? [initialStepId] : []))
   const [expandedValidations, setExpandedValidations] = useState<Set<string>>(new Set())
   const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(new Set())
   const [expandedArchived, setExpandedArchived] = useState<Set<string>>(new Set())
@@ -54,6 +56,14 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [fileContents, setFileContents] = useState<Record<string, string>>({})
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
+  const scope = JSON.stringify([workspacePath, selectedRunFolder])
+  const currentScope = useRef(scope)
+  currentScope.current = scope
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  const expandedFilePaths = useRef(expandedFiles)
+  expandedFilePaths.current = expandedFiles
+  const requestVersion = useRef(0)
   const focusedStepId = expandedSteps.values().next().value as string | undefined
   // Shrinks the sticky "Back to all steps" bar once the user scrolls past it,
   // so it stops eating vertical space while reading step-detail content below.
@@ -82,8 +92,15 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
   }, [selectedRunFolder])
 
   useEffect(() => {
+    setLogs(null)
+    setError(null)
+    setLoading(false)
+    expandedFilePaths.current = new Set()
+    setExpandedFiles(new Set())
+    setFileContents({})
+    setLoadingFiles(new Set())
     if (workspacePath && selectedRunFolder) {
-      setExpandedSteps(new Set())
+      setExpandedSteps(new Set(initialStepId ? [initialStepId] : []))
       setExpandedValidations(new Set())
       setExpandedExecutions(new Set())
       setExpandedArchived(new Set())
@@ -95,7 +112,7 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
       setFileContents({})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspacePath, selectedRunFolder])
+  }, [workspacePath, selectedRunFolder, initialStepId])
 
   // Memoized on the two inputs it reads, so the poll effect below can list it
   // honestly: its identity changes exactly when workspacePath/selectedRunFolder
@@ -103,14 +120,28 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
   const loadLogs = useCallback(async (options?: { silent?: boolean }) => {
     if (!workspacePath || !selectedRunFolder) return
 
+    const requestScope = JSON.stringify([workspacePath, selectedRunFolder])
+    if (currentScope.current !== requestScope) return
+    const identity = captureChatIdentity()
+    const version = ++requestVersion.current
+    const owns = () => mounted.current && isChatIdentityCurrent(identity) && currentScope.current === requestScope && requestVersion.current === version
     if (!options?.silent) setLoading(true)
     setError(null)
     try {
       // Use selected run folder
       const data = await agentApi.getExecutionLogs(workspacePath, selectedRunFolder)
+      if (!owns()) return
       setLogs(data)
-
+      // Re-read only files the person has opened, so a running conversation
+      // updates rather than keeping the first cached snapshot indefinitely.
+      await Promise.all(Array.from(expandedFilePaths.current).map(async path => {
+        try {
+          const content = await agentApi.getLogFile(path)
+          if (owns() && expandedFilePaths.current.has(path)) setFileContents(prev => ({...prev, [path]: formatLogFileContent(content)}))
+        } catch { /* Keep readable evidence during a transient file-write gap. */ }
+      }))
     } catch (err) {
+      if (!owns()) return
       console.error('Failed to load execution logs:', err)
       const responseBody = (err as { response?: { data?: unknown } })?.response?.data
       const detail = typeof responseBody === 'string'
@@ -120,7 +151,7 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
           : err instanceof Error ? err.message : ''
       setError(detail ? `Failed to load execution logs: ${detail}` : 'Failed to load execution logs')
     } finally {
-      if (!options?.silent) setLoading(false)
+      if (owns()) setLoading(false)
     }
   }, [workspacePath, selectedRunFolder])
 
@@ -207,13 +238,19 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
     setExpandedFiles(prev => (prev.has(path) ? prev : new Set(prev).add(path)))
     if (fileContents[path] || loadingFiles.has(path)) return
     setLoadingFiles(prev => new Set(prev).add(path))
+    const requestScope = scope
+    const identity = captureChatIdentity()
+    const owns = () => mounted.current && isChatIdentityCurrent(identity) && currentScope.current === requestScope
     agentApi.getLogFile(path).then(content => {
+      if (!owns()) return
       const contentStr = formatLogFileContent(content)
       setFileContents(prev => ({ ...prev, [path]: contentStr }))
     }).catch(e => {
+      if (!owns()) return
       console.error(e)
       setFileContents(prev => ({ ...prev, [path]: 'Error: Failed to load content' }))
     }).finally(() => {
+      if (!owns()) return
       setLoadingFiles(prev => {
         const next = new Set(prev)
         next.delete(path)

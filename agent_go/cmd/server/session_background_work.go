@@ -28,7 +28,8 @@ type SessionBackgroundWorkItem struct {
 	CanStop   bool      `json:"can_stop"`
 	// Status is one line on what the item is doing now (its running tool,
 	// running step, or latest message), from state the registry already holds.
-	Status string `json:"status,omitempty"`
+	Status     string                                `json:"status,omitempty"`
+	Inspection *orchEvents.ExecutionInspectionTarget `json:"inspection,omitempty"`
 }
 
 func oneLine(text string, max int) string {
@@ -137,7 +138,8 @@ func (api *StreamingAPI) sessionBackgroundWork(sessionID string) []SessionBackgr
 		}
 		items = append(items, SessionBackgroundWorkItem{
 			ID: id, Kind: backgroundWorkKind(snap), Label: label, StartedAt: snap.CreatedAt, CanStop: canStop[id],
-			Status: backgroundWorkStatus(agents[id], children),
+			Status:     backgroundWorkStatus(agents[id], children),
+			Inspection: api.executionInspectionTarget(sessionID, id),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].StartedAt.Before(items[j].StartedAt) })

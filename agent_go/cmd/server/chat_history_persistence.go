@@ -3735,6 +3735,9 @@ func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, 
 		if err != nil || info.IsDir() {
 			continue
 		}
+		if err := deleteBackgroundTranscriptHistory(userID, workspacePath, sessionID); err != nil {
+			return result, err
+		}
 		if err := os.Remove(convPath); err != nil {
 			return result, err
 		}
@@ -3788,6 +3791,9 @@ func deleteUserChatHistorySession(result ChatHistoryCleanupResult, userID, sessi
 				continue
 			}
 
+			if err := deleteConversationBackgroundTranscripts(userID, sessionID, convPath); err != nil {
+				return result, err
+			}
 			parentDir := filepath.Dir(convPath)
 			if filepath.Base(convPath) == "conversation.json" && filepath.Base(parentDir) == sessionID {
 				if err := os.RemoveAll(parentDir); err != nil {
@@ -3875,6 +3881,9 @@ func DeleteChatHistoryOlderThan(userID string, olderThanDays int, workspacePath 
 		if shouldDelete, err := chatHistoryFileCleanupCandidate(legacyConvPath, cutoff); err != nil {
 			return result, err
 		} else if shouldDelete {
+			if err := deleteConversationBackgroundTranscripts(userID, entryName, legacyConvPath); err != nil {
+				return result, err
+			}
 			if err := os.RemoveAll(entryDir); err != nil {
 				return result, err
 			}
@@ -3895,6 +3904,9 @@ func DeleteChatHistoryOlderThan(userID string, olderThanDays int, workspacePath 
 			}
 			if !shouldDelete {
 				continue
+			}
+			if err := deleteConversationBackgroundTranscripts(userID, chatHistorySessionIDFromFileName(filepath.Base(convPath)), convPath); err != nil {
+				return result, err
 			}
 			if err := os.Remove(convPath); err != nil {
 				return result, err
@@ -3956,6 +3968,9 @@ func deleteOldWorkflowBuilderConversations(result *ChatHistoryCleanupResult, wor
 		}
 		if !shouldDelete {
 			continue
+		}
+		if err := deleteBackgroundTranscriptHistory("", workspacePath, chatHistorySessionIDFromFileName(filepath.Base(convPath))); err != nil {
+			return err
 		}
 		if err := os.Remove(convPath); err != nil {
 			return err

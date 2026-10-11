@@ -3,7 +3,6 @@ package terminals
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 
 	agentevents "github.com/manishiitg/mcpagent/events"
@@ -122,15 +122,6 @@ type Store struct {
 }
 
 const terminalToolTextMaxRunes = 2400
-
-var (
-	regexpMCPToken      = regexp.MustCompile(`(?i)(MCP_API_TOKEN=)[^\s"'\\]+`)
-	regexpSensitiveEnv  = regexp.MustCompile(`(?i)\b([A-Z0-9_]*(?:API_KEY|TOKEN|SECRET)=)[^\s"'\\]+`)
-	regexpBearerToken   = regexp.MustCompile(`(?i)(Authorization:\s*Bearer\s+)[^\s"'\\]+`)
-	regexpSecretEnv     = regexp.MustCompile(`(?m)(SECRET_[A-Z0-9_]+=)[^\s"'\\]+`)
-	regexpProviderSKKey = regexp.MustCompile(`\bsk-[A-Za-z0-9][A-Za-z0-9_-]{10,}\b`)
-	regexpGoogleAPIKey  = regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{20,}\b`)
-)
 
 type terminalToolLines struct {
 	order []string
@@ -1754,13 +1745,7 @@ func redactTerminalToolText(value string) string {
 // RedactSensitiveTerminalText removes common secret shapes before terminal text
 // is surfaced outside the terminal package.
 func RedactSensitiveTerminalText(value string) string {
-	value = regexpMCPToken.ReplaceAllString(value, "$1[redacted]")
-	value = regexpSensitiveEnv.ReplaceAllString(value, "$1[redacted]")
-	value = regexpBearerToken.ReplaceAllString(value, "$1[redacted]")
-	value = regexpSecretEnv.ReplaceAllString(value, "$1[redacted]")
-	value = regexpProviderSKKey.ReplaceAllString(value, "sk-[redacted]")
-	value = regexpGoogleAPIKey.ReplaceAllString(value, "AIza[redacted]")
-	return value
+	return redaction.Text(value)
 }
 
 func truncateTerminalToolText(value string) string {

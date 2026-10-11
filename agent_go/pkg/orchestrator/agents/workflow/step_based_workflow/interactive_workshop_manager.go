@@ -2369,6 +2369,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			parentExecutionID := currentWorkshopParentExecutionID(execCtx)
 			startMetadata := map[string]string{
 				"execution_type": "workflow-step",
+				"step_id":        stepID,
+				"run_folder":     execOpts.RunFolder,
+				"iteration":      iteration,
+				"group_name":     resolvedGroupName,
 			}
 			if execOpts.TestRunID != "" {
 				startMetadata["test_run_id"] = execOpts.TestRunID
@@ -2429,9 +2433,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 							"iteration":  iteration,
 							"group_name": groupName,
 						}
+						execMeta["run_folder"] = execOpts.RunFolder
 						if iwm.controller.isRelayExecution() {
 							delete(execMeta, "group_name")
-							execMeta["run_folder"] = execOpts.RunFolder
 						}
 						if isLockCode {
 							execMeta["lock_code"] = "true"

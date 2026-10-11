@@ -27,6 +27,7 @@ import { agentApi, resetSessionId, getSessionId, COMPACT_CHAT_OLDER_PAGE_MESSAGE
 import type { PollingEvent, ExtendedLLMConfiguration, SSEEventMessage, SSEStatusMessage, ExecutionOptions } from '../services/api-types'
 import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
+import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest, transcriptReadingKey } from './useTranscriptScroll'
@@ -3860,7 +3861,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 ChatAreaInner.displayName = 'ChatAreaInner'
 
 // Main ChatArea component
-const ChatArea = ChatAreaInner
+const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>((props, ref) => {
+ const activeTabId = useChatStore(state => state.activeTabId)
+ const tabId = props.tabId === undefined ? activeTabId : props.tabId
+ return <StepInspectionTabs tabId={tabId ?? null}><ChatAreaInner {...props} ref={ref} /></StepInspectionTabs>
+})
 
 ChatArea.displayName = 'ChatArea'
 

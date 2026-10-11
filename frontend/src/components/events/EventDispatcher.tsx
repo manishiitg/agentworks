@@ -1,4 +1,5 @@
 import React from 'react'
+import { InspectExecutionButton } from '../chat/InspectExecutionButton'
 import type { PollingEvent } from '../../services/api-types'
 import { EventWithOrchestratorContext } from './common/EventWithOrchestratorContext'
 
@@ -1148,6 +1149,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
             <span className={`${compact ? 'text-[10px]' : 'text-xs'} shrink-0 text-blue-500 dark:text-blue-400`}>
               {isRunning ? 'Running' : titleCaseIdentifier(status)}
             </span>
+            <InspectExecutionButton target={fields.metadata?.inspection} />
             {isRunning && event.timestamp && (
               <ElapsedTimer startTimestamp={event.timestamp} className="text-[10px] text-blue-500 dark:text-blue-400 animate-pulse font-mono" />
             )}
@@ -1184,6 +1186,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
               <span className="truncate text-[10px] text-muted-foreground">
                 {displayName}
               </span>
+              <InspectExecutionButton target={fields.metadata?.inspection} />
             </div>
             {error && (
               <div className="whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-300">
@@ -1225,6 +1228,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
             <span className={`${compact ? 'text-[10px]' : 'text-xs'} ${textColor} opacity-75`}>
               {statusLabel}{duration ? ` (${duration})` : ''}
             </span>
+            <InspectExecutionButton target={fields.metadata?.inspection} />
           </summary>
           <div className={`mt-2 ${compact ? 'text-[10px]' : 'text-xs'}`}>
             {error && (
@@ -1258,6 +1262,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
             <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-400 dark:text-gray-500`}>
               cancelled
             </span>
+            <InspectExecutionButton target={fields.metadata?.inspection} />
           </div>
         </div>
       </CompactWrapper>

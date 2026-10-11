@@ -2822,6 +2822,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}", api.handleRemoveQueuedConversationMessage).Methods("DELETE")
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}/steer", api.handleSteerQueuedConversationMessage).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/inspect", api.handleInspectSessionExecution).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/execution-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionExecutionTree)).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/activity-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionActivityTree)).Methods("GET")

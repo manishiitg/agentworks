@@ -3,27 +3,11 @@ package server
 import (
 	"context"
 	"log"
-	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/backgroundtranscript"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
-
-// backgroundAgentTranscriptLocks serializes read-modify-write cycles against
-// one transcript file within this process. It does not serialize across
-// processes — this server and a separate orchestrator process may both write
-// the same transcript (this server at start/terminal, the orchestrator's
-// ContextAwareEventBridge for the granular event body) through the shared
-// workspace API. That is the same accepted trade-off pkg/orchestrator's
-// tokenFileMutex already makes for token usage: a rare lost update under
-// true cross-process concurrency is a diagnostics gap, not a correctness bug
-// in the run the transcript describes.
-var backgroundAgentTranscriptLocks sync.Map // map[string]*sync.Mutex
-
-func backgroundAgentTranscriptLock(path string) *sync.Mutex {
-	v, _ := backgroundAgentTranscriptLocks.LoadOrStore(path, &sync.Mutex{})
-	return v.(*sync.Mutex)
-}
 
 // createBackgroundAgentTranscript writes the initial "running" transcript
 // record before the child's first provider turn (PLAT-164 requirement 1).
@@ -38,9 +22,11 @@ func (api *StreamingAPI) createBackgroundAgentTranscript(sessionID, agentID, nam
 		return
 	}
 	transcriptPath := orchEvents.BackgroundAgentTranscriptPath(workspacePath, sessionID, agentID)
-	lock := backgroundAgentTranscriptLock(transcriptPath)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock, deleted := backgroundtranscript.Lock(workspacePath, sessionID)
+	defer unlock()
+	if deleted {
+		return
+	}
 
 	ctx := context.Background()
 	status := "ok"
@@ -55,6 +41,7 @@ func (api *StreamingAPI) createBackgroundAgentTranscript(sessionID, agentID, nam
 	}
 
 	transcript := orchEvents.NewBackgroundAgentTranscript(sessionID, agentID, parentExecutionID, name, kind, startedAt)
+	transcript.Inspection = api.executionInspectionTarget(sessionID, agentID)
 	content, err := transcript.Marshal()
 	if err != nil {
 		log.Printf("[BG_AGENT_TRANSCRIPT] failed to marshal new transcript for session=%s agent=%s: %v", sessionID, agentID, err)
@@ -79,9 +66,11 @@ func (api *StreamingAPI) finalizeBackgroundAgentTranscript(sessionID, agentID, s
 		return
 	}
 	transcriptPath := orchEvents.BackgroundAgentTranscriptPath(workspacePath, sessionID, agentID)
-	lock := backgroundAgentTranscriptLock(transcriptPath)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock, deleted := backgroundtranscript.Lock(workspacePath, sessionID)
+	defer unlock()
+	if deleted {
+		return
+	}
 
 	ctx := context.Background()
 	writeStatus := "ok"
@@ -101,6 +90,9 @@ func (api *StreamingAPI) finalizeBackgroundAgentTranscript(sessionID, agentID, s
 	}
 	if transcript == nil {
 		transcript = orchEvents.NewBackgroundAgentTranscript(sessionID, agentID, "", "", "", completedAt)
+	}
+	if target := api.executionInspectionTarget(sessionID, agentID); target != nil {
+		transcript.Inspection = target
 	}
 	transcript.MarkTerminal(status, errMsg, completedAt)
 

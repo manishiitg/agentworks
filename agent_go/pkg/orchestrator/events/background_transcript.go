@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/mcpagent/events"
 )
 
@@ -18,16 +19,30 @@ import (
 // stream: only what is needed to forensically reconstruct what the child
 // said and did after its ui_events cache has aged out or the server has
 // restarted.
+// ExecutionInspectionTarget binds navigation to the execution that emitted it.
+// A run folder and a step name alone do not distinguish repeated dispatches.
+type ExecutionInspectionTarget struct {
+	SessionID     string    `json:"session_id"`
+	ExecutionID   string    `json:"execution_id"`
+	WorkspacePath string    `json:"workspace_path"`
+	Name          string    `json:"name"`
+	StepID        string    `json:"step_id,omitempty"`
+	RunFolder     string    `json:"run_folder,omitempty"`
+	ItemID        string    `json:"item_id,omitempty"`
+	StartedAt     time.Time `json:"started_at"`
+}
+
 type BackgroundAgentTranscript struct {
-	SessionID         string    `json:"session_id"`
-	AgentID           string    `json:"agent_id"`
-	ParentExecutionID string    `json:"parent_execution_id,omitempty"`
-	Name              string    `json:"name,omitempty"`
-	Kind              string    `json:"kind,omitempty"`
-	ModelID           string    `json:"model_id,omitempty"`
-	Provider          string    `json:"provider,omitempty"`
-	StartedAt         time.Time `json:"started_at"`
-	CompletedAt       time.Time `json:"completed_at,omitempty"`
+	Inspection        *ExecutionInspectionTarget `json:"inspection,omitempty"`
+	SessionID         string                     `json:"session_id"`
+	AgentID           string                     `json:"agent_id"`
+	ParentExecutionID string                     `json:"parent_execution_id,omitempty"`
+	Name              string                     `json:"name,omitempty"`
+	Kind              string                     `json:"kind,omitempty"`
+	ModelID           string                     `json:"model_id,omitempty"`
+	Provider          string                     `json:"provider,omitempty"`
+	StartedAt         time.Time                  `json:"started_at"`
+	CompletedAt       time.Time                  `json:"completed_at,omitempty"`
 	// Status is "running" until MarkTerminal is called with "completed",
 	// "failed", or "canceled". A transcript left at "running" forever is
 	// itself a real signal, same as background_agent_log (PLAT-114).
@@ -106,11 +121,48 @@ func (t *BackgroundAgentTranscript) Marshal() (string, error) {
 	if t == nil {
 		return "", fmt.Errorf("nil background agent transcript")
 	}
-	data, err := json.MarshalIndent(t, "", "  ")
+	// Never mutate the provider's/live caller's event while saving diagnostics.
+	copy := *t
+	copy.Events = make([]BackgroundAgentTranscriptEvent, len(t.Events))
+	copyEvents := t.Events
+	for index := range copyEvents {
+		copy.Events[index] = copyEvents[index]
+	}
+	copy.RedactSensitiveText()
+	data, err := json.MarshalIndent(&copy, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("marshal background agent transcript: %w", err)
 	}
 	return string(data), nil
+}
+
+// RedactSensitiveText also protects reads of transcripts saved by older builds.
+// IDs and paths remain untouched so evidence stays bound to its execution.
+func (t *BackgroundAgentTranscript) RedactSensitiveText() {
+	if t == nil {
+		return
+	}
+	if t.Events == nil {
+		t.Events = []BackgroundAgentTranscriptEvent{}
+	}
+	t.Name = redaction.Text(t.Name)
+	t.Error = redaction.Text(t.Error)
+	if t.Inspection != nil {
+		copy := *t.Inspection
+		copy.Name = redaction.Text(copy.Name)
+		t.Inspection = &copy
+	}
+	for index := range t.Events {
+		event := &t.Events[index]
+		event.Text = redaction.Text(event.Text)
+		if event.ToolCall != nil {
+			copy := *event.ToolCall
+			copy.Arguments = redaction.Text(copy.Arguments)
+			copy.Result = redaction.Text(copy.Result)
+			copy.Error = redaction.Text(copy.Error)
+			event.ToolCall = &copy
+		}
+	}
 }
 
 // AppendEvent appends one normalized event. Ordering is append-only; callers
@@ -146,6 +198,21 @@ func NormalizeBackgroundTranscriptEvent(evt *events.AgentEvent) (BackgroundAgent
 		return BackgroundAgentTranscriptEvent{}, false
 	}
 	switch data := evt.Data.(type) {
+	case *events.SystemPromptEvent:
+		if strings.TrimSpace(data.Content) == "" {
+			return BackgroundAgentTranscriptEvent{}, false
+		}
+		return BackgroundAgentTranscriptEvent{Timestamp: eventTimestamp(evt, data.Timestamp), Type: "system_message", Role: "system", Text: data.Content}, true
+	case *events.ConversationStartEvent:
+		if strings.TrimSpace(data.SystemPrompt) == "" {
+			return BackgroundAgentTranscriptEvent{}, false
+		}
+		return BackgroundAgentTranscriptEvent{Timestamp: eventTimestamp(evt, data.Timestamp), Type: "system_message", Role: "system", Text: data.SystemPrompt}, true
+	case *events.LLMGenerationEndEvent:
+		if strings.TrimSpace(data.Content) == "" {
+			return BackgroundAgentTranscriptEvent{}, false
+		}
+		return BackgroundAgentTranscriptEvent{Timestamp: eventTimestamp(evt, data.Timestamp), Type: backgroundTranscriptEventAssistantMessage, Role: "assistant", Text: data.Content}, true
 	case *events.UserMessageEvent:
 		text := strings.TrimSpace(data.Content)
 		if text == "" {

@@ -1152,6 +1152,13 @@ export const agentApi = {
   },
 
   // Background work this chat started (steps, workflow runs, sub-agents, chat/Crew calls) and a Stop for one item (PLAT-705).
+  inspectSessionExecution: async (target: import('./api-types').ExecutionInspectionTarget): Promise<import('./api-types').ExecutionInspectionResponse> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(target.session_id)}/background-work/${encodeURIComponent(target.execution_id)}/inspect`, {
+      params: { workspace_path: target.workspace_path }, timeout: RUNTIME_READ_TIMEOUT_MS,
+    })
+    return response.data
+  },
+
   getSessionBackgroundWork: async (sessionId: string): Promise<SessionBackgroundWorkResponse> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/background-work`, { timeout: RUNTIME_READ_TIMEOUT_MS })
     return response.data

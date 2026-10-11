@@ -23,6 +23,7 @@ const headerRowClass = 'flex items-center justify-between gap-3 border-b border-
 
 interface ExecutionLogsPopupProps {
   workspacePath: string | null
+  initialStepId?: string
   allowDefaultRunFolder?: boolean
   runFolder: string | null
   runFolders: string[] // Available run folders (iterations and groups)
@@ -40,6 +41,7 @@ interface ExecutionLogsPopupProps {
 
 const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
   workspacePath,
+  initialStepId,
   runFolder: initialRunFolder,
   runFolders,
   allowDefaultRunFolder = true,
@@ -76,7 +78,7 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
     toggleExecution,
     toggleArchived,
     toggleFileExpansion,
-  } = useExecutionLogsData({ workspacePath, initialRunFolder, runFolders, allowDefaultRunFolder })
+  } = useExecutionLogsData({ workspacePath, initialRunFolder, runFolders, allowDefaultRunFolder, initialStepId })
 
   const webhookRun = isWebhookRunFolder(selectedRunFolder)
   const [failedOnly, setFailedOnly] = useState(false)

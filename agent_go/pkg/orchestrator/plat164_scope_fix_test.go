@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/backgroundtranscript"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
@@ -105,6 +106,7 @@ func TestAppendBackgroundAgentTranscriptEventSkipsWhenNoHeaderExists(t *testing.
 // (createBackgroundAgentTranscript already wrote the "running" header), so a
 // granular event from the bridge appends into that same file.
 func TestAppendBackgroundAgentTranscriptEventAppendsWhenHeaderAlreadyExists(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const sessionID = "session-1"
 	const agentID = "workshop-background-task-abc"
 	path := orchevents.BackgroundAgentTranscriptPath("Workflow/test-workspace", sessionID, agentID)
@@ -144,6 +146,18 @@ func TestAppendBackgroundAgentTranscriptEventAppendsWhenHeaderAlreadyExists(t *t
 	}
 	if transcript.Name != "Measurement Validator" {
 		t.Fatalf("name = %q, header metadata must survive the append", transcript.Name)
+	}
+	// Even a queued callback retaining an old header must respect chat deletion.
+	if err := backgroundtranscript.Delete(bo.workspacePath, sessionID, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := bo.AppendBackgroundAgentTranscriptEvent(context.Background(), sessionID, agentID, orchevents.BackgroundAgentTranscriptEvent{Type: "user_message", Text: "late event"}); err != nil {
+		t.Fatal(err)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if api.writes != 1 {
+		t.Fatal("late orchestrator callback wrote to a deleted chat")
 	}
 }
 

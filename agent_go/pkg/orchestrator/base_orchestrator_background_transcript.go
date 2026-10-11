@@ -4,24 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/backgroundtranscript"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
-
-// backgroundAgentTranscriptFileLocks serializes read-modify-write cycles
-// against one transcript file within this process. It does not serialize
-// across processes — cmd/server may concurrently write the same file's
-// "running"/terminal header through the workspace API. That is the same
-// accepted trade-off tokenFileMutex already makes for token usage: a rare
-// lost update under true cross-process concurrency is a diagnostics gap, not
-// a correctness bug in the run the transcript describes.
-var backgroundAgentTranscriptFileLocks sync.Map // map[string]*sync.Mutex
-
-func backgroundAgentTranscriptFileLock(path string) *sync.Mutex {
-	v, _ := backgroundAgentTranscriptFileLocks.LoadOrStore(path, &sync.Mutex{})
-	return v.(*sync.Mutex)
-}
 
 // AppendBackgroundAgentTranscriptEvent implements BackgroundAgentTranscriptWriter
 // (PLAT-164). It is best-effort by design, matching every other
@@ -37,9 +23,11 @@ func (bo *BaseOrchestrator) AppendBackgroundAgentTranscriptEvent(ctx context.Con
 		return nil
 	}
 	filePath := orchevents.BackgroundAgentTranscriptPath(workspacePath, sessionID, agentID)
-	lock := backgroundAgentTranscriptFileLock(filePath)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock, deleted := backgroundtranscript.Lock(workspacePath, sessionID)
+	defer unlock()
+	if deleted {
+		return nil
+	}
 
 	existingContent, err := bo.ReadWorkspaceFile(ctx, filePath)
 	if err != nil {

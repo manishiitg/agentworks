@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { openStepInspection } from '../utils/stepInspection'
 import { Loader2, Square } from 'lucide-react'
 import type { SessionBackgroundWorkItem } from '../services/api-types'
 import { useSessionBackgroundWork } from '../hooks/useSessionBackgroundWork'
@@ -94,10 +95,10 @@ export function BackgroundWorkList({ work, onOpen, renderAction }: {
   return <ul className="max-h-72 overflow-y-auto">
     {work.items.map(item => {
       const card = transcriptCard(item.id)
-      const openButton = card ? <button type="button"
+      const openButton = item.inspection || card ? <button type="button"
         className="underline-offset-2 outline-none hover:text-foreground hover:underline data-[highlighted]:text-foreground data-[highlighted]:underline"
         aria-label={`Open ${backgroundWorkLabel(item)}`}
-        onClick={() => { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); onOpen?.() }}>Open</button> : null
+        onClick={() => { if (item.inspection) openStepInspection(item.inspection); else card?.scrollIntoView({ behavior: 'smooth', block: 'center' }); onOpen?.() }}>{item.inspection ? 'Inspect' : 'Open'}</button> : null
       const stopButton = <button type="button" onClick={() => void work.stopItem(item)} disabled={work.isStopping(item)}
         className="mt-0.5 inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] text-muted-foreground outline-none hover:bg-destructive/10 hover:text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive disabled:opacity-60"
         aria-label={`Stop ${backgroundWorkLabel(item)}`} data-testid="background-work-stop">

@@ -1623,7 +1623,37 @@ export interface SessionExecutionTreeSummary {
   has_running_tracked_executions: boolean
 }
 
+export interface ExecutionInspectionTarget {
+ session_id: string
+ execution_id: string
+ workspace_path: string
+ name: string
+ step_id?: string
+ run_folder?: string
+ item_id?: string
+ started_at: string
+}
+
+export interface ExecutionInspectionResponse {
+ transcript: {
+  session_id: string
+  agent_id: string
+  name?: string
+  status: string
+  error?: string
+  started_at: string
+  completed_at?: string
+  inspection?: ExecutionInspectionTarget
+  events: Array<{timestamp: string; type: string; role?: string; text?: string; tool_call?: {
+   tool_call_id?: string; tool_name: string; arguments?: string; result?: string; error?: string; status: string
+  }}>
+ }
+ result?: string
+ children: Array<{agent_id: string; name: string; status: string; started_at?: string}>
+}
+
 export interface SessionBackgroundWorkItem {
+ inspection?: ExecutionInspectionTarget
   id: string
   kind: 'step' | 'workflow_run' | 'sub_agent' | 'crew_call'
   label: string
