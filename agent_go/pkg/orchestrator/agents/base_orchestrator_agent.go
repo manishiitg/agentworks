@@ -153,7 +153,7 @@ func (boa *BaseOrchestratorAgent) ExecuteWithTemplateValidation(ctx context.Cont
 
 	// Always mark as sub-agent so ContextAwareEventBridge tags tool events
 	// with this agent's correlation ID (BaseOrchestratorAgent is only used
-	// for orchestrator step agents, never the main chat agent).
+	// for agent step agents, never the main chat agent).
 	agentCtx := context.WithValue(ctx, events.AgentSessionIDKey, boa.agentSessionID)
 	agentCtx = context.WithValue(agentCtx, events.IsSubAgentContextKey, true)
 	if sid := boa.config.MCPSessionID; sid != "" {

@@ -241,6 +241,12 @@ func TestSequenceScriptsP0SavedRunnerAndValidation(t *testing.T) {
 				hcpo.codeLayoutVersion.Store(layout)
 				plan, item := sequenceScriptFixture()
 				session := &agentSequenceSession{scriptedPlan: plan, LastRuntimeContext: "Opening instruction"}
+				// Routed agents use the same declared script runner without creating child conversations.
+				var delegation *agentSequenceDelegation
+				if layout == 1 {
+					delegation = &agentSequenceDelegation{}
+					session.delegation = delegation
+				}
 				_, err = hcpo.executeAgentItem(t.Context(), plan.Steps[0].(*AgentPlanStep), item, 0, "step-1", session, false)
 				if (err == nil) != validOutput {
 					t.Fatalf("validation result=%v, validOutput=%v", err, validOutput)
@@ -263,7 +269,7 @@ func TestSequenceScriptsP0SavedRunnerAndValidation(t *testing.T) {
 				if layout == 1 && !strings.Contains(received[0].Command, "/code/fetch/main.py") {
 					t.Fatalf("version 1 did not use canonical source: %s", received[0].Command)
 				}
-				if session.runtime != nil || session.delegation != nil {
+				if session.runtime != nil || session.delegation != delegation {
 					t.Fatal("script created an agent runtime")
 				}
 				var receipt []sequenceScriptResult

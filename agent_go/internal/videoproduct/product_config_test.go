@@ -217,7 +217,7 @@ func TestGeneratedPlanAuthorsStagesAsAgents(t *testing.T) {
 		case "routing":
 			continue // a router branches; it runs no stage turn
 		case "todo_task":
-			t.Fatalf("generated Video Studio plan still contains orchestrator step %q; every production task must be an individually runnable agent", step.ID)
+			t.Fatalf("generated Video Studio plan still contains agent step %q; every production task must be an individually runnable agent", step.ID)
 		}
 		stages++
 		first := ""

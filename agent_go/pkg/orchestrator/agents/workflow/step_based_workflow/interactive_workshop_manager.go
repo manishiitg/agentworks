@@ -348,8 +348,11 @@ func (iwm *InteractiveWorkshopManager) enrichQueryForComplexStep(
 	var logFileName, stepTypeName string
 	switch stepType {
 	case StepTypeAgent:
+		if !isDelegatingAgentStep(stepInfo.Step) {
+			return ""
+		}
 		logFileName = "todo-task-execution.json"
-		stepTypeName = "Todo Task"
+		stepTypeName = "Agent"
 	case StepTypeRouting, StepTypeBranch:
 		logFileName = "orchestration-execution.json"
 		stepTypeName = "Orchestration"

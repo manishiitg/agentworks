@@ -624,7 +624,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     return <CompactWrapper compact={compact}><BatchExecutionCanceledEventDisplay event={getEventData(event)} compact={compact} /></CompactWrapper>
   }
 
-  // Todo Task Events
+  // Agent Events
   if (isEventType(event, 'todo_task_route_selected')) {
     const data = getEventData(event) as TodoTaskRouteSelectedEvent
     const actionColors: Record<string, string> = {
@@ -639,7 +639,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const routeName = data.selected_route_name || (data.use_generic_agent ? 'Generic Agent' : '')
     // An orchestrator picks a route per todo, so these arrive in long runs --
     // eleven in a row on a real Pulse orchestrator. As a full card each one
-    // repeated "Todo Task: Route Selected", the iteration chip and "Action:"
+    // repeated "Agent: Route Selected", the iteration chip and "Action:"
     // identically, and the only part that differed (which agent, which tier)
     // was buried three lines down. One dense row per route puts the varying
     // part first and turns a screenful into a readable list.
@@ -684,7 +684,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
           <div className="flex items-center gap-2 mb-2">
             <span className="text-lg">🎉</span>
             <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-purple-700 dark:text-purple-300`}>
-              Todo Task Step Completed: {data.step_title}
+              Agent Step Completed: {data.step_title}
             </span>
           </div>
           <div className={`space-y-1 ${compact ? 'text-xs' : 'text-sm'}`}>
@@ -760,7 +760,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     )
   }
 
-  // Todo Task Events
+  // Agent Events
   if (isEventType(event, 'todo_task_route_selected')) {
     return (
       <CompactWrapper compact={compact}>
