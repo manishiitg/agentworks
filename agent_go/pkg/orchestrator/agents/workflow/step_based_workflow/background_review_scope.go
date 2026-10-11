@@ -140,7 +140,7 @@ func parseBackgroundReadOnlyAccess(args map[string]interface{}, agentType string
 }
 func readOnlyBackgroundToolAllowed(name string) bool {
 	switch name {
-	case "execute_shell_command", "read_workspace_file", "list_workspace_files", "search_workspace_files", "read_skill", "get_api_spec", "get_prompt", "get_resource",
+	case "get_workflow_team", "read_team_source", "execute_shell_command", "read_workspace_file", "list_workspace_files", "search_workspace_files", "read_skill", "get_api_spec", "get_prompt", "get_resource",
 		"query_workflow_db", "query_workflow_costs", "get_step_prompts", "get_plan_prompt_health", "get_workflow_config", "get_llm_config", "get_cost_summary",
 		"list_executions", "get_sub_agent_conversation", "get_route_description", "get_goal_metrics", "get_pulse_state":
 		return true

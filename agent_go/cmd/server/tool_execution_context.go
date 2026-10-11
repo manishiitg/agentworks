@@ -161,6 +161,19 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			log.Printf("[KB_PROJECT] no Builder authority for %s: phase=%s mode=%s triggered_by=%q bot=%q caller=%q tool_session=%q authority=%q owned=%v read_only=%v",
 				tool, req.PhaseID, req.AgentMode, req.TriggeredBy, req.BotPlatform, callerSession, toolSession, authoritySession, callerOwnedBySession, readOnly)
 		}
+
+		action := ""
+		switch tool {
+		case "notify_user":
+			action = "notify"
+		case "publish_dashboard", "publish_relay":
+			action = "publish"
+		}
+		if action != "" && strings.HasPrefix(req.SelectedFolder, "Workflow/") {
+			if err := authorizeTeamAction(ctx, req.SelectedFolder, action); err != nil {
+				return nil, err
+			}
+		}
 		return ctx, nil
 	}
 }

@@ -86,7 +86,7 @@ var goalWorkMeasureTools = map[string]bool{"configure_goal_metrics": true}
 // goalWorkChangeTools edit existing steps (Fix and Tune), beyond the step
 // edit tools that stepworkflow.ScheduleGuardedTool already names.
 var goalWorkChangeTools = map[string]bool{
-	"update_step_config": true, "restore_step_from_changelog": true,
+	"update_step_config": true, "restore_step_from_changelog": true, "edit_team_source": true,
 }
 
 // goalWorkReshapeTools change schedules and the plan's structure: only at the

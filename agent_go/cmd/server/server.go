@@ -7683,6 +7683,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						phaseAdditions = append(phaseAdditions, section)
 					}
 				}
+				if section := workflowTeamInstructions(r.Context(), phaseWorkspacePath, currentUserID); section != "" {
+					phaseAdditions = append(phaseAdditions, section)
+				}
 				phaseSystemPrompt, phaseIncluded, phaseSkipped, phasePromptErr := buildWorkflowPhaseSystemPrompt(workflowPhaseID, phaseTemplateVars, promptCtx, phaseAdditions...)
 				if phasePromptErr != nil {
 					sendError(fmt.Sprintf("Failed to assemble the system prompt for phase %s: %v", workflowPhaseID, phasePromptErr), true)

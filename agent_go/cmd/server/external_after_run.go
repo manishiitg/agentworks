@@ -17,6 +17,10 @@ func (api *StreamingAPI) externalRunAfterRun(w http.ResponseWriter, r *http.Requ
 		externalError(w, 403, "insufficient_scope", "Running backup or publish needs run access.")
 		return
 	}
+	if err := authorizeTeamAction(r.Context(), workflow.WorkspacePath, externalArg(args, "option")); err != nil {
+		externalError(w, 403, "permission_denied", err.Error())
+		return
+	}
 	started, notes, err := api.scheduler.runAfterRunNow(workflow.WorkspacePath, externalArg(args, "option"))
 	if err != nil {
 		externalError(w, 409, "not_started", err.Error())

@@ -233,11 +233,11 @@ func teamProtectedProjection(plan map[string]interface{}, team *WorkflowTeam, ac
 	return copy
 }
 func validateTeamPlanChange(team *WorkflowTeam, actor, before, after string) error {
-	old, e := teamJSON(before)
+	old, e := canonicalTeamPlan(before)
 	if e != nil {
 		return fmt.Errorf("cannot read current plan: %w", e)
 	}
-	next, e := teamJSON(after)
+	next, e := canonicalTeamPlan(after)
 	if e != nil {
 		return e
 	}
@@ -479,7 +479,7 @@ func (api *StreamingAPI) invalidateWorkflowTeamSessions(root string) {
 	api.activeSessionsMux.RLock()
 	ids := []string{}
 	for id, s := range api.activeSessions {
-		if strings.Trim(s.WorkspacePath, "/") == strings.Trim(root, "/") {
+		if strings.Trim(s.WorkspacePath, "/") == strings.Trim(root, "/") && s.AgentMode == "workflow_phase" && s.PhaseID == "workflow-builder" && !isGoalLeadSessionID(id) && !isScheduledSessionIdentity(id, s.TriggeredBy) {
 			ids = append(ids, id)
 		}
 	}
@@ -1095,4 +1095,42 @@ func teamEffectiveAssignments(plan map[string]interface{}, t *WorkflowTeam) []Wo
 		out = append(out, WorkflowRouteAssignment{StepID: route.StepID, RouteID: route.RouteID, ContributorID: actor})
 	}
 	return out
+}
+
+func workflowTeamInstructions(ctx context.Context, root, user string) string {
+	m, found, e := ReadWorkflowManifest(ctx, root)
+	if e != nil || !found || m.Team == nil {
+		return ""
+	}
+	role := "Contributor"
+	if user == m.Team.LeaderID {
+		role = "Leader"
+	}
+	return "## Goal team\n\nYou act for " + role + " " + user + ". Call get_workflow_team for current assignments and plan_revision before proposing a change. Use that revision as expected_plan_revision with native plan/config tools; conflicts require rereading and reconciling. Only an assigned Contributor edits its route's steps; the Leader must explicitly reassign or take back the route first. Source edits use read_team_source then edit_team_source with expected_revision. Raw source writes, moves and deletes cannot bypass this. Only the Leader changes the overall goal and shared settings. Execution, schedule management, Backup, Publish, Notify and named decision approvals are separate grants. Share relevant results with Pulse through explicit messages; private Builder chat transcripts remain private. Separate Builder chats may run concurrently, but never overwrite a conflicting saved edit."
+}
+
+// Compare executable plan shapes, including the same default/canonical fields
+// that native tools serialize. Ordinary DTO normalization must not look like a
+// Contributor editing every other route. Root metadata remains protected.
+func canonicalTeamPlan(raw string) (map[string]interface{}, error) {
+	original, e := teamJSON(raw)
+	if e != nil {
+		return nil, e
+	}
+	var plan stepworkflow.PlanningResponse
+	if e = json.Unmarshal([]byte(raw), &plan); e != nil {
+		return nil, e
+	}
+	normalized, e := json.Marshal(plan)
+	if e != nil {
+		return nil, e
+	}
+	canonical, e := teamJSON(string(normalized))
+	if e != nil {
+		return nil, e
+	}
+	for _, key := range []string{"steps", "orphan_steps"} {
+		original[key] = canonical[key]
+	}
+	return original, nil
 }

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -176,7 +177,7 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if w := save("leader", m.Team, 0); w.Code != 409 {
 		t.Fatal("stale team policy accepted")
 	}
-	sched := WorkflowSchedule{ID: "route-schedule", RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1, AfterRun: &ScheduleAfterRun{}}
+	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1, AfterRun: &ScheduleAfterRun{}}
 	if e := teamScheduleAuthority(m.Team, "first", sched); e == nil {
 		t.Fatal("editing implicitly granted schedule management")
 	}
@@ -260,5 +261,62 @@ func TestWorkflowTeamFailedPreparationDoesNotCommitPlan(t *testing.T) {
 	}
 	if f.file("planning/plan.json") != initial {
 		t.Fatal("failed preparation left a partial plan")
+	}
+}
+
+// Exercise actual durable messaging with only the receiving model replaced.
+// The receiving identity is the route's Contributor, not the Pulse Leader.
+func TestWorkflowTeamPulseTargetsContributorBuilderAndKeepsInboxPrivate(t *testing.T) {
+	f := newTeamTestFixture(t)
+	m, _, _ := ReadWorkflowManifest(context.Background(), teamTestRoot)
+	setWorkflowPulseEnabled(m, true)
+	f.manifest(t, m)
+	ctx := teamTestContext("leader")
+	conv, e := ensureGoalLeadConversation(ctx, teamTestRoot, m.ID, time.Now().UTC(), false, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	oldFind, oldTurn := findPulseBuilderChat, agentMessageTurn
+	findPulseBuilderChat = func(_ *StreamingAPI, _ context.Context, user string, _ *WorkflowManifest, _ string, _ string) (string, error) {
+		if user != "first" {
+			return "", fmt.Errorf("wrong private Builder recipient: %s", user)
+		}
+		return "team-first-builder", nil
+	}
+	delivered := make(chan error, 1)
+	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, _ map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
+		release, e := acquireAgentMessageAuthority(turnCtx, session)
+		if e != nil {
+			delivered <- e
+			return internalSessionTurnResult{}, e
+		}
+		defer release()
+		if user != "first" || session != "team-first-builder" || teamActor(turnCtx) != "first" {
+			delivered <- fmt.Errorf("wrong trusted receiving identity %s %s", user, teamActor(turnCtx))
+		} else {
+			delivered <- nil
+		}
+		return internalSessionTurnResult{FinalResponse: "Private chat text is not automatically forwarded"}, nil
+	}
+	t.Cleanup(func() { findPulseBuilderChat, agentMessageTurn = oldFind, oldTurn })
+	out, e := f.api.askBuilder(ctx, pulseBuilderAskRequest{UserID: "leader", WorkspacePath: teamTestRoot, PulseSession: conv.SessionID, RouteStepID: "parent", RouteID: "first-route", Message: "Measure your route and send evidence when ready", SubmissionID: "team-route-message"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	select {
+	case e := <-delivered:
+		if e != nil {
+			t.Fatal(e)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("route Builder did not receive message")
+	}
+	inbox := fmt.Sprint(out["inbox_id"])
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: m.ID}, Path: teamTestRoot, Chat: &codeChat{Key: "session:team-first-builder", SessionID: "team-first-builder"}}
+	if _, e = f.api.readAgentMessages(teamTestContext("first"), "first", caller, inbox, 0, 20, 0); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.api.readAgentMessages(teamTestContext("second"), "second", caller, inbox, 0, 20, 0); e == nil {
+		t.Fatal("another Contributor read the private reply address")
 	}
 }

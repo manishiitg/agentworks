@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -44,6 +45,10 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 	path := fmt.Sprintf("/api/documents/%s", params.Filepath)
 	respBody, err := c.request(ctx, "GET", path, nil)
 	if err != nil {
+		var status *httpStatusError
+		if FileReadReceipt != nil && errors.As(err, &status) && status.statusCode == 404 {
+			FileReadReceipt(ctx, params.Filepath, "")
+		}
 		return ReadFileResult{}, err
 	}
 

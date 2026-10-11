@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"strings"
 	"time"
 )
@@ -45,6 +46,9 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 				return "", fmt.Errorf("no current workflow team access")
 			}
 			ctx = withTeamPlanReceipt(ctx)
+			if n == "update_variable" || n == "add_group" || n == "update_group" || n == "delete_group" {
+				ctx = workspacepkg.WithSystemManagedWritePaths(ctx, r.root+"/variables/variables.json")
+			}
 			member := m.Team.member(r.user)
 			if r.user != m.Team.LeaderID {
 				if teamRunTool(n) {

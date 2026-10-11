@@ -118,3 +118,15 @@ func localDecisionTeam(root string) (*WorkflowTeam, error) {
 	}
 	return m.Team, nil
 }
+
+func authorizeTeamRecordActor(ctx context.Context, team *WorkflowTeam) error {
+	actor := teamActor(ctx)
+	if actor != team.LeaderID && team.member(actor) == nil {
+		return fmt.Errorf("shared record requires a team member")
+	}
+	a := userAccessForClaims(&UserClaims{UserID: actor})
+	if a.Disabled || !a.CanEdit || IsMultiUserMode() && !a.Known {
+		return fmt.Errorf("account cannot update shared records")
+	}
+	return nil
+}

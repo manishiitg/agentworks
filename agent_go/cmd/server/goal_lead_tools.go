@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path"
 	"path/filepath"
@@ -56,18 +57,23 @@ func builderPulseLevelsSection(ctx context.Context, workspacePath string) string
 // Every place that computes or compares the key must add it, or a follow-up
 // looks like a policy change and cancels the running turn.
 func pulsePolicyKeySuffix(sessionID, phaseID, workspacePath string) string {
+	suffix := ""
+	if m, found, e := ReadWorkflowManifest(context.Background(), workspacePath); e == nil && found && m.Team != nil {
+		raw, _ := json.Marshal(m.Team)
+		suffix = ":team-" + teamRevision(string(raw))
+	}
 	if isGoalLeadSessionID(sessionID) {
 		if key := goalLeadSystemSectionKey(goalLeadSystemSection(context.Background(), workspacePath)); key != "" {
-			return ":pulse-" + key
+			return suffix + ":pulse-" + key
 		}
-		return ""
+		return suffix
 	}
 	if phaseID == "workflow-builder" {
 		if key := goalLeadSystemSectionKey(builderPulseLevelsSection(context.Background(), workspacePath)); key != "" {
-			return ":pulse-levels-" + key
+			return suffix + ":pulse-levels-" + key
 		}
 	}
-	return ""
+	return suffix
 }
 
 // configurePulseShellGuard: Pulse's shell reads the whole workflow and writes

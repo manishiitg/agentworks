@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
@@ -101,19 +102,29 @@ func commitTeamEdit(ctx context.Context, result string) error {
 	written := []string{}
 	for _, p := range paths {
 		if e := writeFileToWorkspace(commitCtx, p, pending[p]); e != nil {
+			reconcileCtx, cancel := context.WithTimeout(context.WithoutCancel(commitCtx), 10*time.Second)
 			rollback := []string{}
+			raw, found, readErr := readFileFromWorkspace(context.WithValue(reconcileCtx, teamPlanReceiptKey{}, nil), p)
+			if readErr != nil {
+				rollback = append(rollback, p)
+			} else if found && raw == pending[p] {
+				written = append(written, p)
+			} else if found != exists[p] || raw != previous[p] {
+				rollback = append(rollback, p)
+			}
 			for i := len(written) - 1; i >= 0; i-- {
 				q := written[i]
 				var restore error
 				if exists[q] {
-					restore = writeFileToWorkspace(commitCtx, q, previous[q])
+					restore = writeFileToWorkspace(reconcileCtx, q, previous[q])
 				} else {
-					restore = deleteWorkspaceFile(commitCtx, q)
+					restore = deleteWorkspaceFile(reconcileCtx, q)
 				}
 				if restore != nil {
 					rollback = append(rollback, q)
 				}
 			}
+			cancel()
 			if len(rollback) > 0 {
 				return fmt.Errorf("edit failed and rollback requires reconciliation for %s: %w", strings.Join(rollback, ", "), e)
 			}
@@ -210,4 +221,31 @@ func authorizeTeamScheduleTrigger(ctx context.Context, root, id string) error {
 		}
 	}
 	return teamScheduleAuthority(&policy, actor, *schedule)
+}
+
+func authorizeTeamAction(ctx context.Context, root, action string) error {
+	m, found, e := ReadWorkflowManifest(ctx, root)
+	if e != nil {
+		return e
+	}
+	if !found || m.Team == nil {
+		return nil
+	}
+	actor := teamActor(ctx)
+	access := userAccessForClaims(&UserClaims{UserID: actor})
+	if access.Disabled || !access.CanEdit || IsMultiUserMode() && !access.Known {
+		return fmt.Errorf("account cannot perform this action")
+	}
+	if actor == m.Team.LeaderID {
+		return nil
+	}
+	member := m.Team.member(actor)
+	if member == nil {
+		return fmt.Errorf("no current team membership")
+	}
+	allowed := action == "backup" && member.Backup || action == "publish" && member.Publish || action == "notify" && member.Notify
+	if !allowed {
+		return fmt.Errorf("%s requires its own team grant", action)
+	}
+	return nil
 }

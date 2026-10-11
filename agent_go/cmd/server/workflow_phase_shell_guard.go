@@ -12,7 +12,16 @@ import (
 // separate folder policy.
 func configureWorkflowPhaseCLIShellGuard(sessionID, workspacePath, userID string, externalBuilder, readOnly bool) {
 	if m, ok, e := ReadWorkflowManifest(context.Background(), workspacePath); e == nil && ok && m.Team != nil {
-		workspace.SetSessionFolderGuard(sessionID, []string{workspacePath}, []string{workspacePath + "/runs", workspacePath + "/builder/conversation/users/" + sanitizeUserIDForPath(userID)})
+		if isGoalLeadSessionID(sessionID) {
+			configurePulseShellGuard(sessionID, workspacePath)
+			protectOtherWorkflowBuilderChats(sessionID, workspacePath, userID)
+			return
+		}
+		writes := []string{workspacePath + "/builder/conversation/users/" + sanitizeUserIDForPath(userID)}
+		if !readOnly {
+			writes = append(writes, workspacePath+"/runs")
+		}
+		workspace.SetSessionFolderGuard(sessionID, []string{workspacePath}, writes)
 		protectOtherWorkflowBuilderChats(sessionID, workspacePath, userID)
 		return
 	}
