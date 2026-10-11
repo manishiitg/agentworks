@@ -1973,8 +1973,15 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		// are not part of the plan either (PLAT-697 phase 0): the pulse_mode ->
 		// after_run migration and a checkbox toggle must not start a review.
 		if changes := withoutPulseSettingsManifestChanges(workflowManifestChangelogChanges(withoutScheduleAfterRunFields(previous), withoutScheduleAfterRunFields(string(data)))); len(changes) > 0 {
+			logCtx := ctx
+			if m.Team != nil {
+				// This typed save already passed policy validation. Its audit
+				// writes must work even after ownership transfers to another user.
+				logCtx = context.WithValue(ctx, teamCommitPermitKey{}, true)
+				logCtx = step_based_workflow.WithWorkflowSettingsOrigin(logCtx, teamActor(ctx))
+			}
 			step_based_workflow.LogCanonicalArtifactChange(
-				ctx, workspacePath, "write_workflow_manifest",
+				logCtx, workspacePath, "write_workflow_manifest",
 				"Recorded workflow.json field changes for artifact drift review.",
 				changes, workflowManifestChangelogReader, writeFileToWorkspace, createServerLogger(),
 				"workflow.json", previous, string(data),

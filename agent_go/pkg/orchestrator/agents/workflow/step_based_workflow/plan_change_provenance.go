@@ -96,6 +96,17 @@ func WithExternalBuilderPlanOrigin(ctx context.Context, operationID, grantID, us
 	})
 }
 
+// WithWorkflowSettingsOrigin attributes a typed settings save to its trusted
+// authenticated actor, including ownership and route-assignment changes.
+func WithWorkflowSettingsOrigin(ctx context.Context, userID string) context.Context {
+	origin, _ := ctx.Value(planChangeOriginContextKey{}).(PlanChangeOrigin)
+	origin.UserID = strings.TrimSpace(userID)
+	if origin.Type == "" || origin.Type == "other" {
+		origin.Type = "user_action"
+	}
+	return context.WithValue(ctx, planChangeOriginContextKey{}, origin)
+}
+
 func planChangeOriginFromContext(ctx context.Context, workspacePath string) PlanChangeOrigin {
 	origin, _ := ctx.Value(planChangeOriginContextKey{}).(PlanChangeOrigin)
 	if strings.TrimSpace(origin.Type) == "" {

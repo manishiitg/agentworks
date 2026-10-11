@@ -232,6 +232,17 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if e != nil || workflowExecutionOwnerUserID(transferred) != "second" || len(transferred.effectiveOwners()) != 1 {
 		t.Fatalf("not one new owner: %+v %v", transferred, e)
 	}
+	attributed := false
+	f.store.mu.Lock()
+	for path, raw := range f.store.files {
+		if strings.HasPrefix(path, teamTestRoot+"/planning/changelog/") && strings.Contains(raw, `"user_id": "leader"`) && strings.Contains(raw, `write_workflow_manifest`) {
+			attributed = true
+		}
+	}
+	f.store.mu.Unlock()
+	if !attributed {
+		t.Fatal("ownership transfer lost its authenticated change history")
+	}
 	if _, e := listReportHumanInputs(context.Background(), teamTestRoot, "answered", ""); e != nil {
 		t.Fatal(e)
 	}
