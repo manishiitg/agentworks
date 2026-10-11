@@ -1896,7 +1896,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 
 	lockPath := filepath.Join(step_based_workflow.GetPromptDocsRoot(), filepath.FromSlash(manifestPath(workspacePath)))
 	if _, statErr := os.Stat(lockPath); statErr == nil {
-		unlock, lockErr := knowledgeManifestLock(lockPath)
+		unlock, lockErr := knowledgeManifestLockWithWait(ctx, lockPath)
 		if lockErr != nil {
 			return lockErr
 		}
