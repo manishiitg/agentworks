@@ -4,6 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
+import { agentApi } from '../services/api'
+
+vi.mock('../services/api', () => ({ agentApi: { getChatArtifact: vi.fn() } }))
 
 vi.mock('react-virtuoso', () => ({
   Virtuoso: ({ data, firstItemIndex, itemContent }: { data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode }) => (
@@ -56,6 +59,42 @@ it('shows the saved incoming message before delivery instructions, with separate
   } finally {
     act(() => root.unmount())
     host.remove()
+    vi.unstubAllGlobals()
+  }
+})
+
+it('keeps a delivered artifact summary as an agent card and loads its complete body on demand', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  const body = `${'Full evidence. '.repeat(5000)}Final artifact evidence.`
+  const metadata = { source: 'agent_message', sender_label: 'Reports Builder chat', message_id: 'msg-history',
+    agent_message_inbox: 'inbox-history', agent_message_instructions: 'Replies are optional.', display_content: body }
+  const full = { id: 'history', session_id: 'chat-history', type: 'user_message', timestamp: '2026-10-11T08:00:00Z',
+    data: { data: { content: `Internal delivery instructions\n\n${body}`, metadata } } } as PollingEvent
+  const summary = { ...full, data: { data: { content: 'Internal delivery instructions',
+    metadata: { ...metadata, display_content: body.slice(0, 2048) + '…' }, truncated: true, artifact_id: 'artifact-history', original_size_bytes: body.length } } } as PollingEvent
+  vi.mocked(agentApi.getChatArtifact).mockResolvedValue(full)
+  try {
+    await act(async () => { root.render(<TerminalEventTranscript events={[summary]} terminal={null} />) })
+    const card = host.querySelector('[data-testid="agent-inbox-message"]')!
+    expect(card).not.toBeNull()
+    expect(card.textContent).toContain('Replies are optional.')
+    expect(agentApi.getChatArtifact).not.toHaveBeenCalled()
+    const button = Array.from(card.querySelectorAll('button')).find(item => item.textContent === 'Load full message')!
+    await act(async () => {
+      button.click()
+      await vi.waitFor(() => expect(agentApi.getChatArtifact).toHaveBeenCalledWith('chat-history', 'artifact-history'))
+    })
+    expect(card.querySelector('header + div > div')?.textContent).toBe(body)
+    expect(card.textContent).not.toContain('Internal delivery instructions')
+    expect(card.querySelector('details')?.open).toBe(false)
+    expect(card.querySelector('[data-testid="chat-artifact-show-full"]')).toBeNull()
+  } finally {
+    act(() => root.unmount())
+    host.remove()
+    vi.clearAllMocks()
     vi.unstubAllGlobals()
   }
 })

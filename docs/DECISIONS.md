@@ -6,6 +6,8 @@ Choose the agent-message card only from metadata stamped during authorized
 server delivery. Carry the sender, body and reply details in that metadata;
 typed envelope text and old unmarked rows remain ordinary messages. Bind the
 stamp to the admitted main input and clear it before the turn lane is released.
+Keep the same identity in bounded history summaries; load complete message bodies
+from their saved artifacts on demand.
 Why: message wording cannot establish who sent it.
 
 Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).

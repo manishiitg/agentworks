@@ -303,7 +303,7 @@ const TranscriptEvent: React.FC<{
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
   const inboxMessage = agentInboxMessage(metadata)
-  if (inboxMessage) return <AgentInboxMessage message={inboxMessage} timestamp={timestamp} />
+  if (inboxMessage) return <AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} />
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice

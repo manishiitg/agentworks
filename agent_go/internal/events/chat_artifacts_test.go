@@ -86,6 +86,60 @@ func TestOversizedTranscriptMessageMovesToArtifact(t *testing.T) {
 	}
 }
 
+func TestDeliveredAgentArtifactKeepsIdentityAndFullBodyAfterRestart(t *testing.T) {
+	journal := openArtifactTestJournal(t)
+	body := strings.Repeat("Evidence recorded. ", 30*1024)
+	metadata := map[string]interface{}{
+		"source": "agent_message", "sender_label": "Reports Builder chat",
+		"message_id": "msg-test", "agent_message_inbox": "inbox-test",
+		"agent_message_instructions": "Replies are optional.", "display_content": body,
+	}
+	event := Event{ID: "delivered-large", Type: "user_message", Data: &pkgevents.AgentEvent{
+		Type: pkgevents.UserMessage, Data: NewGenericEventData("user_message", map[string]interface{}{
+			"content": "Delivery instructions\n\n" + body, "metadata": metadata,
+		}),
+	}}
+	if _, _, err := journal.Append("chat-1", event); err != nil {
+		t.Fatal(err)
+	}
+	journal.Close()
+	restored, err := OpenSQLiteEventJournal(journal.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	page, err := restored.ReadPage("chat-1", DurableEventPageOptions{Limit: 10})
+	if err != nil || len(page.Events) != 1 {
+		t.Fatalf("restored page: %+v, %v", page, err)
+	}
+	summary := eventPayloadMap(&page.Events[0])
+	stamp, ok := summary["metadata"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("missing summary attribution: %#v", summary)
+	}
+	for _, key := range []string{"source", "sender_label", "message_id", "agent_message_inbox", "agent_message_instructions"} {
+		if stamp[key] != metadata[key] {
+			t.Fatalf("lost %s: %#v", key, stamp)
+		}
+	}
+	encoded, _ := json.Marshal(page.Events[0])
+	if len(encoded) > maxDurableChatEventBytes || len(stamp["display_content"].(string)) > 2*1024+8 {
+		t.Fatal("history summary exceeded its bound")
+	}
+	raw, err := restored.ReadChatArtifact("chat-1", summary["artifact_id"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original Event
+	if err := json.Unmarshal(raw, &original); err != nil {
+		t.Fatal(err)
+	}
+	full := eventPayloadMap(&original)["metadata"].(map[string]interface{})
+	if full["display_content"] != body {
+		t.Fatal("artifact lost full delivered-message body")
+	}
+}
+
 func TestChatArtifactIDsCannotEscapeTheSessionDirectory(t *testing.T) {
 	journal := openArtifactTestJournal(t)
 	if _, _, err := journal.Append("chat-1", largeToolResult("tool-1", 80*1024)); err != nil {

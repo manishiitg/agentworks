@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { PulseIcon } from './workflow/pulseIcon'
+import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
 
 // Only server-stamped delivery metadata selects this presentation. Unmarked
 // saved rows and typed envelope text remain ordinary messages.
@@ -14,10 +15,13 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 const PREVIEW_LIMIT = 600
+const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
-export function AgentInboxMessage({ message, timestamp }: { message: AgentInboxContent; timestamp: string }) {
+export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
   const [expanded, setExpanded] = useState(false)
-  const long = message.body.length > PREVIEW_LIMIT
+  const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
+  const body = full.text || message.body
+  const long = body.length > PREVIEW_LIMIT
   const Icon = /\bPulse(?: chat)?$/i.test(message.sender) ? PulseIcon : Bot
   return (
     <article data-testid="agent-inbox-message" className="my-3 w-[min(92%,52rem)] overflow-hidden rounded-lg border border-primary/20 bg-primary/[0.03] text-left">
@@ -30,13 +34,15 @@ export function AgentInboxMessage({ message, timestamp }: { message: AgentInboxC
       <div className="min-w-0 px-4 py-3">
         <div className="break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(22px*var(--chat-scale,1))]">
           {long && !expanded
-            ? <p className="whitespace-pre-wrap">{message.body.slice(0, PREVIEW_LIMIT).trimEnd()}…</p>
-            : <ConversationMarkdownRenderer content={message.body} framed={false} maxHeight="none" copyableCode />}
+            ? <p className="whitespace-pre-wrap">{body.slice(0, PREVIEW_LIMIT).trimEnd()}…</p>
+            : <ConversationMarkdownRenderer content={body} framed={false} maxHeight="none" copyableCode />}
         </div>
         {long && <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}
           className="mt-2 rounded text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
           {expanded ? 'Show less' : 'Show full message'}
         </button>}
+        {artifact && !full.text && <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
+          label="Load full message" onLoad={() => { void full.load().then(() => setExpanded(true)) }} />}
         <details className="group mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">
           <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
             <ChevronRight className="h-3 w-3 group-open:hidden" aria-hidden="true" />

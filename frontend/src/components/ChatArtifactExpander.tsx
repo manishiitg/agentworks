@@ -29,7 +29,10 @@ export function chatArtifactRef(event: PollingEvent | undefined): ChatArtifactRe
 export function chatArtifactText(event: PollingEvent, keys: readonly string[]): string {
   const payload = eventPayload(event)
   for (const key of keys) {
-    const value = payload[key]
+    // Delivered-message bodies live in server-stamped metadata; the complete
+    // prompt's content also contains instructions that should stay in details.
+    const value = key.split('.').reduce<unknown>((current, part) =>
+      current && typeof current === 'object' ? (current as Record<string, unknown>)[part] : undefined, payload)
     if (typeof value === 'string' && value.trim()) return value
     if (value != null && typeof value === 'object') {
       try {
