@@ -85,28 +85,34 @@ def person_command(prompt, session):
     if len(words) < 2 or words[0] != "/agentworks":
         raise AdapterError("invalid command")
     action = words[1]
-    parser = CommandParser(add_help=False)
     if action == "attach":
-        parser.add_argument("--name", required=True)
-        parser.add_argument("--purpose", required=True)
-        parser.add_argument("--config", required=True)
-        parser.add_argument("--allow-sender", required=True, action="append")
-    elif action not in ("detach", "status"):
+        return {"continue": False, "user_message":
+                "Cursor attach is not supported yet; it needs the shared PLAT-861 Cursor binding."}
+    if action not in ("detach", "status", "agents") or len(words) != 2:
         raise AdapterError("invalid command")
-    args = parser.parse_args(words[2:])
-    fields = {}
-    if action == "attach":
-        if not Path(args.config).is_absolute() or not args.purpose.strip():
-            raise AdapterError("explicit config and purpose required")
-        fields = {"agent_name": args.name, "purpose": args.purpose,
-                  "config_path": args.config, "allowed_senders": args.allow_sender}
-    reply = call_bridge(request_for(session, action, **fields))
-    if action == "attach" and not require_attachment(reply, session):
-        raise AdapterError("attachment refused")
-    attached = require_attachment(reply, session)
-    return {"continue": False, "user_message":
-            "AgentWorks: this Cursor conversation is " +
-            ("attached." if attached else "detached.")}
+    state = call_bridge(request_for(session, "status"), timeout=3)
+    if not require_attachment(state, session):
+        return {"continue": False, "user_message":
+                "No verified Cursor attachment. Shared PLAT-861 Cursor binding is pending."}
+    attachment_id = state["attachment"]["attachment_id"]
+    if action == "detach":
+        reply = call_bridge(request_for(session, "detach", attachment_id=attachment_id))
+        if reply.get("attached") is not False:
+            raise AdapterError("detach not confirmed")
+        text = "AgentWorks: the attachment-fenced detach request completed."
+    elif action == "agents":
+        reply = call_bridge(request_for(session, "peers", attachment_id=attachment_id))
+        if not require_attachment(reply, session, attachment_id):
+            raise AdapterError("directory not accepted")
+        result = reply.get("result")
+        if not isinstance(result, dict) or not isinstance(result.get("agents"), list):
+            raise AdapterError("invalid directory")
+        names = [agent["agent_name"] for agent in result["agents"]
+                 if isinstance(agent, dict) and isinstance(agent.get("agent_name"), str)]
+        text = "AgentWorks agents: " + (", ".join(names) if names else "none returned.")
+    else:
+        text = "AgentWorks: this Cursor conversation is attached. Cursor process binding remains pending."
+    return {"continue": False, "user_message": text}
 
 
 def recovery_text(session, attachment_id):
@@ -170,6 +176,10 @@ def handle_hook(event):
     try:
         session = session_id(event)
         if is_command:
+            if (event.get("queued") or "AgentWorks messages from other agents." in prompt or
+                    "AgentWorks messages from approved external senders." in prompt):
+                return {"continue": False, "user_message":
+                        "Agent messages cannot control an attachment. The person must submit the command directly."}
             return person_command(prompt.strip(), session)
         if event_name == "sessionEnd":
             state = call_bridge(request_for(session, "status"), timeout=3)
@@ -196,7 +206,7 @@ def handle_hook(event):
         if is_command:
             return {"continue": False, "user_message":
                     "AgentWorks command was not completed. Check the local bridge, "
-                    "connection and explicit name, purpose, config and approved senders."}
+                    "and the pending shared Cursor process binding."}
     return None
 
 

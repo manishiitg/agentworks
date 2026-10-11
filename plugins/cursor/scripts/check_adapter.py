@@ -45,6 +45,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if request["action"] in ("ack", "reply"):
                 self.server.mutations.append(request)
                 response["result"] = {"delivery": request.get("delivery", "stored")}
+            if request["action"] == "peers":
+                response["result"] = {"agents": [{"agent_name": "worker"}]}
             if request["action"] == "read":
                 response["result"] = {"messages": self.server.mailbox, "next_cursor": 1}
             if request["action"] == "detach":
@@ -112,13 +114,27 @@ def main():
             before = len(server.requests)
             assert run(root, prompt).stdout == ""
             assert len(server.requests) == before
-            attach = dict(prompt, prompt='/agentworks attach --name reviewer --purpose "Review work" '
-                          '--config /private/connection.json --allow-sender worker')
-            assert json.loads(run(root, attach).stdout)["continue"] is False
-            assert server.requests[-1]["allowed_senders"] == ["worker"]
-            for text in ["/agentworks", "/agentworks attach", "/agentworks detach extra",
-                         "/agentworks attach --name reviewer --purpose work --config relative --allow-sender worker"]:
+            attach = dict(prompt, prompt="/agentworks attach reviewer")
+            before = len(server.requests)
+            for text in ["/agentworks attach", attach["prompt"],
+                         '/agentworks attach --name reviewer --purpose "Review work" '
+                         '--config /private/connection.json --allow-sender worker']:
+                refused = json.loads(run(root, dict(prompt, prompt=text)).stdout)
+                assert refused["continue"] is False
+                assert "not supported yet" in refused["user_message"]
+            assert len(server.requests) == before  # No legacy attachment request.
+            for text in ["/agentworks", "/agentworks detach extra"]:
                 assert json.loads(run(root, dict(prompt, prompt=text)).stdout)["continue"] is False
+            for text in ["/agentworks status", "/agentworks agents"]:
+                assert json.loads(run(root, dict(prompt, prompt=text)).stdout)["continue"] is False
+            assert server.requests[-1]["action"] == "peers"
+            assert server.requests[-1]["attachment_id"] == "attachment-a"
+            before = len(server.requests)
+            assert json.loads(run(root, dict(prompt, prompt="/agentworks detach", queued=True)).stdout)["continue"] is False
+            assert len(server.requests) == before  # Peer controls cannot mutate attachment.
+            assert json.loads(run(root, dict(prompt, prompt="/agentworks detach")).stdout)["continue"] is False
+            assert server.requests[-1]["action"] == "detach"
+            assert server.requests[-1]["attachment_id"] == "attachment-a"
             ack = ["ack", "--session", "session-a", "--attachment-id", "attachment-a",
                    "--message-id", "message-1", "--delivery", "admitted"]
             assert json.loads(run(root, args=ack).stdout)["ok"] is True

@@ -7,5 +7,7 @@ AgentWorks control prompts must be consumed by beforeSubmitPrompt before model
 execution. If this command reaches the model, the delivery hook is unavailable.
 Tell the person to check installation and hook trust using the plugin README.
 Do not run attach, detach, install, or synthesize a prompt-submit hook. The person
-can use `/agentworks status`, `/agentworks detach`, or the explicit attach syntax
-documented in the README after enabling the hooks.
+can use `/agentworks status` and `/agentworks agents` for read-only checks, or
+`/agentworks detach` for an attachment-fenced detach. `/agentworks attach [NAME]`
+is explicitly refused in this preview until shared PLAT-861 Cursor binding exists.
+Never switch providers or bypass that refusal.

@@ -58,22 +58,14 @@ Shared person commands are `/agentworks attach [NAME]`, `/agentworks detach`
 and `/agentworks agents`. Cursor support for that shared command handler and
 exact process binding is pending. Do not use another provider to bypass it.
 
-The candidate currently parses this older fixture-only control syntax, replacing
-the values with a name, purpose, config and sender. It is not a working setup
-command against the current shared bridge:
-
-```text
-/agentworks attach --name reviewer --purpose "Review incoming work" --config /absolute/path/connection.json --allow-sender worker
-/agentworks status
-/agentworks detach
-```
-
-Repeat `--allow-sender` for each approved sender. The prompt-submit hook obtains
-the conversation ID from Cursor, consumes these controls before model input, and
-shows a status message to the person. A config path is required; the adapter never
-reads the credential file. Ordinary prompts pass through unchanged. Malformed
-controls and bridge failures block control submission with a generic message,
-without printing credentials, private paths, sender content or raw errors.
+This preview refuses `/agentworks attach` with a message explaining the missing
+shared Cursor binding. It cannot create an attachment, connection or sender rule.
+The prompt-submit hook consumes controls before model input. `/agentworks status`
+and `/agentworks agents` query only a verified attachment; `/agentworks detach`
+first snapshots that attachment and includes its ID in the detach request.
+Queued messages and controls containing an agent-delivery header are refused.
+Ordinary prompts pass through unchanged. Bridge failures block control submission
+with a generic message, without printing credentials or raw errors.
 
 Unattached conversations return no output and make no network request. Hook
 queries use only the private Unix socket. `stop` drains only on `completed` with
