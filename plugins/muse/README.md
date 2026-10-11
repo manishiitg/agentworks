@@ -15,7 +15,39 @@ and cannot start this package's MCP child. Sign in to the intended AgentWorks
 server with the CLI's normal login before attaching. The MCP child uses the
 exact provider process/session and exposes only messaging tools.
 
-From the repository root, the person installs and reviews the capabilities:
+The person adds the GitHub marketplace, installs the Muse package and reviews
+its capabilities:
+
+```sh
+muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks.git
+muse plugins install agentworks-muse@agentworks
+muse plugins inspect agentworks-muse --json
+```
+
+After reviewing, approve with `muse plugins approve agentworks-muse --json` and
+restart Muse. Installation alone does not approve hooks or MCP execution.
+
+The same GitHub repository serves each provider's catalog. Muse reads
+`.agents/plugins/marketplace.json`, which contains separate `agentworks-muse` and
+`agentworks-codex` entries. Install `agentworks-muse` in Muse; the packages use
+different provider commands. Claude Code reads `.claude-plugin/marketplace.json`
+and uses `agentworks@agentworks`. Existing Codex metadata remains unchanged.
+
+Muse 1.4.4 keeps an installed marketplace plugin bound to its original snapshot.
+After refreshing the marketplace, direct reinstall refuses the different source
+and `plugins update` still reads the old snapshot. To upgrade on this release:
+
+```sh
+muse plugins marketplace update agentworks
+muse plugins remove agentworks-muse
+muse plugins install agentworks-muse@agentworks
+muse plugins inspect agentworks-muse --json
+```
+
+Review the new capabilities before approving them and restarting Muse. The
+remove command above does not request `--delete-data`.
+
+For local development, install from the repository root:
 
 ```sh
 muse plugins validate plugins/muse --json
@@ -104,6 +136,7 @@ python3 plugins/muse/tests/check_hooks.py
 muse skills validate plugins/muse/skills/messaging --json
 muse plugins validate plugins/muse --json
 python3 plugins/muse/tests/prove_muse_hooks.py /absolute/path/to/muse-binary
+python3 plugins/muse/tests/prove_marketplace.py /absolute/path/to/muse-binary
 ```
 
 The native proof installs the package only into temporary XDG storage, runs
@@ -113,6 +146,15 @@ verify a real Stop continuation, the loop guard, and a single session UUID acros
 prompt/Stop/close. It does not install or approve this plugin in the person's
 settings, and its shared CLI response is a fixture. These checks do not establish
 authenticated AgentWorks delivery or an idle native wake.
+
+The marketplace proof uses an isolated Git fixture containing the real Claude,
+Codex and Muse catalogs/packages, then runs Muse's marketplace discovery,
+installation and inspection. It asserts the installed Muse manifest, three
+cached lifecycle scripts and messaging-only MCP command, then changes the Git
+fixture and verifies marketplace refresh plus remove/reinstall loads the new
+package digest. Pass a GitHub source
+as a second argument to exercise the published Git snapshot instead. Neither
+path approves runtime capabilities or modifies the person's Muse profile.
 
 Muse 1.4.4 resolves each native manifest hook script to an absolute `source_path`
 under the installed plugin cache. A logging `python3` shim records the executed

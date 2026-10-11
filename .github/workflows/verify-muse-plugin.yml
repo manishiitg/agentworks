@@ -3,9 +3,9 @@ name: Muse plugin
 on:
   push:
     branches: [main, 'verify/**']
-    paths: ['plugins/muse/**', '.github/workflows/verify-muse-plugin.yml']
+    paths: ['plugins/muse/**', '.agents/plugins/marketplace.json', '.github/workflows/verify-muse-plugin.yml']
   pull_request:
-    paths: ['plugins/muse/**', '.github/workflows/verify-muse-plugin.yml']
+    paths: ['plugins/muse/**', '.agents/plugins/marketplace.json', '.github/workflows/verify-muse-plugin.yml']
 
 permissions:
   contents: read

@@ -16,6 +16,11 @@ SESSION = "4c67acbd-e8c1-4f8a-9c26-9d4feeb403d7"
 
 
 def main():
+    catalog = json.loads((PLUGIN.parents[1] / ".agents/plugins/marketplace.json").read_text())
+    entries = {entry["name"]: entry for entry in catalog["plugins"]}
+    assert len(entries) == len(catalog["plugins"]), "Duplicate marketplace plugin IDs"
+    assert entries["agentworks-muse"]["source"] == {"source": "local", "path": "./plugins/muse"}
+    assert entries["agentworks-codex"]["source"] == {"source": "local", "path": "./plugins/codex"}
     with tempfile.TemporaryDirectory(prefix="agentworks-muse-hooks-") as directory:
         scratch = Path(directory)
         cli = scratch / "agentworks"

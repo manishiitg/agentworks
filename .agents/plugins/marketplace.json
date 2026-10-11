@@ -12,6 +12,21 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Productivity"
+    },
+    {
+      "name": "agentworks-muse",
+      "interface": {
+        "displayName": "AgentWorks for Muse"
+      },
+      "source": {
+        "source": "local",
+        "path": "./plugins/muse"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
     }
   ]
 }
