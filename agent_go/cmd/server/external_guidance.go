@@ -118,13 +118,18 @@ func externalUnavailableToolNames() []string {
 // guidance that starts with one is treated as an operation name.
 var externalToolVerbs = []string{"list_", "get_", "create_", "update_", "delete_", "add_", "set_", "read_", "run_", "call_", "mutate_", "apply_", "query_", "preview_", "validate_", "publish_", "restore_", "install_", "uninstall_", "import_", "export_", "test_", "diff_", "execute_", "manage_", "trigger_", "answer_", "reply_", "search_", "migrate_", "change_", "record_", "submit_", "send_", "dismiss_", "mark_", "perform_", "configure_", "debug_", "query_", "setup_", "consolidate_", "check_", "stamp_", "write_", "patch_", "move_", "rename_", "enable_", "disable_", "stop_", "start_", "open_", "close_"}
 
+// externalNotOperationSuffixes end parameter and field names (call_id,
+// run_dir, write_access), which are never operations.
+var externalNotOperationSuffixes = []string{"_id", "_ids", "_dir", "_count", "_access", "_payload", "_path", "_paths", "_name", "_key", "_url", "_version", "_limit", "_at", "_by", "_hours", "_seconds", "_text", "_body", "_data", "_root", "_token", "_kind", "_index"}
+
 var externalToolWord = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+)+`)
 
 // externalNamedOperations returns the operation names a text mentions: the
 // known Builder and Run tools, and any snake_case word that starts with a tool
 // verb (Builder tools registered in code are not all in the product lists).
 func externalNamedOperations(body string) []string {
-	exposed := map[string]bool{}
+	// call_tool and get_api_spec are this connection's own entry points.
+	exposed := map[string]bool{"call_tool": true, "get_api_spec": true}
 	if catalog, err := externalTools(); err == nil {
 		for _, tool := range catalog {
 			exposed[tool.Name] = true
@@ -142,6 +147,16 @@ func externalNamedOperations(body string) []string {
 			continue // a file name, path or variable, not an operation
 		}
 		if loc[1] < len(body) && (body[loc[1]] == '.' || body[loc[1]] == '/') {
+			continue
+		}
+		notOperation := false
+		for _, suffix := range externalNotOperationSuffixes {
+			if strings.HasSuffix(word, suffix) {
+				notOperation = true
+				break
+			}
+		}
+		if notOperation {
 			continue
 		}
 		for _, verb := range externalToolVerbs {
