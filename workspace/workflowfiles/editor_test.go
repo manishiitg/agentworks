@@ -187,4 +187,26 @@ func TestEditorRejectsSymlinksAndBinaryAndBounds(t *testing.T) {
 	if _, err := editor.Write(context.Background(), WriteRequest{Root: ".", Path: "big", Content: string(make([]byte, MaxFileBytes+1)), ExpectedRevision: MissingRevision, RequestID: "big", Actor: "owner"}); StatusCode(err) != 413 {
 		t.Fatalf("size: %v", err)
 	}
+	large := make([]byte, 3<<20)
+	request := WriteRequest{Root: ".", Path: "docs/large.bin", ContentBase64: base64.StdEncoding.EncodeToString(large), ExpectedRevision: MissingRevision, RequestID: "large-create", Actor: "owner"}
+	created, err := editor.Write(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := editor.Read(".", request.Path, nil)
+	if err != nil || metadata.Content != "" || metadata.Revision != created.Revision || metadata.Size != int64(len(large)) {
+		t.Fatalf("large metadata: %+v %v", metadata, err)
+	}
+	large[len(large)-1] = 7
+	request.ContentBase64 = base64.StdEncoding.EncodeToString(large)
+	request.ExpectedRevision = created.Revision
+	request.RequestID = "large-replace"
+	replaced, err := editor.Write(context.Background(), request)
+	if err != nil || replaced.Revision == created.Revision {
+		t.Fatalf("large replacement: %+v %v", replaced, err)
+	}
+	request.RequestID = "large-stale"
+	if _, err = editor.Write(context.Background(), request); StatusCode(err) != 409 {
+		t.Fatalf("large stale revision: %v", err)
+	}
 }

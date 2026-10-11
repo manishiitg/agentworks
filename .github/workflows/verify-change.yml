@@ -42,7 +42,7 @@ jobs:
           git diff --name-only "$base" HEAD > changed.txt
           echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "files:"; cat changed.txt
-          echo "go=$(grep -qE '^(agent_go|workspace)/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "go=$(grep -qE '^(agent_go|workspace|mcp-gateway)/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "frontend=$(grep -q '^frontend/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
           git log -1 --format=%B > message.txt
 
@@ -99,7 +99,13 @@ jobs:
           if [ ! -s ../tests.txt ]; then echo "No Verify-Test lines; build and vet only."; exit 0; fi
           while IFS= read -r line; do
             echo "::group::go test $line"
-            eval "go test $line -count=1"
+            case "$line" in
+              'workspace '*|'mcp-gateway '*)
+                module="${line%% *}"
+                args="${line#* }"
+                (cd "../$module" && eval "go test $args -count=1") ;;
+              *) eval "go test $line -count=1" ;;
+            esac
             echo "::endgroup::"
           done < ../tests.txt
 

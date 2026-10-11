@@ -67,7 +67,7 @@ var externalToolMerges = []externalToolMerge{
 		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
 		{"pulse_chat", "builder_pulse_chat"}, {"pulse_status", "builder_pulse_status"},
 	}},
-	{"relay", "Relays: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code with builder action=chat.", [][2]string{
+	{"relay", "Relays: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
 		{"create", "create_relay"}, {"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
 		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"releases", "get_relay_releases"},
 	}},
@@ -224,7 +224,9 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	if len(allowed) > 1 {
 		out.Description = tool.Description + "\n" + strings.Join(lines, "\n")
 	}
-	out.InputSchema = map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(allowed), "additionalProperties": false}
+	// A globally multi-action tool always requires action, even when this
+	// connection sees only one. Dispatch uses the same full object contract.
+	out.InputSchema = map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(tool.actionOrder), "additionalProperties": false}
 	return out, true
 }
 

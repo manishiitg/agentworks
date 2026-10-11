@@ -530,6 +530,10 @@ func (a *Admin) RevokeGroupKey(groupID, id string) error {
 
 // SetGroupServer attaches or detaches a whole connector to a group.
 func (a *Admin) SetGroupServer(groupID, connectorID string, attach bool) error {
+	return a.setGroupServerLevel(groupID, connectorID, attach, nil)
+}
+
+func (a *Admin) setGroupServerLevel(groupID, connectorID string, attach bool, readOnly *bool) error {
 	g, ok := a.Store.GetGroup(groupID)
 	if !ok || g.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown group")
@@ -539,7 +543,7 @@ func (a *Admin) SetGroupServer(groupID, connectorID string, attach bool) error {
 		return errors.New("unknown connector")
 	}
 	if attach {
-		a.Store.AddGroupServerGrant(groupID, connectorID)
+		a.Store.AddGroupServerGrantWithLevel(groupID, connectorID, readOnly)
 	} else {
 		a.Store.RevokeGroupServerGrant(groupID, connectorID)
 	}
@@ -801,14 +805,11 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		groupID := r.PathValue("id")
-		if err := a.SetGroupServer(groupID, in.ConnectorID, true); err != nil {
+		if err := a.setGroupServerLevel(groupID, in.ConnectorID, true, in.ReadOnly); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
 		level := "full"
-		if in.ReadOnly != nil {
-			a.Store.SetGroupServerReadOnly(groupID, in.ConnectorID, *in.ReadOnly)
-		}
 		if a.Store.GroupServerReadOnly(groupID, in.ConnectorID) {
 			level = "read-only"
 		}

@@ -871,12 +871,24 @@ func (s *MemoryStore) GroupGrantsFor(groupID string) []string {
 }
 
 func (s *MemoryStore) AddGroupServerGrant(groupID, connectorID string) {
+	s.AddGroupServerGrantWithLevel(groupID, connectorID, nil)
+}
+
+// Grant and access level are one persisted transition. Omitted level preserves
+// an existing restriction and defaults only a genuinely new grant to full.
+func (s *MemoryStore) AddGroupServerGrantWithLevel(groupID, connectorID string, readOnly *bool) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if s.groupServers[groupID] == nil {
 		s.groupServers[groupID] = map[string]bool{}
 	}
 	s.groupServers[groupID][connectorID] = true
+	if readOnly != nil {
+		if s.serverReadOnly[groupID] == nil {
+			s.serverReadOnly[groupID] = map[string]bool{}
+		}
+		s.serverReadOnly[groupID][connectorID] = *readOnly
+	}
 	if s.isPlatformGroupLocked(groupID) {
 		delete(s.platformRevoked, "server:"+connectorID)
 	}

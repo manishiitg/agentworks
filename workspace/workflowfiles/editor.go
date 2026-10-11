@@ -284,12 +284,12 @@ func readRegular(root *os.Root, name string) ([]byte, os.FileMode, error) {
 	if err != nil || !os.SameFile(info, observed) {
 		return nil, 0, fileError(403, "file changed during access")
 	}
-	if info.Size() > MaxFileBytes {
-		return nil, 0, fileError(413, "file exceeds 2 MiB")
+	if info.Size() > MaxBinaryFileBytes {
+		return nil, 0, fileError(413, "file exceeds binary size limit")
 	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
-	if len(data) > MaxFileBytes {
-		return nil, 0, fileError(413, "file exceeds 2 MiB")
+	data, err := io.ReadAll(io.LimitReader(f, MaxBinaryFileBytes+1))
+	if len(data) > MaxBinaryFileBytes {
+		return nil, 0, fileError(413, "file exceeds binary size limit")
 	}
 	if data == nil {
 		data = []byte{}
@@ -600,7 +600,7 @@ func (e *Editor) Read(scope, p string, g *FolderGuard) (File, error) {
 	}
 	// A binary file returns its revision and size, never its bytes as text, so
 	// it can be replaced with a content_base64 write.
-	if data != nil && (!utf8.Valid(data) || strings.ContainsRune(string(data), 0)) {
+	if data != nil && (len(data) > MaxFileBytes || !utf8.Valid(data) || strings.ContainsRune(string(data), 0)) {
 		return File{Path: p, Exists: true, Encoding: "binary", Revision: revision(data), Size: int64(len(data))}, nil
 	}
 	return File{Path: p, Exists: data != nil, Content: string(data), Encoding: "utf-8", Revision: revision(data), Size: int64(len(data))}, nil
