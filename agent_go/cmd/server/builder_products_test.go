@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -16,6 +18,16 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
+
+func assertNoDisabledProductGuidance(t *testing.T, label, body string) {
+	t.Helper()
+	pattern := regexp.MustCompile(`\b(Vault|Brain|Relays?)\b`)
+	for _, line := range strings.Split(body, "\n") {
+		if pattern.MatchString(line) {
+			t.Errorf("%s mentions disabled product: %s", label, line)
+		}
+	}
+}
 
 func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
@@ -36,6 +48,9 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 			selection := builderProductSelection(nil)
 			for _, p := range []agentprofiles.Profile{workproduct.BuiltinAgentProfile(), codeproduct.BuiltinAgentProfile()} {
 				text := p.ForProducts(selection).SystemPromptTemplate
+				if !tc.enabled {
+					assertNoDisabledProductGuidance(t, p.ID+" prompt", text)
+				}
 				if strings.Contains(text, "Vault") != tc.enabled || strings.Contains(text, "<!-- product:") {
 					t.Fatalf("%s prompt differs from deployment: %s", p.ID, text)
 				}
@@ -50,6 +65,9 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 				projected := selection.Skill(ref)
 				for _, file := range projected.SupportingFiles {
 					body := string(file.Content)
+					if !tc.enabled {
+						assertNoDisabledProductGuidance(t, ref.Name+"/"+file.RelPath, body)
+					}
 					if strings.Contains(body, "<!-- product:") || !tc.enabled && (strings.Contains(body, "brain_browse") || strings.Contains(body, "Vault")) {
 						t.Fatalf("%s leaked product guidance: %s", file.RelPath, body)
 					}
@@ -61,6 +79,9 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 			}
 			for _, skill := range loaded {
 				body := selection.Skill(skill).Content
+				if !tc.enabled {
+					assertNoDisabledProductGuidance(t, skill.Name, body)
+				}
 				if !tc.enabled && strings.Contains(body, "Vault") {
 					t.Fatalf("%s leaked Vault: %s", skill.Name, body)
 				}
@@ -141,5 +162,38 @@ func TestBuilderProductsExternalCodeRequiresInstalledProduct(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("Code coverage did not exercise any tools")
+	}
+}
+
+func TestBuilderProductsLocalToolGuidance(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
+	selection := builderProductSelection(nil)
+	reg := &recordingRegistrar{}
+	api := &StreamingAPI{}
+	if err := api.registerMultiAgentMCPServerTools(reg, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.registerMultiAgentSkillToolsIn(reg, nil, "work", ""); err != nil {
+		t.Fatal(err)
+	}
+	for name, tool := range reg.tools {
+		if !selection.AllowsTool(name) {
+			continue
+		}
+		assertNoDisabledProductGuidance(t, name, selection.Text(tool.desc))
+		data, err := json.Marshal(selection.Schema(tool.params))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoDisabledProductGuidance(t, name+" schema", string(data))
+	}
+	tools, _, _ := createCustomTools(false)
+	for _, tool := range tools {
+		if tool.Function != nil {
+			assertNoDisabledProductGuidance(t, tool.Function.Name, selection.Text(tool.Function.Description))
+		}
 	}
 }

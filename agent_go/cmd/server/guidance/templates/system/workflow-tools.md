@@ -281,4 +281,4 @@ For multiple accounts of one MCP provider, install with `catalog` and `label`
 Use the returned exact connection name in `selected_servers`. Each labelled
 connection has independent sign-in and credentials. Reconnect/remove/discover an
 existing account by its exact name without label; keep other accounts unchanged.
-This also applies to Relay projects through the shared workflow MCP tools.
+<!-- product:relays -->This also applies to Relay projects through the shared workflow MCP tools.<!-- /product -->

@@ -20,9 +20,9 @@ Do not use Smithery search or hosted Smithery deployment URLs. Do not substitute
 
 Use `install_mcp_server(name, url=...)` for a new verified URL. It probes the endpoint's actual auth requirements (no sign-in / API key / OAuth with DCR). `add_mcp_server` is for a custom server whose configuration is already known. Registry metadata does not establish connectivity or the live tool list; check discovery after installation. If the catalog search has no suitable MCP, continue with an internet search using the session's available web/search/browser tools. Search for the service name plus MCP and check the provider's official documentation or source repository for its endpoint or installation instructions. A registry miss does not mean the MCP does not exist. Verify that the result belongs to the intended provider and distinguish official servers from community implementations or hosted intermediaries. Never invent an endpoint. If no supported search tool is available or the search still finds nothing suitable, report exactly that limitation. Honor an explicit request for MCP rather than diverting it to a different integration type.
 
-### An account connected to this workflow, Relay, Crew or Code (Gmail, Drive, GitHub, ...)
+### An account connected to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew or Code (Gmail, Drive, GitHub, ...)
 
-Connections are configured under **Integrations → Available** and listed under **Connected**. A connection added to a workflow, Relay, Crew or Code belongs to that place: everyone with access to it uses it, and no other place does. It acts as the account of the person who connected it, so say whose login it is. Use the registered connection tools and the `work-mcp` skill; return the actual sign-in link for the user to complete. <!-- product:mcp-gateway -->Connections shared across places are managed through Vault groups.<!-- /product --> Use exact connection names for selection and discovery.
+Connections are configured under **Integrations → Available** and listed under **Connected**. A connection added to a workflow, <!-- product:relays -->Relay, <!-- /product -->Crew or Code belongs to that place: everyone with access to it uses it, and no other place does. It acts as the account of the person who connected it, so say whose login it is. Use the registered connection tools and the `work-mcp` skill; return the actual sign-in link for the user to complete. <!-- product:mcp-gateway -->Connections shared across places are managed through Vault groups.<!-- /product --> Use exact connection names for selection and discovery.
 
 ### Reporting back to the user
 
@@ -57,7 +57,7 @@ a required server to make validation pass.
 
 ### Multiple accounts
 
-Connection setup is the same for Crew, Code, workflows and Relays. For another
+Connection setup is the same for Crew, Code and workflows<!-- product:relays -->, and Relays<!-- /product -->. For another
 account of a catalog provider, use `install_mcp_server(name=<provider>,
 catalog=<provider>, label=<account label>)`. Each labelled install creates a new
 connection and returns its exact name plus its own sign-in step. Inspect the

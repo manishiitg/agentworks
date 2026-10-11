@@ -179,5 +179,5 @@ External MCP clients use `get_api_spec` then `call_tool`. Request explicit
 rights automatically. Read/write scopes retain workflow and Crew ID bounds.
 Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.
-Publishing does not run the Relay API or a workflow. SQLite files, transcripts,
+Publishing does not run a workflow<!-- product:relays --> or the Relay API<!-- /product -->. SQLite files, transcripts,
 secrets and runtime selections stay outside dashboard authoring.

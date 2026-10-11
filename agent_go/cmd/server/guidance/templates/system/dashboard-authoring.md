@@ -27,8 +27,8 @@ external operations use the authorized `workspace` returned by discovery.
    pointer atomically. Drafts remain hidden from readers, and shared URLs keep
    displaying the published bundle. `restore_dashboard` republishes a previously
    published revision with the current draft revision as expected_revision.
-7. `get_dashboard_link` returns a live authenticated URL. For existing Goals or
-   Relay documents, `get_report_link` also returns it directly. URLs contain no
+7. `get_dashboard_link` returns a live authenticated URL. For existing Goals<!-- product:relays --> or
+   Relay<!-- /product --> documents, `get_report_link` also returns it directly. URLs contain no
    credentials and grant no access. Recipients must sign in with current project
    access. Check shareable/warning: localhost links work on that machine only.
 
@@ -64,7 +64,7 @@ read-only snapshot; REPORT_CACHE_DIR is the only writable cache folder.
 Scripts use the project's selected MCP tools/secrets under the authenticated
 viewer's live permissions. A shared dashboard grants no new source credentials.
 Keep data scripts read-only upstream and never print secrets. Publication does
-not invoke relay.py, publish a Relay API, or run a workflow.
+not run a workflow<!-- product:relays -->, invoke relay.py or publish a Relay API<!-- /product -->.
 
 Dashboards may animate HTML using the user's choices; exported MP4 explainers
 use the available video tools and frozen input data. A video is a snapshot.
