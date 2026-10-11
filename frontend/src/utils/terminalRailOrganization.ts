@@ -28,7 +28,7 @@ interface OrganizeTerminalRailOptions {
 }
 
 const REVIEW_LABEL_PATTERN = /\b(review(?:er)?|critic|advisor|audit|pulse|health|harden|maintenance)\b/i
-const AGENT_PATTERN = /^message[-_ ]sequence(?:[-_ ].*)?$/i
+const AGENT_PATTERN = /^(?:agent|message[-_ ]sequence)(?:[-_ ].*)?$/i
 
 function normalizedReviewIdentity(values: Array<string | undefined>): string {
   return values.filter(Boolean).join(' ')
@@ -147,10 +147,10 @@ export function terminalRailVisualKind(terminal: TerminalSnapshot): TerminalRail
   // user-facing role is still a child agent of the owning agent.
   if (hasDistinctParentStep) return 'sub-agent'
   if (
-    (stepType === 'agent' || stepType === 'agent') ||
+    (stepType === 'agent' || stepType === 'message_sequence') ||
     (stepType === 'regular' && executionMode !== 'scripted') ||
-    (executionKind === 'agent' || executionKind === 'agent') ||
-    (executionKind === 'agent_item' || executionKind === 'agent_item') ||
+    (executionKind === 'agent' || executionKind === 'message_sequence') ||
+    (executionKind === 'agent_item' || executionKind === 'message_sequence_item') ||
     AGENT_PATTERN.test(agentName)
   ) return 'agent'
   if ([
