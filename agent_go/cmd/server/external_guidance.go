@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"io"
 	"net/http"
 	"sort"
@@ -84,6 +85,10 @@ func externalGuidanceTopicByName(name string) *externalGuidanceTopic {
 // builder-reference renderer. It reuses the server's own materialization, so
 // external guidance can never drift from the builder's copy.
 func externalGuidanceContent(topic string) (description, body string, err error) {
+	return externalGuidanceContentForProducts(topic, productpolicy.Selection{})
+}
+
+func externalGuidanceContentForProducts(topic string, selection productpolicy.Selection) (description, body string, err error) {
 	skills, err := guidance.MaterializeReferenceKindsAsSkills("workshop", []string{topic})
 	if err != nil {
 		return "", "", err
@@ -91,7 +96,7 @@ func externalGuidanceContent(topic string) (description, body string, err error)
 	if len(skills) != 1 {
 		return "", "", fmt.Errorf("topic %q not available in workshop mode", topic)
 	}
-	return skills[0].Description, skills[0].Content, nil
+	return selection.Text(skills[0].Description), selection.Text(skills[0].Content), nil
 }
 
 // externalAgentContext serves get_agent_context. It is a global tool: no
@@ -209,7 +214,7 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		externalError(w, 404, "unknown_topic", "Topic is not part of the external guidance profile. Use help action=topics.")
 		return
 	}
-	description, body, err := externalGuidanceContent(name)
+	description, body, err := externalGuidanceContentForProducts(name, builderProductSelection(GetUserFromContext(r.Context())))
 	if err != nil {
 		externalError(w, 500, "guidance_unavailable", err.Error())
 		return

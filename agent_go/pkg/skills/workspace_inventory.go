@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"net/http"
 	"strings"
 	"time"
@@ -69,6 +70,13 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 	}
 	result := &WorkspaceInventory{Skills: []Skill{}, Usage: raw.Usage}
 	for _, doc := range raw.Documents {
+		if !(productpolicy.Selection{}).AllowsSkill(doc.Name) {
+			delete(result.Usage, doc.Name)
+			continue
+		}
+		if doc.Managed || IsBuiltinSkill(doc.Name) {
+			doc.Document = (productpolicy.Selection{}).Text(doc.Document)
+		}
 		parsed, err := ParseSkillFromContent(doc.Document, doc.Name, doc.FilePath)
 		if err != nil {
 			continue
@@ -78,7 +86,11 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 		result.Skills = append(result.Skills, *parsed)
 	}
 	for name, usedBy := range raw.Usage {
-		builtin := builtinAttachableSkill(name)
+		if !(productpolicy.Selection{}).AllowsSkill(name) {
+			delete(result.Usage, name)
+			continue
+		}
+		builtin := (productpolicy.Selection{}).Skill(builtinAttachableSkill(name))
 		if builtin == nil {
 			continue
 		}

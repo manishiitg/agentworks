@@ -12,18 +12,17 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
 
 - Call `list_secrets` before creating, replacing, or deleting a secret.
 - `set_workflow_secret` and `delete_workflow_secret` manage project-scoped
-  secrets in {{product}} (legacy tool names for the shared project store). There is
-  no account-level secret: a credential shared across projects must be a
-  shared Vault secret, copied by an administrator (see below).
+  secrets in {{product}} (legacy tool names for the shared project store).
 - After `set_workflow_secret` succeeds, `$SECRET_<NAME>` is available to shell
   tools immediately in the current chat and remains available in later turns.
   Continue the requested work in the same chat; do not ask the user to start a
   new chat or session. Verify availability without printing the secret value.
 - {{product}} stores attached secret names in `workflow.json` under
   `capabilities.selected_secrets`, using the AgentWorks workflow contract.
-  Secret values remain encrypted outside the manifest. Shared Vault credentials also require the executing user's current group permission. Respect the user's
+  Secret values remain encrypted outside the manifest. <!-- product:mcp-gateway -->Shared Vault credentials also require the executing user's current group permission.<!-- /product --> Respect the user's
   selections in **Integrations > Secrets**; do not attach an unrelated credential.
-- A read-only workflow or Crew reference never grants its secrets. To reuse a
+- A read-only workflow or Crew reference never grants its secrets.
+<!-- product:mcp-gateway -->- A read-only workflow or Crew reference never grants its secrets. To reuse a
   credential across projects, it goes into Vault: a Vault administrator shares
   the project secret into Vault (the **Share to Vault** button, Vault's chat or
   Vault's MCP tools; the value is copied on the server and the project copy
@@ -34,7 +33,7 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
   Call `list_secrets` first and use an exact name from `global.names`. {{product}} persists this allowlist in
   `capabilities.selected_global_secret_names`; it never inherits newly created
   globals automatically.
-- Never print, echo, store in project files, or otherwise reveal a secret
+<!-- /product -->- Never print, echo, store in project files, or otherwise reveal a secret
   value. Refer to secrets by name.
 
 ## Attached folders

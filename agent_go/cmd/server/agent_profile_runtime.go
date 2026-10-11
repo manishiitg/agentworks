@@ -342,7 +342,7 @@ func (api *StreamingAPI) lookupAgentProfileDefinition(ctx context.Context, req *
 	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) || !canUseCapLayerProfile(ctx, profile.ID) {
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
-	return &resolvedAgentProfile{Definition: profile}, nil
+	return &resolvedAgentProfile{Definition: profile.ForProducts(builderProductSelection(GetUserFromContext(ctx)))}, nil
 }
 
 func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *QueryRequest, userID, sessionID string) (*resolvedAgentProfile, error) {
@@ -374,6 +374,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
 	isGlobalScope := profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal
+	profile = profile.ForProducts(builderProductSelection(GetUserFromContext(ctx)))
 	if profile.ID == caplayerproduct.ProfileID {
 		// Vault has no project manifest that copies an installation default.
 		// Use the same configured/ready defaults served by the Models panel;

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -108,6 +109,51 @@ func TestExternalMCPRequiresIdentity(t *testing.T) {
 	}
 }
 
+func TestExternalMCPLocalProductSelection(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
+	srv := serveExternalMCP(t, f.api, &UserClaims{UserID: "owner", Username: "owner"})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	init := initializeExternalMCP(t, ctx, cli)
+	for _, absent := range []string{"Brain stores", "Vault management", "Relays:", "<!-- product:"} {
+		if strings.Contains(init.Instructions, absent) {
+			t.Fatalf("local initialize advertised %s", absent)
+		}
+	}
+	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
+	requireRemoteSuccess(t, spec, "local catalog")
+	var inventory struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal([]byte(marshalStructured(t, spec)), &inventory); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, tool := range inventory.Tools {
+		names[tool.Name] = true
+	}
+	for _, name := range []string{"brain_read", "manage_vault_access", "run_relay", "relay"} {
+		if names[name] {
+			t.Fatalf("local MCP catalog advertised %s", name)
+		}
+		result := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": name, "arguments": map[string]any{}})
+		if !result.IsError {
+			t.Fatalf("local MCP accepted disabled tool %s", name)
+		}
+	}
+	if !names["workflow"] || !names["crew"] {
+		t.Fatal("local project tools disappeared")
+	}
+
+}
+
 func callRemoteTool(t *testing.T, ctx context.Context, cli *client.Client, name string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 	result, err := cli.CallTool(ctx, mcp.CallToolRequest{
@@ -144,7 +190,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initResult := initializeExternalMCP(t, ctx, cli)
 	// A session login holds every scope, so Crew authoring is announced too.
-	if !strings.HasPrefix(initResult.Instructions, externalMCPInstructions) || !strings.Contains(initResult.Instructions, externalMCPCrewAuthoringInstructions) || !strings.Contains(initResult.Instructions, externalMCPRelayInstructions) {
+	if !strings.HasPrefix(initResult.Instructions, (productpolicy.Selection{}).Text(externalMCPInstructions)) || !strings.Contains(initResult.Instructions, externalMCPCrewAuthoringInstructions) || !strings.Contains(initResult.Instructions, externalMCPRelayInstructions) {
 		t.Fatalf("run-capable connection got read-only instructions: %q", initResult.Instructions)
 	}
 
@@ -246,7 +292,7 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 	defer cancel()
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initResult := initializeExternalMCP(t, ctx, cli)
-	if initResult.Instructions != externalMCPReadOnlyInstructions {
+	if initResult.Instructions != (productpolicy.Selection{}).Text(externalMCPReadOnlyInstructions) {
 		t.Fatalf("read-only connection got run instructions: %q", initResult.Instructions)
 	}
 	// Same two tools; the scope filter applies inside the spec and the calls.

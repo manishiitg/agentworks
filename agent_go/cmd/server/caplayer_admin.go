@@ -169,6 +169,9 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 }
 
 func capLayerServiceConfig() (*url.URL, string, error) {
+	if !productEnabled("mcp-gateway") {
+		return nil, "", errors.New("Vault is unavailable in local installations")
+	}
 	target, err := url.Parse(strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")))
 	if err != nil || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" {
 		return nil, "", errors.New("invalid service URL")

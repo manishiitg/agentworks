@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"strings"
 
@@ -38,6 +39,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 	return func(ctx context.Context, tool string) (context.Context, error) {
 		if bound == nil || strings.TrimSpace(bound.UserID) == "" || strings.TrimSpace(authoritySession) == "" || strings.TrimSpace(toolSession) == "" {
 			return nil, fmt.Errorf("%s requires an authenticated session", tool)
+		}
+		if !builderProductSelection(bound).AllowsTool(tool) {
+			return nil, fmt.Errorf("%s belongs to a product unavailable in this installation or to this account", tool)
 		}
 		if accessTokenRunToolDenied(bound, tool) || externalBuilderToolDenied(bound, tool) {
 			return nil, fmt.Errorf("%s is unavailable to external access tokens", tool)
@@ -161,7 +165,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			log.Printf("[KB_PROJECT] no Builder authority for %s: phase=%s mode=%s triggered_by=%q bot=%q caller=%q tool_session=%q authority=%q owned=%v read_only=%v",
 				tool, req.PhaseID, req.AgentMode, req.TriggeredBy, req.BotPlatform, callerSession, toolSession, authoritySession, callerOwnedBySession, readOnly)
 		}
-		return ctx, nil
+		return productpolicy.WithSelection(ctx, builderProductSelection(&copy)), nil
 	}
 }
 

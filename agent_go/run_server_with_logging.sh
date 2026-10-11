@@ -6,10 +6,9 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Products the local app offers in its switcher. Code and Brain (knowledgebase) are on by default here too (Brain is
-# core and was missing from this list, so the local switcher hid it); override with a JSON array, e.g. AGENTWORKS_ENABLED_PRODUCT_SURFACES='["agentworks","work"]'.
-# Defined up here: the runtime config is also written by the early exits (e.g. --only-frontend), before the rest of the setup runs.
-ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\"]}"
+# Ordinary local launches offer Goals and Crew. The explicit development
+# opt-in below enables server products without changing local authentication.
+LOCAL_SERVER_PRODUCTS=false
 
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
@@ -85,7 +84,7 @@ BACKGROUND_MODE=false
 WITH_WORKSPACE=false
 WITH_FRONTEND=false
 ONLY_FRONTEND=false
-WITH_GATEWAY=true
+WITH_GATEWAY=false
 ONLY_GATEWAY=false
 GATEWAY_EXPLICIT=false
 UPDATE_MMX_CLI=false
@@ -101,14 +100,15 @@ POSITIONAL_ARGS=()
 print_usage() {
     printf '%s\n' 'Usage: ./run_server_with_logging.sh [options]'
     printf '%s\n' ''
-    printf '%s\n' 'Default (no composition flags): agent + workspace + Vault + frontend.'
+    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend (workflows, Crew).'
     printf '%s\n' ''
     printf '%s\n' 'Options:'
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
-    printf '%s\n' '  --with-gateway                Require Vault startup to succeed (already starts by default).'
-    printf '%s\n' '  --only-gateway                Start only the MCP Gateway service.'
+    printf '%s\n' '  --with-server-products        Opt into Code, Vault, Brain, Relays and LLM Gateway locally.'
+    printf '%s\n' '  --with-gateway                Alias for --with-server-products.'
+    printf '%s\n' '  --only-gateway                Start the standalone server gateway for development (no local app).'
     printf '%s\n' '  --build                       Build and serve the frontend (use with --only-frontend).'
     printf '%s\n' '  --without-electron            Do not launch Electron.'
     printf '%s\n' '  --debug-memory                Electron with heap-snapshot port + RSS sampler.'
@@ -143,7 +143,8 @@ for arg in "$@"; do
         --only-frontend)
             ONLY_FRONTEND=true
             ;;
-        --with-gateway)
+        --with-server-products|--with-gateway)
+            LOCAL_SERVER_PRODUCTS=true
             WITH_GATEWAY=true
             GATEWAY_EXPLICIT=true
             ;;
@@ -184,9 +185,25 @@ for arg in "$@"; do
     esac
 done
 
-# Vault starts with the local backend by default. --with-gateway makes a
-# gateway startup failure fatal; frontend-only and connection-test modes exit
-# before backend services are started.
+# Resolve the profile before frontend-only/test early exits, then pin it again
+# after .env loading. Source builds include the server assets only when opted in.
+configure_local_product_profile() {
+    export AGENTWORKS_DEPLOYMENT_MODE=local
+    if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
+        export AGENTWORKS_LOCAL_SERVER_PRODUCTS=1
+        export VITE_DEPLOYMENT_MODE=local-full
+        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"llm-gateway\", \"knowledgebase\"]}"
+    else
+        export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
+        export VITE_DEPLOYMENT_MODE=local
+        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"work\"]}"
+        # Empty values prevent godotenv from reviving old service configuration.
+        export CAPLAYER_SERVICE_URL=""
+        export CAPLAYER_SERVICE_TOKEN=""
+        export CAPLAYER_SERVICE_TOKEN_FILE=""
+    fi
+}
+configure_local_product_profile
 if [ "$WITH_WORKSPACE" != true ] && [ "$WITH_FRONTEND" != true ] && [ "$ONLY_FRONTEND" != true ] && [ "$ONLY_GATEWAY" != true ] && [ "$TEST_CONNECTIONS" != true ]; then
     WITH_WORKSPACE=true
     WITH_FRONTEND=true
@@ -447,6 +464,7 @@ if [ "$TEST_CONNECTIONS" = true ]; then
 fi
 
 if [ "$ONLY_GATEWAY" = true ]; then
+    export AGENTWORKS_DEPLOYMENT_MODE=server
     echo "🔌 Starting MCP Gateway only — no agent, workspace, or frontend"
     echo "========================================="
 
@@ -649,38 +667,25 @@ if [ "$ONLY_FRONTEND" = true ]; then
     LOG_DIR="${AGENTWORKS_LOG_DIR:-logs}"
     RUNTIME_APP_NAME="$(json_escape_runtime_value "${AGENTWORKS_APP_NAME:-AgentWorks}")"
     RUNTIME_FAVICON_URL="$(json_escape_runtime_value "${AGENTWORKS_FAVICON_URL:-/logo.svg}")"
-    # A frontend-only restart must not drop the gateway switcher entry while
-    # the gateway (started with the backend) is still up. The backend falls
-    # back to a random port in 18100-18199 when the default is busy, so when
-    # the default probe misses (and no explicit GATEWAY_PORT pins the port),
-    # scan that range for a live gateway instead of dropping the entry.
     ONLY_FRONTEND_GATEWAY_LINE=""
-    ONLY_FRONTEND_GATEWAY_PROBE="${GATEWAY_PORT:-18745}"
-    if ! curl -fsS --max-time 2 "http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}/healthz" >/dev/null 2>&1; then
-        if [ -n "${GATEWAY_PORT:-}" ]; then
-            ONLY_FRONTEND_GATEWAY_PROBE=""
+    if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
+        probe_port="${GATEWAY_PORT:-18745}"
+        if curl -fsS --max-time 2 "http://127.0.0.1:${probe_port}/healthz" >/dev/null 2>&1; then
+            ONLY_FRONTEND_GATEWAY_LINE=",
+  gatewayUrl: \"http://127.0.0.1:${probe_port}\""
         else
-            ONLY_FRONTEND_GATEWAY_PROBE=""
-            for probe_port in {18100..18199}; do
-                if curl -fsS --max-time 1 "http://127.0.0.1:${probe_port}/healthz" >/dev/null 2>&1; then
-                    ONLY_FRONTEND_GATEWAY_PROBE="$probe_port"
-                    break
-                fi
-            done
+            echo "⚠️  Local server products requested, but Vault is not running; start the backend with --with-server-products."
         fi
     fi
-    if [ -n "$ONLY_FRONTEND_GATEWAY_PROBE" ]; then
-        ONLY_FRONTEND_GATEWAY_LINE=",
-  gatewayUrl: \"http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}\""
-    fi
-    mkdir -p "$LOG_DIR"
-    mkdir -p "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
+    mkdir -p "$LOG_DIR" "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
 window.__APP_RUNTIME_CONFIG__ = {
   apiBaseUrl: "${FRONTEND_URL}",
   workspaceApiBaseUrl: "${FRONTEND_URL}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL}",
   cdpEnabled: true,
+  deploymentMode: "local",
+  localServerProducts: ${LOCAL_SERVER_PRODUCTS},
   enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${RUNTIME_APP_NAME}",
   faviconUrl: "${RUNTIME_FAVICON_URL}"${ONLY_FRONTEND_GATEWAY_LINE}
@@ -1044,37 +1049,6 @@ fi
 export AGENT_PORT
 export MCP_AGENT_SERVER_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
 
-# Vault is on by default for local runs, set up like the server deploy: the
-# gateway runs in platform mode with a private service token, and the backend
-# is pointed at it. Without CAPLAYER_SERVICE_URL the backend runs with no Vault
-# (every shared secret and MCP usable by everyone). Opt out: AGENTWORKS_LOCAL_VAULT=0.
-if [ "$WITH_GATEWAY" = true ] && [ "${AGENTWORKS_LOCAL_VAULT:-1}" != "0" ] && [ -z "${CAPLAYER_SERVICE_URL:-}" ]; then
-    LOCAL_VAULT=true
-    VAULT_STATE_DIR="${GATEWAY_DIR}/var/platform"
-    mkdir -p "$VAULT_STATE_DIR" && chmod 700 "$VAULT_STATE_DIR"
-    # Vault's state used to live in var/. Its configuration database is encrypted
-    # with this key, so an existing key must follow, or Vault refuses to start.
-    # Copy, not move: the old file stays as a backup.
-    if [ ! -e "${VAULT_STATE_DIR}/gateway.sqlite.key" ] && [ -s "${GATEWAY_DIR}/var/gateway.sqlite.key" ]; then
-        (umask 077 && cp -p "${GATEWAY_DIR}/var/gateway.sqlite.key" "${VAULT_STATE_DIR}/gateway.sqlite.key")
-        echo "🔑 Copied the Vault configuration key into ${VAULT_STATE_DIR}"
-    fi
-    VAULT_TOKEN_FILE="${VAULT_STATE_DIR}/service-token"
-    if [ ! -s "$VAULT_TOKEN_FILE" ]; then
-        (umask 077 && openssl rand -hex 32 > "$VAULT_TOKEN_FILE")
-    fi
-    chmod 600 "$VAULT_TOKEN_FILE"
-    export GATEWAY_AUTH_MODE=platform
-    export GATEWAY_BIND=127.0.0.1
-    export GATEWAY_PRODUCT_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
-    export GATEWAY_STATE_DIR="$VAULT_STATE_DIR"
-    export GATEWAY_HUMAN_TOKEN_FILE="$VAULT_TOKEN_FILE"
-    export GATEWAY_UPSTREAM_URL=none
-    export GATEWAY_GRANT_TOOLS=""
-    export GATEWAY_DEMO=""
-    export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
-    export CAPLAYER_SERVICE_TOKEN_FILE="$VAULT_TOKEN_FILE"
-fi
 # Chat-driven OAuth actions do not have an incoming HTTP request from which to
 # infer their callback origin. For local runs the selected agent-server URL is
 # the correct callback base. Preserve an explicit PUBLIC_URL for hosted setups.
@@ -1184,6 +1158,39 @@ else
     echo "ℹ️  First local run: creating a minimal .env with a secure AUTH_SECRET."
 fi
 
+# Explicit flags win over inherited and .env installation settings.
+configure_local_product_profile
+
+# The opted-in source stack uses the same private platform-mode Vault service
+# and persisted configuration as previous local runs.
+if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
+    LOCAL_VAULT=true
+    VAULT_STATE_DIR="${GATEWAY_DIR}/var/platform"
+    mkdir -p "$VAULT_STATE_DIR" && chmod 700 "$VAULT_STATE_DIR"
+    # Vault's state used to live in var/. Its configuration database is encrypted
+    # with this key, so an existing key must follow, or Vault refuses to start.
+    # Copy, not move: the old file stays as a backup.
+    if [ ! -e "${VAULT_STATE_DIR}/gateway.sqlite.key" ] && [ -s "${GATEWAY_DIR}/var/gateway.sqlite.key" ]; then
+        (umask 077 && cp -p "${GATEWAY_DIR}/var/gateway.sqlite.key" "${VAULT_STATE_DIR}/gateway.sqlite.key")
+        echo "🔑 Copied the Vault configuration key into ${VAULT_STATE_DIR}"
+    fi
+    VAULT_TOKEN_FILE="${VAULT_STATE_DIR}/service-token"
+    if [ ! -s "$VAULT_TOKEN_FILE" ]; then
+        (umask 077 && openssl rand -hex 32 > "$VAULT_TOKEN_FILE")
+    fi
+    chmod 600 "$VAULT_TOKEN_FILE"
+    export GATEWAY_AUTH_MODE=platform
+    export GATEWAY_BIND=127.0.0.1
+    export GATEWAY_PRODUCT_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
+    export GATEWAY_STATE_DIR="$VAULT_STATE_DIR"
+    export GATEWAY_HUMAN_TOKEN_FILE="$VAULT_TOKEN_FILE"
+    export GATEWAY_UPSTREAM_URL=none
+    export GATEWAY_GRANT_TOOLS=""
+    export GATEWAY_DEMO=""
+    export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
+    export CAPLAYER_SERVICE_TOKEN=""
+    export CAPLAYER_SERVICE_TOKEN_FILE="$VAULT_TOKEN_FILE"
+fi
 # Keep managed browser cookies and logins across local server restarts. Workflow
 # isolation is added beneath this root by the browser launcher.
 export AGENT_BROWSER_SHARED_PROFILE="${AGENT_BROWSER_SHARED_PROFILE:-$HOME/.agentworks/browser-profile}"
@@ -1365,9 +1372,9 @@ if [ "$WITH_WORKSPACE" = true ]; then
     mkdir -p "$WORKSPACE_DOCS_PATH"
     WORKSPACE_DOCS_PATH="$(cd "$WORKSPACE_DOCS_PATH" && pwd)"
     export WORKSPACE_DOCS_PATH
-    # The local installation has one owner. Keep CapLayer's configuration
-    # database in its chat project; service secrets stay in GATEWAY_STATE_DIR.
-    export GATEWAY_WORKSPACE_DIR="${GATEWAY_WORKSPACE_DIR:-${WORKSPACE_DOCS_PATH}/_users/default/Chats/CapLayer}"
+    if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
+        export GATEWAY_WORKSPACE_DIR="${GATEWAY_WORKSPACE_DIR:-${WORKSPACE_DOCS_PATH}/_users/default/Chats/CapLayer}"
+    fi
     export WORKSPACE_API_URL="${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}"
     if [ -z "${WORKSPACE_API_TOKEN:-}" ]; then
         WORKSPACE_API_TOKEN="$(/usr/bin/openssl rand -hex 32 2>/dev/null || uuidgen | tr -d '-')"
@@ -1402,6 +1409,8 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "${frontend_api_base_url}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL:-${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}}",
   cdpEnabled: true,
+  deploymentMode: "local",
+  localServerProducts: ${LOCAL_SERVER_PRODUCTS},
   enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${runtime_app_name}",
   faviconUrl: "${runtime_favicon_url}"${gateway_config_line}
@@ -2300,12 +2309,10 @@ if [ "$WITH_WORKSPACE" = true ]; then
 fi
 
 if [ "$WITH_GATEWAY" = true ]; then
-    # Local Vault is core, like Brain: if it fails to start, the run stops instead of
-    # quietly continuing without it. Only a standalone gateway (Vault opted out) is
-    # auxiliary, and an explicit flag still fails the run.
+    # An explicit opt-in requires a healthy Vault; never leave a dangling URL.
     if ! start_mcp_gateway; then
         if [ "${LOCAL_VAULT:-false}" = true ]; then
-            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}. Fix the error there, or set AGENTWORKS_LOCAL_VAULT=0 to run without Vault."
+            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}. Fix the error there, or omit --with-server-products to run the ordinary local app."
             exit 1
         fi
         if [ "$GATEWAY_EXPLICIT" = true ]; then

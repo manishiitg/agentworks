@@ -14,7 +14,8 @@ import (
 // present; cdpEnabled advertises the deployment-level browser capability; the
 // product-surface and branding keys can be overridden via env — see
 // docs/design/sparkquill_desktop_on_platform_plan.md P0. A plain AgentWorks
-// server exposes AgentWorks, Relays, and its built-in Crew coding surface; a shell or
+// server retains its shared products. Local launchers select workflows and Crew
+// unless source development explicitly opts into server products; a shell or
 // deployment running a different product (e.g. SparkQuill) sets
 // AGENTWORKS_ENABLED_PRODUCT_SURFACES/AGENTWORKS_DEFAULT_PRODUCT_SURFACE so
 // the frontend's product-surface switcher pins to its intended surface(s).
@@ -22,14 +23,50 @@ func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:%d\",\n  workspaceApiBaseUrl: %q", actualPort, workspaceURL)
 	fmt.Fprintf(&b, ",\n  cdpEnabled: %t", browser.CDPEnabled())
+	local := localProductInstallation()
+	localOptIn := localServerProductsEnabled()
+	if local {
+		b.WriteString(",\n  deploymentMode: \"local\"")
+		fmt.Fprintf(&b, ",\n  localServerProducts: %t", localOptIn)
+		if localOptIn && vaultConfigured() {
+			fmt.Fprintf(&b, ",\n  gatewayUrl: %q", strings.TrimRight(strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")), "/"))
+		}
+	}
 	surfaces := splitAndTrimCommaList(os.Getenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES"))
 	if len(surfaces) == 0 {
-		surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase"}
+		if local && !localOptIn {
+			surfaces = []string{"agentworks", "work"}
+		} else if localOptIn {
+			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "llm-gateway", "knowledgebase"}
+		} else {
+			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase"}
+		}
+	} else if local {
+		available := make([]string, 0, len(surfaces))
+		for _, surface := range surfaces {
+			if installationProductAvailable(surface) {
+				available = append(available, surface)
+			}
+		}
+		surfaces = available
+		if len(surfaces) == 0 {
+			surfaces = []string{"agentworks", "work"}
+		}
 	}
+	available := make([]string, 0, len(surfaces))
+	for _, surface := range surfaces {
+		if productEnabled(surface) {
+			available = append(available, surface)
+		}
+	}
+	surfaces = available
 	fmt.Fprintf(&b, ",\n  enabledProductSurfaces: %s", jsStringArrayLiteral(surfaces))
 	defaultSurface := strings.TrimSpace(os.Getenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE"))
 	if defaultSurface == "" {
 		defaultSurface = "agentworks"
+	}
+	if len(surfaces) > 0 && !allowlistHasProduct(strings.Join(surfaces, ","), defaultSurface) {
+		defaultSurface = surfaces[0]
 	}
 	fmt.Fprintf(&b, ",\n  defaultProductSurface: %q", defaultSurface)
 	if v := strings.TrimSpace(os.Getenv("AGENTWORKS_APP_NAME")); v != "" {

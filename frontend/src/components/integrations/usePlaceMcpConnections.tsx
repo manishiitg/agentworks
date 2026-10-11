@@ -1,3 +1,4 @@
+import { isLocalProductInstallation } from '../../products/productSurfaceConfig'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mcpCatalogApi, type McpCatalogServer } from '../../api/mcpCatalog'
 import { placeMcpApi, type PlaceMcpCustomServer, type PlaceMcpServer } from '../../api/placeMcp'
@@ -186,7 +187,7 @@ export function usePlaceMcpConnections({ workspacePath, placeNoun, canEdit, onAs
       ...(entry.group && groups.has(entry.group) ? { batch: { id: entry.group, name: providerGroupLabel(entry.group), connect: (picks: string[]) => addGroup(entry.group!, picks) } } : {}),
     })) satisfies McpCatalogRow[] : [],
     addCustom: canEdit ? { label: 'Add custom server', disabled: busy !== null, run: () => onAsk ? onAsk('Help me connect one of my own MCP servers in this ' + placeNoun + '. First read the relevant MCP setup skill. Ask which app or service I want, then use its setup tools and give me any returned sign-in link. Verify the connection status.') : setShowCustom(true) } : undefined,
-    help: <><p>A connection added here is used by everyone with access to this {placeNoun}, and only here. It acts as the account of the person who connected it. Use Vault for access shared across places.</p><p>Google apps are connected in the Google apps tab. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Integrations → Secrets.</p></>,
+    help: <><p>A connection added here is used by everyone with access to this {placeNoun}, and only here. It acts as the account of the person who connected it.{!isLocalProductInstallation() && ' Use Vault for access shared across places.'}</p><p>Google apps are connected in the Google apps tab. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Integrations → Secrets.</p></>,
     dialogs: <>
       {clientPrompt && <McpOAuthClientForm key={clientPrompt.server} {...clientPrompt} busy={busy !== null} cancel={() => setClientPrompt(null)} reportError={setError} submit={client => { void run(`client:${clientPrompt.server}`, () => signIn(clientPrompt.server, client), 'Could not start sign-in.') }} />}
       {showCustom && <McpCustomServerForm secrets={secrets} busy={busy !== null} cancel={() => setShowCustom(false)} submit={addCustom} />}

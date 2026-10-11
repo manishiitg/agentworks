@@ -135,6 +135,15 @@ func effectiveWorkflowAccessMap(ctx context.Context, claims *UserClaims) (map[st
 }
 
 func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) WorkflowAccessLevel {
+	product := "agentworks"
+	if m != nil && m.Kind == "relay" {
+		product = "relays"
+	}
+	// Installation availability does not replace project grants. In particular,
+	// a workflow reader or bot route may have access without a product-home grant.
+	if !productEnabled(product) {
+		return WorkflowAccessNone
+	}
 	account := workflowAccessForClaims(claims)
 	if claims == nil {
 		return account

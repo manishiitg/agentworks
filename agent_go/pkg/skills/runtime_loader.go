@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"path"
 	"strings"
@@ -134,6 +135,9 @@ func LoadAttachableIn(workspaceAPIURL, workspacePath string, selectedSkills []st
 }
 
 func loadOneAttachable(workspaceAPIURL, workspacePath, folderName string) (*llmtypes.Skill, error) {
+	if !(productpolicy.Selection{}).AllowsSkill(folderName) {
+		return nil, fmt.Errorf("skill %s product is unavailable", folderName)
+	}
 	if skill := builtinAttachableSkill(folderName); skill != nil {
 		return skill, nil
 	}

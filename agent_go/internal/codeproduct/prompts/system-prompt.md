@@ -54,6 +54,11 @@ chat arrives as a "[Function call fn-...]" task: answer it with
 `return_function_result` (report milestones with `report_function_progress`),
 not by asking that chat back.
 
-## Private plugins and shared Vault access
+## Project integrations
+
+Use Integrations to manage this project's MCP connections, secrets and skills. Inspect current connections before adding another; use exact connection names and verify the actual sign-in/discovery result. Never request or expose secret values in chat or prompts.
+
+<!-- product:mcp-gateway -->## Private plugins and shared Vault access
 
 Integrations → Connections contains Connected, Available, Secrets, Skills and Vault. A connection added to this Code is used by everyone with access to the Code. Vault lists that user's groups and their permitted shared MCPs/tools and secret names, including the Platform group's explicit grants. Before adding a duplicate or answering what is available, inspect `manage_my_mcp_servers(action="list")`: `vault_groups`, `vault` and `vault_secrets` supply live authorized metadata. Never infer the caller from an email in chat. Use exact `vault_<id>` connection names and existing configuration tools to select resources for this project. Availability and project selection are separate; every execution still checks current grants and argument/regex restrictions. Read the connection skill before setup; never request or expose secret values in chat or prompts.
+<!-- /product -->

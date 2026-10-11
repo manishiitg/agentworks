@@ -69,10 +69,10 @@ presentation tools; check the active capabilities before offering an export.
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Supported in Goals/Workflow, Relays, Crew and Code project roots. Crew
-    readers follow the existing project access rules; Code scripts are owner-only.
+  - Supported in Goals/Workflow, <!-- product:relays -->Relays, <!-- /product -->Crew<!-- product:code --> and Code<!-- /product --> project roots. Crew
+    readers follow the existing project access rules.<!-- product:code --> Code scripts are owner-only.<!-- /product -->
     Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
-    the authenticated viewer's live MCP/Vault permissions. Viewing a project does
+    the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions. Viewing a project does
     not grant access to its credentials. Published static copies cannot run scripts.
   - Args arrive as JSON in `$REPORT_ARGS` (`{}` when none). Treat them as
     untrusted and validate them.
@@ -145,7 +145,7 @@ window.report.ready(async function () {
   `url` verbatim. It opens the full live
   Dashboard runtime, not the restricted generic HTML file preview. The link is
   protected by current project access. Crew readers can open shared Crew
-  dashboards; Code dashboards remain owner-only. It contains no credential and
+  dashboards<!-- product:code -->; Code dashboards remain owner-only<!-- /product -->. It contains no credential and
   grants no access or public publication. Inspect `shareable`,
   `scope`, and `warning`; when `shareable` is false (including localhost and
   loopback deployments), describe it only as a same-machine preview and relay
@@ -169,8 +169,8 @@ published revision and checks the current draft revision. Never directly edit
 managed revision files or their state.
 
 `list_dashboards` discovers accessible dashboards and URLs. `get_dashboard_link`
-returns an authenticated published URL; users need current project access. Code
-stays owner-only. Existing HTML documents remain discoverable; use their returned
+returns an authenticated published URL; users need current project access.<!-- product:code --> Code
+stays owner-only.<!-- /product --> Existing HTML documents remain discoverable; use their returned
 `document_path` for get/validate/preview/link. To manage an existing document with
 revisions, read it and create a new managed dashboard from its source.
 
@@ -179,5 +179,5 @@ External MCP clients use `get_api_spec` then `call_tool`. Request explicit
 rights automatically. Read/write scopes retain workflow and Crew ID bounds.
 Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.
-Publishing does not run the Relay API or a workflow. SQLite files, transcripts,
+Publishing does not run a workflow<!-- product:relays --> or the Relay API<!-- /product -->. SQLite files, transcripts,
 secrets and runtime selections stay outside dashboard authoring.

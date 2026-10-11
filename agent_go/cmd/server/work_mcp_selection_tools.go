@@ -20,7 +20,7 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 		return fmt.Errorf("Crew MCP selection requires an active Crew project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect one MCP server for the active Crew project. First use list_mcp_servers to inspect your private connections and permitted Vault servers. Vault MCPs are available automatically through the signed-in user/group permissions and cannot be selected or deselected here. Selecting is allowed only for a connected private server; this tool does not install, authenticate, reconnect, edit, or remove a server. The durable project selection is written to workflow.json. Newly selected server tools become available on the next user message because the current agent turn was launched with its previous MCP scope.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect one MCP server for the active Crew project. First use list_mcp_servers to inspect your private connections. <!-- product:mcp-gateway -->Permitted Vault MCPs are available automatically through the signed-in user/group permissions and cannot be selected or deselected here.<!-- /product --> Selecting is allowed only for a connected private server; this tool does not install, authenticate, reconnect, edit, or remove a server. The durable project selection is written to workflow.json. Newly selected server tools become available on the next user message because the current agent turn was launched with its previous MCP scope.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "server"},

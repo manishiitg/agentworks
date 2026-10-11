@@ -2,6 +2,12 @@
 
 Electron shell for the standalone Mac app. It bundles the `agent-server` and `workspace-server` binaries, managing their lifecycle automatically.
 
+The local app offers workflows (Goals) and Crew. Code, Relays, Brain, Vault and
+LLM Gateway are server products and are excluded from local installations. The
+DMG neither includes nor starts a Vault sidecar. Project MCPs and secrets remain
+available within workflows and Crew. Existing workspace and Vault data are
+not deleted during upgrades.
+
 ## Prerequisites
 
 - Node 18+
@@ -47,7 +53,13 @@ In this mode, Electron skips port conflict checks and server lifecycle managemen
 ### Quick local build (unsigned, no GitHub upload)
 
 ```bash
-cd desktop
+cd frontend
+npm ci
+VITE_DEPLOYMENT_MODE=local npm run build
+rm -rf ../agent_go/static
+mkdir -p ../agent_go/static
+cp -R dist/. ../agent_go/static/
+cd ../desktop
 ./dev-setup.sh                                              # only first time / when Go code changes
 CSC_IDENTITY_AUTO_DISCOVERY=false \
   npx electron-builder --mac dmg --publish never

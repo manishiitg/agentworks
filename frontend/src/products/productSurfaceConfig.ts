@@ -8,6 +8,8 @@ export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
 }
 
 type ProductRuntimeConfig = {
+  deploymentMode?: unknown
+  localServerProducts?: unknown
   defaultProductSurface?: unknown
   enabledProductSurfaces?: unknown
   gatewaySso?: unknown
@@ -24,14 +26,16 @@ export function isProductSurface(value: unknown): value is ProductSurface {
 }
 
 /**
- * Returns the products intentionally exposed by this deployment.  Leaving the
- * runtime setting out is the ordinary AgentWorks localhost case, which ships
- * the automation, Relays, and built-in Crew surfaces together.
- * A configured gateway URL opts a local deployment into the Vault alpha.
- * Dedicated product shells can replace this with their own allowlist.
+ * Ordinary local apps exclude shared server products, including stale saved
+ * selections. Source development can explicitly opt in; packaged local assets
+ * remain restricted. Server defaults and dedicated allowlists are preserved.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
+  if (isLocalProductInstallation()) {
+    const local = Array.isArray(configured) ? configured.filter(isProductSurface).filter(surface => !SERVER_ONLY_SURFACES.includes(surface)) : []
+    return local.length ? [...new Set(local)] : ['agentworks', 'work']
+  }
   const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'relays', 'work', 'mcp-gateway', 'knowledgebase'] : ['agentworks', 'relays', 'work', 'knowledgebase']
   if (!Array.isArray(configured)) return defaults
 
@@ -56,6 +60,7 @@ export function isSingleProductDeployment(): boolean {
 }
 
 export function hasGatewaySSO(): boolean {
+  if (isLocalProductInstallation()) return false
   return runtimeConfig()?.gatewaySso === true
 }
 
@@ -64,11 +69,20 @@ export function hasGatewaySSO(): boolean {
  * without a trailing slash. Null hides the switcher entry.
  */
 export function gatewayBaseUrl(): string | null {
+  if (isLocalProductInstallation()) return null
   const raw = runtimeConfig()?.gatewayUrl
   if (typeof raw !== 'string') return null
   const url = raw.trim().replace(/\/+$/, '')
   if (!/^https?:\/\/[^/\s]+/.test(url)) return null
   return url
+}
+
+const SERVER_ONLY_SURFACES: ProductSurface[] = ['code', 'relays', 'knowledgebase', 'mcp-gateway']
+
+export function isLocalProductInstallation(): boolean {
+  // Packaged local assets omit server entries. Source development uses the
+  // local-full build profile and explicitly advertises the launcher opt-in.
+  return import.meta.env.VITE_DEPLOYMENT_MODE === 'local' || (runtimeConfig()?.deploymentMode === 'local' && runtimeConfig()?.localServerProducts !== true)
 }
 
 /**

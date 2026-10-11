@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"os"
 	"strings"
 )
@@ -110,6 +111,9 @@ func userProductPolicy(userID, username, email string) (products []string, restr
 // userAllowedWorkflowID.
 func userAllowedProduct(claims *UserClaims, product string) bool {
 	product = strings.TrimSpace(product)
+	if !productpolicy.Enabled(product) {
+		return false
+	}
 	if product == "" || claims == nil {
 		return true
 	}

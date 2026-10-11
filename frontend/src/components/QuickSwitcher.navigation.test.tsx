@@ -40,6 +40,7 @@ afterEach(() => {
   useAuthStore.setState({ user: null, isMultiUserMode: false })
   useCommandDialogStore.getState().closeAll()
   usePanelSwitcherStore.setState({ entries: {}, toolbarMinimized: false })
+  vi.unstubAllEnvs()
 })
 
 async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'code', 'video-studio', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
@@ -303,4 +304,36 @@ it('hides creation for unavailable products and respects the workflow create gat
   await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: false } }))
   expect(openQuickNavigation(workflow)).toBe(false)
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
+})
+
+const localProducts = ['agentworks', 'work', 'code', 'relays', 'knowledgebase', 'mcp-gateway']
+
+it.each([false, true])('filters Ctrl+K products for local server-product opt-in=%s', async optIn => {
+  const { host } = await renderNavigation('@products ', localProducts, true, () => {
+    Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: optIn })
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+  })
+  const surfaces = [...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id'))
+  expect(surfaces).toEqual(optIn
+    ? ['product:agentworks', 'product:relays', 'product:work', 'product:code', 'product:mcp-gateway', 'product:knowledgebase']
+    : ['product:agentworks', 'product:work'])
+})
+
+it('respects account entitlements within an opted-in local installation', async () => {
+  const { host } = await renderNavigation('@products ', localProducts, false, () => {
+    Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: true })
+    useAuthStore.setState({ user: { is_admin: false, allowed_products: ['code', 'mcp-gateway'] } as never })
+  })
+  expect([...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id')))
+    .toEqual(['product:code', 'product:mcp-gateway'])
+})
+
+it.each(['mcp-gateway', 'code'])('rejects a stale %s shortcut after local opt-in is withdrawn', async product => {
+  await renderNavigation('@products ', localProducts, true, () => {
+    Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: true })
+  })
+  const shortcut = quickNavigationItems(useAuthStore.getState().user, 'code').find(item => item.id === `product:${product}`)!
+  Object.assign(window.__APP_RUNTIME_CONFIG__!, { localServerProducts: false })
+  expect(openQuickNavigation(shortcut)).toBe(false)
+  expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
 })

@@ -93,7 +93,7 @@ native videos/traces remain controlled by the test configuration.
 ### How a step reads its trigger input (all entry paths)
 
 One workflow is often started three ways: a provider webhook (for example GitHub),
-an MCP/CLI or bearer call, and a Crew or Code function call. Every path reaches
+an MCP/CLI or bearer call, and a Crew<!-- product:code --> or Code<!-- /product --> function call. Every path reaches
 the steps the same way: the run gets a delivery file, and a code step finds it at
 `$WORKFLOW_TRIGGER_INPUT_FILE` (an absolute path inside this workflow's docs
 root). What the file holds depends on the path:
@@ -104,7 +104,7 @@ root). What the file holds depends on the path:
 - **Bearer / MCP call**: with raw input the body is `payload` as sent; with
   `input_mode="envelope"` the declared `variables` and the free `payload` are
   separate.
-- **Function call** (Crew, Code, MCP/CLI `call_function`): `variables` holds the
+- **Function call** (Crew,<!-- product:code --> Code,<!-- /product --> MCP/CLI `call_function`): `variables` holds the
   declared inputs (for example `GITHUB_OWNER`, `GITHUB_REPO`, `PR_NUMBER`), already
   validated. `payload` is the call envelope `{function, args, from, call_id}`, and
   `args` repeats the same inputs. The values are never at the top level of `payload`.

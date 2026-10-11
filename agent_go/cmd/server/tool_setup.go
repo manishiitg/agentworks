@@ -382,7 +382,17 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 	for name, category := range kbCategories {
 		toolCategories[name] = category
 	}
-	return allTools, allExecutors, toolCategories
+	admitted := allTools[:0]
+	selection := builderProductSelection(&UserClaims{UserID: userID})
+	for _, tool := range allTools {
+		if tool.Function != nil && !selection.AllowsTool(tool.Function.Name) {
+			delete(allExecutors, tool.Function.Name)
+			delete(toolCategories, tool.Function.Name)
+			continue
+		}
+		admitted = append(admitted, tool)
+	}
+	return admitted, allExecutors, toolCategories
 }
 
 // enhanceToolDescriptionForWorkflowPhase augments workspace tool descriptions for

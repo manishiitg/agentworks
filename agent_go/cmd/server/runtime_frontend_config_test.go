@@ -6,6 +6,7 @@ import (
 )
 
 func TestRuntimeFrontendConfigJSDefaultsToAgentWorksWorkAndCode(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
 	t.Setenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE", "")
@@ -16,6 +17,38 @@ func TestRuntimeFrontendConfigJSDefaultsToAgentWorksWorkAndCode(t *testing.T) {
 	want := "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:45678\",\n  workspaceApiBaseUrl: \"http://localhost:45679\",\n  cdpEnabled: true,\n  enabledProductSurfaces: [\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\"],\n  defaultProductSurface: \"agentworks\"\n};\n"
 	if got != want {
 		t.Fatalf("a plain AgentWorks deployment must expose AgentWorks, Relays, Crew, Code, Vault, and Brain\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestRuntimeFrontendLocalProfileCannotRestoreServerProducts(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,relays,knowledgebase,mcp-gateway,llm-gateway,work,code")
+	t.Setenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE", "mcp-gateway")
+	got := runtimeFrontendConfigJS(45678, "http://localhost:45679")
+	for _, want := range []string{`deploymentMode: "local"`, `enabledProductSurfaces: ["agentworks", "work"]`, `defaultProductSurface: "agentworks"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %s", want, got)
+		}
+	}
+	for _, configured := range []string{"", "code", "relays,mcp-gateway"} {
+		t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", configured)
+		if got := runtimeFrontendConfigJS(45678, ""); !strings.Contains(got, `enabledProductSurfaces: ["agentworks", "work"]`) {
+			t.Fatalf("local fallback includes unavailable products: %s", got)
+		}
+	}
+}
+
+func TestRuntimeFrontendLocalOptInAdvertisesServerProducts(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "1")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
+	t.Setenv("CAPLAYER_SERVICE_URL", "http://127.0.0.1:18745/")
+	got := runtimeFrontendConfigJS(45678, "http://localhost:45679")
+	for _, want := range []string{`deploymentMode: "local"`, `localServerProducts: true`, `gatewayUrl: "http://127.0.0.1:18745"`, `"relays"`, `"knowledgebase"`, `"mcp-gateway"`, `"llm-gateway"`, `"code"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %s", want, got)
+		}
 	}
 }
 

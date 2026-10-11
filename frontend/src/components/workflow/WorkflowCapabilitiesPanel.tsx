@@ -12,7 +12,7 @@ import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
 import { WorkspaceViewBreadcrumbs } from './WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../integrations/IntegrationSectionPicker'
 import { PROJECT_INTEGRATION_SECTIONS } from '../integrations/integrationSections'
-import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../integrations/ProjectPluginsPanel'
+import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectVaultPanel } from '../integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
@@ -130,7 +130,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets, Models…).
   useWorkspaceViewTarget('mcp', target => {
     if (mcpTabs.some(option => option.value === target)) { setTab(target as McpTab); setIntegrationMenu(false) }
-    else if (PROJECT_PLUGIN_TABS.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
+    else if (projectPluginTabs().some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
   }, section === 'mcp')
   useWorkspaceViewTarget('identity', target => {
     if (identityTabs.some(option => option.value === target)) setIdentityTab(target as IdentityTab)
@@ -334,7 +334,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             />
           )}
           tabs={section === 'mcp'
-            ? (!integrationMenu && activeMcpTab === 'apps' ? { value: pluginTab, onChange: (value: string) => setPluginTab(value as typeof pluginTab), options: [...PROJECT_PLUGIN_TABS], ariaLabel: 'Integrations' } : undefined)
+            ? (!integrationMenu && activeMcpTab === 'apps' ? { value: pluginTab, onChange: (value: string) => setPluginTab(value as typeof pluginTab), options: projectPluginTabs(), ariaLabel: 'Integrations' } : undefined)
             : section === 'identity'
               ? { value: activeIdentityTab, onChange: (value: string) => setIdentityTab(value as IdentityTab), options: identityTabs, ariaLabel: 'Identity' }
               : undefined}

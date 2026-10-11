@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.get.mockResolvedValue({ data: { servers: [{ id: 'vault-1', label: 'A Shared Linear', provider: 'linear', tools: [] }] } })
 })
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 async function mount(view: 'connected' | 'available' = 'connected') {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -57,4 +57,14 @@ it('keeps the Available view for installing connections', async () => {
   const host = await mount('available')
   expect(host.querySelector('section[aria-label="Available servers"]')?.textContent).toContain('Slack')
   expect(host.querySelector('section[aria-label="Vault MCPs"]')).toBeNull()
+})
+it('keeps local project MCPs without Vault discovery or shared-resource UI', async () => {
+  vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
+  const host = await mount()
+  expect(host.querySelector('section[aria-label="Workflow MCPs"]')?.textContent).toContain('Z Project Notion')
+  expect(host.querySelector('section[aria-label="Vault MCPs"]')).toBeNull()
+  expect(mocks.get).not.toHaveBeenCalled()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Refresh MCPs"]')!.click())
+  expect(mocks.refresh).toHaveBeenCalledOnce()
+  expect(mocks.get).not.toHaveBeenCalled()
 })

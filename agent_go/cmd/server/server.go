@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"maps"
 	"net"
@@ -128,9 +129,6 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 
 var mcpBridgeVirtualToolCategories = map[string]bool{}
 
-// coreProducts are never switched off by AGENT_PRODUCTS (except on a SparkQuill deployment).
-var coreProducts = []string{"mcp-gateway", "knowledgebase"}
-
 // productEnabled reports whether a product's profiles and skills should be
 // loaded by this server. An unset AGENT_PRODUCTS preserves the shared-server
 // behavior of loading every product. Dedicated deployments can set a
@@ -145,27 +143,7 @@ func allowlistHasProduct(configured, product string) bool {
 	return false
 }
 
-func productEnabled(product string) bool {
-	// Vault and Brain are core: on in every installation, local included. What a person may do in them is decided by
-	// their account (product access and role) and by folder grants, never by this list.
-	configured := strings.TrimSpace(os.Getenv("AGENT_PRODUCTS"))
-	if !allowlistHasProduct(configured, "sparkquill") { // SparkQuill keeps its own allowlist.
-		for _, core := range coreProducts {
-			if strings.EqualFold(strings.TrimSpace(product), core) {
-				return true
-			}
-		}
-	}
-	if configured == "" {
-		return true
-	}
-	for _, candidate := range strings.Split(configured, ",") {
-		if strings.EqualFold(strings.TrimSpace(candidate), product) {
-			return true
-		}
-	}
-	return false
-}
+func productEnabled(product string) bool { return productpolicy.Enabled(product) }
 
 // isSingleProductServerDeployment reports whether this server instance is
 // dedicated to exactly one product surface (Video Studio or SparkQuill)
@@ -175,6 +153,9 @@ func productEnabled(product string) bool {
 // desktop app, falling back to the user's own locally logged-in `claude` CLI
 // is correct, intended behavior, not a bug to guard against.
 func isSingleProductServerDeployment() bool {
+	if localProductInstallation() {
+		return false
+	}
 	configured := strings.TrimSpace(os.Getenv("AGENT_PRODUCTS"))
 	if configured == "" {
 		return false
@@ -5682,7 +5663,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Create a detached context for the entire streaming operation.
 		// Execution is stopped by explicit cancellation, not by a wall-clock timeout.
-		streamCtx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
+		streamCtx, cancel := context.WithCancel(productpolicy.WithSelection(context.WithoutCancel(r.Context()), builderProductSelection(GetUserFromContext(r.Context()))))
 		streamCtx = queryLogCtx.Context(streamCtx)
 		// Tools that start their own model (generate_text_llm, read_image)
 		// resolve and admit accounts with this turn's scope.
@@ -5952,6 +5933,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			toolGate.Shadow("goals-"+mode, agentworksproduct.ChatTools(mode))
 		}
+		toolGate.DenyWhere(func(name string) bool {
+			return !builderProductSelection(GetUserFromContext(r.Context())).AllowsTool(name)
+		})
 		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())
@@ -12950,7 +12934,7 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 
 	if err := registerTool(
 		"search_skills",
-		"Search company skills in Brain (your company's shared skills) and the public skills registry. Use install_skill with a returned source value to install one into this workspace.",
+		"Search the public skills registry. <!-- product:knowledgebase -->Also search company skills in Brain (your company's shared skills).<!-- /product --> Use install_skill with a returned source value to install one into this workspace.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -12974,13 +12958,13 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 
 	if err := registerTool(
 		"install_skill",
-		"Install a skill into this workspace: a company skill from Brain with source brain:<folder> (for example brain:Company/Skills/release-notes), or a public registry skill with owner/repo@skill-name. Use search_skills first to find valid sources.",
+		"Install a public registry skill into this workspace with owner/repo@skill-name. <!-- product:knowledgebase -->For a company skill in Brain, use source brain:<folder> (for example brain:Company/Skills/release-notes).<!-- /product --> Use search_skills first to find valid sources.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"source": map[string]interface{}{
 					"type":        "string",
-					"description": "Skill source: brain:<folder> for a company skill in Brain, or owner/repo@skill-name for the public registry.",
+					"description": "Skill source: owner/repo@skill-name for the public registry. <!-- product:knowledgebase -->Use brain:<folder> for a company skill in Brain.<!-- /product -->",
 				},
 			},
 			"required": []string{"source"},
@@ -13125,7 +13109,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			if properties, ok := params["properties"].(map[string]interface{}); ok {
 				properties["name"] = map[string]interface{}{"type": "string", "description": "Exact connection name to discover tools for (see list_mcp_servers), for example this place's Upwork connection."}
 			}
-			description += " Pass name to discover one of this place's connections or a permitted Vault connection."
+			description += " Pass name to discover one of this place's connections. <!-- product:mcp-gateway -->You may also discover a permitted Vault connection.<!-- /product -->"
 		}
 		if name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server" || name == "list_mcp_servers" || name == "trigger_mcp_discovery" {
 			exec = func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -13221,7 +13205,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"list_mcp_servers",
-		"List the MCP connections of this workflow, Relay, Crew or Code (outside a place, your own), your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Use this live inventory before proposing setup; Vault MCPs are available automatically through current user/group permissions; call them using the exact vault_ connection IDs. Select secrets by name. Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
+		"List the MCP connections of this project (outside a place, your own). Use this live inventory before proposing setup. <!-- product:mcp-gateway -->Also lists your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Vault MCPs are available automatically through current user/group permissions; call them using the exact vault_ connection IDs. Select secrets by name.<!-- /product --> Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -13424,7 +13408,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Connect a catalog server or user-supplied remote MCP URL to this workflow, Relay, Crew or Code with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. Shared setup belongs in Vault and requires group grants.",
+		"Connect a catalog server or user-supplied remote MCP URL to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and requires group grants.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13605,7 +13589,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"add_mcp_server",
-		"Add a remote MCP server to this workflow, Relay, Crew or Code with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. Use Vault for access shared across places.",
+		"Add a remote MCP server to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. <!-- product:mcp-gateway -->Use Vault for access shared across places.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13702,7 +13686,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"edit_mcp_server",
-		"Edit a remote MCP connection you added to this place. Updating its URL clears its sign-in. Shared Vault connections are managed in Vault.",
+		"Edit a remote MCP connection you added to this place. Updating its URL clears its sign-in. <!-- product:mcp-gateway -->Shared Vault connections are managed in Vault.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13798,7 +13782,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"remove_mcp_server",
-		"Remove a connection and its sign-in. It stops working in this place for everyone. This does not remove any shared Vault connection.",
+		"Remove a connection and its sign-in. It stops working in this place for everyone. <!-- product:mcp-gateway -->This does not remove any shared Vault connection.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
