@@ -10,6 +10,24 @@ plans without changing contract versions, historical runs or execution behavior.
 
 Ticket: [PLAT-859](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-859.md).
 
+## 2026-10-11 — Preview step construction and attach platform references once (PLAT-823, PLAT-857, PLAT-858)
+
+Execution owns the capability-filtered `builder-reference` identity; explicit
+step selections use that bundle rather than importing a second copy. Keep
+strict final definition validation for other collisions. Builder inspects current
+construction with `preview_step_runtime`, using the runtime core renderer and
+supplementary identity assembly without a session, model call or saved-file
+repair. Mask secrets and label unresolved live/provider context; saved-run
+`get_step_prompts` remains evidence for an actual execution. Prompt instructions
+respect explicit permission prohibitions and consistently direct scripted DB
+writes through the managed helper. Preserve standing workflow runtime additions
+when rendering each turn instead of losing them to instruction replacement.
+Remove redundant KB recipe examples while
+retaining the index-first and owner-content boundaries. No workflow migration.
+
+Tickets: [PLAT-823](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/steps/plat-823.md), [PLAT-857](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/steps/plat-857.md), [PLAT-858](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/steps/plat-858.md).
+
+
 ## 2026-10-11 — One workflow agent step type (PLAT-851)
 
 Use `agent` for every conversational workflow step, including agents with `predefined_routes`. One `AgentPlanStep` owns the system description, ordered user `items`, validation and optional specialist routes. Remove separate orchestrator/todo_task authoring shapes and the message_sequence name so Builder, runtime and UI describe the same concept. Contract v1.0.47 migrates saved legacy agent records, including nested/orphan definitions, without changing their contracts; the read boundary normalizes old records and every subsequent write uses the canonical shape. Scripted work remains `regular`.

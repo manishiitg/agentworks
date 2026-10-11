@@ -26,7 +26,24 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	attachGlobalLearnings bool,
 	registeredTools []string,
 	scriptedStep bool,
-) {
+) []string {
+	if baseAgent != nil && baseAgent.Agent() != nil {
+		baseAgent.Agent().SetInstalledSkillResolver(installedWorkflowSkillResolver(hcpo.GetWorkspacePath()))
+	}
+	sharedKBRead := false
+	if session := common.GetSessionShellConfig(config.MCPSessionID); session != nil {
+		sharedKBRead = session.Env["WORKFLOW_KB_ACCESS"] == "read"
+	}
+	identitySkills, supplements := hcpo.assembleStepRuntimeIdentity(config, effectiveSkills, attachGlobalLearnings, registeredTools, scriptedStep, sharedKBRead)
+	if err := baseAgent.ApplyIdentity(ctx, identitySkills, supplements...); err != nil {
+		hcpo.GetLogger().Warn(fmt.Sprintf("Failed to apply supplementary agent identity: %v", err))
+	}
+	return supplements
+}
+
+// assembleStepRuntimeIdentity is shared by execution and the read-only Builder
+// preview. It resolves documentation, not sessions, model clients or tool calls.
+func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *agents.OrchestratorAgentConfig, effectiveSkills []string, attachGlobalLearnings bool, registeredTools []string, scriptedStep, sharedKBRead bool, previewDownloads ...string) ([]*llmtypes.Skill, []string) {
 	var identitySkills []*llmtypes.Skill
 	var supplements []string
 	browserCfg := hcpo.resolveBrowserConfig(config.ServerNames, effectiveSkills)
@@ -36,7 +53,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 			break
 		}
 	}
-	effectiveSkills = skills.WithAgentBrowserCapability(effectiveSkills, browserCfg.HasAgentBrowser)
+	effectiveSkills = executionSelectedSkills(skills.WithAgentBrowserCapability(effectiveSkills, browserCfg.HasAgentBrowser))
 	// Every transport gets the same static AgentWorks reference identity.
 	// Coding CLIs additionally project it to disk; API models read it through
 	// mcpagent's intrinsic read_skill tool. The execution role deliberately
@@ -64,9 +81,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	// Set unconditionally: a stage with no attached skills can still be told by
 	// its description to read one, and stages must resolve installed skills the
 	// same way chat does or an agent behaves differently in a workflow.
-	if baseAgent != nil && baseAgent.Agent() != nil {
-		baseAgent.Agent().SetInstalledSkillResolver(installedWorkflowSkillResolver(hcpo.GetWorkspacePath()))
-	}
+
 	if len(effectiveSkills) > 0 {
 		if attached := skills.LoadAttachableIn(getWorkspaceAPIURL(), hcpo.GetWorkspacePath(), effectiveSkills); len(attached) > 0 {
 			identitySkills = append(identitySkills, attached...)
@@ -122,7 +137,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	// 4b. Workflow-specific browser downloads guidance.
 	// Generic browser instructions mention logical Downloads/ for normal chat uploads, but
 	// workflow runs must stay inside their run-scoped execution/Downloads folder.
-	if browserDownloadsPath := hcpo.GetBrowserDownloadsPath(); browserDownloadsPath != "" {
+	browserDownloadsPath := hcpo.GetBrowserDownloadsPath()
+	if len(previewDownloads) > 0 {
+		browserDownloadsPath = previewDownloads[0]
+	}
+	if browserDownloadsPath != "" {
 		downloadsPrompt := fmt.Sprintf(
 			"## Workflow Browser Downloads\nFor this workflow run, use the run-scoped downloads folder %q for browser downloads and file cleanup. Do not read from, write to, or delete files under the root workspace Downloads/ folder.",
 			browserDownloadsPath,
@@ -134,7 +153,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 		hcpo.GetLogger().Info(fmt.Sprintf("🌐 Added workflow browser downloads guidance to agent: %s", browserDownloadsPath))
 	}
 	sharedKBPrompt := ""
-	if session := common.GetSessionShellConfig(config.MCPSessionID); session != nil && session.Env["WORKFLOW_KB_ACCESS"] == "read" {
+	if sharedKBRead {
 		sharedKBPrompt = workflowKnowledgebaseSourcesPrompt(hcpo.GetWorkspacePath())
 	}
 	if attachedFolders := workflowFolderAccessPrompt(hcpo.GetWorkspacePath()) + "\n" + sharedKBPrompt; strings.TrimSpace(attachedFolders) != "" {
@@ -143,10 +162,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	if section := testModePromptSection(hcpo.activeTestRun()); section != "" {
 		supplements = append(supplements, section)
 	}
-	if err := baseAgent.ApplyIdentity(ctx, identitySkills, supplements...); err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to apply supplementary agent identity: %v", err))
-	}
-
+	return identitySkills, supplements
 }
 
 func isCodingCLIConfig(config *agents.OrchestratorAgentConfig) bool {
@@ -233,4 +249,17 @@ func registeredToolNames(tools []llmtypes.Tool) []string {
 		}
 	}
 	return names
+}
+
+// builder-reference is a platform-owned, capability-filtered execution bundle.
+// An explicit selection refers to that identity, not an imported second copy.
+// Do not fetch a workspace skill of the same name or overwrite runtime policy.
+func executionSelectedSkills(selected []string) []string {
+	out := make([]string, 0, len(selected))
+	for _, name := range selected {
+		if strings.TrimSpace(name) != "builder-reference" {
+			out = append(out, name)
+		}
+	}
+	return out
 }

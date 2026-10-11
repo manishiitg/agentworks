@@ -31,6 +31,12 @@ Do not add connection instructions, raw SQLite commands, or general shell/path
 rules that duplicate or contradict the runtime. Confirm that referenced files
 exist and are accessible under the step's configured permissions.
 
+After creating or changing a step, use `preview_step_runtime(step_id="...")`
+to inspect assembled instructions, attached skill identities, available workspace
+tools and access scope without executing it. The preview masks secrets and marks
+unresolved run/provider context; fix conflicts or missing capabilities before
+launching. Use `include_prompt=false` for a compact capability check.
+
 For an existing run, use `get_step_prompts(step_id="...")` to inspect its saved
 system prompt and user message, selecting the relevant attempt/iteration. This
 also shows run-specific context unavailable in the source template. A saved

@@ -48,7 +48,7 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 		"run_full_workflow",
 	)
 	add("workshop review/maintenance tools",
-		"update_step_config", "get_step_prompts", "get_plan_prompt_health",
+		"update_step_config", "get_step_prompts", "get_plan_prompt_health", "preview_step_runtime",
 		"mark_changelog_artifact_reviewed",
 		"review_workflow_timing", "review_workflow_costs", "review_step_code",
 		"get_cost_summary",
@@ -220,8 +220,8 @@ func TestToolSetInvariants(t *testing.T) {
 		workshop[n] = true
 	}
 	for _, n := range []string{
-		"create_plan", "migrate_agent_code_items", "migrate_orchestrator_step_type", "add_orchestrator_step", "add_agent_route", "update_orchestrator_step", "update_agent_route", "delete_agent_route", "add_scripted_step", "add_routing_step", "add_human_input_step",
-		"update_scripted_step", "delete_plan_steps",
+		"create_plan", "migrate_agent_code_items", "migrate_orchestrator_step_type",
+		"add_step", "update_step", "manage_step_route", "delete_plan_steps", "preview_step_runtime",
 		"execute_step", "get_human_input_request", "create_human_input_request", "answer_human_input_request",
 		"update_workflow_config", "update_step_config", "validate_report_html",
 		"list_schedules", "update_schedule", "get_schedule_runs",
@@ -248,9 +248,9 @@ func TestToolSetInvariants(t *testing.T) {
 	for _, n := range todo_creation_human.GetToolsForWorkshopMode("run") {
 		run[n] = true
 	}
-	for _, n := range []string{"get_pulse_state", "record_pulse_worklist", "record_pulse_result", "resolve_run_concern", "mark_changelog_artifact_reviewed"} {
+	for _, n := range []string{"get_pulse_state", "record_pulse_worklist", "record_pulse_result", "resolve_run_concern", "mark_changelog_artifact_reviewed", "preview_step_runtime"} {
 		if run[n] {
-			t.Fatalf("run allow-list must not expose Pulse mutation tool %q", n)
+			t.Fatalf("run allow-list must not expose Builder/Pulse-only tool %q", n)
 		}
 	}
 }

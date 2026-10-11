@@ -1537,7 +1537,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) constrainAgentWriteAccess(stepConfig 
 	}
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string, stepID string, stepConfig *AgentConfigs, itemWriteAccess AgentWriteAccess) (readPaths, writePaths []string) {
+func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string, stepID string, stepConfig *AgentConfigs, itemWriteAccess AgentWriteAccess, preview ...bool) (readPaths, writePaths []string) {
 	baseWorkspacePath := hcpo.GetWorkspacePath()
 	runWorkspacePath := baseWorkspacePath
 	if hcpo.selectedRunFolder != "" {
@@ -1595,8 +1595,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 		// The step may write here, so the folder must exist: the sandbox refuses to start over a writable folder it
 		// cannot find, and a workflow that never wrote a learning has none (server A 2026-10-05: the review step could not
 		// run a single shell command, PLAT-514). Creating it is idempotent.
-		if err := createFolderViaAPI(context.Background(), globalLearnings); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not create the global learnings folder %s: %v", globalLearnings, err))
+		if len(preview) == 0 || !preview[0] {
+			if err := createFolderViaAPI(context.Background(), globalLearnings); err != nil {
+				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not create the global learnings folder %s: %v", globalLearnings, err))
+			}
 		}
 		writePaths = append(writePaths, globalLearnings)
 	}
@@ -1632,7 +1634,11 @@ func agentSequenceValidationSchemaJSON(schema *ValidationSchema) string {
 	return string(schemaJSON)
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, message string, readPaths []string, writePaths []string, writeAccess AgentWriteAccess) map[string]string {
+func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, message string, readPaths []string, writePaths []string, writeAccess AgentWriteAccess, previewValues ...map[string]string) map[string]string {
+	promptValues := hcpo.variableValues
+	if len(previewValues) > 0 {
+		promptValues = previewValues[0]
+	}
 	stepExecRel := hcpo.agentSequenceExecutionRelPath(stepPath, step.GetID())
 	docsRoot := GetPromptDocsRoot()
 	kbAccess := agentSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)
@@ -1662,8 +1668,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPla
 	}
 	vars := map[string]string{
 		"StepTitle":               step.GetTitle(),
-		"StepDescription":         ResolveVariables(step.GetDescription(), hcpo.variableValues),
-		"BaseDescription":         ResolveVariables(step.GetDescription(), hcpo.variableValues),
+		"StepDescription":         ResolveVariables(step.GetDescription(), promptValues),
+		"BaseDescription":         ResolveVariables(step.GetDescription(), promptValues),
 		"FollowUpMessage":         message,
 		"ValidationSchema":        agentSequenceValidationSchemaJSON(step.GetValidationSchema()),
 		"IsContributionTurn":      isContributionTurn,

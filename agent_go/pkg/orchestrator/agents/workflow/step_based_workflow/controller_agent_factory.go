@@ -1374,7 +1374,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	// Add skill folder paths to read paths (skills are read-only)
 	effectiveSkills := hcpo.effectiveStepSkills(stepConfig)
 	if len(effectiveSkills) > 0 {
-		skillReadPaths, _ := BuildSkillFolderGuardPaths(effectiveSkills)
+		skillReadPaths, _ := BuildSkillFolderGuardPaths(executionSelectedSkills(effectiveSkills))
 		readPaths = append(readPaths, skillReadPaths...)
 		hcpo.GetLogger().Info(fmt.Sprintf("🎯 Added skill folder paths to folder guard: %v", skillReadPaths))
 	}
@@ -1533,7 +1533,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 	// Inject supplementary prompts (skills, secrets, browser instructions)
 	attachGlobalLearnings := learningsAccess != LearningsAccessNone
-	hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), isScriptedStep(planStep, stepConfig))
+	supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), isScriptedStep(planStep, stepConfig))
+	if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
+		executionAgent.runtimeSupplements = supplements
+	}
 
 	// Apply post-setup configuration (folder guard paths and optional registry update)
 	if err := hcpo.applyPostSetupToAgent(agent, agentName); err != nil {
@@ -2022,7 +2025,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		if baseAgent.Agent() != nil {
 			attachGlobalLearnings := hcpo.resolveLearningsAccess(stepConfig) != LearningsAccessNone
 			// An agent step is never scripted (PLAT-287).
-			hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), false)
+			supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), false)
+			if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
+				executionAgent.runtimeSupplements = supplements
+			}
 			if inherited := backgroundAgentSkillsFromContext(ctx); len(inherited) > 0 {
 				if err := applyInheritedBackgroundSkills(ctx, baseAgent, inherited); err != nil {
 					return nil, fmt.Errorf("apply inherited background orchestrator skills: %w", err)

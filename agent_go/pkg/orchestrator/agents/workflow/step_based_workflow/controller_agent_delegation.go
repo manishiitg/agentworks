@@ -81,7 +81,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	// Add skill folder paths to read paths (skills are read-only)
 	effectiveSkills := hcpo.effectiveStepSkills(skillStepConfig)
 	if len(effectiveSkills) > 0 {
-		skillReadPaths, _ := BuildSkillFolderGuardPaths(effectiveSkills)
+		skillReadPaths, _ := BuildSkillFolderGuardPaths(executionSelectedSkills(effectiveSkills))
 		readPaths = append(readPaths, skillReadPaths...)
 		hcpo.GetLogger().Info(fmt.Sprintf("🎯 Added skill folder paths to todo task folder guard: %v", skillReadPaths))
 	}
@@ -367,20 +367,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	allSteps []PlanStepInterface,
 	orchestratorLearningHistory string, // Persisted learnings from previous runs
 	execCtx *ExecutionContext,
+	previewValues ...map[string]string,
 ) map[string]string {
+	promptValues := hcpo.variableValues
+	if len(previewValues) > 0 {
+		promptValues = previewValues[0]
+	}
 	// Build predefined routes list (title + ID only — use get_route_description tool for details)
 	var routesBuilder strings.Builder
 	for i, route := range step.PredefinedRoutes {
 		if i > 0 {
 			routesBuilder.WriteString("\n")
 		}
-		fmt.Fprintf(&routesBuilder, "- **%s** (`%s`) — %s", ResolveVariables(route.RouteName, hcpo.variableValues), route.RouteID, routeStepTypeSummary(route.SubAgentStep))
+		fmt.Fprintf(&routesBuilder, "- **%s** (`%s`) — %s", ResolveVariables(route.RouteName, promptValues), route.RouteID, routeStepTypeSummary(route.SubAgentStep))
 		if route.SubAgentStep != nil {
 			scripted := isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep))
 			subStepPath := todoSubAgentArtifactFolderName(step.GetID(), stepPath, route.RouteID, "<call-id>", scripted)
 			subExecRelPath := getExecutionFolderPath(hcpo.getOrchestratorExecutionWorkspacePath(), "", subStepPath)
 			subExecAbsPath := filepath.Join(GetPromptDocsRoot(), subExecRelPath)
-			contextOutput := strings.TrimSpace(ResolveVariables(route.SubAgentStep.GetContextOutput().String(), hcpo.variableValues))
+			contextOutput := strings.TrimSpace(ResolveVariables(route.SubAgentStep.GetContextOutput().String(), promptValues))
 			if contextOutput != "" {
 				fmt.Fprintf(&routesBuilder, " → output: `%s` | folder: `%s/`", contextOutput, subExecAbsPath)
 			} else {
@@ -423,14 +428,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 
 	templateVars := map[string]string{
 		// Resolve variables in step metadata
-		"StepTitle":           ResolveVariables(step.GetTitle(), hcpo.variableValues),
-		"StepDescription":     ResolveVariables(step.GetDescription(), hcpo.variableValues),
+		"StepTitle":           ResolveVariables(step.GetTitle(), promptValues),
+		"StepDescription":     ResolveVariables(step.GetDescription(), promptValues),
 		"StepSuccessCriteria": "",
 		"StepContextDependencies": func() string {
 			resolvedDeps := hcpo.resolveDependencyPathsWithWorkspace(
 				ctx,
-				ResolveVariablesArray(previousContextFiles, hcpo.variableValues),
-				stepIndex, stepPath, allSteps, fgExecPath, docsRoot, hcpo.variableValues,
+				ResolveVariablesArray(previousContextFiles, promptValues),
+				stepIndex, stepPath, allSteps, fgExecPath, docsRoot, promptValues,
 			)
 			formatted, err := hcpo.formatContextDependenciesWithContent(ctx, resolvedDeps, docsRoot)
 			if err != nil {
@@ -482,7 +487,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	if variableNames := FormatVariableNames(hcpo.variablesManifest); variableNames != "" {
 		templateVars["VariableNames"] = variableNames
 	}
-	if variableValues := FormatVariableValues(hcpo.variablesManifest, hcpo.variableValues); variableValues != "" {
+	if variableValues := FormatVariableValues(hcpo.variablesManifest, promptValues); variableValues != "" {
 		templateVars["VariableValues"] = variableValues
 	}
 

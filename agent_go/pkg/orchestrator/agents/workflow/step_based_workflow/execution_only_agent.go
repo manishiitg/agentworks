@@ -55,7 +55,7 @@ You MUST incorporate it into this run. It takes priority over the default step d
 {{if .StepContextDependencies}}{{.StepContextDependencies}}{{else}}None{{end}}
 
 ### Output
-{{if .StepContextOutput}}- **Output File**: {{.StepContextOutput}} (Create in '{{.StepExecutionPath}}/'){{else}}{{if eq .DBAccess "read"}}- **No output file** — read-only DB access; do not persist database changes.{{else if eq .DBDirectAccess "true"}}- **No output file** — persist scripted results through `+"`"+`$DB_PATH`+"`"+`.{{else}}- **No output file** — persist results with `+"`mutate_workflow_db`"+`.{{end}}{{end}}
+{{if .StepContextOutput}}- **Output File**: {{.StepContextOutput}} (Create in '{{.StepExecutionPath}}/'){{else}}{{if eq .DBAccess "read"}}- **No output file** — read-only DB access; do not persist database changes.{{else if eq .DBAccess "none"}}- **No output file** — return the result as your final answer.{{else if eq .DBDirectAccess "true"}}- **No output file** — persist scripted results through the `+"`"+`agentworks_db`+"`"+` helper API; do not open the DB file directly.{{else}}- **No output file** — persist results with `+"`mutate_workflow_db`"+`.{{end}}{{end}}
 
 {{if .ScriptedPriorContext}}{{.ScriptedPriorContext}}
 {{end}}### Execution Checklist
@@ -65,7 +65,7 @@ You MUST incorporate it into this run. It takes priority over the default step d
 {{end}}3. Execute the task using tool calls. Do NOT stop mid-task with a text message.
 4. **NO FABRICATED DATA**: Every value in the output must come from a real data source (MCP tools, APIs, or input files). Do NOT hardcode or invent output data.
 5. Verify the required outputs are fully produced before finishing.
-6. Create the output file.{{end}}`)
+6. {{if .StepContextOutput}}Create the declared output file.{{else}}Complete the declared result contract; no output file is required.{{end}}{{end}}`)
 
 // WorkflowExecutionOnlyTemplate holds template variables for execution-only agent prompts
 type WorkflowExecutionOnlyTemplate struct {
@@ -100,6 +100,8 @@ type WorkflowExecutionOnlyTemplate struct {
 // This agent does NOT discover learnings - it receives learning history from readLearningHistory() method
 type WorkflowExecutionOnlyAgent struct {
 	*agents.BaseOrchestratorAgent
+	// Standing runtime additions survive replacement of the per-turn prompt.
+	runtimeSupplements []string
 }
 
 // NewWorkflowExecutionOnlyAgent creates a new execution-only agent
@@ -337,7 +339,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		panic(fmt.Sprintf("execution-only system prompt template execution failed (missing variable?): %v", err))
 	}
 
-	return appendReferencedGuides(result.String(), templateVars)
+	return composeStepRuntimeSystemPrompt(appendReferencedGuides(result.String(), templateVars), hctpeoa.runtimeSupplements)
 }
 
 // appendReferencedGuides adds the PLAT-556 "Referenced guides" block (what the
@@ -447,4 +449,15 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlyUserMessageProcessor(tem
 	}
 
 	return result.String()
+}
+
+// Both execution and preview compose the same core and standing additions.
+// Rebuild on each turn instead of appending to a prior prompt, avoiding growth.
+func composeStepRuntimeSystemPrompt(core string, supplements []string) string {
+	for _, supplement := range supplements {
+		if strings.TrimSpace(supplement) != "" {
+			core += "\n\n" + strings.TrimSpace(supplement)
+		}
+	}
+	return core
 }

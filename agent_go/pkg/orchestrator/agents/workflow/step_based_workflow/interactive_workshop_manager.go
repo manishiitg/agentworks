@@ -1357,7 +1357,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 
 	switch mode {
 	case "workshop":
-		tools = append(tools, "get_plan_prompt_health")
+		tools = append(tools, "get_plan_prompt_health", "preview_step_runtime")
 		// WORKSHOP: full toolkit for designing,
 		// running, reviewing, and evolving a workflow. The agent
 		// derives the current "phase" from workspace state (does a plan
@@ -3189,6 +3189,38 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		); err != nil {
 			logger.Warn(fmt.Sprintf("⚠️ Failed to register get_plan_prompt_health tool: %v", err))
 		}
+	}
+
+	// Preview construction through the same prompt renderer and supplementary
+	// identity assembler as execution, without starting a session or a turn.
+	if err := mcpAgent.RegisterCustomTool(
+		"preview_step_runtime",
+		"Preview a current step before execution: assembled system instructions and first/selected user message, platform and selected skill identities/reference paths, workspace tools, configured MCP selection and effective file scope. Read-only; no agent/session, tool execution or file writes. Secret values are masked and unresolved live/provider context is labelled. Use after creating or changing a step to check injected instructions and avoid duplicates. Use get_step_prompts for what a saved run actually received.",
+		map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"step_id":        map[string]interface{}{"type": "string", "description": "Current stable step ID or current plan position."},
+				"item_id":        map[string]interface{}{"type": "string", "description": "Optional agent user_message item ID; defaults to the first user_message. Non-conversation items resolve at runtime."},
+				"include_prompt": map[string]interface{}{"type": "boolean", "description": "Include rendered system instructions/user message (default true); false returns only skills, tools, scope and notes."},
+			},
+			"required": []string{"step_id"},
+		},
+		func(ctx context.Context, args map[string]interface{}) (string, error) {
+			stepID, _ := args["step_id"].(string)
+			itemID, _ := args["item_id"].(string)
+			preview, err := iwm.controller.previewStepRuntime(ctx, stepID, itemID)
+			if err != nil {
+				return "", err
+			}
+			if include, ok := args["include_prompt"].(bool); ok && !include {
+				preview.SystemPrompt, preview.UserMessage = "", ""
+			}
+			encoded, err := json.Marshal(preview)
+			return string(encoded), err
+		},
+		"workflow",
+	); err != nil {
+		logger.Warn(fmt.Sprintf("Failed to register preview_step_runtime: %v", err))
 	}
 
 	// Tool 6: get_step_prompts — read saved system prompt + user message for a step run

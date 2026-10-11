@@ -92,6 +92,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 
 ## Read-Only Info
 
+- **`preview_step_runtime(step_id, item_id?, include_prompt?)`** — Read-only preview of current assembled step instructions, skill identities/reference paths, workspace tools and access scope before execution. Secret values are masked; unresolved live/provider context is labelled.
 - **`get_step_prompts(step_id, attempt?, iteration?)`** — System prompt and user message for a step.
 - **`get_workflow_config`** — Inspect the workflow's current MCP servers, selected skills, available secrets, notification content instructions and one-way destinations, LLM config, and schedules. Use this instead of `cat workflow.json` when you need the full workflow config. For the global installed skill catalog, use `list_skills`.
 - **`get_llm_config`** — Per-step LLM overrides.
