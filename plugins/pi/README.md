@@ -115,8 +115,12 @@ journal can still be buffered in a conversation with no saved messages. A crash
 between bridge release and native journaling therefore leaves a notice on restart
 of the same session/lease. Saved native evidence clears known markers. An unknown
 interrupted request produces a notice: explicitly read the mailbox to recover it;
-the notice retires previous-process markers, without implying admission. Obsolete
-lease markers are cleaned on reattach/detach. There is no automatic reinjection. A session with no saved conversation cannot be
+the notice retires previous-process markers, without implying admission. Marker
+updates use atomic replacement and synchronize the file/directory for each changed
+request state; accepted transcript evidence clears completed submissions. Obsolete
+lease markers are cleaned on successful reattach/detach. A failed detach retains
+uncertainty metadata for a recovery notice on the next start. There is no automatic
+reinjection. A session with no saved conversation cannot be
 resumed after a crash, so use an existing saved Pi conversation when attaching.
 
 Optional full AgentWorks tool access can be added by the person through Pi's

@@ -48,6 +48,7 @@ export class Delivery {
 
   async start(ctx, expectedLease = this.attachment?.attachment_id) {
     this.stop();
+    this.controller = new AbortController();
     this.ctx = ctx;
     this.session = ctx.sessionManager.getSessionId();
     this.accepted = new Set();
@@ -94,7 +95,6 @@ export class Delivery {
       if (uncertain || this.pending.size) this.warnUnconfirmed();
       await recovery.acknowledge();
       if (!this.current(generation)) return;
-      this.controller = new AbortController();
       void this.listen(generation, recovery);
     } catch {
       if (this.current(generation)) {
@@ -112,6 +112,11 @@ export class Delivery {
   current(generation) {
     return generation === this.generation && this.attachment &&
       this.ctx.sessionManager.getSessionId() === this.session;
+  }
+
+  leaseChanged() {
+    this.ctx.ui.notify('AgentWorks attachment changed; delivery stopped. Reconnect or explicitly attach the current conversation.', 'warning');
+    this.stop();
   }
 
   warnUnconfirmed() {
@@ -133,7 +138,7 @@ export class Delivery {
           attachment_id: this.attachment.attachment_id, transport }, { signal, timeout: 28000 });
         if (!this.current(generation)) return;
         if (!result.attached || !this.validAttachment(result.attachment) ||
-            result.attachment.attachment_id !== this.attachment.attachment_id) { this.stop(); return; }
+            result.attachment.attachment_id !== this.attachment.attachment_id) { this.leaseChanged(); return; }
         const batch = [];
         let invalid = 0;
         for (const message of result.messages || []) {
@@ -155,7 +160,7 @@ export class Delivery {
         if (invalid) this.ctx.ui.notify(`AgentWorks refused ${invalid} invalid offer(s). Read the mailbox explicitly to recover them.`, 'warning');
         // Retain uncertainty until native admission, including empty Pi sessions
         // whose custom journal entries have not reached disk yet.
-        await recovery.save([...this.pending.keys()]);
+        await recovery.save([...this.pending.keys()], false);
         if (!this.current(generation)) return;
         if (batch.length) {
           this.pi.sendUserMessage(batch.join('\n\n'), { deliverAs: 'followUp', expandPromptTemplates: false });
@@ -215,15 +220,14 @@ export class Delivery {
           const result = await this.bridge.call({ action: 'ack', session_id: this.session,
             attachment_id: this.attachment.attachment_id, message_id: id, delivery: 'admitted' }, { signal: this.controller.signal });
           if (!this.current(generation)) return;
-          if (!result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id) { this.stop(); return; }
+          if (!result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id) { this.leaseChanged(); return; }
           this.journal(acknowledgedEntry, id);
           this.receipts.delete(id);
           this.receiptRetry.delete(id);
         } catch (error) {
           if (!this.current(generation)) return;
           if (error.code === 'attachment_changed') {
-            this.ctx.ui.notify('AgentWorks attachment changed; delivery stopped. Reconnect or explicitly attach the current conversation.', 'warning');
-            this.stop(); return;
+            this.leaseChanged(); return;
           }
           if (error.terminalReceipt) {
             this.receipts.delete(id);
@@ -267,7 +271,7 @@ export class Delivery {
           attachment_id: this.attachment.attachment_id, message_id: id, delivery: 'admitted' }, { signal: this.controller.signal });
         if (!this.current(generation)) throw new Error('AgentWorks attachment is no longer active');
         if (!admission.attached || admission.attachment?.attachment_id !== this.attachment.attachment_id) {
-          this.stop(); throw new Error('AgentWorks attachment is no longer active');
+          this.leaseChanged(); throw new Error('AgentWorks attachment is no longer active');
         }
         this.journal(acknowledgedEntry, id);
         this.receipts.delete(id);
@@ -277,7 +281,7 @@ export class Delivery {
         attachment_id: this.attachment.attachment_id, message_id: id, ...extra }, { signal: this.controller.signal });
       if (!this.current(generation)) throw new Error('AgentWorks attachment is no longer active');
       if (!result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id) {
-        this.stop(); throw new Error('AgentWorks attachment is no longer active');
+        this.leaseChanged(); throw new Error('AgentWorks attachment is no longer active');
       }
       if (action === 'ack' && extra.delivery === 'processed') {
         this.processed.add(id);
@@ -287,8 +291,7 @@ export class Delivery {
       return result.result;
     }).catch(error => {
       if (this.current(generation) && error.code === 'attachment_changed') {
-        this.ctx.ui.notify('AgentWorks attachment changed; delivery stopped. Reconnect or explicitly attach the current conversation.', 'warning');
-        this.stop();
+        this.leaseChanged();
       }
       throw error;
     });

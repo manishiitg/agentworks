@@ -1,7 +1,14 @@
 import { constants } from 'node:fs';
-import { mkdir, lstat, readdir, open, unlink } from 'node:fs/promises';
+import { mkdir, lstat, readdir, open, unlink, rename } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+const processStart = pid => {
+  try { return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 1000 }).trim() || undefined; }
+  catch { return undefined; }
+};
+const started = processStart(process.pid);
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 // Uncertainty metadata only: the bridge owns offers, credentials and bodies.
@@ -28,19 +35,29 @@ export class Recovery {
     for (const name of await readdir(this.root)) {
       if (!name.endsWith('.json')) continue;
       const file = path.join(this.root, name);
-      const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-      let state;
-      try { state = JSON.parse(await handle.readFile('utf8')); }
-      catch { state = {}; }
-      finally { await handle.close(); }
+      let handle;
+      try { handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW); }
+      catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+      let state, recentMalformed = false;
+      try {
+        const stat = await handle.stat();
+        try { state = JSON.parse(await handle.readFile('utf8')); }
+        catch { state = {}; recentMalformed = Date.now() - stat.mtimeMs < 3000; }
+        if (!state || typeof state !== 'object') state = {};
+      } finally { await handle.close(); }
+      if (recentMalformed) continue; // A legacy writer may still be filling its file.
       const currentLease = name.startsWith(this.prefix);
       if (!currentLease && state.session !== this.session) continue;
       if (state.pid && state.pid !== process.pid) {
-        try { process.kill(state.pid, 0); continue; }
+        try {
+          process.kill(state.pid, 0);
+          const actualStart = processStart(state.pid);
+          if (!actualStart || !state.started || actualStart === state.started) continue;
+        }
         catch (error) { if (error.code !== 'ESRCH') continue; }
       }
       if (!currentLease || !state.request && Array.isArray(state.ids) && state.ids.every(id => accepted.has(id))) {
-        await unlink(file);
+        await this.remove(file);
       } else {
         uncertain = true;
         this.previous.push(file);
@@ -56,17 +73,17 @@ export class Recovery {
     this.previous = [];
   }
 
-  async save(ids = []) {
-    const body = JSON.stringify({ request: true, ids, session: this.session, lease: this.lease, pid: process.pid });
+  async save(ids = [], request = true) {
+    const body = JSON.stringify({ request, ids, session: this.session, lease: this.lease, pid: process.pid, started });
     if (body === this.lastBody) return;
-    const first = this.lastBody === undefined;
-    const handle = await open(this.file, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
-    try { await handle.writeFile(body); await handle.sync(); }
-    finally { await handle.close(); }
-    if (first) {
-      const directory = await open(this.root, constants.O_RDONLY);
-      try { await directory.sync(); } finally { await directory.close(); }
-    }
+    const temp = this.file + '.' + randomUUID() + '.tmp';
+    const handle = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try {
+      await handle.writeFile(body); await handle.sync();
+      await rename(temp, this.file); // Readers see a complete owner/state atomically.
+    } finally { await handle.close(); await this.remove(temp); }
+    const directory = await open(this.root, constants.O_RDONLY);
+    try { await directory.sync(); } finally { await directory.close(); }
     this.lastBody = body;
   }
 
