@@ -428,7 +428,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		options := AgentAttachmentOptions{AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, AllowedSenders: in.AllowedSenders}
 		a, err := client.AttachAgent(callCtx, options)
 		var apiErr *APIError
-		if err != nil && !newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403) {
+		if err != nil && !newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {
 			// Re-login/expiry requires a new child from the currently approved
 			// parent, once. Never retry an ambiguous attachment write.
 			client, err = localConfiguredClient(in.ConfigPath)
@@ -504,8 +504,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			out.Pending++
 		}
 	}
+	if in.Action == "reply" && in.MessageID == "" && in.InboxID != "" {
+		in.Action = "reply_inbox"
+	}
 	switch in.Action {
-	case "peers", "send", "read":
+	case "peers", "send", "read", "reply_inbox":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		args := map[string]any{"agent_name": s.Attachment.AgentName}
@@ -514,6 +517,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			args["action"] = "list_agents"
 		case "send":
 			args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
+		case "reply_inbox":
+			// Explicit mailbox recovery survives local metadata compaction.
+			// The server still verifies this caller's inbox participation.
+			args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
 		case "read":
 			args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
 			if in.InboxID != "" {

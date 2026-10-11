@@ -233,6 +233,14 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	cleanup := base
 	cleanup.Action = "cleanup"
 	local(cleanup)
+	recovered := reply
+	recovered.MessageID, recovered.InboxID = "", offer.Messages[0].InboxID
+	recovered.Message, recovered.SubmissionID = "recovered original inbox", "recovered-reply"
+	local(recovered)
+	responses = call(sender, map[string]any{"action": "read", "agent_name": "sender"})["messages"].([]any)
+	if len(responses) != 2 || responses[1].(map[string]any)["inbox_id"] != recovered.InboxID {
+		t.Fatal("compacted reply lost its original inbox")
+	}
 	stop(cancel, done)
 	cancel, done = start()
 	defer cancel()
