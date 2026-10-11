@@ -8,7 +8,7 @@ AgentWorks is a source-available platform for goal-driven AI agents. You describ
 ![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 
-[Website](https://agentworkshq.com) · [Docs](docs/README.md) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/coding-agent-loop/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
+[Website](https://agentworkshq.com) · [Docs](docs/README.md) · [User guides](https://agentworkshq.com/docs/) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/coding-agent-loop/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
 
 ![An agent is asked to book 5 sales demos a week. Week by week it changes its approach, drops what doesn't work, and goes from 1 to 6 demos a week.](docs/assets/github/goal-loop.gif)
 
