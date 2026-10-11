@@ -30,6 +30,46 @@ func dashboardFailure(status int, message string) error {
 func dashboardMutation(action string) bool {
 	return action == "create" || action == "update" || action == "publish" || action == "restore"
 }
+
+// Dashboard drafts follow website project roles and existing product authoring
+// consent. A nil target is catalog discovery; dispatch always binds a target.
+func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool {
+	if claims == nil {
+		return false
+	}
+	access := userAccessForClaims(claims)
+	if access.Disabled || !access.CanEdit || target != nil && !target.Edit {
+		return false
+	}
+	if target != nil {
+		product := map[string]string{"workflow": "agentworks", "relay": "relays", "crew": "work", "code": "code"}[target.Kind]
+		if product == "" || !userAllowedProduct(claims, product) {
+			return false
+		}
+	}
+	if claims.AccessToken == nil {
+		return true
+	}
+	token := claims.AccessToken
+	if !token.Allows("dashboards:read") {
+		return false
+	}
+	if target == nil {
+		return externalFileAuthoringAllowed(claims, nil) || token.Allows("crews:write") && userAllowedProduct(claims, "work") || externalCodeRunAllowed(claims)
+	}
+	switch target.Kind {
+	case "workflow":
+		return externalBuilderEnabled() && token.BuilderAccess() && token.AllowsWorkflow(target.ID)
+	case "relay":
+		return externalBuilderEnabled() && (token.BuilderAccess() || token.RelayBuilderAccess()) && token.AllowsWorkflow(target.ID)
+	case "crew":
+		return token.Allows("crews:write") && token.AllowsCrew(target.ID)
+	case "code":
+		return externalCodeRunAllowed(claims)
+	}
+	return false
+}
+
 func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
@@ -43,7 +83,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if dashboardMutation(action) && !claims.AccessToken.Allows("dashboards:write") {
+	if dashboardMutation(action) && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
 	if action == "preview" && !claims.AccessToken.Allows("runs:execute") {
@@ -153,7 +193,7 @@ func (api *StreamingAPI) resolveDashboardDocument(r *http.Request, root, p strin
 	if err != nil {
 		return "", err
 	}
-	result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "resolve", DocumentPath: p, IncludeDraft: draft || target.Edit && (claims.AccessToken == nil || claims.AccessToken.Allows("dashboards:write")), Guard: dashboardFileGuard(claims)})
+	result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "resolve", DocumentPath: p, IncludeDraft: draft || dashboardAuthoringAllowed(claims, &target), Guard: dashboardFileGuard(claims)})
 	return result.ResolvedPath, err
 }
 func (api *StreamingAPI) dashboardValidation(ctx context.Context, claims *UserClaims, target dashboardTarget, p string) (string, error) {
@@ -231,7 +271,11 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		externalError(w, 403, "forbidden", "project edit access required")
 		return
 	}
-	includeDraft := target.Edit && (claims.AccessToken == nil || claims.AccessToken.Allows("dashboards:write"))
+	includeDraft := dashboardAuthoringAllowed(claims, &target)
+	if dashboardMutation(args.Action) && !includeDraft {
+		externalError(w, 403, "insufficient_scope", "Dashboard editing requires existing authoring consent for this project and its current owner/editor role.")
+		return
+	}
 	if strings.HasPrefix(args.ID, "db/reports/") {
 		args.Document = args.ID
 		args.ID = ""
@@ -314,7 +358,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	if args.Action == "list" {
 		rows := []map[string]any{}
 		for _, d := range result.Dashboards {
-			rows = append(rows, dashboardDiscoveryRow(target, d))
+			viewTarget := target
+			viewTarget.Edit = includeDraft
+			rows = append(rows, dashboardDiscoveryRow(viewTarget, d))
 		}
 		writeDashboardPage(w, rows, args.Limit, args.Offset)
 		return

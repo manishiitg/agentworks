@@ -76,6 +76,7 @@ func TestPlanAndIncompleteWriteScopesRejected(t *testing.T) {
 	for _, scopes := range [][]string{
 		append([]string{}, Scopes...),
 		{"files:write"},
+		{"dashboards:read", "dashboards:write"},
 		{"workflows:read", "files:read", "files:write"},
 		{"workflows:read", "plan:write"},
 		{"builder:chat"},
@@ -426,7 +427,7 @@ func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
 	}
 	// Emulate a persisted grant from before permission retirement. Reading it
 	// drops the obsolete value without changing authoring consent or folder caps.
-	legacyScopes, _ := json.Marshal(append(append([]string(nil), writer.Scopes...), "files:write"))
+	legacyScopes, _ := json.Marshal(append(append([]string(nil), writer.Scopes...), "files:write", "dashboards:write"))
 	if _, err := store.db.Exec(`UPDATE access_tokens SET scopes=? WHERE id=?`, string(legacyScopes), writer.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +435,7 @@ func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
 	if err != nil || loaded.FileGuard == nil || loaded.FileGuard.Allows("docs/locked/a", true) || !loaded.FileGuard.Allows("docs/a", true) {
 		t.Fatalf("persisted guard %+v %v", loaded, err)
 	}
-	if slices.Contains(loaded.Scopes, "files:write") || !slices.Equal(loaded.Scopes, writer.Scopes) {
+	if (slices.Contains(loaded.Scopes, "files:write") || slices.Contains(loaded.Scopes, "dashboards:write")) || !slices.Equal(loaded.Scopes, writer.Scopes) {
 		t.Fatal("legacy permission remained or grant changed", loaded.Scopes)
 	}
 	device, _, err := store.Issue(context.Background(), Token{Name: "Laptop", UserID: "owner", Scopes: []string{"devices:connect"}, ExpiresAt: now.Add(time.Hour)}, now)

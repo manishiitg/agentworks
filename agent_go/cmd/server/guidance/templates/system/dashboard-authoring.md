@@ -32,11 +32,16 @@ external operations use the authorized `workspace` returned by discovery.
    credentials and grant no access. Recipients must sign in with current project
    access. Check shareable/warning: localhost links work on that machine only.
 
-External connections need explicit dashboards:read for discovery, source reads
-and links, and dashboards:write for drafts/publication. Preview also requires
-runs:execute and project edit access because live scripts can execute. Existing
-connections gain no new scopes automatically. Workflow/Crew bounds, folder grants
-and live connection expiry/revocation remain enforced.
+External connections need `dashboards:read` for discovery, source reads and links.
+Drafts and publication use existing product authoring consent: `builder:chat` for
+workflows, `relays:write` or Builder consent for Relays, `crews:write` for Crews,
+and `code:run` for owned Code projects. Workflow/Relay authoring retains its
+companion read/run scopes and Builder enablement. Current account and project
+owner/editor roles, product access, connection bounds and folder grants apply.
+Preview additionally requires `runs:execute` and project edit access because live
+scripts can execute. Read-only connections stay read-only. Retired dashboard-write
+consent adds no authority; reconnect for existing product authoring consent.
+Connections gain no new scopes automatically; expiry and revocation remain enforced.
 
 ## Live HTML and scripts
 

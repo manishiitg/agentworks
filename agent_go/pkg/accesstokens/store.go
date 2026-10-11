@@ -26,7 +26,7 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"dashboards:read", "dashboards:write", "workflows:read", "files:read", "runs:execute", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "code:run", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
+var Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "code:run", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -66,7 +66,7 @@ func PermanentExpiry() time.Time { return time.Date(9999, 12, 31, 23, 59, 59, 0,
 // adding replacement permissions. Existing connections retain their bounds.
 func CurrentScopes(scopes []string) []string {
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
-		return scope == "files:write"
+		return scope == "files:write" || scope == "dashboards:write"
 	})
 }
 
@@ -159,8 +159,8 @@ func Validate(t Token, now time.Time) error {
 	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
-	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("dashboards:write") {
-		return errors.New("file guards require workflow, Relay or dashboard authoring consent")
+	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !(t.Allows("dashboards:read") && (t.Allows("crews:write") || t.Allows("code:run"))) {
+		return errors.New("file guards require existing workflow, Relay, Crew or Code authoring consent")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
 		return err
@@ -202,9 +202,6 @@ func Validate(t Token, now time.Time) error {
 			}
 			seenCaps[key] = true
 		}
-	}
-	if t.Allows("dashboards:write") && !t.Allows("dashboards:read") {
-		return errors.New("dashboards:write requires dashboards:read")
 	}
 	hasWorkflowScope, hasCrewScope := false, false
 	for _, s := range t.Scopes {

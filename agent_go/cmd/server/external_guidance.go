@@ -376,7 +376,7 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	if claims != nil && claims.AccessToken != nil && claims.AccessToken.Allows("dashboards:read") {
 		steps[0] = "Use only tools present in this connection’s catalog. Dashboards: dashboard action=list discovers accessible projects and published documents; action=get reads the selected source. Links require recipients to have current project access."
-		if claims.AccessToken.Allows("dashboards:write") {
+		if dashboardAuthoringAllowed(claims, nil) {
 			steps = append(steps, "Create or update a dashboard draft, validate its revision, preview it when runs:execute is granted, then dashboard action=publish using expected_revision. action=restore republishes a previous published revision. Use {{dashboard_assets}} and {{dashboard_scripts}} for revision-scoped assets and scripts; styling follows the user’s preferences.")
 		}
 	}

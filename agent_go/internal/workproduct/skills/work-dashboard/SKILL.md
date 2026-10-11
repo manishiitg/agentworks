@@ -175,8 +175,13 @@ stays owner-only. Existing HTML documents remain discoverable; use their returne
 revisions, read it and create a new managed dashboard from its source.
 
 External MCP clients use `get_api_spec` then `call_tool`. Request explicit
-`dashboards:read` and `dashboards:write` consent; older connections gain no new
-rights automatically. Read/write scopes retain workflow and Crew ID bounds.
+`dashboards:read` plus existing product authoring consent for drafts/publication:
+`builder:chat` for workflows, `relays:write` or Builder consent for Relays,
+`crews:write` for Crews, and `code:run` for owned Code projects. Workflow/Relay
+consent retains its companion read/run scopes and Builder enablement. Current
+account/product and project owner/editor roles, ID bounds and folder caps still
+apply. Read-only and retired dashboard-write grants gain no authoring rights;
+connections receive no replacement scopes automatically.
 Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.
 Publishing does not run the Relay API or a workflow. SQLite files, transcripts,

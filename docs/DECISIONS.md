@@ -46,6 +46,17 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Dashboard editing uses existing product authoring consent (PLAT-856)
+
+Remove separate dashboard-write consent from issuance, OAuth and tool gates.
+Keep dashboard-read consent for viewing; drafts and publication additionally use
+workflow Builder, Relay, Crew or Code authoring consent and current website roles.
+Code remains owner-only. Project bounds, folder caps, revisions and preview run
+permission still apply. Retired grants lose the obsolete scope on load/renewal
+without gaining replacements, so read-only connections remain read-only.
+Why: MCP editing should follow existing product roles without another write level.
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ### 2026-10-11 — File editing reuses website roles and existing authoring consent (PLAT-856)
 
 Remove the separate file-write permission from token issuance, OAuth metadata,

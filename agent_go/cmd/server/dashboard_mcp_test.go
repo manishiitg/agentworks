@@ -11,14 +11,17 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Actual Streamable HTTP MCP -> authorized service -> real workspace handlers
 // -> immutable files -> authenticated live report reads. No storage mock.
 func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	withProjectOwnerRegistry(t)
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
 	t.Setenv("PUBLIC_URL", "https://example.com")
-	owner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "dashboard-writer", Scopes: []string{"dashboards:read", "dashboards:write", "runs:execute"}, WorkflowIDs: []string{"invoices"}, AllCrews: true}}
+	owner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "dashboard-writer", Scopes: []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "crews:write"}, WorkflowIDs: []string{"invoices"}, AllCrews: true}}
 	srv := serveExternalMCP(t, f.api, owner)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -81,6 +84,21 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	direct := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "get_report_link", "arguments": map[string]any{"workflow_id": "invoices", "document_path": "db/reports/managed/overview/index.html"}})
 	requireRemoteSuccess(t, direct, "read-only direct URL")
+	// Website ownership cannot upgrade a read-only or retired dashboard grant.
+	for _, scopes := range [][]string{{"dashboards:read"}, {"dashboards:read", "dashboards:write"}, {"dashboards:read", "code:run"}} {
+		limited := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "limited", Scopes: scopes, WorkflowIDs: []string{"invoices"}, AllCrews: true}}
+		limitedSrv := serveExternalMCP(t, f.api, limited)
+		limitedClient := dialExternalMCP(t, ctx, limitedSrv.URL)
+		initializeExternalMCP(t, ctx, limitedClient)
+		got := callRemoteTool(t, ctx, limitedClient, externalMCPToolCall, map[string]any{"name": "get_dashboard", "arguments": map[string]any{"workflow_id": "invoices", "dashboard_id": "overview", "revision": rev2}})
+		if !got.IsError {
+			t.Fatal("draft leaked to non-authoring consent", scopes)
+		}
+		got = callRemoteTool(t, ctx, limitedClient, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workflow_id": "invoices", "dashboard_id": "overview", "expected_revision": rev2}})
+		if !got.IsError {
+			t.Fatal("non-authoring consent edited a dashboard", scopes)
+		}
+	}
 	// The same stable link serves published content while another draft exists.
 	parsed, _ := url.Parse(link)
 	document := parsed.Query().Get("document")
@@ -144,5 +162,66 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if crewResponse.Code != 200 || !strings.Contains(crewResponse.Body.String(), "Shared Crew") {
 		t.Fatalf("Crew reader: %d %s", crewResponse.Code, crewResponse.Body.String())
 	}
-
+	// Relay editing reuses relays:write, including a project editor.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["agentworks","work","relays","code"]},{"id":"reader","username":"reader","role":"editor","products":["agentworks","work","relays","code"]}]}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"],"readers":["reader"]}}`)
+	owner.AccessToken.Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}
+	// Changed consent changes the catalog and requires a fresh MCP session.
+	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	relayDraft := call("create_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "relay-view", "title": "Relay view", "files": map[string]any{"index.html": "<html><title>Relay</title><body>Relay</body></html>"}})
+	relayRev := relayDraft["dashboard"].(map[string]any)["revision"].(string)
+	call("publish_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "relay-view", "expected_revision": relayRev})
+	// Relay consent cannot mutate a Crew, even when the caller owns that Crew.
+	noCrew := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision}})
+	if !noCrew.IsError {
+		t.Fatal("Relay consent edited Crew dashboard")
+	}
+	// Code authoring is owner-only and reuses code:run. Reviewers gain no writes.
+	const codeRoot = "_users/owner/Chats/Code/projects/dashboard-code"
+	f.write(t, codeRoot+"/product.json", `{"id":"dashboard-code","product":"code","title":"Code"}`)
+	owner.AccessToken.Scopes = []string{"dashboards:read", "code:run"}
+	// Changed consent changes the catalog and requires a fresh MCP session.
+	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	codeDraft := call("create_dashboard", map[string]any{"workspace": codeRoot, "dashboard_id": "code-view", "title": "Code view", "files": map[string]any{"index.html": "<html><title>Code</title><body>Code</body></html>"}})
+	codeRev := codeDraft["dashboard"].(map[string]any)["revision"].(string)
+	call("publish_dashboard", map[string]any{"workspace": codeRoot, "dashboard_id": "code-view", "expected_revision": codeRev})
+	for _, deniedCase := range []struct {
+		user   string
+		scopes []string
+		ids    []string
+		root   string
+		id     string
+		rev    string
+	}{
+		{"reader", []string{"dashboards:read", "code:run"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
+		{"owner", []string{"dashboards:read", "code:review"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
+		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
+		{"reader", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, "Workflow/invoices", "relay-view", relayRev},
+		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"other"}, "Workflow/invoices", "relay-view", relayRev},
+	} {
+		claims := &UserClaims{UserID: deniedCase.user, Username: deniedCase.user, AccessToken: &accesstokens.Token{ID: "denied", Scopes: deniedCase.scopes, WorkflowIDs: deniedCase.ids, AllCrews: true}}
+		data, _ := json.Marshal(map[string]any{"workspace": deniedCase.root, "action": "update", "dashboard_id": deniedCase.id, "expected_revision": deniedCase.rev})
+		response := httptest.NewRecorder()
+		f.api.handleDashboards(response, adminRequest(http.MethodPost, "/api/dashboards", string(data), claims, nil))
+		if response.Code == 200 {
+			t.Fatal("denied author edited", deniedCase.user, deniedCase.scopes, deniedCase.root)
+		}
+	}
+	// Folder caps still refuse a dashboard mutation with otherwise valid consent.
+	owner.AccessToken.FileGuard = &wf.FolderGuard{WritePaths: []string{"docs"}}
+	folderDenied := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": codeRoot, "dashboard_id": "code-view", "expected_revision": codeRev, "files": map[string]any{"index.html": "<html><title>Code</title><body>Changed</body></html>"}}})
+	if !folderDenied.IsError {
+		t.Fatal("dashboard edit bypassed folder caps")
+	}
+	owner.AccessToken.FileGuard = nil
+	// The existing connection loses editing immediately when the account is disabled.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","disabled":true,"products":["code"]}]}`)
+	data, _ := json.Marshal(map[string]any{"workspace": codeRoot, "action": "update", "dashboard_id": "code-view", "expected_revision": codeRev})
+	roleDenied := httptest.NewRecorder()
+	f.api.handleDashboards(roleDenied, adminRequest(http.MethodPost, "/api/dashboards", string(data), owner, nil))
+	if roleDenied.Code != http.StatusForbidden {
+		t.Fatal("disabled account retained dashboard editing", roleDenied.Code, roleDenied.Body.String())
+	}
 }

@@ -77,7 +77,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	})
 	router.GET("/api/documents/*file", func(c *gin.Context) {
 		rel := strings.TrimPrefix(c.Param("file"), "/")
-		if (strings.HasPrefix(rel, "Workflow/invoices/") || strings.HasPrefix(rel, "Crew/dashboard-team/")) && strings.HasSuffix(rel, "/raw") {
+		if (strings.HasPrefix(rel, "Workflow/invoices/") || strings.HasPrefix(rel, "Crew/dashboard-team/") || strings.HasPrefix(rel, "_users/owner/Chats/Code/projects/dashboard-code/")) && strings.HasSuffix(rel, "/raw") {
 			data, err := os.ReadFile(filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw")))
 			if err != nil {
 				c.Status(404)

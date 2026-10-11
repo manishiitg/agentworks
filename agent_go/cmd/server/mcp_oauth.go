@@ -28,7 +28,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review", "vault:read", "vault:manage", "users:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "code:run", "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read", "dashboards:write")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "code:run", "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -168,8 +168,6 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return !canReview
 		case "users:manage":
 			return !claimsIsAdmin(user)
-		case "dashboards:write":
-			return user == nil || !userAccessForClaims(user).CanEdit
 		case "builder:chat":
 			return !builderOn
 		case "relays:write":
@@ -210,9 +208,6 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 			return nil, false
 		}
 		seen[scope] = true
-	}
-	if seen["dashboards:write"] && !seen["dashboards:read"] {
-		return nil, false
 	}
 	if (seen["builder:chat"] || seen["relays:write"]) && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {
 		return nil, false

@@ -51,7 +51,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			required = append(required, "expected_revision")
 		}
 		if action == "restore" || action == "get" || action == "validate" || action == "preview" {
-			props["revision"] = externalString("Exact immutable revision. Omit for the current draft (editors with dashboards:write) or published version (readers).")
+			props["revision"] = externalString("Exact immutable revision. Omit for the current draft (authors with current project edit access) or published version (readers).")
 			if action == "restore" {
 				required = append(required, "revision")
 			}
@@ -62,8 +62,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		descriptions := map[string]string{
 			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Existing HTML dashboards are included.",
-			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and dashboards:write consent.",
-			"create":   "Create a new dashboard draft from supplied HTML, assets and optional scripts. Does not publish or select new data sources. Requires dashboards:write consent and project edit access.",
+			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing product authoring consent.",
+			"create":   "Create a new dashboard draft from supplied HTML, assets and optional scripts. Does not publish or select new data sources. Uses existing workflow/Relay/Crew/Code authoring consent and current project edit access.",
 			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
 			"validate": "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
 			"preview":  "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",
@@ -223,13 +223,15 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			continue
 		}
 		seen[target.Root] = true
-		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: target.Edit && (claims.AccessToken == nil || claims.AccessToken.Allows("dashboards:write"))})
+		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: dashboardAuthoringAllowed(claims, &target)})
 		if err != nil {
 			failed = append(failed, target.Root)
 			continue
 		}
 		for _, d := range result.Dashboards {
-			row := dashboardDiscoveryRow(target, d)
+			viewTarget := target
+			viewTarget.Edit = dashboardAuthoringAllowed(claims, &target)
+			row := dashboardDiscoveryRow(viewTarget, d)
 			rows = append(rows, row)
 		}
 	}

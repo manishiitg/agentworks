@@ -33,8 +33,9 @@ it('keeps ordinary read/run consent unchanged without authoring selection', asyn
 it('explains explicit Relay authoring without requiring an existing workflow selection', async () => {
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'relays:write'], [])
   try {
-    expect(view.host.textContent).toContain('Create, edit files, test and publish Relays within your current role')
+    expect(view.host.textContent).toContain('Create, edit files and dashboards, test and publish Relays within your current role')
     expect(view.host.textContent).not.toContain('files:write')
+    expect(view.host.textContent).not.toContain('dashboards:write')
     expect(view.host.querySelector('input[type="checkbox"]')).toBeNull()
     const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     expect(allow.disabled).toBe(false)

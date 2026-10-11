@@ -54,20 +54,20 @@ func TestAdminDefaultScopesAreEveryScopeTheAccountMayHave(t *testing.T) {
 	member := &UserClaims{UserID: "member", Username: "member"}
 
 	adminDefault := mcpOAuthScopesFor(admin, slices.Clone(mcpOAuthDefaultScopes))
-	for _, scope := range []string{"builder:chat", "dashboards:read", "dashboards:write", "knowledgebase:read", "knowledgebase:write"} {
+	for _, scope := range []string{"builder:chat", "dashboards:read", "knowledgebase:read", "knowledgebase:write"} {
 		if !slices.Contains(adminDefault, scope) {
 			t.Errorf("an administrator on the default scopes lacks %s: %v", scope, adminDefault)
 		}
 	}
 	// Retiring an extra permission must not turn a legacy explicit request
 	// into the special administrator default request and add authoring consent.
-	legacyRequested := append(slices.Clone(mcpOAuthDefaultScopes), "files:write")
+	legacyRequested := append(slices.Clone(mcpOAuthDefaultScopes), "files:write", "dashboards:write")
 	legacyGranted := mcpOAuthScopesFor(admin, legacyRequested)
 	if !slices.Equal(legacyGranted, mcpOAuthDefaultScopes) {
 		t.Errorf("legacy request gained permissions: %v", legacyGranted)
 	}
 	memberDefault := mcpOAuthScopesFor(member, slices.Clone(mcpOAuthDefaultScopes))
-	for _, scope := range []string{"builder:chat", "dashboards:write", "users:manage", "code:review"} {
+	for _, scope := range []string{"builder:chat", "users:manage", "code:review"} {
 		if slices.Contains(memberDefault, scope) {
 			t.Errorf("an ordinary account on the default scopes was given %s: %v", scope, memberDefault)
 		}
