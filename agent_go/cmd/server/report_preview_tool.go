@@ -165,6 +165,9 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 	if previewClaims == nil {
 		previewClaims = &UserClaims{UserID: userID, Username: userID}
 	}
+	if strings.TrimSpace(previewClaims.UserID) == "" {
+		return "", fmt.Errorf("preview_report needs an authenticated caller")
+	}
 	token, err := mintReportPreviewToken(previewClaims, workspacePath)
 	if err != nil {
 		return "", fmt.Errorf("mint preview token: %w", err)
@@ -179,10 +182,25 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 		browser.NewClient(getWorkspaceAPIURL()),
 		browser.WithBrowserRuntimeConfig(browser.NewBrowserRuntimeConfig("headless", nil)),
 	)
-	browserCtx := context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
-	browserCtx = context.WithValue(browserCtx, common.WorkflowSessionIDKey, sessionID)
 	previewID := uuid.NewString()
 	session := "report-preview-" + previewID
+	// API/MCP previews have no chat shell config. Give the trusted preview its
+	// own guard and browser namespace; borrowing the caller's session would
+	// reuse their browser, and slot servers refuse an identity-free command.
+	_, screenshotPath := reportPreviewScreenshotPaths(workspacePath, documentPath, themes[0], widths[0])
+	screenshotDir := path.Join(workspacePath, path.Dir(screenshotPath), previewID) + "/"
+	common.SetSessionWorkingDir(session, workspacePath)
+	common.SetSessionFolderGuard(session, []string{workspacePath + "/"}, []string{screenshotDir})
+	if parent := common.GetSessionShellConfig(sessionID); parent != nil {
+		common.SetSessionFolderGuardBlockedPaths(session, parent.BlockedPaths)
+		common.SetSessionFolderGuardBlockedWritePaths(session, parent.BlockedWritePaths)
+	}
+	common.BindSessionBrowserIsolationForSession(session)
+	defer common.ClearSessionShellConfig(session)
+	browserCtx := context.WithValue(ctx, common.UserIDKey, previewClaims.UserID)
+	browserCtx = context.WithValue(browserCtx, common.ChatSessionIDKey, session)
+	browserCtx = context.WithValue(browserCtx, common.WorkflowSessionIDKey, session)
+	browserCtx = context.WithValue(browserCtx, common.BrowserDownloadsPathKey, workspacePath)
 	run := func(command string, cmdArgs ...string) (string, error) {
 		return executor.HandleAgentBrowser(browserCtx, map[string]interface{}{
 			"command": command,
