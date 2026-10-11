@@ -1799,7 +1799,7 @@ func TestStartNextTurnFromLiveInputReturnsConflictWhenBuilderChatActuallyBusy(t 
 	}
 }
 
-func TestStartNextTurnFromLiveInputDoesNotBlockScheduledMessageSequence(t *testing.T) {
+func TestStartNextTurnFromLiveInputDoesNotBlockScheduledAgent(t *testing.T) {
 	const sessionID = "interactive-builder-session"
 	now := time.Now().UTC()
 	handled := make(chan QueryRequest, 1)
@@ -1814,7 +1814,7 @@ func TestStartNextTurnFromLiveInputDoesNotBlockScheduledMessageSequence(t *testi
 			},
 		},
 		trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
-			"scheduled-message-sequence": {
+			"scheduled-agent": {
 				ExecutionID:   "msgseq-execute-allocate-execute-and-verify-1",
 				SessionID:     "schedule-cron--social-media_1",
 				Source:        trackedExecutionSourceWorkshopBackground,
@@ -1855,7 +1855,7 @@ func TestStartNextTurnFromLiveInputDoesNotBlockScheduledMessageSequence(t *testi
 			t.Fatalf("queued query = %#v, want the live-input message", got)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("scheduled message-sequence prevented the interactive continuation from starting")
+		t.Fatal("scheduled agent prevented the interactive continuation from starting")
 	}
 }
 

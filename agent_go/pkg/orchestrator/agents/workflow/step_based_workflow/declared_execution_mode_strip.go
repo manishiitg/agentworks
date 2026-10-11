@@ -81,7 +81,7 @@ func createStripDeclaredExecutionModeExecutor(
 			return "", fmt.Errorf("read planning/step_config.json: %w", err)
 		}
 		if legacy := legacyAgenticRegularStepIDs(plan, configs); len(legacy) > 0 {
-			return "", fmt.Errorf("refusing to strip declared_execution_mode: regular step(s) %s still carry declared_execution_mode=\"agentic\" and would flip to scripted without it; run migrate_declared_execution_mode (workflow contract v1.0.38) first so they become explicit message_sequence steps", strings.Join(legacy, ", "))
+			return "", fmt.Errorf("refusing to strip declared_execution_mode: regular step(s) %s still carry declared_execution_mode=\"agentic\" and would flip to scripted without it; run migrate_declared_execution_mode (workflow contract v1.0.38) first so they become explicit agent steps", strings.Join(legacy, ", "))
 		}
 
 		planningStripped := stripDeclaredExecutionModeFromConfigs("planning", configs)

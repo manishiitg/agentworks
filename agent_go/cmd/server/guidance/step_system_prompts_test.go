@@ -39,14 +39,14 @@ func TestStepSystemPromptsShareRuntimeAndBuilderSource(t *testing.T) {
 			t.Fatalf("step authoring guidance missing %q", marker)
 		}
 	}
-	sequence := materializedFileContent(t, skill, "references/message-sequence.md")
+	sequence := materializedFileContent(t, skill, "references/agent.md")
 	for _, marker := range []string{"canonical agent step", "description` is the system-level charter", "items[]` entry is a user turn", "predefined_routes"} {
 		if !strings.Contains(sequence, marker) {
-			t.Fatalf("message-sequence guidance missing unified-agent contract %q", marker)
+			t.Fatalf("agent guidance missing unified-agent contract %q", marker)
 		}
 	}
-	legacy := materializedFileContent(t, skill, "references/orchestrator.md")
-	for _, marker := range []string{"compatibility", "message_sequence", "predefined_routes"} {
+	legacy := materializedFileContent(t, skill, "references/agent.md")
+	for _, marker := range []string{"compatibility", "agent", "predefined_routes"} {
 		if !strings.Contains(legacy, marker) {
 			t.Fatalf("orchestrator migration guidance missing %q", marker)
 		}

@@ -29,7 +29,7 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 // managed database script migration, and 1.0.45 workflows the step description
 // layout migration.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
-	return strings.TrimSpace(version) == workflowContractStepDescriptionLayoutVersion
+	return strings.TrimSpace(version) == workflowContractUnifiedAgentVersion
 }
 
 // goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
@@ -95,7 +95,7 @@ func manifestContractIsExecutionCompatible(manifest *WorkflowManifest) bool {
 func workflowContractVersionRank(version string) (int, bool) {
 	known := []string{
 		"1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.0.5", "1.0.6", "1.0.7", "1.0.8", "1.0.9",
-		workflowContractMessageSequenceCodeVersion,
+		workflowContractAgentCodeVersion,
 		workflowContractPulseHistoryVersion,
 		workflowContractNotificationConfigVersion,
 		workflowContractHumanInputOwnershipVersion,
@@ -131,6 +131,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractNestedAgentArtifactsVersion,
 		workflowContractManagedDBScriptsVersion,
 		workflowContractStepDescriptionLayoutVersion,
+		workflowContractUnifiedAgentVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -140,10 +141,10 @@ func workflowContractVersionRank(version string) (int, bool) {
 	return 0, false
 }
 
-const upgradeMessageSequenceCode = `WORKFLOW CONTRACT UPGRADE: MESSAGE-SEQUENCE CODE.
+const upgradeAgentCode = `WORKFLOW CONTRACT UPGRADE: MESSAGE-SEQUENCE CODE.
 
-This workflow predates the current message-sequence contract. Do only this migration.
-Call migrate_message_sequence_code_items. It is the trusted tool that either converts unambiguous legacy code items into standalone scripted steps or reports a precise blocker. Then inspect the resulting plan and confirm no legacy message-sequence code item remains. Do not run the workflow. If the migration is blocked or validation fails, do not stamp a version. Otherwise call set_workflow_contract_version(version="1.0.10") and stop.`
+This workflow predates the current agent contract. Do only this migration.
+Call migrate_agent_code_items. It is the trusted tool that either converts unambiguous legacy code items into standalone scripted steps or reports a precise blocker. Then inspect the resulting plan and confirm no legacy agent code item remains. Do not run the workflow. If the migration is blocked or validation fails, do not stamp a version. Otherwise call set_workflow_contract_version(version="1.0.10") and stop.`
 
 const upgradeNestedAgentArtifacts = `WORKFLOW CONTRACT UPGRADE: NESTED AGENT RUNTIME ARTIFACTS.
 
@@ -314,7 +315,7 @@ const upgradeScheduledRoutes = `WORKFLOW CONTRACT UPGRADE: SCHEDULE EXECUTION MO
 
 Workflow schedules support two valid execution models. A route-based schedule
 selects canonical plan work and therefore receives normal step learnings,
-validation/retry, repair, and Pulse attribution. A direct message sequence is a
+validation/retry, repair, and Pulse attribution. A direct agent is a
 workshop conversation owned by the schedule; it is more flexible, but those
 step-level lifecycle guarantees are not automatic. Audit every workflow.json
 schedule and classify it from its actual behavior, not merely its text length.
@@ -400,7 +401,7 @@ Do not delete a step or table without the parent agreeing in this conversation. 
 
 const upgradeScriptedTypeStaysRegular = `WORKFLOW CONTRACT UPGRADE: A DECLARED-SCRIPTED STEP'S PLAN TYPE MUST BE REGULAR, NEVER MESSAGE_SEQUENCE.
 
-Do only this migration. Read planning/step_config.json and planning/plan.json. Find every step whose step_config declares declared_execution_mode="scripted" but whose plan.json type is "message_sequence" instead of "regular" -- that combination is invalid (PLAT-280): the real scripted executor only runs true regular-type steps and reliably injects $DB_PATH/STEP_OUTPUT_DIR there, which the message_sequence runtime does not guarantee even when its config claims to be scripted. This caused a live production step to silently lose database access.
+Do only this migration. Read planning/step_config.json and planning/plan.json. Find every step whose step_config declares declared_execution_mode="scripted" but whose plan.json type is "agent" instead of "regular" -- that combination is invalid (PLAT-280): the real scripted executor only runs true regular-type steps and reliably injects $DB_PATH/STEP_OUTPUT_DIR there, which the message_sequence runtime does not guarantee even when its config claims to be scripted. This caused a live production step to silently lose database access.
 
 For each matching step, call change_step_type(step_id=<its id>, target_type="scripted", reason="PLAT-280 migration: message_sequence type with declared scripted mode is not a valid combination"). It atomically converts the step's plan type to regular in place -- same id, step_config.json history preserved -- and drops its message_sequence items, since a scripted step's real work is the checked-in learnings/{step-id}/main.py, not plan-authored items. Do not hand-edit plan.json or step_config.json. Do not run the workflow.
 
@@ -408,13 +409,13 @@ If no step matches, this is a no-op. If change_step_type reports an error for an
 
 const upgradeDeclaredExecutionModeRetired = `WORKFLOW CONTRACT UPGRADE: EVERY STEP'S PLAN TYPE STATES ITS EXECUTION MODEL EXPLICITLY (PLAT-287, HALF 1).
 
-Do only this migration. A "regular" plan step is a scripted step (its work is the checked-in learnings/<step-id>/main.py) and a "message_sequence" step is conversational. Until now a "regular" step WITHOUT a declared scripted mode was a legacy agentic step that the runtime silently ran as a message_sequence. Call migrate_declared_execution_mode once. It rewrites planning/plan.json so that shape is explicit -- every legacy agentic regular step becomes the message_sequence it already ran as (same id, description, dependencies, validation, position), and any message_sequence still declared scripted becomes regular -- validates the plan, and records the change. It touches only plan.json: planning/step_config.json is left exactly as it is, declared_execution_mode included, because the current runtime still reads that field; a later contract version retires it. Behavior does not change. A workflow already in this shape is a no-op.
+Do only this migration. A "regular" plan step is a scripted step (its work is the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. Until now a "regular" step WITHOUT a declared scripted mode was a legacy agentic step that the runtime silently ran as a message_sequence. Call migrate_declared_execution_mode once. It rewrites planning/plan.json so that shape is explicit -- every legacy agentic regular step becomes the message_sequence it already ran as (same id, description, dependencies, validation, position), and any message_sequence still declared scripted becomes regular -- validates the plan, and records the change. It touches only plan.json: planning/step_config.json is left exactly as it is, declared_execution_mode included, because the current runtime still reads that field; a later contract version retires it. Behavior does not change. A workflow already in this shape is a no-op.
 
 Do not hand-edit plan.json or step_config.json and do not run the workflow. The tool refuses, without changing anything, when a step is declared scripted but has no learnings/<step-id>/main.py: that step is already broken, and this migration will not guess whether it should become a sequence or get a script. If it refuses, report exactly which step and why and do not stamp. Otherwise call set_workflow_contract_version(version="1.0.38") and stop.`
 
 const upgradeDeclaredExecutionModeStripped = `WORKFLOW CONTRACT UPGRADE: THE RETIRED declared_execution_mode KEY IS REMOVED (PLAT-287, HALF 2).
 
-Do only this migration. Since contract v1.0.38 every step's plan type states its execution model, and the runtime now reads only that: a "regular" step is scripted (it runs the checked-in learnings/<step-id>/main.py) and a "message_sequence" step is conversational. The declared_execution_mode and declared_execution_mode_reason keys in planning/step_config.json are therefore dead and are removed. Call strip_declared_execution_mode() once. It removes both keys from planning/step_config.json only -- evaluation files are retired and left untouched -- and records every removed reason in planning/changelog. It is idempotent and a no-op when nothing is left to strip.
+Do only this migration. Since contract v1.0.38 every step's plan type states its execution model, and the runtime now reads only that: a "regular" step is scripted (it runs the checked-in learnings/<step-id>/main.py) and a "agent" step is conversational. The declared_execution_mode and declared_execution_mode_reason keys in planning/step_config.json are therefore dead and are removed. Call strip_declared_execution_mode() once. It removes both keys from planning/step_config.json only -- evaluation files are retired and left untouched -- and records every removed reason in planning/changelog. It is idempotent and a no-op when nothing is left to strip.
 
 Do not hand-edit plan.json or step_config.json, and do not run the workflow. The tool refuses, without changing anything, while a regular step still carries declared_execution_mode="agentic": that means the v1.0.38 migration (migrate_declared_execution_mode) did not complete -- run it, then retry; if it still refuses, do not stamp and report what blocked it. Otherwise call set_workflow_contract_version(version="1.0.39") and stop.`
 
@@ -503,7 +504,7 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 
 	steps := make([]workflowVersionUpgrade, 0, 8)
 	if rank < 10 {
-		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractMessageSequenceCodeVersion, label: "upgrade-message-sequence-code", query: upgradeMessageSequenceCode})
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractAgentCodeVersion, label: "upgrade-agent-code", query: upgradeAgentCode})
 	}
 	if rank < 12 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractNotificationConfigVersion, label: "upgrade-notification-config", query: upgradeNotificationConfig})
@@ -592,6 +593,9 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 45 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractStepDescriptionLayoutVersion, label: "upgrade-step-description-layout", query: upgradeStepDescriptionLayout})
 	}
+	if rank < 46 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractUnifiedAgentVersion, label: "upgrade-agent-step", query: upgradeAgentStep})
+	}
 	// Attached here rather than at the call site so the turn text is identical
 	// wherever it is built. The version pair used to be added only on the Pulse
 	// delivery path, which meant the blocking preflight — the one that actually
@@ -613,3 +617,7 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 const manualUpgradeTurnNote = `
 
 EXECUTION CONTEXT. This is a manual platform migration started by the workflow operator in Workshop chat. Complete and verify this migration before stamping it. If a genuine product, business, or safety choice is required, do not guess and do not stamp: explain the exact choice in this conversation and ask the operator.`
+
+const upgradeAgentStep = `WORKFLOW CONTRACT UPGRADE: ONE AGENT STEP TYPE.
+
+Do only this migration. Conversational steps now use type agent with items and optional predefined_routes. Call migrate_agent_steps once. It rewrites message_sequence, orchestrator and todo_task records, including nested and orphan agents, to agent; legacy messages become items. Routes, IDs, wiring, validation and unknown fields are preserved. Do not edit plan.json by hand or run the workflow. If the migration reports an error, do not stamp. Otherwise call set_workflow_contract_version(version="1.0.47") and stop.`

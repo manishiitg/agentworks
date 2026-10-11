@@ -129,9 +129,9 @@ func TestGeneratedVideoStudioPlanRefreshesWhenCritiqueGatesAreMissing(t *testing
 	invalidButCurrent := `{"steps":[{"type":"routing","id":"route","routes":[{"route_id": "infographic","next_step_id":"infographic-preproduction"}]},` +
 		`{"type":"todo_task","id":"infographic-preproduction","title":"Brief","description":"d",` +
 		`"predefined_routes":[{"route_id":"infographic-research","route_name":"r","condition":"c",` +
-		`"sub_agent_step":{"type":"message_sequence","id":"infographic-research","title":"t","description":"d",` +
+		`"sub_agent_step":{"type":"agent","id":"infographic-research","title":"t","description":"d",` +
 		`"items":[{"id":"i","type":"user_message","message":"m"}]}}]},` +
-		`{"type":"message_sequence","id":"infographic-render-critique","title":"t","description":"d",` +
+		`{"type":"agent","id":"infographic-render-critique","title":"t","description":"d",` +
 		`"items":[{"id":"i","type":"user_message","message":"m"}],"next_step_id":"end"}]}`
 	if planLoadsOnThisPlatform(invalidButCurrent) {
 		t.Fatal("fixture is meant to be a plan the platform rejects; it now loads, so this asserts nothing")

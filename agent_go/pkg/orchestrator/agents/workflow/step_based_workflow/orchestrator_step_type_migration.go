@@ -62,7 +62,7 @@ func createMigrateOrchestratorStepTypeExecutor(
 		}
 		stepIDs := make([]string, 0, count)
 		for _, step := range typedPlan.Steps {
-			if step != nil && step.StepType() == StepTypeOrchestrator {
+			if step != nil && step.StepType() == StepTypeAgent {
 				stepIDs = append(stepIDs, step.GetID())
 			}
 		}
@@ -99,7 +99,7 @@ const workflowContractOrchestratorStepTypeVersionLabel = "1.0.35"
 // alias that plans written before contract v1.0.35 still carry.
 func IsOrchestratorStepType(stepType string) bool {
 	switch StepType(strings.TrimSpace(stepType)) {
-	case StepTypeOrchestrator, StepTypeTodoTaskLegacy:
+	case "orchestrator", "todo_task":
 		return true
 	}
 	return false

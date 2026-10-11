@@ -286,7 +286,7 @@ func (s *Store) handleEvent(sessionID string, event storeevents.Event) bool {
 		}
 		if structuredLifecycleIsNestedSequence(event, metadata) {
 			s.appendStructuredLifecycleResult(sessionID, event, metadata)
-			// A message-sequence item reuses the owning step transcript. Settle
+			// A agent item reuses the owning step transcript. Settle
 			// the transcript when the item ends so a completed final item does
 			// not remain in the Live rail forever. A later item start/chunk
 			// reactivates the same transcript through the normal upsert path.
@@ -2684,7 +2684,7 @@ func isStructuredExecutionMetadata(sessionID string, event storeevents.Event, me
 		return false
 	}
 	// Honor an explicitly DECLARED kind: a full run is a container, a
-	// message-sequence item is an internal turn, a router is a decision
+	// agent item is an internal turn, a router is a decision
 	// record. None of them is a conversation, so none gets a terminal.
 	//
 	// Only a declared kind may suppress. Most events still carry no kind at

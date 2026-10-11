@@ -2476,7 +2476,7 @@ export interface VariableGroupsResponse {
 export interface ValidationLog {
   attempt: number;
   // "pre_validation" records are automatic structural checks that can trigger
-  // a message-sequence repair turn; ordinary "validation" is the legacy step
+  // a agent repair turn; ordinary "validation" is the legacy step
   // validation format.
   kind?: 'validation' | 'pre_validation' | string;
   phase?: string;
@@ -2608,15 +2608,15 @@ export interface StepExecutionLogs {
   knowledgebase_access?: string;
   knowledgebase_write_method?: string;
   knowledgebase_contribution?: string;
-  message_sequence_status?: 'running' | 'completed' | 'failed';
-  message_sequence?: {
+  agent_status?: 'running' | 'completed' | 'failed';
+  agent?: {
     session_path: string;
     status?: 'running' | 'completed' | 'failed' | string;
-    entries?: MessageSequenceLogEntry[];
+    entries?: AgentLogEntry[];
   };
   // The message text authored in the workflow plan, distinct from the larger
   // runtime prompt assembled for the agent.
-  planned_messages?: PlannedMessageSequenceItem[];
+  planned_messages?: PlannedAgentItem[];
   output_content?: StepOutputContent;  // Actual output file content
   artifacts?: { file_name: string; file_path: string }[]; // Other output files
   validations: ValidationLog[];
@@ -2628,7 +2628,7 @@ export interface StepExecutionLogs {
   archived_executions?: ArchivedExecutionEntry[];  // Archived execution outputs from previous routing
 }
 
-export interface MessageSequenceLogEntry {
+export interface AgentLogEntry {
   entry_id: string;
   item_id?: string;
   item_type?: string;
@@ -2639,7 +2639,7 @@ export interface MessageSequenceLogEntry {
   ended_at?: string;
 }
 
-export interface PlannedMessageSequenceItem {
+export interface PlannedAgentItem {
   id: string;
   type?: string;
   kind?: string;

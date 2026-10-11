@@ -33,8 +33,8 @@ const (
 	TierSelectionRequiredKey subAgentContextKey = "tier_selection_required"
 	// SubAgentLLMContextKey is the context key for direct LLM override for sub-agents (works in both tiered and manual modes)
 	SubAgentLLMContextKey subAgentContextKey = "sub_agent_llm"
-	// SubAgentMessageSequenceRestartKey is the context key for forcing a message_sequence route to start fresh.
-	SubAgentMessageSequenceRestartKey subAgentContextKey = "message_sequence_restart"
+	// SubAgentAgentRestartKey is the context key for forcing a agent route to start fresh.
+	SubAgentAgentRestartKey subAgentContextKey = "agent_restart"
 	// SubAgentParametersKey carries typed, per-call inputs for a predefined
 	// scripted route. The controller validates these values against the route's
 	// declared script_parameters before starting the child.
@@ -42,9 +42,9 @@ const (
 	// ScriptedSubAgentInvocationKey distinguishes the dedicated scripted-route
 	// tool from the conversational predefined-route tool at the shared executor.
 	ScriptedSubAgentInvocationKey subAgentContextKey = "scripted_sub_agent_invocation"
-	// GenericAgentMessageSequenceKey carries optional ordered follow-up turns for
+	// GenericAgentAgentKey carries optional ordered follow-up turns for
 	// call_generic_agent. The runtime reuses one agent/session for every turn.
-	GenericAgentMessageSequenceKey subAgentContextKey = "generic_agent_message_sequence"
+	GenericAgentAgentKey subAgentContextKey = "generic_agent_agent"
 	// GetSubAgentConversationKey is the context key for the get_sub_agent_conversation function
 	GetSubAgentConversationKey subAgentContextKey = "get_sub_agent_conversation"
 	// QuerySubAgentKey is the context key for querying one parent-owned sub-agent execution.
@@ -119,10 +119,10 @@ type GenericAgentMessage struct {
 	Message string
 }
 
-// GenericAgentMessageSequenceFromContext returns a defensive copy of the
+// GenericAgentAgentFromContext returns a defensive copy of the
 // ordered follow-up messages attached by handleCallGenericAgent.
-func GenericAgentMessageSequenceFromContext(ctx context.Context) []GenericAgentMessage {
-	items, _ := ctx.Value(GenericAgentMessageSequenceKey).([]GenericAgentMessage)
+func GenericAgentAgentFromContext(ctx context.Context) []GenericAgentMessage {
+	items, _ := ctx.Value(GenericAgentAgentKey).([]GenericAgentMessage)
 	return append([]GenericAgentMessage(nil), items...)
 }
 
@@ -149,16 +149,16 @@ func CreateSubAgentTools() []llmtypes.Tool {
 		},
 		"instructions": map[string]interface{}{
 			"type":        "string",
-			"description": "Required instructions for an agent or message_sequence route. Scripted routes use call_scripted_sub_agent instead.",
+			"description": "Required instructions for an agent or agent route. Scripted routes use call_scripted_sub_agent instead.",
 		},
 		"preferred_tier": map[string]interface{}{
 			"type":        "integer",
 			"description": "REQUIRED. LLM reasoning tier for this sub-agent. 1 = high reasoning (complex/novel tasks), 2 = medium reasoning (routine tasks), 3 = low reasoning (simple/validation tasks). You must pick a tier for every call based on the task's difficulty.",
 			"enum":        []int{1, 2, 3},
 		},
-		"message_sequence_restart": map[string]interface{}{
+		"agent_restart": map[string]interface{}{
 			"type":        "boolean",
-			"description": "Optional. Only for message_sequence routes. If true, archive the existing route conversation and replay the configured item queue from the beginning. Default: false, which resumes the existing route conversation and sends instructions as the re-entry message.",
+			"description": "Optional. Only for agent routes. If true, archive the existing route conversation and replay the configured item queue from the beginning. Default: false, which resumes the existing route conversation and sends instructions as the re-entry message.",
 		},
 	}
 	callSubAgentRequired := []string{"route_id", "task_id", "instructions", "preferred_tier"}
@@ -166,7 +166,7 @@ func CreateSubAgentTools() []llmtypes.Tool {
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "call_sub_agent",
-			Description: "Start a predefined agent or message_sequence route with per-call instructions. Scripted routes use call_scripted_sub_agent. The call returns an execution_id immediately; the workflow runtime waits outside this tool call and sends one authoritative completion batch back to this orchestrator. Launch independent calls together. For message_sequence routes, repeated calls resume the route conversation unless message_sequence_restart is true.",
+			Description: "Start a predefined agent or agent route with per-call instructions. Scripted routes use call_scripted_sub_agent. The call returns an execution_id immediately; the workflow runtime waits outside this tool call and sends one authoritative completion batch back to this orchestrator. Launch independent calls together. For agent routes, repeated calls resume the route conversation unless agent_restart is true.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type":       "object",
 				"properties": callSubAgentProperties,
@@ -219,7 +219,7 @@ func CreateSubAgentTools() []llmtypes.Tool {
 			"type":        "string",
 			"description": "Detailed instructions for what the agent should accomplish. Be very specific since there's no predefined context.",
 		},
-		"message_sequence": map[string]interface{}{
+		"agent": map[string]interface{}{
 			"type":        "array",
 			"minItems":    1,
 			"maxItems":    12,
@@ -416,8 +416,8 @@ func handleCallSubAgent(ctx context.Context, args map[string]interface{}) (strin
 		ctx = context.WithValue(ctx, PreferredTierContextKey, int(preferredTierF))
 	}
 
-	if restart, ok := args["message_sequence_restart"].(bool); ok && restart {
-		ctx = context.WithValue(ctx, SubAgentMessageSequenceRestartKey, true)
+	if restart, ok := args["agent_restart"].(bool); ok && restart {
+		ctx = context.WithValue(ctx, SubAgentAgentRestartKey, true)
 	}
 
 	return executePredefinedSubAgentCall(ctx, routeID, todoID, instructions)
@@ -521,12 +521,12 @@ func handleCallGenericAgent(ctx context.Context, args map[string]interface{}) (s
 	if !ok || instructions == "" {
 		return "", fmt.Errorf("instructions are required")
 	}
-	messageSequence, err := parseGenericAgentMessageSequence(args["message_sequence"])
+	agentSequence, err := parseGenericAgentAgent(args["agent"])
 	if err != nil {
 		return "", err
 	}
-	if len(messageSequence) > 0 {
-		ctx = context.WithValue(ctx, GenericAgentMessageSequenceKey, messageSequence)
+	if len(agentSequence) > 0 {
+		ctx = context.WithValue(ctx, GenericAgentAgentKey, agentSequence)
 	}
 
 	tierRequired, _ := ctx.Value(TierSelectionRequiredKey).(bool)
@@ -583,7 +583,7 @@ func handleCallGenericAgent(ctx context.Context, args map[string]interface{}) (s
 	return string(resultJSON), nil
 }
 
-func parseGenericAgentMessageSequence(raw interface{}) ([]GenericAgentMessage, error) {
+func parseGenericAgentAgent(raw interface{}) ([]GenericAgentMessage, error) {
 	if raw == nil {
 		return nil, nil
 	}

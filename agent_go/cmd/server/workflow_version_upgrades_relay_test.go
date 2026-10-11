@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
-
 )
 
 // Every new migration inherits Relay eligibility unless it is explicitly
@@ -149,11 +148,11 @@ func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
 
 // Python execution has no workflow contract or shared-step migration debt.
 func TestPythonRelayDoesNotOweWorkflowMigrations(t *testing.T) {
-    manifest := &WorkflowManifest{Version: workflowContractInitialVersion, Kind: "relay", RelayRuntime: "python"}
-    if upgrades := workflowVersionUpgradePlan(manifest); len(upgrades) != 0 {
-        t.Fatalf("Python Relay owes workflow migrations: %v", upgrades)
-    }
-    if !manifestContractIsExecutionCompatible(manifest) {
-        t.Fatal("Python Relay was refused by a workflow contract")
-    }
+	manifest := &WorkflowManifest{Version: workflowContractInitialVersion, Kind: "relay", RelayRuntime: "python"}
+	if upgrades := workflowVersionUpgradePlan(manifest); len(upgrades) != 0 {
+		t.Fatalf("Python Relay owes workflow migrations: %v", upgrades)
+	}
+	if !manifestContractIsExecutionCompatible(manifest) {
+		t.Fatal("Python Relay was refused by a workflow contract")
+	}
 }

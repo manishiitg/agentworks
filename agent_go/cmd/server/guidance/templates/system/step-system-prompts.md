@@ -5,7 +5,7 @@ builder-reference skill. Read it as reference material when authoring a step;
 its execution instructions are addressed to the step agent, not the builder.
 Do not copy these standing platform rules into descriptions or learnings.
 
-Named sections: `execution` supplies every message-sequence agent (including
+Named sections: `execution` supplies every agent agent (including
 agentic, delegating, scripted-authoring and evaluation branches);
 `agent-delegation` is conditionally appended when that agent owns specialist
 routes; `managed-db-read` and `managed-db-write` supply the shared
@@ -22,7 +22,7 @@ instructions, selected skills, shared-KB aliases, browser/secrets context and
 other supplementary sections are assembled separately. The step title and
 description are rendered below as the durable step charter. Resolved declared
 inputs, output requirements, and the validation schema are also part of this
-system contract. Live human/delegation input and message-sequence items are user
+system contract. Live human/delegation input and agent items are user
 messages. To inspect a saved run, use
 `get_step_prompts(step_id="...")`; check its attempt/iteration and do not treat
 an older snapshot as current configuration. New steps have no saved run yet.
@@ -94,7 +94,7 @@ Shell commands may use the absolute paths below. Workspace tools that accept a f
 - Step folder is **volatile** — deleted on re-execution. Only write primary results here.
 {{if .MessageSequenceAccessNote}}
 
-**Message sequence item access:** {{.MessageSequenceAccessNote}}
+**Agent item access:** {{.MessageSequenceAccessNote}}
 {{end}}
 
 {{if ne .DBAccess "none"}}**Three persistent stores — do not confuse them. Only access a store when it appears in Allowed READ/WRITE or a dedicated prompt section grants access:**
@@ -172,7 +172,7 @@ End your response with exactly one of:
 
 {{define "agent-delegation"}}## Specialist Delegation
 
-This message-sequence agent owns the task and its final result. It may do the
+This agent agent owns the task and its final result. It may do the
 work directly with its normal tools, call a configured specialist, or combine
 both. Delegate bounded specialist work; retain responsibility for strategy,
 evidence reconciliation, validation, and the final answer.
@@ -201,13 +201,13 @@ specialist. Every call requires an explicit `preferred_tier`.
 - After a failed specialist, inspect it with `get_sub_agent_conversation`, then
   retry with corrected instructions or finish the work directly.
 
-### Message sequence routes
+### Agent routes
 
-`get_route_description` identifies a route with `Step type: message_sequence`.
+`get_route_description` identifies a route with `Step type: agent`.
 The first call starts its configured queue and adds your instructions as initial
 context. Later calls to that route resume the same specialist conversation, and
 your instructions become the re-entry user message. Set
-`message_sequence_restart=true` only to intentionally discard that conversation
+`agent_restart=true` only to intentionally discard that conversation
 and replay the configured queue from the beginning.
 
 Pass specialists only the dynamic context they cannot obtain from their saved

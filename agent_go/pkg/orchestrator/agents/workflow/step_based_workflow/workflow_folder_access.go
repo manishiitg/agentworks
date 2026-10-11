@@ -285,7 +285,7 @@ func init() {
 // "<knowledgebase>/notes" write grant, just pointed at a resolved external
 // workflow's knowledgebase instead of this workflow's own. Used by all three
 // folder-guard builders (setupExecutionFolderGuard,
-// setupMessageSequenceFolderGuard, setupOrchestratorFolderGuard) so a step's
+// setupAgentFolderGuard, setupOrchestratorFolderGuard) so a step's
 // existing kbAccessAllowsWrite gate also covers external write sources.
 func writableExternalKBNotesPaths(workspace string) []string {
 	sources, err := workflowkb.Resolve(GetPromptDocsRoot(), workspace, nil)

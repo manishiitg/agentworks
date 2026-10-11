@@ -841,18 +841,18 @@ function formatTerminalKindLabel(terminal: TerminalSnapshot): string {
   return formatExecutionKind(terminal.execution_kind)
 }
 
-// Matches the backend's internal "message-sequence-<stepID>" agent_name for the
-// reused execution_only agent behind a message_sequence step's turns (see
-// controller_message_sequence.go). That id is not a display name, so it must
-// never win over terminalRailTitle's message-sequence-aware humanization
+// Matches the backend's internal "agent-<stepID>" agent_name for the
+// reused execution_only agent behind a agent step's turns (see
+// controller_agent.go). That id is not a display name, so it must
+// never win over terminalRailTitle's agent-aware humanization
 // regardless of which branch below resolves the title — this terminal is
 // frequently tagged execution_kind sub_agent/background_agent (a separate,
 // still-open classification gap), which would otherwise return it verbatim.
-const MESSAGE_SEQUENCE_AGENT_NAME_PATTERN = /^message[-_ ]sequence(?:[-_ ].*)?$/i
+const AGENT_AGENT_NAME_PATTERN = /^message[-_ ]sequence(?:[-_ ].*)?$/i
 
 function resolvedAgentName(terminal: TerminalSnapshot): string {
   const raw = terminal.agent_name || ''
-  if (raw && MESSAGE_SEQUENCE_AGENT_NAME_PATTERN.test(raw)) {
+  if (raw && AGENT_AGENT_NAME_PATTERN.test(raw)) {
     return terminalRailTitle(terminal)
   }
   return raw
@@ -872,7 +872,7 @@ function formatTerminalTitle(terminal: TerminalSnapshot): string {
     return resolvedAgentName(terminal) || terminal.step_name || terminal.display_title || visibleStepID(terminal) || formatTerminalKindLabel(terminal) || 'Terminal'
   }
   // Delegate to the rail's title logic rather than re-deriving it: it already
-  // humanizes the backend's internal "message-sequence-<stepID>" agent_name
+  // humanizes the backend's internal "agent-<stepID>" agent_name
   // (via parent_step_id) instead of printing that raw slug when step_name is
   // empty — the divergence between this function and the rail is exactly what
   // let that raw id leak into the panel header while the rail showed the
@@ -924,7 +924,7 @@ function terminalStepTypeLabel(terminal: TerminalSnapshot): string {
     terminal: stepTypeLabel(terminal.step_type),
     orchestrator: 'Orchestrator',
     'sub-agent': 'Sub-agent',
-    'message-sequence': 'Message sequence',
+    'agent': 'Agent',
     routing: 'Routing step',
     scripted: 'Scripted step',
     evaluation: 'Evaluation',
@@ -1353,7 +1353,7 @@ function terminalPaneIconDetails(terminal: TerminalSnapshot) {
     terminal: { label: isSyntheticTerminal(terminal) ? 'Automation step' : 'Terminal', Icon: Terminal },
     orchestrator: { label: 'Orchestrator', Icon: Network },
     'sub-agent': { label: 'Sub-agent', Icon: Bot },
-    'message-sequence': { label: 'Message sequence', Icon: ListRestart },
+    'agent': { label: 'Agent', Icon: ListRestart },
     routing: { label: 'Routing decision', Icon: GitBranch },
     scripted: { label: 'Scripted step', Icon: Braces },
     evaluation: { label: 'Evaluation', Icon: ClipboardCheck },
@@ -4831,7 +4831,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
   const renderRailGroup = (group: TerminalRailLogicalGroup) => {
     const expanded = expandedRailGroupKeys.has(group.key)
     const groupSelected = group.members.some(terminal => terminalPaneKey(terminal) === selectedTerminalKey)
-    const isSequence = terminalRailVisualKind(group.representative) === 'message-sequence'
+    const isSequence = terminalRailVisualKind(group.representative) === 'agent'
     const earlierTerminals = group.terminals.filter(
       terminal => terminalPaneKey(terminal) !== terminalPaneKey(group.representative),
     )

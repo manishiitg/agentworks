@@ -53,7 +53,7 @@ func TestDescriptionNamedGuidesAreReadableAndAttached(t *testing.T) {
 
 	// Folder Guard: learnings and KB access are off, naming still grants read.
 	cfg := &AgentConfigs{LearningsAccess: LearningsAccessNone, KnowledgebaseAccess: KBAccessNone}
-	readPaths, writePaths := hcpo.setupMessageSequenceFolderGuard("step-1", "pick", cfg, MessageSequenceWriteAccess{})
+	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", "pick", cfg, AgentWriteAccess{})
 	readPaths = appendDescriptionReferenceReadPaths(readPaths, workflow, description)
 	for _, want := range []string{workflow + "/learnings/_global/references/job-selection.md", workflow + "/knowledgebase/notes/positioning.md"} {
 		if !slices.Contains(readPaths, want) {

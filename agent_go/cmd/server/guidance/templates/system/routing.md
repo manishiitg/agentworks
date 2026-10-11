@@ -12,7 +12,7 @@ steps. See PLAT-259.
 
 A routing step is a deterministic switch. It reads `route_selection.json`, resolves the selected value to one of its `routes[]`, and branches to that route's `next_step_id`.
 
-Use routing when the workflow must run **exactly one** of N major downstream sub-workflows. The common case is a fixed branch selected from the user's request to the builder; the builder/caller passes that choice as `route_selections` when starting the workflow. Do not put judgment inside the routing step itself; put judgment in an earlier message sequence or caller-provided `route_selections`. If an agent decision is needed, add a message sequence before routing that writes `route_selection.json` in its own output folder.
+Use routing when the workflow must run **exactly one** of N major downstream sub-workflows. The common case is a fixed branch selected from the user's request to the builder; the builder/caller passes that choice as `route_selections` when starting the workflow. Do not put judgment inside the routing step itself; put judgment in an earlier agent or caller-provided `route_selections`. If an agent decision is needed, add a agent before routing that writes `route_selection.json` in its own output folder.
 
 **A plan has at most one routing step.** Routing is the workflow's mode
 selector: the single fork whose route a schedule or caller picks via
@@ -59,7 +59,7 @@ Routing steps never execute agents. Leave `description` and `context_output` emp
 
 When an agent/probe/classifier must decide the route, model it as:
 
-- prior `message_sequence` step: performs the probe/classification and writes `route_selection.json`
+- prior `agent` step: performs the probe/classification and writes `route_selection.json`
 - routing step: declares `route_source_file` or `context_dependencies: ["route_selection.json"]` and branches from that file
 
 ### Route structure
@@ -77,10 +77,10 @@ Each entry in `routes[]` has:
 - `condition` — short prose explaining when this route should be selected
 - `next_step_id` — the ID of an existing step in the plan that this route branches to
 
-Routing routes do **not** define inline sub-agents. Unlike a message-sequence
+Routing routes do **not** define inline sub-agents. Unlike a agent
 agent's `predefined_routes` (which may embed a `sub_agent_step`), routing
 `routes[]` are pointers—every `next_step_id` must reference an existing plan
-step. Add downstream scripted, message-sequence, or human-input steps separately,
+step. Add downstream scripted, agent, or human-input steps separately,
 then point the routes at their IDs.
 
 ### Convergence — branches MUST rejoin via `next_step_id`
@@ -89,21 +89,21 @@ A routing step jumps execution **into** the selected branch, but it does not sto
 
 - Give the **terminal step of each branch** a `next_step_id` pointing to the shared downstream step (e.g. each portal branch → `normalize`), or `"end"` to finish.
 - The engine honors `next_step_id` on `routing`, `human_input`, and
-  `message_sequence` steps (including legacy orchestrator compatibility
+  `agent` steps (including legacy orchestrator compatibility
   records): the selected branch runs, jumps to the shared step, and sibling
   branches are skipped.
 - A branch whose terminal step has **no** `next_step_id` falls through to the next step in the list — the classic "the non-selected branch also ran" bug. Always wire the convergence.
 
 If an agent must decide whether or which specialists to call from live evidence,
-use a `message_sequence` with `predefined_routes`. Use routing when an already
+use a `agent` with `predefined_routes`. Use routing when an already
 made decision selects exactly one genuinely different downstream path.
 
 ### Routing vs. other primitives
 
-- **Routing vs. agent with specialists**: a routed message-sequence agent may call
+- **Routing vs. agent with specialists**: a routed agent agent may call
   zero, one, or several specialists adaptively. Routing runs exactly one fixed
   downstream alternative.
-- **Routing vs. plain message_sequence**: a plain sequence is one ordered conversation; add `predefined_routes` only for adaptive delegation.
+- **Routing vs. plain agent**: a plain sequence is one ordered conversation; add `predefined_routes` only for adaptive delegation.
 - **Routing vs. human_input**: do not ask the user again when the builder already knows the requested branch. Use `route_selections`. Use `human_input` only when the workflow must pause mid-run for information that was not available at launch.
 
 ### Example
@@ -128,6 +128,6 @@ Each `next_step_id` must already exist as a step in the plan.
 
 - Routing with only one route, or with a generic catch-all route that should be normal step logic.
 - Asking the routing step to infer the route from prose without writing `route_selection.json`.
-- Setting `description` on a routing step. Use a prior message sequence for probe/judgment work.
+- Setting `description` on a routing step. Use a prior agent for probe/judgment work.
 - `next_step_id` pointing to a step that does not exist yet.
 - Routing with no caller `route_selections`, no `route_source_file`, no `route_selection.json` dependency, and no `default_route_id`.

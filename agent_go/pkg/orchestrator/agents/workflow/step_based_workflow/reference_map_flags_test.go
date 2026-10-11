@@ -61,8 +61,8 @@ func TestNewReferenceBreakMakesPlanDriftDueUntilReviewed(t *testing.T) {
 // Plan Drift due once, so the agent repairs it (Toptal, 2026-10-06).
 func TestOldUnreadableInputFlagsPlanDriftOnce(t *testing.T) {
 	plan := `{"steps":[
-	 {"type":"message_sequence","id":"step-a","description":"A.","context_output":"a.json","validation_schema":{"files":[{"file_name":"a.json"},{"file_name":"selected.json"}]},"items":[{"id":"x","type":"user_message","message":"Do A."}]},
-	 {"type":"message_sequence","id":"step-b","description":"B.","context_dependencies":["selected.json"],"items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
+	 {"type":"agent","id":"step-a","description":"A.","context_output":"a.json","validation_schema":{"files":[{"file_name":"a.json"},{"file_name":"selected.json"}]},"items":[{"id":"x","type":"user_message","message":"Do A."}]},
+	 {"type":"agent","id":"step-b","description":"B.","context_dependencies":["selected.json"],"items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
 	planDriftCandidateWorkspace(t, "Workflow/strict-old", plan, reviewedStepConfig)
 	items, err := CollectPlanDriftDueItems("Workflow/strict-old")
 	if err != nil {
@@ -83,8 +83,8 @@ func TestOldUnreadableInputFlagsPlanDriftOnce(t *testing.T) {
 // workflow's files did not change, or a new rule never reaches it.
 func TestFlagRulesChangeReevaluatesUnchangedWorkflow(t *testing.T) {
 	plan := `{"steps":[
-	 {"type":"message_sequence","id":"step-a","description":"A.","context_output":"a.json","validation_schema":{"files":[{"file_name":"a.json"},{"file_name":"selected.json"}]},"items":[{"id":"x","type":"user_message","message":"Do A."}]},
-	 {"type":"message_sequence","id":"step-b","description":"B.","context_dependencies":["selected.json"],"items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
+	 {"type":"agent","id":"step-a","description":"A.","context_output":"a.json","validation_schema":{"files":[{"file_name":"a.json"},{"file_name":"selected.json"}]},"items":[{"id":"x","type":"user_message","message":"Do A."}]},
+	 {"type":"agent","id":"step-b","description":"B.","context_dependencies":["selected.json"],"items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
 	planDriftCandidateWorkspace(t, "Workflow/strict-version", plan, reviewedStepConfig)
 	root := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Workflow", "strict-version")
 	old := `{"fingerprint":"` + referenceMapFingerprint(root) + `","baseline_breaks":[]}`
@@ -106,7 +106,7 @@ func TestFlagRulesChangeReevaluatesUnchangedWorkflow(t *testing.T) {
 func TestLayoutRegressionFlagsWorkflowReviewAfterTheUpgrade(t *testing.T) {
 	layout := `## Goal\nG.\n## Inputs\nI.\n## Output\nO.\n## Done when\nD.`
 	plan := func(a string) string {
-		return `{"steps":[{"id":"step-a","type":"message_sequence","description":"` + a + `","items":[{"id":"x","type":"user_message","message":"Do A."}]},{"id":"step-b","type":"message_sequence","description":"` + layout + `","items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
+		return `{"steps":[{"id":"step-a","type":"agent","description":"` + a + `","items":[{"id":"x","type":"user_message","message":"Do A."}]},{"id":"step-b","type":"agent","description":"` + layout + `","items":[{"id":"y","type":"user_message","message":"Do B."}]}]}`
 	}
 	planDriftCandidateWorkspace(t, "Workflow/layout", plan("Free text from before."), reviewedStepConfig)
 	root := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Workflow", "layout")

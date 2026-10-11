@@ -17,7 +17,7 @@ func TestDedicatedWorkflowStepSessionsSetExecutionWorkingDirDirectly(t *testing.
 	hcpo.selectedRunFolder = "iteration-0/default"
 
 	const want = "Workflow/testing/runs/iteration-0/default/execution"
-	for _, agentKind := range []string{"exec", "message-sequence", "todo"} {
+	for _, agentKind := range []string{"exec", "agent", "todo"} {
 		t.Run(agentKind, func(t *testing.T) {
 			sessionID := "cwd-" + agentKind
 			t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })
@@ -56,7 +56,7 @@ func TestWorkflowStepWorkingDirReachesShellBridgeRequest(t *testing.T) {
 	t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })
 	hcpo.configureSubAgentSessionGuard(
 		sessionID,
-		"message-sequence",
+		"agent",
 		"step-one",
 		[]string{want},
 		[]string{want + "/step-one"},

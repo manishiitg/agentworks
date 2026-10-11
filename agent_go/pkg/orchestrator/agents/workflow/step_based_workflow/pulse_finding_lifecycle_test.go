@@ -672,7 +672,7 @@ func TestPulseFindingLifecycleLoadsStructuredHarnessReproduction(t *testing.T) {
 	ctx := context.Background()
 	workspacePath := concernsWorkspace(t)
 	module := pulsemodules.TechnicalReviewID
-	concernText := "plan updater rejects the effective message-sequence step because its saved type is legacy regular"
+	concernText := "plan updater rejects the effective agent step because its saved type is legacy regular"
 	if _, err := RecordPulseReviewFinding(ctx, workspacePath, "pulse-structured", "pulse-structured", PulseReviewFindingInput{
 		Concern: concernText,
 		Module:  module,
@@ -685,11 +685,11 @@ func TestPulseFindingLifecycleLoadsStructuredHarnessReproduction(t *testing.T) {
 			Summary:        "Runtime and editing APIs disagree about the step type.",
 			Impact:         "Pulse can diagnose the workflow defect but cannot apply its repair.",
 			Workaround:     "Persist the step as message_sequence manually.",
-			Evidence:       []string{"update_scripted_step rejected the agentic step", "update_message_sequence_step rejected the saved regular type"},
+			Evidence:       []string{"update_scripted_step rejected the agentic step", "update_agent_step rejected the saved regular type"},
 			Reproduction: PulseFindingReproduction{
 				Safe:        true,
 				Setup:       "Use a copied plan with a regular step and declared_execution_mode=agentic.",
-				Action:      "Call update_message_sequence_step for that step.",
+				Action:      "Call update_agent_step for that step.",
 				Expected:    "The harness upgrades the type and applies the edit.",
 				Observed:    "The updater rejects the saved regular type.",
 				Limitations: "No production workflow execution is required.",
@@ -1494,7 +1494,7 @@ func TestReconcileRetiresUnroutedStepFiledTypedRows(t *testing.T) {
 		}
 	}
 	stepRow("execute-remediate", ConcernPhaseExecution, "step draft ignores learnings")
-	stepRow("sequence-a", ConcernPhaseMessageSequence, "sequence skipped a target")
+	stepRow("sequence-a", ConcernPhaseAgent, "sequence skipped a target")
 	recordTestReviewFinding(t, workspacePath, "pulse-1", testReviewFinding(pulsemodules.TechnicalReviewID, "reviewer-filed defect stays"))
 
 	result, err := ReconcilePulseActionableBacklog(ctx, workspacePath)

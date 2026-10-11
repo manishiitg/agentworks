@@ -314,7 +314,7 @@ func shouldRefreshGeneratedVideoStudioPlan(content string) bool {
 	// Structural upgrades belong here for the same reason the critic gates do:
 	// a plan generated before one of them exists is missing a required part of
 	// the workflow, and nothing else brings it forward. Video Studio now exposes
-	// every production task as one message_sequence; refresh the older todo_task
+	// every production task as one agent; refresh the older todo_task
 	// plans rather than leaving a hidden orchestrator in existing projects.
 	if strings.Contains(content, `"type": "todo_task"`) || strings.Contains(content, `"type":"todo_task"`) ||
 		strings.Contains(content, `"type": "orchestrator"`) || strings.Contains(content, `"type":"orchestrator"`) {

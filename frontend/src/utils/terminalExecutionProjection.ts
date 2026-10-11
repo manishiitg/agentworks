@@ -96,7 +96,7 @@ function terminalMatchesExecution(terminal: TerminalSnapshot, node: SessionExecu
     return true
   }
 
-  // A message-sequence item is a lifecycle child, not a separate agent
+  // A agent item is a lifecycle child, not a separate agent
   // process. Its item notification gets a unique `msgseq-*` execution ID,
   // while the structured agent and its events live under the parent workflow
   // step terminal (`workflow-step:<parent execution>:<step id>`). Treat that

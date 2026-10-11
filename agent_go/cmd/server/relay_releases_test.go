@@ -18,10 +18,10 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	manifest.RelayOutputStepID = "answer"
 	manifest.Schedules = []WorkflowSchedule{{ID: "function-one", Name: "Hello", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "hello", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
 	manifestJSON, _ := json.Marshal(manifest)
-	plan := &stepworkflow.PlanningResponse{Steps: []stepworkflow.PlanStepInterface{&stepworkflow.MessageSequencePlanStep{
+	plan := &stepworkflow.PlanningResponse{Steps: []stepworkflow.PlanStepInterface{&stepworkflow.AgentPlanStep{
 		CommonStepFields: stepworkflow.CommonStepFields{ID: "answer", Title: "Answer", Description: "Return JSON"},
 		AuthoredPrompt:   true, SystemPrompt: "Return JSON", NextStepID: "end",
-		Items: []stepworkflow.MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "{{input.name}}"}},
+		Items: []stepworkflow.AgentItem{{ID: "turn", Type: "user_message", Message: "{{input.name}}"}},
 	}}}
 	planJSON, _ := json.Marshal(plan)
 	mock := &mockWorkspaceAPI{files: map[string]string{

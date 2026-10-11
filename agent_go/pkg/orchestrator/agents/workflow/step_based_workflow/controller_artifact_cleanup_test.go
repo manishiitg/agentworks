@@ -38,13 +38,13 @@ func TestGenericAgentUsesNestedParentLayout(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceRouteRoot(t *testing.T) {
-	got := messageSequenceRouteRoot("parent/agents/research/calls/call-001")
+func TestAgentRouteRoot(t *testing.T) {
+	got := agentSequenceRouteRoot("parent/agents/research/calls/call-001")
 	want := "parent/agents/research"
 	if got != want {
-		t.Fatalf("messageSequenceRouteRoot() = %q, want %q", got, want)
+		t.Fatalf("agentSequenceRouteRoot() = %q, want %q", got, want)
 	}
-	if got := messageSequenceRouteRoot("step-2"); got != "" {
+	if got := agentSequenceRouteRoot("step-2"); got != "" {
 		t.Fatalf("top-level route root = %q, want empty", got)
 	}
 }
@@ -59,8 +59,8 @@ func TestNestedArtifactParentRoot(t *testing.T) {
 
 func TestTopLevelOwnerStepNumberUsesStableParentIDForNestedArtifacts(t *testing.T) {
 	ctx := withExecutionPlan(context.Background(), &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "first"}},
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "parent-agent"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "first"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "parent-agent"}},
 	}})
 	if got := topLevelOwnerStepNumber(ctx, "parent-agent/agents/research/calls/call-001"); got != 2 {
 		t.Fatalf("owner step number = %d, want 2", got)

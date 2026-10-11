@@ -1,8 +1,8 @@
 import { useMemo, useRef, useEffect } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
-import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, MessageSequenceItem } from '../../../utils/stepConfigMatching'
-import { isHumanInputStep, isTodoTaskStep, isRoutingStep, isBranchStep, isMessageSequenceStep, isRegularStep, isCrewStep, runsAsMessageSequence, effectiveMessageSequenceItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
+import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
+import { isHumanInputStep, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isRegularStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -34,7 +34,7 @@ export interface StepNodeData extends Record<string, unknown> {
   isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
 }
 
-export interface TodoTaskNodeData extends Record<string, unknown> {
+export interface LegacyAgentNodeData extends Record<string, unknown> {
   id: string
   title: string
   todo_task_step?: PlanStep  // DEPRECATED: kept for backwards compat
@@ -86,12 +86,12 @@ export interface RoutingStepNodeData extends Record<string, unknown> {
   isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
 }
 
-export interface MessageSequenceNodeData extends Record<string, unknown> {
+export interface AgentNodeData extends Record<string, unknown> {
   isRelayOutput?: boolean
   id: string
   title: string
   description?: string
-  items?: MessageSequenceItem[]   // Ordered queue of user_message / prevalidation / foreach items
+  items?: AgentItem[]   // Ordered queue of user_message / prevalidation / foreach items
   predefined_routes?: Array<{ route_id: string; route_name: string; condition: string; sub_agent_step?: PlanStep; orphan_step_ref?: string }>
   status: 'pending' | 'running' | 'completed' | 'failed' | 'executing' | 'evaluating' | 'orchestrating'
   stepIndex: number
@@ -164,7 +164,7 @@ export interface WorkflowTriggerNodeData extends Record<string, unknown> {
   onRefresh?: () => void
 }
 
-export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | TodoTaskNodeData | HumanInputNodeData | RoutingStepNodeData | MessageSequenceNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
+export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | LegacyAgentNodeData | HumanInputNodeData | RoutingStepNodeData | AgentNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
 
 // Node and edge types
 export type WorkflowNode = Node<WorkflowNodeData>
@@ -207,7 +207,7 @@ const getDagreConfig = (direction: 'LR' | 'TB') => ({
 const NODE_DIMENSIONS = {
   step: { width: 280, height: 120 },
   routing: { width: 280, height: 200 },
-  message_sequence: { width: 320, height: 240 },
+  agent: { width: 320, height: 240 },
   todo_task: { width: 300, height: 120 },
   human_input: { width: 260, height: 120 },
   crew: { width: 280, height: 160 },
@@ -253,7 +253,7 @@ function countOrphanStepRefs(steps: PlanStep[] | undefined): Map<string, number>
   const visit = (list?: PlanStep[]) => {
     if (!list) return
     for (const s of list) {
-      if (isMessageSequenceStep(s)) {
+      if (isAgentStep(s)) {
         for (const item of s.items || []) {
           for (const call of item.scripted_steps || []) {
             counts.set(call.step_id, (counts.get(call.step_id) || 0) + 1)
@@ -264,7 +264,7 @@ function countOrphanStepRefs(steps: PlanStep[] | undefined): Map<string, number>
           if (r.sub_agent_step) visit([r.sub_agent_step])
         }
       }
-      if (isTodoTaskStep(s) && Array.isArray(s.predefined_routes)) {
+      if (isLegacyAgentStep(s) && Array.isArray(s.predefined_routes)) {
         for (const r of s.predefined_routes) {
           if (r.orphan_step_ref) counts.set(r.orphan_step_ref, (counts.get(r.orphan_step_ref) || 0) + 1)
           if (r.sub_agent_step) visit([r.sub_agent_step])
@@ -278,7 +278,7 @@ function countOrphanStepRefs(steps: PlanStep[] | undefined): Map<string, number>
 
 /**
  * Estimate node height based on content
- * Simplified version - only message-sequence item rows add variable height.
+ * Simplified version - only agent item rows add variable height.
  */
 function estimateNodeHeight(node: WorkflowNode): number {
   const baseDimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || NODE_DIMENSIONS.step
@@ -295,9 +295,9 @@ function estimateNodeHeight(node: WorkflowNode): number {
   // Content height estimation
   let contentHeight = 0
 
-  // For message_sequence nodes, add height for title, badges, and item rows
-  if (node.type === 'message_sequence') {
-    const messageData = data as MessageSequenceNodeData
+  // For agent nodes, add height for title, badges, and item rows
+  if (node.type === 'agent') {
+    const messageData = data as AgentNodeData
     const seqItems = messageData.items || []
     const visibleCount = Math.min(seqItems.length, 6)
     const hiddenCount = seqItems.length - visibleCount
@@ -416,8 +416,8 @@ function getNodeFootprintDimensions(
 }
 
 function isAgentCoordinatorNode(node: WorkflowNode): boolean {
-  if (node.type !== 'message_sequence' && node.type !== 'todo_task') return false
-  const data = node.data as MessageSequenceNodeData | TodoTaskNodeData
+  if (node.type !== 'agent' && node.type !== 'todo_task') return false
+  const data = node.data as AgentNodeData | LegacyAgentNodeData
   return (data.predefined_routes?.length ?? 0) > 0 || data.enable_generic_agent === true
 }
 
@@ -433,7 +433,7 @@ function calculateTopologyMetrics(nodes: WorkflowNode[]): { hasOrchestrator: boo
   nodes.forEach(node => {
     if (isAgentCoordinatorNode(node)) {
       hasOrchestrator = true
-      const data = node.data as MessageSequenceNodeData | TodoTaskNodeData
+      const data = node.data as AgentNodeData | LegacyAgentNodeData
       const routes = data.predefined_routes
       const numRoutes = routes?.length || 0
 
@@ -680,7 +680,7 @@ function buildPlanSuccessorMap(plan: PlanningResponse): Map<string, string[]> {
       !isRoutingStep(step) &&
       !isBranchStep(step) &&
       !isHumanInputStep(step) &&
-      !isTodoTaskStep(step)
+      !isLegacyAgentStep(step)
     const nextStep = plan.steps[index + 1]
     if (canContinueSequentially && nextStep && !explicitTargets.has(nextStep.id)) {
       successors.push(nextStep.id)
@@ -1063,7 +1063,7 @@ function stepToNode(
   }
 
   const getStepTitle = () => {
-    if (isTodoTaskStep(step)) {
+    if (isLegacyAgentStep(step)) {
       return step.title || `Agent ${stepIndex + 1}`
     }
     if (isHumanInputStep(step)) {
@@ -1118,10 +1118,10 @@ function stepToNode(
     }
   }
 
-  if (isTodoTaskStep(step)) {
+  if (isLegacyAgentStep(step)) {
     return {
       id: nodeId,
-      type: 'message_sequence',
+      type: 'agent',
       position: { x: 0, y: 0 },
       data: {
         ...baseData,
@@ -1131,7 +1131,7 @@ function stepToNode(
         // Flat format: validation_schema is directly on step
         validation_schema: step.validation_schema || step.todo_task_step?.validation_schema
         // Note: status is inherited from baseData (computed based on completedStepIndices)
-      } as MessageSequenceNodeData
+      } as AgentNodeData
     }
   }
 
@@ -1165,21 +1165,21 @@ function stepToNode(
     }
   }
 
-  // Covers authored message_sequence steps AND stored `regular` steps, which the
-  // runtime normalizes into a sequence before running (see runsAsMessageSequence).
+  // Covers authored agent steps AND stored `regular` steps, which the
+  // runtime normalizes into a sequence before running (see runsAsAgent).
   // Showing the latter as a plain step card described an execution path that no
   // longer exists.
-  if (runsAsMessageSequence(step)) {
+  if (runsAsAgent(step)) {
     return {
       id: nodeId,
-      type: 'message_sequence',
+      type: 'agent',
       position: { x: 0, y: 0 },
       data: {
         ...baseData,
-        items: effectiveMessageSequenceItems(step),
-        predefined_routes: isMessageSequenceStep(step) ? step.predefined_routes : undefined
+        items: configuredAgentItems(step),
+        predefined_routes: isAgentStep(step) ? step.predefined_routes : undefined
         // Note: status is inherited from baseData (computed based on completedStepIndices)
-      } as MessageSequenceNodeData
+      } as AgentNodeData
     }
   }
 
@@ -1240,7 +1240,7 @@ function processSteps(
       addRouteTarget(s.if_yes_next_step_id)
       addRouteTarget(s.if_no_next_step_id)
     }
-    if (isTodoTaskStep(s)) addRouteTarget(s.next_step_id)
+    if (isLegacyAgentStep(s)) addRouteTarget(s.next_step_id)
   })
   const primaryRouteEntryStepIDs = new Set(
     steps.find(isRoutingStep)?.routes.map(route => route.next_step_id) || []
@@ -1249,7 +1249,7 @@ function processSteps(
   const buildTodoTaskSubAgentGraph = (
     todoTaskStep: PlanStep,
     todoTaskNodeId: string,
-    todoTaskNodeData: MessageSequenceNodeData,
+    todoTaskNodeData: AgentNodeData,
     includeCompletionEdge: boolean
   ): { nodes: WorkflowNode[], edges: WorkflowEdge[] } => {
     const todoTaskEdges: WorkflowEdge[] = []
@@ -1257,7 +1257,7 @@ function processSteps(
     const parentStepIndex = todoTaskNodeData.stepIndex
     const todoTaskTitle = todoTaskNodeData.title || todoTaskStep.title || `Agent ${parentStepIndex + 1}`
 
-    if ((isTodoTaskStep(todoTaskStep) || isMessageSequenceStep(todoTaskStep)) && todoTaskStep.predefined_routes && todoTaskStep.predefined_routes.length > 0) {
+    if ((isLegacyAgentStep(todoTaskStep) || isAgentStep(todoTaskStep)) && todoTaskStep.predefined_routes && todoTaskStep.predefined_routes.length > 0) {
       todoTaskStep.predefined_routes.forEach((route) => {
         const isEndRoute = route.route_id?.toLowerCase() === 'end'
 
@@ -1289,10 +1289,10 @@ function processSteps(
 
         const changeType = getChangeType(stepId, changes)
 
-        if (isTodoTaskStep(subAgentStep)) {
+        if (isLegacyAgentStep(subAgentStep)) {
           const nestedTodoNode: WorkflowNode = {
             id: subAgentNodeId,
-            type: 'message_sequence',
+            type: 'agent',
             position: { x: 0, y: 0 },
             data: {
               id: subAgentNodeId,
@@ -1312,7 +1312,7 @@ function processSteps(
               parentOrchestratorTitle: todoTaskTitle,
               routeName: route.route_name || undefined,
               routeCondition: route.condition || undefined
-            } as MessageSequenceNodeData
+            } as AgentNodeData
           }
 
           todoTaskSubAgentNodes.push(nestedTodoNode)
@@ -1320,25 +1320,25 @@ function processSteps(
           const nestedTodoGraph = buildTodoTaskSubAgentGraph(
             subAgentStep,
             subAgentNodeId,
-            nestedTodoNode.data as MessageSequenceNodeData,
+            nestedTodoNode.data as AgentNodeData,
             false
           )
           todoTaskSubAgentNodes.push(...nestedTodoGraph.nodes)
           todoTaskEdges.push(...nestedTodoGraph.edges)
-        } else if (runsAsMessageSequence(subAgentStep)) {
-          // A message_sequence sub-agent must render as a MessageSequenceNode so its
+        } else if (runsAsAgent(subAgentStep)) {
+          // A agent sub-agent must render as a AgentNode so its
           // ordered items show — not as a generic step card. A stored `regular`
           // sub-agent runs as one too, so it gets the same treatment.
           const seqNode: WorkflowNode = {
             id: subAgentNodeId,
-            type: 'message_sequence',
+            type: 'agent',
             position: { x: 0, y: 0 },
             data: {
               id: subAgentNodeId,
               title: subAgentStep.title || `${route.route_name || route.route_id || routeId}`,
               description: subAgentStep.description,
-              items: effectiveMessageSequenceItems(subAgentStep),
-              predefined_routes: isMessageSequenceStep(subAgentStep) ? subAgentStep.predefined_routes : undefined,
+              items: configuredAgentItems(subAgentStep),
+              predefined_routes: isAgentStep(subAgentStep) ? subAgentStep.predefined_routes : undefined,
               status,
               stepIndex: parentStepIndex,
               step: subAgentStep,
@@ -1349,16 +1349,16 @@ function processSteps(
               parentOrchestratorTitle: todoTaskTitle,
               routeName: route.route_name || undefined,
               routeCondition: route.condition || undefined
-            } as MessageSequenceNodeData
+            } as AgentNodeData
           }
 
           todoTaskSubAgentNodes.push(seqNode)
 
-          if (isMessageSequenceStep(subAgentStep) && subAgentStep.predefined_routes?.length) {
+          if (isAgentStep(subAgentStep) && subAgentStep.predefined_routes?.length) {
             const nestedAgentGraph = buildTodoTaskSubAgentGraph(
               subAgentStep,
               subAgentNodeId,
-              seqNode.data as MessageSequenceNodeData,
+              seqNode.data as AgentNodeData,
               false
             )
             todoTaskSubAgentNodes.push(...nestedAgentGraph.nodes)
@@ -1403,7 +1403,7 @@ function processSteps(
       })
     }
 
-    if (isTodoTaskStep(todoTaskStep) && todoTaskStep.enable_generic_agent) {
+    if (isLegacyAgentStep(todoTaskStep) && todoTaskStep.enable_generic_agent) {
       const routeId = 'generic'
       const subAgentNodeId = `${todoTaskNodeId}-sub-agent-${routeId}`
 
@@ -1451,7 +1451,7 @@ function processSteps(
       })
     }
 
-    if (includeCompletionEdge && isTodoTaskStep(todoTaskStep) && todoTaskStep.next_step_id) {
+    if (includeCompletionEdge && isLegacyAgentStep(todoTaskStep) && todoTaskStep.next_step_id) {
       const targetNodeId = stepIdToNodeIdMap?.get(todoTaskStep.next_step_id)
       if (targetNodeId) {
         todoTaskEdges.push({
@@ -1737,11 +1737,11 @@ function processSteps(
     // Todo task steps have predefined routes (sub-agents)
     // and optionally a generic agent. After sub-agents complete, they return to the main todo task node.
     // The todo task step connects to next_step_id when all tasks are complete.
-    if (isTodoTaskStep(step) || (isMessageSequenceStep(step) && (step.predefined_routes?.length ?? 0) > 0)) {
+    if (isLegacyAgentStep(step) || (isAgentStep(step) && (step.predefined_routes?.length ?? 0) > 0)) {
       const todoTaskGraph = buildTodoTaskSubAgentGraph(
         step,
         node.id,
-        node.data as MessageSequenceNodeData,
+        node.data as AgentNodeData,
         true
       )
 
@@ -1752,13 +1752,13 @@ function processSteps(
       lastExitNodeId = null
     }
 
-    // Handle scripted and message_sequence next_step_id: draw an EXPLICIT edge to the
+    // Handle scripted and agent next_step_id: draw an EXPLICIT edge to the
     // target. Without this, a step's next_step_id only connected via array
     // order, so when several route steps all point at the same downstream
     // step (e.g. each portal -> normalize), only the last one linked and the
     // shared step looked unconnected. Now every explicit successor draws its own edge, so
     // the convergence (shared finish line) is visible.
-    if ((isMessageSequenceStep(step) || isRegularStep(step)) && step.next_step_id) {
+    if ((isAgentStep(step) || isRegularStep(step)) && step.next_step_id) {
       const sourceNodeId = (typeof lastExitNodeId === 'string' ? lastExitNodeId : node.id)
       const targetNodeId = step.next_step_id === 'end' ? 'end' : stepIdToNodeIdMap?.get(step.next_step_id)
       if (targetNodeId) {
@@ -1781,8 +1781,8 @@ function processSteps(
 /**
  * Check if a node is a step-type node (has step data)
  */
-function isStepTypeNode(node: WorkflowNode): node is WorkflowNode & { data: StepNodeData | TodoTaskNodeData | HumanInputNodeData | MessageSequenceNodeData } {
-  return node.type === 'step' || node.type === 'todo_task' || node.type === 'human_input' || node.type === 'message_sequence'
+function isStepTypeNode(node: WorkflowNode): node is WorkflowNode & { data: StepNodeData | LegacyAgentNodeData | HumanInputNodeData | AgentNodeData } {
+  return node.type === 'step' || node.type === 'todo_task' || node.type === 'human_input' || node.type === 'agent'
 }
 
 /**
@@ -2066,7 +2066,7 @@ export function usePlanToFlow(
     }
 
     // Connect a terminal step to End only when no explicit routing edge already
-    // leaves it. Routing, human-input, todo-task, and message-sequence steps own
+    // leaves it. Routing, human-input, todo-task, and agent steps own
     // their deterministic next-step edges.
     if (processedNodes.length > 0) {
       const lastNode = processedNodes[processedNodes.length - 1]
@@ -2149,7 +2149,7 @@ export function usePlanToFlow(
         // Calculate the leftmost point of this node (accounting for sub-agent overflow if it's a compound node)
         let firstStepLeftEdge = firstStepNode.position.x
         if (isAgentCoordinatorNode(firstStepNode)) {
-          const data = firstStepNode.data as MessageSequenceNodeData | TodoTaskNodeData
+          const data = firstStepNode.data as AgentNodeData | LegacyAgentNodeData
           const routes = data.predefined_routes
           const numSubAgents = routes?.length || 0
           
@@ -2488,7 +2488,7 @@ export function usePlanToFlow(
 
     // Inject read-only context into step-type nodes.
     layoutedResult.nodes = layoutedResult.nodes.map(node => {
-      if (node.type === 'step' || node.type === 'human_input' || node.type === 'todo_task' || node.type === 'message_sequence') {
+      if (node.type === 'step' || node.type === 'human_input' || node.type === 'todo_task' || node.type === 'agent') {
         return {
           ...node,
           data: {

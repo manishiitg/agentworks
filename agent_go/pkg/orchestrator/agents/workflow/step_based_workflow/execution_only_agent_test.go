@@ -345,7 +345,7 @@ func TestExecutionOnlyPromptNamesNoPlatformStoresWhenThereAreNone(t *testing.T) 
 			t.Errorf("a normal step lost %q", want)
 		}
 	}
-	if note := buildMessageSequenceAccessNote(MessageSequenceWriteAccess{DB: true, Knowledgebase: true, Learnings: true}, DBAccessNone); strings.Contains(note, "db/") || strings.Contains(note, "knowledgebase") || strings.Contains(note, "learnings") || strings.Contains(note, "workflow_db") {
+	if note := buildAgentAccessNote(AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true}, DBAccessNone); strings.Contains(note, "db/") || strings.Contains(note, "knowledgebase") || strings.Contains(note, "learnings") || strings.Contains(note, "workflow_db") {
 		t.Errorf("the access note of a step with no stores names a store: %s", note)
 	}
 }

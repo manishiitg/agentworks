@@ -36,7 +36,7 @@ var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 // contract version. Unlike schema_version, this gates agent-run workflow
 // upgrades. An operator starts pending migrations from the workflow chat, and
 // the version is stamped only after the workflow has been checked or migrated.
-const WorkflowContractCurrentVersion = workflowContractStepDescriptionLayoutVersion
+const WorkflowContractCurrentVersion = workflowContractUnifiedAgentVersion
 
 const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitPulseContractVersion
 
@@ -66,8 +66,10 @@ const workflowContractManagedDBScriptsVersion = step_based_workflow.ManagedDBScr
 // while any plan step lacks Goal, Inputs, Output or Done when.
 const workflowContractStepDescriptionLayoutVersion = step_based_workflow.StepDescriptionLayoutContractVersion
 
+const workflowContractUnifiedAgentVersion = step_based_workflow.AgentStepContractVersion
+
 const workflowContractInitialVersion = "1.0.0"
-const workflowContractMessageSequenceCodeVersion = "1.0.10"
+const workflowContractAgentCodeVersion = "1.0.10"
 const workflowContractPulseHistoryVersion = "1.0.11"
 const workflowContractNotificationConfigVersion = "1.0.12"
 const workflowContractHumanInputOwnershipVersion = "1.0.13"

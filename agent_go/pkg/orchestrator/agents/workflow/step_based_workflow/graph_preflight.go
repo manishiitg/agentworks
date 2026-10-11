@@ -14,7 +14,7 @@ import (
 //   - dependency_unproduced: no step produces the file.
 //   - dependency_not_staged: a step writes it but no producer lists it in
 //     context_output, so the platform looks in the consumer's own folder (a
-//     message_sequence step is only handed the bare name and must hunt for it).
+//     agent step is only handed the bare name and must hunt for it).
 //   - dependency_step_without_output: the named producer step outputs nothing.
 //   - relative_dependency_unresolved: a ../ path the script does not resolve.
 //   - missing_step_ref: a path into a step folder that is not in the plan.

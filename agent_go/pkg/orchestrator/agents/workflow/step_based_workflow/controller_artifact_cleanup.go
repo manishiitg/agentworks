@@ -72,10 +72,10 @@ func genericAgentArtifactFolderName(parentStepID, parentStepPath, callID string)
 	)
 }
 
-// messageSequenceRouteRoot returns the persistent agent-route directory for a
+// agentSequenceRouteRoot returns the persistent agent-route directory for a
 // nested call. session.json lives here while each invocation writes beneath
 // calls/<call-id>/. Top-level sequences return no route root.
-func messageSequenceRouteRoot(stepPath string) string {
+func agentSequenceRouteRoot(stepPath string) string {
 	clean := filepath.Clean(strings.TrimSpace(stepPath))
 	parts := strings.Split(clean, string(filepath.Separator))
 	for i := len(parts) - 2; i >= 0; i-- {

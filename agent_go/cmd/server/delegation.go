@@ -193,7 +193,7 @@ func isWorkflowStepTrackingExecution(id, name string, meta map[string]string) bo
 }
 
 // suppressRepeatedChildFailureNotification marks an enclosing execution silent
-// when it failed only because a direct message-sequence child already reported
+// when it failed only because a direct agent child already reported
 // the same root error. The child remains the authoritative notification; the
 // parent is still recorded and emitted as a terminal execution event, but it
 // must not create a second synthetic user turn containing the same failure.
@@ -215,42 +215,42 @@ func suppressRepeatedChildFailureNotification(registry *BackgroundAgentRegistry,
 		if strings.TrimSpace(child.ParentExecutionID) != parentSnapshot.ID || child.Status != BGAgentFailed {
 			continue
 		}
-		isMessageSequenceItem := child.Kind == "message_sequence_item" ||
-			(child.Metadata != nil && child.Metadata["execution_type"] == "message-sequence-item")
+		isAgentItem := child.Kind == "agent_item" ||
+			(child.Metadata != nil && child.Metadata["execution_type"] == "agent-item")
 		childError := strings.TrimSpace(child.Error)
-		if !isMessageSequenceItem || childError == "" || !strings.Contains(parentSnapshot.Error, childError) {
+		if !isAgentItem || childError == "" || !strings.Contains(parentSnapshot.Error, childError) {
 			continue
 		}
 		parent.SetMetadata(map[string]string{
 			"suppress_auto_notification": "true",
-			"notification_suppression":   "repeated-message-sequence-child-failure",
+			"notification_suppression":   "repeated-agent-child-failure",
 		})
 		return true
 	}
 	return false
 }
 
-// suppressParentOwnedMessageSequenceSuccess keeps successful completion at the
-// workflow-step boundary. A message-sequence item is an implementation detail
+// suppressParentOwnedAgentSuccess keeps successful completion at the
+// workflow-step boundary. A agent item is an implementation detail
 // of that step; publishing both the child success and the parent success creates
 // two identical "Step complete" turns. Failures deliberately take the opposite
 // path above so the specific child error remains visible. A standalone item is
 // never suppressed because there is no registered parent that can report its
 // completion.
-func suppressParentOwnedMessageSequenceSuccess(registry *BackgroundAgentRegistry, sessionID string, child *BackgroundAgent) bool {
+func suppressParentOwnedAgentSuccess(registry *BackgroundAgentRegistry, sessionID string, child *BackgroundAgent) bool {
 	if registry == nil || child == nil {
 		return false
 	}
 	snapshot := child.GetSnapshot()
-	isMessageSequenceItem := snapshot.Kind == "message_sequence_item" ||
-		(snapshot.Metadata != nil && snapshot.Metadata["execution_type"] == "message-sequence-item")
+	isAgentItem := snapshot.Kind == "agent_item" ||
+		(snapshot.Metadata != nil && snapshot.Metadata["execution_type"] == "agent-item")
 	parentID := strings.TrimSpace(snapshot.ParentExecutionID)
-	if snapshot.Status != BGAgentCompleted || !isMessageSequenceItem || parentID == "" || registry.Get(sessionID, parentID) == nil {
+	if snapshot.Status != BGAgentCompleted || !isAgentItem || parentID == "" || registry.Get(sessionID, parentID) == nil {
 		return false
 	}
 	child.SetMetadata(map[string]string{
 		"suppress_auto_notification": "true",
-		"notification_suppression":   "parent-owned-message-sequence-success",
+		"notification_suppression":   "parent-owned-agent-success",
 	})
 	return true
 }
@@ -313,11 +313,11 @@ func (n *workshopExecutionBgNotifier) OnExecutionComplete(execID, name, result s
 		n.api.emitBackgroundAgentCompleted(n.sessionID, execID, name, "completed", displayResult, "", duration.Truncate(time.Second).String())
 	}
 
-	if err == nil && suppressParentOwnedMessageSequenceSuccess(n.api.bgAgentRegistry, n.sessionID, agent) {
+	if err == nil && suppressParentOwnedAgentSuccess(n.api.bgAgentRegistry, n.sessionID, agent) {
 		log.Printf("[BG AGENT] Suppressed child success notification for %s; enclosing execution %s owns the completion", execID, agent.GetSnapshot().ParentExecutionID)
 	}
 	if err != nil && suppressRepeatedChildFailureNotification(n.api.bgAgentRegistry, n.sessionID, agent) {
-		log.Printf("[BG AGENT] Suppressed repeated parent failure notification for %s; direct message-sequence child already owns the same error", execID)
+		log.Printf("[BG AGENT] Suppressed repeated parent failure notification for %s; direct agent child already owns the same error", execID)
 	}
 
 	// A finished parent cannot still have live progress children. Settle any it

@@ -656,7 +656,7 @@ func TestConfigureSubAgentSessionGuardInheritsNotificationDestination(t *testing
 		common.ClearSessionShellConfig(childSessionID)
 	})
 
-	hcpo.configureSubAgentSessionGuard(childSessionID, "message-sequence", "daily-digest", nil, nil)
+	hcpo.configureSubAgentSessionGuard(childSessionID, "agent", "daily-digest", nil, nil)
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, childSessionID)
 	dest := virtualtools.NotificationDestinationFromContext(ctx)
 	if dest == nil || dest.WorkspacePath != "Workflow/demo" || dest.WorkflowName != "demo" {
@@ -852,7 +852,7 @@ func TestSetupExecutionFolderGuardGivesGenericReviewerWorkflowWideReadOnlyView(t
 // setupExecutionFolderGuard has granted it since PLAT-073 cluster F, but the two
 // parallel builders never did, and nothing pinned the parity. Confirmed live
 // 2026-08-17 (customer-login step-5-execute-browser-and-capture-apis, a
-// message_sequence step): its read paths carried no tool_output_folder, and a
+// agent step): its read paths carried no tool_output_folder, and a
 // spilled agent_browser result came back "outside every workspace root" with no
 // recoverable path — a dead end that cost the step a full round trip.
 func TestEveryFolderGuardBuilderGrantsToolOutputFolder(t *testing.T) {
@@ -892,8 +892,8 @@ func TestEveryFolderGuardBuilderGrantsToolOutputFolder(t *testing.T) {
 			t.Fatalf("read paths missing %q: %v", cache, readPaths)
 		}
 	})
-	t.Run("message_sequence", func(t *testing.T) {
-		readPaths, _ := newOrch().setupMessageSequenceFolderGuard("step-1", "s", nil, MessageSequenceWriteAccess{})
+	t.Run("agent", func(t *testing.T) {
+		readPaths, _ := newOrch().setupAgentFolderGuard("step-1", "s", nil, AgentWriteAccess{})
 		if !slices.Contains(readPaths, want) {
 			t.Fatalf("read paths missing %q: %v", want, readPaths)
 		}

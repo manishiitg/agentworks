@@ -98,7 +98,7 @@ also obtain an answer through the prompt flow above; they still run no LLM.
 
 When an agent/probe/classifier must decide the route, model it as:
 
-- prior `message_sequence` step: performs the probe/classification and
+- prior `agent` step: performs the probe/classification and
   writes `route_selection.json`
 - branch step: declares `route_source_file` or
   `context_dependencies: ["route_selection.json"]` and branches from that
@@ -126,7 +126,7 @@ Each entry in `routes[]` has:
 
 Branch routes do **not** define inline sub-agents. Every `next_step_id`
 must reference a step that already exists in the plan. Add those
-downstream steps separately (as scripted, message_sequence, or human_input
+downstream steps separately (as scripted, agent, or human_input
 steps), then point the routes at their IDs.
 
 ### Convergence — options MUST rejoin via `next_step_id`
@@ -146,10 +146,10 @@ each option a `next_step_id` pointing to the shared downstream step, or
   self-contained sub-workflow fork; use it when the alternatives lead to
   substantially different continuations of the plan. Branch is the small
   in-flow decision.
-- **Branch vs. agent with specialists**: a message-sequence agent with routes may
+- **Branch vs. agent with specialists**: a agent agent with routes may
   call zero, one, or several specialists adaptively. Branch runs exactly one
   fixed alternative.
-- **Branch vs. plain message_sequence**: a plain sequence is one ordered
+- **Branch vs. plain agent**: a plain sequence is one ordered
   conversation; add routes only for adaptive delegation.
 - **Branch vs. human_input**: do not ask the user again when the builder
   already knows the requested option. Use `route_selections`. Use
@@ -162,7 +162,7 @@ each option a `next_step_id` pointing to the shared downstream step, or
   be normal step logic.
 - Asking the branch step to infer the route from prose without writing
   `route_selection.json`.
-- Setting `description` on a branch step. Use a prior message sequence for
+- Setting `description` on a branch step. Use a prior agent for
   probe/judgment work.
 - `next_step_id` pointing to a step that does not exist yet.
 - File-based branch with no caller `route_selections`, no `route_source_file`,

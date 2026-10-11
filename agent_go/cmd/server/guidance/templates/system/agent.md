@@ -4,7 +4,7 @@
 
 ## MESSAGE SEQUENCE — THE AGENT STEP
 
-Use `message_sequence` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. The step `description` is the system-level charter for the whole sequence; every `items[]` entry is a user turn describing how to carry it out.
+Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. The step `description` is the system-level charter for the whole sequence; every `items[]` entry is a user turn describing how to carry it out.
 
 An agent step may declare `predefined_routes`. When routes exist, the agent gets
 bounded sub-agent tools and decides at runtime whether, when, and how often to
@@ -12,8 +12,7 @@ call those specialists. Routes define available capabilities; they do not
 prescribe execution order. Without routes, the step is a single-agent sequence.
 Both forms use the same system prompt and default tool policy; routes add only
 the specialist catalog, delegation guidance, and sub-agent lifecycle tools.
-The separate `orchestrator` plan type remains a compatibility alias while plans
-and UI consumers migrate to this unified shape.
+The plan type is `agent` for both plain conversations and conversations with specialists. Saved legacy shapes are converted by the v1.0.47 migration.
 
 The default shape is `[complete the whole shared-context span] → [re-open authoritative evidence and prove every criterion] → [repair gaps and double-check]`, followed by the top-level deterministic validation gate. Require run-specific proof/provenance in the output so validation cannot pass a stale or self-asserted success. Do not create separate workflow steps for these checks.
 
@@ -32,12 +31,12 @@ Preferred split when deterministic data is needed:
 
 ```text
 regular scripted: fetch-and-normalize-authoritative-data
-  -> message_sequence: analyze-verify-and-repair-from-fetched-data
+  -> agent: analyze-verify-and-repair-from-fetched-data
 ```
 
 Batch related API/SDK calls or CLI commands into the fetcher when they share credentials, retry/rate-limit behavior, source, and output contract. The fetcher owns pagination, stable parsing, provenance/freshness, idempotency, fail-closed errors, and deterministic DB/file validation. Do not use one step per endpoint, and do not spend sequence turns reissuing known requests or parsing stable response shapes.
 
-When the request itself needs judgment, use `message_sequence: decide-and-write-request-spec -> regular scripted: execute-request-spec -> message_sequence: interpret-and-verify-result`.
+When the request itself needs judgment, use `agent: decide-and-write-request-spec -> regular scripted: execute-request-spec -> agent: interpret-and-verify-result`.
 
 Do not hide durable computation, side effects, retries, or file handoffs inside conversation state.
 
@@ -64,7 +63,7 @@ Do not use it when:
 ## DELEGATION AND CONTROL
 
 The authored `items[]` define durable conversational phases. Optional
-`predefined_routes` expose bounded specialist agents, and the message-sequence
+`predefined_routes` expose bounded specialist agents, and the agent
 agent decides which routes to call from evidence it sees during any turn. It may
 skip a route, call several routes, or re-enter a conversational route with new
 instructions. A fixed list of workers still belongs in explicit plan steps or a
@@ -144,10 +143,10 @@ the next conversational item, while the description remains the system charter.
 
 ## MEMORY
 
-- A top-level message_sequence runs its fixed item queue once.
-- A message_sequence specialist route can be re-entered during the same workflow run.
+- A top-level agent runs its fixed item queue once.
+- A agent specialist route can be re-entered during the same workflow run.
 - Route memory is in-memory only. It does not survive process restart or a later workflow run.
-- `message_sequence_restart=true` starts a clean route conversation when prior context is stale or contaminated.
+- `agent_restart=true` starts a clean route conversation when prior context is stale or contaminated.
 - `session.json` is an observability record, not resume state.
 
 ## WRITE ACCESS
@@ -255,11 +254,11 @@ a cap, a failed row, or an accidental filter must not look like full completion.
 
 ## ROUTE PATTERNS
 
-Conversational route sub-agents use `message_sequence`, including stateless one-turn work. Use `regular` only for an explicitly scripted deterministic route.
+Conversational route sub-agents use `agent`, including stateless one-turn work. Use `regular` only for an explicitly scripted deterministic route.
 
 A saved scripted route is also offered to its Agent step as a named tool (route id `lookup-customer` → tool `lookup_customer(...)`), with its parameters as the tool's input schema; this is how an agent calls a script of the workflow, e.g. a customer lookup. Declare inputs with `script_parameters` (flat typed list) or `script_parameters_schema` (one full JSON Schema for nested or constrained inputs), never both. The script reads them from `STEP_PARAMS_JSON` and returns a value by writing `route_result.json` in `$STEP_OUTPUT_DIR`; the agent receives exactly that JSON. Use these patterns when designing or repairing an agent's `predefined_routes`.
 
-Use a `message_sequence` route when the parent agent should preserve specialist memory. Normal repeated calls reuse the route conversation and each call is delivered as a re-entry user message. Set `message_sequence_restart=true` to restart only when the prior conversation is stale, wrong, or contaminated.
+Use a `agent` route when the parent agent should preserve specialist memory. Normal repeated calls reuse the route conversation and each call is delivered as a re-entry user message. Set `agent_restart=true` to restart only when the prior conversation is stale, wrong, or contaminated.
 
 ## MESSAGE SEQUENCE ROUTE PATTERNS
 

@@ -12,8 +12,8 @@ import (
 // A standalone execute_step already owns its lifecycle. A full run must
 // register the sequence's parent before its items start: otherwise their parent
 // IDs refer to nothing, so cancellation and completion deduplication miss them.
-func (hcpo *StepBasedWorkflowOrchestrator) beginMessageSequenceExecution(ctx context.Context, step PlanStepInterface) (context.Context, func(string, error)) {
-	if messageSequenceExecutionID(ctx, step.GetID()) != "" {
+func (hcpo *StepBasedWorkflowOrchestrator) beginAgentExecution(ctx context.Context, step PlanStepInterface) (context.Context, func(string, error)) {
+	if agentSequenceExecutionID(ctx, step.GetID()) != "" {
 		return ctx, func(string, error) {}
 	}
 	id := fmt.Sprintf("exec-%s-%d", step.GetID(), time.Now().UnixNano())

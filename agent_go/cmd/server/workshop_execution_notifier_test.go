@@ -34,32 +34,32 @@ func TestWorkflowStepAutoNotificationDelay(t *testing.T) {
 	}
 }
 
-func TestWorkshopExecutionNotifierSuppressesRepeatedMessageSequenceParentFailure(t *testing.T) {
+func TestWorkshopExecutionNotifierSuppressesRepeatedAgentParentFailure(t *testing.T) {
 	registry := NewBackgroundAgentRegistry()
 	api := &StreamingAPI{bgAgentRegistry: registry}
 	const (
-		sessionID = "message-sequence-parent-failure"
+		sessionID = "agent-parent-failure"
 		parentID  = "workflow-full-script"
 		childID   = "msgseq-script-execute"
-		rootError = `message_sequence step "shortform-script" item "execute-and-verify" reported STATUS: FAILED: sandbox unavailable`
+		rootError = `agent step "shortform-script" item "execute-and-verify" reported STATUS: FAILED: sandbox unavailable`
 	)
 	parent := &BackgroundAgent{
 		ID: parentID, Name: "Script [default]", SessionID: sessionID,
 		Status: BGAgentRunning, CreatedAt: time.Now(),
 	}
 	child := &BackgroundAgent{
-		ID: childID, ParentExecutionID: parentID, Name: "Message sequence item -> Script / execute-and-verify (user_message)",
-		SessionID: sessionID, Kind: "message_sequence_item", Status: BGAgentFailed, Error: rootError, CreatedAt: time.Now(),
-		Metadata: map[string]string{"execution_type": "message-sequence-item"},
+		ID: childID, ParentExecutionID: parentID, Name: "Agent item -> Script / execute-and-verify (user_message)",
+		SessionID: sessionID, Kind: "agent_item", Status: BGAgentFailed, Error: rootError, CreatedAt: time.Now(),
+		Metadata: map[string]string{"execution_type": "agent-item"},
 	}
 	registry.Register(sessionID, parent)
 	registry.Register(sessionID, child)
 	completionCh := registry.GetNotificationChannel(sessionID)
 
 	notifier := &workshopExecutionBgNotifier{api: api, sessionID: sessionID}
-	notifier.OnExecutionComplete(parentID, parent.Name, "", nil, fmt.Errorf("message sequence step 13 execution failed: %s", rootError))
+	notifier.OnExecutionComplete(parentID, parent.Name, "", nil, fmt.Errorf("agent step 13 execution failed: %s", rootError))
 
-	if got := parent.GetSnapshot().Metadata["notification_suppression"]; got != "repeated-message-sequence-child-failure" {
+	if got := parent.GetSnapshot().Metadata["notification_suppression"]; got != "repeated-agent-child-failure" {
 		t.Fatalf("notification_suppression = %q, want repeated child failure marker", got)
 	}
 	select {
@@ -69,19 +69,19 @@ func TestWorkshopExecutionNotifierSuppressesRepeatedMessageSequenceParentFailure
 	}
 }
 
-func TestWorkshopExecutionNotifierSuppressesParentOwnedMessageSequenceSuccess(t *testing.T) {
+func TestWorkshopExecutionNotifierSuppressesParentOwnedAgentSuccess(t *testing.T) {
 	registry := NewBackgroundAgentRegistry()
 	api := &StreamingAPI{bgAgentRegistry: registry}
 	const (
-		sessionID = "message-sequence-child-success"
+		sessionID = "agent-child-success"
 		parentID  = "workflow-full-script"
 		childID   = "msgseq-script-execute"
 	)
 	parent := &BackgroundAgent{ID: parentID, Name: "Script [default]", SessionID: sessionID, Status: BGAgentRunning, CreatedAt: time.Now()}
 	child := &BackgroundAgent{
-		ID: childID, ParentExecutionID: parentID, Name: "Message sequence item -> Script / execute-and-verify (user_message)",
-		SessionID: sessionID, Kind: "message_sequence_item", Status: BGAgentRunning, CreatedAt: time.Now(),
-		Metadata: map[string]string{"execution_type": "message-sequence-item"},
+		ID: childID, ParentExecutionID: parentID, Name: "Agent item -> Script / execute-and-verify (user_message)",
+		SessionID: sessionID, Kind: "agent_item", Status: BGAgentRunning, CreatedAt: time.Now(),
+		Metadata: map[string]string{"execution_type": "agent-item"},
 	}
 	registry.Register(sessionID, parent)
 	registry.Register(sessionID, child)
@@ -90,26 +90,26 @@ func TestWorkshopExecutionNotifierSuppressesParentOwnedMessageSequenceSuccess(t 
 	notifier := &workshopExecutionBgNotifier{api: api, sessionID: sessionID}
 	notifier.OnExecutionComplete(childID, child.Name, "script complete", child.Metadata, nil)
 
-	if got := child.GetSnapshot().Metadata["notification_suppression"]; got != "parent-owned-message-sequence-success" {
+	if got := child.GetSnapshot().Metadata["notification_suppression"]; got != "parent-owned-agent-success" {
 		t.Fatalf("notification_suppression = %q, want parent-owned success marker", got)
 	}
 	select {
 	case got := <-completionCh:
-		t.Fatalf("parent-owned message-sequence success queued a duplicate auto-notification for %q", got)
+		t.Fatalf("parent-owned agent success queued a duplicate auto-notification for %q", got)
 	default:
 	}
 }
 
-func TestWorkshopExecutionNotifierKeepsStandaloneMessageSequenceSuccess(t *testing.T) {
+func TestWorkshopExecutionNotifierKeepsStandaloneAgentSuccess(t *testing.T) {
 	registry := NewBackgroundAgentRegistry()
 	api := &StreamingAPI{bgAgentRegistry: registry}
 	const (
-		sessionID = "standalone-message-sequence-success"
+		sessionID = "standalone-agent-success"
 		childID   = "msgseq-standalone-execute"
 	)
 	child := &BackgroundAgent{
-		ID: childID, ParentExecutionID: "conversation-root-not-in-registry", Name: "Message sequence item -> Script / execute-and-verify (user_message)",
-		SessionID: sessionID, Kind: "message_sequence_item", Status: BGAgentRunning, CreatedAt: time.Now(),
+		ID: childID, ParentExecutionID: "conversation-root-not-in-registry", Name: "Agent item -> Script / execute-and-verify (user_message)",
+		SessionID: sessionID, Kind: "agent_item", Status: BGAgentRunning, CreatedAt: time.Now(),
 	}
 	registry.Register(sessionID, child)
 	completionCh := registry.GetNotificationChannel(sessionID)
@@ -123,7 +123,7 @@ func TestWorkshopExecutionNotifierKeepsStandaloneMessageSequenceSuccess(t *testi
 			t.Fatalf("completion id = %q, want %q", got, childID)
 		}
 	default:
-		t.Fatal("standalone message-sequence success notification was suppressed")
+		t.Fatal("standalone agent success notification was suppressed")
 	}
 }
 
@@ -136,7 +136,7 @@ func TestWorkshopExecutionNotifierKeepsDistinctParentFailureNotification(t *test
 	)
 	parent := &BackgroundAgent{ID: parentID, Name: "Script [default]", SessionID: sessionID, Status: BGAgentRunning, CreatedAt: time.Now()}
 	child := &BackgroundAgent{
-		ID: "msgseq-child", ParentExecutionID: parentID, SessionID: sessionID, Kind: "message_sequence_item",
+		ID: "msgseq-child", ParentExecutionID: parentID, SessionID: sessionID, Kind: "agent_item",
 		Status: BGAgentFailed, Error: "child failed validation", CreatedAt: time.Now(),
 	}
 	registry.Register(sessionID, parent)

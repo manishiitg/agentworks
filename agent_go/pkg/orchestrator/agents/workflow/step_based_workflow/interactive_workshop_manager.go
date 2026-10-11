@@ -207,7 +207,7 @@ func collectInnerSteps(step PlanStepInterface) []WorkshopStepInfo {
 	parentType := step.StepType()
 
 	switch s := step.(type) {
-	case *OrchestratorPlanStep:
+	case *AgentPlanStep:
 		for _, route := range s.PredefinedRoutes {
 			if route.SubAgentStep != nil {
 				result = append(result, WorkshopStepInfo{
@@ -253,7 +253,7 @@ func canonicalDeclaredExecutionMode(mode string) string {
 
 // isScriptedStep reports whether a step runs through the scripted executor
 // (a persistent learnings/{step-id}/main.py, replayed across runs). The plan
-// decides (PLAT-287): a regular step IS scripted, a message_sequence is
+// decides (PLAT-287): a regular step IS scripted, a agent is
 // conversational. The one exception is transitional: a regular step whose
 // step_config.json still carries the retired declared_execution_mode="agentic"
 // key (not yet stripped by v1.0.39) is a legacy agentic step the runtime keeps
@@ -347,7 +347,7 @@ func (iwm *InteractiveWorkshopManager) enrichQueryForComplexStep(
 	stepType := stepInfo.Step.StepType()
 	var logFileName, stepTypeName string
 	switch stepType {
-	case StepTypeOrchestrator:
+	case StepTypeAgent:
 		logFileName = "todo-task-execution.json"
 		stepTypeName = "Todo Task"
 	case StepTypeRouting, StepTypeBranch:
@@ -404,7 +404,7 @@ func (iwm *InteractiveWorkshopManager) enrichQueryForComplexStep(
 
 		// Extract sub-agent path from the response
 		var response map[string]interface{}
-		if stepType == StepTypeOrchestrator {
+		if stepType == StepTypeAgent {
 			response, _ = entry["todo_task_response"].(map[string]interface{})
 		} else {
 			response, _ = entry["orchestration_response"].(map[string]interface{})
@@ -420,7 +420,7 @@ func (iwm *InteractiveWorkshopManager) enrichQueryForComplexStep(
 		}
 
 		// Extract tier usage data for todo_task steps
-		if stepType == StepTypeOrchestrator {
+		if stepType == StepTypeAgent {
 			nextAction, _ := response["next_action"].(string)
 			if nextAction == "delegate" {
 				tierNum := 0
@@ -455,7 +455,7 @@ func (iwm *InteractiveWorkshopManager) enrichQueryForComplexStep(
 	summary.WriteString(fmt.Sprintf("\n\n[%s step — %d iterations", stepTypeName, iterations))
 
 	// Show todo progress from the last entry (already parsed in main loop)
-	if stepType == StepTypeOrchestrator && lastEntry != nil {
+	if stepType == StepTypeAgent && lastEntry != nil {
 		if todoSummary, ok := lastEntry["todo_summary"].(map[string]interface{}); ok {
 			total, _ := todoSummary["total"].(float64)
 			completed, _ := todoSummary["completed"].(float64)
@@ -1271,12 +1271,12 @@ func GetToolsForWorkshopMode(mode string) []string {
 	planMod := []string{
 		"create_plan",
 		"validate_plan_change",
-		"migrate_message_sequence_code_items", "migrate_orchestrator_step_type", "migrate_declared_execution_mode", "strip_declared_execution_mode",
-		"add_scripted_step", "add_message_sequence_step", "add_routing_step", "add_branch_step",
+		"migrate_agent_code_items", "migrate_orchestrator_step_type", "migrate_declared_execution_mode", "strip_declared_execution_mode",
+		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 		"add_human_input_step", "add_todo_task_step", "add_todo_task_route",
-		"add_orchestrator_step", "add_orchestrator_route", "update_orchestrator_step", "update_orchestrator_route", "delete_orchestrator_route",
+		"add_orchestrator_step", "add_agent_route", "update_orchestrator_step", "update_agent_route", "delete_agent_route",
 		"add_crew_step", "update_crew_step",
-		"update_scripted_step", "update_message_sequence_step", "update_routing_step", "update_branch_step",
+		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
 		"update_human_input_step", "update_todo_task_step", "update_todo_task_route",
 		"delete_todo_task_route", "delete_plan_steps", "cleanup_orphan_step_configs",
 		"update_validation_schema",
@@ -2036,9 +2036,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"human_input": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional human input/custom instructions for this run. For a standalone message_sequence step, this is opening context and the configured queue still runs from the beginning; standalone sessions are not resumed across execute_step calls. For human_input steps, it is used as the response. For other executable steps, it is injected as high-priority context.",
+					"description": "Optional human input/custom instructions for this run. For a standalone agent step, this is opening context and the configured queue still runs from the beginning; standalone sessions are not resumed across execute_step calls. For human_input steps, it is used as the response. For other executable steps, it is injected as high-priority context.",
 				},
-				"message_sequence_restart": map[string]interface{}{
+				"agent_restart": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Message_sequence steps only. Request a clean run and clear route-local runtime artifacts before replaying the configured queue. Standalone execute_step calls already start a fresh queue and do not provide durable conversation resume. In-memory route re-entry exists only while a todo-task workflow run is still active.",
 				},
@@ -2164,10 +2164,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					fastPathOnly = b
 				}
 			}
-			messageSequenceRestart := false
-			if val, ok := args["message_sequence_restart"]; ok && val != nil {
+			agentSequenceRestart := false
+			if val, ok := args["agent_restart"]; ok && val != nil {
 				if b, ok := val.(bool); ok {
-					messageSequenceRestart = b
+					agentSequenceRestart = b
 				}
 			}
 			var scriptParameters map[string]interface{}
@@ -2197,12 +2197,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				// script; a scheduled session never does (PLAT-436).
 				AllowScriptRepair: !fastPathOnly && iwm.currentWorkshopModeFromConfigs(nil) == "workshop" &&
 					(iwm.workshopConfig == nil || iwm.workshopConfig.ScheduleInvocation == nil),
-				Instructions:           instructions,
-				HumanInput:             humanInput,
-				Tier:                   tierValue,
-				MessageSequenceRestart: messageSequenceRestart,
-				ScriptParameters:       scriptParameters,
-				ScriptParametersSet:    scriptParametersSet,
+				Instructions:        instructions,
+				HumanInput:          humanInput,
+				Tier:                tierValue,
+				AgentRestart:        agentSequenceRestart,
+				ScriptParameters:    scriptParameters,
+				ScriptParametersSet: scriptParametersSet,
 			}
 			if testMode {
 				// PLAT-562: the test run gets its own folder under runs/ and
@@ -6156,6 +6156,17 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateManagedDBScriptsStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
 				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
 			}
+			if version == AgentStepContractVersion {
+				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
+				if err != nil {
+					return "", err
+				}
+				if _, count, err := MigrateAgentStepContent(content); err != nil {
+					return "", err
+				} else if count != 0 {
+					return "", fmt.Errorf("run migrate_agent_steps before stamping %s: %d saved agent records still need migration", version, count)
+				}
+			}
 			if err := validateStepDescriptionLayoutStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
 				return fmt.Sprintf("Refused: the step description layout migration is incomplete: %v", err), nil
 			}
@@ -7465,11 +7476,11 @@ Treat validation as an improvement to that large step before treating it as a to
 
 Multiple large sequences are correct when their contexts should not be shared—for example different credentials/security exposure, independent durable outputs/retries, clean-room independence, human or routing boundaries, or unrelated context that would distract or contaminate the next agent. The builder should decide this intelligently from workflow semantics, and the plan should make the boundary explainable. Flag action-count splitting that has no context-boundary rationale.
 
-Separate deterministic acquisition from agentic processing even when both serve one business outcome. Fixed API/SDK requests, CLI commands, data fetching, known pagination, stable parsing/normalization, and mechanical persistence belong in one or a few scripted regular fetcher steps, batched by source/auth/retry/output contract. Their validated DB rows or artifacts feed a large message sequence for judgment, synthesis, semantic verification, and repair. Flag LLM turns that repeatedly perform deterministic retrieval/parsing, and flag one-scripted-step-per-endpoint fragmentation.
+Separate deterministic acquisition from agentic processing even when both serve one business outcome. Fixed API/SDK requests, CLI commands, data fetching, known pagination, stable parsing/normalization, and mechanical persistence belong in one or a few scripted regular fetcher steps, batched by source/auth/retry/output contract. Their validated DB rows or artifacts feed a large agent for judgment, synthesis, semantic verification, and repair. Flag LLM turns that repeatedly perform deterministic retrieval/parsing, and flag one-scripted-step-per-endpoint fragmentation.
 
 Flag **over-merged** steps when one step mixes unrelated durable outputs, validation gates, retry/failure domains, tool/security contexts, downstream contracts, persistent stores, human approvals, or routing decisions.
 
-Flag **over-split** steps when adjacent steps share one objective and output contract, use the same tools/security context, fail and retry together, produce only scratch/pass-through intermediates, and one validation schema could verify the result. Also flag message sequences whose items merely enumerate routine sub-actions instead of reserving follow-up turns for validation, critique, correction, a real intermediate gate, or new external input.
+Flag **over-split** steps when adjacent steps share one objective and output contract, use the same tools/security context, fail and retry together, produce only scratch/pass-through intermediates, and one validation schema could verify the result. Also flag agents whose items merely enumerate routine sub-actions instead of reserving follow-up turns for validation, critique, correction, a real intermediate gate, or new external input.
 
 Boundary truth: many tool calls can belong in one step; many durable contracts should not.
 

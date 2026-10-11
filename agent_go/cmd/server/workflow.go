@@ -1930,7 +1930,7 @@ func collectAllStepIDs(steps []todo_creation_human.PlanStepInterface) []string {
 		}
 
 		// Handle todo_task steps - collect sub-agent step IDs from predefined_routes
-		if orchestratorStep, ok := step.(*todo_creation_human.OrchestratorPlanStep); ok {
+		if orchestratorStep, ok := step.(*todo_creation_human.AgentPlanStep); ok {
 			// Collect sub-agent step IDs from predefined routes
 			for _, route := range orchestratorStep.PredefinedRoutes {
 				if route.SubAgentStep != nil {
@@ -2399,7 +2399,7 @@ func findStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string) (
 
 			// Check nested steps based on step type
 			switch s := step.(type) {
-			case *todo_creation_human.OrchestratorPlanStep:
+			case *todo_creation_human.AgentPlanStep:
 				// Check predefined_routes
 				for j, route := range s.PredefinedRoutes {
 					if route.SubAgentStep != nil {
@@ -2451,9 +2451,9 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 		}
 		updatedStep = &updated
 
-	case *todo_creation_human.OrchestratorPlanStep:
+	case *todo_creation_human.AgentPlanStep:
 		updated := *s // Copy the step
-		// OrchestratorPlanStep only has ID and Title (no embedded CommonStepFields)
+		// AgentPlanStep only has ID and Title (no embedded CommonStepFields)
 		if updates.Title != nil {
 			updated.Title = *updates.Title
 		}
@@ -2518,7 +2518,7 @@ func updateNestedStepInPlan(plan *todo_creation_human.PlanningResponse, path []i
 
 	// Handle different step types
 	switch s := parentStep.(type) {
-	case *todo_creation_human.OrchestratorPlanStep:
+	case *todo_creation_human.AgentPlanStep:
 		if len(path) >= 3 && path[1] == -4 {
 			// predefined_routes[path[2]].sub_agent_step
 			routeIndex := path[2]
@@ -2542,7 +2542,7 @@ func updateNestedStepInPlanRecursive(current todo_creation_human.PlanStepInterfa
 	if len(path) < 2 || path[0] != -4 {
 		return fmt.Errorf("invalid nested sub-agent path")
 	}
-	todo, ok := current.(*todo_creation_human.OrchestratorPlanStep)
+	todo, ok := current.(*todo_creation_human.AgentPlanStep)
 	if !ok {
 		return fmt.Errorf("nested path traverses non-todo step %T", current)
 	}
@@ -3132,8 +3132,8 @@ func (api *StreamingAPI) handleAddStep(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		newStep = &s
-	case "orchestrator", "todo_task":
-		var s todo_creation_human.OrchestratorPlanStep
+	case "agent", "message_sequence", "orchestrator", "todo_task":
+		var s todo_creation_human.AgentPlanStep
 		if err := json.Unmarshal(stepJSON, &s); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to parse todo_task step: %v", err), http.StatusBadRequest)
 			return
@@ -3504,7 +3504,7 @@ func (api *StreamingAPI) handleGetExecutionLogs(w http.ResponseWriter, r *http.R
 				"validations":                []map[string]interface{}{},
 				"executions":                 []map[string]interface{}{},
 				"orchestration":              []map[string]interface{}{},
-				"message_sequence":           nil,
+				"agent":                      nil,
 				"learnings":                  []map[string]interface{}{},
 				"archived_logs":              []map[string]interface{}{}, // Archived logs from previous runs
 				"archived_executions":        []map[string]interface{}{},
@@ -4003,9 +4003,9 @@ func (api *StreamingAPI) handleGetExecutionLogs(w http.ResponseWriter, r *http.R
 									if json.Unmarshal([]byte(content), &session) == nil {
 										status, _ := session["status"].(string)
 										if strings.TrimSpace(status) != "" {
-											entry["message_sequence_status"] = strings.ToLower(strings.TrimSpace(status))
+											entry["agent_status"] = strings.ToLower(strings.TrimSpace(status))
 										}
-										entry["message_sequence"] = map[string]interface{}{
+										entry["agent"] = map[string]interface{}{
 											"session_path": child.FilePath,
 											"status":       status,
 											"entries":      session["entries"],
@@ -4452,7 +4452,7 @@ func populateStepMetadata(steps []map[string]interface{}, metadata map[string]ma
 		learningsAccess := stringFromStepOrAgentConfig(step, agentConfigs, "learnings_access")
 		knowledgebaseAccess := stringFromStepOrAgentConfig(step, agentConfigs, "knowledgebase_access")
 		knowledgebaseContribution := stringFromStepOrAgentConfig(step, agentConfigs, "knowledgebase_contribution")
-		plannedMessages := plannedMessageSequenceItemsJSON(step)
+		plannedMessages := plannedAgentItemsJSON(step)
 
 		// Handle inner steps for complex types
 		if inner, ok := step["orchestration_step"].(map[string]interface{}); ok {
@@ -4533,7 +4533,7 @@ func populateStepMetadata(steps []map[string]interface{}, metadata map[string]ma
 							"route_kind":                 "orchestrator",
 							"route_step_id":              "",
 							"route_step_title":           "",
-							"planned_messages":           plannedMessageSequenceItemsJSON(subStep),
+							"planned_messages":           plannedAgentItemsJSON(subStep),
 						}
 						metadata[subAgentKey] = subMeta
 						if subId != "" {
@@ -4719,12 +4719,12 @@ func routeSegmentEndIndexRaw(steps []map[string]interface{}, start int) int {
 	return len(steps) - 1
 }
 
-// plannedMessageSequenceItemsJSON keeps only the operator-meaningful part of
-// a message sequence. The full runtime prompt can include large injected
+// plannedAgentItemsJSON keeps only the operator-meaningful part of
+// a agent. The full runtime prompt can include large injected
 // context, but this is the message explicitly authored in the workflow plan.
-func plannedMessageSequenceItemsJSON(step map[string]interface{}) string {
+func plannedAgentItemsJSON(step map[string]interface{}) string {
 	var rawItems []interface{}
-	if sequence, ok := step["message_sequence"].(map[string]interface{}); ok {
+	if sequence, ok := step["agent"].(map[string]interface{}); ok {
 		rawItems, _ = sequence["items"].([]interface{})
 	}
 	if len(rawItems) == 0 {

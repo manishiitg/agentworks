@@ -18,7 +18,7 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-func sequenceScriptFixture() (*PlanningResponse, MessageSequenceItem) {
+func sequenceScriptFixture() (*PlanningResponse, AgentItem) {
 	child := &RegularPlanStep{Type: StepTypeRegular, CommonStepFields: CommonStepFields{
 		ID: "fetch", Title: "Fetch", Description: "Fetch evidence",
 		ValidationSchema: &ValidationSchema{Files: []FileValidationRule{{FileName: "result.json", MustExist: true}}},
@@ -26,12 +26,12 @@ func sequenceScriptFixture() (*PlanningResponse, MessageSequenceItem) {
 			"market": {Type: "string", Description: "Market", Required: true},
 		},
 	}}
-	item := MessageSequenceItem{ID: "collect", Type: "scripted", ScriptedSteps: []MessageSequenceScriptCall{
+	item := AgentItem{ID: "collect", Type: "scripted", ScriptedSteps: []AgentScriptCall{
 		{ID: "one", StepID: "fetch", Parameters: map[string]interface{}{"market": "NSE"}},
 	}}
-	parent := &MessageSequencePlanStep{Type: StepTypeMessageSeq, CommonStepFields: CommonStepFields{
+	parent := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{
 		ID: "analyze", Title: "Analyze", Description: "Analyze the collected evidence",
-	}, Items: []MessageSequenceItem{item, {ID: "report", Type: "user_message", Message: "Analyze results and report"}}}
+	}, Items: []AgentItem{item, {ID: "report", Type: "user_message", Message: "Analyze results and report"}}}
 	return &PlanningResponse{Steps: []PlanStepInterface{parent}, OrphanSteps: []PlanStepInterface{child}}, item
 }
 
@@ -48,7 +48,7 @@ func TestSequenceScriptsPlanRoundTripAndInvalidReferences(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	call := decoded.Steps[0].(*MessageSequencePlanStep).Items[0].ScriptedSteps[0]
+	call := decoded.Steps[0].(*AgentPlanStep).Items[0].ScriptedSteps[0]
 	if call.StepID != "fetch" || call.Parameters["market"] != "NSE" {
 		t.Fatalf("script reference lost: %+v", call)
 	}
@@ -58,30 +58,30 @@ func TestSequenceScriptsPlanRoundTripAndInvalidReferences(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name string
-		edit func(*PlanningResponse, *MessageSequenceItem)
+		edit func(*PlanningResponse, *AgentItem)
 	}{
-		{"agentic target", func(p *PlanningResponse, _ *MessageSequenceItem) {
-			p.OrphanSteps[0] = &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "fetch"}}
+		{"agentic target", func(p *PlanningResponse, _ *AgentItem) {
+			p.OrphanSteps[0] = &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "fetch"}}
 		}},
-		{"legacy agentic regular", func(p *PlanningResponse, _ *MessageSequenceItem) {
+		{"legacy agentic regular", func(p *PlanningResponse, _ *AgentItem) {
 			p.OrphanSteps[0].(*RegularPlanStep).AgentConfigs = &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic}
 		}},
-		{"main-flow target", func(p *PlanningResponse, _ *MessageSequenceItem) {
+		{"main-flow target", func(p *PlanningResponse, _ *AgentItem) {
 			p.Steps = append(p.Steps, p.OrphanSteps...)
 			p.OrphanSteps = nil
 		}},
-		{"missing parameter", func(_ *PlanningResponse, i *MessageSequenceItem) { i.ScriptedSteps[0].Parameters = nil }},
-		{"wrong parameter type", func(_ *PlanningResponse, i *MessageSequenceItem) { i.ScriptedSteps[0].Parameters["market"] = 1 }},
-		{"unknown parameter", func(_ *PlanningResponse, i *MessageSequenceItem) { i.ScriptedSteps[0].Parameters["invented"] = true }},
-		{"no validation", func(p *PlanningResponse, _ *MessageSequenceItem) {
+		{"missing parameter", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].Parameters = nil }},
+		{"wrong parameter type", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].Parameters["market"] = 1 }},
+		{"unknown parameter", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].Parameters["invented"] = true }},
+		{"no validation", func(p *PlanningResponse, _ *AgentItem) {
 			p.OrphanSteps[0].(*RegularPlanStep).ValidationSchema = nil
 		}},
-		{"path traversal", func(_ *PlanningResponse, i *MessageSequenceItem) { i.ScriptedSteps[0].ID = "../outside" }},
-		{"duplicate ID", func(_ *PlanningResponse, i *MessageSequenceItem) {
+		{"path traversal", func(_ *PlanningResponse, i *AgentItem) { i.ScriptedSteps[0].ID = "../outside" }},
+		{"duplicate ID", func(_ *PlanningResponse, i *AgentItem) {
 			i.ScriptedSteps = append(i.ScriptedSteps, i.ScriptedSteps[0])
 		}},
-		{"permission override", func(_ *PlanningResponse, i *MessageSequenceItem) { i.WriteAccess.DB = true }},
-		{"over limit", func(_ *PlanningResponse, i *MessageSequenceItem) { i.MaxParallel = 9 }},
+		{"permission override", func(_ *PlanningResponse, i *AgentItem) { i.WriteAccess.DB = true }},
+		{"over limit", func(_ *PlanningResponse, i *AgentItem) { i.MaxParallel = 9 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			plan, item := sequenceScriptFixture()
@@ -96,7 +96,7 @@ func TestSequenceScriptsPlanRoundTripAndInvalidReferences(t *testing.T) {
 func sequenceBatchCalls(n int) []resolvedSequenceScript {
 	calls := make([]resolvedSequenceScript, n)
 	for i := range calls {
-		calls[i].Call = MessageSequenceScriptCall{ID: fmt.Sprintf("task-%d", i), StepID: fmt.Sprintf("script-%d", i)}
+		calls[i].Call = AgentScriptCall{ID: fmt.Sprintf("task-%d", i), StepID: fmt.Sprintf("script-%d", i)}
 	}
 	return calls
 }
@@ -240,8 +240,8 @@ func TestSequenceScriptsP0SavedRunnerAndValidation(t *testing.T) {
 				hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-1/default"}
 				hcpo.codeLayoutVersion.Store(layout)
 				plan, item := sequenceScriptFixture()
-				session := &messageSequenceSession{scriptedPlan: plan, LastRuntimeContext: "Opening instruction"}
-				_, err = hcpo.executeMessageSequenceItem(t.Context(), plan.Steps[0].(*MessageSequencePlanStep), item, 0, "step-1", session, false)
+				session := &agentSequenceSession{scriptedPlan: plan, LastRuntimeContext: "Opening instruction"}
+				_, err = hcpo.executeAgentItem(t.Context(), plan.Steps[0].(*AgentPlanStep), item, 0, "step-1", session, false)
 				if (err == nil) != validOutput {
 					t.Fatalf("validation result=%v, validOutput=%v", err, validOutput)
 				}

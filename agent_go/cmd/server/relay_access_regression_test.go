@@ -172,7 +172,7 @@ func TestRelayReaderCanExecuteAndPollOwnVersion(t *testing.T) {
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"reader", "other"}}
 	m.Schedules = []WorkflowSchedule{{ID: "call", Name: "Process", Enabled: true, WorkshopMode: "run", ScheduleType: "webhook", Kind: triggerKindFunction, GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
 	raw, _ := json.Marshal(m)
-	plan := &stepworkflow.PlanningResponse{Steps: []stepworkflow.PlanStepInterface{&stepworkflow.MessageSequencePlanStep{CommonStepFields: stepworkflow.CommonStepFields{ID: "answer", Title: "Answer", Description: "Return JSON"}, AuthoredPrompt: true, SystemPrompt: "Return JSON", NextStepID: "end", Items: []stepworkflow.MessageSequenceItem{{ID: "turn", Type: "user_message", Message: "{{input}}"}}}}}
+	plan := &stepworkflow.PlanningResponse{Steps: []stepworkflow.PlanStepInterface{&stepworkflow.AgentPlanStep{CommonStepFields: stepworkflow.CommonStepFields{ID: "answer", Title: "Answer", Description: "Return JSON"}, AuthoredPrompt: true, SystemPrompt: "Return JSON", NextStepID: "end", Items: []stepworkflow.AgentItem{{ID: "turn", Type: "user_message", Message: "{{input}}"}}}}}
 	planRaw, _ := json.Marshal(plan)
 	mock := &mockWorkspaceAPI{files: map[string]string{manifestPath(draft): string(raw), draft + "/planning/plan.json": string(planRaw), draft + "/variables/variables.json": `{"variables":[{"name":"INPUT","type":"object"}],"groups":[{"name":"default","enabled":true}]}`}}
 	ws := httptest.NewServer(mock)

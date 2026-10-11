@@ -13,7 +13,7 @@ describe('scripted step presentation', () => {
   })
 
   it('uses one Agent label for canonical and legacy agent steps', () => {
-    expect(planStepTypeLabel('message_sequence')).toBe('Agent')
+    expect(planStepTypeLabel('agent')).toBe('Agent')
     expect(planStepTypeLabel('orchestrator')).toBe('Agent')
     expect(planStepTypeLabel('todo_task')).toBe('Agent')
   })

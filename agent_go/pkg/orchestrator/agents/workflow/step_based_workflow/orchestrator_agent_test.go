@@ -53,7 +53,7 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 	}
 }
 
-func TestOrchestratorPromptDocumentsMessageSequenceRoutes(t *testing.T) {
+func TestOrchestratorPromptDocumentsAgentRoutes(t *testing.T) {
 	agent := &WorkflowExecutionOnlyAgent{}
 
 	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{
@@ -64,13 +64,13 @@ func TestOrchestratorPromptDocumentsMessageSequenceRoutes(t *testing.T) {
 
 	requiredSnippets := []string{
 		"[AUTO-NOTIFICATION] SUB-AGENT COMPLETION BATCH",
-		"### Message sequence routes",
-		"Step type: message_sequence",
+		"### Agent routes",
+		"Step type: agent",
 		"first call starts its configured queue",
 		"instructions as initial",
 		"Later calls to that route resume",
 		"instructions become the re-entry user message",
-		"message_sequence_restart=true",
+		"agent_restart=true",
 		"replay the configured queue from the beginning",
 		"query_sub_agent(execution_id)",
 		"stop_sub_agent(execution_id)",
@@ -100,7 +100,7 @@ func TestOrchestratorPromptRoutesConsequentialEvidenceToPulseReview(t *testing.T
 	}
 }
 
-func TestDelegatingAndPlainMessageSequencesShareSystemPromptBase(t *testing.T) {
+func TestDelegatingAndPlainAgentsShareSystemPromptBase(t *testing.T) {
 	plain := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{})
 	delegating := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{
 		"PredefinedRoutes": "- specialist (`specialist`) — type: `message_sequence`",
@@ -155,15 +155,15 @@ func TestOrchestratorCLIPromptUsesProjectedWorkflowLearnings(t *testing.T) {
 	}
 }
 
-func TestFormatMessageSequenceRoutePromptBlock(t *testing.T) {
-	block := formatMessageSequenceRoutePromptBlock(&MessageSequencePlanStep{})
+func TestFormatAgentRoutePromptBlock(t *testing.T) {
+	block := formatAgentRoutePromptBlock(&AgentPlanStep{})
 
 	requiredSnippets := []string{
-		"Step type: message_sequence",
+		"Step type: agent",
 		"route-scoped session resumes",
 		"Initial instructions",
 		"Re-entry",
-		"message_sequence_restart=true",
+		"agent_restart=true",
 	}
 	for _, snippet := range requiredSnippets {
 		if !strings.Contains(block, snippet) {
@@ -171,8 +171,8 @@ func TestFormatMessageSequenceRoutePromptBlock(t *testing.T) {
 		}
 	}
 
-	if got := formatMessageSequenceRoutePromptBlock(&RegularPlanStep{}); got != "" {
-		t.Fatalf("expected non-message sequence routes to produce no block, got %q", got)
+	if got := formatAgentRoutePromptBlock(&RegularPlanStep{}); got != "" {
+		t.Fatalf("expected non-agent routes to produce no block, got %q", got)
 	}
 }
 

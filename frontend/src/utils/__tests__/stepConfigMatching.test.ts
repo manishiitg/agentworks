@@ -3,8 +3,8 @@ import {
   effectiveExecutionMode,
   effectiveExecutionModeReason,
   effectiveAgentItems,
-  effectiveMessageSequenceItems,
-  runsAsMessageSequence,
+  configuredAgentItems,
+  runsAsAgent,
   type PlanStep,
 } from '../stepConfigMatching'
 
@@ -17,8 +17,8 @@ describe('effectiveExecutionMode', () => {
   it('treats a regular step as scripted when no legacy key is present', () => {
     const step: PlanStep = { id: 'fetch', type: 'regular', title: 'Fetch', description: 'Fetch prices.' }
     expect(effectiveExecutionMode(step)).toBe('scripted')
-    expect(runsAsMessageSequence(step)).toBe(false)
-    expect(effectiveMessageSequenceItems(step)).toEqual([])
+    expect(runsAsAgent(step)).toBe(false)
+    expect(configuredAgentItems(step)).toEqual([])
   })
 
   it('keeps a regular step with the legacy "agentic" key as a sequence-run agentic step', () => {
@@ -30,8 +30,8 @@ describe('effectiveExecutionMode', () => {
       agent_configs: { declared_execution_mode: 'agentic', declared_execution_mode_reason: 'needs judgment' },
     }
     expect(effectiveExecutionMode(step)).toBe('agentic')
-    expect(runsAsMessageSequence(step)).toBe(true)
-    expect(effectiveMessageSequenceItems(step).map(item => item.id)).toEqual(['execute-and-verify'])
+    expect(runsAsAgent(step)).toBe(true)
+    expect(configuredAgentItems(step).map(item => item.id)).toEqual(['execute-and-verify'])
     expect(effectiveExecutionModeReason(step)).toBe('needs judgment')
   })
 
@@ -42,17 +42,17 @@ describe('effectiveExecutionMode', () => {
     expect(effectiveExecutionMode(learnCode)).toBe('scripted')
   })
 
-  it('treats a message_sequence as agentic, whatever the legacy key says', () => {
+  it('treats a agent as agentic, whatever the legacy key says', () => {
     const step: PlanStep = {
       id: 'talk',
-      type: 'message_sequence',
+      type: 'agent',
       title: 'Talk',
       description: 'Talk.',
       items: [],
       agent_configs: { declared_execution_mode: 'scripted' },
     }
     expect(effectiveExecutionMode(step)).toBe('agentic')
-    expect(runsAsMessageSequence(step)).toBe(true)
+    expect(runsAsAgent(step)).toBe(true)
   })
 
   it('has no execution mode for routing, branch, orchestrator and human-input steps', () => {

@@ -22,7 +22,7 @@ When helping users optimize steps, follow these principles:
 Step-level `success_criteria` is no longer part of the recommended step design. Put semantic completion guidance into `description`, and put machine-checkable requirements into `validation_schema`.
 - **validation_schema**: Check login_status.json has login_success=boolean, pan=string, dashboard_url=string (pattern: /dashboard/), account_name=string (min_length: 1)
 
-If a step needs **semantic/LLM-based validation** (e.g., "verify the summary is accurate"), keep it in the same shared context: use or convert to one large `message_sequence`, add a focused user-message turn that re-opens the real evidence and proves the criteria, then a repair/double-check turn. Keep machine-checkable proof/provenance in the top-level `validation_schema`. Add a separate validation step only for genuine clean-room independence, different permissions/tools, or an independently rerunnable artifact/failure domain.
+If a step needs **semantic/LLM-based validation** (e.g., "verify the summary is accurate"), keep it in the same shared context: use or convert to one large `agent`, add a focused user-message turn that re-opens the real evidence and proves the criteria, then a repair/double-check turn. Keep machine-checkable proof/provenance in the top-level `validation_schema`. Add a separate validation step only for genuine clean-room independence, different permissions/tools, or an independently rerunnable artifact/failure domain.
 
 When reviewing a successful step, check whether its evidence establishes freshness and authenticity. Add targeted provenance checks or semantic evidence verification where needed; do not treat an exhaustive schema as proof.
 
@@ -66,7 +66,7 @@ Only saved scripted code has a lock. Learning writes are controlled directly by 
 
 **Hallucination prevention**: A step can report success while its output is *ungrounded* — fabricated values, an action claimed with no backing tool call/artifact, numbers that contradict the run trace, or a generic/templated result that ignores this run's real inputs. That is a reliability bug even when the step “passed.” Repair a hallucination-prone step by making fabrication hard to pass:
 - **Demand evidence in `validation_schema`** — require real, run-specific fields (IDs, URLs, timestamps, counts that must trace to this run) and anti-staleness checks, not a bare `success: true`, so a made-up or leftover output can't validate.
-- **Add verification inside the owning message sequence**: a follow-up turn re-opens actual artifacts/tool results/source data, reconciles every claim, and repairs mismatches before the top-level gate. Use a separate verifier only when clean-room independence or a different execution boundary is materially required.
+- **Add verification inside the owning agent**: a follow-up turn re-opens actual artifacts/tool results/source data, reconciles every claim, and repairs mismatches before the top-level gate. Use a separate verifier only when clean-room independence or a different execution boundary is materially required.
 - **Require grounding in the description** — instruct the step to derive values only from real tool output / fetched data and to cite where each value came from, never to infer or fill them in.
 Trust output you can trace back to real evidence, not a self-reported success.
 
@@ -201,14 +201,14 @@ After running a step, review it for optimization — but follow this priority or
   - **Simple steps** (single tool call, straightforward output): leave `learning_objective` empty (the default). Learning is opt-in; simple steps don't earn their keep with the learning-agent overhead.
   - **Medium steps** (2-5 tool calls, clear pattern): Run with write access for **2-3 successful runs**, review learnings, then change to `learnings_access="read"` when new contributions become redundant.
   - **Complex steps** (many tool calls, branching logic, API interactions, error handling): Run with write access for **3-5 successful runs**. Review and curate learnings after each run — edit out noise and keep actionable patterns. Retain write access only while the step is still producing useful reusable HOW.
-  - **Sub-agent steps** (message-sequence specialist routes, including legacy orchestrator records): Each sub-agent has its own learning access and objective; review them independently.
+  - **Sub-agent steps** (agent specialist routes, including legacy agent records): Each sub-agent has its own learning access and objective; review them independently.
 - **When to stop writes**: Change to `learnings_access="read"` when the same patterns repeat across successful runs. The execution agent still consumes the curated shared learnings without paying for a contribution turn.
 - **When to resume writes**: Restore `read-write` with a concrete objective if the description/tools change materially or failures reveal new reusable HOW.
 
 **Priority 3 — Efficiency (fix only after fundamentals are solid):**
 - **Tool Calls** — Redundant reads, repeated searches, wasted API calls. Usually a symptom of a vague description — fix the description first, then check if tool waste drops.
 - **Workflow Structure** — Merge, split, delete, add, or reorder steps for a more optimal overall workflow:
-  - **Merge**: Sequential steps with the same context/objective/output should usually become one large `message_sequence`
+  - **Merge**: Sequential steps with the same context/objective/output should usually become one large `agent`
   - **Strengthen before splitting**: Improve the description, proof/provenance output, validation schema, retry instructions, and verify/repair turns first
   - **Split**: Use multiple large sequences only when contexts should not be shared or an output/retry/security/human/routing boundary must be independent
   - **Delete**: A step whose output is never consumed downstream is dead weight
@@ -219,21 +219,21 @@ When the user runs a step, briefly note the highest-priority improvement needed.
 
 ### 7. Execution Modes: Agentic vs Scripted
 
-A step's execution mode is its plan type — `regular` is scripted, `message_sequence` is agentic. Create with `add_step` / `add_step`; move an existing step between the two with **change_step_type(step_id, target_type="scripted"|"message_sequence", reason)** — never via `update_step_config`:
+A step's execution mode is its plan type — `regular` is scripted, `agent` is agentic. Create with `add_step` / `add_step`; move an existing step between the two with **change_step_type(step_id, target_type="scripted"|"agent", reason)** — never via `update_step_config`:
 
 - **Scripted** (`regular` type): Agent writes a reusable `main.py` that is saved and tried first on future runs (0 LLM tokens when stable). If the saved script fails, the LLM repairs it. This is the default execution mode for deterministic API/SDK calls, CLI commands, known pagination, data fetching, stable parsing/normalization/transforms, and mechanical persistence. Create or move that work to scripted immediately; no run-count gate applies to mode selection. The 10+-scenario-covering-runs evidence gates only *trusting and freezing* the script with `lock_code`.
 
-  **Keep scripted steps coherent, not microscopic.** A good scripted fetcher owns one source/auth/retry/output contract and may batch several related endpoints, CLI commands, pagination passes, and transforms before writing its authoritative rows/artifact. Do not create one script per endpoint or tiny transform. Do not cram adaptive judgment or a branching business workflow into `main.py`; feed the validated deterministic output to one large agentic `message_sequence` instead.
+  **Keep scripted steps coherent, not microscopic.** A good scripted fetcher owns one source/auth/retry/output contract and may batch several related endpoints, CLI commands, pagination passes, and transforms before writing its authoritative rows/artifact. Do not create one script per endpoint or tiny transform. Do not cram adaptive judgment or a branching business workflow into `main.py`; feed the validated deterministic output to one large agentic `agent` instead.
 
   Good candidates for scripted (each kept small):
   - One coherent source fetched and written to its canonical tables (e.g. related API endpoints + pagination → parse/normalize → idempotent `db` upserts)
   - Deterministic data processing: iterating rows, matching columns, extracting/transforming — a tight Python loop in one shot, no per-row "thinking"
   - A focused transform that benefits from Python libraries (parsing, calculations, formatting)
-- **Agentic** (`message_sequence` type): the LLM acts each turn and no persistent script is saved. Use it for judgment, synthesis, fuzzy extraction, adaptive discovery, or action selection that genuinely varies with live evidence. A fixed API/CLI call is scripted even when it is only one call; simplicity is a reason to make the script small, not a reason to spend an LLM turn on it. Browser/UI steps should generally stay agentic unless the user explicitly wants scripted browser automation and representative evidence proves the flow stable enough. If an agentic step has leftover `<script-dir>/main.py`, delete it; that file is stale mode debt and should not be patched.
+- **Agentic** (`agent` type): the LLM acts each turn and no persistent script is saved. Use it for judgment, synthesis, fuzzy extraction, adaptive discovery, or action selection that genuinely varies with live evidence. A fixed API/CLI call is scripted even when it is only one call; simplicity is a reason to make the script small, not a reason to spend an LLM turn on it. Browser/UI steps should generally stay agentic unless the user explicitly wants scripted browser automation and representative evidence proves the flow stable enough. If an agentic step has leftover `<script-dir>/main.py`, delete it; that file is stale mode debt and should not be patched.
 
 **Mode-selection rule:** Create or convert deterministic API/CLI/SDK/data-fetch/parse/transform/persist work as `scripted` on Workshop's own initiative; this is architecture selection, not freezing. Treat 10+ scenario-covering successful runs (with eval/run evidence at target) as the bar only for **freezing the saved script with `lock_code`**. Keep `lock_code=false` until that evidence exists so you can still repair drift with `execute_step`. Keep judgment, adaptive discovery, and browser/UI work agentic.
 
-**There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, use `change_step_type(step_id, target_type="scripted", reason=...)`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — a `message_sequence` can use code execution without being scripted.
+**There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, use `change_step_type(step_id, target_type="scripted", reason=...)`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — a `agent` can use code execution without being scripted.
 
 **Workshop agent behavior for code-exec steps**: When you (the workshop agent) are asked to explore, investigate, or do manual work related to a step marked with code execution mode, you should also adopt the code-exec approach — use **execute_shell_command** to write and run Python/shell scripts that combine multiple MCP tool calls together, rather than making individual tool calls one by one. This mirrors how the step's execution agent works and helps you build reusable scripts and patterns that can inform the step's learnings.
 
@@ -273,9 +273,8 @@ A step's execution mode is its plan type — `regular` is scripted, `message_seq
 
 ### 9. Agent with Specialists — For Dynamic Delegation
 The `plan-design` reference owns step-type eligibility. Add `predefined_routes`
-to a `message_sequence` only when the parent makes a real runtime orchestration
+to a `agent` only when the parent makes a real runtime orchestration
 decision the static plan cannot directly express. Several routine actions do not
-justify routes. `orchestrator` / `todo_task` are legacy compatibility shapes.
 
 **When to add specialist routes:**
 - Runtime evidence determines which or how many specialist tasks are needed
@@ -289,7 +288,7 @@ none is sufficient by itself. **A fixed child set and order does not justify ada
 
 **When NOT to add routes:**
 - Fixed API/SDK/CLI/data acquisition and stable transforms — use coherent scripted regular fetchers
-- One substantial reasoning outcome with same-context verification and repair — use one large message_sequence
+- One substantial reasoning outcome with same-context verification and repair — use one large agent
 - A known linear checklist whose items share one output/retry boundary — keep it inside the owning step rather than delegating micro-tasks
 - Known independent fixed work that can be expressed as explicit plan steps and dependencies
 - The task is **trivial** — a one-line action that doesn't benefit from learning
@@ -299,16 +298,15 @@ none is sufficient by itself. **A fixed child set and order does not justify ada
 - Each sub-agent has its own **learning files**, **server/tool scoping**, **skills (via enabled_skills in step_config)**, and **validation schemas**
 - Sub-agents can be **individually debugged, re-run, and hardened** via the workshop tools
 - The parent sequence agent owns substantive strategy and synthesis; bounded workers handle specialist tasks. The parent may analyze and write the final report directly.
-- If one route still needs adaptive specialist delegation, its `message_sequence` worker may declare routes — but stop at one nested layer. A known checklist or several same-context actions stay inside one large route conversation.
+- If one route still needs adaptive specialist delegation, its `agent` worker may declare routes — but stop at one nested layer. A known checklist or several same-context actions stay inside one large route conversation.
 
-**Design principle:** Split by durable control boundary, not action count. A scripted fetcher may perform many related calls/transforms under one source/auth/retry/output contract, and a message-sequence agent may perform a large reasoning job plus verification/repair. Add `predefined_routes` only when that same agent owns substantive adaptive reasoning about whether, when, and how to delegate. Known script batches belong in `scripted` items; known isolated agentic work may remain explicit plan steps. Parallelism, isolation, and completion tracking alone do not justify adaptive routes. Legacy `orchestrator` / `todo_task` records are compatibility forms of the routed message-sequence agent.
 
-**Rule of thumb:** For data workflows start with scripted fetcher(s) → durable DB/file evidence → one large agentic message sequence. Add routing, human gates, or specialist routes only for real control boundaries.
+**Rule of thumb:** For data workflows start with scripted fetcher(s) → durable DB/file evidence → one large agentic agent. Add routing, human gates, or specialist routes only for real control boundaries.
 
 ### 9a. Deterministic batches do not need specialist routes
 
 If a routed agent always calls a fixed set in a fixed order and only branches on
 success/failure, it is not making a runtime delegation decision. Express the
-work as explicit plan steps, or use a `scripted` message-sequence item for a
+work as explicit plan steps, or use a `scripted` agent item for a
 declared batch of saved scripts. Keep the parent conversation only for reasoning,
 verification, and repair over those deterministic results.

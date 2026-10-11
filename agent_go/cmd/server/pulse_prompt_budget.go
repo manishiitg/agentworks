@@ -383,4 +383,3 @@ func getPulsePromptBudgetMetrics(ctx context.Context, workspacePath string, limi
 	}
 	return out, rows.Err()
 }
-

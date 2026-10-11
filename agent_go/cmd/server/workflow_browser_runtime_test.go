@@ -129,7 +129,7 @@ func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 		}
 		return result
 	}
-	for _, child := range []string{parent + "-execution", parent + "-message-sequence"} {
+	for _, child := range []string{parent + "-execution", parent + "-agent"} {
 		mcpclient.GetSessionRegistry().RegisterHTTPSession(parent, child)
 		common.SetSessionBrowserNamespace(child, common.GetSessionShellConfig(parent).BrowserSessionNamespace)
 		output := workspace + "/runs/iteration-0/default/execution/" + child

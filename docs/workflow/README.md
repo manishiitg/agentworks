@@ -26,7 +26,7 @@ These docs cover workflow design, execution, and workflow-scoped runtime behavio
 - `pre_validation_guide.md` — deterministic pre-validation schemas and consistency checks
 - `step_config_format_specification.md` — `step_config.json` schema and step-level runtime configuration
 - `tiered_llm_allocation.md` — tiered model selection and phase LLM allocation
-- `orchestrator-step-type.md` — orchestrator (formerly todo_task) step behavior
+- `agent-step-type.md` — orchestrator (formerly todo_task) step behavior
 - `tool_filtering_system.md` — workflow tool filtering and runtime tool availability
 - `workflow_builder_commands_and_tools.md` — builder slash commands, privileged tools, and audit flows
 - `workflow_builder_interactive.md` — workflow phase chat and interactive builder internals

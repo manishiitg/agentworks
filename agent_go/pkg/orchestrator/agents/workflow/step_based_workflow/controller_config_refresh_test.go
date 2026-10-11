@@ -92,7 +92,7 @@ func TestRefreshStepAgentConfigsBeforeExecutionPicksUpAMidRunConfigChange(t *tes
 	// Run start: no pin yet. populateRuntimeFields runs once, as controller.go
 	// does today for every step in the plan.
 	fake.content = stepConfigJSON("")
-	step := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "execute-browser-and-capture-apis"}}
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "execute-browser-and-capture-apis"}}
 	initialConfigs, err := hcpo.ReadStepConfigs(ctx)
 	if err != nil {
 		t.Fatalf("ReadStepConfigs (initial): %v", err)
@@ -127,7 +127,7 @@ func TestRefreshStepAgentConfigsBeforeExecutionFallsBackSilentlyWhenConfigIsUnre
 	ctx := context.Background()
 
 	fake.content = stepConfigJSON(`"execution_llm":{"provider":"pi-cli","model_id":"google/gemini-3.7-flash"},`)
-	step := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "execute-browser-and-capture-apis"}}
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "execute-browser-and-capture-apis"}}
 	configs, err := hcpo.ReadStepConfigs(ctx)
 	if err != nil {
 		t.Fatalf("ReadStepConfigs: %v", err)
@@ -159,7 +159,7 @@ func TestRefreshStepAgentConfigsBeforeExecutionNoopsOnEmptyStepID(t *testing.T) 
 	ctx := context.Background()
 	fake.content = stepConfigJSON("")
 
-	step := &MessageSequencePlanStep{}
+	step := &AgentPlanStep{}
 	// Must not panic or error on a step with no ID (sub-agent steps under
 	// construction, orphan utility steps mid-plan-edit).
 	hcpo.refreshStepAgentConfigsBeforeExecution(ctx, step)

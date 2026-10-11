@@ -68,7 +68,7 @@ func TestPrepareScriptedStepUpdateTarget(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "scripted"}},
 		&RegularPlanStep{CommonStepFields: CommonStepFields{ID: "legacy-agentic"}},
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "sequence"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "sequence"}},
 	}}
 	configs := []StepConfig{
 		{ID: "scripted", AgentConfigs: &AgentConfigs{}},
@@ -82,15 +82,15 @@ func TestPrepareScriptedStepUpdateTarget(t *testing.T) {
 	}
 	if _, err := prepareScriptedStepUpdateTarget(plan, configs, "legacy-agentic"); err == nil {
 		t.Fatal("legacy agentic regular step must not be editable through update_scripted_step")
-	} else if !strings.Contains(err.Error(), "update_message_sequence_step") {
+	} else if !strings.Contains(err.Error(), "update_agent_step") {
 		t.Fatalf("legacy rejection must identify the working compatibility path: %v", err)
 	}
 	if _, err := prepareScriptedStepUpdateTarget(plan, configs, "sequence"); err == nil {
-		t.Fatal("a genuine (non-scripted) message_sequence step must use its type-specific update tool")
+		t.Fatal("a genuine (non-scripted) agent step must use its type-specific update tool")
 	}
 }
 
-func TestPrepareMessageSequenceUpdateTargetUpgradesLegacyAgenticRegular(t *testing.T) {
+func TestPrepareAgentUpdateTargetUpgradesLegacyAgenticRegular(t *testing.T) {
 	legacy := &RegularPlanStep{
 		Type: StepTypeRegular,
 		CommonStepFields: CommonStepFields{
@@ -106,16 +106,16 @@ func TestPrepareMessageSequenceUpdateTargetUpgradesLegacyAgenticRegular(t *testi
 		AgentConfigs: &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic},
 	}}
 
-	upgraded, err := prepareMessageSequenceUpdateTarget(plan, configs, legacy.ID)
+	upgraded, err := prepareAgentUpdateTarget(plan, configs, legacy.ID)
 	if err != nil {
 		t.Fatalf("legacy compatibility upgrade failed: %v", err)
 	}
 	if !upgraded {
 		t.Fatal("expected legacy agentic regular step to be upgraded")
 	}
-	sequence, ok := plan.Steps[0].(*MessageSequencePlanStep)
+	sequence, ok := plan.Steps[0].(*AgentPlanStep)
 	if !ok {
-		t.Fatalf("upgraded step type = %T, want *MessageSequencePlanStep", plan.Steps[0])
+		t.Fatalf("upgraded step type = %T, want *AgentPlanStep", plan.Steps[0])
 	}
 	if sequence.ID != legacy.ID || sequence.Description != legacy.Description || sequence.NextStepID != "end" {
 		t.Fatalf("compatibility upgrade lost existing fields: %#v", sequence)
@@ -130,15 +130,15 @@ func TestPrepareScriptedStepUpdateTargetNeverConvertsASequence(t *testing.T) {
 	// was silently downgraded to regular here. The plan type is now the only
 	// source of truth, so the conversion is change_step_type's job and this
 	// path refuses instead.
-	sequence := &MessageSequencePlanStep{
-		Type: StepTypeMessageSeq,
+	sequence := &AgentPlanStep{
+		Type: StepTypeAgent,
 		CommonStepFields: CommonStepFields{
 			ID:          "search-save-jobs",
 			Title:       "Record shortlisted jobs to db",
 			Description: "Execute the checked-in deterministic implementation in learnings/search-save-jobs/main.py for this run.",
 		},
 		NextStepID: "end",
-		Items: []MessageSequenceItem{{
+		Items: []AgentItem{{
 			ID:      "verify-scripted-result",
 			Type:    "user_message",
 			Message: "Run the checked-in script and verify its output.",
@@ -157,29 +157,29 @@ func TestPrepareScriptedStepUpdateTargetNeverConvertsASequence(t *testing.T) {
 	if downgraded {
 		t.Fatal("a message_sequence must never be converted by update_scripted_step")
 	}
-	if _, ok := plan.Steps[0].(*MessageSequencePlanStep); !ok {
+	if _, ok := plan.Steps[0].(*AgentPlanStep); !ok {
 		t.Fatalf("refused step was mutated to %T", plan.Steps[0])
 	}
 }
 
 func TestPrepareScriptedStepUpdateTargetRejectsNonScriptedSequence(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "sequence"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "sequence"}},
 	}}
 
 	downgraded, err := prepareScriptedStepUpdateTarget(plan, nil, "sequence")
-	if err == nil || !strings.Contains(err.Error(), "update_message_sequence_step") {
-		t.Fatalf("non-scripted sequence rejection = %v, want update_message_sequence_step guidance", err)
+	if err == nil || !strings.Contains(err.Error(), "update_agent_step") {
+		t.Fatalf("non-scripted sequence rejection = %v, want update_agent_step guidance", err)
 	}
 	if downgraded {
-		t.Fatal("a genuine message_sequence step must never be converted")
+		t.Fatal("a genuine agent step must never be converted")
 	}
-	if _, ok := plan.Steps[0].(*MessageSequencePlanStep); !ok {
-		t.Fatalf("rejected message_sequence step was mutated to %T", plan.Steps[0])
+	if _, ok := plan.Steps[0].(*AgentPlanStep); !ok {
+		t.Fatalf("rejected agent step was mutated to %T", plan.Steps[0])
 	}
 }
 
-func TestPrepareMessageSequenceUpdateTargetRejectsScriptedRegular(t *testing.T) {
+func TestPrepareAgentUpdateTargetRejectsScriptedRegular(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		&RegularPlanStep{
 			Type:             StepTypeRegular,
@@ -189,7 +189,7 @@ func TestPrepareMessageSequenceUpdateTargetRejectsScriptedRegular(t *testing.T) 
 	// No retired key at all: a regular step is scripted by type (PLAT-287).
 	configs := []StepConfig{{ID: "scripted", AgentConfigs: &AgentConfigs{}}}
 
-	upgraded, err := prepareMessageSequenceUpdateTarget(plan, configs, "scripted")
+	upgraded, err := prepareAgentUpdateTarget(plan, configs, "scripted")
 	if err == nil || !strings.Contains(err.Error(), "update_scripted_step") {
 		t.Fatalf("scripted regular rejection = %v, want update_scripted_step guidance", err)
 	}
@@ -201,7 +201,7 @@ func TestPrepareMessageSequenceUpdateTargetRejectsScriptedRegular(t *testing.T) 
 	}
 }
 
-func TestUpdateMessageSequenceExecutorAtomicallyPersistsLegacyUpgrade(t *testing.T) {
+func TestUpdateAgentExecutorAtomicallyPersistsLegacyUpgrade(t *testing.T) {
 	legacyPlan := &PlanningResponse{Steps: []PlanStepInterface{
 		&RegularPlanStep{
 			Type: StepTypeRegular,
@@ -237,7 +237,7 @@ func TestUpdateMessageSequenceExecutorAtomicallyPersistsLegacyUpgrade(t *testing
 		}
 		return nil
 	}
-	executor := createUpdateMessageSequenceStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
+	executor := createUpdateAgentStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
 
 	result, err := executor(context.Background(), map[string]interface{}{
 		"existing_step_id": "voice-latency-collector",
@@ -252,7 +252,7 @@ func TestUpdateMessageSequenceExecutorAtomicallyPersistsLegacyUpgrade(t *testing
 		"reason": "repair the recurring missing per-language measurement evidence",
 	})
 	if err != nil {
-		t.Fatalf("legacy message-sequence update failed: %v", err)
+		t.Fatalf("legacy agent update failed: %v", err)
 	}
 	if !strings.Contains(result, "upgraded its saved legacy regular type to message_sequence") {
 		t.Fatalf("update result did not disclose compatibility upgrade: %s", result)
@@ -265,9 +265,9 @@ func TestUpdateMessageSequenceExecutorAtomicallyPersistsLegacyUpgrade(t *testing
 	if err := json.Unmarshal([]byte(writtenPlan), &persisted); err != nil {
 		t.Fatalf("decode persisted plan: %v", err)
 	}
-	sequence, ok := persisted.Steps[0].(*MessageSequencePlanStep)
+	sequence, ok := persisted.Steps[0].(*AgentPlanStep)
 	if !ok {
-		t.Fatalf("persisted step type = %T, want *MessageSequencePlanStep", persisted.Steps[0])
+		t.Fatalf("persisted step type = %T, want *AgentPlanStep", persisted.Steps[0])
 	}
 	if sequence.Description != "Collect voice latency and verify per-language sample coverage." {
 		t.Fatalf("description was not updated: %q", sequence.Description)
@@ -280,7 +280,7 @@ func TestUpdateMessageSequenceExecutorAtomicallyPersistsLegacyUpgrade(t *testing
 	}
 }
 
-func TestNonScriptedRegularStepNormalizesToMessageSequence(t *testing.T) {
+func TestNonScriptedRegularStepNormalizesToAgent(t *testing.T) {
 	validation := &ValidationSchema{}
 	config := &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic}
 	regular := &RegularPlanStep{
@@ -297,11 +297,11 @@ func TestNonScriptedRegularStepNormalizesToMessageSequence(t *testing.T) {
 		AgentConfigs: config,
 	}
 
-	if !shouldNormalizeRegularStepToMessageSequence(regular) {
-		t.Fatal("expected a non-scripted regular step to use message-sequence normalization")
+	if !shouldNormalizeRegularStepToAgent(regular) {
+		t.Fatal("expected a non-scripted regular step to use agent normalization")
 	}
-	sequence := normalizeRegularStepToMessageSequence(regular)
-	if sequence == nil || sequence.StepType() != StepTypeMessageSeq {
+	sequence := normalizeRegularStepToAgent(regular)
+	if sequence == nil || sequence.StepType() != StepTypeAgent {
 		t.Fatalf("expected message_sequence normalization, got %#v", sequence)
 	}
 	if sequence.ID != regular.ID || sequence.Title != regular.Title || sequence.Description != regular.Description {
@@ -316,17 +316,17 @@ func TestNonScriptedRegularStepNormalizesToMessageSequence(t *testing.T) {
 	if len(sequence.Items) != 1 || sequence.Items[0].ID != normalizedRegularSequenceItemID || sequence.Items[0].Type != "user_message" {
 		t.Fatalf("expected one normalized work turn, got %#v", sequence.Items)
 	}
-	if got := effectiveRuntimeStepType(regular); got != string(StepTypeMessageSeq) {
-		t.Fatalf("effective runtime step type = %q, want %q", got, StepTypeMessageSeq)
+	if got := effectiveRuntimeStepType(regular); got != string(StepTypeAgent) {
+		t.Fatalf("effective runtime step type = %q, want %q", got, StepTypeAgent)
 	}
 }
 
-func TestScriptedRegularStepDoesNotNormalizeToMessageSequence(t *testing.T) {
+func TestScriptedRegularStepDoesNotNormalizeToAgent(t *testing.T) {
 	regular := &RegularPlanStep{
 		CommonStepFields: CommonStepFields{ID: "fetch-data"},
 		AgentConfigs:     &AgentConfigs{},
 	}
-	if shouldNormalizeRegularStepToMessageSequence(regular) {
+	if shouldNormalizeRegularStepToAgent(regular) {
 		t.Fatal("scripted regular step must retain the saved-script execution path")
 	}
 	if got := effectiveRuntimeStepType(regular); got != string(StepTypeRegular) {
@@ -359,15 +359,15 @@ func TestUpsertNewScriptedRegularStepConfig(t *testing.T) {
 
 func TestCollectRegularPlanStepsIncludesNestedTodoRoutes(t *testing.T) {
 	regular := &RegularPlanStep{CommonStepFields: CommonStepFields{ID: "fetch-data", Title: "Fetch data"}}
-	sequence := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "analyze-data"}}
-	nested := &OrchestratorPlanStep{
+	sequence := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "analyze-data"}}
+	nested := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "nested"},
 		PredefinedRoutes: []PlanOrchestrationRoute{
 			{RouteID: "fetch-data", SubAgentStep: regular},
 			{RouteID: "analyze-data", SubAgentStep: sequence},
 		},
 	}
-	root := &OrchestratorPlanStep{
+	root := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "root"},
 		PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", SubAgentStep: nested}},
 	}
@@ -378,8 +378,8 @@ func TestCollectRegularPlanStepsIncludesNestedTodoRoutes(t *testing.T) {
 	}
 }
 
-func TestOrchestratorRejectsIncompleteMessageSequenceRoute(t *testing.T) {
-	step := &OrchestratorPlanStep{
+func TestOrchestratorRejectsIncompleteAgentRoute(t *testing.T) {
+	step := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{
 			ID:          "orchestrate",
 			Title:       "Orchestrate",
@@ -389,7 +389,7 @@ func TestOrchestratorRejectsIncompleteMessageSequenceRoute(t *testing.T) {
 		PredefinedRoutes: []PlanOrchestrationRoute{{
 			RouteID:   "analyze",
 			RouteName: "Analyze",
-			SubAgentStep: &MessageSequencePlanStep{CommonStepFields: CommonStepFields{
+			SubAgentStep: &AgentPlanStep{CommonStepFields: CommonStepFields{
 				ID:          "analyze",
 				Title:       "Analyze",
 				Description: "Analyze the evidence.",
@@ -397,15 +397,15 @@ func TestOrchestratorRejectsIncompleteMessageSequenceRoute(t *testing.T) {
 		}},
 	}
 
-	if err := validateOrchestratorStepFieldsTyped(step); err == nil {
-		t.Fatal("expected an empty message_sequence route to fail validation")
+	if err := validateAgentStepFieldsTyped(step); err == nil {
+		t.Fatal("expected an empty agent route to fail validation")
 	}
-	step.PredefinedRoutes[0].SubAgentStep.(*MessageSequencePlanStep).Items = []MessageSequenceItem{{
+	step.PredefinedRoutes[0].SubAgentStep.(*AgentPlanStep).Items = []AgentItem{{
 		ID:      "analyze",
 		Type:    "user_message",
 		Message: "Analyze the evidence and save the result.",
 	}}
-	if err := validateOrchestratorStepFieldsTyped(step); err != nil {
-		t.Fatalf("expected a complete message_sequence route to pass validation: %v", err)
+	if err := validateAgentStepFieldsTyped(step); err != nil {
+		t.Fatalf("expected a complete agent route to pass validation: %v", err)
 	}
 }

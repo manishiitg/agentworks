@@ -38,7 +38,7 @@ func (r consolidatedWorkshopRegistrar) RegisterCustomToolWithTimeout(n, d string
 	return r.capture.RegisterCustomToolWithTimeout(n, consolidatedPlanToolText(d), s, e, t, g)
 }
 
-var consolidatedStepTypes = []string{"scripted", "message_sequence", "routing", "branch", "human_input", "orchestrator", "crew"}
+var consolidatedStepTypes = []string{"scripted", "agent", "routing", "branch", "human_input", "crew"}
 var consolidatedMaintenance = map[string]string{
 	"cleanup_orphan_configs": "cleanup_orphan_step_configs",
 }
@@ -51,7 +51,7 @@ func capturedPlanName(n string) bool {
 	}
 	switch n {
 	case "add_todo_task_step", "update_todo_task_step", "add_todo_task_route", "update_todo_task_route", "delete_todo_task_route",
-		"add_orchestrator_route", "update_orchestrator_route", "delete_orchestrator_route",
+		"add_agent_route", "update_agent_route", "delete_agent_route",
 		"add_group", "update_group", "delete_group", "change_step_type", "convert_routing_branch_step_type":
 		return true
 	}
@@ -132,6 +132,7 @@ func (r *consolidatedPlanRegistrar) invoke(ctx context.Context, n string, args m
 	out, err := t.execute(ctx, normalized)
 	return consolidatedPlanToolText(out), err
 }
+
 // addStepTypeError validates step against the named type's native schema so
 // the error lists that type's missing or unknown fields only.
 func (r *consolidatedPlanRegistrar) addStepTypeError(args map[string]interface{}) error {
@@ -239,7 +240,7 @@ func (r *consolidatedPlanRegistrar) flush() error {
 	if len(addBranches) > 0 {
 		s := objectToolSchema(map[string]interface{}{"type": stringToolSchema(addTypes...), "step": map[string]interface{}{"type": "object"}}, "type", "step")
 		s["oneOf"] = addBranches
-		if err := r.registerRefined("add_step", "Add a typed plan step. Put the native step fields, including reason, in step. Discover the type-specific schema; scripted is deterministic code, message_sequence is conversational, routing selects a mode, branch selects a path, human_input captures free-form input, orchestrator delegates. Uses the existing validated mutation handlers.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if err := r.registerRefined("add_step", "Add a typed plan step. Put the native step fields, including reason, in step. Discover the type-specific schema; scripted is deterministic code, agent is conversational, routing selects a mode, branch selects a path, human_input captures free-form input, agent optionally delegates through predefined_routes. Uses the existing validated mutation handlers.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			v, err := toolObjectArg(args, "step")
 			if err != nil {
 				return "", err
@@ -268,9 +269,6 @@ func (r *consolidatedPlanRegistrar) flush() error {
 			if typ == "regular" {
 				typ = "scripted"
 			}
-			if typ == "todo_task" {
-				typ = "orchestrator"
-			}
 			v, err := toolObjectArg(args, "changes")
 			if err != nil {
 				return "", err
@@ -281,7 +279,7 @@ func (r *consolidatedPlanRegistrar) flush() error {
 			return err
 		}
 	}
-	if err := r.registerActions("manage_step_route", "Manage predefined_routes for a message-sequence agent or persisted legacy orchestrator record with action=add/update/delete. parameters uses that action's native route schema, including parent_step_id and reason. Legacy todo_task names are not exposed.", map[string]string{"add": "add_orchestrator_route", "update": "update_orchestrator_route", "delete": "delete_orchestrator_route"}); err != nil {
+	if err := r.registerActions("manage_step_route", "Manage predefined_routes for an agent with action=add/update/delete. parameters uses that action's native route schema, including parent_step_id and reason. ", map[string]string{"add": "add_agent_route", "update": "update_agent_route", "delete": "delete_agent_route"}); err != nil {
 		return err
 	}
 	if err := r.registerActions("manage_group", "Manage a variable group with action=add/update/delete. parameters uses that action's native fields. Existing group validation, current-session refresh and last-group deletion checks are preserved.", map[string]string{"add": "add_group", "update": "update_group", "delete": "delete_group"}); err != nil {
@@ -291,8 +289,8 @@ func (r *consolidatedPlanRegistrar) flush() error {
 		return err
 	}
 	if _, ok := r.tools["change_step_type"]; ok {
-		s := objectToolSchema(map[string]interface{}{"step_id": stringToolSchema(), "target_type": stringToolSchema("scripted", "message_sequence", "routing", "branch"), "reason": stringToolSchema()}, "step_id", "target_type", "reason")
-		if err := r.register("change_step_type", "Convert a step in place, preserving its identity and the existing conversion checks. Supported pairs: scripted <-> message_sequence and routing <-> branch only; arbitrary cross-type conversion is rejected. Scripted conversion drops conversational items. reason is required and recorded.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		s := objectToolSchema(map[string]interface{}{"step_id": stringToolSchema(), "target_type": stringToolSchema("scripted", "agent", "routing", "branch"), "reason": stringToolSchema()}, "step_id", "target_type", "reason")
+		if err := r.register("change_step_type", "Convert a step in place, preserving its identity and the existing conversion checks. Supported pairs: scripted <-> agent and routing <-> branch only; arbitrary cross-type conversion is rejected. Scripted conversion drops conversational items. reason is required and recorded.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			target := args["target_type"].(string)
 			if target == "routing" || target == "branch" {
 				v := map[string]interface{}{"existing_step_id": args["step_id"], "target_type": target, "reason": args["reason"]}

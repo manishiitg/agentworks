@@ -225,7 +225,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                                   {category.executions.map(execution => {
                                                     // PLAT-166/PLAT-167: an execution row's own combined total can hide a
                                                     // phase breakdown underneath — a workflow step's reflection turn
-                                                    // sharing the step's execution id, or a message_sequence step's
+                                                    // sharing the step's execution id, or a agent step's
                                                     // individual items each tagged with their own "item:<id>" phase.
                                                     // Most executions (chat, builder, evaluation, Pulse, a step with no
                                                     // reflection turn) never populate by_phase at all — the backend
@@ -239,7 +239,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                                       ))
                                                       .sort(([, a], [, b]) => b.total_cost_usd - a.total_cost_usd)
                                                     // Show the breakdown whenever it has more than one tagged phase
-                                                    // (e.g. several message_sequence items), or exactly one tagged
+                                                    // (e.g. several agent items), or exactly one tagged
                                                     // phase that doesn't already account for the row's whole total
                                                     // (e.g. a reflection turn alongside untagged execution work) —
                                                     // comparing token counts rather than float cost to stay exact.

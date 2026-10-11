@@ -88,14 +88,14 @@ type ExecutionOrigin = {
   plannedMessage?: string
 }
 
-// A message-sequence execution can be a planned item, a repair injected by
+// A agent execution can be a planned item, a repair injected by
 // automatic final validation, or a reflection. Make that lifecycle visible so
 // "4 attempts" is not mistaken for four orchestrator dispatches.
 export const getExecutionOrigin = (execution: unknown, validations: unknown[], plannedMessages: unknown[] = []): ExecutionOrigin => {
   const exec = asRecord(execution)
   const content = asRecord(exec?.content)
   const result = typeof content?.execution_result === 'string' ? content.execution_result : ''
-  const itemMatch = result.match(/^Message sequence item:\s*([^\s(]+)\s*\(/m)
+  const itemMatch = result.match(/^Agent item:\s*([^\s(]+)\s*\(/m)
   const itemID = itemMatch?.[1] || ''
   const plannedItem = plannedMessages
     .map(asRecord)
@@ -155,8 +155,8 @@ export const getExecutionOrigin = (execution: unknown, validations: unknown[], p
     return {
       label: plannedMessage ? 'Planned sequence item' : 'Recorded sequence item',
       detail: plannedMessage
-        ? `The plan requested the message-sequence item “${itemID}”.`
-        : `The runtime recorded the message-sequence item “${itemID}”. Its exact sent prompt is available when you expand this entry.`,
+        ? `The plan requested the agent item “${itemID}”.`
+        : `The runtime recorded the agent item “${itemID}”. Its exact sent prompt is available when you expand this entry.`,
       className: 'border-border bg-muted text-muted-foreground',
       plannedMessage,
     }
@@ -164,7 +164,7 @@ export const getExecutionOrigin = (execution: unknown, validations: unknown[], p
 
   return {
     label: 'Execution origin not recorded',
-    detail: 'This historical log does not contain a message-sequence item, validation trigger, or retry marker.',
+    detail: 'This historical log does not contain a agent item, validation trigger, or retry marker.',
     className: 'border-border bg-muted text-muted-foreground',
   }
 }
@@ -174,7 +174,7 @@ type SentAgentMessage = {
   message: string
 }
 
-// Historical runs may pre-date a message_sequence entry in plan.json, but the
+// Historical runs may pre-date a agent entry in plan.json, but the
 // durable conversation still preserves each human/planner message that was
 // sent to the agent. Keep it separate from the system prompt and tool traffic.
 export const getSentAgentMessages = (conversation: string): SentAgentMessage[] => {
@@ -215,7 +215,7 @@ export const getStepIcon = (type: string) => {
       return <User className="w-4 h-4 text-orange-500" />
     case 'sub-agent':
       return <Bot className="w-4 h-4 text-indigo-500" />
-    case 'message_sequence':
+    case 'agent':
       return <MessageSquare className="w-4 h-4 text-teal-500" />
     case 'regular':
       return <FileText className="w-4 h-4 text-muted-foreground" />
@@ -583,8 +583,8 @@ export const hasKnowledgebaseSignal = (stepLogs: {
   Boolean(stepLogs.knowledgebase_access && stepLogs.knowledgebase_access !== 'none')
 )
 
-export const getMessageSequenceReflection = (stepLogs: StepExecutionLogs) => {
-  const entries = stepLogs.message_sequence?.entries || []
+export const getAgentReflection = (stepLogs: StepExecutionLogs) => {
+  const entries = stepLogs.agent?.entries || []
   return entries.find(entry => entry.item_id === `${stepLogs.step_id}-reflection`) || null
 }
 
@@ -603,7 +603,7 @@ export const getStepTypeLabel = (type: string): string => {
       return 'Human Input'
     case 'sub-agent':
       return 'Sub-Agent'
-    case 'message_sequence':
+    case 'agent':
       return 'Agent'
     case 'crew':
       return 'Crew'
@@ -620,7 +620,7 @@ export const getStepTypeDescription = (type: string): string => {
       return 'Orchestrator: decides which delegated tasks to run and tracks their outcomes.'
     case 'sub-agent':
       return 'Sub-agent: a child task dispatched by an orchestrator.'
-    case 'message_sequence':
+    case 'agent':
       return 'Agent: completes an ordered series of instructions and conversation turns.'
     case 'routing':
       return 'Routing step: a major, self-contained sub-workflow fork that deterministically selects the next path.'
@@ -651,7 +651,7 @@ export const getStepTypeBadgeStyle = (type: string): string => {
       return 'bg-orange-500/10 text-orange-600 border-orange-500/20 dark:bg-orange-500/20 dark:text-orange-300'
     case 'sub-agent':
       return 'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:bg-blue-500/20 dark:text-blue-300'
-    case 'message_sequence':
+    case 'agent':
       return 'bg-teal-500/10 text-teal-600 border-teal-500/20 dark:bg-teal-500/20 dark:text-teal-300'
     case 'crew':
       return 'bg-sky-500/10 text-sky-600 border-sky-500/20 dark:bg-sky-500/20 dark:text-sky-300'
@@ -668,10 +668,10 @@ export const getStepStatus = (stepLogs: StepExecutionLogs): 'completed' | 'faile
   const orchestration = stepLogs.orchestration || []
   const todoTask = stepLogs.todo_task || []
 
-  if (stepLogs.type === 'message_sequence') {
-    if (stepLogs.message_sequence_status === 'failed') return 'failed'
-    if (stepLogs.message_sequence_status === 'completed') return 'completed'
-    if (stepLogs.message_sequence_status === 'running') return 'running'
+  if (stepLogs.type === 'agent') {
+    if (stepLogs.agent_status === 'failed') return 'failed'
+    if (stepLogs.agent_status === 'completed') return 'completed'
+    if (stepLogs.agent_status === 'running') return 'running'
     return 'pending'
   }
 

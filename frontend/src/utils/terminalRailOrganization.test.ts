@@ -111,18 +111,18 @@ describe('terminal rail organization', () => {
     expect(groups[0].representative.terminal_id).toBe('restarted-attempt')
   })
 
-  it('groups message-sequence turns under their owning step', () => {
+  it('groups agent turns under their owning step', () => {
     const first = terminal('turn-1', {
-      step_type: 'message_sequence',
-      step_id: 'message-sequence-load',
+      step_type: 'agent',
+      step_id: 'agent-load',
       parent_step_id: 'score-and-plan',
-      agent_name: 'message-sequence-load',
+      agent_name: 'agent-load',
     })
     const second = terminal('turn-2', {
-      step_type: 'message_sequence',
-      step_id: 'message-sequence-validate',
+      step_type: 'agent',
+      step_id: 'agent-validate',
       parent_step_id: 'score-and-plan',
-      agent_name: 'message-sequence-validate',
+      agent_name: 'agent-validate',
     })
 
     expect(terminalRailLogicalKey(first)).toBe(terminalRailLogicalKey(second))
@@ -130,19 +130,19 @@ describe('terminal rail organization', () => {
     expect(organize([first, second])).toHaveLength(1)
   })
 
-  it('keeps sibling message sequences separate under the same manager', () => {
+  it('keeps sibling agents separate under the same manager', () => {
     const calc = terminal('calc', {
-      step_type: 'message_sequence',
+      step_type: 'agent',
       step_id: 'calc-task',
       parent_step_id: 'nested-manager',
-      agent_name: 'message-sequence-calc-task',
+      agent_name: 'agent-calc-task',
       step_name: 'Nested Calc Task',
     })
     const word = terminal('word', {
-      step_type: 'message_sequence',
+      step_type: 'agent',
       step_id: 'word-task',
       parent_step_id: 'nested-manager',
-      agent_name: 'message-sequence-word-task',
+      agent_name: 'agent-word-task',
       step_name: 'Nested Word Task',
     })
 
@@ -162,8 +162,8 @@ describe('terminal rail organization', () => {
       step_name: 'Nested Calc Task',
     })
     const orchestrated = terminal('orchestrated-calc', {
-      execution_kind: 'message_sequence',
-      step_type: 'message_sequence',
+      execution_kind: 'agent',
+      step_type: 'agent',
       step_id: 'calc-task',
       parent_step_id: 'exec-nested-manager-123',
       step_name: 'Nested Calc Task',
@@ -194,33 +194,33 @@ describe('terminal rail organization', () => {
       execution_kind: 'sub_agent',
     }))).toBe('sub-agent')
     expect(terminalRailVisualKind(terminal('sequence', {
-      execution_kind: 'message_sequence',
-      step_type: 'message_sequence',
-    }))).toBe('message-sequence')
+      execution_kind: 'agent',
+      step_type: 'agent',
+    }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('legacy-sequence', {
       execution_kind: 'sub_agent',
       step_type: 'regular',
-      agent_name: 'message-sequence-word-task',
-    }))).toBe('message-sequence')
+      agent_name: 'agent-word-task',
+    }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('regular-compat-sequence', {
       execution_kind: 'workflow_step',
       step_type: 'regular',
       step_execution_mode: 'agentic',
       step_id: 'prepare-test-fixtures',
       parent_step_id: 'main_agent:session-1',
-    }))).toBe('message-sequence')
+    }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('nested-sequence', {
-      execution_kind: 'message_sequence',
-      step_type: 'message_sequence',
+      execution_kind: 'agent',
+      step_type: 'agent',
       step_id: 'child-sequence',
       parent_step_id: 'nested-manager',
     }))).toBe('sub-agent')
     expect(terminalRailVisualKind(terminal('standalone-sequence-turn', {
-      execution_kind: 'message_sequence',
-      step_type: 'message_sequence',
+      execution_kind: 'agent',
+      step_type: 'agent',
       step_id: 'sequence-type-probe',
       parent_step_id: 'sequence-type-probe',
-    }))).toBe('message-sequence')
+    }))).toBe('agent')
     expect(terminalRailVisualKind(terminal('route', {
       execution_kind: 'router',
       step_type: 'routing',

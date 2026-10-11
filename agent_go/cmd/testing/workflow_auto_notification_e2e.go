@@ -254,8 +254,8 @@ func createWorkflowAutoNotificationFixture(workspaceDocs string, keep bool, prov
 			{
 				// Under the current contract a "regular" step is a scripted step (the
 				// agent authors main.py). This smoke step is conversational, so it is a
-				// one-turn message sequence, the default step type.
-				"type":        "message_sequence",
+				// one-turn agent, the default step type.
+				"type":        "agent",
 				"id":          "step-auto-notification",
 				"title":       "Auto notification smoke step",
 				"description": "Run the bridge smoke command and return the completion token.",

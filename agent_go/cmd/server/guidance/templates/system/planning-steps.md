@@ -17,7 +17,7 @@ first and plan to repair the graph afterward.
 
 ## Step composition defaults
 
-**Default to one large `message_sequence` per shared-context span.** Modern
+**Default to one large `agent` per shared-context span.** Modern
 agents can own many actions and long tool sessions, so the strongest shape is
 one conversation that completes the coherent span and then proves it in
 follow-up items: `[do the whole span] → [re-open evidence and prove every
@@ -34,7 +34,7 @@ clean-room independence, human/routing boundaries, or unrelated context that
 would distract or contaminate the next agent. The builder must decide this from
 the workflow semantics and be able to state the boundary. Use `regular` only for
 deterministic work implemented as a saved script. Every conversational or
-judgment-heavy outcome, including one turn, uses `message_sequence`. Every producing step still needs a
+judgment-heavy outcome, including one turn, uses `agent`. Every producing step still needs a
 `validation_schema`; context flow stays forward-only via
 `context_dependencies` → `context_output`.
 
@@ -42,23 +42,22 @@ For a fixed choice the user already gave the builder, prefer a deterministic
 switch instead of asking again — `branch` for a small in-flow decision,
 `routing` when the choice forks into a major, self-contained sub-workflow —
 and pass `route_selections` when running either.
-Add `predefined_routes` to a `message_sequence` only when the agent must choose
+Add `predefined_routes` to a `agent` only when the agent must choose
 specialist work adaptively from runtime evidence; several known actions in one
-shared context are not enough. Legacy `orchestrator` / `todo_task` records are
 compatibility shapes for this routed agent. Do not add a
 `human_input` step just to ask the same branch choice again.
 
 ## Step types
 
-- **`message_sequence`** (canonical agent step) — a system-level description
+- **`agent`** (canonical agent step) — a system-level description
   charter plus ordered user-message items in one conversation; optional
   `predefined_routes` expose bounded specialists the agent chooses adaptively
 - **`regular`** — a scripted deterministic boundary for API/SDK/CLI fetching,
   parsing, normalization, and mechanical persistence; batch related calls
-  rather than making micro-steps. Conversational work uses `message_sequence`,
+  rather than making micro-steps. Conversational work uses `agent`,
   even for one turn
-- **`orchestrator` / `todo_task`** — legacy compatibility records for a
-  `message_sequence` with `predefined_routes`; do not author new plans in this shape
+- **`agent`** — legacy compatibility records for a
+  `agent` with `predefined_routes`; do not author new plans in this shape
 - **`routing`** — choose next step from a fixed route map; a major,
   self-contained sub-workflow fork
 - **`branch`** — same deterministic route-map mechanics as `routing`, for a
@@ -77,12 +76,12 @@ point for any plan-composition decision. From there:
 
 - **Per-step-type deep dives**: `orchestrator` (legacy compatibility + route
   migration), `human-input` (input types + routing
-  pairing + unattended schedules), `message-sequence` (full pattern
+  pairing + unattended schedules), `agent` (full pattern
   catalog: Stateful Specialist, Test/Fix Loop, Maker+Reviewer, Panel,
 	  Clean-Room Retry, HITL Re-entry, Scripted Conversation), `routing`
 	  (deterministic route_selection.json contract, anti-patterns), `branch`
 	  (same mechanics as `routing`, for a small in-flow decision).
 - **Combining steps**: examples live with their owning contracts in `plan-design`,
-  `message-sequence` (script batches, verification, SQL iteration), `orchestrator`
+  `agent` (script batches, verification, SQL iteration), `orchestrator`
   (adaptive investigations), `human-in-the-loop` (review/approval), and `stores`
   (durable persistence).

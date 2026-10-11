@@ -1330,8 +1330,8 @@ func (e *Executor) handleOversizedSnapshot(ctx context.Context, output *string, 
 	if fullSnapshotRequested {
 		// Explicit opt-in: hand back the whole tree. Anything past the bridge's
 		// own 128KB result cap is truncated and persisted to tool_output_folder
-		// by mcpbridge, which message_sequence steps can now read (see
-		// setupMessageSequenceFolderGuard).
+		// by mcpbridge, which agent steps can now read (see
+		// setupAgentFolderGuard).
 		*output = fmt.Sprintf("SNAPSHOT_FULL (%d runes, %d bytes) -- returned inline because %s was requested.\n\n%s",
 			runeCount, len(*output), fullSnapshotFlag, *output)
 		return true, nil

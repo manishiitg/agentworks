@@ -115,7 +115,7 @@ func collectKnownWorkflowStepIDs(steps []PlanStepInterface, known map[string]str
 		if id := strings.TrimSpace(step.GetID()); id != "" {
 			known[id] = struct{}{}
 		}
-		if todo, ok := step.(*OrchestratorPlanStep); ok {
+		if todo, ok := step.(*AgentPlanStep); ok {
 			for _, route := range todo.PredefinedRoutes {
 				if route.SubAgentStep == nil {
 					continue
@@ -1591,7 +1591,7 @@ func workflowProgressTracksAgent(agentType string, agentName string) bool {
 	if !workflowProgressTracksAgentType(agentType) {
 		return false
 	}
-	return !strings.HasPrefix(strings.TrimSpace(agentName), "message-sequence-")
+	return !strings.HasPrefix(strings.TrimSpace(agentName), "agent-")
 }
 
 // workflowProgressExecutionKind maps a todo_task agent's internal agentType onto
@@ -1903,7 +1903,7 @@ func RegisterRunFullWorkflowTool(
 					return fmt.Sprintf("❌ Plan has human_input steps that require responses via human_inputs parameter. Missing:\n%s\n\nProvide human_inputs with a response for each step ID listed above.", strings.Join(missingSteps, "\n")), nil
 				}
 				if len(legacyRoutingSteps) > 0 {
-					return fmt.Sprintf("❌ Plan has routing/branch steps with legacy descriptions. Both are deterministic-only and never execute agents:\n%s\n\nMove each probe/judgment into a prior message_sequence step that writes route_selection.json, then clear the description and point the step at that file via route_source_file or context_dependencies.", strings.Join(legacyRoutingSteps, "\n")), nil
+					return fmt.Sprintf("❌ Plan has routing/branch steps with legacy descriptions. Both are deterministic-only and never execute agents:\n%s\n\nMove each probe/judgment into a prior agent step that writes route_selection.json, then clear the description and point the step at that file via route_source_file or context_dependencies.", strings.Join(legacyRoutingSteps, "\n")), nil
 				}
 			}
 
@@ -2091,7 +2091,7 @@ func RegisterRunFullWorkflowTool(
 				// own lifecycle notifications directly (message_sequence items,
 				// kb-update, continuation recovery) actually reach the main agent
 				// during a full-workflow run. Without this the notifier is nil and
-				// those notifications silently no-op — e.g. a message_sequence step
+				// those notifications silently no-op — e.g. a agent step
 				// (login/discovery/retrieval phases) ran for many minutes with the
 				// main agent never told it started, progressed, or finished.
 				workflowController.SetWorkshopExecutionNotifier(session.executionNotifier)

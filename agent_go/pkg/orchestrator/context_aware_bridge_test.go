@@ -83,7 +83,7 @@ func TestContextAwareBridgePushContextRichTagsTerminalStreamWithStepType(t *test
 	bridge.SetCurrentStepContext("parent-orchestrator", "todo_task")
 	bridge.PushContextRich("execution", 2, "route-writer", "Route writer", RichStepContext{
 		StepName:     "Route writer",
-		StepType:     "message_sequence",
+		StepType:     "agent",
 		ParentStepID: "parent-orchestrator",
 		TriggeredBy:  "todo_task_route",
 	})
@@ -117,10 +117,10 @@ func TestContextAwareBridgePushContextRichTagsTerminalStreamWithStepType(t *test
 	if got := metadata["parent_step_id"]; got != "parent-orchestrator" {
 		t.Fatalf("parent_step_id = %v, want parent-orchestrator", got)
 	}
-	if got := metadata["current_step_type"]; got != "message_sequence" {
+	if got := metadata["current_step_type"]; got != "agent" {
 		t.Fatalf("current_step_type = %v, want message_sequence", got)
 	}
-	if got := metadata["plan_step_type"]; got != "message_sequence" {
+	if got := metadata["plan_step_type"]; got != "agent" {
 		t.Fatalf("plan_step_type = %v, want message_sequence", got)
 	}
 }
@@ -131,7 +131,7 @@ func TestContextAwareBridgeClassifiesStructuredExecutionPrompt(t *testing.T) {
 	bridge.SetOrchestratorContext("execution", 0, "write-report", "Write report")
 	bridge.SetRichStepContext(RichStepContext{
 		StepName:  "Write report",
-		StepType:  "message_sequence",
+		StepType:  "agent",
 		Transport: "structured",
 	})
 
@@ -159,7 +159,7 @@ func TestContextAwareBridgePreservesExplicitUserMessageSource(t *testing.T) {
 	bridge.SetOrchestratorContext("execution", 0, "write-report", "Write report")
 	bridge.SetRichStepContext(RichStepContext{
 		StepName:  "Write report",
-		StepType:  "message_sequence",
+		StepType:  "agent",
 		Transport: "structured",
 	})
 
@@ -193,7 +193,7 @@ func TestContextAwareBridgeUsesExecutionLocalContextForParallelChildren(t *testi
 	})
 	ctxB := WithEventContextOverride(context.Background(), "execution", 1, "child-b", "Child B", RichStepContext{
 		StepName:     "Child B",
-		StepType:     "message_sequence",
+		StepType:     "agent",
 		ParentStepID: "nested-todo",
 		TriggeredBy:  "todo_task_route",
 	})
@@ -227,7 +227,7 @@ func TestContextAwareBridgeUsesExecutionLocalContextForParallelChildren(t *testi
 	// bridge state or the other child's metadata.
 	assertContext(ctxA, "child-a", "regular", "todo-parent")
 	bridge.SetOrchestratorContext("execution", 9, "unrelated-global", "other")
-	assertContext(ctxB, "child-b", "message_sequence", "nested-todo")
+	assertContext(ctxB, "child-b", "agent", "nested-todo")
 	assertContext(ctxA, "child-a", "regular", "todo-parent")
 }
 

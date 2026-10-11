@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func TestMessageSequenceCreationFailureRetiresAllocatedSession(t *testing.T) {
+func TestAgentCreationFailureRetiresAllocatedSession(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	previous := viper.Get("docs-dir")
@@ -22,15 +22,15 @@ func TestMessageSequenceCreationFailureRetiresAllocatedSession(t *testing.T) {
 	h := newAgentFactoryTestOrchestrator(t)
 	h.SetWorkspacePath("Workflow/testing")
 	h.selectedRunFolder = "iteration-0/default"
-	step := &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "writer"}}
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "writer"}}
 
 	// Persisted history is not authority to delete somebody else's live state.
-	priorID := h.messageSequenceRuntimeSessionID(nil, "step-1", "writer")
+	priorID := h.agentSequenceRuntimeSessionID(nil, "step-1", "writer")
 	common.SetSessionWorkingDir(priorID, "prior-runtime")
 	t.Cleanup(func() { common.ClearSessionShellConfig(priorID) })
-	s := &messageSequenceSession{RuntimeSessionID: priorID}
+	s := &agentSequenceSession{RuntimeSessionID: priorID}
 	for attempt := 0; attempt < 2; attempt++ {
-		_, _, err := h.getMessageSequenceRuntime(context.Background(), step, "step-1", s, nil, nil)
+		_, _, err := h.getAgentRuntime(context.Background(), step, "step-1", s, nil, nil)
 		if err == nil || !strings.Contains(err.Error(), "no valid LLM") {
 			t.Fatalf("expected failure before provider launch, got %v", err)
 		}
@@ -46,7 +46,7 @@ func TestMessageSequenceCreationFailureRetiresAllocatedSession(t *testing.T) {
 		if !mcpclient.GetSessionRegistry().IsSessionStopped(id) {
 			t.Fatal("failed runtime can still reconnect")
 		}
-		h.closeMessageSequenceRuntime(s, "caller cleanup after failure")
+		h.closeAgentRuntime(s, "caller cleanup after failure")
 		if common.GetSessionShellConfig(priorID) == nil {
 			t.Fatal("failure cleanup retired an unrelated persisted runtime")
 		}
@@ -60,10 +60,10 @@ type runtimeCleanupClient struct {
 
 func (c *runtimeCleanupClient) Close() error { c.closes++; return nil }
 
-func TestMessageSequenceCleanupClosesOnlyOwnedMCPConnections(t *testing.T) {
+func TestAgentCleanupClosesOnlyOwnedMCPConnections(t *testing.T) {
 	h := newAgentFactoryTestOrchestrator(t)
-	id := h.messageSequenceRuntimeSessionID(nil, "step-1", "writer")
-	sharedID := h.messageSequenceRuntimeSessionID(nil, "group", "browser")
+	id := h.agentSequenceRuntimeSessionID(nil, "step-1", "writer")
+	sharedID := h.agentSequenceRuntimeSessionID(nil, "group", "browser")
 	registry := mcpclient.GetSessionRegistry()
 	owned, shared := &runtimeCleanupClient{}, &runtimeCleanupClient{}
 	registry.StoreConnection(id, "fixture", owned)
@@ -76,9 +76,9 @@ func TestMessageSequenceCleanupClosesOnlyOwnedMCPConnections(t *testing.T) {
 		mcpagent.ClearSessionsStopped([]string{id, sharedID})
 		common.ClearSessionShellConfig(id)
 	})
-	s := &messageSequenceSession{runtime: &messageSequenceRuntime{SessionID: id}}
-	h.closeMessageSequenceRuntime(s, "completed")
-	h.closeMessageSequenceRuntime(s, "duplicate cleanup")
+	s := &agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: id}}
+	h.closeAgentRuntime(s, "completed")
+	h.closeAgentRuntime(s, "duplicate cleanup")
 	if registry.HasSession(id) || owned.closes != 1 || !registry.IsSessionStopped(id) {
 		t.Fatal("owned connections were not retired exactly once")
 	}
@@ -87,24 +87,24 @@ func TestMessageSequenceCleanupClosesOnlyOwnedMCPConnections(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceResumedHistoryDoesNotReclaimOldRuntime(t *testing.T) {
+func TestAgentResumedHistoryDoesNotReclaimOldRuntime(t *testing.T) {
 	hcpo := newAgentFactoryTestOrchestrator(t)
 	hcpo.selectedRunFolder = "iteration-0/default"
-	oldID := hcpo.messageSequenceRuntimeSessionID(nil, "step-1", "writer")
-	saved, err := json.Marshal(&messageSequenceSession{RuntimeSessionID: oldID, ExecutionTurnCount: 3})
+	oldID := hcpo.agentSequenceRuntimeSessionID(nil, "step-1", "writer")
+	saved, err := json.Marshal(&agentSequenceSession{RuntimeSessionID: oldID, ExecutionTurnCount: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var resumed messageSequenceSession
+	var resumed agentSequenceSession
 	if err := json.Unmarshal(saved, &resumed); err != nil {
 		t.Fatal(err)
 	}
-	newID := hcpo.messageSequenceRuntimeSessionID(&resumed, "step-1", "writer")
+	newID := hcpo.agentSequenceRuntimeSessionID(&resumed, "step-1", "writer")
 	if newID == oldID {
 		t.Fatal("resumed history reclaimed the prior execution's runtime")
 	}
-	resumed.runtime = &messageSequenceRuntime{SessionID: newID}
-	if got := hcpo.messageSequenceRuntimeSessionID(&resumed, "step-1", "writer"); got != newID {
+	resumed.runtime = &agentSequenceRuntime{SessionID: newID}
+	if got := hcpo.agentSequenceRuntimeSessionID(&resumed, "step-1", "writer"); got != newID {
 		t.Fatalf("next turn failed to reuse its live runtime: %q != %q", got, newID)
 	}
 	if resumed.ExecutionTurnCount != 3 {
@@ -115,19 +115,19 @@ func TestMessageSequenceResumedHistoryDoesNotReclaimOldRuntime(t *testing.T) {
 // A cancelled run may finish unwinding after its replacement has started.
 // Exercise the production cleanup path: it must not revoke the replacement's
 // cwd, guard, environment, or managed DB capability.
-func TestMessageSequenceOldRuntimeCleanupPreservesReplacement(t *testing.T) {
+func TestAgentOldRuntimeCleanupPreservesReplacement(t *testing.T) {
 	hcpo := newAgentFactoryTestOrchestrator(t)
 	hcpo.SetWorkspacePath("Workflow/testing")
 	hcpo.selectedRunFolder = "iteration-0/default"
 	hcpo.currentGroupName = "default"
 
-	start := func() *messageSequenceSession {
-		id := hcpo.messageSequenceRuntimeSessionID(nil, "step-11", "execute-actions")
+	start := func() *agentSequenceSession {
+		id := hcpo.agentSequenceRuntimeSessionID(nil, "step-11", "execute-actions")
 		cwd := hcpo.workflowStepShellWorkingDir()
-		hcpo.configureSubAgentSessionGuard(id, "message-sequence", "execute-actions", []string{cwd}, []string{cwd + "/execute-actions"})
-		hcpo.setMessageSequenceShellEnv(id, "step-11", "execute-actions")
+		hcpo.configureSubAgentSessionGuard(id, "agent", "execute-actions", []string{cwd}, []string{cwd + "/execute-actions"})
+		hcpo.setAgentShellEnv(id, "step-11", "execute-actions")
 		t.Cleanup(func() { common.ClearSessionShellConfig(id); mcpagent.ClearSessionsStopped([]string{id}) })
-		return &messageSequenceSession{runtime: &messageSequenceRuntime{SessionID: id}}
+		return &agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: id}}
 	}
 	old := start()
 	replacement := start()
@@ -135,7 +135,7 @@ func TestMessageSequenceOldRuntimeCleanupPreservesReplacement(t *testing.T) {
 	newID := replacement.runtime.SessionID
 	wantCfg := common.GetSessionShellConfig(newID)
 	wantEnv := common.GetSessionShellEnv(newID)
-	hcpo.closeMessageSequenceRuntime(old, "cancelled execution finished unwinding")
+	hcpo.closeAgentRuntime(old, "cancelled execution finished unwinding")
 
 	cfg := common.GetSessionShellConfig(newID)
 	if cfg == nil || cfg.WorkingDir != hcpo.workflowStepShellWorkingDir() || !cfg.FolderGuardSet || !reflect.DeepEqual(cfg, wantCfg) {

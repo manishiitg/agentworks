@@ -106,7 +106,7 @@ func TestReferenceMapReportsRemovedTools(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	root := filepath.Join(docs, "Workflow", "wf")
 	for rel, content := range map[string]string{
-		"planning/plan.json":        `{"steps":[{"type":"message_sequence","id":"research","description":"Use search_web_llm to find news. generated_at is true UTC (the turn header time is IST; subtract 5 hours 30 minutes).","context_output":"news.json"},{"type":"message_sequence","id":"write","description":"Write the summary. Convert each lead's local meeting time to UTC.","context_dependencies":["news.json"]}]}`,
+		"planning/plan.json":        `{"steps":[{"type":"agent","id":"research","description":"Use search_web_llm to find news. generated_at is true UTC (the turn header time is IST; subtract 5 hours 30 minutes).","context_output":"news.json"},{"type":"agent","id":"write","description":"Write the summary. Convert each lead's local meeting time to UTC.","context_dependencies":["news.json"]}]}`,
 		"planning/step_config.json": `{"steps":[{"id":"research","agent_configs":{"enabled_custom_tools":["workspace_advanced:search_web_llm"]}}]}`,
 	} {
 		path := filepath.Join(root, filepath.FromSlash(rel))

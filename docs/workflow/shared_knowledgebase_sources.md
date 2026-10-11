@@ -96,9 +96,9 @@ Relevant implementation entry points:
   local KB path and access mode resolution.
 - `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_factory.go`:
   agent read/write paths and KB access (`setupExecutionFolderGuard`).
-- `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_message_sequence.go`:
-  message_sequence item write paths (`setupMessageSequenceFolderGuard`).
-- `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_orchestrator.go`:
+- `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent.go`:
+  agent item write paths (`setupMessageSequenceFolderGuard`).
+- `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_delegation.go`:
   orchestrator's own top-level turn write paths (`setupOrchestratorFolderGuard`).
 - `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/workflow_folder_access.go`:
   attached-folder resolution, environment variables, prompts, session refresh, and
@@ -153,7 +153,7 @@ a permission grant. Explicit KB opt-out removes both source grants and variables
 | --- | --- |
 | Builder | Read every authorized attached KB through shell and supported file reads |
 | Execution agent | Read attached KBs when its KB access mode permits reading; write into a `"write"` source's `notes/` when the step's own `knowledgebase_access` permits writing (PLAT-325); explicit `knowledgebase_access: none` opts out of both |
-| message_sequence item | Same read/write rule as execution agents, narrowed further by the item's own `write_access.knowledgebase`/`kind: "knowledgebase"` (PLAT-325) |
+| agent item | Same read/write rule as execution agents, narrowed further by the item's own `write_access.knowledgebase`/`kind: "knowledgebase"` (PLAT-325) |
 | Scripted execution | Receive the same eligible read/write grants and environment variables as agent execution |
 | Strategic and architecture reviewers | Discover and read attached KBs within their review profile; no write authority |
 | KB maintenance/consolidation | Continue maintaining local notes only; do not reorganize source KBs |

@@ -83,8 +83,8 @@ func TestExecutionContextForStepScopesInputsWithoutLeakage(t *testing.T) {
 
 func TestUnknownWorkflowStepInputIDs(t *testing.T) {
 	steps := []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "step-a"}},
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "step-b"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "step-a"}},
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "step-b"}},
 	}
 	got := unknownWorkflowStepInputIDs(steps, map[string]string{
 		"step-b":        "known",
@@ -116,13 +116,13 @@ func TestExecutionContextForStepPreservesExplicitSingleStepInput(t *testing.T) {
 // real: the check never looked past the orchestrator that owns the route.
 func TestUnknownWorkflowStepInputIDsAcceptsPredefinedRouteIDs(t *testing.T) {
 	steps := []PlanStepInterface{
-		&MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "top-level-step"}},
-		&OrchestratorPlanStep{
+		&AgentPlanStep{CommonStepFields: CommonStepFields{ID: "top-level-step"}},
+		&AgentPlanStep{
 			CommonStepFields: CommonStepFields{ID: "orchestrator-step"},
 			PredefinedRoutes: []PlanOrchestrationRoute{
 				{
 					RouteID: "route-a",
-					SubAgentStep: &MessageSequencePlanStep{
+					SubAgentStep: &AgentPlanStep{
 						CommonStepFields: CommonStepFields{ID: "route-a"},
 					},
 				},
@@ -130,10 +130,10 @@ func TestUnknownWorkflowStepInputIDsAcceptsPredefinedRouteIDs(t *testing.T) {
 					RouteID: "route-b",
 					// A route nested inside a route: the same recursion that
 					// already handles this for step-ID uniqueness must apply here.
-					SubAgentStep: &OrchestratorPlanStep{
+					SubAgentStep: &AgentPlanStep{
 						CommonStepFields: CommonStepFields{ID: "nested-orchestrator"},
 						PredefinedRoutes: []PlanOrchestrationRoute{
-							{RouteID: "route-c", SubAgentStep: &MessageSequencePlanStep{
+							{RouteID: "route-c", SubAgentStep: &AgentPlanStep{
 								CommonStepFields: CommonStepFields{ID: "route-c"},
 							}},
 						},

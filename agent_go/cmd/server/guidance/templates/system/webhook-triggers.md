@@ -258,7 +258,7 @@ as a configuration probe.
 Use `manage_workflow_webhook` action `list` to discover `steps`. To create or update a single-step trigger, set `step_id` to that saved ID and `route_selections={}`. Empty `step_id` selects the existing route/full-workflow behavior. The Webhooks and Plan views show the target; creation stays in Builder chat.
 
 Supported targets are top-level executable plan steps: scripted workers or
-message-sequence agents, including agents with `predefined_routes` (and legacy
+agent agents, including agents with `predefined_routes` (and legacy
 orchestrator compatibility records). Human-input and routing/branch nodes are not
 standalone targets; select a route instead. Nested steps must be exposed as a
 top-level step to bind directly. Single-step webhooks skip prior and subsequent

@@ -10,7 +10,7 @@ import (
 func snapshotTestPlan(t *testing.T, id, description string) string {
 	t.Helper()
 	data, err := json.Marshal(map[string]interface{}{"steps": []interface{}{map[string]interface{}{
-		"id": id, "title": id, "type": "message_sequence", "description": description,
+		"id": id, "title": id, "type": "agent", "description": description,
 		"items": []interface{}{map[string]interface{}{"id": "work", "type": "user_message", "message": "Do and verify work."}},
 	}}})
 	if err != nil {

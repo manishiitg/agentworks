@@ -16,11 +16,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Exercise the real message-sequence guard, guarded patch/read client and
+// Exercise the real agent guard, guarded patch/read client and
 // workspace HTTP handlers. All writes are isolated in a temporary docs root;
 // no live research, browser, or workflow database is touched. This is a file
 // transport test, not a claim to exercise the Linux/macOS shell sandbox.
-func TestMessageSequenceResearchPacketsPersistInsideGrantedAssets(t *testing.T) {
+func TestAgentResearchPacketsPersistInsideGrantedAssets(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	previous := viper.Get("docs-dir")
@@ -32,13 +32,13 @@ func TestMessageSequenceResearchPacketsPersistInsideGrantedAssets(t *testing.T) 
 	server := httptest.NewServer(router)
 	defer server.Close()
 	client := workspaceclient.NewClient(server.URL)
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+	hcpo := newAgentClosingTestOrchestrator(t)
 	hcpo.selectedRunFolder = "iteration-0/default"
 	workflow := hcpo.GetWorkspacePath()
 	for _, source := range []string{"reddit", "x_twitter", "hackernews", "websearch"} {
 		t.Run(source, func(t *testing.T) {
 			sessionID := "durable-packet-" + source
-			reads, writes := hcpo.setupMessageSequenceFolderGuard("parent/agents/"+source+"/calls/call-1", source, nil, MessageSequenceWriteAccess{})
+			reads, writes := hcpo.setupAgentFolderGuard("parent/agents/"+source+"/calls/call-1", source, nil, AgentWriteAccess{})
 			common.SetSessionFolderGuard(sessionID, reads, writes)
 			configureWorkflowDBSession(sessionID, workflow, DBAccessReadWrite, false)
 			t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })

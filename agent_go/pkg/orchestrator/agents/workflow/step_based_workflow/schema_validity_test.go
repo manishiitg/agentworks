@@ -7,21 +7,19 @@ import (
 
 func TestAllSchemaFunctionsReturnValidJSON(t *testing.T) {
 	schemas := map[string]func() string{
-		"UpdateRegularStep":         getUpdateRegularStepSchema,
-		"DeletePlanSteps":           getDeletePlanStepsSchema,
-		"AddRegularStep":            getAddRegularStepSchema,
-		"AddMessageSequenceStep":    getAddMessageSequenceStepSchema,
-		"UpdateMessageSequenceStep": getUpdateMessageSequenceStepSchema,
-		"AddRoutingStep":            getAddRoutingStepSchema,
-		"UpdateRoutingStep":         getUpdateRoutingStepSchema,
-		"AddHumanInputStep":         getAddHumanInputStepSchema,
-		"AddOrchestratorStep":       getAddOrchestratorStepSchema,
-		"UpdateOrchestratorStep":    getUpdateOrchestratorStepSchema,
-		"AddOrchestratorRoute":      getAddOrchestratorRouteSchema,
-		"UpdateOrchestratorRoute":   getUpdateOrchestratorRouteSchema,
-		"DeleteOrchestratorRoute":   getDeleteOrchestratorRouteSchema,
-		"UpdateHumanInputStep":      getUpdateHumanInputStepSchema,
-		"UpdateValidationSchema":    getUpdateValidationSchemaSchema,
+		"UpdateRegularStep":       getUpdateRegularStepSchema,
+		"DeletePlanSteps":         getDeletePlanStepsSchema,
+		"AddRegularStep":          getAddRegularStepSchema,
+		"AddAgentStep":            getAddAgentStepSchema,
+		"UpdateAgentStep":         getUpdateAgentStepSchema,
+		"AddRoutingStep":          getAddRoutingStepSchema,
+		"UpdateRoutingStep":       getUpdateRoutingStepSchema,
+		"AddHumanInputStep":       getAddHumanInputStepSchema,
+		"AddOrchestratorRoute":    getAddAgentRouteSchema,
+		"UpdateOrchestratorRoute": getUpdateAgentRouteSchema,
+		"DeleteOrchestratorRoute": getDeleteAgentRouteSchema,
+		"UpdateHumanInputStep":    getUpdateHumanInputStepSchema,
+		"UpdateValidationSchema":  getUpdateValidationSchemaSchema,
 	}
 	for name, fn := range schemas {
 		var v interface{}

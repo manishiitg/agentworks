@@ -7,11 +7,11 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
-// messageSequenceExecutionID reuses the workshop execution identity when a
-// standalone step enters the message-sequence runtime. A full workflow carries
+// agentSequenceExecutionID reuses the workshop execution identity when a
+// standalone step enters the agent runtime. A full workflow carries
 // a workflow-level identity instead, so it deliberately returns an empty value
 // and lets the caller mint a per-step ID.
-func messageSequenceExecutionID(ctx context.Context, stepID string) string {
+func agentSequenceExecutionID(ctx context.Context, stepID string) string {
 	if ctx == nil || strings.TrimSpace(stepID) == "" {
 		return ""
 	}

@@ -13,7 +13,7 @@ import (
 
 // Validates sequence-unification Stage 3: a todo_task's `messages` (old
 // OrchestratorMessage JSON shape) deserializes, back-compat, into the unified
-// []MessageSequenceItem — no plan migration needed.
+// []AgentItem — no plan migration needed.
 func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	planJSON := `{"steps":[{
 		"type":"todo_task","id":"orch","title":"o","description":"d",
@@ -29,9 +29,9 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	if err := json.Unmarshal([]byte(planJSON), &pr); err != nil {
 		t.Fatalf("unmarshal plan: %v", err)
 	}
-	var todo *OrchestratorPlanStep
+	var todo *AgentPlanStep
 	for _, s := range pr.Steps {
-		if tt, ok := s.(*OrchestratorPlanStep); ok {
+		if tt, ok := s.(*AgentPlanStep); ok {
 			todo = tt
 		}
 	}
@@ -39,7 +39,7 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 		t.Fatal("todo_task step not found after unmarshal")
 	}
 	// Compile-time + runtime proof the field is the unified type.
-	var msgs []MessageSequenceItem = todo.Messages
+	var msgs []AgentItem = todo.Items
 	if len(msgs) != 3 {
 		t.Fatalf("want 3 messages, got %d", len(msgs))
 	}
@@ -58,15 +58,15 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 // turns appended when (and only when) the step is configured for those writes —
 // so it honors step-level learning_objective / knowledgebase_contribution like a
 // regular step instead of silently skipping the post-step learnings/KB phase.
-func TestMessageSequenceClosingItems(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
+func TestAgentClosingItems(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
 
 	// Configured for BOTH learnings and KB writes (direct method) -> both items
 	// appended, in order. The KB closing turn exists ONLY for write_method=direct:
 	// under the default agent method the constraint layer strips KB from every
 	// item's guard, so the turn would be a guaranteed-denied write.
-	both := &MessageSequencePlanStep{
-		Type:             StepTypeMessageSeq,
+	both := &AgentPlanStep{
+		Type:             StepTypeAgent,
 		CommonStepFields: CommonStepFields{ID: "extract-all", Description: "extract portfolio data"},
 		AgentConfigs: &AgentConfigs{
 			LearningsAccess:           LearningsAccessReadWrite,
@@ -79,7 +79,7 @@ func TestMessageSequenceClosingItems(t *testing.T) {
 	// Appending them separately meant the agent chose a destination based on
 	// which turn it was in rather than on which store owns the content, so both
 	// write grants now belong to a single turn.
-	items := hcpo.messageSequenceClosingItems(context.Background(), both, 0)
+	items := hcpo.agentSequenceClosingItems(context.Background(), both, 0)
 	if len(items) != 1 {
 		t.Fatalf("expected 1 merged reflection item, got %d", len(items))
 	}
@@ -101,25 +101,25 @@ func TestMessageSequenceClosingItems(t *testing.T) {
 	}
 
 	// No agent configs -> no synthetic items.
-	if got := hcpo.messageSequenceClosingItems(context.Background(), &MessageSequencePlanStep{CommonStepFields: CommonStepFields{ID: "x"}}, 0); len(got) != 0 {
+	if got := hcpo.agentSequenceClosingItems(context.Background(), &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "x"}}, 0); len(got) != 0 {
 		t.Errorf("expected no closing items without agent configs, got %d", len(got))
 	}
 
 	// learnings_access=read-write but empty objective -> no learning item (double-gated).
-	noObj := &MessageSequencePlanStep{
+	noObj := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "y", Description: "d"},
 		AgentConfigs:     &AgentConfigs{LearningsAccess: LearningsAccessReadWrite},
 	}
-	if got := hcpo.messageSequenceClosingItems(context.Background(), noObj, 0); len(got) != 0 {
+	if got := hcpo.agentSequenceClosingItems(context.Background(), noObj, 0); len(got) != 0 {
 		t.Errorf("expected no items when learning objective empty, got %d", len(got))
 	}
 
 	// KB contribution set but access not write-capable -> no KB item.
-	kbReadOnly := &MessageSequencePlanStep{
+	kbReadOnly := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "z", Description: "d"},
 		AgentConfigs:     &AgentConfigs{KnowledgebaseAccess: "read", KnowledgebaseContribution: "note something"},
 	}
-	if got := hcpo.messageSequenceClosingItems(context.Background(), kbReadOnly, 0); len(got) != 0 {
+	if got := hcpo.agentSequenceClosingItems(context.Background(), kbReadOnly, 0); len(got) != 0 {
 		t.Errorf("expected no KB item when access is read-only, got %d", len(got))
 	}
 
@@ -131,38 +131,38 @@ func TestMessageSequenceClosingItems(t *testing.T) {
 	// itself in this closing turn. A step carrying a contribution must never end up
 	// with no writer at all, which is what a stale "expect zero items" assertion
 	// here would silently allow.
-	kbUnsetMethod := &MessageSequencePlanStep{
+	kbUnsetMethod := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "w", Description: "d"},
 		AgentConfigs: &AgentConfigs{
 			KnowledgebaseAccess:       KBAccessReadWrite,
 			KnowledgebaseContribution: "note something",
 		},
 	}
-	if got := hcpo.messageSequenceClosingItems(context.Background(), kbUnsetMethod, 0); len(got) != 1 {
+	if got := hcpo.agentSequenceClosingItems(context.Background(), kbUnsetMethod, 0); len(got) != 1 {
 		t.Errorf("expected 1 KB closing item when write method is unset (now resolves to direct), got %d", len(got))
 	}
 
 	// An explicit legacy "agent" value must behave identically — old plans are
 	// coerced to direct rather than silently losing their KB contribution.
-	kbLegacyAgent := &MessageSequencePlanStep{
+	kbLegacyAgent := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "w2", Description: "d"},
 		AgentConfigs: &AgentConfigs{
 			KnowledgebaseAccess:       KBAccessReadWrite,
 			KnowledgebaseContribution: "note something",
 		},
 	}
-	if got := hcpo.messageSequenceClosingItems(context.Background(), kbLegacyAgent, 0); len(got) != 1 {
+	if got := hcpo.agentSequenceClosingItems(context.Background(), kbLegacyAgent, 0); len(got) != 1 {
 		t.Errorf("expected legacy write_method=agent to be coerced to direct and yield 1 KB closing item, got %d", len(got))
 	}
 }
 
-func TestAppendMessageSequenceFinalValidation(t *testing.T) {
+func TestAppendAgentFinalValidation(t *testing.T) {
 	topLevel := &ValidationSchema{Files: []FileValidationRule{{FileName: "result.json", MustExist: true}}}
 	other := &ValidationSchema{Files: []FileValidationRule{{FileName: "intermediate.json", MustExist: true}}}
 
 	tests := []struct {
 		name        string
-		items       []MessageSequenceItem
+		items       []AgentItem
 		schema      *ValidationSchema
 		wantLen     int
 		wantAdded   bool
@@ -170,20 +170,20 @@ func TestAppendMessageSequenceFinalValidation(t *testing.T) {
 	}{
 		{
 			name:      "no top-level schema",
-			items:     []MessageSequenceItem{{ID: "work", Type: "user_message"}},
+			items:     []AgentItem{{ID: "work", Type: "user_message"}},
 			wantLen:   1,
 			wantAdded: false,
 		},
 		{
 			name:      "adds final gate",
-			items:     []MessageSequenceItem{{ID: "work", Type: "user_message"}},
+			items:     []AgentItem{{ID: "work", Type: "user_message"}},
 			schema:    topLevel,
 			wantLen:   2,
 			wantAdded: true,
 		},
 		{
 			name: "final gate falls back to top-level schema",
-			items: []MessageSequenceItem{
+			items: []AgentItem{
 				{ID: "work", Type: "user_message"},
 				{ID: "verify", Type: "prevalidation"},
 			},
@@ -194,7 +194,7 @@ func TestAppendMessageSequenceFinalValidation(t *testing.T) {
 		},
 		{
 			name: "final gate has equal item schema",
-			items: []MessageSequenceItem{
+			items: []AgentItem{
 				{ID: "work", Type: "user_message"},
 				{ID: "verify", Type: "prevalidation", ValidationSchema: topLevel},
 			},
@@ -205,7 +205,7 @@ func TestAppendMessageSequenceFinalValidation(t *testing.T) {
 		},
 		{
 			name: "different intermediate gate does not replace final gate",
-			items: []MessageSequenceItem{
+			items: []AgentItem{
 				{ID: "work", Type: "user_message"},
 				{ID: "verify-intermediate", Type: "prevalidation", ValidationSchema: other},
 			},
@@ -215,7 +215,7 @@ func TestAppendMessageSequenceFinalValidation(t *testing.T) {
 		},
 		{
 			name: "synthetic id avoids configured collision",
-			items: []MessageSequenceItem{
+			items: []AgentItem{
 				{ID: "__automatic_final_validation__", Type: "user_message"},
 			},
 			schema:      topLevel,
@@ -228,7 +228,7 @@ func TestAppendMessageSequenceFinalValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			originalLen := len(tt.items)
-			got := appendMessageSequenceFinalValidation(tt.items, tt.schema)
+			got := appendAgentFinalValidation(tt.items, tt.schema)
 			if len(got) != tt.wantLen {
 				t.Fatalf("len = %d, want %d: %+v", len(got), tt.wantLen, got)
 			}
@@ -251,23 +251,23 @@ func TestAppendMessageSequenceFinalValidation(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceFinalValidationPrecedesClosingItems(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
-	step := &MessageSequencePlanStep{
+func TestAgentFinalValidationPrecedesClosingItems(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
+	step := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{
 			ID:               "work-and-learn",
 			Description:      "do the work",
 			ValidationSchema: &ValidationSchema{Files: []FileValidationRule{{FileName: "result.json", MustExist: true}}},
 		},
-		Items: []MessageSequenceItem{{ID: "work", Type: "user_message", Message: "Produce result.json"}},
+		Items: []AgentItem{{ID: "work", Type: "user_message", Message: "Produce result.json"}},
 		AgentConfigs: &AgentConfigs{
 			LearningsAccess:   LearningsAccessReadWrite,
 			LearningObjective: "Capture the durable pattern",
 		},
 	}
 
-	planned := appendMessageSequenceFinalValidation(step.Items, step.ValidationSchema)
-	planned = append(planned, hcpo.messageSequenceClosingItems(context.Background(), step, 0)...)
+	planned := appendAgentFinalValidation(step.Items, step.ValidationSchema)
+	planned = append(planned, hcpo.agentSequenceClosingItems(context.Background(), step, 0)...)
 	if len(planned) != 3 {
 		t.Fatalf("planned len = %d, want 3: %+v", len(planned), planned)
 	}
@@ -276,23 +276,23 @@ func TestMessageSequenceFinalValidationPrecedesClosingItems(t *testing.T) {
 	}
 }
 
-func TestFormatMessageSequenceTurnLogResult(t *testing.T) {
-	item := MessageSequenceItem{ID: "review", Type: "user_message"}
-	if got := formatMessageSequenceTurnLogResult(item, "STATUS: COMPLETED\nReport updated", nil); got != "Message sequence item: review (user_message)\nSTATUS: COMPLETED\nReport updated" {
+func TestFormatAgentTurnLogResult(t *testing.T) {
+	item := AgentItem{ID: "review", Type: "user_message"}
+	if got := formatAgentTurnLogResult(item, "STATUS: COMPLETED\nReport updated", nil); got != "Agent item: review (user_message)\nSTATUS: COMPLETED\nReport updated" {
 		t.Fatalf("success log result = %q", got)
 	}
 
-	got := formatMessageSequenceTurnLogResult(item, "partial output", fmt.Errorf("provider disconnected"))
-	for _, want := range []string{"Message sequence item: review (user_message)", "STATUS: FAILED", "provider disconnected", "partial output"} {
+	got := formatAgentTurnLogResult(item, "partial output", fmt.Errorf("provider disconnected"))
+	for _, want := range []string{"Agent item: review (user_message)", "STATUS: FAILED", "provider disconnected", "partial output"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("failure log result %q missing %q", got, want)
 		}
 	}
 }
 
-func TestMessageSequenceClosingItemsHonorReadOnlyLearningsAccess(t *testing.T) {
-	hcpo := newMessageSequenceClosingTestOrchestrator(t)
-	step := &MessageSequencePlanStep{
+func TestAgentClosingItemsHonorReadOnlyLearningsAccess(t *testing.T) {
+	hcpo := newAgentClosingTestOrchestrator(t)
+	step := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{ID: "seq", Description: "do work"},
 		AgentConfigs: &AgentConfigs{
 			LearningsAccess:   LearningsAccessRead,
@@ -300,12 +300,12 @@ func TestMessageSequenceClosingItemsHonorReadOnlyLearningsAccess(t *testing.T) {
 		},
 	}
 
-	if got := hcpo.messageSequenceClosingItems(context.Background(), step, 0); len(got) != 0 {
+	if got := hcpo.agentSequenceClosingItems(context.Background(), step, 0); len(got) != 0 {
 		t.Fatalf("read-only learning access should suppress synthetic learning item, got %+v", got)
 	}
 }
 
-func newMessageSequenceClosingTestOrchestrator(t *testing.T) *StepBasedWorkflowOrchestrator {
+func newAgentClosingTestOrchestrator(t *testing.T) *StepBasedWorkflowOrchestrator {
 	t.Helper()
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "",

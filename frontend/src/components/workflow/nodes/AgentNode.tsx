@@ -1,14 +1,14 @@
 import { memo, type ReactElement } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { CheckCircle, XCircle, Loader2, Plus, RefreshCw, ListOrdered, MessageSquare, ShieldCheck, Repeat, Bot } from 'lucide-react'
-import type { MessageSequenceNodeData } from '../hooks/usePlanToFlow'
+import type { AgentNodeData } from '../hooks/usePlanToFlow'
 import type { ChangeType } from '../hooks/usePlanData'
-import type { MessageSequenceItem } from '../../../utils/stepConfigMatching'
+import type { AgentItem } from '../../../utils/stepConfigMatching'
 import { effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
 import { getExecutionModeVisuals } from './executionModeVisuals'
 
-interface MessageSequenceNodeProps {
-  data: MessageSequenceNodeData
+interface AgentNodeProps {
+  data: AgentNodeData
   selected?: boolean
 }
 
@@ -44,7 +44,7 @@ const statusIcons: Record<string, ReactElement | null> = {
 
 // Per-item-type presentation: short label, badge colors, and icon. Falls back
 // to a neutral "step" treatment for any item type the backend adds later.
-function itemPresentation(item: MessageSequenceItem): { label: string; badge: string; icon: ReactElement } {
+function itemPresentation(item: AgentItem): { label: string; badge: string; icon: ReactElement } {
   switch (item.type) {
     case 'user_message':
       return {
@@ -79,13 +79,13 @@ function itemPresentation(item: MessageSequenceItem): { label: string; badge: st
   }
 }
 
-function itemPrimaryText(item: MessageSequenceItem): string {
+function itemPrimaryText(item: AgentItem): string {
   const raw = item.title || item.message || item.source_sql || item.source || item.scripted_steps?.map(call => call.step_id).join(', ') || item.id || ''
   const flat = raw.replace(/\s+/g, ' ').trim()
   return flat.length > 52 ? flat.substring(0, 49) + '…' : flat
 }
 
-export const MessageSequenceNode = memo(({ data, selected }: MessageSequenceNodeProps) => {
+export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
   const { title, description, items, predefined_routes, status, stepIndex, changeType, isOrphan, step } = data
   const orphanReuseCount = (data as { orphanReuseCount?: number }).orphanReuseCount ?? 0
 
@@ -241,4 +241,4 @@ export const MessageSequenceNode = memo(({ data, selected }: MessageSequenceNode
   )
 })
 
-MessageSequenceNode.displayName = 'MessageSequenceNode'
+AgentNode.displayName = 'AgentNode'

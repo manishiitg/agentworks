@@ -52,10 +52,10 @@ const runConcernsSchema = `CREATE TABLE IF NOT EXISTS run_concerns (
 // are separate sources: knowing a contradiction came from the learnings turn
 // rather than the task itself is what tells a reviewer where to look.
 const (
-	ConcernPhaseExecution       = "execution"
-	ConcernPhaseLearnings       = "learnings"
-	ConcernPhaseKBReview        = "kb-review"
-	ConcernPhaseMessageSequence = "message-sequence"
+	ConcernPhaseExecution = "execution"
+	ConcernPhaseLearnings = "learnings"
+	ConcernPhaseKBReview  = "kb-review"
+	ConcernPhaseAgent     = "agent"
 	// ConcernPhaseReview covers Pulse reviewer artifacts. The "step" for these is
 	// the module name (bug_review, db_health, ...) rather than a plan step.
 	ConcernPhaseReview = "review"

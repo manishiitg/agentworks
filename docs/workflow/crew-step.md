@@ -929,7 +929,7 @@ The simple user flow is:
    improve the Crew's instructions, skills, memory, and integrations over time.
 
 This makes a Crew a more capable, user-testable specialist than an ordinary
-message sequence or execution-only subagent. It has a dedicated workspace,
+agent or execution-only subagent. It has a dedicated workspace,
 memory, skills, integrations, and conversation that the user can open and
 refine independently of the workflow.
 

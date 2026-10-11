@@ -21,7 +21,7 @@ func TestStepDescriptionLayoutStampRefusedUntilEveryStepIsConverted(t *testing.T
 	}
 	write := func(nested string) {
 		plan := `{"steps":[{"id":"score","type":"regular","description":"Run the scoring script."},{"id":"route-mode","type":"routing","description":"","routing_question":"Which mode?"},
-{"id":"lead","type":"orchestrator","description":` + jsonString(layoutDescription) + `,"predefined_routes":[{"route_id":"r1","sub_agent_step":{"id":"research","type":"message_sequence","description":` + jsonString(nested) + `}}]}],
+{"id":"lead","type":"orchestrator","description":` + jsonString(layoutDescription) + `,"predefined_routes":[{"route_id":"r1","sub_agent_step":{"id":"research","type":"agent","description":` + jsonString(nested) + `}}]}],
 "orphan_steps":[{"id":"old","description":"free text"}]}`
 		if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
 			t.Fatal(err)
@@ -43,7 +43,7 @@ func TestStepDescriptionLayoutStampRefusedUntilEveryStepIsConverted(t *testing.T
 
 // Plan Drift reports description_layout per pending step with the same rule.
 func TestPlanDriftCandidatesCheckDescriptionLayout(t *testing.T) {
-	plan := `{"steps":[{"id":"step-a","type":"message_sequence","description":` + jsonString(layoutDescription) + `,"items":[{"id":"x","type":"user_message","message":"Do A."}]},{"id":"step-b","type":"message_sequence","description":"Do the thing well.","items":[{"id":"y","type":"user_message","message":"Do B."}]},{"id":"step-c","type":"routing","description":"","routing_question":"Which?"}]}`
+	plan := `{"steps":[{"id":"step-a","type":"agent","description":` + jsonString(layoutDescription) + `,"items":[{"id":"x","type":"user_message","message":"Do A."}]},{"id":"step-b","type":"agent","description":"Do the thing well.","items":[{"id":"y","type":"user_message","message":"Do B."}]},{"id":"step-c","type":"routing","description":"","routing_question":"Which?"}]}`
 	planDriftCandidateWorkspace(t, "Workflow/layout", plan, "")
 	got, err := CollectPlanDriftCandidates(context.Background(), "Workflow/layout")
 	if err != nil {

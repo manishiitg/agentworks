@@ -104,8 +104,8 @@ func TestScriptedStepInvokedAsOrchestratorRouteReceivesDelegationEndToEnd(t *tes
 	}
 	dependency := filepath.Join(GetPromptDocsRoot(), "Workflow/delegation-e2e/runs/iteration-1/default/execution/source/input.json")
 	child.ContextDependencies = []string{dependency}
-	parent := &OrchestratorPlanStep{
-		Type: StepTypeOrchestrator,
+	parent := &AgentPlanStep{
+		Type: StepTypeAgent,
 		CommonStepFields: CommonStepFields{
 			ID:    "parent",
 			Title: "Parent",
@@ -116,7 +116,7 @@ func TestScriptedStepInvokedAsOrchestratorRouteReceivesDelegationEndToEnd(t *tes
 			SubAgentStep: child,
 		}},
 	}
-	decision := &OrchestratorDecision{
+	decision := &AgentDelegationDecision{
 		SelectedRouteID:  "route-a",
 		TodoIDToExecute:  "todo-42",
 		ScriptParameters: map[string]interface{}{"market": "dubai"},

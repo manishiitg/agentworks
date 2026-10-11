@@ -105,7 +105,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 			"update": []any{map[string]any{"id": scheduleID, "enabled": false, "run_destination": "isolated"}},
 			"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cadence_hours": 168}},
 		},
-		"files": map[string]any{"notes/runbook.md": "Escalation runbook"},
+		"files":       map[string]any{"notes/runbook.md": "Escalation runbook"},
 		"return_spec": true,
 	})
 	if code != 200 || out["role"] != "Escalation lead" || out["purpose"] != "Escalate the hard tickets." {

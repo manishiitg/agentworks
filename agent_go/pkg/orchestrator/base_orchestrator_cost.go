@@ -91,7 +91,7 @@ func (bo *BaseOrchestrator) attachCostObserver(
 func agentCostExecutionID(ctx context.Context, config *agents.OrchestratorAgentConfig, stepID string) string {
 	if ctx != nil {
 		// Background/generic launches (Pulse reviewers, call_generic_agent
-		// children, message-sequence steps) set this to the execution id the
+		// children, agent steps) set this to the execution id the
 		// launch site registered with the execution notifier.
 		if agentID := strings.TrimSpace(virtualtools.SubAgentSpecFromContext(ctx).BackgroundAgentID); agentID != "" {
 			return agentID

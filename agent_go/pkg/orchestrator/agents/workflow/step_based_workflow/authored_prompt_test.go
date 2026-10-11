@@ -28,15 +28,15 @@ func TestRenderAuthoredPrompt(t *testing.T) {
 }
 
 func TestAuthoredPromptPlanRoundTrip(t *testing.T) {
-	const source = `{"type":"message_sequence","id":"answer","title":"Answer","description":"Answer the call","authored_prompt":true,"system_prompt":"Return JSON","items":[{"id":"turn","type":"user_message","message":"{{input.question}}"}]}`
-	var step MessageSequencePlanStep
+	const source = `{"type":"agent","id":"answer","title":"Answer","description":"Answer the call","authored_prompt":true,"system_prompt":"Return JSON","items":[{"id":"turn","type":"user_message","message":"{{input.question}}"}]}`
+	var step AgentPlanStep
 	if err := json.Unmarshal([]byte(source), &step); err != nil {
 		t.Fatal(err)
 	}
 	if !step.AuthoredPrompt || step.SystemPrompt != "Return JSON" {
 		t.Fatalf("authored fields lost: %+v", step)
 	}
-	if err := validateMessageSequenceStepFieldsTyped(&step); err != nil {
+	if err := validateAgentStepFieldsTyped(&step); err != nil {
 		t.Fatalf("authored step rejected: %v", err)
 	}
 	encoded, err := json.Marshal(&step)
@@ -46,10 +46,10 @@ func TestAuthoredPromptPlanRoundTrip(t *testing.T) {
 }
 
 func TestAuthoredPromptPlanUpdate(t *testing.T) {
-	step := &MessageSequencePlanStep{SystemPrompt: "old"}
+	step := &AgentPlanStep{SystemPrompt: "old"}
 	enabled := true
 	prompt := "Return JSON"
-	updated := mergePartialStepUpdate(step, PartialPlanStep{AuthoredPrompt: &enabled, SystemPrompt: &prompt}).(*MessageSequencePlanStep)
+	updated := mergePartialStepUpdate(step, PartialPlanStep{AuthoredPrompt: &enabled, SystemPrompt: &prompt}).(*AgentPlanStep)
 	if !updated.AuthoredPrompt || updated.SystemPrompt != prompt || step.AuthoredPrompt || step.SystemPrompt != "old" {
 		t.Fatalf("update did not preserve authored fields or mutated input: updated=%+v old=%+v", updated, step)
 	}

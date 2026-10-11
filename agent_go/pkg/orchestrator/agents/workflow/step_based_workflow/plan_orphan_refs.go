@@ -67,16 +67,7 @@ func collectOrchestratorStepIDs(step PlanStepInterface, ids map[string]bool) {
 	}
 
 	switch s := step.(type) {
-	case *OrchestratorPlanStep:
-		if s.GetID() != "" {
-			ids[s.GetID()] = true
-		}
-		for _, route := range s.PredefinedRoutes {
-			if route.SubAgentStep != nil {
-				collectOrchestratorStepIDs(route.SubAgentStep, ids)
-			}
-		}
-	case *MessageSequencePlanStep:
+	case *AgentPlanStep:
 		if len(s.PredefinedRoutes) > 0 && s.GetID() != "" {
 			ids[s.GetID()] = true
 		}
@@ -94,9 +85,7 @@ func resolveOrphanRefsInStep(step PlanStepInterface, orphanByID map[string]PlanS
 	}
 
 	switch s := step.(type) {
-	case *OrchestratorPlanStep:
-		return resolveOrphanRefsInAgentRoutes(s.GetID(), s.PredefinedRoutes, orphanByID, orphanChain, func(routes []PlanOrchestrationRoute) { s.PredefinedRoutes = routes })
-	case *MessageSequencePlanStep:
+	case *AgentPlanStep:
 		return resolveOrphanRefsInAgentRoutes(s.GetID(), s.PredefinedRoutes, orphanByID, orphanChain, func(routes []PlanOrchestrationRoute) { s.PredefinedRoutes = routes })
 	}
 

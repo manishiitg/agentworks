@@ -582,7 +582,7 @@ type StreamingAPI struct {
 	stoppedSessionsMu sync.RWMutex
 
 	// interruptedTurns records a user cancel of only the foreground response.
-	// Scheduled message sequences consume this marker so an interrupted turn is
+	// Scheduled agents consume this marker so an interrupted turn is
 	// never mistaken for a successfully completed (idle) turn and advanced.
 	interruptedTurns   map[string]bool
 	interruptedTurnsMu sync.Mutex

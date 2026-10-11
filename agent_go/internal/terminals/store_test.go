@@ -141,7 +141,7 @@ func TestStoreCanonicalizesCrossedWorkflowStepOwner(t *testing.T) {
 		crossedOwner,
 		map[string]interface{}{
 			"execution_id":    crossedOwner,
-			"execution_kind":  "message_sequence_item",
+			"execution_kind":  "agent_item",
 			"current_step_id": "word-task",
 			"step_id":         "word-task",
 			"step_title":      "Nested Word Task",
@@ -215,14 +215,14 @@ func TestStoreKeepsInterleavedParallelStepContentWithExecutionOwner(t *testing.T
 			Type:          "streaming_chunk",
 			SessionID:     "session-1",
 			ExecutionID:   "workflow-step:" + executionID + ":" + staleStepID,
-			ExecutionKind: "message_sequence_item",
+			ExecutionKind: "agent_item",
 			Timestamp:     at,
 			Data: &agentevents.AgentEvent{
 				Type: agentevents.StreamingChunk,
 				Data: &agentevents.StreamingChunkEvent{
 					BaseEventData: agentevents.BaseEventData{Metadata: map[string]interface{}{
 						"execution_id":    "workflow-step:" + executionID + ":" + staleStepID,
-						"execution_kind":  "message_sequence_item",
+						"execution_kind":  "agent_item",
 						"current_step_id": staleStepID,
 						"step_id":         staleStepID,
 						"step_title":      staleTitle,
@@ -271,7 +271,7 @@ func TestStoreKeepsInterleavedParallelStepContentWithExecutionOwner(t *testing.T
 	}
 }
 
-func TestStoreNestedMessageSequenceEndSettlesAndNextTurnReactivates(t *testing.T) {
+func TestStoreNestedAgentEndSettlesAndNextTurnReactivates(t *testing.T) {
 	store := NewStore()
 	now := time.Now()
 	const parentExecutionID = "exec-calc-task-1785053307554142000"
@@ -280,7 +280,7 @@ func TestStoreNestedMessageSequenceEndSettlesAndNextTurnReactivates(t *testing.T
 	firstMetadata := map[string]interface{}{
 		"agent_id":            firstAgentID,
 		"parent_execution_id": parentExecutionID,
-		"execution_kind":      "message_sequence_item",
+		"execution_kind":      "agent_item",
 		"step_id":             "calc-task",
 		"step_title":          "Nested Calc Task",
 	}
@@ -305,7 +305,7 @@ func TestStoreNestedMessageSequenceEndSettlesAndNextTurnReactivates(t *testing.T
 
 	done, ok := store.Get("session-1:" + ownerID)
 	if !ok {
-		t.Fatal("expected owning message-sequence transcript")
+		t.Fatal("expected owning agent transcript")
 	}
 	if done.Active || done.State != "completed" {
 		t.Fatalf("nested item end must settle transcript: active=%v state=%q", done.Active, done.State)
@@ -321,7 +321,7 @@ func TestStoreNestedMessageSequenceEndSettlesAndNextTurnReactivates(t *testing.T
 		map[string]interface{}{
 			"agent_id":            nextAgentID,
 			"parent_execution_id": parentExecutionID,
-			"execution_kind":      "message_sequence_item",
+			"execution_kind":      "agent_item",
 			"step_id":             "calc-task",
 		},
 		now.Add(2*time.Second),
@@ -454,7 +454,7 @@ func TestStoreDoesNotCreateStructuredDuplicateForMainTranscript(t *testing.T) {
 	}
 }
 
-func TestStoreCollapsesMessageSequenceLifecycleIntoOneDetailedStep(t *testing.T) {
+func TestStoreCollapsesAgentLifecycleIntoOneDetailedStep(t *testing.T) {
 	store := NewStore()
 	now := time.Now()
 	rootExecutionID := "exec-math-solver-1784967748400792000"
@@ -486,7 +486,7 @@ func TestStoreCollapsesMessageSequenceLifecycleIntoOneDetailedStep(t *testing.T)
 	store.HandleEvent("session-1", backgroundEvent("background_agent_started", map[string]interface{}{
 		"agent_id":            "msgseq-math-solver-execute-and-verify-1784967748408960000",
 		"parent_execution_id": rootExecutionID,
-		"name":                "Message sequence item: execute and verify",
+		"name":                "Agent item: execute and verify",
 	}, now.Add(time.Second)))
 	store.HandleEvent("session-1", storeevents.Event{
 		Type:          string(agentevents.UserMessage),

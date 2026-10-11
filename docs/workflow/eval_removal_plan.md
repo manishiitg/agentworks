@@ -151,8 +151,8 @@ points removed in Phase 3):
   simply never had eval).
 - Delete every `isEvaluationMode` branch (~20 files). Highest-density files:
   `controller_execution.go` (10), `interactive_workshop_manager.go` (7),
-  `controller_agent_factory.go` (6), `controller_message_sequence.go` (5),
-  `controller_orchestrator.go` (4), `controller_workshop.go` (3),
+  `controller_agent_factory.go` (6), `controller_agent.go` (5),
+  `controller_agent_delegation.go` (4), `controller_workshop.go` (3),
   `controller.go` (3, incl. the field itself), `step_config.go` (2, collapse to
   `planning/`), `planning_exports.go` (2), plus single branches in
   `code_layout.go`, `controller_scripted.go`, `plan_snapshot.go`,

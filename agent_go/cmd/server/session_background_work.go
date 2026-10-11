@@ -81,7 +81,7 @@ func backgroundWorkKind(snap BackgroundAgentSnapshot) string {
 		return "crew_call"
 	case executionType == "full-workflow" || kind == string(orchEvents.ExecutionKindFullRun) || strings.HasPrefix(snap.ID, "workflow-full-"):
 		return "workflow_run"
-	case kind == "workflow_step" || kind == "message_sequence_item" || isWorkflowStepTrackingExecution(snap.ID, snap.Name, snap.Metadata):
+	case kind == "workflow_step" || kind == "agent_item" || isWorkflowStepTrackingExecution(snap.ID, snap.Name, snap.Metadata):
 		return "step"
 	default:
 		return "sub_agent"

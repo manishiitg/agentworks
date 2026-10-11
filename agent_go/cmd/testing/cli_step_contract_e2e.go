@@ -228,7 +228,7 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 			"context_dependencies": []string{}, "context_output": agentScriptName,
 		},
 		{
-			"type": "message_sequence", "id": stepContractAgentID, "title": "Contract agent step",
+			"type": "agent", "id": stepContractAgentID, "title": "Contract agent step",
 			"description":          "Run the harness file-access script and report that it finished.",
 			"context_dependencies": []string{agentScriptName}, "context_output": "",
 			"items": []map[string]interface{}{
@@ -252,7 +252,7 @@ subprocess.run(["sh", %q, res, out_dir], check=False)
 		{
 			// PLAT-441: an authored agent (a Relay agent's shape) owning a saved
 			// script tool keeps its own system prompt and JSON answer.
-			"type": "message_sequence", "id": stepContractAuthoredID, "title": "Contract authored agent",
+			"type": "agent", "id": stepContractAuthoredID, "title": "Contract authored agent",
 			"description":          "Answer with the customer's name as JSON.",
 			"context_dependencies": []string{}, "context_output": "",
 			"authored_prompt": true,

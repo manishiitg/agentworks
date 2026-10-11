@@ -62,17 +62,17 @@ func TestInteractiveWorkshopPromptDoesNotBanAuthorizedSourceReview(t *testing.T)
 	}
 }
 
-// After the message-sequence migration, the full pattern catalog lives in
-// templates/system/message-sequence.md (loaded via read_skill). The
+// After the agent migration, the full pattern catalog lives in
+// templates/system/agent.md (loaded via read_skill). The
 // inline workshop prompt now carries only the reference pointer; the detailed pattern descriptions are
 // asserted against the rendered .md content.
 
-func TestInteractiveWorkshopPromptDocumentsMessageSequenceRouteReuse(t *testing.T) {
+func TestInteractiveWorkshopPromptDocumentsAgentRouteReuse(t *testing.T) {
 	prompt := executeInteractiveWorkshopPromptForMode(t, "workshop")
 
-	// The dedicated "Message sequence routes" inline section was folded
+	// The dedicated "Agent routes" inline section was folded
 	// into the consolidated "Planning steps" section that lists
-	// message-sequence as one of several per-step-type deep-dive skills.
+	// agent as one of several per-step-type deep-dive skills.
 	// The agent reaches the full pattern catalog by loading the skill.
 	inlineMustContain := []string{
 		"references/workflow-chat.md",
@@ -84,12 +84,12 @@ func TestInteractiveWorkshopPromptDocumentsMessageSequenceRouteReuse(t *testing.
 	}
 
 	operations, err := guidance.RenderReferenceKindForTest("workflow-chat", "workshop")
-	if err != nil || !strings.Contains(operations, "references/plan-design.md") || !strings.Contains(operations, "message-sequence") {
-		t.Fatal("workflow operations must route to plan design and message sequences")
+	if err != nil || !strings.Contains(operations, "references/plan-design.md") || !strings.Contains(operations, "agent") {
+		t.Fatal("workflow operations must route to plan design and agents")
 	}
 
 	// Detailed pattern content lives in the .md doc.
-	doc := guidance.RenderSystemDoc("message-sequence")
+	doc := guidance.RenderSystemDoc("agent")
 	docMustContain := []string{
 		"Conversational route sub-agents use `message_sequence`, including stateless one-turn work",
 		"Normal repeated calls reuse the route conversation",
@@ -100,17 +100,17 @@ func TestInteractiveWorkshopPromptDocumentsMessageSequenceRouteReuse(t *testing.
 	}
 	for _, snippet := range docMustContain {
 		if !strings.Contains(doc, snippet) {
-			t.Errorf("expected message-sequence.md to contain snippet %q", snippet)
+			t.Errorf("expected agent.md to contain snippet %q", snippet)
 		}
 	}
 }
 
-func TestOptimizerPromptDocumentsMessageSequenceRoutePatterns(t *testing.T) {
+func TestOptimizerPromptDocumentsAgentRoutePatterns(t *testing.T) {
 	prompt := executeInteractiveWorkshopPromptForMode(t, "workshop")
 
-	// The pattern catalog now lives entirely in message-sequence.md.
+	// The pattern catalog now lives entirely in agent.md.
 	// The inline workshop prompt only carries the consolidated
-	// "Planning steps" section that names message-sequence (and the
+	// "Planning steps" section that names agent (and the
 	// other per-step-type skills) as deep-dive entry points.
 	inlineMustContain := []string{
 		"references/workflow-chat.md",
@@ -121,7 +121,7 @@ func TestOptimizerPromptDocumentsMessageSequenceRoutePatterns(t *testing.T) {
 		}
 	}
 
-	doc := guidance.RenderSystemDoc("message-sequence")
+	doc := guidance.RenderSystemDoc("agent")
 	docMustContain := []string{
 		"## MESSAGE SEQUENCE ROUTE PATTERNS",
 		"Use these patterns when designing or repairing an agent's `predefined_routes`",
@@ -130,7 +130,7 @@ func TestOptimizerPromptDocumentsMessageSequenceRoutePatterns(t *testing.T) {
 	}
 	for _, snippet := range docMustContain {
 		if !strings.Contains(doc, snippet) {
-			t.Errorf("expected message-sequence.md to contain snippet %q", snippet)
+			t.Errorf("expected agent.md to contain snippet %q", snippet)
 		}
 	}
 }

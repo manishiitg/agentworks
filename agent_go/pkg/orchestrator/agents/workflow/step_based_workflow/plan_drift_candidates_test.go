@@ -172,15 +172,15 @@ func TestCollectPlanDriftCandidatesReflagsStaleContractVersion(t *testing.T) {
 func TestCollectPlanDriftCandidatesReflagsSupportedTypesForContractVersionThree(t *testing.T) {
 	planJSON := `{"steps":[
   {"id":"regular-a","type":"regular"},
-  {"id":"sequence-b","type":"message_sequence","description":"Complete and verify the outcome.","items":[{"id":"verify","type":"user_message","message":"Re-open the evidence and repair verified gaps."}]}
+  {"id":"sequence-b","type":"agent","description":"Complete and verify the outcome.","items":[{"id":"verify","type":"user_message","message":"Re-open the evidence and repair verified gaps."}]}
 ]}`
 	stepConfig := `{"steps":[
   {"id":"regular-a","agent_configs":{"drift_review":{"needs_review":false,"contract_version":2,"checks":[{"check_id":"step_description_accuracy","status":"pass","evidence":"regular step was reviewed under the still-current contract"}]}}},
   {"id":"sequence-b","agent_configs":{"drift_review":{"needs_review":false,"contract_version":2,"checks":[{"check_id":"step_description_accuracy","status":"pass","evidence":"sequence predates its type-specific best-practices check"}]}}}
 ]}`
-	planDriftCandidateWorkspace(t, "Workflow/drift-candidates-message-sequence-v3", planJSON, stepConfig)
+	planDriftCandidateWorkspace(t, "Workflow/drift-candidates-agent-v3", planJSON, stepConfig)
 
-	got, err := CollectPlanDriftCandidates(context.Background(), "Workflow/drift-candidates-message-sequence-v3")
+	got, err := CollectPlanDriftCandidates(context.Background(), "Workflow/drift-candidates-agent-v3")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,13 +191,13 @@ func TestCollectPlanDriftCandidatesReflagsSupportedTypesForContractVersionThree(
 	for _, candidate := range got {
 		byID[candidate.StepID] = candidate.StepType
 	}
-	if byID["regular-a"] != "regular" || byID["sequence-b"] != "message_sequence" {
+	if byID["regular-a"] != "regular" || byID["sequence-b"] != "agent" {
 		t.Fatalf("candidate types = %#v, want both supported step types", byID)
 	}
 }
 
 func TestRequiredPlanDriftContractVersionIsTypeSpecific(t *testing.T) {
-	for _, stepType := range []string{"regular", "message_sequence", "todo_task", "routing", "branch"} {
+	for _, stepType := range []string{"regular", "agent", "todo_task", "routing", "branch"} {
 		if got := requiredPlanDriftReviewContractVersion(stepType); got != 3 {
 			t.Fatalf("required version for %s = %d, want 3", stepType, got)
 		}

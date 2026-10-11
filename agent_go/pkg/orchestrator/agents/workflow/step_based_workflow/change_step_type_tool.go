@@ -15,18 +15,18 @@ import (
 // to a deterministic scripted step was to rebuild it -- add_scripted_step +
 // delete_plan_steps + rewiring every dependency and route. The converters
 // already existed for the runtime's own compatibility paths
-// (normalizeRegularStepToMessageSequence, normalizeMessageSequenceStepToRegular);
+// (normalizeRegularStepToAgent, normalizeAgentStepToRegular);
 // this tool exposes them as one atomic plan change with a revertable
 // changelog entry.
 //
 // Since PLAT-287 the plan type alone decides how a step runs: a regular step
 // IS a scripted step (its work is the checked-in learnings/<step-id>/main.py)
-// and a message_sequence step is conversational. There is no separate mode
+// and a agent step is conversational. There is no separate mode
 // to keep in step; this tool only rewrites the plan and, for the scripted
 // direction, makes sure the step's config has code execution on.
 const (
-	changeStepTypeTargetScripted        = "scripted"
-	changeStepTypeTargetMessageSequence = "message_sequence"
+	changeStepTypeTargetScripted = "scripted"
+	changeStepTypeTargetAgent    = "agent"
 )
 
 func getChangeStepTypeSchema() string {
@@ -34,7 +34,7 @@ func getChangeStepTypeSchema() string {
 		"type": "object",
 		"properties": {
 			"step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: id of the step to convert (its id field in the plan). Nested and orphan steps are accepted."},
-			"target_type": {"type": "string", "enum": ["scripted", "message_sequence"], "description": "REQUIRED: scripted = deterministic work in a checked-in learnings/<step-id>/main.py (the internal regular plan type); message_sequence = conversational turns."},
+			"target_type": {"type": "string", "enum": ["scripted", "agent"], "description": "REQUIRED: scripted = deterministic work in a checked-in learnings/<step-id>/main.py (the internal regular plan type); message_sequence = conversational turns."},
 			"reason": {"type": "string", "minLength": 1, "description": "REQUIRED: why this step's execution model changes. Recorded in planning/changelog."}
 		},
 		"required": ["step_id", "target_type", "reason"]
@@ -120,15 +120,15 @@ func changeStepTypeInPlan(plan *PlanningResponse, configs []StepConfig, stepID, 
 	}
 
 	switch step := existing.(type) {
-	case *MessageSequencePlanStep:
-		res.oldType = string(StepTypeMessageSeq)
-		if target == changeStepTypeTargetMessageSequence {
+	case *AgentPlanStep:
+		res.oldType = string(StepTypeAgent)
+		if target == changeStepTypeTargetAgent {
 			res.newType = res.oldType
 			res.noOp = true
 			return res, nil
 		}
 		res.droppedItems = len(step.Items)
-		if err := replace(normalizeMessageSequenceStepToRegular(step)); err != nil {
+		if err := replace(normalizeAgentStepToRegular(step)); err != nil {
 			return nil, err
 		}
 		res.newType = string(StepTypeRegular)
@@ -150,10 +150,10 @@ func changeStepTypeInPlan(plan *PlanningResponse, configs []StepConfig, stepID, 
 			configureScripted()
 			return res, nil
 		}
-		if err := replace(normalizeRegularStepToMessageSequence(step)); err != nil {
+		if err := replace(normalizeRegularStepToAgent(step)); err != nil {
 			return nil, err
 		}
-		res.newType = string(StepTypeMessageSeq)
+		res.newType = string(StepTypeAgent)
 		configureSequence()
 		return res, nil
 
@@ -183,8 +183,8 @@ func createChangeStepTypeExecutor(
 		}
 		target, _ := args["target_type"].(string)
 		target = strings.ToLower(strings.TrimSpace(target))
-		if target != changeStepTypeTargetScripted && target != changeStepTypeTargetMessageSequence {
-			return "", fmt.Errorf("target_type must be %q or %q, got %q", changeStepTypeTargetScripted, changeStepTypeTargetMessageSequence, target)
+		if target != changeStepTypeTargetScripted && target != changeStepTypeTargetAgent {
+			return "", fmt.Errorf("target_type must be %q or %q, got %q", changeStepTypeTargetScripted, changeStepTypeTargetAgent, target)
 		}
 
 		plan, err := readPlanFromFile(ctx, workspacePath, readFile)
@@ -273,8 +273,8 @@ func createChangeStepTypeExecutor(
 			}
 			b.WriteString(" Keep validation_schema strict, and move any judgment or verification that lived in the old turns into a message_sequence that consumes this step's output rather than into the script.")
 		default:
-			fmt.Fprintf(&b, "Converted step %q to a message_sequence with one execute-and-verify item.", stepID)
-			b.WriteString(" Refine the turns with update_message_sequence_step.")
+			fmt.Fprintf(&b, "Converted step %q to a agent with one execute-and-verify item.", stepID)
+			b.WriteString(" Refine the turns with update_agent_step.")
 			if scriptExists {
 				fmt.Fprintf(&b, " %s/main.py still exists; a script nothing runs is artifact debt -- delete it, or keep it only if the sequence is meant to invoke it.", scriptDir)
 			}

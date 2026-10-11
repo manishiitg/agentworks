@@ -15,13 +15,13 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-func TestAsyncGenericAgentPreservesMessageSequenceContext(t *testing.T) {
+func TestAsyncGenericAgentPreservesAgentContext(t *testing.T) {
 	want := []virtualtools.GenericAgentMessage{{ID: "lens", Message: "inspect"}}
-	toolCtx := context.WithValue(context.Background(), virtualtools.GenericAgentMessageSequenceKey, want)
+	toolCtx := context.WithValue(context.Background(), virtualtools.GenericAgentAgentKey, want)
 	execCtx := &SubAgentExecutionContext{ParentContext: context.Background(), AsyncEnabled: true}
 	childCtx, call := execCtx.registerAsyncCall(toolCtx, "child-sequence", "review", "", "generic")
 	defer execCtx.completeAsyncCall(call, "done", nil)
-	got := virtualtools.GenericAgentMessageSequenceFromContext(childCtx)
+	got := virtualtools.GenericAgentAgentFromContext(childCtx)
 	if len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("async child sequence = %#v, want %#v", got, want)
 	}
@@ -262,7 +262,7 @@ func TestCancelOutstandingAndWaitStopsEveryOwnedChild(t *testing.T) {
 	}
 }
 
-func TestMessageSequenceAsyncCallCompletesOnlyAfterWholeSequenceReturns(t *testing.T) {
+func TestAgentAsyncCallCompletesOnlyAfterWholeSequenceReturns(t *testing.T) {
 	execCtx := &SubAgentExecutionContext{ParentContext: context.Background(), AsyncEnabled: true}
 	_, call := execCtx.registerAsyncCall(context.Background(), "sequence-child", "sequence", "sequence-route", "predefined")
 	firstMessageDone := make(chan struct{})

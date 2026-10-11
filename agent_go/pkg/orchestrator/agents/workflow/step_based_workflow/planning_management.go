@@ -74,9 +74,7 @@ func validatePlanStepIDsAtPath(steps []PlanStepInterface, pathPrefix string) err
 		}
 		var agentRoutes []PlanOrchestrationRoute
 		switch agentStep := step.(type) {
-		case *OrchestratorPlanStep:
-			agentRoutes = agentStep.PredefinedRoutes
-		case *MessageSequencePlanStep:
+		case *AgentPlanStep:
 			agentRoutes = agentStep.PredefinedRoutes
 		}
 		for routeIndex, route := range agentRoutes {
@@ -112,9 +110,7 @@ func collectStepIDsRecursive(steps []PlanStepInterface, pathPrefix string, seen 
 		}
 		var agentRoutes []PlanOrchestrationRoute
 		switch agentStep := step.(type) {
-		case *OrchestratorPlanStep:
-			agentRoutes = agentStep.PredefinedRoutes
-		case *MessageSequencePlanStep:
+		case *AgentPlanStep:
 			agentRoutes = agentStep.PredefinedRoutes
 		}
 		for routeIndex, route := range agentRoutes {
@@ -191,7 +187,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) checkExistingPlan(ctx context.Context
 	return true, &planResponse, nil
 }
 
-func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex int, allowLegacyMessageSequenceCode bool) error {
+func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex int, allowLegacyAgentCode bool) error {
 	switch step := typedStep.(type) {
 	case *RegularPlanStep:
 		if err := validateScriptParameterContract(&step.CommonStepFields); err != nil {
@@ -202,13 +198,13 @@ func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex in
 	case *HumanInputPlanStep:
 		return validateHumanInputStepFieldsTyped(step)
 
-	case *MessageSequencePlanStep:
-		if err := validateMessageSequenceStepFieldsTypedWithOptions(step, allowLegacyMessageSequenceCode); err != nil {
+	case *AgentPlanStep:
+		if err := validateAgentStepFieldsTypedWithOptions(step, allowLegacyAgentCode); err != nil {
 			return err
 		}
 		for i, route := range step.PredefinedRoutes {
 			if route.SubAgentStep != nil {
-				if err := validateLoadedPlanStepWithOptions(route.SubAgentStep, i, allowLegacyMessageSequenceCode); err != nil {
+				if err := validateLoadedPlanStepWithOptions(route.SubAgentStep, i, allowLegacyAgentCode); err != nil {
 					return fmt.Errorf("predefined_route[%d] (route_id: %s): %w", i, route.RouteID, err)
 				}
 			}
@@ -224,19 +220,6 @@ func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex in
 		}
 		return nil
 
-	case *OrchestratorPlanStep:
-		if err := validateOrchestratorStepFieldsTyped(step); err != nil {
-			return err
-		}
-		for i, route := range step.PredefinedRoutes {
-			if route.SubAgentStep != nil {
-				if err := validateLoadedPlanStepWithOptions(route.SubAgentStep, i, allowLegacyMessageSequenceCode); err != nil {
-					return fmt.Errorf("predefined_route[%d] (route_id: %s): %w", i, route.RouteID, err)
-				}
-			}
-		}
-		return nil
-
 	default:
 		return fmt.Errorf("unsupported step type %T during loaded plan validation", typedStep)
 	}
@@ -246,22 +229,22 @@ func validateLoadedPlanStructure(plan *PlanningResponse) error {
 	return validateLoadedPlanStructureWithOptions(plan, false)
 }
 
-// validateLoadedPlanStructureAllowLegacyMessageSequenceCode exists only so a
+// validateLoadedPlanStructureAllowLegacyAgentCode exists only so a
 // workflow-version preflight can open a pre-v1.0.10 plan and call the trusted
 // migration tool. Execution and every persisted plan write use the strict
 // validator above, so a legacy code item can never execute or be saved again.
-func validateLoadedPlanStructureAllowLegacyMessageSequenceCode(plan *PlanningResponse) error {
+func validateLoadedPlanStructureAllowLegacyAgentCode(plan *PlanningResponse) error {
 	return validateLoadedPlanStructureWithOptions(plan, true)
 }
 
-func validateLoadedPlanStructureWithOptions(plan *PlanningResponse, allowLegacyMessageSequenceCode bool) error {
-	if err := validateLoadedPlanStructureCoreWithOptions(plan, allowLegacyMessageSequenceCode); err != nil {
+func validateLoadedPlanStructureWithOptions(plan *PlanningResponse, allowLegacyAgentCode bool) error {
+	if err := validateLoadedPlanStructureCoreWithOptions(plan, allowLegacyAgentCode); err != nil {
 		return err
 	}
 	if err := validateNextStepIDReferences(plan); err != nil {
 		return err
 	}
-	if err := validateMessageSequenceScriptReferences(plan); err != nil {
+	if err := validateAgentScriptReferences(plan); err != nil {
 		return err
 	}
 	return nil
@@ -275,20 +258,20 @@ func validateLoadedPlanStructureCore(plan *PlanningResponse) error {
 	return validateLoadedPlanStructureCoreWithOptions(plan, false)
 }
 
-// validateLoadedPlanStructureCoreAllowLegacyMessageSequenceCode is the
+// validateLoadedPlanStructureCoreAllowLegacyAgentCode is the
 // readPlanForMutation-side counterpart to
-// validateLoadedPlanStructureAllowLegacyMessageSequenceCode above: it lets a
+// validateLoadedPlanStructureAllowLegacyAgentCode above: it lets a
 // pre-v1.0.10 plan be loaded (not persisted) by mutation tools — e.g. so
-// delete_plan_steps or update_message_sequence_step can remove or repair the
+// delete_plan_steps or update_agent_step can remove or repair the
 // offending step — without also re-validating cross-step graph references
 // that only the full read path checks. Every write still calls
 // ValidatePlanStructure, so a legacy code item can never execute or be
 // saved again.
-func validateLoadedPlanStructureCoreAllowLegacyMessageSequenceCode(plan *PlanningResponse) error {
+func validateLoadedPlanStructureCoreAllowLegacyAgentCode(plan *PlanningResponse) error {
 	return validateLoadedPlanStructureCoreWithOptions(plan, true)
 }
 
-func validateLoadedPlanStructureCoreWithOptions(plan *PlanningResponse, allowLegacyMessageSequenceCode bool) error {
+func validateLoadedPlanStructureCoreWithOptions(plan *PlanningResponse, allowLegacyAgentCode bool) error {
 	if plan == nil {
 		return fmt.Errorf("plan is nil")
 	}
@@ -299,12 +282,12 @@ func validateLoadedPlanStructureCoreWithOptions(plan *PlanningResponse, allowLeg
 		return err
 	}
 	for i, step := range plan.Steps {
-		if err := validateLoadedPlanStepWithOptions(step, i, allowLegacyMessageSequenceCode); err != nil {
+		if err := validateLoadedPlanStepWithOptions(step, i, allowLegacyAgentCode); err != nil {
 			return fmt.Errorf("steps[%d] (id=%s): %w", i, step.GetID(), err)
 		}
 	}
 	for i, step := range plan.OrphanSteps {
-		if err := validateLoadedPlanStepWithOptions(step, i, allowLegacyMessageSequenceCode); err != nil {
+		if err := validateLoadedPlanStepWithOptions(step, i, allowLegacyAgentCode); err != nil {
 			return fmt.Errorf("orphan_steps[%d] (id=%s): %w", i, step.GetID(), err)
 		}
 	}
@@ -420,13 +403,7 @@ func collectKnownStepIDs(plan *PlanningResponse) map[string]struct{} {
 				out[id] = struct{}{}
 			}
 			switch s := step.(type) {
-			case *OrchestratorPlanStep:
-				for _, route := range s.PredefinedRoutes {
-					if route.SubAgentStep != nil {
-						walk([]PlanStepInterface{route.SubAgentStep})
-					}
-				}
-			case *MessageSequencePlanStep:
+			case *AgentPlanStep:
 				for _, route := range s.PredefinedRoutes {
 					if route.SubAgentStep != nil {
 						walk([]PlanStepInterface{route.SubAgentStep})
@@ -473,14 +450,7 @@ func validateNextStepIDReferences(plan *PlanningResponse) error {
 				for _, route := range s.Routes {
 					ref(s.GetID(), fmt.Sprintf("route %q.next_step_id", route.RouteID), route.NextStepID)
 				}
-			case *OrchestratorPlanStep:
-				ref(s.GetID(), "next_step_id", s.NextStepID)
-				for _, route := range s.PredefinedRoutes {
-					if route.SubAgentStep != nil {
-						walk([]PlanStepInterface{route.SubAgentStep})
-					}
-				}
-			case *MessageSequencePlanStep:
+			case *AgentPlanStep:
 				ref(s.GetID(), "next_step_id", s.NextStepID)
 				for _, route := range s.PredefinedRoutes {
 					if route.SubAgentStep != nil {
@@ -647,7 +617,7 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 		}
 		return nil
 
-	case *MessageSequencePlanStep:
+	case *AgentPlanStep:
 		for i := range step.PredefinedRoutes {
 			route := &step.PredefinedRoutes[i]
 			if route.SubAgentStep != nil {
@@ -670,24 +640,6 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 		}
 		return nil
 
-	case *OrchestratorPlanStep:
-		// Populate sub-agent steps in predefined routes recursively
-		for i := range step.PredefinedRoutes {
-			route := &step.PredefinedRoutes[i]
-			if route.SubAgentStep != nil {
-				if err := populateRuntimeFields(route.SubAgentStep, stepConfigs); err != nil {
-					return fmt.Errorf("failed to populate sub-agent step for route '%s': %w", route.RouteID, err)
-				}
-			}
-		}
-
-		// Populate runtime field directly on plan step
-		step.AgentConfigs = agentConfigs
-		if validationSchemaOverride != nil {
-			step.ValidationSchema = validationSchemaOverride
-		}
-		return nil
-
 	default:
 		return fmt.Errorf("unknown step type: %T", typedStep)
 	}
@@ -697,12 +649,12 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 // Kept on 2026-09-22: the CheckAndEmitPlanUpdateEvent consumer was removed
 // (never called), but four tests pin this classification as the definition
 // of "plan mutation" (change_step_type, declared-execution-mode migrations,
-// message-sequence compat).
+// agent compat).
 func IsPlanModificationTool(name string) bool {
-	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_human_input_step" || name == "update_todo_task_step" || name == "update_orchestrator_step" || name == "update_message_sequence_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_human_input_step" || name == "add_todo_task_step" || name == "add_orchestrator_step" || name == "add_message_sequence_step" || name == "add_crew_step" ||
+	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_human_input_step" || name == "update_todo_task_step" || name == "update_orchestrator_step" || name == "update_agent_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_human_input_step" || name == "add_todo_task_step" || name == "add_orchestrator_step" || name == "add_agent_step" || name == "add_crew_step" ||
 		name == "update_validation_schema" ||
 		name == "add_todo_task_route" || name == "update_todo_task_route" || name == "delete_todo_task_route" ||
-		name == "add_orchestrator_route" || name == "update_orchestrator_route" || name == "delete_orchestrator_route" || name == "migrate_orchestrator_step_type" ||
+		name == "add_agent_route" || name == "update_agent_route" || name == "delete_agent_route" || name == "migrate_orchestrator_step_type" ||
 		name == "change_step_type" || name == "migrate_declared_execution_mode" || name == "strip_declared_execution_mode"
 }
 

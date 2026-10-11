@@ -140,7 +140,7 @@ describe('live execution-tree terminal projection', () => {
     expect(result[0].execution_tree_placeholder).toBeUndefined()
   })
 
-  it('uses the published parent step terminal for a live message-sequence item', () => {
+  it('uses the published parent step terminal for a live agent item', () => {
     const publishedStepTerminal = terminal({
       terminal_id: 'session-1:workflow-step:exec-discover-1:discover',
       execution_id: 'workflow-step:exec-discover-1:discover',
@@ -152,7 +152,7 @@ describe('live execution-tree terminal projection', () => {
     const result = projectExecutionTreeTerminals([publishedStepTerminal], tree([
       node('msgseq-discover-audit-123', {
         parent_execution_id: 'exec-discover-1',
-        kind: 'message_sequence_item',
+        kind: 'agent_item',
         name: 'Audit candidate pool',
       }),
     ]))

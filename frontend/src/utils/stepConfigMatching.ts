@@ -48,7 +48,7 @@ export interface AgentConfigs {
   description_reviewed?: boolean;
   review_notes?: string;
   // LEGACY, read-only (PLAT-287). A step's execution model is decided by its
-  // plan `type` now — `regular` is scripted, `message_sequence` is agentic.
+  // plan `type` now — `regular` is scripted, `agent` is agentic.
   // These two keys may still be present in a workflow's step_config.json until its
   // v1.0.39 contract migration strips them; a `regular` step still carrying
   // "agentic" is a legacy agentic step the runtime runs as a sequence. Nothing
@@ -192,16 +192,16 @@ export interface RegularPlanStep extends CommonStepFields {
 // Fields from the former inner todo_task_step are now flattened onto this level:
 //   description, success_criteria, context_dependencies, context_output, validation_schema
 // These are inherited from CommonStepFields already.
-export interface TodoTaskPlanStep extends CommonStepFields {
+export interface LegacyAgentPlanStep extends CommonStepFields {
   type: 'todo_task' | 'orchestrator';  // 'orchestrator' since contract v1.0.35; 'todo_task' is the legacy on-disk alias
   todo_task_step?: PlanStep;                // DEPRECATED: kept for backwards compat with old plan.json
   predefined_routes?: PlanRoutingRoute[];   // Predefined sub-agents with learning/prevalidation
   enable_generic_agent?: boolean;           // Allow generic execution agent (no learning/prevalidation)
   next_step_id?: string;                    // ID of step after todo task completes (or "end")
-  messages?: TodoTaskMessage[];             // Optional scripted message sequence fed into the orchestrator's own conversation after its first turn
+  messages?: LegacyAgentMessage[];             // Optional scripted agent fed into the orchestrator's own conversation after its first turn
 }
 
-export interface TodoTaskMessage {
+export interface LegacyAgentMessage {
   id?: string;
   type?: 'message' | 'prevalidation' | 'foreach' | string;
   message?: string;                         // message entries: instruction for one orchestrator turn; foreach entries: the per-row template
@@ -212,19 +212,19 @@ export interface TodoTaskMessage {
   max_iterations?: number;                  // foreach entries: optional cap on rows (0 = all)
 }
 
-export interface MessageSequenceWriteAccess {
+export interface AgentWriteAccess {
   knowledgebase?: boolean;
   db?: boolean;
   learnings?: boolean;
 }
 
-export interface MessageSequenceItem {
+export interface AgentItem {
   id: string;
   type: 'user_message' | 'prevalidation' | 'foreach' | 'scripted' | string;
   kind?: 'execution' | 'learning' | 'knowledgebase' | 'db' | 'check' | 'critique' | 'self_validation' | 'reference_check' | 'hallucination_check' | 'code_review' | string;
   title?: string;
   message?: string;
-  write_access?: MessageSequenceWriteAccess;
+  write_access?: AgentWriteAccess;
   validation_schema?: ValidationSchema;
   prevalidation?: ValidationSchema;
   source_sql?: string;        // read-only query against db/db.sqlite
@@ -235,11 +235,11 @@ export interface MessageSequenceItem {
   max_iterations?: number;    // foreach items: optional cap on rows (0 = all)
 }
 
-export interface MessageSequencePlanStep extends CommonStepFields {
-  type: 'message_sequence';
+export interface AgentPlanStep extends CommonStepFields {
+  type: 'agent';
   authored_prompt?: boolean;
   system_prompt?: string;
-  items?: MessageSequenceItem[];
+  items?: AgentItem[];
   predefined_routes?: PlanRoutingRoute[]; // Optional bounded specialists selected by the sequence agent at runtime
   next_step_id?: string;
 }
@@ -306,7 +306,7 @@ export interface CrewPlanStep extends CommonStepFields {
 }
 
 // Discriminated union type for all step types
-export type PlanStep = RegularPlanStep | HumanInputPlanStep | TodoTaskPlanStep | MessageSequencePlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
+export type PlanStep = RegularPlanStep | HumanInputPlanStep | LegacyAgentPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
 
 // PlanRoutingRoute represents a possible route/sub-agent for planning
 export interface PlanRoutingRoute {
@@ -334,15 +334,15 @@ export function isHumanInputStep(step: PlanStep): step is HumanInputPlanStep {
   return step.type === 'human_input';
 }
 
-export function isTodoTaskStep(step: PlanStep): step is TodoTaskPlanStep {
+export function isLegacyAgentStep(step: PlanStep): step is LegacyAgentPlanStep {
   return step.type === 'todo_task' || step.type === 'orchestrator';
 }
 
 // Preferred name; the plan type is `orchestrator` and `todo_task` is its legacy alias.
-export const isOrchestratorStep = isTodoTaskStep;
 
-export function isMessageSequenceStep(step: PlanStep): step is MessageSequencePlanStep {
-  return step.type === 'message_sequence';
+
+export function isAgentStep(step: PlanStep): step is AgentPlanStep {
+  return step.type === 'agent';
 }
 
 export function isCrewStep(step: PlanStep): step is CrewPlanStep {
@@ -370,7 +370,7 @@ function legacyDeclaredMode(step: ExecutionModeStepLike): string | undefined {
 
 // The execution model a step actually runs with (PLAT-287): decided by the plan
 // type, not by a config field. `regular` is scripted — its work is the
-// checked-in learnings/<id>/main.py — and `message_sequence` is agentic. The
+// checked-in learnings/<id>/main.py — and `agent` is agentic. The
 // one transitional exception: a `regular` step whose config still carries the
 // legacy key with "agentic" (not yet stripped by the v1.0.39 migration) is a
 // legacy agentic step the runtime still normalises into a sequence.
@@ -383,7 +383,7 @@ export function effectiveExecutionMode(
   if (type === 'regular') {
     return legacyDeclaredMode(step) === 'agentic' ? 'agentic' : 'scripted';
   }
-  if (type === 'message_sequence') return 'agentic';
+  if (type === 'agent') return 'agentic';
   return undefined;
 }
 
@@ -394,7 +394,7 @@ export function effectiveExecutionModeReason(step: ExecutionModeStepLike | null 
   return reason || undefined;
 }
 
-// Which steps the message-sequence runtime executes. A `regular` step is a
+// Which steps the agent runtime executes. A `regular` step is a
 // scripted step and runs through the scripted executor — except a legacy
 // agentic one (config still carries declared_execution_mode "agentic", not yet
 // stripped by v1.0.39), which the runtime normalises into a single-turn
@@ -402,26 +402,26 @@ export function effectiveExecutionModeReason(step: ExecutionModeStepLike | null 
 // sequence keeps the canvas honest about the items it will report completing
 // ("execute-and-verify"), which exist nowhere in plan.json.
 //
-// Mirrors shouldNormalizeRegularStepToMessageSequence / effectiveRuntimeStepType
-// in controller_message_sequence.go. The legacy key reaches us from
+// Mirrors shouldNormalizeRegularStepToAgent / effectiveRuntimeStepType
+// in controller_agent.go. The legacy key reaches us from
 // step_config.json, merged onto the step by usePlanData.
-export function runsAsMessageSequence(step: PlanStep): boolean {
-  if (isMessageSequenceStep(step)) return true;
+export function runsAsAgent(step: PlanStep): boolean {
+  if (isAgentStep(step)) return true;
   return isRegularStep(step) && legacyDeclaredMode(step) === 'agentic';
 }
 
-// The item list the runtime actually executes. An authored message_sequence
+// The item list the runtime actually executes. An authored agent
 // supplies its own; a normalized regular step gets the single synthesized turn
-// from normalizeRegularStepToMessageSequence, plus the validation gate
-// appendMessageSequenceFinalValidation adds when the step declares a schema.
+// from normalizeRegularStepToAgent, plus the validation gate
+// appendAgentFinalValidation adds when the step declares a schema.
 //
 // Display only — these are never written back to plan.json, exactly as the Go
 // side marks them Synthetic and keeps them out of serialization.
-export function effectiveMessageSequenceItems(step: PlanStep): MessageSequenceItem[] {
-  if (isMessageSequenceStep(step)) return step.items ?? [];
-  if (!runsAsMessageSequence(step)) return [];
+export function configuredAgentItems(step: PlanStep): AgentItem[] {
+  if (isAgentStep(step)) return step.items ?? [];
+  if (!runsAsAgent(step)) return [];
 
-  const items: MessageSequenceItem[] = [{
+  const items: AgentItem[] = [{
     id: 'execute-and-verify',
     type: 'user_message',
     kind: 'execution',
@@ -440,9 +440,9 @@ export function effectiveMessageSequenceItems(step: PlanStep): MessageSequenceIt
 
 // Convert the former orchestrator `messages` shape into the canonical Agent
 // item queue. This is display-only compatibility for plans which have not yet
-// been rewritten as `message_sequence` steps.
-export function legacyTodoMessagesAsSequenceItems(step: TodoTaskPlanStep): MessageSequenceItem[] {
-  const items = (step.messages ?? []).map((message, index): MessageSequenceItem => {
+// been rewritten as `agent` steps.
+export function legacyTodoMessagesAsSequenceItems(step: LegacyAgentPlanStep): AgentItem[] {
+  const items = (step.messages ?? []).map((message, index): AgentItem => {
     const id = message.id || `legacy-item-${index + 1}`;
     if (message.type === 'prevalidation') {
       return {
@@ -478,12 +478,12 @@ export function legacyTodoMessagesAsSequenceItems(step: TodoTaskPlanStep): Messa
   }];
 }
 
-// The Plan Design UI has one Agent concept. Canonical message sequences and
+// The Plan Design UI has one Agent concept. Canonical agents and
 // legacy orchestrator/todo_task records differ only in their stored shape.
-export function effectiveAgentItems(step: PlanStep): MessageSequenceItem[] {
-  return isTodoTaskStep(step)
+export function effectiveAgentItems(step: PlanStep): AgentItem[] {
+  return isLegacyAgentStep(step)
     ? legacyTodoMessagesAsSequenceItems(step)
-    : effectiveMessageSequenceItems(step);
+    : configuredAgentItems(step);
 }
 
 export function isRoutingStep(step: PlanStep): step is RoutingPlanStep {

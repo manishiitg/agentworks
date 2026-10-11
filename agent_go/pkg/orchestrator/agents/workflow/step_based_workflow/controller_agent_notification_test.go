@@ -7,26 +7,26 @@ import (
 	"time"
 )
 
-func TestMessageSequenceItemNotificationStartAndComplete(t *testing.T) {
+func TestAgentItemNotificationStartAndComplete(t *testing.T) {
 	notifier := &recordingExecutionNotifier{}
 	orchestrator := &StepBasedWorkflowOrchestrator{
 		workshopExecutionNotifier: notifier,
 		selectedRunFolder:         "iteration-0",
 		currentGroupName:          "default",
 	}
-	step := &MessageSequencePlanStep{
+	step := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{
 			ID:    "morning-sequence",
 			Title: "Morning sequence",
 		},
 	}
-	item := MessageSequenceItem{
+	item := AgentItem{
 		ID:   "write-note",
 		Type: "user_message",
 		Kind: "execution",
 	}
 
-	execID, name, meta, active := orchestrator.startMessageSequenceItemNotification(context.Background(), step, item, 2, "step-3", "configured_queue", time.Unix(10, 20))
+	execID, name, meta, active := orchestrator.startAgentItemNotification(context.Background(), step, item, 2, "step-3", "configured_queue", time.Unix(10, 20))
 	if !active {
 		t.Fatal("expected notification to be active")
 	}
@@ -36,14 +36,14 @@ func TestMessageSequenceItemNotificationStartAndComplete(t *testing.T) {
 	if notifier.starts[0].ID != execID {
 		t.Fatalf("start ID = %q, want %q", notifier.starts[0].ID, execID)
 	}
-	if notifier.starts[0].Kind != "message_sequence_item" {
-		t.Fatalf("start kind = %q, want message_sequence_item", notifier.starts[0].Kind)
+	if notifier.starts[0].Kind != "agent_item" {
+		t.Fatalf("start kind = %q, want agent_item", notifier.starts[0].Kind)
 	}
 	if !strings.Contains(name, "Morning sequence / write-note (user_message)") {
 		t.Fatalf("unexpected notification name: %q", name)
 	}
 	for key, want := range map[string]string{
-		"execution_type": "message-sequence-item",
+		"execution_type": "agent-item",
 		"step_id":        "morning-sequence",
 		"step_title":     "Morning sequence",
 		"step_index":     "2",
@@ -60,7 +60,7 @@ func TestMessageSequenceItemNotificationStartAndComplete(t *testing.T) {
 		}
 	}
 
-	orchestrator.completeMessageSequenceItemNotification(context.Background(), execID, name, "message write-note succeeded", meta, active, nil)
+	orchestrator.completeAgentItemNotification(context.Background(), execID, name, "message write-note succeeded", meta, active, nil)
 	if len(notifier.completes) != 1 {
 		t.Fatalf("expected one completion, got %d", len(notifier.completes))
 	}

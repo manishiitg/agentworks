@@ -14,4 +14,6 @@ func IsUserBrowserSession(session string) bool { return browserconfig.IsUserSess
 
 // ProfilePathForSession returns the persistent Chrome profile directory this
 // session launches with, or "" in session-isolated/ephemeral mode.
-func ProfilePathForSession(session string) string { return browserconfig.ProfilePathForSession(session) }
+func ProfilePathForSession(session string) string {
+	return browserconfig.ProfilePathForSession(session)
+}

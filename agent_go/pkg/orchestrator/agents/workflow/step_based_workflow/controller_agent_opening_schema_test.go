@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-func TestMessageSequenceValidationSchemaJSONNilReturnsEmpty(t *testing.T) {
-	if got := messageSequenceValidationSchemaJSON(nil); got != "" {
-		t.Fatalf("messageSequenceValidationSchemaJSON(nil) = %q; want empty", got)
+func TestAgentValidationSchemaJSONNilReturnsEmpty(t *testing.T) {
+	if got := agentSequenceValidationSchemaJSON(nil); got != "" {
+		t.Fatalf("agentSequenceValidationSchemaJSON(nil) = %q; want empty", got)
 	}
 }
 
-func TestMessageSequenceValidationSchemaJSONRendersRequiredFiles(t *testing.T) {
+func TestAgentValidationSchemaJSONRendersRequiredFiles(t *testing.T) {
 	schema := &ValidationSchema{
 		Files: []FileValidationRule{{
 			FileName:  "results.json",
@@ -23,7 +23,7 @@ func TestMessageSequenceValidationSchemaJSONRendersRequiredFiles(t *testing.T) {
 		}},
 	}
 
-	got := messageSequenceValidationSchemaJSON(schema)
+	got := agentSequenceValidationSchemaJSON(schema)
 	if !strings.Contains(got, "results.json") || !strings.Contains(got, "$.status") {
 		t.Fatalf("schema JSON missing content: %q", got)
 	}

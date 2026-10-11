@@ -12,7 +12,7 @@ func TestWorkshopTerminationCancelsOwnedTreeBeforeWorkersUnwind(t *testing.T) {
 	notifier := &workshopExecutionBgNotifier{api: &StreamingAPI{bgAgentRegistry: registry}, sessionID: "tree-stop"}
 	const session = "tree-stop"
 	parent := &BackgroundAgent{ID: "step", Status: BGAgentRunning, CreatedAt: time.Now()}
-	child := &BackgroundAgent{ID: "item", ParentExecutionID: "step", Kind: "message_sequence_item", Status: BGAgentRunning, CreatedAt: time.Now()}
+	child := &BackgroundAgent{ID: "item", ParentExecutionID: "step", Kind: "agent_item", Status: BGAgentRunning, CreatedAt: time.Now()}
 	grandchild := &BackgroundAgent{ID: "worker", ParentExecutionID: "item", Status: BGAgentRunning, CreatedAt: time.Now()}
 	sibling := &BackgroundAgent{ID: "other-test", Status: BGAgentRunning, CreatedAt: time.Now()}
 	completed := &BackgroundAgent{ID: "previous-item", ParentExecutionID: "step", Status: BGAgentCompleted, CreatedAt: time.Now()}

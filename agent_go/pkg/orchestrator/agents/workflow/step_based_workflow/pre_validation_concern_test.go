@@ -163,7 +163,7 @@ func TestSavePreValidationLogPassNoConcern(t *testing.T) {
 	}
 }
 
-func TestSavePreValidationLogRetainsEveryScriptedAndMessageSequenceAttempt(t *testing.T) {
+func TestSavePreValidationLogRetainsEveryScriptedAndAgentAttempt(t *testing.T) {
 	hcpo, _ := newPreValidationConcernTestOrchestrator(t)
 	ctx := context.Background()
 	logPath := hcpo.GetWorkspacePath() + "/runs/" + hcpo.selectedRunFolder
@@ -182,11 +182,11 @@ func TestSavePreValidationLogRetainsEveryScriptedAndMessageSequenceAttempt(t *te
 	SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, messageStep, messageStep,
 		targetingAuditFailure("$.input", "missing input"), nil,
 		hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName,
-		PreValidationAttempt{ExecutionMode: "message_sequence", ValidationPhase: "message-sequence-verify", ExecutionAttempt: 1, ValidationAttempt: 1})
+		PreValidationAttempt{ExecutionMode: "agent", ValidationPhase: "agent-verify", ExecutionAttempt: 1, ValidationAttempt: 1})
 	SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, messageStep, messageStep,
 		&WorkspaceVerificationResult{OverallPass: true, Summary: ValidationSummary{TotalChecks: 1, PassedChecks: 1}}, nil,
 		hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName,
-		PreValidationAttempt{ExecutionMode: "message_sequence", ValidationPhase: "message-sequence-verify", ExecutionAttempt: 1, ValidationAttempt: 2})
+		PreValidationAttempt{ExecutionMode: "agent", ValidationPhase: "agent-verify", ExecutionAttempt: 1, ValidationAttempt: 2})
 
 	read := func(path string) PreValidationLogEntry {
 		t.Helper()
@@ -205,7 +205,7 @@ func TestSavePreValidationLogRetainsEveryScriptedAndMessageSequenceAttempt(t *te
 		step, phase, mode string
 	}{
 		{scriptedStep, "repair-check", "scripted"},
-		{messageStep, "message-sequence-verify", "message_sequence"},
+		{messageStep, "agent-verify", "agent"},
 	} {
 		base := fmt.Sprintf("%s/runs/%s/logs/%s", hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, tc.step)
 		failed := read(fmt.Sprintf("%s/pre_validation_%s_execution_001_attempt_001.json", base, tc.phase))

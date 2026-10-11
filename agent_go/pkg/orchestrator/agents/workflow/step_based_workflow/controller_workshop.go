@@ -15,19 +15,19 @@ import (
 // When GroupName is set, the controller resolves the run folder and variable values
 // for that group, making each execute_step call self-contained.
 type WorkshopExecuteOptions struct {
-	GroupID                string                 // Deprecated: use GroupName instead. Kept for backward compat; mapped to GroupName internally.
-	GroupName              string                 // e.g., "production" — overrides session-level group
-	Iteration              string                 // e.g., "iteration-3" — combined with group folder name to form RunFolder
-	RunFolder              string                 // e.g., "iteration-3/xtech" — auto-calculated from Iteration + group, or set directly
-	SavedScriptOnly        bool                   // If true, run only the saved learnings/{step-id}/main.py fast path with no LLM fallback
-	AllowScriptRepair      bool                   // Builder execute_step only: an LLM may author or repair the step's script (PLAT-436)
-	Instructions           string                 // Optional orchestrator instructions for inner steps — appended to step description as "## Orchestrator Instructions"
-	HumanInput             string                 // Optional human input for top-level steps — injected as critical feedback in PreviousStepsSummary
-	Tier                   int                    // Optional LLM tier override (1=high, 2=medium, 3=low). 0 means no override.
-	MessageSequenceRestart bool                   // If true, archive any existing message_sequence session and replay the configured item queue.
-	ScriptParameters       map[string]interface{} // Validated named inputs for a scripted step, exposed through STEP_PARAMS_JSON.
-	ScriptParametersSet    bool                   // Distinguishes an omitted field from an explicitly supplied empty object.
-	ExecutionID            string                 // Server-generated identity for this direct step execution.
+	GroupID             string                 // Deprecated: use GroupName instead. Kept for backward compat; mapped to GroupName internally.
+	GroupName           string                 // e.g., "production" — overrides session-level group
+	Iteration           string                 // e.g., "iteration-3" — combined with group folder name to form RunFolder
+	RunFolder           string                 // e.g., "iteration-3/xtech" — auto-calculated from Iteration + group, or set directly
+	SavedScriptOnly     bool                   // If true, run only the saved learnings/{step-id}/main.py fast path with no LLM fallback
+	AllowScriptRepair   bool                   // Builder execute_step only: an LLM may author or repair the step's script (PLAT-436)
+	Instructions        string                 // Optional orchestrator instructions for inner steps — appended to step description as "## Orchestrator Instructions"
+	HumanInput          string                 // Optional human input for top-level steps — injected as critical feedback in PreviousStepsSummary
+	Tier                int                    // Optional LLM tier override (1=high, 2=medium, 3=low). 0 means no override.
+	AgentRestart        bool                   // If true, archive any existing message_sequence session and replay the configured item queue.
+	ScriptParameters    map[string]interface{} // Validated named inputs for a scripted step, exposed through STEP_PARAMS_JSON.
+	ScriptParametersSet bool                   // Distinguishes an omitted field from an explicitly supplied empty object.
+	ExecutionID         string                 // Server-generated identity for this direct step execution.
 	// TestRunID, when set, runs the step in test mode (PLAT-562): RunFolder is
 	// the test run's folder runs/<TestRunID>/..., RealRunFolder the run whose
 	// upstream outputs are copied in. Server-generated, never model input.
@@ -41,8 +41,8 @@ type WorkshopExecuteOptions struct {
 // cleanupWorkshopExecutionPath removes a specific workshop execution folder and archives
 // its matching logs folder. This is used for inner-step workshop runs where we need
 // targeted cleanup without touching sibling or parent step artifacts.
-func (hcpo *StepBasedWorkflowOrchestrator) cleanupWorkshopExecutionPath(ctx context.Context, stepPath string, stepID string, includeMessageSequence bool) error {
-	_ = includeMessageSequence
+func (hcpo *StepBasedWorkflowOrchestrator) cleanupWorkshopExecutionPath(ctx context.Context, stepPath string, stepID string, includeAgent bool) error {
+	_ = includeAgent
 	return hcpo.cleanupExecutionArtifactsForStepPath(ctx, stepPath, stepID)
 }
 
@@ -182,9 +182,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	}
 
 	isInnerStep := stepInfo.TopIndex < 0
-	isMessageSequence := isMessageSequenceStep(stepInfo.Step)
-	isMessageSequenceResume := isMessageSequence && opts != nil && strings.TrimSpace(opts.HumanInput) != "" && !opts.MessageSequenceRestart
-	isMessageSequenceStart := isMessageSequence && !isMessageSequenceResume
+	isAgent := isAgentStep(stepInfo.Step)
+	isAgentResume := isAgent && opts != nil && strings.TrimSpace(opts.HumanInput) != "" && !opts.AgentRestart
+	isAgentStart := isAgent && !isAgentResume
 	if isInnerStep {
 		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Executing INNER step %q (parent=%s, location=%s, runFolder=%s)",
 			stepID, stepInfo.ParentID, stepInfo.NestedLocation, hcpo.selectedRunFolder))
@@ -267,20 +267,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 		setup.Cleanup = CleanupScope{} // No cleanup — don't delete other steps' outputs
 		innerStepPath := resolveInnerStepPath(plan.Steps, stepInfo)
 		setup.Context.StepPathOverride = innerStepPath
-		if !isMessageSequenceResume {
-			cleanMessageSequenceRuntime := isMessageSequence && (opts == nil || !opts.MessageSequenceRestart)
-			if err := hcpo.cleanupWorkshopExecutionPath(ctx, innerStepPath, stepInfo.Step.GetID(), cleanMessageSequenceRuntime); err != nil {
+		if !isAgentResume {
+			cleanAgentRuntime := isAgent && (opts == nil || !opts.AgentRestart)
+			if err := hcpo.cleanupWorkshopExecutionPath(ctx, innerStepPath, stepInfo.Step.GetID(), cleanAgentRuntime); err != nil {
 				return "", fmt.Errorf("failed to cleanup inner workshop step %q: %w", stepID, err)
 			}
 		} else {
-			hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP-INNER] Message sequence %q resume: preserving existing session/output folder", stepID))
+			hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP-INNER] Agent %q resume: preserving existing session/output folder", stepID))
 		}
 		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP-INNER] Inner step %q: skipping cleanup, using step path %q (target=%d, singleStep=%v)",
 			stepID, innerStepPath, setup.Context.SingleStepTarget, setup.Context.RunSingleStepOnly))
 	} else {
-		if isMessageSequenceResume {
+		if isAgentResume {
 			setup.Cleanup = CleanupScope{}
-			hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Message sequence %q resume: preserving existing session/output folder", stepID))
+			hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Agent %q resume: preserving existing session/output folder", stepID))
 		}
 		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Top-level step %q: cleanup scope CleanAll=%v, CleanFrom=%d, CleanSpecific=%d",
 			stepID, setup.Cleanup.CleanAllSteps, setup.Cleanup.CleanFromStep, setup.Cleanup.CleanSpecificStep))
@@ -298,12 +298,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	if opts != nil && opts.HumanInput != "" {
 		setup.Context.WorkshopHumanInput = opts.HumanInput
 	}
-	if opts != nil && opts.MessageSequenceRestart {
-		setup.Context.MessageSequenceRestart = true
-	} else if isMessageSequenceStart {
+	if opts != nil && opts.AgentRestart {
+		setup.Context.AgentRestart = true
+	} else if isAgentStart {
 		// A plain execute_step on a message_sequence means "start from beginning".
 		// Resume requires human_input so we do not accidentally replay or append.
-		setup.Context.MessageSequenceRestart = true
+		setup.Context.AgentRestart = true
 	}
 
 	// Reload progress after cleanup

@@ -341,8 +341,8 @@ func stepOutputResultText(text string) string {
 }
 
 // readStepOutputSource returns the step's own account of one run. For a
-// message sequence the configured turns' summaries carry it; the generic
-// "Message sequence ... completed" execution summary does not.
+// agent the configured turns' summaries carry it; the generic
+// "Agent ... completed" execution summary does not.
 func readStepOutputSource(path string) (stepID, runFolder, text string, ok bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -355,7 +355,7 @@ func readStepOutputSource(path string) (stepID, runFolder, text string, ok bool)
 			RunFolder       string `json:"run_folder"`
 			ExecutionResult string `json:"execution_result"`
 		}
-		if json.Unmarshal(raw, &summary) != nil || strings.HasPrefix(summary.ExecutionResult, "Message sequence ") {
+		if json.Unmarshal(raw, &summary) != nil || strings.HasPrefix(summary.ExecutionResult, "Agent ") {
 			return "", "", "", false
 		}
 		return summary.StepID, summary.RunFolder, summary.ExecutionResult, true

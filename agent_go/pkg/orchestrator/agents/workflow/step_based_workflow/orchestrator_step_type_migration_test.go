@@ -10,7 +10,7 @@ func TestMigrateOrchestratorStepTypeContentRewritesOnlyTypeDiscriminators(t *tes
   "steps": [
     {"type": "todo_task", "id": "a", "description": "prose: type is todo_task"},
     {"type":"todo_task","id":"b","predefined_routes":[{"route_id":"r","sub_agent_step":{"type": "todo_task","id":"n"}}]},
-    {"type": "message_sequence", "id": "c"}
+    {"type": "agent", "id": "c"}
   ]
 }`
 	got, count := migrateOrchestratorStepTypeContent(plan)
@@ -38,7 +38,7 @@ func TestIsOrchestratorStepTypeAcceptsLegacyAlias(t *testing.T) {
 			t.Fatalf("%q should be an orchestrator step type", s)
 		}
 	}
-	for _, s := range []string{"message_sequence", "routing", ""} {
+	for _, s := range []string{"agent", "routing", ""} {
 		if IsOrchestratorStepType(s) {
 			t.Fatalf("%q should not be an orchestrator step type", s)
 		}
@@ -50,10 +50,10 @@ func TestLegacyPlanTypeParsesAsOrchestrator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if step.StepType() != StepTypeOrchestrator {
-		t.Fatalf("StepType() = %q, want %q", step.StepType(), StepTypeOrchestrator)
+	if step.StepType() != StepTypeAgent {
+		t.Fatalf("StepType() = %q, want %q", step.StepType(), StepTypeAgent)
 	}
-	if o, ok := step.(*OrchestratorPlanStep); !ok || o.Type != StepTypeOrchestrator {
+	if o, ok := step.(*AgentPlanStep); !ok || o.Type != StepTypeAgent {
 		t.Fatalf("legacy type was not normalized on parse: %#v", step)
 	}
 }

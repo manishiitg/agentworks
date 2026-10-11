@@ -229,9 +229,9 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 	if err := writeJSON(filepath.Join(workspaceDisk, "planning", "plan.json"), map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				// Message sequences are the agentic step type. Regular steps
+				// Agents are the agentic step type. Regular steps
 				// now require a saved script and do not exercise CLI completion.
-				"type": "message_sequence", "id": "p0-first", "title": "First P0 turn",
+				"type": "agent", "id": "p0-first", "title": "First P0 turn",
 				"description": "Create the first MCP bridge proof and complete the turn.",
 				"items": []map[string]interface{}{{
 					"id": "run", "type": "user_message",
@@ -240,7 +240,7 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 				"context_dependencies": []string{}, "context_output": "p0-bridge-first.txt", "next_step_id": "p0-second",
 			},
 			{
-				"type": "message_sequence", "id": "p0-second", "title": "Second P0 turn",
+				"type": "agent", "id": "p0-second", "title": "Second P0 turn",
 				"description": "Verify the first proof, create the second MCP bridge proof, and complete the turn.",
 				"items": []map[string]interface{}{{
 					"id": "run", "type": "user_message",

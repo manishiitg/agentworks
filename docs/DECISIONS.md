@@ -1,5 +1,12 @@
 # Decisions and open issues
 
+## 2026-10-11 — One workflow agent step type (PLAT-851)
+
+Use `agent` for every conversational workflow step, including agents with `predefined_routes`. One `AgentPlanStep` owns the system description, ordered user `items`, validation and optional specialist routes. Remove separate orchestrator/todo_task authoring shapes and the message_sequence name so Builder, runtime and UI describe the same concept. Contract v1.0.47 migrates saved legacy agent records, including nested/orphan definitions, without changing their contracts; the read boundary normalizes old records and every subsequent write uses the canonical shape. Scripted work remains `regular`.
+
+Ticket: [PLAT-851](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-851.md).
+
+
 A running log for people and coding agents working on this repository. Read it
 before changing behaviour it covers; add an entry (newest first) when you make
 or reverse a decision. Each entry says what was decided, why, and where it lives

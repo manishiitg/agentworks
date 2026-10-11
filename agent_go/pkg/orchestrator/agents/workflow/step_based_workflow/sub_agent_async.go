@@ -66,10 +66,10 @@ func subAgentParentExecutionID(ctx context.Context) string {
 func copyAsyncSubAgentContextValues(base, source context.Context) context.Context {
 	for _, key := range []interface{}{
 		virtualtools.PreferredTierContextKey,
-		virtualtools.SubAgentMessageSequenceRestartKey,
+		virtualtools.SubAgentAgentRestartKey,
 		virtualtools.SubAgentParametersKey,
 		virtualtools.ScriptedSubAgentInvocationKey,
-		virtualtools.GenericAgentMessageSequenceKey,
+		virtualtools.GenericAgentAgentKey,
 	} {
 		if value := source.Value(key); value != nil {
 			base = context.WithValue(base, key, value)

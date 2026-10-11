@@ -29,7 +29,7 @@ func TestObserverDefaultsToNoPhase(t *testing.T) {
 
 // TestObserverSetPhaseTogglesEntryAttribution pins the reflection-turn /
 // message_sequence-item bracket pattern (reflection_turn_run.go,
-// controller_message_sequence.go): SetPhase changes what every subsequent
+// controller_agent.go): SetPhase changes what every subsequent
 // entry from this SAME observer instance carries, and a later SetPhase("")
 // restores the untagged default — since both reuse the step's own
 // agent/observer rather than getting a fresh one.
@@ -57,10 +57,10 @@ func TestObserverSetPhaseTogglesEntryAttribution(t *testing.T) {
 	}
 }
 
-// TestObserverSetPhaseSupportsArbitraryMessageSequenceItemTags pins PLAT-167:
+// TestObserverSetPhaseSupportsArbitraryAgentItemTags pins PLAT-167:
 // SetPhase is not limited to the two PLAT-166 constants — a message_sequence
 // item's own identity works exactly the same way.
-func TestObserverSetPhaseSupportsArbitraryMessageSequenceItemTags(t *testing.T) {
+func TestObserverSetPhaseSupportsArbitraryAgentItemTags(t *testing.T) {
 	observer := New(nil, "sess-1", "user-1", "simple",
 		WithAttribution(ScopeWorkflowExecution, "Workflow/demo", "", "sess-1:outreach-sequence"),
 	)

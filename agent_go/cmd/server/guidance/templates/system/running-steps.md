@@ -85,7 +85,7 @@ Background step and workflow runs **automatically notify you** when they complet
   completed, failed, and cancelled executions reject new messages.
 - **Pre-validation failures notify separately, mid-run** — a step's own
   step-level pre-validation gate (structural file/DB checks) and any
-  `message_sequence` item's pre-validation gate fire their own
+  `agent` item's pre-validation gate fire their own
   `[AUTO-NOTIFICATION]` the first time they fail, before the step's
   overall completion notification and even if the step's own retries go
   on to fix it. Treat this as an early heads-up, not the final outcome —

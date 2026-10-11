@@ -33,12 +33,12 @@ type productSecretsBoxReport struct {
 }
 
 type productSecretsUserReport struct {
-	User      string                    `json:"user"`
-	Personal  int                       `json:"personal_secrets"`
-	Boxes     []productSecretsBoxReport `json:"boxes"`
-	Archived  bool                      `json:"archived"`
-	Skipped   string                    `json:"skipped,omitempty"`
-	Errors    []string                  `json:"errors,omitempty"`
+	User     string                    `json:"user"`
+	Personal int                       `json:"personal_secrets"`
+	Boxes    []productSecretsBoxReport `json:"boxes"`
+	Archived bool                      `json:"archived"`
+	Skipped  string                    `json:"skipped,omitempty"`
+	Errors   []string                  `json:"errors,omitempty"`
 }
 
 type productSecretsMigrationReport struct {

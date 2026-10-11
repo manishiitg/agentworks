@@ -88,7 +88,7 @@ const executionLabel = (id: string) => {
 }
 
 // phaseLabel prettifies a costledger.Entry.Phase value for display (PLAT-166,
-// generalized per-message-sequence-item in PLAT-167). Unlike executionLabel,
+// generalized per-agent-item in PLAT-167). Unlike executionLabel,
 // this is not an id-grouping key — it is shown verbatim as a sub-line label
 // under an execution row, so it stays a plain string→string function.
 export const phaseLabel = (phase: string) => {

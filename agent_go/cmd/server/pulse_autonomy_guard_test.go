@@ -49,10 +49,10 @@ func TestGoalWorkAutonomyIsEnforcedAtToolDispatch(t *testing.T) {
 		t.Fatalf("execute_step with run=auto must run: %v", err)
 	}
 	// change=ask (the default): a typed plan edit is refused; change=auto allows it.
-	if _, err := inTurn(`{}`, "update_message_sequence_step"); err == nil {
+	if _, err := inTurn(`{}`, "update_agent_step"); err == nil {
 		t.Fatal("a plan edit with change=ask must be refused")
 	}
-	if _, err := inTurn(`{"pulse":{"autonomy":{"change":"auto"}}}`, "update_message_sequence_step"); err != nil {
+	if _, err := inTurn(`{"pulse":{"autonomy":{"change":"auto"}}}`, "update_agent_step"); err != nil {
 		t.Fatalf("a plan edit with change=auto must run: %v", err)
 	}
 	// outward=ask marks the call so argument-dependent senders hold their writes.

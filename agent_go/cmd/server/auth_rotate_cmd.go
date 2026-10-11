@@ -14,8 +14,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sealbox"
-	"github.com/spf13/cobra"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/spf13/cobra"
 )
 
 var rotateAuthSecretCmd = &cobra.Command{
@@ -48,15 +48,15 @@ func init() {
 }
 
 type authSecretRotationOptions struct {
-	DocsDir           string
-	ProviderKeysFile  string
-	OldSecret         string
-	NewSecret         string
-	GenerateNew       bool
-	EnvFile           string
-	WriteEnv          bool
-	Backup            bool
-	DryRun            bool
+	DocsDir          string
+	ProviderKeysFile string
+	OldSecret        string
+	NewSecret        string
+	GenerateNew      bool
+	EnvFile          string
+	WriteEnv         bool
+	Backup           bool
+	DryRun           bool
 }
 
 type authSecretRotationReport struct {
@@ -397,7 +397,7 @@ func collectWorkflowSecretDocs(docsDir string) ([]*workflowSecretDocFile, error)
 				return nil, fmt.Errorf("failed to read %s: %w", path, err)
 			}
 			var parsed struct {
-				WorkflowPath string                          `json:"workflow_path"`
+				WorkflowPath string                         `json:"workflow_path"`
 				Secrets      map[string]*rotateSecretRecord `json:"secrets"`
 				Credentials  map[string]*rotateSecretRecord `json:"credentials"`
 			}

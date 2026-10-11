@@ -24,7 +24,7 @@ func TestConsolidatedPlanRegistryHidesNativeAliases(t *testing.T) {
 	d := consolidatedPlanDraft(t, newExternalPlanTestFiles(t, regularStep("fetch")))
 	for _, name := range []string{
 		"add_step", "update_step", "manage_step_route", "change_step_type", "maintain_plan",
-		"migrate_message_sequence_code_items", "migrate_orchestrator_step_type",
+		"migrate_agent_code_items", "migrate_orchestrator_step_type",
 		"migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"create_plan", "delete_plan_steps", "validate_plan_change", "update_validation_schema", "record_plan_drift_review",
 	} {
@@ -58,12 +58,12 @@ func TestConsolidatedUpdateUsesCurrentPlanAndNativeChangelog(t *testing.T) {
 	if err = json.Unmarshal([]byte(f.files[externalPlanTestWorkspace+"/planning/plan.json"]), &after); err != nil {
 		t.Fatal(err)
 	}
-	if after.Steps[0].StepType() != StepTypeMessageSeq || after.Steps[0].GetTitle() != "Review invoices" {
+	if after.Steps[0].StepType() != StepTypeAgent || after.Steps[0].GetTitle() != "Review invoices" {
 		t.Fatalf("wrong mutation: %+v", after.Steps)
 	}
 	found := false
 	for path, data := range f.files {
-		if strings.Contains(path, "/planning/changelog/") && strings.Contains(data, "update_message_sequence_step") && strings.Contains(data, "adapter-owner") {
+		if strings.Contains(path, "/planning/changelog/") && strings.Contains(data, "update_agent_step") && strings.Contains(data, "adapter-owner") {
 			found = true
 		}
 	}
@@ -215,7 +215,7 @@ func TestBackgroundReadOnlyAccessRejectsEscalationAndWriterTools(t *testing.T) {
 }
 
 func TestConsolidatedUpdateFindsNestedSteps(t *testing.T) {
-	parent := &OrchestratorPlanStep{CommonStepFields: CommonStepFields{ID: "parent", Title: "Delegate", Description: "Delegate analysis"}, NextStepID: "end", PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", RouteName: "Analysis", SubAgentStep: testSequenceStep("nested", "Analyze")}}}
+	parent := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "parent", Title: "Delegate", Description: "Delegate analysis"}, NextStepID: "end", PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", RouteName: "Analysis", SubAgentStep: testSequenceStep("nested", "Analyze")}}}
 	f := newExternalPlanTestFiles(t, parent)
 	d := consolidatedPlanDraft(t, f)
 	if _, err := d.tools["update_step"].Execute(context.Background(), map[string]interface{}{"step_id": "nested", "changes": map[string]interface{}{"title": "Analyze invoices", "reason": "Clarify delegated analysis"}}); err != nil {

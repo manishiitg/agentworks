@@ -31,9 +31,9 @@ import (
 const planDriftReviewContractVersion = 3
 
 const (
-	messageSequenceBestPracticesDriftCheckID = "message_sequence_best_practices"
-	scriptedBestPracticesDriftCheckID        = "scripted_best_practices"
-	orchestratorBestPracticesDriftCheckID    = "orchestrator_best_practices"
+	agentSequenceBestPracticesDriftCheckID = "agent_best_practices"
+	scriptedBestPracticesDriftCheckID      = "scripted_best_practices"
+	orchestratorBestPracticesDriftCheckID  = "orchestrator_best_practices"
 	// legacyOrchestratorBestPracticesDriftCheckID is the pre-v1.0.35 ID; records
 	// already carrying it still satisfy the orchestrator requirement.
 	legacyOrchestratorBestPracticesDriftCheckID = "todo_task_best_practices"
@@ -45,9 +45,9 @@ func requiredStepTypeBestPracticesCheckID(stepType string) string {
 	switch strings.TrimSpace(stepType) {
 	case string(StepTypeRegular):
 		return scriptedBestPracticesDriftCheckID
-	case string(StepTypeMessageSeq):
-		return messageSequenceBestPracticesDriftCheckID
-	case string(StepTypeOrchestrator), string(StepTypeTodoTaskLegacy):
+	case string(StepTypeAgent):
+		return agentSequenceBestPracticesDriftCheckID
+	case string(StepTypeAgent):
 		return orchestratorBestPracticesDriftCheckID
 	case string(StepTypeRouting):
 		return routingBestPracticesDriftCheckID
@@ -220,7 +220,7 @@ func planDriftPlainFileReader(_ context.Context, workspaceRelativePath string) (
 
 // planStepIDsFromPlanJSON returns every step id declared in plan.json's
 // top-level "steps" array, recursing into routing/branch sub-agent steps the
-// same way collectRawPlanStepIDs already does for the message-sequence code
+// same way collectRawPlanStepIDs already does for the agent code
 // migration. Deliberately excludes "orphan_steps" — those are detached,
 // non-executing steps, not live plan surface a drift review needs to cover.
 func planStepIDsFromPlanJSON(planContent string) (map[string]bool, error) {
@@ -253,7 +253,7 @@ func collectStepTypesByID(steps []PlanStepInterface, out map[string]string) {
 		if id := strings.TrimSpace(step.GetID()); id != "" {
 			out[id] = string(step.StepType())
 		}
-		if todo, ok := step.(*OrchestratorPlanStep); ok {
+		if todo, ok := step.(*AgentPlanStep); ok {
 			for _, route := range todo.PredefinedRoutes {
 				if route.SubAgentStep == nil {
 					continue

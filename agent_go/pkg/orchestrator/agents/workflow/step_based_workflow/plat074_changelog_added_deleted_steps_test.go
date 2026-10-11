@@ -97,7 +97,7 @@ func TestCompletePlanChangelogEntryExplicitSnapshotStillWinsOverAddedDeletedStep
 }
 
 // TestLogCanonicalArtifactChangeStyleMigrationSnapshotsProduceDistinctRefs
-// exercises the migrate_message_sequence_code_items shape end-to-end: real
+// exercises the migrate_agent_code_items shape end-to-end: real
 // pre/post plan.json content passed as Before/AfterSnapshot through
 // logPlanChange must persist distinct, non-placeholder refs.
 func TestLogCanonicalArtifactChangeStyleMigrationSnapshotsProduceDistinctRefs(t *testing.T) {
@@ -109,7 +109,7 @@ func TestLogCanonicalArtifactChangeStyleMigrationSnapshotsProduceDistinctRefs(t 
 	}
 
 	logPlanChange(context.Background(), "Workflow/demo", PlanChangelogEntry{
-		Tool:           "migrate_message_sequence_code_items",
+		Tool:           "migrate_agent_code_items",
 		Reason:         "test migration",
 		BeforeSnapshot: json.RawMessage(`{"steps":[{"id":"a"}]}`),
 		AfterSnapshot:  json.RawMessage(`{"steps":[{"id":"a-1"},{"id":"a-2"}]}`),

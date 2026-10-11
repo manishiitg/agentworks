@@ -13,7 +13,7 @@ import (
 // chat's — the mode a human uses to *build* a workflow. That handed every step
 // agent 41 builder reference docs, among them llm-provider-config, which
 // instructs the reader to call list_published_llms. A social-media
-// message-sequence sub-agent holding eight tools did exactly that and got
+// agent sub-agent holding eight tools did exactly that and got
 // `tools_unavailable`; with no way left to ask which providers were published,
 // it then guessed provider names ("vertex", "minimax-coding-plan", …),
 // producing 19 further tool failures.

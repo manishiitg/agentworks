@@ -33,7 +33,7 @@ func TestGoalSetupFollowsGoalThenPlanThenMetrics(t *testing.T) {
 		t.Fatalf("with a goal written, Plan is next, got %+v", status)
 	}
 
-	setFile("planning/plan.json", `{"steps":[{"id":"find-leads","type":"message_sequence"}]}`)
+	setFile("planning/plan.json", `{"steps":[{"id":"find-leads","type":"agent"}]}`)
 	status = buildWorkflowGoalSetupStatus(ctx, ws, nil)
 	if status.Next == nil || status.Next.ID != "metrics" || status.Complete {
 		t.Fatalf("with a goal and plan, Metrics is next, got %+v", status)
@@ -102,7 +102,7 @@ func TestGoalSetupEndsWithPulse(t *testing.T) {
 	ws := "Workflow/owned-goal"
 	stub.mu.Lock()
 	stub.files[ws+"/soul/soul.md"] = "# G\n\n## Objective\n- Book demos\n\n## Success Criteria\n- 5 a week\n"
-	stub.files[ws+"/planning/plan.json"] = `{"steps":[{"id":"a","type":"message_sequence"}]}`
+	stub.files[ws+"/planning/plan.json"] = `{"steps":[{"id":"a","type":"agent"}]}`
 	stub.files[ws+"/db/reports/index.html"] = "<html>demos</html>"
 	stub.mu.Unlock()
 

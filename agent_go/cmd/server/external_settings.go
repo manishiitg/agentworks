@@ -59,7 +59,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"use_shared":  names,
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
-		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"browser_mode":  map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
 		"free_text_ask": map[string]any{"type": "boolean", "description": "Crews only: false turns off the built-in free-text ask, so programs (MCP, CLI, other Crews, workflows) can call only the Crew's declared functions; people chatting in the app are not affected. Default true."},
 		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
 			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},

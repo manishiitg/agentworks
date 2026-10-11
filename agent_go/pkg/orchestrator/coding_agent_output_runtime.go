@@ -13,7 +13,7 @@ import (
 
 // Prepare only explicit execution outputs, never an inherited parent-session
 // STEP_OUTPUT_DIR on a review/learning agent. The final dedicated session guard
-// is the authority, including nested/message-sequence output overrides.
+// is the authority, including nested/agent output overrides.
 func prepareCodingAgentOutputRuntime(config *agents.OrchestratorAgentConfig) error {
 	if config == nil || strings.TrimSpace(config.CodingAgentOutputDir) == "" {
 		return nil

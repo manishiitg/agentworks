@@ -33,7 +33,7 @@ func TestCanonicalPlanningDocsDistinguishBranchFromRouting(t *testing.T) {
 		return false
 	}
 
-	for _, kind := range []string{"plan-design", "planning-steps", "message-sequence", "scripted", "workflow-tools"} {
+	for _, kind := range []string{"plan-design", "planning-steps", "agent", "scripted", "workflow-tools"} {
 		doc := RenderSystemDoc(kind)
 		if !hasStepType(doc, "branch") {
 			t.Errorf("%s.md never documents `branch` as a real step-type option -- a fixed choice reader would only ever be told to use `routing`", kind)

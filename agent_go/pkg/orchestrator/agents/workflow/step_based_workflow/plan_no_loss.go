@@ -405,7 +405,7 @@ func noLossItemsText(raw interface{}) string {
 }
 
 func stepItemsText(step PlanStepInterface) string {
-	seq, ok := step.(*MessageSequencePlanStep)
+	seq, ok := step.(*AgentPlanStep)
 	if !ok || len(seq.Items) == 0 {
 		return ""
 	}
@@ -533,7 +533,7 @@ func createCheckPlanNoLossExecutor(workspacePath string, readFile func(context.C
 	}
 }
 
-const restoreStepFromChangelogDescription = "PLAT-556 consolidator rollback. Restore one message_sequence step's description and items to the values recorded before a plan change (the changelog entry's old_value for those fields, the content behind its before_ref). Use it when a consolidation's comparison run fails validation, instead of retyping the old text. Provide change_id (from the edit's changelog entry), step_id when the entry touched several steps, and reason. The restore is itself a logged plan change."
+const restoreStepFromChangelogDescription = "PLAT-556 consolidator rollback. Restore one agent step's description and items to the values recorded before a plan change (the changelog entry's old_value for those fields, the content behind its before_ref). Use it when a consolidation's comparison run fails validation, instead of retyping the old text. Provide change_id (from the edit's changelog entry), step_id when the entry touched several steps, and reason. The restore is itself a logged plan change."
 
 func restoreStepFromChangelogParameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -576,7 +576,7 @@ func findPlanChangelogEntry(workspacePath, changeID string) (*PlanChangelogEntry
 }
 
 func createRestoreStepFromChangelogExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
-	update := createUpdateMessageSequenceStepExecutor(workspacePath, logger, readFile, writeFile)
+	update := createUpdateAgentStepExecutor(workspacePath, logger, readFile, writeFile)
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
 		changeID := strings.TrimSpace(asString(args["change_id"]))
 		reason, err := requireReason(args)
