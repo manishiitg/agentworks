@@ -523,7 +523,8 @@ The dedicated `human_input` step is retired. Existing plans need a reviewed
 ### Existing desktop and Claude session transports
 
 For an already-open Codex desktop chat, explicitly attach its exact UUID with
-`--native-remote desktop+unix:///ABSOLUTE/CODEX_HOME/ipc/ipc.sock`. This opt-in
+`--native-remote desktop+unix:///ABSOLUTE/CODEX_HOME/ipc/ipc.sock` and
+`--native-pid PID` of its exact running Codex process. This opt-in
 adapter uses the desktop's same-user coordination API, discovers the owner of
 that UUID, and requires its untrusted-app-input capability. Peer messages arrive
 as `agentworks.agent_message` tool content. A running turn receives them through
@@ -531,6 +532,11 @@ the native live path; an explicitly ended turn can start an idle turn. A timeout
 or disconnect never triggers a second attempt. Permission settings, models,
 composer drafts and existing follow-ups remain under the host's control. This
 protocol is version-sensitive and fails closed if the installed app changes.
+The same-user IPC trusts processes running under the person's OS account; it is
+not isolation from other local processes of that user. Native idle wake starts
+under that chat's existing approval/sandbox settings, stated before attach.
+Native message batches are capped at 96 KiB; larger batches require an explicit
+inbox read, with no automatic retry.
 
 Claude's person-enabled session-messaging feature can receive without restarting
 an existing chat: select the exact registration file with
@@ -545,5 +551,16 @@ A native receiver whose plugin has not been reloaded can use the narrow fallback
 `agentworks bridge message ack --provider claude --message-id ID --delivery admitted`
 and then `processed`, or `bridge message reply --provider claude --message-id ID
 --message TEXT --submission-id ID`. These commands use the exact provider ancestor
-and private local child connection. Codex uses its host `CODEX_THREAD_ID` and
+and private local child connection. Codex requires its host `CODEX_THREAD_ID` and the stored provider process key;
+a supplied UUID cannot replace a missing host thread identity. Codex messaging
+MCP children also require a host-supplied UUID and refuse ambiguous shared-process
+selection. Use
 `--provider codex`. They cannot create attachments or use the parent tool catalog.
+
+A stable agent reuses its private child connection when moved between sessions
+under the same parent. A newly created child supersedes abandoned siblings for
+that address/parent. If an existing child is expired or revoked, a person-confirmed
+reattach derives a replacement once from the currently approved parent. Resume
+requires a fresh provider process key. Offline identities retain their address;
+explicit detach revokes their child. Cleanup retires offered metadata, so later
+replies need an explicit inbox read and `--inbox` instead of the retired message ID.

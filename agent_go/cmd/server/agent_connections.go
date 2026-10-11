@@ -80,6 +80,12 @@ func (api *StreamingAPI) createAgentConnection(w http.ResponseWriter, r *http.Re
 		return
 	}
 	defer tx.Rollback()
+	// A stable address has one active child per parent. A freshly approved
+	// child supersedes abandoned/offline families instead of leaking slots.
+	if _, err = tx.ExecContext(r.Context(), `UPDATE tokens SET revoked_at=? WHERE revoked_at IS NULL AND family_id IN (SELECT family_id FROM agent_connections WHERE parent_family=? AND agent_id=?)`, time.Now().Unix(), parent.FamilyID, agent.ID); err != nil {
+		externalFailure(w, err)
+		return
+	}
 	var count int
 	err = tx.QueryRowContext(r.Context(), `SELECT COUNT(DISTINCT a.family_id) FROM agent_connections a JOIN tokens t ON t.family_id=a.family_id WHERE a.parent_family=? AND t.revoked_at IS NULL AND t.expires_at>?`, parent.FamilyID, time.Now().Unix()).Scan(&count)
 	if err != nil {

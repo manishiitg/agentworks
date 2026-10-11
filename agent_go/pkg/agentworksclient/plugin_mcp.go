@@ -14,7 +14,7 @@ import (
 // NewPluginMCPServer has no credentials and cannot attach a session. The host
 // key identifies its exact Claude process; the person hook supplies session_id
 // when attaching. Native is enabled only by the person's channel launcher.
-func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool) (*server.MCPServer, error) {
+func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs ...string) (*server.MCPServer, error) {
 	if provider != "claude" && provider != "codex" || native && provider != "claude" {
 		return nil, errors.New("unsupported plugin provider")
 	}
@@ -28,6 +28,12 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 	s := server.NewMCPServer("AgentWorks local delivery", "1.0.0", opts...)
 	call := func(callCtx context.Context, in LocalBridgeRequest) (*mcp.CallToolResult, error) {
 		in.Provider, in.HostKey = provider, hostKey
+		if provider == "codex" {
+			if len(sessionIDs) == 0 || sessionIDs[0] == "" {
+				return mcp.NewToolResultError("Codex host did not supply an exact thread UUID; use bridge message inside the chat."), nil
+			}
+			in.SessionID = sessionIDs[0]
+		}
 		out, err := CallLocalBridge(callCtx, root, in)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

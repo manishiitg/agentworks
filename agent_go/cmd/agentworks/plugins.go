@@ -189,7 +189,7 @@ func pluginCommand(o *options) *cobra.Command {
 		}
 		ctx, cancel := context.WithCancel(cmd.Context())
 		defer cancel()
-		bridge, err := agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1")
+		bridge, err := agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", os.Getenv("CODEX_THREAD_ID"))
 		if err != nil {
 			return err
 		}
@@ -212,7 +212,11 @@ func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) 
 		b.Write(raw)
 		b.WriteByte('\n')
 	}
-	b.WriteString("Use agent_message_ack and agent_message_reply in this messaging plugin. Replies preserve the original conversation; use a stable submission_id.")
+	if transport == "codex_desktop" || transport == "claude_session" {
+		fmt.Fprintf(&b, "Use agentworks bridge message ack --provider %s --session %s --message-id ID --delivery admitted, then processed. Reply with agentworks bridge message reply --provider %s --session %s --inbox INBOX_ID --message TEXT --submission-id STABLE_ID. Retain the original inbox_id. These commands require this exact provider process/thread.", out.Attachment.Provider, out.Attachment.SessionID, out.Attachment.Provider, out.Attachment.SessionID)
+	} else {
+		b.WriteString("Use agent_message_ack and agent_message_reply in this messaging plugin. Replies preserve the original conversation; use a stable submission_id.")
+	}
 	return b.String()
 }
 
@@ -311,7 +315,10 @@ func bridgeCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if provider == "codex" && os.Getenv("CODEX_THREAD_ID") != "" {
+		if provider == "codex" {
+			if os.Getenv("CODEX_THREAD_ID") == "" {
+				return errors.New("Codex messaging requires the host CODEX_THREAD_ID; a supplied UUID cannot select another chat")
+			}
 			if session != "" && session != os.Getenv("CODEX_THREAD_ID") {
 				return errors.New("thread does not match the host session")
 			}
@@ -380,6 +387,7 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 func attachPluginCommand(o *options) *cobra.Command {
 	var nativeSession, name, purpose, nativeRemote string
 	var nativeHostKey string
+	var nativePID int
 	var senders []string
 	cmd := &cobra.Command{Use: "attach PROVIDER", Args: cobra.ExactArgs(1), Short: "Person-controlled plugin installation; optionally attach an exact session", RunE: func(cmd *cobra.Command, args []string) error {
 		provider := args[0]
@@ -420,6 +428,9 @@ func attachPluginCommand(o *options) *cobra.Command {
 		if !cmd.Flags().Changed("allow-sender") {
 			return errors.New("explicit --allow-sender required (empty denies all)")
 		}
+		if strings.HasPrefix(nativeRemote, "desktop+unix://") {
+			fmt.Fprintln(o.stderr, "Native delivery can wake this exact desktop chat using its current approval and sandbox settings. The IPC trusts local processes of your OS user.")
+		}
 		fmt.Fprintf(o.stderr, "Attach %s session %s as agent:%s with senders %v? Type yes: ", provider, nativeSession, name, senders)
 		var answer string
 		_, err := fmt.Fscanln(o.stdin, &answer)
@@ -438,6 +449,16 @@ func attachPluginCommand(o *options) *cobra.Command {
 			}
 			if err != nil {
 				return err
+			}
+		}
+		if nativeHostKey == "" {
+			if nativePID > 1 {
+				nativeHostKey, err = providerPIDHostKey(provider, nativePID)
+			} else {
+				nativeHostKey, err = providerHostKey(provider)
+			}
+			if err != nil || nativeHostKey == "" {
+				return errors.New("terminal attachment requires --native-pid of the exact running provider process")
 			}
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
@@ -461,6 +482,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 		}
 		return o.output(out)
 	}}
+	cmd.Flags().IntVar(&nativePID, "native-pid", 0, "Exact provider process PID for terminal attachment; required for desktop Codex")
 	cmd.Flags().StringVar(&nativeSession, "session", "", "Exact native session UUID; omitted installs the plugin only")
 	cmd.Flags().StringVar(&nativeRemote, "native-remote", "", "Explicit native endpoint: unix:// daemon, desktop+unix:// desktop IPC, or claude+session:// registration")
 	cmd.Flags().StringVar(&name, "name", "", "Stable agent name")

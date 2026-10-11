@@ -273,7 +273,8 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 	s.cancel = cancel
 	if s.NativeRemote != "" && b.options.NativeOffer != nil {
 		b.workers.Add(1)
-		go func() { defer b.workers.Done(); b.nativeLoop(streamCtx, s) }()
+		hostKey := s.HostKey
+		go func() { defer b.workers.Done(); b.nativeLoop(streamCtx, s, hostKey) }()
 	}
 	b.workers.Add(1)
 	go func() {
@@ -294,7 +295,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					return errors.New("local pending journal is full; use agent_message_read to recover and acknowledge pending messages, then /agentworks cleanup")
 				}
 				previousThrough := s.SeenThrough
-				s.SeenThrough = m.Sequence
+				s.SeenThrough = max(s.SeenThrough, m.Sequence)
 				s.Offers[m.MessageID] = localOffer{AgentLiveMessage: m}
 				if err := b.save(); err != nil {
 					delete(s.Offers, m.MessageID)
@@ -348,8 +349,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.SessionID == "" && in.HostKey != "" {
 		for k, v := range b.sessions {
 			if v.Attachment.Provider == in.Provider && v.HostKey == in.HostKey {
+				if s != nil {
+					return LocalBridgeReply{Error: "exact session ID required for a shared provider process"}
+				}
 				key, s = k, v
-				break
 			}
 		}
 	}
@@ -376,8 +379,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if in.NativeRemote != "" && (!((in.Provider == "codex" && !strings.HasPrefix(in.NativeRemote, "claude+session://")) || (in.Provider == "claude" && strings.HasPrefix(in.NativeRemote, "claude+session://"))) || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
-		if in.SessionID == "" || in.Purpose == "" || in.AllowedSenders == nil {
-			return LocalBridgeReply{Error: "explicit session, purpose and sender allowlist required"}
+		if in.SessionID == "" || in.HostKey == "" || in.Purpose == "" || in.AllowedSenders == nil {
+			return LocalBridgeReply{Error: "explicit session, provider process key, purpose and sender allowlist required"}
 		}
 		client, err := localConfiguredClient(in.ConfigPath)
 		if err != nil {
@@ -391,17 +394,30 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		connectionPath := ""
-		if s != nil && s.Attachment.AgentName == in.AgentName && s.ParentConfigPath == in.ConfigPath {
-			connectionPath = s.ConfigPath
+		var previous *localSession
+		for _, candidate := range b.sessions {
+			if candidate.Attachment.AgentName == in.AgentName && candidate.ParentConfigPath == in.ConfigPath {
+				previous, connectionPath = candidate, candidate.ConfigPath
+				break
+			}
 		}
-		if connectionPath == "" {
+		newConnection := false
+		create := func() error {
 			cfg, e := client.CreateAgentConnection(callCtx, in.AgentName)
 			if e != nil {
-				return LocalBridgeReply{Error: e.Error()}
+				return e
 			}
 			connectionPath = filepath.Join(connectionDir, liveHash(cfg.Server, in.AgentName, in.SessionID, time.Now().String())+".json")
 			if e = SaveConfig(connectionPath, cfg); e != nil {
-				return LocalBridgeReply{Error: e.Error()}
+				_ = client.RevokeOAuth(callCtx, cfg.RefreshToken)
+				return e
+			}
+			newConnection = true
+			return nil
+		}
+		if connectionPath == "" {
+			if err = create(); err != nil {
+				return LocalBridgeReply{Error: err.Error()}
 			}
 		}
 		client, err = localConfiguredClient(connectionPath)
@@ -409,18 +425,40 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 
-		a, err := client.AttachAgent(callCtx, AgentAttachmentOptions{AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, AllowedSenders: in.AllowedSenders})
+		options := AgentAttachmentOptions{AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, AllowedSenders: in.AllowedSenders}
+		a, err := client.AttachAgent(callCtx, options)
+		var apiErr *APIError
+		if err != nil && !newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403) {
+			// Re-login/expiry requires a new child from the currently approved
+			// parent, once. Never retry an ambiguous attachment write.
+			client, err = localConfiguredClient(in.ConfigPath)
+			if err == nil {
+				err = create()
+			}
+			if err == nil {
+				client, err = localConfiguredClient(connectionPath)
+			}
+			if err == nil {
+				a, err = client.AttachAgent(callCtx, options)
+			}
+		}
 		if err != nil {
+			if newConnection {
+				if cfg, e := LoadConfig(connectionPath); e == nil {
+					_ = client.RevokeOAuth(callCtx, cfg.RefreshToken)
+				}
+				_ = os.Remove(connectionPath)
+			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		next := &localSession{Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, AllowedSenders: in.AllowedSenders, Offers: map[string]localOffer{}, client: client}
-		if s != nil && s.Attachment.AgentID == a.AgentID {
-			next.Offers = s.Offers
-			next.SeenThrough = s.SeenThrough
+		if previous != nil && previous.Attachment.AgentID == a.AgentID {
+			next.Offers = previous.Offers
+			next.SeenThrough = previous.SeenThrough
 		}
 		old := map[string]*localSession{}
 		for k, v := range b.sessions {
-			if k == key || v.Attachment.AgentID == a.AgentID || in.HostKey != "" && v.HostKey == in.HostKey && v.Attachment.Provider == in.Provider {
+			if k == key || v.Attachment.AgentID == a.AgentID {
 				old[k] = v
 				delete(b.sessions, k)
 			}
@@ -434,6 +472,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		for _, v := range old {
+			if v.ConfigPath != next.ConfigPath {
+				_ = os.Remove(v.ConfigPath)
+			}
 			if v.cancel != nil {
 				v.cancel()
 			}
@@ -445,7 +486,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if s == nil {
 		return LocalBridgeReply{}
 	}
-	if in.HostKey != "" && s.HostKey != "" && in.HostKey != s.HostKey {
+	if !s.Offline && (in.HostKey == "" || s.HostKey == "" || in.HostKey != s.HostKey) {
 		return LocalBridgeReply{}
 	}
 	if in.AttachmentID != "" && in.AttachmentID != s.Attachment.ID {
@@ -672,9 +713,9 @@ func localPending(s *localSession) bool {
 	return false
 }
 
-func (b *localBridge) nativeLoop(ctx context.Context, s *localSession) {
+func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey string) {
 	for ctx.Err() == nil {
-		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, Transport: nativeCodexTransport(s.NativeRemote)})
+		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, Transport: nativeCodexTransport(s.NativeRemote)})
 		if !out.Attached || out.Error != "" {
 			return
 		}
@@ -695,7 +736,7 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession) {
 			continue // Persisted offer prevents a duplicate turn on an ambiguous failure.
 		}
 		for _, m := range out.Messages {
-			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, MessageID: m.MessageID, Delivery: "admitted"})
+			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "admitted"})
 		}
 	}
 }

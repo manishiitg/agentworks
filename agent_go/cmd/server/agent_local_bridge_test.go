@@ -250,10 +250,48 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out := local(drain); len(out.Messages) != 0 {
 		t.Fatal("offline session received a turn")
 	}
+	missingHost := base
+	missingHost.Action, missingHost.HostKey = "resume", ""
+	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, missingHost); e == nil {
+		t.Fatal("resume accepted no provider process key")
+	}
 	resume := base
 	resume.Action = "resume"
 	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("person-confirmed exact resume failed")
+	}
+	wrongProcess := base
+	wrongProcess.Action, wrongProcess.HostKey = "status", "another-provider-process"
+	if local(wrongProcess).Attached {
+		t.Fatal("another process selected this session")
+	}
+	move := attach
+	move.SessionID, move.HostKey = "moved-exact-session", "moved-exact-process"
+	if !local(move).Attached || !local(attach).Attached {
+		t.Fatal("stable identity move failed")
+	}
+	files, e = filepath.Glob(filepath.Join(root, "connections", "*.json"))
+	if e != nil || len(files) != 1 {
+		t.Fatal("moving retained identities leaked child credentials")
+	}
+	// A dead child is renewed exactly once from the currently approved parent.
+	cfg, e = agentworksclient.LoadConfig(files[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = store.RevokeFamily(context.Background(), grant.FamilyID, "owner"); e != nil {
+		t.Fatal(e)
+	}
+	if !local(attach).Attached {
+		t.Fatal("dead child was not recovered from approved parent")
+	}
+	files, e = filepath.Glob(filepath.Join(root, "connections", "*.json"))
+	if e != nil || len(files) != 1 {
+		t.Fatal("stale child configuration survived replacement")
+	}
+	cfg, e = agentworksclient.LoadConfig(files[0])
+	if e != nil {
+		t.Fatal(e)
 	}
 	wrong := drain
 	wrong.SessionID = "another-session"

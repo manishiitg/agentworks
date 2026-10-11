@@ -84,6 +84,10 @@ func claudeSessionOffer(ctx context.Context, remote string, a agentworksclient.A
 	if err != nil {
 		return err
 	}
+	text := pluginMessageText(agentworksclient.LocalBridgeReply{Attached: true, Attachment: a, Messages: messages}, "claude_session")
+	if len(text) > 96<<10 {
+		return errors.New("native message exceeds 96 KiB; explicitly read the inbox to recover, no automatic retry")
+	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", record.Socket)
 	if err != nil {
 		return err
@@ -94,7 +98,6 @@ func claudeSessionOffer(ctx context.Context, remote string, a agentworksclient.A
 	if err = encoder.Encode(map[string]any{"type": "auth", "token": key}); err != nil {
 		return err
 	}
-	text := pluginMessageText(agentworksclient.LocalBridgeReply{Attached: true, Attachment: a, Messages: messages}, "claude_session")
 	if err = encoder.Encode(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text}}); err != nil {
 		return err
 	}

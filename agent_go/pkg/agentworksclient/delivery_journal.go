@@ -17,6 +17,7 @@ type deliveryJournal struct {
 	SeenThrough int `json:"seen_through,omitempty"`
 	path        string
 	Messages    map[string]AgentLiveMessage `json:"messages"`
+	Retry       map[string]bool             `json:"retry,omitempty"`
 }
 
 func privateLiveDir(path string) error {
@@ -125,22 +126,31 @@ func newDeliveryJournal(root string, client *Client, attachment AgentAttachment)
 }
 
 func (j *deliveryJournal) offer(m AgentLiveMessage) (bool, error) {
-	if _, ok := j.Messages[m.MessageID]; ok || m.Sequence <= j.SeenThrough {
+	if _, ok := j.Messages[m.MessageID]; (ok || m.Sequence <= j.SeenThrough) && !j.Retry[m.MessageID] {
 		return false, nil
 	}
 	if len(j.Messages) >= 1000 {
 		for id, v := range j.Messages {
-			if v.Sequence <= j.SeenThrough-500 {
+			if v.Sequence <= j.SeenThrough-500 && !j.Retry[id] {
 				delete(j.Messages, id)
 			}
 		}
 	}
 	previous := j.SeenThrough
-	j.SeenThrough = m.Sequence
+	old, existed := j.Messages[m.MessageID]
+	retry := j.Retry[m.MessageID]
+	j.SeenThrough = max(j.SeenThrough, m.Sequence)
+	delete(j.Retry, m.MessageID)
 	m.Message = ""
 	j.Messages[m.MessageID] = m
 	if err := atomicLiveJSON(j.path, j); err != nil {
 		delete(j.Messages, m.MessageID)
+		if existed {
+			j.Messages[m.MessageID] = old
+		}
+		if retry {
+			j.Retry[m.MessageID] = true
+		}
 		j.SeenThrough = previous
 		return false, err
 	}
@@ -148,15 +158,22 @@ func (j *deliveryJournal) offer(m AgentLiveMessage) (bool, error) {
 }
 
 func (j *deliveryJournal) forget(id string) error {
-	m := j.Messages[id]
-	delete(j.Messages, id)
-	previous := j.SeenThrough
-	if m.Sequence == j.SeenThrough {
-		j.SeenThrough = m.Sequence - 1
+	if _, exists := j.Messages[id]; !exists {
+		return nil
 	}
+	if j.Retry == nil {
+		j.Retry = map[string]bool{}
+	}
+	previous := j.Retry[id]
+	// Only a known failed notification may retry. Keep the high-water mark
+	// monotonic and retain this explicit exception across a restart.
+	j.Retry[id] = true
 	if err := atomicLiveJSON(j.path, j); err != nil {
-		j.Messages[id] = m
-		j.SeenThrough = previous
+		if previous {
+			j.Retry[id] = true
+		} else {
+			delete(j.Retry, id)
+		}
 		return err
 	}
 	return nil

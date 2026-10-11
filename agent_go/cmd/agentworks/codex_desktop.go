@@ -25,6 +25,10 @@ func codexDesktopOffer(ctx context.Context, remote string, a agentworksclient.Ag
 	if err := validateCodexRemote(remote); err != nil {
 		return err
 	}
+	text := pluginMessageText(agentworksclient.LocalBridgeReply{Attached: true, Attachment: a, Messages: messages}, "codex_desktop")
+	if len(text) > 96<<10 {
+		return errors.New("native message exceeds 96 KiB; explicitly read the inbox to recover, no automatic retry")
+	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(remote, "unix://"))
 	if err != nil {
 		return err
@@ -110,7 +114,6 @@ func codexDesktopOffer(ctx context.Context, remote string, a agentworksclient.Ag
 	if owner == "" || !support.Untrusted {
 		return errors.New("exact desktop chat unavailable or untrusted app input unsupported")
 	}
-	text := pluginMessageText(agentworksclient.LocalBridgeReply{Attached: true, Attachment: a, Messages: messages}, "codex_desktop")
 	tool := map[string]any{"namespace": "agentworks", "name": "agent_message", "output": text}
 	id := uuid.NewString()
 	restore := map[string]any{"id": id, "context": map[string]any{"workspaceRoots": []string{}}}

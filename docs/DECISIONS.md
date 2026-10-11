@@ -12,7 +12,7 @@ and preserve process/session binding for narrow CLI replies. These optional
 native protocols are version-sensitive and fail closed when unsupported.
 Why: reach existing chats live while preserving identity and truthful receipts.
 
-Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-44/45.
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-51/52/54/55.
 
 ## 2026-10-11 — Attached agents have restricted child connections and explicit resume (PLAT-861)
 

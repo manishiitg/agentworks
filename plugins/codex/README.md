@@ -47,3 +47,11 @@ https://learn.chatgpt.com/docs/hooks .
 
 Existing native sessions can use explicit desktop/session transports and the
 process-bound `agentworks bridge message` fallback. See [native transports](../../docs/communication-protocols.md#existing-desktop-and-claude-session-transports).
+
+Terminal native attachment also binds a current provider process. Codex desktop
+needs `--native-pid PID` and uses the host's `CODEX_THREAD_ID` for replies. Native
+idle wake uses that chat's existing approval/sandbox settings. The desktop IPC is
+a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox
+recovery. Session moves reuse the restricted child; expired/revoked children are
+replaced once from the person's current login. Cleanup retires message-ID reply
+metadata; recover with an inbox read and reply using the original `--inbox`.
