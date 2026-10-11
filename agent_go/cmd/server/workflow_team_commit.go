@@ -76,6 +76,8 @@ func commitTeamEdit(ctx context.Context, result string) error {
 // Once a writer was attempted, transports must retain reconciliation semantics.
 type teamCommitBeforeWriteError struct{ error }
 
+func (e *teamCommitBeforeWriteError) Unwrap() error { return e.error }
+
 func commitTeamEditWithFiles(ctx context.Context, result string,
 	read func(context.Context, string) (string, bool, error),
 	write func(context.Context, string, string) error,
