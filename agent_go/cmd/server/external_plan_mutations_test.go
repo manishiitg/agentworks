@@ -70,7 +70,7 @@ func TestExternalPlanEditsOverMCP(t *testing.T) {
 	_, reader := f.issue(t, "reader")
 	f.call(t, reader, "plan", map[string]any{"action": "list"}, 403)
 	_, readonlyOwner := f.issue(t, "readonly-owner")
-	f.call(t, readonlyOwner, "plan", map[string]any{"action": "list"}, 403)
+	f.call(t, readonlyOwner, "plan", map[string]any{"action": "list"}, 404)
 	args["expected_revision"] = revision(raw)
 	args["arguments"].(map[string]any)["unexpected"] = true
 	f.call(t, raw, "plan", args, 400)
@@ -78,6 +78,11 @@ func TestExternalPlanEditsOverMCP(t *testing.T) {
 	list := f.call(t, raw, "plan", map[string]any{"action": "list"}, 200)
 	if !strings.Contains(list.Body.String(), "update_step_config") || !strings.Contains(list.Body.String(), "input_schema") {
 		t.Fatal(list.Body.String())
+	}
+	// Consolidated website names reuse the current plan type and native validation.
+	f.call(t, raw, "plan", map[string]any{"action": "update_step", "expected_revision": revision(raw), "request_id": "current-type", "arguments": map[string]any{"step_id": "fetch-invoices", "changes": map[string]any{"title": "Fetch approved invoices", "reason": "Use the shared Builder operation"}}}, 200)
+	if !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), "Fetch approved invoices") {
+		t.Fatal("consolidated edit was not saved")
 	}
 	// Current native route ownership remains authoritative on the direct path.
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","access":{"owners":["owner"]},"team":{"leader_id":"owner","revision":1,"contributors":[{"user_id":"outsider","run":true}],"routes":[{"step_id":"parent","route_id":"first-route","contributor_id":"outsider"}]}}`)

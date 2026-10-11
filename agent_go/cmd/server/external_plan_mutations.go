@@ -20,7 +20,7 @@ import (
 
 func externalPlanMutationDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	actions, schemas := []any{"list"}, []any{}
-	for _, tool := range stepworkflow.ExternalPlanToolDefinitions() {
+	for _, tool := range stepworkflow.ExternalBuilderPlanToolDefinitions() {
 		var schema map[string]any
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 			panic(err)
@@ -70,7 +70,7 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 			externalError(w, 400, "invalid_arguments", "list takes no mutation arguments.")
 			return
 		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "tools": stepworkflow.ExternalPlanToolDefinitions()})
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "tools": stepworkflow.ExternalBuilderPlanToolDefinitions()})
 		return
 	}
 	expected, requestID := externalArg(args, "expected_revision"), externalArg(args, "request_id")
@@ -229,7 +229,7 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		}
 		return e
 	}
-	result, err := stepworkflow.ExecuteExternalPlanTool(ctx, action, params, rootPath, api.logger, nativeRead, stage, nil)
+	result, err := stepworkflow.ExecuteExternalBuilderPlanTool(ctx, action, params, rootPath, api.logger, nativeRead, stage, nil)
 	if err == nil {
 		err = preparationError
 	}
