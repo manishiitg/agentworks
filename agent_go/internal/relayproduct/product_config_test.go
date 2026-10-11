@@ -84,6 +84,9 @@ func TestRelayCommandCatalog(t *testing.T) {
 			t.Errorf("missing Relay command %s", name)
 		}
 	}
+	if !strings.Contains(commands["build-relay"], "@DBOS.workflow() async def run(INPUT)") || strings.Contains(commands["build-relay"], "ctx.call_agent") {
+		t.Fatal("build command must describe the native DBOS contract")
+	}
 	if !strings.Contains(commands["publish"], "publish_relay") {
 		t.Fatal("publishes the wrong artifact")
 	}

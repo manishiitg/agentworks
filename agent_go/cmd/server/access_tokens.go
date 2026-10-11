@@ -169,6 +169,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			Name                    string               `json:"name"`
 			FileGuard               *wf.FolderGuard      `json:"file_guard"`
 			LocalFullAccess         bool                 `json:"local_full_access"`
+			LocalReadOnly           bool                 `json:"local_read_only"`
 			Scopes                  []string             `json:"scopes"`
 			WorkflowIDs             []string             `json:"workflow_ids"`
 			AllWorkflows            bool                 `json:"all_workflows"`
@@ -188,7 +189,12 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 400, "invalid_arguments", "Expected one JSON object.")
 			return
 		}
-		if req.LocalFullAccess {
+		localPreset := req.LocalFullAccess || req.LocalReadOnly
+		if req.LocalFullAccess && req.LocalReadOnly {
+			externalError(w, 400, "invalid_arguments", "Choose full access or read-only access.")
+			return
+		}
+		if localPreset {
 			if IsMultiUserMode() || c.UserID != GetDefaultUserID() {
 				externalError(w, 403, "forbidden", "Full local tokens are available only to the local single-user account.")
 				return
@@ -197,11 +203,21 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			// a client cannot choose a different identity or broaden folder grants.
 			req.Name = "agentworks-local"
 			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthScopes)
+			if req.LocalReadOnly {
+				req.Name = "agentworks-local-reader"
+				readScopes := []string{}
+				for _, scope := range req.Scopes {
+					if strings.HasSuffix(scope, ":read") || scope == "code:review" {
+						readScopes = append(readScopes, scope)
+					}
+				}
+				req.Scopes = readScopes
+			}
 			req.AllWorkflows, req.AllCrews = true, true
 			req.WorkflowIDs, req.CrewIDs = nil, nil
 			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""
 		}
-		if !req.LocalFullAccess && (req.ExpiresInDays < 1 || req.ExpiresInDays > 90) {
+		if req.ExpiresInDays < 0 || req.ExpiresInDays > 90 || !localPreset && req.ExpiresInDays < 1 {
 			externalError(w, 400, "invalid_arguments", "Choose an expiry between 1 and 90 days.")
 			return
 		}
@@ -210,7 +226,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		}
 		now := time.Now()
 		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, FileGuard: req.FileGuard, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
-		if req.LocalFullAccess {
+		if localPreset && req.ExpiresInDays == 0 {
 			t.NonExpiring = true
 			t.ExpiresAt = accesstokens.PermanentExpiry()
 		}

@@ -18,14 +18,22 @@ edits it.
 schemas, then use that tool name as `action` and its parameters as `arguments`.
 Available tools include `execute_shell_command`, `agent_browser`,
 `mutate_workflow_db`, `apply_workflow_db_migration` and
-`create_workflow_database_snapshot`. Every call requires Crew ownership,
+`create_workflow_database_snapshot` and `call_selected_mcp_tool`. For connected
+MCP, discover this Crew's actual servers/tools first through `crew_mcp` and
+`crew_diagnostics`; live attachment, selected-tool and Vault checks apply.
+`crew_integrations action=list` exposes the enabled shared Slack, Google account
+and incoming-email tools with their native schemas. Account-wide Google grant
+changes require a current administrator and all-Crew consent; Google sign-in
+and incoming sender approval retain their human app flows. Every call requires Crew ownership,
 existing `crews:write` consent and a current editable account. Shell commands
 run inside the Crew sandbox with the connection's file guard, default timeout
-25 seconds. Browser and database operations require unrestricted Crew file
+25 seconds. Browser, database and connected integration operations require unrestricted Crew file
 consent. Author migration files in `db/migrations/` through the sandboxed shell,
 then apply their bare filenames with the managed migration tool. Database
 reads remain available through `query_database`. These calls do not borrow or
-start the owner's chat; inspect results before retrying a mutation.
+start the owner's chat; inspect results before retrying a mutation. Use
+`crew_execution action=history` for the last 100 owner-only audit records: connection,
+operation, timing and outcome, with commands, values and payloads withheld.
 
 - `crew` action=create takes `name`, `role`, `purpose` (the Crew's standing instructions; what it is
   for and how it works) and optionally `icon`, `selected_skills`, `files` (path -> text content),

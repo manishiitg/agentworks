@@ -6,6 +6,8 @@ import { Button } from '../ui/Button'
 
 /** Local clients use the existing scoped token API; hosted setup retains OAuth. */
 export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
+  const [access, setAccess] = useState<'full' | 'read'>('full')
+  const [expiry, setExpiry] = useState(0)
   const [tokens, setTokens] = useState<PersonalAccessToken[]>([])
   const [issued, setIssued] = useState<{ id: string; token: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -20,7 +22,7 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
   async function create() {
     setBusy(true); setError(''); setIssued(null); setCopied(false)
     try {
-      const result = await authApi.createAccessToken({ name: 'agentworks-local', local_full_access: true, scopes: [], workflow_ids: [], all_workflows: true })
+      const result = await authApi.createAccessToken({ name: 'agentworks-local', local_full_access: access === 'full', local_read_only: access === 'read', expires_in_days: expiry, scopes: [], workflow_ids: [], all_workflows: true })
       setIssued({ id: result.access_token.id, token: result.token })
       // The server may replace a previous legacy (non-KB) token.
       try { setTokens((await authApi.listAccessTokens()).tokens) }
@@ -41,8 +43,11 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
   const activeTokens = tokens.filter(token => !token.revoked_at && (token.non_expiring || new Date(token.expires_at).getTime() > Date.now()))
   return <div className="space-y-5">
     <div><h3 className="text-base font-semibold">Connect a local AI agent</h3><p className="mt-1 text-sm text-muted-foreground">Create an access token and use it with your agent’s HTTP MCP connection. No browser sign-in is needed.</p></div>
-    <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Local access token" description="Valid until you remove it. Includes all access available to your local account. Your current folder, workflow and Crew permissions still apply.">
+    <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Local access token" description="Choose full access or read-only access and when it expires. Your current folder, workflow and Crew permissions still apply.">
       <div className="space-y-3">
+        <label className="block text-sm">Access<select aria-label="Local token access" value={access} disabled={busy} onChange={event => setAccess(event.target.value as 'full' | 'read')} className="ml-2 rounded border border-border bg-background p-2"><option value="full">Full access</option><option value="read">Read only</option></select></label>
+        <label className="block text-sm">Expiry<select aria-label="Local token expiry" value={expiry} disabled={busy} onChange={event => setExpiry(Number(event.target.value))} className="ml-2 rounded border border-border bg-background p-2"><option value={0}>Until revoked</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>
+        {access === 'full' && <p className="text-xs text-muted-foreground">Full access includes sandboxed Crew commands, browser control, database changes and connected tools when you own the Crew.</p>}
         <Button disabled={busy} onClick={() => void create()}>{busy ? 'Working…' : 'Create access token'}</Button>
         {issued && <div className="space-y-2 rounded-md border border-border p-3"><p className="text-xs">Copy this token now. It is shown only for this session.</p><input aria-label="New access token" type="password" readOnly value={issued.token} className="w-full rounded border border-border bg-background p-2 text-xs" /><Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(issued.token).then(() => setCopied(true)).catch(() => setError('Could not copy the token.'))}><Copy className="mr-1 h-3 w-3" />{copied ? 'Copied' : 'Copy token'}</Button></div>}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}

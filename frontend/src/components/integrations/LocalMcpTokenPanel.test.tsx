@@ -18,12 +18,11 @@ async function mount() {
 }
 function button(host: HTMLElement, label: string) { return [...host.querySelectorAll('button')].find(button => button.textContent === label)! }
 describe('local MCP access tokens', () => {
-  it('issues full local account access without a permission picker and revokes the token', async () => {
+  it('issues full local account access with access and expiry presets and revokes the token', async () => {
     const host = await mount()
     expect(host.querySelector('input[type=checkbox]')).toBeNull()
-    expect(host.querySelector('select')).toBeNull()
+    expect(host.querySelectorAll('select')).toHaveLength(2)
     expect(host.querySelector('[aria-label="Access token name"]')).toBeNull()
-    expect(host.textContent).not.toContain('30 days')
     vi.mocked(authApi.listAccessTokens).mockResolvedValue({ tokens: [token as any] })
     await act(async () => button(host, 'Create access token').click())
     expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ name: 'agentworks-local', local_full_access: true, scopes: [] }))
@@ -32,6 +31,14 @@ describe('local MCP access tokens', () => {
     await act(async () => button(host, 'Revoke').click())
     expect(authApi.revokeAccessToken).toHaveBeenCalledWith('test-token')
     expect(host.querySelector('[aria-label="New access token"]')).toBeNull()
+  })
+  it('requests read-only access with an expiry', async () => {
+    const host = await mount()
+    const access = host.querySelector<HTMLSelectElement>('[aria-label="Local token access"]')!
+    const expiry = host.querySelector<HTMLSelectElement>('[aria-label="Local token expiry"]')!
+    await act(async () => { access.value = 'read'; access.dispatchEvent(new Event('change', { bubbles: true })); expiry.value = '7'; expiry.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => button(host, 'Create access token').click())
+    expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ local_full_access: false, local_read_only: true, expires_in_days: 7 }))
   })
   it('handles failed issuance', async () => {
     const host = await mount()

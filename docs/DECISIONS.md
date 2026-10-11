@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-11 — Local MCP tokens offer read-only access and expiry (PLAT-856)
+
+Offer full access or read-only access as presets using existing permissions.
+Derive both from the current single-user account; the read-only preset includes
+read scopes and authorized Code review, never run, write, account management
+or unrestricted Vault tool execution. Allow an optional 1–90 day expiry;
+zero keeps the existing until-revoked local option. Why: an inspection client
+should not need execution authority or a permanent token.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Direct Crew execution follows existing authoring authority (PLAT-856)
 
 Expose the native shell, browser and managed database handlers directly over
