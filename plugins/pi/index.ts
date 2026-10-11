@@ -74,20 +74,17 @@ export default function (pi: ExtensionAPI) {
         if (!await bridge.available()) throw new Error('AgentWorks local bridge is unavailable. Start agentworks bridge serve, then attach in Pi.');
         const purpose = (await ctx.ui.input('Purpose of this AgentWorks agent'))?.trim();
         if (!purpose) return;
-        const senders = await ctx.ui.input('Approved registered senders (comma separated; blank allows none)');
-        if (senders === undefined) return;
-        const allowed = [...new Set(senders.split(',').map(value => value.trim()).filter(Boolean))];
         const config = (await ctx.ui.input('Absolute path to your AgentWorks CLI connection config'))?.trim();
         if (!config || !config.startsWith('/')) throw new Error('An absolute CLI config path is required');
         if (!await ctx.ui.confirm('Attach AgentWorks',
-          `Name: ${name}\nPurpose: ${purpose}\nExact Pi session: ${session}\nSenders: ${allowed.join(', ') || '(none)'}\nThis explicitly shares incoming messages with this conversation.`)) return;
+          `Name: ${name}\nPurpose: ${purpose}\nExact Pi session: ${session}\nSenders: all agents in your AgentWorks account\nThis explicitly shares incoming messages with this conversation.`)) return;
         if (ctx.sessionManager.getSessionId() !== session) throw new Error('Pi conversation changed; attach again in the current conversation');
         const previous = delivery.attachment, previousRecovery = delivery.recovery;
         delivery.stop();
         let result;
         try {
           result = await bridge.call({ action: 'attach', session_id: session,
-            agent_name: name, purpose, allowed_senders: allowed, config_path: config });
+            agent_name: name, purpose, config_path: config });
         } catch (error) {
           if (previous) {
             await delivery.start(ctx, previous.attachment_id);

@@ -36,13 +36,17 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	srv := httptest.NewServer(AuthMiddleware(mux))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
-	issue := func() (*agentworksclient.Client, string, string) {
+	issue := func(users ...string) (*agentworksclient.Client, string, string) {
+		user := "owner"
+		if len(users) > 0 {
+			user = users[0]
+		}
 		t.Helper()
 		device, verification, e := store.CreateCLIDevice(context.Background(), "crews:run", "workflows:read", "runs:execute")
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = store.DecideCLIDevice(context.Background(), verification, &UserClaims{UserID: "owner", Username: "owner"}, true); e != nil {
+		if e = store.DecideCLIDevice(context.Background(), verification, &UserClaims{UserID: user, Username: user}, true); e != nil {
 			t.Fatal(e)
 		}
 		grant, token, _, e := store.PollCLIDevice(context.Background(), device, srv.URL+"/api/external/v1")
@@ -139,7 +143,6 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	attach.ConfigPath = path
 	attach.AgentName = "hook-reviewer"
 	attach.Purpose = "Review work"
-	attach.AllowedSenders = []string{"sender", "fresh-sender"}
 	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("wrong exact session")
 	}
@@ -270,28 +273,23 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if len(responses) != 1 || responses[0].(map[string]any)["inbox_id"] != offer.Messages[0].InboxID {
 		t.Fatal("reply lost conversation")
 	}
-	call(freshSender, map[string]any{"action": "register", "agent_name": "unapproved"})
-	unapproved := call(freshSender, map[string]any{"action": "send", "agent_name": "unapproved", "target": "agent:hook-reviewer", "message": "unapproved body", "submission_id": "unapproved-recovery"})
+	// New agents in this account are accepted without changing the attachment.
+	call(freshSender, map[string]any{"action": "register", "agent_name": "new-peer"})
+	newPeer := call(freshSender, map[string]any{"action": "send", "agent_name": "new-peer", "target": "agent:hook-reviewer", "message": "new account peer", "submission_id": "new-peer-proof"})
+	wait(newPeer["message_id"].(string))
 	read := base
 	read.Action = "read"
-	var history struct {
-		Messages []struct {
-			Sender string `json:"sender"`
-		} `json:"messages"`
+	if !strings.Contains(string(local(read).Result), "new account peer") {
+		t.Fatal("new account peer absent from explicit recovery")
 	}
-	if json.Unmarshal(local(read).Result, &history) != nil {
-		t.Fatal("invalid recovered mailbox")
-	}
-	for _, message := range history.Messages {
-		if message.Sender == "unapproved" {
-			t.Fatal("recovery leaked unapproved sender")
-		}
-	}
-	blockedReply := base
-	blockedReply.Action, blockedReply.InboxID = "reply", unapproved["inbox_id"].(string)
-	blockedReply.Message, blockedReply.SubmissionID = "must not send", "unapproved-reply"
-	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, blockedReply); e == nil {
-		t.Fatal("replied to unapproved inbox")
+	peerReply := base
+	peerReply.Action, peerReply.InboxID = "reply", newPeer["inbox_id"].(string)
+	peerReply.Message, peerReply.SubmissionID = "received", "new-peer-reply"
+	local(peerReply)
+	otherAccount, _, _ := issue("other-account")
+	call(otherAccount, map[string]any{"action": "register", "agent_name": "outsider"})
+	if _, e := otherAccount.Call(context.Background(), "messages", map[string]any{"action": "send", "agent_name": "outsider", "target": "agent:hook-reviewer", "message": "outside account", "submission_id": "outside-account-proof"}); e == nil {
+		t.Fatal("sender-policy removal crossed the account boundary")
 	}
 	cleanup := base
 	cleanup.Action = "cleanup"

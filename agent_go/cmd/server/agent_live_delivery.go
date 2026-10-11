@@ -14,11 +14,10 @@ import (
 )
 
 type namedAgentAttachment struct {
-	ID             string   `json:"attachment_id"`
-	Provider       string   `json:"provider"`
-	SessionID      string   `json:"native_session_id"`
-	ConnectionID   string   `json:"connection_id"`
-	AllowedSenders []string `json:"allowed_sender_ids"`
+	ID           string `json:"attachment_id"`
+	Provider     string `json:"provider"`
+	SessionID    string `json:"native_session_id"`
+	ConnectionID string `json:"connection_id"`
 }
 
 var agentLiveEvents = struct {
@@ -111,34 +110,8 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and purpose (1 to 512 bytes).")
 			return
 		}
-		var names []string
-		raw, _ := json.Marshal(args["allowed_senders"])
-		if err = json.Unmarshal(raw, &names); err != nil || names == nil || len(names) > 100 {
-			externalError(w, 400, "invalid_arguments", "allowed_senders must explicitly list registered sender names (at most 100).")
-			return
-		}
-		ids := []string{}
-		for _, n := range names {
-			normalized, e := normalizeMessageAgentName(strings.TrimPrefix(n, "agent:"))
-			if e != nil {
-				externalError(w, 400, "invalid_arguments", e.Error())
-				return
-			}
-			found := false
-			for _, sender := range s.Agents {
-				if sender.UserID == claims.UserID && sender.Name == normalized {
-					ids = append(ids, sender.ID)
-					found = true
-					break
-				}
-			}
-			if !found {
-				externalError(w, 400, "invalid_arguments", "Every allowed sender must currently be registered in this account.")
-				return
-			}
-		}
 		a.Purpose = purpose
-		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, AllowedSenders: ids}
+		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID}
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
@@ -164,8 +137,8 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				if m.ID != externalArg(args, "message_id") || dest.NamedAgentID != a.ID || dest.UserID != claims.UserID {
 					continue
 				}
-				if m.LiveAttachment != a.Attachment.ID || !slices.Contains(a.Attachment.AllowedSenders, c.Endpoints[m.From].NamedAgentID) {
-					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is no longer approved.")
+				if m.LiveAttachment != a.Attachment.ID || c.Endpoints[m.From].UserID != claims.UserID {
+					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
 					return
 				}
 				if delivery == "processed" && m.Delivery != "admitted" && m.Delivery != "typed" && m.Delivery != "processed" {
@@ -313,7 +286,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !slices.Contains(current.Attachment.AllowedSenders, source.NamedAgentID) {
+			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || source.UserID != claims.UserID {
 				continue
 			}
 			if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
@@ -327,9 +300,6 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			if e != nil {
 				_ = write(map[string]any{"type": "closed"})
 				return
-			}
-			if !slices.Contains(current.Attachment.AllowedSenders, source.NamedAgentID) {
-				continue
 			}
 			if e = recordAgentMessageOffer(r.Context(), a.ID, id, m.ID); e != nil {
 				return
@@ -414,7 +384,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				src := c.Endpoints[m.From]
-				if !slices.Contains(a.Attachment.AllowedSenders, src.NamedAgentID) || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if src.UserID != live.UserID || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
 					continue
 				}
 				permitted = append(permitted, id)

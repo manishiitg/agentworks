@@ -18,20 +18,19 @@ import (
 // Its connection should be private to this agent; sharing a config shares its
 // mailbox authority. No process discovery or terminal typing is performed.
 type ClaudeChannelOptions struct {
-	AgentName      string
-	Purpose        string
-	SessionID      string
-	AllowedSenders []string
-	Log            io.Writer
-	JournalDir     string // Private durable offer cache; empty uses the user cache directory.
+	AgentName  string
+	Purpose    string
+	SessionID  string
+	Log        io.Writer
+	JournalDir string // Private durable offer cache; empty uses the user cache directory.
 }
 
 // NewClaudeChannelServer adds Claude's official channel to the stdio bridge.
 // Notifications are offers: only the receiving agent's acknowledgement proves
 // admission. A successful send/notification never fabricates a processed receipt.
 func NewClaudeChannelServer(ctx context.Context, client *Client, opts ClaudeChannelOptions) (*server.MCPServer, error) {
-	if opts.AgentName == "" || opts.Purpose == "" || opts.SessionID == "" || opts.AllowedSenders == nil {
-		return nil, errors.New("channel requires agent name, purpose, exact native session ID and an explicit sender allowlist")
+	if opts.AgentName == "" || opts.Purpose == "" || opts.SessionID == "" {
+		return nil, errors.New("channel requires agent name, purpose, exact native session ID")
 	}
 	registered, err := client.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": opts.AgentName, "purpose": opts.Purpose})
 	if err != nil {
@@ -58,7 +57,7 @@ func NewClaudeChannelServer(ctx context.Context, client *Client, opts ClaudeChan
 	if journal.Messages == nil {
 		journal.Messages = map[string]AgentLiveMessage{}
 	}
-	attachment, err := client.AttachAgent(ctx, AgentAttachmentOptions{AgentName: opts.AgentName, Purpose: opts.Purpose, Provider: "claude", SessionID: opts.SessionID, AllowedSenders: opts.AllowedSenders})
+	attachment, err := client.AttachAgent(ctx, AgentAttachmentOptions{AgentName: opts.AgentName, Purpose: opts.Purpose, Provider: "claude", SessionID: opts.SessionID})
 	if err != nil {
 		unlock()
 		return nil, err

@@ -19,24 +19,23 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
-	Action         string   `json:"action"`
-	AttachmentID   string   `json:"attachment_id,omitempty"`
-	Provider       string   `json:"provider"`
-	SessionID      string   `json:"session_id"`
-	HostKey        string   `json:"host_key,omitempty"`
-	NativeRemote   string   `json:"native_remote,omitempty"`
-	ConfigPath     string   `json:"config_path,omitempty"`
-	AgentName      string   `json:"agent_name,omitempty"`
-	Purpose        string   `json:"purpose,omitempty"`
-	AllowedSenders []string `json:"allowed_senders,omitempty"`
-	MessageID      string   `json:"message_id,omitempty"`
-	Delivery       string   `json:"delivery,omitempty"`
-	Transport      string   `json:"transport,omitempty"`
-	Message        string   `json:"message,omitempty"`
-	SubmissionID   string   `json:"submission_id,omitempty"`
-	Target         string   `json:"target,omitempty"`
-	InboxID        string   `json:"inbox_id,omitempty"`
-	Cursor         int      `json:"after,omitempty"`
+	Action       string `json:"action"`
+	AttachmentID string `json:"attachment_id,omitempty"`
+	Provider     string `json:"provider"`
+	SessionID    string `json:"session_id"`
+	HostKey      string `json:"host_key,omitempty"`
+	NativeRemote string `json:"native_remote,omitempty"`
+	ConfigPath   string `json:"config_path,omitempty"`
+	AgentName    string `json:"agent_name,omitempty"`
+	Purpose      string `json:"purpose,omitempty"`
+	MessageID    string `json:"message_id,omitempty"`
+	Delivery     string `json:"delivery,omitempty"`
+	Transport    string `json:"transport,omitempty"`
+	Message      string `json:"message,omitempty"`
+	SubmissionID string `json:"submission_id,omitempty"`
+	Target       string `json:"target,omitempty"`
+	InboxID      string `json:"inbox_id,omitempty"`
+	Cursor       int    `json:"after,omitempty"`
 }
 
 type LocalBridgeReply struct {
@@ -67,7 +66,6 @@ type localSession struct {
 	LastGuidanceAt   time.Time             `json:"last_guidance_at,omitempty"`
 	Offline          bool                  `json:"offline,omitempty"`
 	ParentConfigPath string                `json:"parent_config_path,omitempty"`
-	AllowedSenders   []string              `json:"allowed_senders,omitempty"`
 	Attachment       AgentAttachment       `json:"attachment"`
 	HostKey          string                `json:"host_key,omitempty"`
 	NativeRemote     string                `json:"native_remote,omitempty"`
@@ -380,15 +378,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.ConfigPath = s.ParentConfigPath
 		in.AgentName = s.Attachment.AgentName
 		in.Purpose = s.Attachment.Purpose
-		in.AllowedSenders = s.AllowedSenders
 		in.NativeRemote = s.NativeRemote
 	}
 	if in.Action == "attach" {
 		if in.NativeRemote != "" && (!((in.Provider == "codex" && !strings.HasPrefix(in.NativeRemote, "claude+session://")) || (in.Provider == "claude" && strings.HasPrefix(in.NativeRemote, "claude+session://"))) || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
-		if in.SessionID == "" || in.HostKey == "" || in.Purpose == "" || in.AllowedSenders == nil {
-			return LocalBridgeReply{Error: "explicit session, provider process key, purpose and sender allowlist required"}
+		if in.SessionID == "" || in.HostKey == "" || in.Purpose == "" {
+			return LocalBridgeReply{Error: "explicit session, provider process key, purpose required"}
 		}
 		client, err := localConfiguredClient(in.ConfigPath)
 		if err != nil {
@@ -433,7 +430,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 
-		options := AgentAttachmentOptions{AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, AllowedSenders: in.AllowedSenders}
+		options := AgentAttachmentOptions{AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID}
 		a, err := client.AttachAgent(callCtx, options)
 		var apiErr *APIError
 		if err != nil && !newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {
@@ -459,7 +456,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		next := &localSession{Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, AllowedSenders: in.AllowedSenders, Offers: map[string]localOffer{}, client: client}
+		next := &localSession{Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough
@@ -538,7 +535,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				Messages []json.RawMessage `json:"messages"`
 			}
 			if json.Unmarshal(filtered, &checked) != nil || len(checked.Messages) == 0 {
-				return LocalBridgeReply{Error: "inbox has no currently approved sender for this attachment"}
+				return LocalBridgeReply{Error: "inbox has no currently authorized incoming message for this attachment"}
 			}
 			// Explicit mailbox recovery survives local metadata compaction.
 			// The server still verifies this caller's inbox participation.

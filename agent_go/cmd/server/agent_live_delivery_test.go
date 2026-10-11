@@ -77,7 +77,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	call(stranger, map[string]any{"action": "register", "agent_name": "stranger"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", AllowedSenders: []string{"sender"}, JournalDir: filepath.Join(t.TempDir(), "private-journal"), Log: os.Stderr})
+	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", JournalDir: filepath.Join(t.TempDir(), "private-journal"), Log: os.Stderr})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,11 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("tool did not start")
 	}
-	send(stranger, "stranger", "not approved")
+	newPeerReceipt := send(stranger, "stranger", "new account peer")
+	newPeerIncoming := next()
+	if newPeerIncoming["method"] != "notifications/claude/channel" || newPeerIncoming["params"].(map[string]any)["meta"].(map[string]any)["message_id"] != newPeerReceipt["message_id"] {
+		t.Fatal("same-account peer did not push without a sender allow field", newPeerIncoming)
+	}
 	receipt := send(sender, "sender", "native push proof")
 	if receipt["delivery"] != "stored" || !strings.Contains(receipt["next"].(string), "agent_name") {
 		t.Fatalf("misleading receipt: %v", receipt)
@@ -203,7 +207,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("reply split the conversation")
 	}
 	// Moving a stable address revokes the old session lease immediately.
-	replacementAttachment, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "New review session", Provider: "claude", SessionID: "exact-session-two", AllowedSenders: []string{"sender"}})
+	replacementAttachment, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "New review session", Provider: "claude", SessionID: "exact-session-two"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +216,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if err = json.Unmarshal(replacementJSON, &replacement); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = receiver.Call(context.Background(), "messages", map[string]any{"action": "attach", "agent_name": "reviewer", "purpose": "Agent takeover", "provider": "claude", "native_session_id": "other-session", "allowed_senders": []string{"sender"}}); err == nil {
+	if _, err = receiver.Call(context.Background(), "messages", map[string]any{"action": "attach", "agent_name": "reviewer", "purpose": "Agent takeover", "provider": "claude", "native_session_id": "other-session"}); err == nil {
 		t.Fatal("agent tool could attach a session")
 	}
 

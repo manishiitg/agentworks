@@ -66,22 +66,37 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, parseErr.Error())
 			}
 			if len(words) < 2 {
-				return pluginBlock(o, "Use /agentworks attach NAME \"PURPOSE\" --allow-sender NAME, detach, or status.")
+				return pluginBlock(o, "Use /agentworks attach, detach, or status.")
 			}
 			req.Action = words[1]
 			switch req.Action {
 			case "attach":
-				if len(words) < 4 {
-					return pluginBlock(o, "Attach needs NAME, quoted PURPOSE and explicit --allow-sender NAME (or --allow-none).")
-				}
-				req.AgentName, req.Purpose = words[2], words[3]
-				req.AllowedSenders = []string{}
-				explicit := false
-				for i := 4; i < len(words); i++ {
-					switch words[i] {
-					case "--native-remote":
-						if i+1 >= len(words) {
-							return pluginBlock(o, "--native-remote needs a local unix:// socket")
+				if len(words) == 2 || len(words) == 3 && words[2] == "--confirm" {
+					status := req
+					status.Action = "status"
+					if current, e := agentworksclient.CallLocalBridge(ctx, root, status); e == nil {
+						if current.Attached {
+							return pluginBlock(o, "AgentWorks already attached as agent:"+current.Attachment.AgentName+" ("+current.Attachment.Purpose+").")
+						}
+						if current.Offline {
+							return pluginBlock(o, "AgentWorks identity agent:"+current.Attachment.AgentName+" is offline. Confirm reconnecting this exact session with /agentworks resume.")
+						}
+					}
+					req.AgentName, req.Purpose, err = proposedAgentIdentity(req.Provider, req.SessionID, input.Cwd)
+					if err != nil {
+						return pluginBlock(o, err.Error())
+					}
+					if len(words) == 2 {
+						return pluginBlock(o, "Attach as agent:"+req.AgentName+" ("+req.Purpose+")? All senders in your AgentWorks account can message this session. Confirm with /agentworks attach --confirm, or choose /agentworks attach NAME \"PURPOSE\".")
+					}
+				} else {
+					if len(words) < 4 {
+						return pluginBlock(o, "Use /agentworks attach, or /agentworks attach NAME \"PURPOSE\".")
+					}
+					req.AgentName, req.Purpose = words[2], words[3]
+					for i := 4; i < len(words); i++ {
+						if words[i] != "--native-remote" || i+1 >= len(words) {
+							return pluginBlock(o, "Unknown attach option; sender allow fields have been removed.")
 						}
 						i++
 						req.NativeRemote = words[i]
@@ -93,21 +108,10 @@ func pluginCommand(o *options) *cobra.Command {
 						if err != nil {
 							return pluginBlock(o, err.Error())
 						}
-					case "--allow-none":
-						explicit = true
-					case "--allow-sender":
-						if i+1 >= len(words) {
-							return pluginBlock(o, "--allow-sender requires a name")
-						}
-						i++
-						req.AllowedSenders = append(req.AllowedSenders, words[i])
-						explicit = true
-					default:
-						return pluginBlock(o, "Unknown attach option; use --allow-sender NAME or --allow-none.")
 					}
 				}
-				if !explicit {
-					return pluginBlock(o, "Choose approved senders with --allow-sender NAME or explicitly --allow-none.")
+				if req.NativeRemote == "" {
+					req.NativeRemote = discoverNativeRemote(req.Provider, req.SessionID, req.HostKey)
 				}
 				if req.HostKey == "" {
 					return pluginBlock(o, "Cannot identify this exact provider process; use the terminal attach command with its exact session ID.")
@@ -138,7 +142,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, "AgentWorks identity retained offline as agent:"+out.Attachment.AgentName+". Submit /agentworks resume to confirm reconnecting this exact session.")
 			}
 			if out.Attached {
-				return pluginBlock(o, "AgentWorks attached as agent:"+out.Attachment.AgentName+" ("+out.Attachment.Purpose+"). Hooks deliver at turn boundaries; idle native wake needs explicit provider setup.")
+				return pluginBlock(o, "AgentWorks attached as agent:"+out.Attachment.AgentName+" ("+out.Attachment.Purpose+"). All account senders are accepted. Native delivery is used when available; otherwise hooks deliver at turn boundaries.")
 			}
 			return pluginBlock(o, "This conversation is not attached to AgentWorks.")
 		}
@@ -281,6 +285,71 @@ func providerProcessField(provider string) string {
 	return "comm="
 }
 
+func proposedAgentIdentity(provider, session, cwd string) (string, string, error) {
+	id, err := uuid.Parse(session)
+	if err != nil {
+		return "", "", errors.New("provider did not supply a valid exact session UUID")
+	}
+	folder := filepath.Base(filepath.Clean(cwd))
+	if cwd == "" || folder == "." || folder == string(filepath.Separator) {
+		folder = "workspace"
+	}
+	var slug strings.Builder
+	for _, c := range strings.ToLower(folder) {
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			slug.WriteRune(c)
+		} else {
+			slug.WriteByte('-')
+		}
+		if slug.Len() >= 12 {
+			break
+		}
+	}
+	return provider + "-" + strings.Trim(slug.String(), "-") + "-" + strings.ReplaceAll(id.String(), "-", ""), "Coding in " + folder, nil
+}
+
+func discoverNativeRemote(provider, session, hostKey string) string {
+	if hostKey == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if provider == "claude" {
+		files, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
+		for _, file := range files {
+			remote := "claude+session://" + file
+			if record, _, e := nativeClaudeSession(remote, session); e == nil {
+				if key, e := providerPIDHostKey(provider, record.PID); e == nil && key == hostKey {
+					return remote
+				}
+			}
+		}
+	}
+	if provider == "codex" {
+		// Only a desktop provider ancestor can select its desktop IPC route.
+		pid := os.Getppid()
+		for i := 0; i < 8 && pid > 1; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			out, e := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", "args=").Output()
+			cancel()
+			parts := strings.Fields(string(out))
+			if e != nil || len(parts) < 2 {
+				break
+			}
+			if key, e := providerPIDHostKey(provider, pid); e == nil && key == hostKey && strings.Contains(string(out), "/Codex.app/") {
+				remote := "desktop+unix://" + filepath.Join(home, ".codex", "ipc", "ipc.sock")
+				if validateCodexRemote(remote) == nil {
+					return remote
+				}
+			}
+			pid, _ = strconv.Atoi(parts[0])
+		}
+	}
+	return ""
+}
+
 func providerHostKey(provider string) (string, error) {
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
@@ -395,7 +464,6 @@ func attachPluginCommand(o *options) *cobra.Command {
 	var nativeSession, name, purpose, nativeRemote string
 	var nativeHostKey string
 	var nativePID int
-	var senders []string
 	cmd := &cobra.Command{Use: "attach PROVIDER", Args: cobra.ExactArgs(1), Short: "Person-controlled plugin installation; optionally attach an exact session", RunE: func(cmd *cobra.Command, args []string) error {
 		provider := args[0]
 		if provider != "claude" && provider != "codex" {
@@ -426,19 +494,16 @@ func attachPluginCommand(o *options) *cobra.Command {
 					return err
 				}
 			}
-			fmt.Fprintln(o.stderr, "Restart/reload the provider and approve its plugin/hook trust. Then type /agentworks attach NAME \"PURPOSE\" --allow-sender NAME in the chat. No conversation has been attached.")
+			fmt.Fprintln(o.stderr, "Restart/reload the provider and approve its plugin/hook trust. Then type /agentworks attach in the chat. No conversation has been attached.")
 			return nil
 		}
 		if _, err := uuid.Parse(nativeSession); err != nil {
 			return errors.New("terminal attachment needs the exact native session UUID")
 		}
-		if !cmd.Flags().Changed("allow-sender") {
-			return errors.New("explicit --allow-sender required (empty denies all)")
-		}
 		if strings.HasPrefix(nativeRemote, "desktop+unix://") {
 			fmt.Fprintln(o.stderr, "Native delivery can wake this exact desktop chat using its current approval and sandbox settings. The IPC trusts local processes of your OS user.")
 		}
-		fmt.Fprintf(o.stderr, "Attach %s session %s as agent:%s with senders %v? Type yes: ", provider, nativeSession, name, senders)
+		fmt.Fprintf(o.stderr, "Attach %s session %s as agent:%s? All account senders are accepted. Type yes: ", provider, nativeSession, name)
 		var answer string
 		_, err := fmt.Fscanln(o.stdin, &answer)
 		if err != nil || answer != "yes" {
@@ -483,7 +548,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "attach", Provider: provider, SessionID: nativeSession, HostKey: nativeHostKey, ConfigPath: path, AgentName: name, Purpose: purpose, AllowedSenders: senders, NativeRemote: nativeRemote})
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "attach", Provider: provider, SessionID: nativeSession, HostKey: nativeHostKey, ConfigPath: path, AgentName: name, Purpose: purpose, NativeRemote: nativeRemote})
 		if err != nil {
 			return err
 		}
@@ -494,7 +559,6 @@ func attachPluginCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVar(&nativeRemote, "native-remote", "", "Explicit native endpoint: unix:// daemon, desktop+unix:// desktop IPC, or claude+session:// registration")
 	cmd.Flags().StringVar(&name, "name", "", "Stable agent name")
 	cmd.Flags().StringVar(&purpose, "purpose", "", "What this session does")
-	cmd.Flags().StringSliceVar(&senders, "allow-sender", []string{}, "Explicit approved sender names")
 	return cmd
 }
 

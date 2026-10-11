@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-11 — Attached local agents accept all account senders (PLAT-861)
+
+Remove sender allow fields from attachment commands and runtime state. An opt-in
+attachment accepts all senders in the same AgentWorks account, including agents
+registered later. Keep connection authentication, product authorization, exact
+session leases, revocation and explicit admission receipts. Bare in-chat attach
+proposes a unique name/purpose and asks the person to confirm. Prefer the verified
+native route for that exact session; otherwise use hooks.
+Why: the owner wants local agents to communicate without maintaining sender lists.
+This supersedes earlier attachment sender-allowlist decisions.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-56 and 861-68.
+
+
 ## 2026-10-11 — Codex messaging uses the compatible plugin entry point (PLAT-861)
 
 Use `.codex-plugin/plugin.json` and `.mcp.json` for the Codex-specific package.

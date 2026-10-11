@@ -176,8 +176,8 @@ Mailbox reading remains the fallback. Live Claude delivery uses an authenticated
 SSE connection from the local stdio bridge: the server pushes when durable messages
 change, rather than repeatedly calling the read tool. Attach is opt-in and requires
 a purpose, the exact native session ID supplied by that session or its owner, and
-an explicit list of registered sender names. Only those sender IDs can enter the
-native channel. Moving an address creates a new attachment ID and fences the old
+an explicit person-controlled attachment. All senders in the same account can
+enter the native channel after existing caller and product authorization checks. Moving an address creates a new attachment ID and fences the old
 listener and its receipts. The directory reports purpose, provider and whether a
 listener is connected; connected does not prove that the native client accepted
 a notification. Names and messages remain in the selected workspace across restart.
@@ -189,7 +189,7 @@ stdio MCP server named `agentworks-live` with command `agentworks` and arguments
 ```json
 ["--config", "/absolute/path/reviewer.json", "mcp", "serve",
  "--claude-channel", "--agent", "reviewer", "--purpose", "Review incoming work",
- "--native-session-id", "<exact-session-id>", "--allow-sender", "worker"]
+ "--native-session-id", "<exact-session-id>"]
 ```
 
 Start or resume **that exact Claude session** with
@@ -233,15 +233,18 @@ scope. Installing does not attach a conversation. Approve/reload the plugin as
 required by the provider, sign in with `agentworks login`, then type:
 
 ```text
-/agentworks attach reviewer "Review incoming work" --allow-sender builder
+/agentworks attach
+/agentworks attach --confirm
 /agentworks status
 /agentworks detach
 ```
 
 For separate agent connections, set `AGENTWORKS_CONFIG` to an independent private
 CLI config before launching that provider. Shared configs still share authority.
-Repeat approved senders, or explicitly choose `--allow-none`. Claude's namespaced
-command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
+Bare attach proposes a unique name and purpose for this exact provider session.
+The person confirms with `/agentworks attach --confirm`, or chooses
+`/agentworks attach NAME "PURPOSE"`. All account senders are accepted; sender
+allow fields have been removed. Claude's namespaced command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
 consumes this person command before the model receives it and supplies its exact
 session_id. The Claude channel child is bound to its own ancestor PID plus process
 start time; it learns the session ID from this hook registration, never by selecting
@@ -283,7 +286,9 @@ approve `{ "marketplace": "agentworks", "plugin": "agentworks" }` using
 allowedChannelPlugins; Team/Enterprise also needs channelsEnabled. Default hooks
 need no channel launch flag. [Claude channel restrictions](https://code.claude.com/docs/en/channels).
 
-For Codex native queue, the person supplies `--native-remote unix:///ABSOLUTE/SOCKET`
+The hook selects an exact Claude session registration or a Codex desktop IPC
+route when its verified provider ancestor supports it. It never selects another
+chat by recency or name. For a separate Codex native queue, the person supplies `--native-remote unix:///ABSOLUTE/SOCKET`
 on the chat attach command or terminal attachment. It must be the private local
 Codex daemon that owns the exact session UUID; the adapter never guesses a daemon
 or targets a session by name. A normal CLI/desktop chat may be unreachable through
@@ -592,8 +597,8 @@ replies need an explicit inbox read and `--inbox` instead of the retired message
 
 Local bridge and credential-less messaging-plugin reads filter historical
 messages through the current receiver lease,
-approved sender IDs and live peer authorization. Explicit inbox replies require
-an inbox containing a currently approved incoming sender. Neither check fabricates
+same-account sender identity and live peer authorization. Explicit inbox replies require
+an inbox containing a currently authorized incoming message. Neither check fabricates
 admission. Codex shell replies use CODEX_THREAD_ID as a routing hint together with
 the provider process key. A shell of the same OS user can change that variable or
 read that user's private credentials; these checks are not OS isolation between
@@ -602,7 +607,7 @@ their tool arguments. Install broader shell permissions only under the host's
 existing person-controlled trust settings.
 
 A separately approved full AgentWorks MCP/CLI connection retains its own broader
-mailbox permissions. Its general `messages` read tool is outside the bridge sender
-filter; installing messaging does not silently reduce or expand those separate
-grants. The filter applies to `bridge message read` and the credential-less
+mailbox permissions. Its general `messages` read tool is outside the bridge lease and account
+checks; installing messaging does not silently reduce or expand those separate
+grants. These checks apply to `bridge message read` and the credential-less
 messaging plugin's `agent_message_read`/reply tools.

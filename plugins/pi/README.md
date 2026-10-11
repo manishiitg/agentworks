@@ -142,7 +142,7 @@ candidate. It sends JSON `POST /bridge` over the private Unix socket:
 | Action | Required fields and behavior |
 |---|---|
 | `status` | `provider: pi`, exact `session_id`, active `attachment_id` when known; return current `attached` and `attachment`. Local only. |
-| `attach` | Person-confirmed `agent_name`, `purpose`, `allowed_senders`, absolute `config_path`, exact `session_id`. |
+| `attach` | Person-confirmed `agent_name`, `purpose`, absolute `config_path`, exact `session_id`. |
 | `next` | exact `attachment_id`, `transport: pi_extension`; bounded 25-second wait on local journal, oldest-first authorized offers. |
 | `ack` | Exact `attachment_id`, offered `message_id`, `delivery: admitted` or `processed`; never downgrade a processed receipt. |
 | `reply` | Exact `attachment_id`, offered `message_id`, body and stable `submission_id`; retain the original inbox. |

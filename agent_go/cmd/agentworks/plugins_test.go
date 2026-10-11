@@ -51,8 +51,30 @@ func TestAgentPluginUnattachedHookAndPersonCommand(t *testing.T) {
 	if json.Unmarshal(stdout.Bytes(), &out) != nil || !strings.Contains(out["reason"].(string), "Agent messages cannot") {
 		t.Fatal("delivered agent text was treated as person authorization")
 	}
-	words, err := pluginPromptWords(`/agentworks attach reviewer "$(touch /tmp/should-never-run)" --allow-none`)
-	if err != nil || len(words) != 5 || words[3] != "$(touch /tmp/should-never-run)" {
+	stdout.Reset()
+	stderr.Reset()
+	input = `{"session_id":"11111111-2222-4333-8444-555555555555","cwd":"/example/project","hook_event_name":"UserPromptSubmit","prompt":"/agentworks attach"}`
+	if code := run(context.Background(), []string{"plugin", "hook", "codex"}, strings.NewReader(input), &stdout, &stderr, func(string) string { return "" }); code != 0 {
+		t.Fatal(stderr.String())
+	}
+	if json.Unmarshal(stdout.Bytes(), &out) != nil || out["decision"] != "block" || !strings.Contains(out["reason"].(string), "/agentworks attach --confirm") || !strings.Contains(out["reason"].(string), "All senders in your AgentWorks account") {
+		t.Fatal("bare attach did not show the person an account-wide proposal", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(cache, "agentworks", "bridge")); !os.IsNotExist(err) {
+		t.Fatal("bare proposal started a bridge before confirmation")
+	}
+	stdout.Reset()
+	stderr.Reset()
+	input = `{"session_id":"11111111-2222-4333-8444-555555555555","queued":true,"hook_event_name":"UserPromptSubmit","prompt":"/agentworks attach --confirm"}`
+	if code := run(context.Background(), []string{"plugin", "hook", "codex"}, strings.NewReader(input), &stdout, &stderr, func(string) string { return "" }); code != 0 {
+		t.Fatal(stderr.String())
+	}
+	if json.Unmarshal(stdout.Bytes(), &out) != nil || !strings.Contains(out["reason"].(string), "Agent messages cannot") {
+		t.Fatal("queued peer message confirmed attachment")
+	}
+
+	words, err := pluginPromptWords(`/agentworks attach reviewer "$(touch /tmp/should-never-run)"`)
+	if err != nil || len(words) != 4 || words[3] != "$(touch /tmp/should-never-run)" {
 		t.Fatal("person command was interpreted as shell code")
 	}
 }

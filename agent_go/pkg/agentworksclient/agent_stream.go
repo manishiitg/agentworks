@@ -35,11 +35,10 @@ type AgentLiveMessage struct {
 }
 
 type AgentAttachmentOptions struct {
-	AgentName      string   `json:"agent_name"`
-	Purpose        string   `json:"purpose"`
-	Provider       string   `json:"provider"`
-	SessionID      string   `json:"native_session_id"`
-	AllowedSenders []string `json:"allowed_senders"`
+	AgentName string `json:"agent_name"`
+	Purpose   string `json:"purpose"`
+	Provider  string `json:"provider"`
+	SessionID string `json:"native_session_id"`
 }
 
 // AttachAgent is deliberately outside the MCP tool catalog. Its arguments

@@ -193,10 +193,9 @@ func newCommand(o *options) *cobra.Command {
 			name, _ := cmd.Flags().GetString("agent")
 			purpose, _ := cmd.Flags().GetString("purpose")
 			session, _ := cmd.Flags().GetString("native-session-id")
-			senders, _ := cmd.Flags().GetStringSlice("allow-sender")
-			bridge, err = agentworksclient.NewClaudeChannelServer(listenCtx, client, agentworksclient.ClaudeChannelOptions{AgentName: name, Purpose: purpose, SessionID: session, AllowedSenders: senders, Log: o.stderr})
+			bridge, err = agentworksclient.NewClaudeChannelServer(listenCtx, client, agentworksclient.ClaudeChannelOptions{AgentName: name, Purpose: purpose, SessionID: session, Log: o.stderr})
 		} else {
-			for _, flag := range []string{"agent", "purpose", "native-session-id", "allow-sender"} {
+			for _, flag := range []string{"agent", "purpose", "native-session-id"} {
 				if cmd.Flags().Changed(flag) {
 					return fmt.Errorf("--%s requires --claude-channel", flag)
 				}
@@ -212,7 +211,6 @@ func newCommand(o *options) *cobra.Command {
 	serveMCP.Flags().String("agent", "", "Stable account-owned agent address")
 	serveMCP.Flags().String("purpose", "", "What this session does (one or two sentences)")
 	serveMCP.Flags().String("native-session-id", "", "Exact Claude session ID supplied by the session or its owner")
-	serveMCP.Flags().StringSlice("allow-sender", []string{}, "Registered sender names allowed to push into this session; repeat or comma separate")
 	mcpCmd.AddCommand(serveMCP)
 	root.AddCommand(mcpCmd)
 	return root

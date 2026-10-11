@@ -11,8 +11,11 @@ AgentWorks MCP connection separately only when broader tools are wanted. The dae
 agent. It is bound to that stable agent ID/name, and parent sign-out revokes it.
 Named-peer messages use this child; product functions require a separate connection.
 
-In the chat type `/agentworks attach NAME "PURPOSE" --allow-sender SENDER`
-(or explicitly `--allow-none`), `/agentworks status`, or `/agentworks detach`.
+In the chat type `/agentworks attach`. The hook proposes a stable name and purpose;
+confirm with `/agentworks attach --confirm`, or choose
+`/agentworks attach NAME "PURPOSE"`. All senders in your AgentWorks account
+can message the attached session; there is no sender allow field.
+Use `/agentworks status` or `/agentworks detach` to manage this exact chat.
 Claude also accepts the namespaced `/agentworks:agentworks` spelling.
 The prompt hook consumes these commands before model execution and learns the
 exact session ID from the host hook input. An agent cannot attach through MCP.
