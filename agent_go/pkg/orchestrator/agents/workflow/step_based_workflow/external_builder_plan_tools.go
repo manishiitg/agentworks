@@ -12,7 +12,7 @@ import (
 // Preserve the stable detached API aliases while adding the current website
 // operations. Only explicitly named plan mutations cross this transport;
 // account, execution and arbitrary workspace tools are never captured.
-var externalBuilderPlanNames = []string{"create_plan", "add_step", "update_step", "manage_step_route", "change_step_type", "maintain_plan", "restore_step_from_changelog"}
+var externalBuilderPlanNames = []string{"create_plan", "add_step", "update_step", "manage_step_route", "change_step_type", "maintain_plan", "restore_step_from_changelog", "migrate_agent_steps"}
 
 type externalBuilderPlanCollector struct{ tools map[string]capturedPlanTool }
 
@@ -34,6 +34,11 @@ func (r *externalBuilderPlanCollector) RegisterCustomToolWithTimeout(n, d string
 	var schema map[string]interface{}
 	if err = json.Unmarshal(raw, &schema); err != nil {
 		return err
+	}
+	// A tool without parameters serializes required as null, which is not a
+	// valid JSON Schema keyword value.
+	if required, present := schema["required"]; present && required == nil {
+		delete(schema, "required")
 	}
 	closeExternalPlanSchema(schema)
 	schema["additionalProperties"] = false

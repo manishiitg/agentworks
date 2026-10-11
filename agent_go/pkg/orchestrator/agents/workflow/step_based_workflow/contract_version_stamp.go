@@ -1,11 +1,13 @@
 package step_based_workflow
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/scriptdb"
 )
 
@@ -145,4 +147,45 @@ func authorizeContractVersionStamp(sessionID, version string, nextPending func()
 	}
 	return "Refused: schedules may run an older workflow contract, but they never authorize or perform migrations. " +
 		"Open the workflow chat and use Update workflow so an operator can supervise each migration in order.", false
+}
+
+// CheckContractStamp applies the stamp prerequisites of the Builder's
+// set_workflow_contract_version tool for a caller that stamps without a model
+// turn (the MCP workflow_upgrade route). Keep it in step with that tool.
+// workflowDir is the workflow's absolute folder; readPlan returns
+// planning/plan.json.
+func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPlan func() (string, error)) error {
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
+		return fmt.Errorf("parse workflow.json: %w", err)
+	}
+	if err := schedulepolicy.ValidatePulseStamp(manifestJSON, version); err != nil {
+		return fmt.Errorf("the schedule Pulse migration is incomplete: %w", err)
+	}
+	if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
+		return fmt.Errorf("the nested Agent artifact migration is incomplete: %w", err)
+	}
+	if err := validateManagedDBScriptsStamp(version, workflowDir); err != nil {
+		return fmt.Errorf("the managed database script migration is incomplete: %w", err)
+	}
+	if version == AgentStepContractVersion {
+		content, err := readPlan()
+		if err != nil {
+			return err
+		}
+		if err := ValidateAgentStepContractStamp(content); err != nil {
+			return err
+		}
+	}
+	if err := validateStepDescriptionLayoutStamp(version, workflowDir); err != nil {
+		return fmt.Errorf("the step description layout migration is incomplete: %w", err)
+	}
+	return nil
+}
+
+// AuthorizeOperatorContractStamp is the Builder operator path of
+// authorizeContractVersionStamp: the signed-in person is the authorization, the
+// migration ladder still holds.
+func AuthorizeOperatorContractStamp(version string, nextPending func() (string, string, error)) (string, bool) {
+	return authorizeContractVersionStamp("", version, nextPending)
 }

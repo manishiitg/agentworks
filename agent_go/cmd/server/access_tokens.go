@@ -415,7 +415,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
 	}
-	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" {
+	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" || tool.Name == "workflow_upgrade" {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}
 	if isExternalRelayAuthoringTool(tool.Name) {

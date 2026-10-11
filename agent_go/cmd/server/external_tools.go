@@ -243,6 +243,7 @@ func externalTools() ([]externalTool, error) {
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalPlanMutationDefinition(add)
+		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
 		externalTriggerDefinitions(add)
@@ -799,6 +800,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "plan" {
 		api.externalPlanMutationCall(w, r, args, *selected)
+		return
+	}
+	if tool.Name == "workflow_upgrade" {
+		api.externalContractUpgradeCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "get_file_link" {
