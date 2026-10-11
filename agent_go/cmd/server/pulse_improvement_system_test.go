@@ -105,7 +105,7 @@ func TestArchitectureImprovementDecisionApplicationAndOutcome(t *testing.T) {
 	if _, err = step.RecordPulseImpactUpdate(ctx, ws, step.PulseImpactUpdate{Interventions: []step.PulseIntervention{improvement}}); err == nil {
 		t.Fatal("application accepted without consumed receipt")
 	}
-	if _, err = consumeReportHumanInput(ctx, ws, decision.ID, ReportHumanInputConsumeRequest{OutcomeSummary: "Applied code/format/main.py; fixture outputs equal; plan revision after"}); err != nil {
+	if _, err = consumeReportHumanInput(ctx, ws, decision.ID, ReportHumanInputConsumeRequest{OutcomeSummary: "Applied code/format/main.py; fixture outputs equal; plan revision after", OutcomeEvidence: "Checked code/format/main.py and matching fixture outputs at plan revision after"}); err != nil {
 		t.Fatal(err)
 	}
 	ledger, err = step.LoadPulseImpactLedger(ctx, ws, 20)

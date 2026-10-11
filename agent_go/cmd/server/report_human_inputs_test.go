@@ -135,8 +135,9 @@ func TestReportHumanInputsUseWorkflowLocalDB(t *testing.T) {
 	}
 
 	consumed, err := consumeReportHumanInput(ctx, workspacePath, "choose-cadence", ReportHumanInputConsumeRequest{
-		OutcomeSummary: "Goal Advisor cadence kept daily until recovery.",
-		ConsumedBy:     "pulse",
+		OutcomeSummary:  "Goal Advisor cadence kept daily until recovery.",
+		OutcomeEvidence: "Checked the saved daily cadence in the fixture.",
+		ConsumedBy:      "pulse",
 	})
 	if err != nil {
 		t.Fatalf("consume: %v", err)

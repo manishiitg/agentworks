@@ -13,7 +13,7 @@ func TestDecisionApplyChatMessageAppliesInTheBuilderForEveryStructuredMode(t *te
 		input := base
 		input.ApplyContract.Mode = mode
 		msg := decisionApplyChatMessage(input)
-		for _, want := range []string{"Apply it now, here in this chat", "goal-work-shopify-filter", "get_human_input_request", "mark_human_input_consumed", "Honor the answer exactly"} {
+		for _, want := range []string{"Apply it now, here in this chat", "goal-work-shopify-filter", "get_human_input_request", "mark_human_input_consumed", "Honor the answer exactly", "outcome_evidence", "Never consume to reserve approval or claim work", "reconcile the result before retrying"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("mode %q: message missing %q:\n%s", mode, want, msg)
 			}

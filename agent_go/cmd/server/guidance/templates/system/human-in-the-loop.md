@@ -101,8 +101,19 @@ The native card's controls have distinct meanings:
 
 Before applying, read the current decision with `get_human_input_request`,
 check its exact option/scope and application contract, and use the appropriate
-consumer. Use the approved-fixer tools when the contract requires a targeted
-fixer. Record actual outcome/evidence before marking the answer consumed.
+consumer. Builder applies workflow changes in its existing chat; an authorized
+execution agent applies actions within its own scope. The applying agent checks
+the saved or external result, then calls `mark_human_input_consumed` with
+`outcome_summary` and `outcome_evidence`. Approval, a queued task or a start
+receipt is not proof of completion. These are one approval/apply/completion
+flow using the same decision history, not separate user approvals.
+Never consume to reserve an approval or prevent overlapping runs; execution
+controls handle overlap separately. Blocked/deferred work stays answered with
+its reason recorded. An uncertain external result must be reconciled at the
+destination before retrying, including when the action succeeded but recording
+completion failed. Explicit rejection can be completed using the saved answer
+as evidence. Do not add approval states or reopen an already consumed decision
+to retry an action without separate authorization.
 Do not write platform decision rows through a report's business-field API.
 
 ### Report-owned approval and report-to-chat handoff

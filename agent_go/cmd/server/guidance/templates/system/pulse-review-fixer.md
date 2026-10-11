@@ -282,13 +282,16 @@ answered decisions, awaiting-verification work, and saved terminal module result
 not enough: an answered decision that is only re-read leaves the operator's
 answer doing nothing, and 26 of them accumulated across six workflows this way,
 the oldest for 31 days. Each one you see must reach a terminal state before
-this turn ends — either apply it and call `mark_human_input_consumed` with an
-`outcome_summary` stating what actually changed, or re-park it with a concrete
-reason and a next-check boundary. Do not leave one silently `answered`.
+this turn ends — either apply it, check the result and call
+`mark_human_input_consumed` with `outcome_summary` and `outcome_evidence`, or
+leave it answered with a concrete reason and a next-check boundary. Do not
+leave one silently `answered`.
 
 Two rules this depends on. Consume only what you really applied: if the change
-could not be made, re-park it with that reason rather than consuming it to tidy
-the list. And drain it yourself regardless of which module asked — a question's
+could not be made, leave it answered with that reason rather than consuming it
+to tidy the list. Never consume to claim or start work; reconcile uncertain
+external results before a retry. An explicit rejection can be completed with
+the owner's saved answer as evidence. And drain it yourself regardless of which module asked — a question's
 source module may be suppressed while its answer is still valid, so an answered
 decision must never wait on `strategic_review` being selectable.
 Do not launch a reviewer merely because a module is due: if durable evidence

@@ -57,7 +57,7 @@ func TestWorkflowSuggestionReaderSubmissionAndOwnerReview(t *testing.T) {
 	if err != nil || approved.Status != "answered" {
 		t.Fatalf("owner review: %+v %v", approved, err)
 	}
-	if _, err := consumeReportHumanInput(ctxFor("reader"), "Workflow/test", input.ID, ReportHumanInputConsumeRequest{OutcomeSummary: "Implemented"}); err == nil {
+	if _, err := consumeReportHumanInput(ctxFor("reader"), "Workflow/test", input.ID, ReportHumanInputConsumeRequest{OutcomeSummary: "Implemented", OutcomeEvidence: "Checked the fixture result"}); err == nil {
 		t.Fatal("reader consumed suggestion")
 	}
 	if mode := scheduledDecisionApplyMode(*approved); mode != "legacy_manual" {

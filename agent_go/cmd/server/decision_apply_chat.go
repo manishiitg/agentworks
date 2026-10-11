@@ -56,9 +56,10 @@ func decisionApplyInstructions(input ReportHumanInput) string {
 	if issueID := strings.TrimSpace(contract.IssueID); issueID != "" {
 		fmt.Fprintf(&b, "- Linked issue %q: read it with get_pulse_state(view=\"backlog\", detail=\"full\") before changing anything. Keep it open until the change is applied, then record what was done and close it.\n", issueID)
 	}
-	b.WriteString(`- Approved or a smaller option chosen: make the change with the normal typed Builder tools, re-read the changed artifact to confirm it landed, then call mark_human_input_consumed with an outcome_summary that says in plain words what changed.
-- Rejected: call mark_human_input_consumed with an outcome_summary that the user declined and nothing changed.
+	b.WriteString(`- Approved or a smaller option chosen: make the change with the normal typed Builder tools, re-read the changed artifact to confirm it landed, then call mark_human_input_consumed with outcome_summary stating what changed and outcome_evidence identifying the saved result you checked. Approval, a queued task or a start receipt is not completion evidence.
+- Rejected: call mark_human_input_consumed with outcome_summary that the user declined and nothing changed, and outcome_evidence identifying the explicit saved rejection.
 - Deferred, or anything you cannot apply safely right now: change nothing, leave it answered, and tell me in one or two sentences why.
+Never consume to reserve approval or claim work. If the action result is uncertain, leave it answered, record what is known, and reconcile the result before retrying; do not repeat an external action blindly. Execution controls handle overlap separately from decision completion.
 Do not run the workflow, back up, publish or notify. Keep your reply short and plain.`)
 	return b.String()
 }

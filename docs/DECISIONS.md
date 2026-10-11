@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-11 — Approval completes after the applying agent checks the result (PLAT-824)
+
+Use one saved decision for approval, application and consumption. The applying
+agent checks the approved result and supplies required `outcome_evidence` with
+`outcome_summary`; Go records the receipt in existing outcome/audit history and
+guards the transition. Consumption is completion, never a reservation or start
+marker. Blocked/deferred work stays answered, and uncertain external results are
+reconciled before retrying. Explicit rejection uses the saved answer as evidence.
+Keep the existing UI and statuses; execution controls handle overlap separately.
+No schema migration or automatic reopening of consumed approvals. The platform
+records agent-supplied evidence rather than claiming independent verification.
+
+Ticket: [PLAT-824](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/human-decisions/plat-824.md).
+
 ## 2026-10-11 — Scripted is the deterministic workflow type (PLAT-859)
 
 Use `scripted` and `ScriptedPlanStep` for deterministic script execution so

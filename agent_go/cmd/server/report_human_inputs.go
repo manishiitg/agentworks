@@ -115,12 +115,13 @@ type ReportHumanInputAnswerRequest struct {
 }
 
 type ReportHumanInputConsumeRequest struct {
-	WorkspacePath  string `json:"workspace_path"`
-	OutcomeSummary string `json:"outcome_summary"`
-	ConsumedBy     string `json:"consumed_by"`
-	ConsumedByKind string `json:"-"`
-	ConsumedVia    string `json:"-"`
-	SessionID      string `json:"-"`
+	WorkspacePath   string `json:"workspace_path"`
+	OutcomeSummary  string `json:"outcome_summary"`
+	OutcomeEvidence string `json:"outcome_evidence"`
+	ConsumedBy      string `json:"consumed_by"`
+	ConsumedByKind  string `json:"-"`
+	ConsumedVia     string `json:"-"`
+	SessionID       string `json:"-"`
 }
 
 type reportHumanInputEvent struct {
@@ -811,6 +812,13 @@ func consumeReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	if outcome == "" {
 		return nil, fmt.Errorf("outcome_summary is required")
 	}
+	evidence := strings.TrimSpace(req.OutcomeEvidence)
+	if evidence == "" {
+		return nil, fmt.Errorf("outcome_evidence is required: check the result before consuming an answer; blocked or uncertain work stays answered. Consumption is completion, not a claim or start marker")
+	}
+	// The applying agent checks the actual result. Go requires and records its
+	// receipt; it cannot infer an external business outcome from a tool call.
+	outcome += "\nEvidence: " + evidence
 	now := time.Now().UTC().Format(time.RFC3339)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -961,16 +969,17 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "mark_human_input_consumed",
-			Description: "Mark an answered workflow decision as consumed after Pulse or Goal Advisor has used the answer and recorded the outcome. This keeps history but removes it from the pending-for-agent queue.",
+			Description: "Complete an answered decision after the applying agent has honored the answer and checked the result. Supply outcome_summary and outcome_evidence describing the observed result or the explicit rejection. This keeps approval, answer and completion evidence in the same decision history. Never consume to reserve an approval, claim work, or announce a start. Blocked/deferred work stays answered; reconcile uncertain external results before retrying. A successful call records the agent's checked outcome, not independent platform verification.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"workspace_path":  map[string]interface{}{"type": "string", "description": "Workflow-relative path, for example Workflow/social-media."},
-					"input_id":        map[string]interface{}{"type": "string", "description": "The input id returned by create_human_input_request."},
-					"outcome_summary": map[string]interface{}{"type": "string", "description": "What you did with the answer, in one sentence."},
-					"consumed_by":     map[string]interface{}{"type": "string", "description": "Optional actor label. Defaults to agent."},
+					"workspace_path":   map[string]interface{}{"type": "string", "description": "Workflow-relative path, for example Workflow/social-media."},
+					"input_id":         map[string]interface{}{"type": "string", "description": "The input id returned by create_human_input_request."},
+					"outcome_summary":  map[string]interface{}{"type": "string", "description": "What you did with the answer, in one sentence."},
+					"outcome_evidence": map[string]interface{}{"type": "string", "description": "Result you checked: saved artifact/revision, external result ID/URL and observed state, or the owner's explicit rejection. Approval itself, a planned action, a queued task or a start receipt is not completion evidence."},
+					"consumed_by":      map[string]interface{}{"type": "string", "description": "Optional actor label. Defaults to agent."},
 				},
-				"required": []string{"workspace_path", "input_id", "outcome_summary"},
+				"required": []string{"workspace_path", "input_id", "outcome_summary", "outcome_evidence"},
 			}),
 		},
 	}
@@ -1094,6 +1103,7 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			inputID, _ := args["input_id"].(string)
 			req := ReportHumanInputConsumeRequest{}
 			req.OutcomeSummary, _ = args["outcome_summary"].(string)
+			req.OutcomeEvidence, _ = args["outcome_evidence"].(string)
 			req.ConsumedBy, _ = args["consumed_by"].(string)
 			if req.ConsumedBy == "" {
 				req.ConsumedBy = "agent"
@@ -1375,7 +1385,7 @@ func formatAnsweredReportHumanInputsForAgent(ctx context.Context, workspacePath 
 		b.WriteString(fmt.Sprintf("- input_id=%s source=%s priority=%s question=%q answer=%q answered_by=%q actor_kind=%s via=%s answered_at=%s evidence=%q%s\n",
 			input.ID, input.Source, input.Priority, input.Question, answer, input.AnsweredBy, input.AnsweredByKind, input.AnsweredVia, input.AnsweredAt, input.Evidence, context))
 	}
-	b.WriteString("If an answered Goal Advisor plan proposal is approved, apply it only with normal plan modification/config/measurement/report tools, then call mark_human_input_consumed with the concrete outcome. If it is rejected or deferred, record that outcome and consume it. The Pulse popup derives pending questions from typed state, so do not edit a presentation artifact or the SQLite table directly.\n")
+	b.WriteString("If an answered Goal Advisor plan proposal is approved, apply it only with normal plan modification/config/measurement/report tools, verify the saved result, then call mark_human_input_consumed with outcome_summary and outcome_evidence. For an explicit rejection, record the owner's answer as evidence and consume it without applying the proposal. Deferred, blocked or uncertain work stays answered with a recorded reason; do not consume to claim or start work. Reconcile an uncertain external result before retrying. The Pulse popup derives pending questions from typed state, so do not edit a presentation artifact or the SQLite table directly.\n")
 	return strings.TrimSpace(b.String())
 }
 

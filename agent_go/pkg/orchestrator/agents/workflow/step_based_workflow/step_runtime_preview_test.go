@@ -144,6 +144,9 @@ func TestStepPromptsRespectExplicitPermissionsAndScriptedDBHelpers(t *testing.T)
 	for _, access := range []string{DBAccessNone, DBAccessRead, DBAccessReadWrite} {
 		vars := map[string]string{"DBAccess": access, "KbAccess": KBAccessNone, "IsScriptedMode": "true", "DBDirectAccess": "true"}
 		system := renderer.executionOnlySystemPromptProcessor(vars)
+		if !strings.Contains(system, "Consumption records completion, never reservation") || !strings.Contains(system, "outcome_evidence") || !strings.Contains(system, "asks for early consumption") {
+			t.Fatal("step runtime did not enforce checked completion over early-consumption descriptions")
+		}
 		if strings.Count(system, "Standing runtime scope for this step.") != 1 || strings.Count(renderer.executionOnlySystemPromptProcessor(vars), "Standing runtime scope for this step.") != 1 {
 			t.Fatal("runtime supplements disappeared or grew across prompt renders")
 		}

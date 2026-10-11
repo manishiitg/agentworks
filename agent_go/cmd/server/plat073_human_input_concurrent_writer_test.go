@@ -30,7 +30,7 @@ func TestConsumedHumanInputRejectsLateAnswer(t *testing.T) {
 		t.Fatalf("first answer: %v", err)
 	}
 	consumed, err := consumeReportHumanInput(ctx, workspacePath, "decision-1", ReportHumanInputConsumeRequest{
-		OutcomeSummary: "Applied to the plan.", ConsumedBy: "pulse-fixer",
+		OutcomeSummary: "Applied to the plan.", OutcomeEvidence: "Checked the saved fixture plan.", ConsumedBy: "pulse-fixer",
 	})
 	if err != nil {
 		t.Fatalf("consume: %v", err)
@@ -80,7 +80,7 @@ func TestConsumedHumanInputRejectsLateDismiss(t *testing.T) {
 		t.Fatalf("answer: %v", err)
 	}
 	if _, err := consumeReportHumanInput(ctx, workspacePath, "decision-2", ReportHumanInputConsumeRequest{
-		OutcomeSummary: "Applied.", ConsumedBy: "pulse-fixer",
+		OutcomeSummary: "Applied.", OutcomeEvidence: "Checked the fixture result.", ConsumedBy: "pulse-fixer",
 	}); err != nil {
 		t.Fatalf("consume: %v", err)
 	}
@@ -112,12 +112,12 @@ func TestDoubleConsumeRejectsSecondCall(t *testing.T) {
 		t.Fatalf("answer: %v", err)
 	}
 	if _, err := consumeReportHumanInput(ctx, workspacePath, "decision-3", ReportHumanInputConsumeRequest{
-		OutcomeSummary: "First consumption.", ConsumedBy: "pulse-fixer-1",
+		OutcomeSummary: "First consumption.", OutcomeEvidence: "Checked the fixture result.", ConsumedBy: "pulse-fixer-1",
 	}); err != nil {
 		t.Fatalf("first consume: %v", err)
 	}
 	if _, err := consumeReportHumanInput(ctx, workspacePath, "decision-3", ReportHumanInputConsumeRequest{
-		OutcomeSummary: "Second consumption.", ConsumedBy: "pulse-fixer-2",
+		OutcomeSummary: "Second consumption.", OutcomeEvidence: "Checked the fixture result.", ConsumedBy: "pulse-fixer-2",
 	}); err == nil {
 		t.Fatal("expected the second consume call to be rejected rather than silently reporting success")
 	}
