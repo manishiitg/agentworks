@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-11 — Incoming agent messages show the message first (PLAT-825)
+
+Render explicit incoming messages as a sender-labelled agent card in the chat
+transcript. Put reply addresses, message IDs and delivery instructions under
+Message details; long message expansion reveals the message body independently.
+Recognize the existing server envelope so saved conversations get the same view.
+Keep the original agent prompt and optional, explicit reply semantics unchanged.
+Why: delivery instructions should not obscure the message or look like user text.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).
+
 ## 2026-10-11 — One Leader and exclusive Contributor route editors (PLAT-863)
 
 Team collaboration is an explicit workflow opt-in. One Leader owns the goal,

@@ -40,6 +40,7 @@ import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../ut
 import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './ChatArtifactExpander'
 import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
+import { AgentInboxMessage, parseAgentInboxMessage } from './AgentInboxMessage'
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
 // a bigger reading size (SparkQuill's Child Mode "T" button sets it on the
@@ -301,6 +302,8 @@ const TranscriptEvent: React.FC<{
   // The server keeps the typed text beside a wrapped prompt (continuity
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
+  const inboxMessage = parseAgentInboxMessage(content)
+  if (inboxMessage) return <AgentInboxMessage message={inboxMessage} timestamp={timestamp} />
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
