@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -57,6 +59,51 @@ func TestProductToolGateObserveModeAdmitsEverything(t *testing.T) {
 	}
 }
 
+func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
+	server, store := newFakeWorkspaceServer(t)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	store.files["Workflow/relay/workflow.json"] = `{"kind":"relay"}`
+	store.files["Workflow/broken/workflow.json"] = `{broken`
+	relayTools, err := relayproduct.BuilderTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name, session, workspace, agentMode string
+		readOnly                            bool
+		tools                               []string
+	}{
+		{"builder", "chat", "Workflow/goals", "workflow_phase", false, agentworksproduct.ChatTools("builder")},
+		{"reader", "chat", "Workflow/goals", "workflow_phase", true, agentworksproduct.ChatTools("run")},
+		{"executor", "chat", "Workflow/goals", "workflow", false, agentworksproduct.ChatTools("run")},
+		{"pulse", goalLeadSessionPrefix + "test", "Workflow/goals", "workflow_phase", false, agentworksproduct.PulseTools()},
+		{"relay", "chat", "Workflow/relay", "workflow_phase", false, relayTools},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gate, err := newDelegatedWorkflowToolGate(context.Background(), tt.session, QueryRequest{AgentMode: tt.agentMode}, tt.workspace, tt.readOnly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !gate.enforcing() || gate.Admit("unlisted_child_tool") {
+				t.Fatal("child agent must reject tools outside its YAML surface")
+			}
+			var allowed []string
+			for name := range gate.allowed {
+				allowed = append(allowed, name)
+			}
+			if err := compareProductSurface(allowed, tt.tools); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	for _, workspace := range []string{"", "Workflow/broken"} {
+		if _, err := newDelegatedWorkflowToolGate(context.Background(), "chat", QueryRequest{}, workspace, false); err == nil {
+			t.Fatalf("invalid scope %q must fail closed", workspace)
+		}
+	}
+}
+
 // A nil profile is ordinary (non-product) chat: never filtered, never logged.
 func TestProductToolGateNilProfileAdmitsEverything(t *testing.T) {
 	gate := newProductToolGate(nil)
@@ -95,6 +142,38 @@ func TestProductToolGateAllowlistFiltersUnlistedTools(t *testing.T) {
 	// debuggable: a missing capability shows up here, not as agent confusion.
 	if !reflect.DeepEqual(filtered, []string{"image_gen"}) {
 		t.Fatalf("filtered = %v", filtered)
+	}
+}
+
+func TestAgentWorksChatGateEnforcesYAMLBeforeRegistration(t *testing.T) {
+	for _, mode := range []string{"builder", "run"} {
+		t.Run(mode, func(t *testing.T) {
+			gate := newAgentWorksChatToolGate(mode)
+			gate.AllowWorkflowNotifications(true)
+			if !gate.enforcing() {
+				t.Fatal("Goals must use an allowlist, not shadow/observe mode")
+			}
+			for _, name := range agentworksproduct.ChatTools(mode) {
+				if !gate.Admit(name) {
+					t.Fatalf("YAML-declared tool %s was rejected", name)
+				}
+			}
+			reg := &gateRecordingRegistrar{gate: gate}
+			for _, name := range []string{"implementation_only_tool", "another_unlisted_tool"} {
+				if err := reg.RegisterCustomTool(name, "", nil, nil, "workspace"); err != nil {
+					t.Fatal(err)
+				}
+				if err := reg.RegisterCustomToolWithTimeout(name, "", nil, nil, time.Second, "workspace"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(reg.admitted) != 0 {
+				t.Fatalf("Go registration bypassed YAML: %v", reg.admitted)
+			}
+			if mode == "run" && gate.Admit("call_function") {
+				t.Fatal("execution.function_tools must not grant functions to Run chat")
+			}
+		})
 	}
 }
 

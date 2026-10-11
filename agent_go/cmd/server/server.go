@@ -5942,17 +5942,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// The Pulse conversation reads and talks to the Builder chat; it changes
 		// nothing itself (pulseTools).
-		if isWorkflowPhase && !relayChat && isGoalLeadSessionID(sessionID) {
-			toolGate = newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
-		}
-		// Goals workflow chats have no profile, so nothing enforced their product.yaml lists; measure them first
-		// (PLAT-608 step 4): the gate logs what each Builder/Run session registers and what the list would drop.
-		if isWorkflowPhase && !relayChat && resolvedProfile == nil {
-			mode := "run"
-			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
-				mode = "builder"
-			}
-			toolGate.Shadow("goals-"+mode, agentworksproduct.ChatTools(mode))
+		// Goals chats enforce product.yaml before the immutable definition and
+		// CLI catalog are built. Pulse retains its own narrower declaration.
+		if isWorkflowPhase && !relayChat && (resolvedProfile == nil || isGoalLeadSessionID(sessionID)) {
+			toolGate = newWorkflowConversationToolGate(sessionID, req, currentUserIsReadOnly)
 		}
 		toolGate.DenyWhere(func(name string) bool {
 			return !builderProductSelection(GetUserFromContext(r.Context())).AllowsTool(name)

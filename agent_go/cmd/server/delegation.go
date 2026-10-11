@@ -10,6 +10,7 @@ import (
 	"fmt"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -33,6 +34,28 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
+
+// Resolve the child's product before constructing its agent or CLI bridge.
+// A missing scope or unreadable manifest must never become an unrestricted chat.
+func newDelegatedWorkflowToolGate(ctx context.Context, sessionID string, req QueryRequest, workspace string, readOnly bool) (*productToolGate, error) {
+	if strings.TrimSpace(workspace) == "" {
+		return nil, fmt.Errorf("delegated workflow tool surface requires a workspace")
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+	if err != nil {
+		return nil, fmt.Errorf("resolve delegated workflow tool surface: %w", err)
+	}
+	if found && manifest.Kind == "relay" {
+		names, err := relayproduct.BuilderTools()
+		if err != nil {
+			return nil, err
+		}
+		return newProductToolGateForAllowlist("relays", names), nil
+	}
+	gate := newWorkflowConversationToolGate(sessionID, req, readOnly)
+	gate.AllowWorkflowNotifications(workflowNotificationsForPath(workspace))
+	return gate, nil
+}
 
 func safeDelegationRuntimeID(id string) string {
 	id = strings.TrimSpace(id)
@@ -782,18 +805,27 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		// AdmitTool set, the child came up with a WIDER surface than the
 		// product declared, so a failed profile resolution turned delegation
 		// into the tool_policy bypass this gate exists to prevent. Only abort
-		// when the parent actually declared a profile -- an inconsistent
-		// request with no profile id has no product surface to enforce, and
-		// there the old log-and-continue is still the right behavior.
-		if strings.TrimSpace(parentReq.AgentProfileID) != "" {
+		// when the parent declared a profile or belongs to a workflow product.
+		if strings.TrimSpace(parentReq.AgentProfileID) != "" || workflowOwnedDelegation {
 			log.Printf("[DELEGATION] Refusing to delegate: could not resolve the parent agent profile %q for the sub-agent tool surface: %v", parentReq.AgentProfileID, profileErr)
 			api.emitDelegationEndEvent(sessionID, delegationID, currentDepth, "", profileErr.Error(), nil)
 			return "", fmt.Errorf("failed to resolve the agent profile tool surface for delegation: %w", profileErr)
 		}
 		log.Printf("[DELEGATION] Could not resolve the parent agent profile for the sub-agent tool surface: %v", profileErr)
-	} else if gate := newProductToolGate(subProfile); gate.enforcing() {
-		subAgentConfig.AdmitTool = gate.Admit
-		defer gate.logSurface(sessionID)
+	} else {
+		gate := newProductToolGate(subProfile)
+		if subProfile == nil && workflowOwnedDelegation {
+			var gateErr error
+			gate, gateErr = newDelegatedWorkflowToolGate(ctx, sessionID, parentReq, workflowDecisionScope, readOnlyForRequest(delegatedAccess, parentReq))
+			if gateErr != nil {
+				api.emitDelegationEndEvent(sessionID, delegationID, currentDepth, "", gateErr.Error(), nil)
+				return "", gateErr
+			}
+		}
+		if gate.enforcing() {
+			subAgentConfig.AdmitTool = gate.Admit
+			defer gate.logSurface(sessionID)
+		}
 	}
 
 	ctx = productpolicy.WithSelection(ctx, builderProductSelection(GetUserFromContext(ctx)))

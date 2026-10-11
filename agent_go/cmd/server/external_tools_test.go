@@ -444,6 +444,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "preview_step_runtime", "send_message", "read_agent_messages", "list_message_agents", "schedule_message_wakeup", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_workflow_team", "read_team_source", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "notify_user", "send_email", "record_summary", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
 	wantRun = append([]string{"brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access"}, wantRun...)
+	wantRun = append([]string{"execute_shell_command", "diff_patch_workspace_file", "read_image", "list_llm_capabilities", "get_goal_metrics", "get_pulse_state", "query_workflow_db", "query_workflow_costs", "read_crew_calls"}, wantRun...)
 	if len(run) != len(wantRun) {
 		t.Fatalf("run.tools has %d tools, want %d", len(run), len(wantRun))
 	}
@@ -456,12 +457,13 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 
 func TestExternalRunAuthorityBoundary(t *testing.T) {
 	// Pins the runs:execute authority statement in product.yaml: only
-	// account-scoped tools are withheld; workflow-bound side effects stay
+	// account-scoped tools and internal chat/bridge tools are withheld; workflow-bound side effects stay
 	// because they are the workflow running as configured, not the token
 	// acting beyond it. Changing either list is a deliberate API change.
 	denied := agentworksproduct.RunExternalDenylist()
-	if len(denied) != 3 || denied[0] != "google_workspace_cli" || denied[1] != "list_mcp_servers" || denied[2] != "send_email" {
-		t.Fatalf("external denylist = %v, want exactly [google_workspace_cli list_mcp_servers send_email]", denied)
+	wantDenied := []string{"execute_shell_command", "diff_patch_workspace_file", "read_image", "list_llm_capabilities", "get_goal_metrics", "get_pulse_state", "query_workflow_db", "query_workflow_costs", "read_crew_calls", "google_workspace_cli", "list_mcp_servers", "send_email"}
+	if strings.Join(denied, ",") != strings.Join(wantDenied, ",") {
+		t.Fatalf("external denylist = %v, want %v", denied, wantDenied)
 	}
 	catalog, err := externalTools()
 	if err != nil {
@@ -470,6 +472,11 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 	byName := map[string]externalTool{}
 	for _, tool := range catalog {
 		byName[tool.Name] = tool
+	}
+	for _, name := range denied {
+		if _, exposed := byName[name]; exposed {
+			t.Fatalf("internal tool %s leaked into the external API", name)
+		}
 	}
 	for _, name := range []string{"send_slack_message", "notify_user", "trigger_schedule"} {
 		tool, ok := byName[name]

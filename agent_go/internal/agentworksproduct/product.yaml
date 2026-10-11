@@ -320,6 +320,68 @@ chat:
       - restore_dashboard
       - get_dashboard_link
       - validate_report_html
+      # Shared platform and interactive function tools, previously measured
+      # outside this declaration by the Goals shadow gate. Admission now
+      # happens here before agent construction; executor authority still applies.
+      - apply_workflow_db_migration
+      - ask_builder
+      - ask_function_update
+      - ask_goal_lead
+      - ask_platform_crew
+      - ask_pulse
+      - call_function
+      - configure_goal_metrics
+      - create_crew
+      - create_workflow_database_snapshot
+      - define_function
+      - delete_function
+      - diff_patch_workspace_file
+      - execute_shell_command
+      - generate_text_llm
+      - get_function_call
+      - get_goal_metrics
+      - get_pulse_state
+      - image_edit
+      - image_gen
+      - list_accessible_workflows
+      - list_functions
+      - list_llm_capabilities
+      - list_message_agents
+      - list_provider_models
+      - list_published_llms
+      - manage_crew_attachment
+      - manage_crew_trigger
+      - merge_pulse_issues
+      - mutate_workflow_db
+      - query_workflow_costs
+      - query_workflow_db
+      - read_agent_messages
+      - read_crew_calls
+      - read_image
+      - record_goal_observations
+      - record_pulse_decision_outcome
+      - record_pulse_fast_request
+      - record_pulse_finding
+      - record_pulse_focus_area
+      - record_pulse_goal_check
+      - record_pulse_goal_memory
+      - record_pulse_goal_work
+      - record_pulse_next_run
+      - record_pulse_qa_request
+      - record_pulse_recommendation
+      - record_pulse_result
+      - record_pulse_worklist
+      - reply_function_call
+      - report_function_progress
+      - request_clarification
+      - resolve_run_concern
+      - scan_workflow_script_db_usage
+      - schedule_message_wakeup
+      - search_platform
+      - send_message
+      - set_code_layout_version
+      - set_workflow_llm_config
+      - test_llm
     prompt:
       file: prompts/builder.md
       includes: [prompts/workflow-shared.md]
@@ -327,6 +389,17 @@ chat:
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
+      # Coding providers reach the admitted APIs through the guarded shell.
+      # These bridge tools stay out of the direct external Run API below.
+      - execute_shell_command
+      - diff_patch_workspace_file
+      - read_image
+      - list_llm_capabilities
+      - get_goal_metrics
+      - get_pulse_state
+      - query_workflow_db
+      - query_workflow_costs
+      - read_crew_calls
       - brain_browse
       - brain_read
       - brain_update
@@ -399,6 +472,15 @@ chat:
     # schedules). Adding a name here is a deliberate API change; pinning
     # test: TestExternalRunAuthorityBoundary.
     external_denylist:
+      - execute_shell_command
+      - diff_patch_workspace_file
+      - read_image
+      - list_llm_capabilities
+      - get_goal_metrics
+      - get_pulse_state
+      - query_workflow_db
+      - query_workflow_costs
+      - read_crew_calls
       - google_workspace_cli
       - list_mcp_servers
       - send_email

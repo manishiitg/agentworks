@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"sort"
@@ -36,6 +37,7 @@ type productToolGate struct {
 	// not a real product profile, so it must not change what the chat gets.
 	shadowed              bool
 	workflowNotifications bool
+	workflowSurface       bool
 	deny                  func(string) bool
 
 	// allowed is nil in observe mode: every tool passes and is recorded, so a
@@ -131,6 +133,22 @@ func newProductToolGateForAllowlist(productID string, names []string) *productTo
 	return gate
 }
 
+// Goals chats have no project profile, but still have a product-owned tool
+// surface. Enforce that declaration at the same construction boundary.
+func newAgentWorksChatToolGate(mode string) *productToolGate {
+	gate := newProductToolGateForAllowlist("goals-"+mode, agentworksproduct.ChatTools(mode))
+	gate.workflowSurface = true
+	return gate
+}
+
+func newWorkflowConversationToolGate(sessionID string, req QueryRequest, readOnly bool) *productToolGate {
+	if isGoalLeadSessionID(sessionID) {
+		return newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
+	}
+	policy := resolveWorkflowChatPolicy(sessionID, req, nil, readOnly)
+	return newAgentWorksChatToolGate(policy.Mode)
+}
+
 // enforcing reports whether the gate filters. False means observe mode.
 func (g *productToolGate) enforcing() bool { return g != nil && g.allowed != nil }
 
@@ -217,10 +235,9 @@ func (g *productToolGate) Allows(name string) bool {
 func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	// A shadow surface filters nothing (PLAT-608); only a real product
-	// profile excludes workflow notifications. Before this, the shadow gate
-	// removed notify_user from every Goals Builder and Run chat and Pulse.
-	g.workflowNotifications = enabled && (g.profileID == "" || g.shadowed)
+	// Goals Builder/Run own workflow notifications, subject to their YAML
+	// allowlist. Pulse and other product profiles cannot opt in here.
+	g.workflowNotifications = enabled && (g.profileID == "" || g.shadowed || g.workflowSurface)
 }
 
 func (g *productToolGate) allowsLocked(name string) bool {
