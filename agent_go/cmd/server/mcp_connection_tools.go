@@ -142,8 +142,10 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	if catalog == "" && url == "" {
 		catalog = name
 	}
-	if claims := GetUserFromContext(ctx); claims != nil && (claims.AccessToken != nil || claims.ExternalBuilderOperationID != "") {
-		// MCP-originated authoring cannot introduce a free URL, including a
+	claims := GetUserFromContext(ctx)
+	if isCrewProjectPath(place) || claims != nil && (claims.AccessToken != nil || claims.ExternalBuilderOperationID != "") {
+		// Crew agent turns (including owner-authority function and message
+		// runs) and MCP-originated authoring cannot introduce a free URL, including a
 		// nested server.url or an edit of an existing connection. Integrations
 		// remains the user's path for custom servers. Check reused accounts
 		// before ensurePersonalMCP can attach them under a catalog-like name.

@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
+import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
@@ -2868,6 +2868,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
   const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
+  const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
   
   // Memoized placeholder
   const placeholder = useMemo(() => {
@@ -3663,8 +3664,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       {/* Stop and send stay separate; Enter follows the selected delivery mode. */}
                       {backgroundWorkPill}
                       {showStopButton && stopButton}
-                      <Suspense fallback={<Button type="button" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} data-testid="chat-submit-button" className="px-1.5 text-[11px]">
-                        {isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'}
+                      <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
+                        {deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
                       </Button>}>
                       <ChatSendModeButton
                         mode={deliveryMode}

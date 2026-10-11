@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -134,6 +136,40 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": custom.Name}, 400)
+	// Function and message runs can execute as the owner without external
+	// claims. Exercise their registered agent tool with the server's Crew
+	// session binding, including legacy roots and output subfolders.
+	reg := &recordingRegistrar{}
+	f.api.eventStore = events.NewEventStore(10)
+	f.api.sessionWorkspaceFolders = map[string]string{}
+	if err := f.api.registerMultiAgentMCPServerTools(reg, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{externalCommandCrewRoot, "_users/owner/Chats/Work/projects/legacy"} {
+		for _, run := range []string{"function", "messages"} {
+			session := run + "-" + root
+			f.api.eventStore.SetSessionOwner(session, "owner")
+			f.api.sessionWorkspaceFolders[session] = root + "/runs/" + run
+			ctx := executor.WithSessionID(appCtx, session)
+			for _, operation := range []string{"install_mcp_server", "add_mcp_server", "edit_mcp_server"} {
+				for _, args := range []map[string]any{
+					{"name": "untrusted", "url": "https://untrusted.example.com/mcp"},
+					{"name": "Example", "server": map[string]any{"url": "https://untrusted.example.com/mcp"}},
+					{"name": custom.Name},
+				} {
+					if _, err := reg.tools[operation].exec(ctx, args); err == nil || !strings.Contains(err.Error(), "Integrations") {
+						t.Fatalf("%s %s %s refusal = %v", root, run, operation, err)
+					}
+				}
+			}
+		}
+	}
+	// Approved catalog accounts remain usable by an owner-authority Crew run.
+	approvedCtx := executor.WithSessionID(appCtx, "messages-"+externalCommandCrewRoot)
+	if _, err := reg.tools["install_mcp_server"].exec(approvedCtx, map[string]any{"name": "Example"}); err != nil {
+		t.Fatalf("Crew catalog reuse = %v", err)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "remove", "name": attachments[0].Server}, 200)
 	// All product adapters share this gate, including Builder-originated
 	// operations. Refuse both nested URLs and endpoint edits before mutation.
 	for _, claims := range []*UserClaims{crewWriter("owner"), {UserID: "owner", ExternalBuilderOperationID: "builder-operation"}} {

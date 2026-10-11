@@ -14,7 +14,9 @@ servers their groups permit. Use `search_mcp_catalog` for connection templates.
 - A new MCP connection belongs to the project it is added to: everyone with
   access to the project uses it, and no other project does. It acts as the
   connected account, so say whose login it is. Use `install_mcp_server` for a
-  catalog server or a user-supplied remote MCP URL.
+  catalog server. Crew agent turns, including function and message runs, can
+  install or reuse current catalog servers only. Add custom URLs through
+  **Integrations**; an agent cannot attach a custom saved connection by name.
 - MCPs shared across projects belong in **Vault**. An administrator connects them there and
   assigns tools and resource conditions to groups. Connecting grants no access.
 - Use `update_project_mcp_server_selection` to select or deselect a

@@ -35,7 +35,10 @@ Allow external tools to install or reuse current catalog MCP servers only;
 custom URLs and endpoint edits stay in Integrations. Enforce this once in the
 shared connection handler for Crew, workflow and Relay authoring. Validate a
 reused account's catalog, URL and transport before attaching it; a catalog-like
-name does not authorize a custom endpoint. Why: an agent following untrusted
+name does not authorize a custom endpoint. Apply the same gate to every Crew
+agent turn, including function and message runs that execute as the owner;
+their server-bound workspace identifies the Crew without external caller claims.
+Why: an agent following untrusted
 text must not attach an arbitrary service under the project's authority.
 The owner chose the catalog-only policy; existing website roles still apply.
 
