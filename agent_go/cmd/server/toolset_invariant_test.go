@@ -30,13 +30,13 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 	// 385c95158 without a matching entry here, which left this invariant red.
 	add("LLM capability discovery tools", "list_llm_capabilities")
 	add("workshop plan tools",
-		"create_plan", "validate_plan_change", "migrate_agent_code_items", "migrate_orchestrator_step_type", "migrate_declared_execution_mode", "strip_declared_execution_mode",
-		"add_orchestrator_step", "add_agent_route", "update_orchestrator_step", "update_agent_route", "delete_agent_route",
+		"create_plan", "validate_plan_change", "migrate_agent_code_items", "migrate_agent_steps", "migrate_declared_execution_mode", "strip_declared_execution_mode",
+		"add_agent_route", "update_agent_route", "delete_agent_route",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
-		"add_human_input_step", "add_todo_task_step", "add_todo_task_route",
+		"add_human_input_step", "add_todo_task_route",
 		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
-		"update_human_input_step", "update_todo_task_step", "update_todo_task_route",
-		"delete_todo_task_route", "delete_plan_steps", "cleanup_orphan_step_configs",
+		"update_human_input_step", "update_todo_task_route",
+		"delete_plan_steps", "cleanup_orphan_step_configs",
 		"update_validation_schema",
 		"change_step_type",
 		"record_plan_drift_review",
@@ -220,7 +220,7 @@ func TestToolSetInvariants(t *testing.T) {
 		workshop[n] = true
 	}
 	for _, n := range []string{
-		"create_plan", "migrate_agent_code_items", "migrate_orchestrator_step_type",
+		"create_plan", "migrate_agent_code_items", "migrate_agent_steps",
 		"add_step", "update_step", "manage_step_route", "delete_plan_steps", "preview_step_runtime",
 		"execute_step", "get_human_input_request", "create_human_input_request", "answer_human_input_request",
 		"update_workflow_config", "update_step_config", "validate_report_html",

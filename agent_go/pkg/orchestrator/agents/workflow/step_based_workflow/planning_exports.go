@@ -600,6 +600,7 @@ type WorkshopConfig struct {
 	WebhookInvocation      *WebhookInvocation  // Set internally by API trigger dispatch, never from tool arguments.
 	ScheduleInvocation     *ScheduleInvocation // Set internally by saved-schedule dispatch, never from tool arguments.
 	CrewRunner             CrewStepRunner      // Set internally by the server; lets Builder-run crew steps invoke Crew triggers.
+	AgentFunctionTools     AgentFunctionToolFactory
 	ScheduleCollisionCheck ScheduleCollisionCheck
 	WorkspacePath          string
 	RunFolder              string
@@ -795,6 +796,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	// execute_step builds fresh strategy options without touching them —
 	// so the session runner must live on the controller from init.
 	bindCrewRunner(controller, cfg.CrewRunner)
+	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
 
 	// Load variables manifest so execute_step can resolve variable values.
 	variablesPath := fmt.Sprintf("%s/variables/variables.json", cfg.WorkspacePath)
@@ -2131,7 +2133,8 @@ func RegisterRunFullWorkflowTool(
 					RouteSelections:   routeSelections,
 					// Fresh controllers start with no options: without the
 					// session runner, crew steps fail as unbound here.
-					CrewRunner: cfg.CrewRunner,
+					CrewRunner:         cfg.CrewRunner,
+					AgentFunctionTools: cfg.AgentFunctionTools,
 				}
 				if cfg.ScheduleInvocation != nil {
 					execOpts.RunKind = cfg.ScheduleInvocation.RunKind()

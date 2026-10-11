@@ -205,7 +205,7 @@ chat:
       - maintain_plan
       - migrate_declared_execution_mode
       - migrate_agent_code_items
-      - migrate_orchestrator_step_type
+      - migrate_agent_steps
       - strip_declared_execution_mode
       - configure_slack_bot
       - consolidate_knowledgebase
@@ -333,6 +333,10 @@ chat:
       - get_slack_bot_settings
       - slack
       - get_step_prompts
+      - preview_step_runtime
+      - send_message
+      - read_agent_messages
+      - schedule_message_wakeup
       - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance

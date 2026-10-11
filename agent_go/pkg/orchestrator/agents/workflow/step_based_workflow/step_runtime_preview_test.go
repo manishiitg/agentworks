@@ -50,6 +50,17 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	defer server.Close()
 	controller.WorkspaceClient = workspace.NewClient(server.URL)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
+	bindAgentFunctionTools(controller, func(_ context.Context, scope AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
+		if scope.WorkspacePath != controller.GetWorkspacePath() || scope.StepID != "research" {
+			t.Fatal("preview lost function source identity")
+		}
+		return []llmtypes.Tool{{Type: "function", Function: &llmtypes.FunctionDefinition{Name: "call_function"}}}, map[string]interface{}{
+			"call_function": func(context.Context, map[string]interface{}) (string, error) {
+				t.Error("preview executed a function")
+				return "", nil
+			},
+		}, nil
+	})
 	for _, name := range []string{"agent_browser", "query_workflow_db", "mutate_workflow_db", "create_human_input_request"} {
 		controller.WorkspaceTools = append(controller.WorkspaceTools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name}})
 		if controller.WorkspaceToolExecutors == nil {
@@ -82,6 +93,9 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if preview.ParallelToolCalls || preview.ItemID != "work" || !strings.Contains(preview.SystemPrompt, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
 		t.Fatal("preview omitted current config, selected item, instructions or unresolved context")
 	}
+	if !strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
+		t.Fatal("agent preview omitted runtime function tools")
+	}
 	counts := map[string]int{}
 	for _, skill := range preview.Skills {
 		counts[skill.Name]++
@@ -110,6 +124,12 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	result, err = tool.Execute(ctx, map[string]interface{}{"step_id": "research"})
 	if err != nil || !strings.Contains(result, "agentworks_db") {
 		t.Fatalf("scripted runtime preview failed: %v", err)
+	}
+	if err := json.Unmarshal([]byte(result), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
+		t.Fatal("scripted preview exposed agent function tools")
 	}
 	files["planning/plan.json"] = `{"steps":[{"id":"research","title":"Research","type":"agent","description":"Coordinate {{TOPIC}}.","items":[{"id":"work","type":"user_message","message":"Verify the work."}],"predefined_routes":[{"route_id":"worker","route_name":"Worker","sub_agent_step":{"id":"worker","title":"Work","type":"scripted","description":"Produce verified data."}}]}]}`
 	result, err = tool.Execute(ctx, map[string]interface{}{"step_id": "research"})

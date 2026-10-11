@@ -23,6 +23,7 @@ import (
 )
 
 type structuredFunctionCallerSessionKey struct{}
+type structuredFunctionExecutionScopeKey struct{}
 
 const structuredFunctionMaxRunning = 3
 const structuredFunctionJSONCap = 16 << 20

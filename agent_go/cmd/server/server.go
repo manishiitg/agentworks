@@ -5292,6 +5292,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// The run owner scopes crew lookups; without a user there is no
 				// runner and crew steps fail with a clear error at execution.
 				controllerOpts.CrewRunner = crewRunnerForRun(r.Context(), api.productSchedules)
+				controllerOpts.AgentFunctionTools = api.workflowAgentFunctionToolsForRun(r.Context())
 				log.Printf("[WORKFLOW EXECUTION] Setting strategy=%s folder=%s", controllerOpts.ExecutionStrategy, controllerOpts.SelectedRunFolder)
 				workflowOrchestrator.SetExecutionOptions(controllerOpts)
 				log.Printf("[EXECUTION_OPTIONS_DEBUG] [Backend] Execution options set on orchestrator successfully")
@@ -5305,7 +5306,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// on specific fields.
 				if runner := crewRunnerForRun(r.Context(), api.productSchedules); runner != nil {
 					workflowOrchestrator.SetExecutionOptions(&todo_creation_human.ExecutionOptions{
-						CrewRunner: runner,
+						CrewRunner:         runner,
+						AgentFunctionTools: api.workflowAgentFunctionToolsForRun(r.Context()),
 					})
 				}
 			}
@@ -12131,6 +12133,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// runner from the session config; without it they fail as unbound even
 	// on fully authenticated runs.
 	cfg.CrewRunner = crewRunnerForRun(ctx, api.productSchedules)
+	cfg.AgentFunctionTools = api.workflowAgentFunctionToolsForRun(ctx)
 
 	cfg.ScheduleCollisionCheck = api.scheduleCollisionCheck(cfg.WorkspacePath, sessionID, req.TriggeredBy)
 	cfg.SkillFuncs = projectSkillCallbacks(api.buildSkillCallbacks(), strings.TrimSuffix(cfg.WorkspacePath, "/")+"/skills", "")

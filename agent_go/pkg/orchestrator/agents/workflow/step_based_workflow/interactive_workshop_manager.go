@@ -1274,7 +1274,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 	planMod := []string{
 		"create_plan",
 		"validate_plan_change",
-		"migrate_agent_code_items", "migrate_orchestrator_step_type", "migrate_declared_execution_mode", "strip_declared_execution_mode",
+		"migrate_agent_code_items", "migrate_agent_steps", "migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 		"add_human_input_step",
 		"add_agent_route", "update_agent_route", "delete_agent_route",

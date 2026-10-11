@@ -1,13 +1,13 @@
-# Agent Agent Steps
+# Agent Steps
 
 ## Purpose
 
-A `agent` is the canonical **agent step**: a persistent, ordered conversation with one coding agent. Use one large sequence per coherent shared-context span, when later turns must retain the reasoning and tool context from earlier turns.
+An `agent` is the canonical **agent step**: a persistent, ordered conversation with one coding agent. Use one large sequence per coherent shared-context span, when later turns must retain the reasoning and tool context from earlier turns.
 
 The step may declare `predefined_routes`. Those routes are bounded specialist
 capabilities, not a prescribed checklist: the sequence agent receives
 `call_sub_agent` and decides at runtime whether, when, and how often to call a
-specialist. With no routes it remains a single-agent sequence. Legacy
+specialist. With no routes it remains a single-agent sequence.
 Saved legacy step names normalize to `agent` on read and are rewritten by the v1.0.47 contract migration.
 
 Routed and non-routed sequences use the same execution system prompt and the
@@ -184,3 +184,37 @@ The runtime also rejects any remaining code item with a precise v1.0.10 upgrade 
 - Put all deterministic code in standalone scripted steps.
 - Put fixed API/SDK/CLI fetching, pagination, stable parsing/normalization, and mechanical persistence in coherent scripted fetchers; feed their durable outputs to large agents.
 - Pass data between steps through declared files or the workflow database, never hidden in terminal context.
+
+## Calling other projects
+
+Executing agent steps receive `list_functions`, `call_function`,
+`get_function_call` and `reply_function_call` when the server binds the function
+services. These tools use the same function backend as Builder and external MCP.
+The caller is the source workflow, including for delegated agents. The launch
+account's current access and any MCP connection scopes and target bounds still
+apply; a function's workflow caller allow-list is checked independently.
+
+1. Discover a declared function with `list_functions(target="crew:Review")`.
+2. Call it with typed inputs, for example
+   `call_function(target="crew:Review", function="check", args={"build":"7"})`.
+3. Keep the returned `call_id` and poll `get_function_call`. Consume only a
+   completed result; report a failed or interrupted call as such. Read output
+   files through `get_function_call(file="report.json")`.
+4. If the call exposes a pending input, use `reply_function_call` with its
+   matching request ID and response. This does not grant approval authority.
+
+Execution agents poll rather than scheduling a Builder chat notification;
+`notify=true` is refused. `wait_seconds` can wait briefly for a fast result.
+The default retry identity combines the workflow run, step, group, target,
+function and arguments. Repeating that call recovers its original result,
+including after completion. Supply a distinct `submission_id` for intentionally
+repeated work with identical arguments; reuse that ID after an uncertain retry.
+Another run or group receives a separate call. Status and reply tools cannot
+reach calls from another execution scope.
+
+Workflow targets execute their function triggers. Relay targets use the existing
+published-release dispatcher, which checks live caller permissions before using
+the immutable release. Native `crew` plan steps continue to invoke their bound
+triggers. No new plan shape or workflow contract migration is required to add
+these runtime tools. Test mode refuses function calls and replies because those
+operations act outside the workflow's test folder.

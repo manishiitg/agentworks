@@ -1501,6 +1501,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 
 	// 6. Use base factory! (This handles all setup automatically)
+	if planStep != nil && planStep.StepType() == StepTypeAgent {
+		var err error
+		toolsToRegister, executorsToUse, err = hcpo.appendAgentFunctionTools(ctx, config.MCPSessionID, stepID, toolsToRegister, executorsToUse)
+		if err != nil {
+			return nil, err
+		}
+	}
 	pathInfo := parseStepPath(stepPath)
 	parentStepIndex := parentStepIndexFromContext(ctx, pathInfo.ParentStepNumber-1)
 	if parentStepIndex < 0 {
@@ -1930,6 +1937,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		toolsToRegister = filteredTools
 		executorsToUse = filteredExecutors
 		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered out human tools for todo task orchestrator agent (no human mode): %d tools remaining", len(toolsToRegister)))
+	}
+
+	{
+		var functionErr error
+		toolsToRegister, executorsToUse, functionErr = hcpo.appendAgentFunctionTools(ctx, config.MCPSessionID, stepID, toolsToRegister, executorsToUse)
+		if functionErr != nil {
+			return nil, functionErr
+		}
 	}
 
 	// IMPORTANT: Inject sub-agent tools for tool-based delegation

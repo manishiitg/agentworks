@@ -80,6 +80,9 @@ type ExecutionOptions struct {
 	// an implementation here. Nil means the current run path cannot
 	// execute crew steps. Never decoded from public tool/API JSON.
 	CrewRunner CrewStepRunner `json:"-"`
+	// AgentFunctionTools supplies runtime call tools under the authenticated
+	// workflow identity. Never decoded from public tool/API JSON.
+	AgentFunctionTools AgentFunctionToolFactory `json:"-"`
 }
 
 // BatchExecutionProgress tracks execution progress across multiple variable groups

@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-11 — Executing workflow agents call declared functions (PLAT-861)
+
+Bind discovery, call, status and reply tools into execution agent definitions
+through a server-owned function factory. Reuse the existing function backend;
+internal calls retain the source workflow identity, while external MCP calls
+retain user identity and connection consent/bounds. Runtime calls poll rather
+than resume Builder chat, and durable retry/result access is scoped to the run,
+step and group. Test mode refuses cross-project calls and replies. Existing Crew
+steps and published Relay dispatch remain compatible. No saved-plan rewrite is
+needed because this adds runtime tools without changing the plan shape.
+Why: agents need the same typed delegation available in Builder and MCP.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+
 ## 2026-10-11 — Approval completes after the applying agent checks the result (PLAT-824)
 
 Use one saved decision for approval, application and consumption. The applying

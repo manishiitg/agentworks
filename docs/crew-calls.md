@@ -77,6 +77,15 @@ A function has no public URL or secret: authenticated caller access and
 execution permissions. Webhooks on the same route retain their own signature/key
 checks and raw payload rules.
 
+## Calls from executing workflow agents
+
+Workflow `agent` steps can use `list_functions`, `call_function`,
+`get_function_call` and `reply_function_call`. Calls identify the source workflow;
+external MCP calls identify their signed-in user. Both use the same backend and
+retain their own access rules. Execution agents poll for completion and use
+run/step/group-scoped retry IDs. See [agent steps](workflow/agent_step_design.md#calling-other-projects)
+for the runtime lifecycle and retry rules.
+
 ## History, failures and existing triggers
 
 Call records and outputs are saved. Completed calls remain readable after restart;

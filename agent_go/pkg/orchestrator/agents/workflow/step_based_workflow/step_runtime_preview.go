@@ -115,7 +115,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	if !config.UseCodeExecutionMode && stepConfig != nil && stepConfig.UseCodeExecutionMode != nil {
 		config.UseCodeExecutionMode = *stepConfig.UseCodeExecutionMode
 	}
-	tools, _ := hcpo.prepareCustomTools(stepConfig)
+	tools, executors := hcpo.prepareCustomTools(stepConfig)
+	if step.StepType() == StepTypeAgent {
+		var err error
+		tools, _, err = hcpo.appendAgentFunctionTools(ctx, "preview-"+step.GetID(), step.GetID(), tools, executors)
+		if err != nil {
+			return nil, err
+		}
+		result.Unresolved = append(result.Unresolved, "Function permissions, caller identity and retry scope are checked during execution; preview only lists their tools.")
+	}
 	result.Tools = registeredToolNames(tools)
 	sort.Strings(result.Tools)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())

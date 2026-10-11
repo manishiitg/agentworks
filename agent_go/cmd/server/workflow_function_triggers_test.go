@@ -168,7 +168,7 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	if _, err := env.alpha["define_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "name": "x", "description": "d", "instructions": "y", "input_schema": map[string]interface{}{"type": "object"}, "result_schema": map[string]interface{}{"type": "object"}}); err == nil || !strings.Contains(err.Error(), "function triggers") {
 		t.Fatalf("define on a workflow: err = %v", err)
 	}
-	if _, err := env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Pipeline", "function": "run"}); err == nil || !strings.Contains(err.Error(), "has no function") {
+	if _, err := env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Pipeline", "function": "run"}); err == nil || !strings.Contains(err.Error(), "offers no functions") {
 		t.Fatalf("workflow without that function: err = %v", err)
 	}
 }

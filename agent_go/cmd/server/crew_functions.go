@@ -363,6 +363,8 @@ type crewFunctionCall struct {
 	CallerProfileID string `json:"caller_profile_id,omitempty"`
 	CallerPath      string `json:"-"`
 	CallerLabel     string `json:"caller_label"`
+	// ExecutionScope isolates runtime calls by workflow run, step and group.
+	ExecutionScope string `json:"execution_scope,omitempty"`
 	// RunMode: the owner asked for this call to run in Run mode, to test it as another caller would see it.
 	RunMode           bool                        `json:"run_mode,omitempty"`
 	TargetKind        string                      `json:"target_kind"`
@@ -835,9 +837,17 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	if args == nil {
 		args = map[string]interface{}{}
 	}
-	// A workflow function checks its own inputs on dispatch, with messages
-	// that name the missing or unknown input.
-	if target.Kind != triggerCallerWorkflow {
+	// Refuse malformed workflow arguments before recording a call. Dispatch
+	// checks them again. Relay dispatch owns its published release's inputs.
+	if target.Kind == triggerCallerWorkflow && target.Manifest != nil && target.Manifest.Kind != "relay" {
+		schedule, err := findWorkflowFunctionTrigger(target.Manifest, fn.Name)
+		if err != nil {
+			return nil, err
+		}
+		if _, _, err := workflowFunctionArgs(*schedule, args); err != nil {
+			return nil, err
+		}
+	} else if target.Kind != triggerCallerWorkflow {
 		if problems := validateCrewFunctionValue(fn.InputSchema, args); len(problems) > 0 {
 			return nil, fmt.Errorf("arguments do not match %s's input schema: %s", fn.Name, strings.Join(problems, "; "))
 		}
@@ -917,6 +927,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		argsKey: argsKey,
 		RunMode: crewRunModeFromContext(ctx), admissionHeld: target.Kind == triggerCallerCrew,
 	}
+	call.ExecutionScope, _ = ctx.Value(structuredFunctionExecutionScopeKey{}).(string)
 	fromPath := caller.Path
 	if caller.Stamp.ProfileID == codeproduct.ProfileID {
 		fromPath = ""
@@ -1316,18 +1327,45 @@ func crewTargetRunSessionID(state triggerTargetRunState) string {
 // Crews and workflows tagged or attached to this chat. declare, when set,
 // admits generated tool names through the product tool gate.
 func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string)) error {
+	return api.registerCrewFunctionToolSet(registrar, userID, sessionID, parentReq, resolveCaller, declare, crewFunctionToolOptions{})
+}
+
+type crewFunctionToolOptions struct {
+	Claims         *UserClaims
+	ExecutionScope string
+	CheckTarget    func(context.Context, triggerTarget, bool) error
+}
+
+func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string), options crewFunctionToolOptions) error {
 	if api == nil || api.scheduler == nil || api.productSchedules == nil {
 		return nil
 	}
-	if err := api.registerAgentMessagingTools(registrar, userID, sessionID, parentReq, resolveCaller, declare); err != nil {
-		return err
+	if options.ExecutionScope == "" {
+		if err := api.registerAgentMessagingTools(registrar, userID, sessionID, parentReq, resolveCaller, declare); err != nil {
+			return err
+		}
 	}
 	claims := &UserClaims{UserID: strings.TrimSpace(userID)}
+	if options.Claims != nil {
+		copy := *options.Claims
+		claims = &copy
+	}
 	withClaims := func(ctx context.Context) context.Context {
 		copy := *claims
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
+		if options.ExecutionScope != "" {
+			switch name {
+			case "list_functions", "call_function", "get_function_call", "reply_function_call":
+			default:
+				return nil
+			}
+			if name == "call_function" {
+				description = "Call a declared function of another Crew, workflow or published Relay. Inputs and declared results are validated. Returns a call_id; poll get_function_call until it settles before using the result. Reuse submission_id after an uncertain retry; a different submission_id starts distinct work. No chat auto-notification is scheduled."
+				parameters["properties"].(map[string]interface{})["notify"] = map[string]interface{}{"type": "boolean", "enum": []interface{}{false}, "description": "Execution agents poll results; only false is accepted."}
+			}
+		}
 		return registrar.RegisterCustomTool(name, description, parameters, execute, crewFunctionToolCategory)
 	}
 	jsonOut := func(value interface{}) (string, error) {
@@ -1344,6 +1382,34 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	}
 	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path. A Code project has no functions."}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
+		if args == nil {
+			args = map[string]interface{}{}
+		}
+		if options.CheckTarget != nil {
+			if err := options.CheckTarget(ctx, target, true); err != nil {
+				return "", err
+			}
+		}
+		if options.ExecutionScope != "" {
+			ctx = context.WithValue(ctx, structuredFunctionExecutionScopeKey{}, options.ExecutionScope)
+			if notify {
+				return "", fmt.Errorf("execution agents poll get_function_call; notify must be false")
+			}
+			if len(submissionID) > 128 || submissionID != "" && strings.TrimSpace(submissionID) == "" {
+				return "", fmt.Errorf("submission_id must be nonblank and at most 128 characters")
+			}
+			// Retry IDs belong to this run/step/group. With no explicit ID,
+			// equal function arguments within that scope reuse the same call.
+			key := submissionID
+			if key == "" {
+				encoded, err := json.Marshal(args)
+				if err != nil {
+					return "", err
+				}
+				key = crewFunctionSubmissionFingerprint(target, function, string(encoded))
+			}
+			submissionID = "agent-" + crewFunctionArgumentsFingerprint(options.ExecutionScope+"\x00"+key)
+		}
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1384,6 +1450,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		response["status"] = "running"
 		if _, joined := response["joined"]; !joined {
 			response["note"] = "Started; the target is working on it. Poll with get_function_call, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
+			if options.ExecutionScope != "" {
+				response["note"] = "Started; poll get_function_call until the target finishes. Do not call again for the same work."
+			}
 		}
 		if notify {
 			executionID, watchErr := api.startCrewFunctionWatch(parentReq, sessionID, userID, call, timeout)
@@ -1503,6 +1572,11 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
+		if options.CheckTarget != nil {
+			if err := options.CheckTarget(ctx, target, false); err != nil {
+				return "", err
+			}
+		}
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1542,7 +1616,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if raw, present := args["args"]; present && raw != nil && callArgs == nil {
 			return "", fmt.Errorf("args must be a JSON object")
 		}
-		notify := true
+		notify := options.ExecutionScope == ""
 		if value, ok := args["notify"].(bool); ok {
 			notify = value
 		}
@@ -1565,6 +1639,18 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		call := lookupCrewFunctionCall(id)
 		if call == nil {
 			return nil, caller, fmt.Errorf("unknown function call %q (saved call history is retained across restarts)", id)
+		}
+		if options.ExecutionScope != "" {
+			if call.ExecutionScope != options.ExecutionScope || call.UserID != userID {
+				return nil, caller, fmt.Errorf("function call %s belongs to another execution", id)
+			}
+			current, err := resolveFunctionTarget(ctx, claims, caller, call.TargetPath)
+			if err != nil || current.Kind != call.TargetKind || current.stampID() != call.TargetID {
+				return nil, caller, fmt.Errorf("function call %s target is unavailable or access denied", id)
+			}
+			if err := options.CheckTarget(ctx, current, true); err != nil {
+				return nil, caller, err
+			}
 		}
 		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
 			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
@@ -1799,6 +1885,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 
 	// Generated tools: one per function of every Crew/workflow tagged or
 	// attached to this chat.
+	if options.ExecutionScope != "" {
+		return nil
+	}
 	ctx := withClaims(context.Background())
 	caller, err := resolveCaller(ctx)
 	if err != nil {
