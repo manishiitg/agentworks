@@ -248,7 +248,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	sent := map[string]bool{}
 	for {
 		changed := agentLiveChanged()
-		current, live, e := currentAgentAttachment(r.Context(), claims, name, id)
+		_, live, e := currentAgentAttachment(r.Context(), claims, name, id)
 		if e != nil {
 			_ = write(map[string]any{"type": "closed"})
 			return
@@ -296,7 +296,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			// Resolve the exact generation once more immediately before release.
-			current, _, e = currentAgentAttachment(r.Context(), claims, name, id)
+			_, _, e = currentAgentAttachment(r.Context(), claims, name, id)
 			if e != nil {
 				_ = write(map[string]any{"type": "closed"})
 				return
