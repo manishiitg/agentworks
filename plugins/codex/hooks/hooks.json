@@ -28,7 +28,7 @@
           {
             "type": "command",
             "command": "agentworks plugin hook codex",
-            "timeout": 10
+            "timeout": 3
           }
         ]
       }

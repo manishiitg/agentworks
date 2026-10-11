@@ -20,7 +20,8 @@ Installing a plugin and adding its marketplace are separate entries in Codex:
 the marketplace supplies updates, while the installed plugin's toggle controls
 loading. Enable the plugin, reload Codex and review its hooks. In the Codex CLI,
 use `/hooks` to review and trust the exact AgentWorks definitions. Installation
-never grants hook trust. A command reaching the model instead of the hook has
+never grants hook trust. The SessionEnd hook uses Codex's three-second
+timeout limit so the provider does not report a clamped-timeout loading warning. A command reaching the model instead of the hook has
 not attached the chat; do not ask the model to execute it as a workaround.
 
 In the chat type `/agentworks attach`. The hook proposes a stable name and purpose;
