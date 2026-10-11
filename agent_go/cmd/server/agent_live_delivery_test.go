@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	call(stranger, map[string]any{"action": "register", "agent_name": "stranger"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", AllowedSenders: []string{"sender"}})
+	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", AllowedSenders: []string{"sender"}, Log: os.Stderr})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,13 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 			}
 			return m
 		case <-time.After(5 * time.Second):
-			t.Fatal("native channel did not receive without polling")
+			agentMessageMu.Lock()
+			store, storeErr := readAgentMessageStore(context.Background())
+			agentMessageMu.Unlock()
+			agentLiveEvents.Lock()
+			online := fmt.Sprint(agentLiveEvents.online)
+			agentLiveEvents.Unlock()
+			t.Fatalf("native channel did not receive without polling; online=%s agents=%+v conversations=%+v storeErr=%v", online, store.Agents, store.Conversations, storeErr)
 			return nil
 		}
 	}
