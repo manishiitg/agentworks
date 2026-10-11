@@ -623,7 +623,7 @@ func (api *StreamingAPI) sessionRunsATurn(sessionID string) bool {
 		return false
 	}
 	if api.hasActiveTurnCancel(sessionID) || api.hasRunningTrackedExecutionForSession(sessionID) ||
-		api.isSessionBusy(sessionID) || api.isSyntheticTurn(sessionID) {
+		api.sessionTurnRunning(sessionID) || api.isSyntheticTurn(sessionID) {
 		return true
 	}
 	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)

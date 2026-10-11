@@ -41,7 +41,7 @@ func (api *StreamingAPI) externalTurnFields(response map[string]interface{}, ses
 	switch {
 	case waiting:
 		status = "waiting_for_input"
-	case api.isSessionBusy(sessionID):
+	case api.sessionTurnRunning(sessionID):
 		status = "running"
 	}
 	response["turn_status"] = status
@@ -110,7 +110,7 @@ func (api *StreamingAPI) externalWaitForTurn(started map[string]interface{}, ses
 			started["needs_user_input"] = true
 			return
 		}
-		if api.eventStore != nil && !api.isSessionBusy(sessionID) {
+		if api.eventStore != nil && !api.sessionTurnRunning(sessionID) {
 			if answer, ok := api.eventStore.LatestAnswer(sessionID, afterIndex); ok {
 				started["turn_status"] = "idle"
 				started["final_answer"] = answer

@@ -194,6 +194,15 @@ func (api *StreamingAPI) conversationTurnOccupied(sessionID string) bool {
 	return api.conversationTurnOccupiedBy(sessionID) != ""
 }
 
+// sessionTurnRunning is the one answer to "is a turn running in this chat" for
+// status and lifecycle checks: the queue's occupancy (the input lane is the
+// authority) plus the display busy flag, which some turn kinds set without
+// taking the lane. MCP turn_status used the flag alone and could say idle
+// while a turn still held the lane.
+func (api *StreamingAPI) sessionTurnRunning(sessionID string) bool {
+	return api.conversationTurnOccupied(sessionID) || api.isSessionBusy(sessionID)
+}
+
 // conversationTurnOccupiedBy names what occupies the session ("" when idle).
 func (api *StreamingAPI) conversationTurnOccupiedBy(sessionID string) string {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
