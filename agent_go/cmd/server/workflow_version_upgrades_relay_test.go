@@ -59,9 +59,10 @@ func TestRelayMigrationRunGatesAndNextStampAgree(t *testing.T) {
 	}{
 		{name: "Relay owes shared artifact migration", kind: "relay", version: "1.0.43", next: "1.0.44", layout: 1},
 		{name: "Relay skips DB migration but owes description layout", kind: "relay", version: "1.0.44", next: "1.0.46", layout: 1},
+		{name: "Relay owes agent unification", kind: "relay", version: "1.0.46", next: "1.0.47", layout: 1},
 		{name: "Relay on the current contract runs", kind: "relay", version: "1.0.47", layout: 1, allowed: true},
 		{name: "Goals owes DB migration", version: "1.0.44", next: "1.0.45", layout: 1},
-		{name: "Relay still needs code layout", kind: "relay", version: "1.0.46"},
+		{name: "Relay still needs code layout", kind: "relay", version: "1.0.47"},
 		{name: "Relay refuses unknown version", kind: "relay", version: "9.9.9", layout: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
