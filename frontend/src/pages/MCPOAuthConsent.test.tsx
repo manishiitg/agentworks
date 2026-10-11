@@ -79,6 +79,8 @@ it('shows the reason the server gives when a connection is refused', async () =>
 it('asks for no workflow selection: Builder follows the account', async () => {
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'builder:chat'], [])
   try {
+    expect(view.host.textContent).toContain('Edit workflow plans directly, without a model turn')
+    expect(view.host.textContent).toContain('native validation, revisions and the plan changelog')
     expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
     const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     expect(allow.disabled).toBe(false)

@@ -25,6 +25,7 @@ import (
 // Real MCP -> Crew dispatcher -> actor-bound Vault proxy -> upstream MCP.
 // Cached connections cannot bypass a changed live grant or argument rule.
 func TestExternalCrewConnectedMCP(t *testing.T) {
+	t.Setenv("AUTH_SECRET", "crew-connected-mcp-test-signing-secret")
 	withMCPConnectionsRoot(t)
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")

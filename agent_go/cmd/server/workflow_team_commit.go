@@ -72,10 +72,20 @@ func commitTeamEdit(ctx context.Context, result string) error {
 // Direct transports supply an anchored local writer while retaining exactly
 // the native staging, current team policy and rollback validation. Calling the
 // HTTP document writer while this root lock is held would re-enter its lock.
+// A validation refusal before the first writer is a known failed operation.
+// Once a writer was attempted, transports must retain reconciliation semantics.
+type teamCommitBeforeWriteError struct{ error }
+
 func commitTeamEditWithFiles(ctx context.Context, result string,
 	read func(context.Context, string) (string, bool, error),
 	write func(context.Context, string, string) error,
-	remove func(context.Context, string) error) error {
+	remove func(context.Context, string) error) (commitErr error) {
+	writeAttempted := false
+	defer func() {
+		if commitErr != nil && !writeAttempted {
+			commitErr = &teamCommitBeforeWriteError{commitErr}
+		}
+	}()
 	r := ctx.Value(teamPlanReceiptKey{}).(*teamPlanReceipt)
 	var status map[string]interface{}
 	if json.Unmarshal([]byte(result), &status) == nil && status["success"] == false {
@@ -123,6 +133,7 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 	commitCtx := context.WithValue(ctx, teamCommitPermitKey{}, true)
 	written := []string{}
 	for _, p := range paths {
+		writeAttempted = true
 		if e := write(commitCtx, p, pending[p]); e != nil {
 			reconcileCtx, cancel := context.WithTimeout(context.WithoutCancel(commitCtx), 10*time.Second)
 			rollback := []string{}

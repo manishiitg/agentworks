@@ -35,6 +35,9 @@ plan/configuration revision, current editable project/team authority and existin
 Builder authoring consent. Stage all artifacts before the shared commit lock's
 validated replacement and retain the native plan changelog and retry receipt.
 Retire unused `plan:write`, dropping it from old grants without replacement.
+Consent details, local token text and the Connect notice explain direct edits
+to new and existing Builder-chat connections. A rejected commit before its
+first write retains a failed receipt; identical retries return that refusal.
 Why: external agents need direct edits with the same validators and roles.
 
 Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
@@ -46,7 +49,9 @@ and direct MCP, matching Sending accounts. Code private account management
 keeps its existing owner scope. Crew execution history belongs to the Crew:
 only its current owner reads it, including calls made before ownership transfer.
 Keep metadata for 30 days, capped at 1,000 calls per Crew and 100,000 overall;
-never store payloads or outputs. Why: role parity and useful, bounded owner audit.
+never store payloads or outputs. Audit all directly executed Crew session tools,
+including presentation actions, status queries and background cancellation.
+Why: role parity and useful, bounded owner audit.
 
 Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
 

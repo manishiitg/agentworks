@@ -94,7 +94,11 @@ func TestExternalPlanEditsOverMCP(t *testing.T) {
 	edit["expected_revision"] = revision(editor)
 	edit["request_id"] = "shared-edit"
 	edit["arguments"].(map[string]any)["existing_step_id"] = "parent"
-	f.call(t, editor, "plan", edit, 409)
+	failed := f.call(t, editor, "plan", edit, 409).Body.String()
+	retry := f.call(t, editor, "plan", edit, 409).Body.String()
+	if failed != retry || !strings.Contains(failed, `"applied":false`) || strings.Contains(retry, "edit_requires_reconciliation") {
+		t.Fatalf("pre-write failure lost its known receipt: %s %s", failed, retry)
+	}
 	if f.read(t, "Workflow/invoices/planning/plan.json") != before {
 		t.Fatal("rejected shared edit changed the plan")
 	}

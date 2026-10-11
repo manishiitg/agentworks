@@ -133,38 +133,27 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 			externalError(w, 403, "insufficient_scope", "This chat has attached grants outside this connection's consent. Use a connection covering those grants.")
 			return
 		}
-		connection := "interactive"
-		if claims.AccessToken != nil {
-			connection = claims.AccessToken.ID
-		}
-		audit, auditID, e := startCrewExecutionAudit(r.Context(), claims.UserID, id, connection, "crew_session", name, params)
-		if e != nil {
-			externalFailure(w, e)
-			return
-		}
-		defer audit.Close()
-		result, e := tool.execute(r.Context(), params)
-		if finish := finishCrewExecutionAudit(audit, auditID, result, e); finish != nil {
-			externalError(w, 503, "audit_completion_unavailable", "Background dispatch may have started; inspect your chat and owner history before retrying.")
-			return
-		}
-		if e != nil {
-			externalError(w, 400, "execution_rejected", e.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"crew_id": id, "chat_id": chat.ChatID, "result": externalCrewSessionResult(result)})
+	}
+	connection := "interactive"
+	if claims.AccessToken != nil {
+		connection = claims.AccessToken.ID
+	}
+	audit, auditID, err := startCrewExecutionAudit(r.Context(), claims.UserID, id, connection, "crew_session", name, params)
+	if err != nil {
+		externalFailure(w, err)
 		return
 	}
+	defer audit.Close()
 	result, err := tool.execute(r.Context(), params)
+	if finish := finishCrewExecutionAudit(audit, auditID, result, err); finish != nil {
+		externalError(w, 503, "audit_completion_unavailable", "Session action may have completed; inspect your chat and owner history before retrying.")
+		return
+	}
 	if err != nil {
 		externalError(w, 400, "execution_rejected", err.Error())
 		return
 	}
-	var value any
-	if json.Unmarshal([]byte(result), &value) != nil {
-		value = result
-	}
-	externalJSON(w, map[string]any{"crew_id": id, "chat_id": chat.ChatID, "result": value})
+	externalJSON(w, map[string]any{"crew_id": id, "chat_id": chat.ChatID, "result": externalCrewSessionResult(result)})
 }
 
 func jsonschemaCompiler(schema map[string]any) (*jsonschema.Schema, error) {

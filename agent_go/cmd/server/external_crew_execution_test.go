@@ -158,6 +158,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 // The native session registry, transport and presentation broker enforce the
 // same per-person boundary; unavailable browsers never report a successful UI edit.
 func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
+	t.Setenv("AUTH_SECRET", "crew-session-test-signing-secret")
 	f, _ := newExternalCrewCommandFixture(t)
 	f.api.bgAgentRegistry = NewBackgroundAgentRegistry()
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
@@ -196,6 +197,20 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 		if rec.Code != want {
 			t.Fatalf("status %d want %d: %s", rec.Code, want, rec.Body)
 		}
+	}
+	f.api.bgAgentRegistry.Register(record.SessionID, &BackgroundAgent{ID: "own-agent", SessionID: record.SessionID, Name: "own task", Status: BGAgentRunning})
+	owner := crewWriter("owner")
+	owner.AccessToken.Scopes = append(owner.AccessToken.Scopes, "crews:run")
+	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "query_agent", "arguments": map[string]any{"agent_id": "own-agent"}}, 200)
+	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "terminate_agent", "arguments": map[string]any{"agent_id": "own-agent"}}, 200)
+	audit, err := openCrewExecutionAudit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer audit.Close()
+	var count int
+	if err = audit.db.QueryRow(`SELECT COUNT(*) FROM external_crew_execution_audit WHERE crew_id='team' AND tool_group='crew_session' AND action IN ('query_agent','terminate_agent') AND status='completed'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("session actions not audited: %d, %v", count, err)
 	}
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "list_agents"}, 404)
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "run_in_background", "arguments": map[string]any{"name": "task", "instruction": "do work"}}, 403)

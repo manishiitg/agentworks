@@ -12,7 +12,7 @@ const scopeDescriptions: Record<string, string> = {
   'files:read': 'Read workflow files, including test code',
   'relays:write': 'Create, edit files and dashboards, test and publish Relays within your current role. Builder chat uses your saved model and usage budget',
   'dashboards:read': 'Discover and view dashboards within your project access; private Code dashboards stay yours',
-  'builder:chat': 'Edit workflow plans, code, files and dashboards within your current role. Builder chat uses your saved model in your existing chat',
+  'builder:chat': 'Edit workflow plans directly, without a model turn, using native validation, revisions and the plan changelog. Edit code, files and dashboards within your current role and connection limits. Builder chat also uses your saved model in your existing chat',
   'runs:execute': 'Start, watch, and cancel workflow runs',
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',

@@ -149,6 +149,12 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 			externalError(w, 409, "request_conflict", "request_id was used for a different edit.")
 			return
 		}
+		if status == "failed" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(response))
+			return
+		}
 		if status != "completed" {
 			externalError(w, 409, "edit_requires_reconciliation", "This edit may have been interrupted; read the plan and changelog before submitting a new request.")
 			return
@@ -270,6 +276,20 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		return parent.Remove(path.Base(rel))
 	}
 	if err = commitTeamEditWithFiles(ctx, result, read, write, remove); err != nil {
+		var beforeWrite *teamCommitBeforeWriteError
+		if errors.As(err, &beforeWrite) {
+			responseBytes, _ := json.Marshal(map[string]any{"error": "plan_commit_rejected", "message": err.Error(), "applied": false, "request_id": requestID, "operation_id": operationID})
+			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if _, saveErr := store.db.ExecContext(finishCtx, `UPDATE external_plan_receipts SET status='failed',response=? WHERE user_id=? AND connection_id=? AND request_id=?`, string(responseBytes), live.UserID, live.AccessToken.ID, requestID); saveErr != nil {
+				externalError(w, 503, "receipt_unavailable", "No write was attempted, but the failed receipt could not be saved. Inspect this request before retrying.")
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write(responseBytes)
+			return
+		}
 		externalError(w, 409, "plan_commit_rejected", err.Error())
 		return
 	}
