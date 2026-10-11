@@ -67,7 +67,7 @@ func lockCrewExecution(ctx context.Context, session string) (func(), error) {
 	}
 }
 
-func crewExecutionDefinitions() []llmtypes.Tool {
+func crewExecutionDefinitions() ([]llmtypes.Tool, error) {
 	tools := append(workspace.GetAdvancedToolDefinitions(), virtualtools.CreateWorkspaceBrowserTools()...)
 	tools = append(tools, virtualtools.CreateWorkflowDBToolRegistry("", "", "").Tools...)
 	tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
@@ -78,7 +78,7 @@ func crewExecutionDefinitions() []llmtypes.Tool {
 	native := &StreamingAPI{scheduler: &SchedulerService{}}
 	refs := crewCapabilityRegistrar{}
 	if err := native.registerCrewWorkflowRunTools(refs, "", "", "Crew/catalog"); err != nil {
-		panic(err)
+		return nil, fmt.Errorf("register native Crew workflow tools: %w", err)
 	}
 	for _, name := range []string{"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
 		tool := refs[name]
@@ -90,7 +90,7 @@ func crewExecutionDefinitions() []llmtypes.Tool {
 			selected = append(selected, tool)
 		}
 	}
-	return selected
+	return selected, nil
 }
 
 func crewExecutionSchema(tool llmtypes.Tool) (map[string]any, error) {
@@ -110,10 +110,14 @@ func crewExecutionSchema(tool llmtypes.Tool) (map[string]any, error) {
 }
 
 func externalCrewExecutionDefinition(add func(string, string, bool, bool, map[string]any, ...string)) error {
-	if err := externalCrewNativeDefinition(add, "crew_execution", "Execute a shared Crew shell, browser, selected MCP or managed database tool directly, without a model turn. action=history returns the last 100 owner-only audit records. action=list returns the enabled tools' descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires crews:write, current editable account and Crew ownership. Uses this Crew's sandbox and connection file limits; never borrows a chat's authority. Shell timeout defaults to 25 seconds. Browser, connected MCP and database operations require unrestricted Crew file consent; credentials remain in Integrations. Database reads use query_database.", crewExecutionDefinitions()); err != nil {
+	tools, err := crewExecutionDefinitions()
+	if err != nil {
 		return err
 	}
-	tools, err := crewIntegrationDefinitions()
+	if err := externalCrewNativeDefinition(add, "crew_execution", "Execute a shared Crew shell, browser, selected MCP or managed database tool directly, without a model turn. action=history returns the last 100 owner-only audit records. action=list returns the enabled tools' descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires crews:write, current editable account and Crew ownership. Uses this Crew's sandbox and connection file limits; never borrows a chat's authority. Shell timeout defaults to 25 seconds. Browser, connected MCP and database operations require unrestricted Crew file consent; credentials remain in Integrations. Database reads use query_database.", tools); err != nil {
+		return err
+	}
+	tools, err = crewIntegrationDefinitions()
 	if err != nil {
 		return err
 	}
@@ -178,7 +182,11 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	}
 	var selected llmtypes.Tool
 	inventory := []map[string]any{}
-	tools := crewExecutionDefinitions()
+	tools, err := crewExecutionDefinitions()
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
 	if group == "crew_integrations" {
 		tools, err = crewIntegrationDefinitions()
 		if err != nil {

@@ -356,11 +356,22 @@ func atomicRootWrite(root *os.Root, name string, data []byte, mode os.FileMode) 
 // Use the same anchored directories, metadata preservation and atomic replace
 // as guarded file edits; typed plans also write protected changelog artifacts.
 func ReplaceManagedFile(root *os.Root, p string, content []byte) error {
+	return replaceManagedFile(root, p, content, MaxFileBytes)
+}
+
+// Native typed commits already validate roles and hold the workspace lock.
+// Their existing preparation ceiling is 8 MiB; external raw text edits remain
+// limited to 2 MiB. This helper has no HTTP endpoint or request-selected limit.
+func ReplaceNativeManagedFile(root *os.Root, p string, content []byte) error {
+	return replaceManagedFile(root, p, content, 8<<20)
+}
+
+func replaceManagedFile(root *os.Root, p string, content []byte, maxBytes int) error {
 	clean, err := CleanRelative(p)
 	if err != nil || clean == "." {
 		return fileError(400, "invalid managed file path")
 	}
-	if len(content) > MaxFileBytes {
+	if len(content) > maxBytes {
 		return fileError(413, "managed file exceeds size limit")
 	}
 	parent, err := OpenDirectory(root, path.Dir(clean), true)

@@ -35,7 +35,7 @@ func writeHeldTeamFile(ctx context.Context, file, content string) (bool, error) 
 		return held, err
 	}
 	defer root.Close()
-	return true, wf.ReplaceManagedFile(root, rel, []byte(content))
+	return true, wf.ReplaceNativeManagedFile(root, rel, []byte(content))
 }
 
 func deleteHeldTeamFile(ctx context.Context, file string) (bool, error) {

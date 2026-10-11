@@ -161,6 +161,20 @@ func TestWorkflowTeamNativeEditsRejectOtherEditorsAndStaleRevisions(t *testing.T
 	if _, e := first.tools["edit_team_source"].exec(context.Background(), map[string]interface{}{"path": "code/first-route/main.py", "content": "print('measure')", "expected_revision": "missing"}); e != nil {
 		t.Fatal(e)
 	}
+	// The local commit preserves native source capacity and file mode, and
+	// still writes the same canonical changelog without re-entering HTTP locks.
+	source := filepath.Join(f.root, teamTestRoot, "code/first-route/main.py")
+	if e := os.Chmod(source, 0755); e != nil {
+		t.Fatal(e)
+	}
+	large := "#" + strings.Repeat("x", 3<<20) + "\nprint('measure')"
+	if _, e := first.tools["edit_team_source"].exec(context.Background(), map[string]interface{}{"path": "code/first-route/main.py", "content": large, "expected_revision": teamRevision("print('measure')")}); e != nil {
+		t.Fatal(e)
+	}
+	info, e := os.Stat(source)
+	if e != nil || info.Mode().Perm() != 0755 || f.file("code/first-route/main.py") != large {
+		t.Fatal("native source replacement lost its content or mode", e)
+	}
 	if !f.hasHistory("edit_team_source", "first") {
 		t.Fatal("source edit lost its authenticated change history")
 	}
