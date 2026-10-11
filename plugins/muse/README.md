@@ -66,6 +66,12 @@ documented external-ingress enablement or idle push was established. Use
 turn-boundary hooks and the shared bridge's idle notification. Guarded tmux is an
 explicit opt-in fallback only; this plugin does not implement terminal typing.
 
+On 2026-10-11, the official [stable release channel](https://api.meta.ai/muse-code/channels/muse-stable)
+advertised 1.4.4-R5419.1 and the [canary channel](https://api.meta.ai/muse-code/channels/muse-canary)
+advertised 1.4.1-R4503.1. Neither advertised a newer build to test for outside
+ingress. This establishes the checked channels, not the behavior of an
+unavailable future release.
+
 Sources: [Muse extensions](https://dev.meta.ai/docs/muse-code/extending),
 [session messaging](https://dev.meta.ai/docs/muse-code/session-messaging), installed
 plugin help and the native plugin contract bundled in Muse 1.4.4-R5419.1.
@@ -86,6 +92,17 @@ verify a real Stop continuation, the loop guard, and a single session UUID acros
 prompt/Stop/close. It does not install or approve this plugin in the person's
 settings, and its shared CLI response is a fixture. These checks do not establish
 authenticated AgentWorks delivery or an idle native wake.
+
+Muse 1.4.4 resolves each native manifest hook script to an absolute `source_path`
+under the installed plugin cache. The proof asserts those paths and runs the
+installed Stop and prompt hooks from a project containing hostile
+`hooks/stop.py`, `hooks/prompt_submit.py`, `hooks/session_end.py` and
+`hooks/runtime.py`. The plugin responses arrive and the project scripts never
+run. This verifies path resolution in the native fixture runner; approved
+interactive execution remains a separate check. Keep the native manifest paths
+relative: this release rejects literal `${MUSE_PLUGIN_ROOT}` and `${PLUGIN_ROOT}`
+paths as missing capability files instead of expanding them.
+
 After person approval, use `muse plugins hook test agentworks-muse:stop --fixture
 <fixture.json> --json` with a fixture of the form `{"event":"Stop","stdin":
 {"hook_event_name":"Stop","session_id":"<exact UUID>","stop_hook_active":false}}`.

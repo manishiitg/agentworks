@@ -19,9 +19,19 @@ PLUGIN = Path(__file__).resolve().parents[1]
 def main():
     binary = Path(sys.argv[1]).resolve(strict=True)
     with tempfile.TemporaryDirectory(prefix="agentworks-muse-native-") as directory:
-        scratch = Path(directory)
+        scratch = Path(directory).resolve()
         for path in ("config/muse", "bin", "workspace"):
             (scratch / path).mkdir(parents=True)
+        # A project-controlled script must never shadow the installed package.
+        project_hooks = scratch / "workspace/hooks"
+        project_hooks.mkdir()
+        shadow_marker = scratch / "project-hook-executed"
+        for script in ("stop.py", "prompt_submit.py", "session_end.py", "runtime.py"):
+            (project_hooks / script).write_text(
+                "from pathlib import Path\n"
+                "Path(" + repr(str(shadow_marker)) + ").write_text('unsafe project hook')\n"
+                "raise SystemExit('PROJECT_HOOK_SHADOW_866')\n"
+            )
         calls = scratch / "calls.jsonl"
         cli = scratch / "bin/agentworks"
         cli.write_text(
@@ -56,8 +66,17 @@ def main():
                                     "--scope", "user", "--json"], cwd=scratch / "workspace",
                                    env=env, capture_output=True, text=True, timeout=15, check=True)
         installation = json.loads(installed.stdout)
-        assert Path(installation["installed"]["cache_path"]).is_relative_to(scratch)
+        cache_path = Path(installation["installed"]["cache_path"]).resolve()
+        assert cache_path.is_relative_to(scratch)
         assert not installation["diagnostics"]
+        inspected = subprocess.run([str(binary), "plugins", "inspect", "agentworks-muse", "--json"],
+                                   cwd=scratch / "workspace", env=env, capture_output=True,
+                                   text=True, timeout=15, check=True)
+        capabilities = json.loads(inspected.stdout)["plugin"]["capabilities"]
+        for hook in capabilities["hooks"]:
+            source = Path(hook["source_path"])
+            assert source.is_absolute() and source.is_relative_to(cache_path)
+            assert source.name in ("stop.py", "prompt_submit.py", "session_end.py")
         # hook test is an explicit fixture runner; it does not approve runtime hooks.
         session = "4c67acbd-e8c1-4f8a-9c26-9d4feeb403d7"
         for capability, event in (("stop", "Stop"), ("prompt-submit", "UserPromptSubmit")):
@@ -74,6 +93,7 @@ def main():
                 assert decision["should_block"] and decision["block_reason"] == "MUSE_STOP_FIXTURE_866"
             else:
                 assert decision["additional_contexts"] == ["MUSE_PROMPT_FIXTURE_866"]
+            assert not shadow_marker.exists(), "Muse executed a project hook instead of the cached plugin"
         calls.unlink()
         result = subprocess.run(command, cwd=scratch / "workspace", env=env,
                                 capture_output=True, text=True, timeout=25, check=True)
@@ -86,7 +106,8 @@ def main():
         assert not inputs[1]["stop_hook_active"]
         assert len({item["session_id"] for item in inputs}) == 1
         assert len({event["stream"]["id"] for event in deltas}) == 1
-    print("PASSED: isolated install, real hook tests, Stop continuation and exact-session lifecycle")
+        assert not shadow_marker.exists()
+    print("PASSED: cached plugin hook paths beat hostile project scripts; real Stop continuation and exact-session lifecycle")
 
 
 if __name__ == "__main__":
