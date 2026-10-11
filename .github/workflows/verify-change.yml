@@ -5,6 +5,8 @@ name: Verify change
 # only when this passes. Tests to run are named in the head commit message:
 #   Verify-Test: ./cmd/server -run '^TestCodeChatAsk'
 #   Verify-Vitest: src/components/PanelSwitcher.test.tsx
+#   Verify-Frontend-Build: true
+#   Verify-Browser: scripts/test-mcp-offers-browser.mjs
 on:
   push:
     branches: ['verify/**']
@@ -120,6 +122,35 @@ jobs:
       - name: Ticket check
         if: hashFiles('scripts/tickets.py') != ''
         run: python3 scripts/tickets.py check
+
+      - name: Frontend production build and bundle budget
+        if: >-
+          steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Frontend-Build: true')
+        working-directory: frontend
+        run: npm run build
+
+      - name: Chromium checks named in the commit
+        if: >-
+          steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Browser:')
+        working-directory: frontend
+        env:
+          BROWSER_CHECK_ARTIFACT_DIR: ${{ runner.temp }}/browser-check-artifacts
+        run: |
+          npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          grep -E '^Verify-Browser:' ../message.txt | sed 's/^Verify-Browser:[[:space:]]*//' > ../browser-tests.txt
+          while IFS= read -r file; do
+            [[ "$file" == scripts/test-*-browser.mjs && -f "$file" ]] || { echo "Invalid browser check: $file"; exit 1; }
+            node "$file"
+          done < ../browser-tests.txt
+
+      - uses: actions/upload-artifact@v6
+        if: >-
+          always() && contains(github.event.head_commit.message, 'Verify-Browser:')
+        with:
+          name: frontend-browser-checks
+          path: ${{ runner.temp }}/browser-check-artifacts
+          if-no-files-found: ignore
 
   # Windows: runs only when the commit names tests for it. Each line is "Verify-Windows-Test: <directory> <go test arguments>",
   # for example: Verify-Windows-Test: workspace ./localfiles -run '^TestWindowsShell'. The CLI is always built for Windows.
