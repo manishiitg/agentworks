@@ -1,0 +1,25 @@
+name: Muse plugin
+
+on:
+  push:
+    branches: [main, 'verify/**']
+    paths: ['plugins/muse/**', '.github/workflows/verify-muse-plugin.yml']
+  pull_request:
+    paths: ['plugins/muse/**', '.github/workflows/verify-muse-plugin.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Executable lifecycle guards
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 plugins/muse/tests/check_hooks.py

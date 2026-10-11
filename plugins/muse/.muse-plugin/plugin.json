@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "agentworks-muse",
+  "displayName": "AgentWorks",
+  "version": "0.1.0",
+  "description": "Receive AgentWorks messages in an explicitly attached Muse session.",
+  "compat": {"source": "native", "manifestDir": ".muse-plugin"},
+  "capabilities": {
+    "skills": [{"id": "messaging", "path": "skills/messaging/SKILL.md", "enabledDefault": true}],
+    "commands": [{"id": "agentworks", "path": "commands/agentworks.md", "enabledDefault": true}],
+    "hooks": [
+      {"id": "prompt-submit", "event": "UserPromptSubmit", "command": ["python3", "hooks/prompt_submit.py"], "timeoutMs": 10000},
+      {"id": "stop", "event": "Stop", "command": ["python3", "hooks/stop.py"], "timeoutMs": 10000},
+      {"id": "session-end", "event": "SessionEnd", "command": ["python3", "hooks/session_end.py"], "timeoutMs": 10000}
+    ],
+    "mcpServers": [{"id": "agentworks", "transport": "stdio", "command": ["agentworks", "mcp", "serve"]}],
+    "reminders": []
+  }
+}
