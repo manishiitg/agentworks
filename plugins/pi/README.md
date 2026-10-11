@@ -87,7 +87,9 @@ content is untrusted and is never interpreted as a person's permission grant.
 - Receipt retries run independently of `next` and Pi's native event hooks.
   Final 409 receipt refusals are journaled per ID; transient errors retry while
   later delivery continues. Admission and processing calls are serialized so
-  processing removes pending admission retries without a later downgrade.
+  processing first confirms any pending admission, then removes its retry without
+  a later downgrade. A timer retries late/transient receipts independently of the
+  bridge wait. A changed attachment stops the receiver; a known unoffered ID is final.
 - `agentworks_processed(message_id)` is explicit agent acknowledgement after
   handling. `agent_end` retries native admission receipts; it never infers that
   a task has been handled and never starts a continuation loop.
@@ -112,8 +114,9 @@ requesting an offer, the extension synchronizes a marker to disk; Pi's custom
 journal can still be buffered in a conversation with no saved messages. A crash
 between bridge release and native journaling therefore leaves a notice on restart
 of the same session/lease. Saved native evidence clears known markers. An unknown
-interrupted request stays flagged: explicitly read the mailbox to recover it;
-there is no automatic reinjection. A session with no saved conversation cannot be
+interrupted request produces a notice: explicitly read the mailbox to recover it;
+the notice retires previous-process markers, without implying admission. Obsolete
+lease markers are cleaned on reattach/detach. There is no automatic reinjection. A session with no saved conversation cannot be
 resumed after a crash, so use an existing saved Pi conversation when attaching.
 
 Optional full AgentWorks tool access can be added by the person through Pi's

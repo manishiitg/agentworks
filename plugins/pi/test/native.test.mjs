@@ -20,8 +20,8 @@ const until = async (fn, label) => {
 async function harness(t, options = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'plat868-'));
   await chmod(root, 0o700);
-  const requests = [], offers = [], waiters = [], failures = new Map(), processed = new Set();
-  let heldNext = false, heldDelivered = false;
+  const requests = [], offers = [], waiters = [], failures = new Map(), processed = new Set(), nativeAdmitted = new Set();
+  let heldNext = false, heldDelivered = false, nextWait = 300;
   let attached = options.attached ?? true, session, lease = 'lease-one';
   const attachment = () => ({ attachment_id: lease, agent_name: 'receiver', provider: 'pi', native_session_id: session });
   const respond = (res, input) => {
@@ -38,17 +38,22 @@ async function harness(t, options = {}) {
     if (input.attachment_id && input.attachment_id !== lease) { res.end('{"attached":false}'); return; }
     if (['next', 'ack', 'reply', 'detach'].includes(input.action)) assert.equal(input.attachment_id, lease, 'active requests must carry the lease');
     if (input.action === 'ack') {
-      if (input.delivery === 'processed') processed.add(input.message_id);
+      if (input.delivery === 'processed') {
+        if (!nativeAdmitted.has(input.message_id)) { res.end(JSON.stringify({ error: 'AgentWorks not_admitted (HTTP 409): PRIVATE_ERROR_TAIL' })); return; }
+        processed.add(input.message_id);
+      }
       else {
         const failure = failures.get(input.message_id);
-        if (failure === 'lost') { res.destroy(); return; }
+        if (failure === 'lost') { nativeAdmitted.add(input.message_id); failures.delete(input.message_id); res.destroy(); return; }
+        if (failure === 'transient') { failures.delete(input.message_id); res.end(JSON.stringify({ error: 'temporary fixture failure' })); return; }
         if (failure || processed.has(input.message_id)) {
-          res.end(JSON.stringify({ error: `AgentWorks ${failure || 'receipt_refused'} (HTTP 409): PRIVATE_ERROR_TAIL` })); return;
+          res.end(JSON.stringify({ error: failure === 'not_offered' ? 'message was not offered to this exact session' : `AgentWorks ${failure || 'receipt_refused'} (HTTP 409): PRIVATE_ERROR_TAIL` })); return;
         }
+        nativeAdmitted.add(input.message_id);
       }
     }
     if (input.action === 'next' && !offers.length) {
-      const timer = setTimeout(() => respond(res, input), 300);
+      const timer = setTimeout(() => respond(res, input), nextWait);
       const wake = () => { clearTimeout(timer); if (!res.writableEnded) respond(res, input); };
       waiters.push(wake); res.on('close', () => { const i = waiters.indexOf(wake); if (i >= 0) waiters.splice(i, 1); });
     } else if (input.action === 'detach') {
@@ -113,6 +118,7 @@ async function harness(t, options = {}) {
     restart: async () => { await kill(); events.length = 0; heldNext = false; launch(); await command('get_state'); },
     holdNext: () => { heldNext = true; },
     isHeld: () => heldDelivered,
+    waitLong: () => { nextWait = 10000; },
     reattach: () => { lease = 'lease-two'; for (const wake of [...waiters]) wake(); },
     revoke: () => { attached = false; for (const wake of [...waiters]) wake(); },
     stderr };
@@ -196,9 +202,9 @@ const sessionEntries = async h => (await readFile(path.join(h.root, 'session.jso
 test('real Pi: refused/lost receipts do not block delivery or downgrade processed', async t => {
   const h = await harness(t);
   h.failures.set('refused', 'receipt_refused');
-  h.failures.set('changed', 'attachment_changed');
+  h.failures.set('unoffered', 'not_offered');
   h.failures.set('unadmitted', 'not_admitted');
-  h.offer(['refused', 'changed', 'unadmitted', 'later']);
+  h.offer(['refused', 'unoffered', 'unadmitted', 'later']);
   await until(() => admitted(h.requests, 'later'), 'later receipt survives final per-ID refusals');
   await until(() => notice(h.events, 'refused a delivery receipt'), 'person sees refusal');
   h.failures.set('lost', 'lost');
@@ -212,10 +218,29 @@ test('real Pi: refused/lost receipts do not block delivery or downgrade processe
   await until(() => h.events.filter(e => e.type === 'agent_settled').length >= 4, 'processing settled');
   await new Promise(resolve => setTimeout(resolve, 3500));
   assert.equal(h.requests.slice(processedIndex + 1).some(r => r.message_id === 'lost' && r.delivery === 'admitted'), false);
-  for (const id of ['refused', 'changed', 'unadmitted']) {
+  for (const id of ['refused', 'unoffered', 'unadmitted']) {
     assert.equal(h.requests.filter(r => r.message_id === id && r.delivery === 'admitted').length, 1, `${id} final refusal is not retried`);
   }
+  h.failures.set('transient', 'transient');
+  h.offer('transient');
+  await until(() => admitted(h.requests, 'transient'), 'first admission temporarily fails');
+  await h.command('prompt', { message: 'PROCESSED:transient' });
+  await until(() => h.processed.has('transient'), 'processing forces admission before scheduled retry');
+  const transit = h.requests.filter(r => r.message_id === 'transient' && r.action === 'ack');
+  assert.deepEqual(transit.map(r => r.delivery), ['admitted', 'admitted', 'processed']);
   assert.equal(JSON.stringify(h.events).includes('PRIVATE_ERROR_TAIL'), false);
+  h.waitLong();
+  h.failures.set('timer', 'transient'); h.offer('timer');
+  await until(() => admitted(h.requests, 'timer'), 'timer message first attempt');
+  const retryStart = Date.now();
+  await until(() => h.requests.filter(r => r.message_id === 'timer' && r.delivery === 'admitted').length === 2, 'timer retries while next is blocked');
+  assert.ok(Date.now() - retryStart < 5000, 'retry does not wait for the ten-second next response');
+  const changed = await harness(t);
+  changed.failures.set('changed', 'attachment_changed'); changed.offer('changed');
+  await until(() => notice(changed.events, 'attachment changed'), 'lease-wide refusal stops receiver');
+  const count = changed.requests.length;
+  await new Promise(resolve => setTimeout(resolve, 700));
+  assert.equal(changed.requests.length, count, 'lease-wide refusal stops all requests');
 });
 
 test('real Pi: multiple busy batches, exact frame admission and old-lease fencing', async t => {
@@ -263,6 +288,8 @@ test('real Pi: crash before offer response warns; saved native evidence restores
   await h.restart();
   await until(() => notice(h.events, 'unconfirmed delivery'), 'crash recovery notice');
   assert.equal(userMessage(h.events, 'interrupted'), undefined, 'ambiguous offer is never reinjected');
+  assert.equal((await readdir(path.join(h.root, 'pi-recovery'))).length, 1, 'reported previous-process marker is retired');
+  assert.ok((await readdir(path.join(h.root, 'pi-recovery'))).every(name => !markers.includes(name)), 'notice acknowledges the stale marker');
   h.offer('recorded');
   await until(() => admitted(h.requests, 'recorded'), 'real native admission before simulated journal loss');
   await until(() => h.events.some(e => e.type === 'agent_settled'), 'native transcript persisted');

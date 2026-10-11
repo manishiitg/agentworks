@@ -41,6 +41,7 @@ export class Delivery {
   stop() {
     this.generation++;
     this.controller?.abort();
+    clearTimeout(this.receiptTimer);
     this.pending.clear();
     this.attachment = undefined;
   }
@@ -91,6 +92,8 @@ export class Delivery {
       if (!this.current(generation)) return;
       this.recovery = recovery;
       if (uncertain || this.pending.size) this.warnUnconfirmed();
+      await recovery.acknowledge();
+      if (!this.current(generation)) return;
       this.controller = new AbortController();
       void this.listen(generation, recovery);
     } catch {
@@ -124,7 +127,7 @@ export class Delivery {
       try {
         // Receipt failure never gates subsequent offers.
         void this.flushReceipts(generation);
-        await recovery.save(); // Durable before the bridge can mark any offer sent.
+        await recovery.save([...this.pending.keys()]); // Durable before bridge release.
         if (!this.current(generation)) return;
         const result = await this.bridge.call({ action: 'next', session_id: this.session,
           attachment_id: this.attachment.attachment_id, transport }, { signal, timeout: 28000 });
@@ -157,7 +160,6 @@ export class Delivery {
         if (batch.length) {
           this.pi.sendUserMessage(batch.join('\n\n'), { deliverAs: 'followUp', expandPromptTemplates: false });
         }
-        if (!this.pending.size && !invalid) await recovery.clear();
         backoff = 250;
         this.disconnected = false;
       } catch {
@@ -203,6 +205,8 @@ export class Delivery {
   flushReceipts(generation) {
     if (!this.current(generation)) return Promise.resolve();
     if (this.flushing) return this.flushing;
+    if (!this.receipts.size) return Promise.resolve();
+    clearTimeout(this.receiptTimer);
     const work = this.serialize(generation, async () => {
       for (const id of [...this.receipts]) {
         if (!this.current(generation)) return;
@@ -217,6 +221,10 @@ export class Delivery {
           this.receiptRetry.delete(id);
         } catch (error) {
           if (!this.current(generation)) return;
+          if (error.code === 'attachment_changed') {
+            this.ctx.ui.notify('AgentWorks attachment changed; delivery stopped. Reconnect or explicitly attach the current conversation.', 'warning');
+            this.stop(); return;
+          }
           if (error.terminalReceipt) {
             this.receipts.delete(id);
             this.refused.add(id);
@@ -231,7 +239,13 @@ export class Delivery {
       }
     });
     this.flushing = work.catch(() => {}).finally(() => {
-      if (this.current(generation)) this.flushing = undefined;
+      if (this.current(generation)) {
+        this.flushing = undefined;
+        if (this.receipts.size) {
+          const retry = Math.min(...[...this.receipts].map(id => this.receiptRetry.get(id) || 0));
+          this.receiptTimer = setTimeout(() => { void this.flushReceipts(generation); }, Math.max(0, retry - Date.now()));
+        }
+      }
     });
     return this.flushing;
   }
@@ -245,16 +259,38 @@ export class Delivery {
     if (!this.attachment || !this.accepted.has(id)) throw new Error('Message was not received in this attached Pi session');
     const generation = this.generation;
     return this.serialize(generation, async () => {
+      // A transient admission failure may still be waiting for its timer. The
+      // server requires admission before processing: confirm it first in this
+      // same serialized task, even when its scheduled retry is not yet due.
+      if (action === 'ack' && extra.delivery === 'processed' && this.receipts.has(id)) {
+        const admission = await this.bridge.call({ action: 'ack', session_id: this.session,
+          attachment_id: this.attachment.attachment_id, message_id: id, delivery: 'admitted' }, { signal: this.controller.signal });
+        if (!this.current(generation)) throw new Error('AgentWorks attachment is no longer active');
+        if (!admission.attached || admission.attachment?.attachment_id !== this.attachment.attachment_id) {
+          this.stop(); throw new Error('AgentWorks attachment is no longer active');
+        }
+        this.journal(acknowledgedEntry, id);
+        this.receipts.delete(id);
+        this.receiptRetry.delete(id);
+      }
       const result = await this.bridge.call({ action, session_id: this.session,
         attachment_id: this.attachment.attachment_id, message_id: id, ...extra }, { signal: this.controller.signal });
-      if (!this.current(generation) || !result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id)
-        throw new Error('AgentWorks attachment is no longer active');
+      if (!this.current(generation)) throw new Error('AgentWorks attachment is no longer active');
+      if (!result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id) {
+        this.stop(); throw new Error('AgentWorks attachment is no longer active');
+      }
       if (action === 'ack' && extra.delivery === 'processed') {
         this.processed.add(id);
         this.receipts.delete(id);
         this.journal(processedEntry, id);
       }
       return result.result;
+    }).catch(error => {
+      if (this.current(generation) && error.code === 'attachment_changed') {
+        this.ctx.ui.notify('AgentWorks attachment changed; delivery stopped. Reconnect or explicitly attach the current conversation.', 'warning');
+        this.stop();
+      }
+      throw error;
     });
   }
 }

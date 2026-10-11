@@ -11,13 +11,14 @@ export default function (pi: ExtensionAPI) {
   pi.on('session_start', async (_event, ctx) => { await delivery.start(ctx); });
   pi.on('session_shutdown', async (event, ctx) => {
     const attached = delivery.attachment;
-    const session = delivery.session;
+    const session = delivery.session, recovery = delivery.recovery;
     delivery.stop();
     // Reload preserves the exact lease for the replacement extension runtime.
     // Quit/new/resume/fork fences the old receiver rather than following it.
     if (attached && event.reason !== 'reload') {
       try { await bridge.call({ action: 'detach', session_id: session,
-        attachment_id: attached.attachment_id }); }
+        attachment_id: attached.attachment_id });
+        await recovery?.retire(); }
       catch { ctx.ui.notify('AgentWorks could not detach. Revoke the attachment from Connect.', 'warning'); }
     }
   });
@@ -59,8 +60,10 @@ export default function (pi: ExtensionAPI) {
           if (!await ctx.ui.confirm('Detach AgentWorks', 'Stop delivery to this exact Pi conversation?')) return;
           if (delivery.attachment?.attachment_id !== attached.attachment_id || ctx.sessionManager.getSessionId() !== session)
             throw new Error('Pi conversation or attachment changed; detach again in the current conversation');
+          const recovery = delivery.recovery;
           delivery.stop();
           await bridge.call({ action: 'detach', session_id: session, attachment_id: attached.attachment_id });
+          await recovery?.retire();
           ctx.ui.notify('AgentWorks detached.', 'info');
           return;
         }
@@ -79,11 +82,24 @@ export default function (pi: ExtensionAPI) {
         if (!await ctx.ui.confirm('Attach AgentWorks',
           `Name: ${name}\nPurpose: ${purpose}\nExact Pi session: ${session}\nSenders: ${allowed.join(', ') || '(none)'}\nThis explicitly shares incoming messages with this conversation.`)) return;
         if (ctx.sessionManager.getSessionId() !== session) throw new Error('Pi conversation changed; attach again in the current conversation');
+        const previous = delivery.attachment, previousRecovery = delivery.recovery;
         delivery.stop();
-        const result = await bridge.call({ action: 'attach', session_id: session,
-          agent_name: name, purpose, allowed_senders: allowed, config_path: config });
+        let result;
+        try {
+          result = await bridge.call({ action: 'attach', session_id: session,
+            agent_name: name, purpose, allowed_senders: allowed, config_path: config });
+        } catch (error) {
+          if (previous) {
+            await delivery.start(ctx, previous.attachment_id);
+            ctx.ui.notify(delivery.attachment?.attachment_id === previous.attachment_id ?
+              'AgentWorks attach failed; delivery to the previous attachment was restored.' :
+              'AgentWorks attach failed; previous delivery is paused. Reconnect or revoke from Connect.', 'warning');
+          }
+          throw error;
+        }
         if (!result.attached || result.attachment?.provider !== 'pi' || result.attachment?.native_session_id !== session)
           throw new Error('AgentWorks did not attach this session');
+        if (previous && previous.attachment_id !== result.attachment.attachment_id) await previousRecovery?.retire();
         await delivery.start(ctx, result.attachment.attachment_id);
         if (delivery.attachment?.attachment_id !== result.attachment.attachment_id) throw new Error('AgentWorks delivery could not start; read the mailbox explicitly and reconnect');
         ctx.ui.notify('AgentWorks attached. Native messages use Pi’s follow-up queue.', 'info');
