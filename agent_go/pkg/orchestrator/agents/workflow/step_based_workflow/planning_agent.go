@@ -824,7 +824,7 @@ func (m *AgentPlanStep) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON handles the interface-valued sub_agent_step fields in optional
-// delegation routes. A agent with predefined_routes is still a
+// delegation routes. An agent with predefined_routes is still a
 // message_sequence plan step; the routes only add bounded, agent-decided
 // delegation capabilities to its conversation.
 func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
@@ -1065,7 +1065,6 @@ type PartialPlanStep struct {
 	// Todo task step fields
 	OrchestratorStep map[string]interface{}   `json:"todo_task_step,omitempty"`    // Optional: Updated todo task step - will be converted to PlanStepInterface
 	PredefinedRoutes []PlanOrchestrationRoute `json:"predefined_routes,omitempty"` // Optional: Updated predefined routes for todo task steps
-	Messages         []AgentItem              `json:"messages,omitempty"`          // Optional: Updated scripted agent for todo task steps
 	// Routing fields
 	NextStepID string `json:"next_step_id,omitempty"` // Optional: Updated next_step_id (for routing steps)
 	// Routing step fields
@@ -1982,10 +1981,6 @@ func getAddHumanInputStepSchema() string {
 		"required": ["id", "title", "question", "next_step_id", "insert_after_step_id", "reason"]
 	}`
 }
-
-// getAddOrchestratorStepSchema returns the JSON schema for add_todo_task_step tool
-
-// getUpdateOrchestratorStepSchema returns the JSON schema for update_todo_task_step tool
 
 // getAddAgentRouteSchema returns the JSON schema for add_todo_task_route tool
 func getAddAgentRouteSchema() string {
@@ -3540,7 +3535,7 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 		})
 	}
 	if partialUpdate.Items != nil {
-		changedFields = append(changedFields, "messages")
+		changedFields = append(changedFields, "items")
 		oldMessagesJSON := "[]"
 		if orchestratorStep, ok := existingStep.(*AgentPlanStep); ok {
 			oldBytes, _ := json.Marshal(orchestratorStep.Items)
@@ -3549,7 +3544,7 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 		newBytes, _ := json.Marshal(partialUpdate.Items)
 		*fieldChanges = append(*fieldChanges, PlanFieldChange{
 			StepID:   partialUpdate.ExistingStepID,
-			Field:    "messages",
+			Field:    "items",
 			OldValue: oldMessagesJSON,
 			NewValue: string(newBytes),
 		})
@@ -3824,7 +3819,7 @@ func planStepUpdateRequiresDependentArtifactReview(fieldChanges []PlanFieldChang
 // set either.
 var planDriftMaterialFieldNames = map[string]bool{
 	"type": true, "context_dependencies": true, "context_output": true,
-	"items": true, "messages": true, "next_step_id": true,
+	"items": true, "next_step_id": true,
 	"validation_schema": true, "success_criteria": true, "script_parameters": true,
 	"routing_question": true, "branch_question": true, "routes": true,
 	"default_route_id": true, "route_source_file": true,
@@ -3893,7 +3888,7 @@ func planStepUpdateInvalidatesDescriptionReview(fieldChanges []PlanFieldChange) 
 			field == "context_dependencies" ||
 			field == "context_output" ||
 			field == "items" ||
-			field == "messages" ||
+
 			field == "next_step_id" ||
 			field == "validation_schema" ||
 			field == "script_parameters" ||
@@ -4277,7 +4272,7 @@ func createUpdateRegularStepExecutor(workspacePath string, logger loggerv2.Logge
 }
 
 // prepareScriptedStepUpdateTarget is prepareAgentUpdateTarget's
-// mirror (PLAT-280). A agent step whose step_config already
+// mirror (PLAT-280). An agent step whose step_config already
 // declares scripted mode has no in-place way to become a true `regular` plan
 // step, so update_agent_step was its only editable path even
 // though its checked-in learnings/{step-id}/main.py needs the real scripted
@@ -4302,7 +4297,7 @@ func prepareScriptedStepUpdateTarget(plan *PlanningResponse, stepConfigs []StepC
 		}
 		return false, nil
 	case *AgentPlanStep:
-		return false, fmt.Errorf("step %q is a agent step, not a scripted step; use update_agent_step, or change_step_type(step_id=%q, target_type=\"scripted\") first if it should become a scripted step", stepID, stepID)
+		return false, fmt.Errorf("step %q is an agent step, not a scripted step; use update_agent_step, or change_step_type(step_id=%q, target_type=\"scripted\") first if it should become a scripted step", stepID, stepID)
 	default:
 		return false, wrongStepTypeToolError(stepID, existingStep.StepType(), "update_scripted_step")
 	}
@@ -4850,8 +4845,6 @@ func createUpdateHumanInputStepExecutor(workspacePath string, logger loggerv2.Lo
 	}
 }
 
-// createUpdateOrchestratorStepExecutor creates an executor function for update_todo_task_step tool
-
 // createAddRoutingStepExecutor creates an executor function for add_routing_step tool
 func createAddRoutingStepExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, moveFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
 	return createSingleStepAdder(workspacePath, logger, readFile, writeFile, moveFile, "routing")
@@ -5352,9 +5345,6 @@ func createAddHumanInputStepExecutor(workspacePath string, logger loggerv2.Logge
 	return createSingleStepAdder(workspacePath, logger, readFile, writeFile, moveFile, "human_input")
 }
 
-// createAddOrchestratorStepExecutor creates an executor function for add_todo_task_step tool
-
-// validateOrchestratorStepFieldsTyped validates that a AgentPlanStep has all required fields
 // Returns an error message suitable for returning as a tool response if validation fails
 
 func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrationRoute, allowLegacyCode bool) error {
@@ -5899,20 +5889,6 @@ func registerNativePlanModificationTools(
 		return fmt.Errorf("failed to register migrate_agent_code_items tool: %w", err)
 	}
 
-	migrateOrchestratorTypeParams, err := parseSchemaForToolParameters(`{"type":"object","properties":{}}`)
-	if err != nil {
-		return fmt.Errorf("failed to parse migrate_orchestrator_step_type schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"migrate_orchestrator_step_type",
-		"Product-managed workflow-version migration for contract v1.0.35. Rewrites every legacy `\"type\": \"todo_task\"` step discriminator in planning/plan.json to `orchestrator`, validates the plan, and records the change. Behavior is unchanged: the runtime reads both names. Idempotent. Call only during the v1.0.35 workflow preflight.",
-		migrateOrchestratorTypeParams,
-		createMigrateOrchestratorStepTypeExecutor(workspacePath, logger, readFile, rawWriteFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register migrate_orchestrator_step_type tool: %w", err)
-	}
-
 	migrateDeclaredModeParams, err := parseSchemaForToolParameters(`{"type":"object","properties":{}}`)
 	if err != nil {
 		return fmt.Errorf("failed to parse migrate_declared_execution_mode schema: %w", err)
@@ -5950,7 +5926,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_scripted_step",
-		"Update an existing deterministic scripted step. The internal plan type remains regular, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be message_sequence. A agent step is rejected: convert it first with change_step_type(target_type=\"scripted\"), or edit it as a sequence with update_agent_step. A regular step is scripted by its plan type alone (PLAT-287); a regular step still carrying the retired declared_execution_mode=\"agentic\" runs as a sequence until the v1.0.38 migration converts it, and is likewise rejected here. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Pulse or an explicit user request.",
+		"Update an existing deterministic scripted step. The internal plan type remains regular, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be message_sequence. An agent step is rejected: convert it first with change_step_type(target_type=\"scripted\"), or edit it as a sequence with update_agent_step. A regular step is scripted by its plan type alone (PLAT-287); a regular step still carrying the retired declared_execution_mode=\"agentic\" runs as a sequence until the v1.0.38 migration converts it, and is likewise rejected here. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Pulse or an explicit user request.",
 		regularUpdateParams,
 		createUpdateRegularStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -6210,7 +6186,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_agent_step",
-		"Update a agent step in the plan. This also accepts a persisted legacy non-scripted regular step and atomically upgrades it to message_sequence, matching the compatibility runtime agents already see; declared scripted regular steps still require update_scripted_step. Provide existing_step_id and only the fields to change. Replacing items changes the configured queue; an existing runtime session will still resume unless explicitly restarted by execution controls. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Pulse or an explicit user request.",
+		"Update an agent step in the plan. This also accepts a persisted legacy non-scripted regular step and atomically upgrades it to message_sequence, matching the compatibility runtime agents already see; declared scripted regular steps still require update_scripted_step. Provide existing_step_id and only the fields to change. Replacing items changes the configured queue; an existing runtime session will still resume unless explicitly restarted by execution controls. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Pulse or an explicit user request.",
 		agentSequenceUpdateParams,
 		createUpdateAgentStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",

@@ -16,7 +16,7 @@ import (
 )
 
 // Real end-to-end run of preview_report against the local workspace service
-// (headless Chromium via agent-browser) and a workflow that has a report.
+// (headless Chromium vian agent-browser) and a workflow that has a report.
 //
 //	REPORT_PREVIEW_E2E_WORKSPACE=Workflow/social-media \
 //	WORKSPACE_API_URL=http://127.0.0.1:18744 AUTH_SECRET=... \

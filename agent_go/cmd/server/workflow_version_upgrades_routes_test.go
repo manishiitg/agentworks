@@ -7,7 +7,7 @@ import (
 
 func TestRouteSummaryUpgradeFromPreviousContract(t *testing.T) {
 	plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: "1.0.39"})
-	if len(plan) != 5 || plan[0].to != "1.0.40" || plan[0].label != "upgrade-route-summaries" || plan[2].to != workflowContractNestedAgentArtifactsVersion || plan[3].to != workflowContractManagedDBScriptsVersion || plan[4].to != workflowContractStepDescriptionLayoutVersion {
+	if len(plan) != 6 || plan[0].to != "1.0.40" || plan[0].label != "upgrade-route-summaries" || plan[2].to != workflowContractNestedAgentArtifactsVersion || plan[3].to != workflowContractManagedDBScriptsVersion || plan[4].to != workflowContractStepDescriptionLayoutVersion {
 		t.Fatalf("route upgrade path: %+v", plan)
 	}
 	for _, want := range []string{"summary_routes", "routing_step_id", "route_summaries_json", "validate_report_html", "Do not execute the workflow or send a notification", "Do not stamp on a failed validation"} {

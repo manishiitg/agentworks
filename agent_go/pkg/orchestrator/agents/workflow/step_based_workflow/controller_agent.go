@@ -194,7 +194,7 @@ func shouldNormalizeRegularStepToAgent(step PlanStepInterface) bool {
 }
 
 // normalizeAgentStepToRegular is normalizeRegularStepToAgent's
-// mirror: a agent step whose step_config already declares scripted
+// mirror: an agent step whose step_config already declares scripted
 // mode (PLAT-280 — a checked-in learnings/{step-id}/main.py that needs the real
 // scripted executor's $DB_PATH/STEP_OUTPUT_DIR injection, which the
 // message_sequence runtime does not reliably provide) has no in-place way to
@@ -373,7 +373,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 
 	sequenceStep, ok := step.(*AgentPlanStep)
 	if !ok {
-		return "", nil, fmt.Errorf("step %q is not a agent step", step.GetID())
+		return "", nil, fmt.Errorf("step %q is not an agent step", step.GetID())
 	}
 	if stepPath == "" {
 		stepPath = fmt.Sprintf("step-%d", stepIndex+1)
@@ -1106,7 +1106,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	session.ExecutionTurnCount++
 	turnNumber := session.ExecutionTurnCount
 	// PLAT-167: tag this item's cost-ledger entries with its own identity, so
-	// Cost Analysis can break a agent step's spend out per item
+	// Cost Analysis can break an agent step's spend out per item
 	// instead of merging every item into one combined row. Reuses PLAT-166's
 	// generic phase mechanism verbatim (Entry.Phase / ExecutionAggregate.ByPhase
 	// already accept any string) — no new ledger plumbing. runtime.Agent is
@@ -1765,7 +1765,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) cleanupAgentRuntime(ctx context.Conte
 	return nil
 }
 
-// msgSeqRouteKey identifies a agent route's in-memory conversation within a run.
+// msgSeqRouteKey identifies an agent route's in-memory conversation within a run.
 func (hcpo *StepBasedWorkflowOrchestrator) msgSeqRouteKey(stepPath, stepID string) string {
 	if routeRoot := agentSequenceRouteRoot(stepPath); routeRoot != "" {
 		return routeRoot

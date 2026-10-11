@@ -21,7 +21,7 @@ import (
 //
 // Since PLAT-287 the plan type alone decides how a step runs: a regular step
 // IS a scripted step (its work is the checked-in learnings/<step-id>/main.py)
-// and a agent step is conversational. There is no separate mode
+// and an agent step is conversational. There is no separate mode
 // to keep in step; this tool only rewrites the plan and, for the scripted
 // direction, makes sure the step's config has code execution on.
 const (
@@ -273,7 +273,7 @@ func createChangeStepTypeExecutor(
 			}
 			b.WriteString(" Keep validation_schema strict, and move any judgment or verification that lived in the old turns into a message_sequence that consumes this step's output rather than into the script.")
 		default:
-			fmt.Fprintf(&b, "Converted step %q to a agent with one execute-and-verify item.", stepID)
+			fmt.Fprintf(&b, "Converted step %q to an agent with one execute-and-verify item.", stepID)
 			b.WriteString(" Refine the turns with update_agent_step.")
 			if scriptExists {
 				fmt.Fprintf(&b, " %s/main.py still exists; a script nothing runs is artifact debt -- delete it, or keep it only if the sequence is meant to invoke it.", scriptDir)

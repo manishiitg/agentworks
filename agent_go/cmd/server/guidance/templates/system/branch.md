@@ -146,7 +146,7 @@ each option a `next_step_id` pointing to the shared downstream step, or
   self-contained sub-workflow fork; use it when the alternatives lead to
   substantially different continuations of the plan. Branch is the small
   in-flow decision.
-- **Branch vs. agent with specialists**: a agent agent with routes may
+- **Branch vs. agent with specialists**: an agent with routes may
   call zero, one, or several specialists adaptively. Branch runs exactly one
   fixed alternative.
 - **Branch vs. plain agent**: a plain sequence is one ordered

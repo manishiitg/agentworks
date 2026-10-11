@@ -46,7 +46,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/agentwrapper/llm_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/base_orchestrator_events.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_message_sequence.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_routing.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/events/data.go`
 - `mcp-agent-builder-go/agent_go/internal/events/event_identity.go`
@@ -77,7 +77,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/sub_agent_async.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/planning_exports.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_orchestrator.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_delegation.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/timing_persistence.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/interactive_workshop_manager.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/base_orchestrator_agent.go`
@@ -679,7 +679,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/cmd/server/services/bot_event_filter.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/base_orchestrator_events.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_message_sequence.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_routing.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/events/data.go`
 Consumers:
@@ -759,7 +759,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/cmd/schema-gen/main.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_progress.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_message_sequence.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_scripted.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/workflow_events.go`
 Consumers:
@@ -956,7 +956,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/base_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/planning_exports.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_orchestrator.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_delegation.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_factory.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/prompt_sections.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/execution_only_agent.go`
@@ -1204,7 +1204,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/agentwrapper/llm_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/interfaces.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/base_agent.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_orchestrator.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_delegation.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_factory.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/planning_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/step_config_clear.go`
@@ -1285,10 +1285,10 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/agentwrapper/llm_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/context_aware_bridge.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_orchestrator.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent_delegation.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/execution_only_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/kb_update_agent.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_message_sequence.go`
+- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/interactive_workshop_manager.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/base_orchestrator_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/events/background_transcript.go`

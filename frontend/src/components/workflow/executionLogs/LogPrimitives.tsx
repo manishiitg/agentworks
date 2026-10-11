@@ -134,7 +134,7 @@ export const PulseReviewsPanel = ({ reviews }: { reviews: PulseReviewRunLog[] })
                     <div className="space-y-3 border-t border-border p-3">
                       {agent.parent_execution_id && (
                         <div className="text-[11px] text-muted-foreground">
-                          Parent orchestrator: <span className="font-mono text-foreground/80">{agent.parent_execution_id}</span>
+                          Parent agent: <span className="font-mono text-foreground/80">{agent.parent_execution_id}</span>
                         </div>
                       )}
                       {agent.transcript_status && agent.transcript_status !== 'ok' && (

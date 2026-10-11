@@ -63,7 +63,7 @@ type ReferenceMapReport struct {
 	Note           string        `json:"note"`
 }
 
-const referenceMapNote = "Deterministic reference map (PLAT-561). break = a reference that no longer resolves: a context dependency no step produces, or one a step writes but no context_output lists (it resolves to the consumer's own folder), a step folder or retired step id that no longer exists, a workflow file that is missing, an eval route that is gone. warn = the same unlisted dependency on a agent step (it gets only the bare name), or a file read from a step folder that the step does not declare. info = an output nothing reads, or a config for a step not in the plan. A report, never a gate: fix the dependents in the same change, or say why the reference is right."
+const referenceMapNote = "Deterministic reference map (PLAT-561). break = a reference that no longer resolves: a context dependency no step produces, or one a step writes but no context_output lists (it resolves to the consumer's own folder), a step folder or retired step id that no longer exists, a workflow file that is missing, an eval route that is gone. warn = the same unlisted dependency on an agent step (it gets only the bare name), or a file read from a step folder that the step does not declare. info = an output nothing reads, or a config for a step not in the plan. A report, never a gate: fix the dependents in the same change, or say why the reference is right."
 
 type refStep struct {
 	id       string
@@ -457,7 +457,7 @@ func (m *referenceMap) checkDependencies() {
 				// Dependencies resolve only against a producer's context_output.
 				// A scripted/agent step then gets a path in its own folder
 				// (staging reports "input file not found"; main.py gets a missing
-				// argv path); a agent step gets only the bare name.
+				// argv path); an agent step gets only the bare name.
 				severity, effect := refSeverityBreak, "it resolves to this step's own folder, where the file is not"
 				if s.typ == string(StepTypeAgent) {
 					severity, effect = refSeverityWarn, "the agent gets only the bare name and must find the file itself"

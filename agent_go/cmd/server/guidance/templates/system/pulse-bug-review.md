@@ -175,7 +175,7 @@ Bug Review is responsible for semantic execution defects, not only explicit
 runtime errors. When compact evidence makes a step suspicious, inspect that
 step's latest applicable observable trace:
 
-- regular and agent agent steps (including legacy agent records):
+- regular and agent steps (including legacy agent records):
   `runs/<run_folder>/logs/<step>/execution/execution-attempt-*-iteration-*-conversation.json`
   (`conversation_history`, `tool_calls`, and `llm_calls`)
 - agent steps:

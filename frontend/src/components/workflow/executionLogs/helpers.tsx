@@ -598,7 +598,7 @@ export const getStepTypeLabel = (type: string): string => {
       return 'Branch'
     case 'orchestrator':
     case 'todo_task':
-      return 'Orchestrator'
+      return 'Agent'
     case 'human_input':
       return 'Human Input'
     case 'sub-agent':
@@ -619,7 +619,7 @@ export const getStepTypeDescription = (type: string): string => {
     case 'todo_task':
       return 'Orchestrator: decides which delegated tasks to run and tracks their outcomes.'
     case 'sub-agent':
-      return 'Sub-agent: a child task dispatched by an orchestrator.'
+      return 'Sub-agent: a child task dispatched by an agent.'
     case 'agent':
       return 'Agent: completes an ordered series of instructions and conversation turns.'
     case 'routing':

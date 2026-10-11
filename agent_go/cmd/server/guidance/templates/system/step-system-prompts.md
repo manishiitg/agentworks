@@ -5,7 +5,7 @@ builder-reference skill. Read it as reference material when authoring a step;
 its execution instructions are addressed to the step agent, not the builder.
 Do not copy these standing platform rules into descriptions or learnings.
 
-Named sections: `execution` supplies every agent agent (including
+Named sections: `execution` supplies every agent (including
 agentic, delegating, scripted-authoring and evaluation branches);
 `agent-delegation` is conditionally appended when that agent owns specialist
 routes; `managed-db-read` and `managed-db-write` supply the shared
@@ -172,7 +172,7 @@ End your response with exactly one of:
 
 {{define "agent-delegation"}}## Specialist Delegation
 
-This agent agent owns the task and its final result. It may do the
+This agent owns the task and its final result. It may do the
 work directly with its normal tools, call a configured specialist, or combine
 both. Delegate bounded specialist work; retain responsibility for strategy,
 evidence reconciliation, validation, and the final answer.

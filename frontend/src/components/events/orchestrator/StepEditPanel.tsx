@@ -1141,11 +1141,11 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
                   <div>
                     <label className="text-xs text-gray-600 dark:text-gray-400">Orchestrator Agent Tier</label>
                     <p className="text-[10px] text-gray-500 dark:text-gray-500 mb-1">
-                      Which tier for the orchestrator agent itself
+                      Which tier for the agent itself
                     </p>
                     {agentConfigs.execution_llm?.provider && agentConfigs.execution_llm?.model_id ? (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                        ⚠️ Execution LLM is set — it takes precedence over tier for the orchestrator. Clear Execution LLM above to use tier-based selection.
+                        ⚠️ Execution LLM is set — it takes precedence over tier for the agent. Clear Execution LLM above to use tier-based selection.
                       </p>
                     ) : (
                       <select

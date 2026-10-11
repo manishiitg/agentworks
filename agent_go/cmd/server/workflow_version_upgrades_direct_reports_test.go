@@ -7,7 +7,7 @@ import (
 
 func TestWorkflowVersionUpgradePlanFrom122MigratesReportsThenScheduledRoutes(t *testing.T) {
 	plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: "1.0.22"})
-	if len(plan) != 20 {
+	if len(plan) != 21 {
 		t.Fatalf("plan from 1.0.22 = %d steps, want retained migrations through explicit schedule Pulse: %+v", len(plan), plan)
 	}
 	if plan[0].label != "upgrade-direct-html-reports" || plan[0].to != "1.0.23" {
@@ -37,7 +37,7 @@ func TestWorkflowVersionUpgradePlanFrom122MigratesReportsThenScheduledRoutes(t *
 	if plan[17].label != "upgrade-nested-agent-artifacts" || plan[17].to != workflowContractNestedAgentArtifactsVersion {
 		t.Fatalf("migration 17 = %+v, want nested Agent artifacts", plan[17])
 	}
-	if last := plan[len(plan)-1]; len(plan) != 20 || last.label != "upgrade-step-description-layout" || last.to != workflowContractStepDescriptionLayoutVersion {
+	if last := plan[len(plan)-1]; len(plan) != 21 || last.label != "upgrade-agent-step" || last.to != workflowContractUnifiedAgentVersion {
 		t.Fatalf("final migration = %+v (of %d), want step description layout", last, len(plan))
 	}
 }

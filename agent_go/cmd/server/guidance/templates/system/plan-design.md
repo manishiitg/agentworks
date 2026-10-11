@@ -33,9 +33,7 @@ Combine actions into one step when they share one objective and output contract,
 
 **`agent` is the agent step.** Its authored items define the durable
 conversation phases. Optional `predefined_routes` expose bounded specialists;
-the same sequence agent interprets evidence, decides what to delegate next,
-changes direction, and judges whether the goal has been met. The legacy
-`orchestrator` type is the compatibility shape for a sequence with routes.
+the same agent interprets evidence, decides what to delegate next, changes direction, and judges whether the goal has been met.
 
 The sequence's own LLM conversation performs reasoning, verification, repair,
 and reporting. Scripted children perform deterministic work under declared
@@ -111,12 +109,9 @@ Every step reads from prior steps and writes for downstream steps:
 
 ### Step 4: When an Agent Needs Specialist Routes
 
-**Note:** Users may call this an "orchestrator", "sub-workflow", or "pipeline",
-and call its routes "sub-agents". The canonical plan shape is a
-`agent` with `predefined_routes`; `agent` are
-legacy compatibility types.
+The plan shape is `agent` with optional `predefined_routes`. Routes add specialist capabilities to the same agent conversation.
 
-**Eligibility gate:** add `predefined_routes` to a `agent` only when the agent makes a real runtime
+**Eligibility gate:** add `predefined_routes` to an `agent` only when the agent makes a real runtime
 orchestration decision the static plan cannot directly express. Examples are:
 - The parent interprets runtime evidence to decide which investigations are needed
 - Incident debugging: an error, log excerpt or commit points to the next source to query and its time window
@@ -149,7 +144,7 @@ stateless one-turn work; `regular` is reserved for explicitly scripted
 deterministic routes. A routed agent specialist may itself own routes
 for one nested delegation layer.
 
-Use a `agent` route when the parent agent should be able to call the
+Use an `agent` route when the parent agent should be able to call the
 same specialist repeatedly with memory. Normal repeated calls reuse the route
 session and send the new instructions as the re-entry user message. Use
 `agent_restart=true` only when the parent intentionally needs a clean
@@ -184,7 +179,7 @@ rerun that archives the existing route session and replays the configured queue.
 
 ### Step 6: When to Use Routing or Branch (brief)
 
-Use `routing` or `branch` when the next step must be **exactly one of N mutually exclusive paths** (e.g., "did login succeed, hit MFA, or fail?"). Both are deterministic: a caller or prior step must provide `route_selection.json` (or `route_selections`) with the selected route. For running every known sub-task, use a agent or explicit plan steps. Give a agent agent `predefined_routes` when it must reason about what specialist work is needed.
+Use `routing` or `branch` when the next step must be **exactly one of N mutually exclusive paths** (e.g., "did login succeed, hit MFA, or fail?"). Both are deterministic: a caller or prior step must provide `route_selection.json` (or `route_selections`) with the selected route. For running every known sub-task, use a agent or explicit plan steps. Give an agent `predefined_routes` when it must reason about what specialist work is needed.
 
 **Routing is now the "route" concept: a major, self-contained sub-workflow fork** — use it when the alternatives lead to substantially different continuations of the plan. **Branch is the small in-flow decision** — use it for a lightweight fork that converges back quickly. File-based selection mechanics are shared; branch additionally supports `route_source="human"` for fixed-choice decisions. **A plan has at most one routing step** — the mode selector whose route schedules pick via `route_selections`, each route a sub-workflow of many steps. Every further fixed choice — any simple if-condition, anything with an option that goes straight to `end` — is a branch; `add_step` rejects a second routing step and any route to `end`.
 
@@ -197,7 +192,7 @@ For full route structure, file contract, and anti-patterns, call `read_skill(ski
 Every step MUST have a **validation_schema** — the automated gate that pass/fails the step:
 - Check file existence, required fields, value types, patterns, and lengths
 - Include enough checks that stale/leftover files from previous runs can't pass
-- For agent agents with routes: validation passing is still the completion signal; successful child calls alone are not completion
+- For agents with routes: validation passing is still the completion signal; successful child calls alone are not completion
 - For agent steps: the runtime automatically runs the step-level schema after the final work turn and repairs failures in the same conversation. Add explicit prevalidation items only for intermediate gates.
 - **When a field's `value_type` is `object`, also add nested `json_checks` for its expected keys** (e.g. `$.semantic_balance.real_journey_count`, not just `$.semantic_balance`). A bare `{"value_type": "object"}` only rejects the wrong outer type — it accepts any shape at all, including one with none of the fields anything downstream actually reads. Worse, it gives the authoring agent no way to know what the object should contain, so it has to guess; a wrong guess (e.g. writing a descriptive string instead, since the field name alone doesn't say "object") then fails validation with no clue what shape was actually expected, and the automatic repair turn that follows has to go searching elsewhere in the workspace for a definition that was never written down. Name every required key up front instead.
 

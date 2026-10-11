@@ -33,7 +33,7 @@ const (
 	TierSelectionRequiredKey subAgentContextKey = "tier_selection_required"
 	// SubAgentLLMContextKey is the context key for direct LLM override for sub-agents (works in both tiered and manual modes)
 	SubAgentLLMContextKey subAgentContextKey = "sub_agent_llm"
-	// SubAgentAgentRestartKey is the context key for forcing a agent route to start fresh.
+	// SubAgentAgentRestartKey is the context key for forcing an agent route to start fresh.
 	SubAgentAgentRestartKey subAgentContextKey = "agent_restart"
 	// SubAgentParametersKey carries typed, per-call inputs for a predefined
 	// scripted route. The controller validates these values against the route's

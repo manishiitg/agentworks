@@ -248,7 +248,7 @@ func TestWorkflowEdgeCyclicNextStepIDDocumentedGap(t *testing.T) {
 }
 
 // TestWorkflowEdgeAgentItemsRequired proves the engine
-// refuses a agent step with an empty items array. A
+// refuses an agent step with an empty items array. A
 // agent with no items is degenerate — there's nothing to
 // send. The current validateAgentStepFieldsTyped behavior
 // determines whether this is enforced; if it isn't, the engine will

@@ -66,7 +66,7 @@ test "$MCP_API_TOKEN" = fixture-session-token
 if cat %q >/dev/null 2>&1; then echo HOST_STORE_VISIBLE; exit 1; fi
 mkdir -p planning
 printf '%%s' '{"kind":"relay"}' > workflow.json
-printf '%%s' '{"steps":[{"id":"invoice","type":"message_sequence"}]}' > planning/plan.json
+printf '%%s' '{"steps":[{"id":"invoice","type":"agent"}]}' > planning/plan.json
 echo RELAY_PLAN_CREATED
 `, hostStore)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

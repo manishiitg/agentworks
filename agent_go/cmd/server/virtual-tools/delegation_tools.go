@@ -62,7 +62,7 @@ const (
 type SessionEventEmitter interface {
 	EmitBlockingHumanFeedback(requestID, question, context string, yesNoOnly bool, yesLabel, noLabel string, options ...string)
 	// EmitProductInteraction publishes the same product_interaction event a
-	// product.yaml tool binding emits via agentprofiles.ToolRuntimeContext.Emit
+	// product.yaml tool binding emits vian agentprofiles.ToolRuntimeContext.Emit
 	// (pkg/orchestrator/events.ProductInteractionEvent) — the generic surface
 	// a session's own UI already reads (frontend/shared/session/interactions.ts).
 	// A platform-wide human tool has no product.yaml binding of its own to

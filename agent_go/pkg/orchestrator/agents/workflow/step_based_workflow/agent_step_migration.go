@@ -52,6 +52,32 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 		}
 	}
 	delete(step, "messages")
+	if typ == "orchestrator" || typ == "todo_task" {
+		var items []map[string]json.RawMessage
+		if raw, ok := step["items"]; ok {
+			if err := json.Unmarshal(raw, &items); err != nil {
+				return nil, false, err
+			}
+		}
+		var id string
+		_ = json.Unmarshal(step["id"], &id)
+		if len(items) == 0 {
+			items = []map[string]json.RawMessage{{
+				"id":   json.RawMessage(fmt.Sprintf("%q", id+"-execute")),
+				"type": json.RawMessage(`"user_message"`), "kind": json.RawMessage(`"execution"`),
+				"message": json.RawMessage(`"Execute the step charter now and verify that its requirements are satisfied."`),
+			}}
+		}
+		for i, item := range items {
+			if raw := item["id"]; len(raw) == 0 || string(raw) == `""` || string(raw) == "null" {
+				item["id"] = json.RawMessage(fmt.Sprintf("%q", fmt.Sprintf("%s-item-%d", id, i+1)))
+			}
+			if raw := item["type"]; len(raw) == 0 || string(raw) == `""` {
+				item["type"] = json.RawMessage(`"user_message"`)
+			}
+		}
+		step["items"], _ = json.Marshal(items)
+	}
 	if itemsJSON, ok := step["items"]; ok {
 		var items []map[string]json.RawMessage
 		if err := json.Unmarshal(itemsJSON, &items); err != nil {
