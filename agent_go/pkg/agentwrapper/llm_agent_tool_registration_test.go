@@ -2,10 +2,31 @@ package agent
 
 import (
 	"context"
+	"slices"
 	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 )
 
 func noopExecutor(context.Context, map[string]interface{}) (string, error) { return "", nil }
+
+func TestProductAdmissionFiltersEveryToolRegistrationPath(t *testing.T) {
+	allowed := agentworksproduct.ChatTools("builder")
+	w := &LLMAgentWrapper{admitTool: func(name string) bool { return slices.Contains(allowed, name) }}
+	for _, name := range []string{"list_functions", "implementation_only_tool"} {
+		if err := w.RegisterCustomTool(name, "normal", nil, noopExecutor, "tools"); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.RegisterCustomToolWithTimeout(name, "timed", nil, noopExecutor, time.Minute, "tools"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	direct := w.definition.Tools.Direct
+	if len(direct) != 1 || direct[0].Name != "list_functions" || direct[0].Description != "timed" {
+		t.Fatalf("registration bypassed the YAML admission policy: %+v", direct)
+	}
+}
 
 // Re-registering a tool name must replace, not accumulate.
 //

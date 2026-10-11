@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 	"text/template"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -19,6 +20,18 @@ import (
 type productSurfaceDraft struct {
 	recordingRegistrar
 	skills []*llmtypes.Skill
+	gate   *productToolGate
+}
+
+func (d *productSurfaceDraft) RegisterCustomTool(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), category string) error {
+	if d.gate != nil && !d.gate.Admit(name) {
+		return nil
+	}
+	return d.recordingRegistrar.RegisterCustomTool(name, description, parameters, execute, category)
+}
+
+func (d *productSurfaceDraft) RegisterCustomToolWithTimeout(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), _ time.Duration, category string) error {
+	return d.RegisterCustomTool(name, description, parameters, execute, category)
 }
 
 func (d *productSurfaceDraft) AttachSkill(s *llmtypes.Skill) error {
@@ -46,23 +59,33 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer session.Close()
-		api := &StreamingAPI{logger: logger}
+		api := newCrewFunctionEnv(t).api
+		api.logger = logger
 		api.workshopChatSessions.Store("surface-e2e", session)
 		api.workshopChatSessions.Store("eval-surface-e2e", session)
-		draft := &productSurfaceDraft{}
+		gate := newAgentWorksChatToolGate(mode)
+		gate.AllowWorkflowNotifications(true)
+		draft := &productSurfaceDraft{gate: gate}
 		if err := api.installWorkflowPhaseTools(context.Background(), draft, "surface-e2e", "test-user", "workflow-builder", "Workflow/surface-e2e", "", map[string]string{"WorkshopMode": workshopMode}, nil, nil, nil, nil, nil, QueryRequest{}, readOnly); err != nil {
 			t.Fatal(err)
+		}
+		if err := api.registerMultiAgentLLMTools(draft, nil); err != nil {
+			t.Fatal(err)
+		}
+		if !readOnly {
+			if err := api.registerCodingAgentClarificationTool(draft, "surface-e2e", "muse-cli"); err != nil {
+				t.Fatal(err)
+			}
 		}
 		names := []string{}
 		for name := range draft.tools {
 			names = append(names, name)
 		}
-		// Human and Brain tools use the shared custom-tool registration path
-		// before phase-specific tools. Include that real implementation pool in
-		// this end-to-end surface check, filtered by product.yaml admission.
-		customTools, customExecutors, customCategories := createCustomTools(true, "test-user", "surface-e2e")
+		// Include the real platform pools as well as phase/function registrations.
+		// Runtime capabilities can narrow a declaration, never expand it.
+		customTools, customExecutors, _ := createCustomTools(true, "test-user", "surface-e2e")
 		for _, tool := range customTools {
-			if tool.Function == nil || (customCategories[tool.Function.Name] != "human_tools" && customCategories[tool.Function.Name] != "knowledgebase") || !agentworksproduct.ChatAllowsTool(mode, tool.Function.Name) {
+			if tool.Function == nil || !agentworksproduct.ChatAllowsTool(mode, tool.Function.Name) {
 				continue
 			}
 			if _, ok := customExecutors[tool.Function.Name]; !ok {
@@ -76,11 +99,13 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		def := manifest.Chat[mode]
-		// This fixture has no shared bindings. KB admission in product.yaml is
-		// conditional; bound registration is covered by the KB integration tests.
+		// This fixture has no Brain bindings, Vault admin or workflow model
+		// write grant, and does not install the separate workflow-reference
+		// reader. Those conditional implementations have their own integration
+		// tests; all other declarations must match the real registration pools.
 		expectedTools := []string{}
 		for _, name := range def.Tools {
-			if !knowledgebase.IsMCPTool(name) {
+			if !knowledgebase.IsMCPTool(name) && name != "manage_vault_access" && name != "set_workflow_llm_config" && name != "list_accessible_workflows" {
 				expectedTools = append(expectedTools, name)
 			}
 		}
