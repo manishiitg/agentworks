@@ -1,0 +1,23 @@
+name: Verify Cursor plugin
+
+on:
+  push:
+    branches: ['verify/**']
+    paths:
+      - 'plugins/cursor/**'
+      - '.github/workflows/verify-cursor-plugin.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  cursor-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Check Cursor package and process/socket behavior
+        run: python3 plugins/cursor/scripts/check_adapter.py

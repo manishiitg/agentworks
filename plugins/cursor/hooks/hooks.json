@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/scripts/cursor_hook.py\"",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/scripts/cursor_hook.py\"",
+        "timeout": 5,
+        "loop_limit": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/scripts/cursor_hook.py\"",
+        "timeout": 5
+      }
+    ]
+  }
+}
