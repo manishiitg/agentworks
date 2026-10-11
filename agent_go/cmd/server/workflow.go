@@ -173,13 +173,6 @@ func readConversationTailFromWorkspace(ctx context.Context, filePath string, n i
 // and sets top-level fields, without rewriting the conversation.
 func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}) error {
 	noteWorkspaceMutation(filePath, false)
-	if held, err := writeHeldTeamFile(ctx, filePath, content); held {
-		if err == nil {
-			teamPlanSaved(ctx, filePath, content)
-			publishPlanChanged(filePath)
-		}
-		return err
-	}
 	segments := strings.Split(filePath, "/")
 	for i, segment := range segments {
 		segments[i] = url.PathEscape(segment)
@@ -360,6 +353,13 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	}
 	defer release()
 	noteWorkspaceMutation(filePath, false)
+	if held, err := writeHeldTeamFile(ctx, filePath, content); held {
+		if err == nil {
+			teamPlanSaved(ctx, filePath, content)
+			publishPlanChanged(filePath)
+		}
+		return err
+	}
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {
