@@ -565,7 +565,8 @@ requires a fresh provider process key. Offline identities retain their address;
 explicit detach revokes their child. Cleanup retires offered metadata, so later
 replies need an explicit inbox read and `--inbox` instead of the retired message ID.
 
-Manual reads filter historical messages through the current receiver lease,
+Local bridge and credential-less messaging-plugin reads filter historical
+messages through the current receiver lease,
 approved sender IDs and live peer authorization. Explicit inbox replies require
 an inbox containing a currently approved incoming sender. Neither check fabricates
 admission. Codex shell replies use CODEX_THREAD_ID as a routing hint together with
@@ -574,3 +575,9 @@ read that user's private credentials; these checks are not OS isolation between
 desktop chats. Credential-less MCP children cannot choose a different UUID through
 their tool arguments. Install broader shell permissions only under the host's
 existing person-controlled trust settings.
+
+A separately approved full AgentWorks MCP/CLI connection retains its own broader
+mailbox permissions. Its general `messages` read tool is outside the bridge sender
+filter; installing messaging does not silently reduce or expand those separate
+grants. The filter applies to `bridge message read` and the credential-less
+messaging plugin's `agent_message_read`/reply tools.

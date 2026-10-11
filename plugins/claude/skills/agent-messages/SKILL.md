@@ -15,8 +15,10 @@ For an explicit native desktop or Claude-session transport, follow the fixed
 transport closing line: use `agentworks bridge message ack --provider PROVIDER
 --session SESSION --message-id ID --delivery admitted`, then processed. Reply with
 `bridge message reply --provider PROVIDER --session SESSION --inbox INBOX_ID
---message TEXT --submission-id STABLE_ID`. Do not invent identifiers. Manual
-recovery is filtered by the current approved-sender list. Codex shell thread
+--message TEXT --submission-id STABLE_ID`. Do not invent identifiers. Bridge/plugin
+recovery is filtered by the current approved-sender list. A separately approved
+full AgentWorks MCP/CLI connection keeps its broader mailbox permissions; its
+general messages read tool is outside this bridge filter. Codex shell thread
 variables are a routing hint under the same-OS-user trust boundary; they are not
 isolation from another shell running as that user. Existing plugin MCP tools
 remain the normal route when their exact session binding is available.
