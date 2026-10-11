@@ -11,9 +11,10 @@ hand those off once and keep your pass on the goal.
 ## One pass
 
 0. **Goal check first.** Read `get_pulse_state(view="goal_status")`: the
-   code-computed facts (is the goal measured by the workflow's own runs, does
-   the goal's route run, and the silence alarm for no run or no reading in 3+
-   days). Answer three questions before anything else: is the goal measured,
+   code-computed DB measurements/freshness and recorded execution evidence.
+   Judge which work advances the goal with Builder from the plan, statuses and
+   step outputs; no metric-to-route mapping is required. Metric scope labels
+   never classify goal contribution, and missing evidence stays unknown. Answer three questions before anything else: is the goal measured,
    is it moving, is the work that drives it running? Record the verdict once
    with `record_pulse_goal_check` (on_track, at_risk, off_track or
    not_measured, the key number and a plain summary). A failure here is the

@@ -11,6 +11,18 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Goal contribution is agent judgment, not metric-route equality (PLAT-822)
+
+Metric definitions need no executable-work mapping. Go reports source-backed DB
+measurements, freshness and actual run status/route evidence; Pulse and Builder
+judge which work advances the goal, using step outputs and the plan as needed.
+Remove route-based goal-work alarms and derived goal-work booleans/timestamps,
+including the run recorder's classification. A metric scope label or missing
+match never proves that work ran, stopped or caused progress. Measurement/run
+silence facts remain separate. Existing metric meaning and history stay intact;
+this requires no workflow migration. Older checks retain their historical text.
+[PLAT-822](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/metrics/plat-822.md).
+
 ### 2026-10-10 — Managed browser socket parents belong to each deployment
 
 Deployments with a browser staging namespace use a short private socket root

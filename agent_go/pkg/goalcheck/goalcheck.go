@@ -1,8 +1,8 @@
 // Package goalcheck holds the Pulse's code-only goal facts and silence
 // alarm (PLAT-697 phase 1, docs/design/pulse_goal_owner.md). It is pure: the
 // caller loads metric definitions, observations and runs, and Evaluate says
-// whether the goal is measured, whether the work that drives it runs, and
-// which alarms to raise. No AI and no I/O, so the decision is cheap enough to
+// whether DB measurements are current and workflow runs are recorded. Pulse
+// and Builder judge which work advances the goal from this evidence. No AI and no I/O, so the decision is cheap enough to
 // compute on every Pulse view and scheduler tick.
 package goalcheck
 
@@ -24,7 +24,8 @@ const DefaultSilenceDays = 3
 const recentRunsShown = 10
 
 // Metric is one active goal metric definition. Only primary metrics measure
-// the goal; Route names the route whose runs drive and measure it, if any.
+// the goal. Route is saved measurement scope metadata, not an executable-work
+// mapping or a requirement for checking progress.
 type Metric struct {
 	ID             string            `json:"id"`
 	Name           string            `json:"name,omitempty"`
@@ -82,11 +83,9 @@ type Input struct {
 
 // Alarm kinds.
 const (
-	AlarmNotMeasured          = "not_measured"
-	AlarmMeasurementStale     = "measurement_stale"
-	AlarmNoRun                = "no_run"
-	AlarmGoalWorkSkipped      = "goal_work_skipped"
-	AlarmGoalWorkNotMeasuring = "goal_work_not_measuring"
+	AlarmNotMeasured      = "not_measured"
+	AlarmMeasurementStale = "measurement_stale"
+	AlarmNoRun            = "no_run"
 )
 
 // Alarm is one silence alarm, in plain words for the owner.
@@ -96,14 +95,13 @@ type Alarm struct {
 	Message string `json:"message"`
 }
 
-// RunFact is the per-run goal fact: did the goal-driving work run, and was the
-// goal measured.
+// RunFact reports execution evidence and measurement attribution. It does not
+// classify an execution as goal-driving work.
 type RunFact struct {
 	RunID        string   `json:"run_id"`
 	FinishedAt   string   `json:"finished_at"`
 	Status       string   `json:"status"`
 	Routes       []string `json:"routes,omitempty"`
-	GoalWorkRan  bool     `json:"goal_work_ran"`
 	GoalMeasured bool     `json:"goal_measured"`
 }
 
@@ -122,7 +120,6 @@ type Facts struct {
 	Summary           string        `json:"summary"`
 	HasGoal           bool          `json:"has_goal"`
 	PrimaryMetrics    []string      `json:"primary_metrics,omitempty"`
-	GoalRoutes        []string      `json:"goal_routes,omitempty"`
 	KeyMetric         string        `json:"key_metric,omitempty"`
 	KeyValue          *float64      `json:"key_value,omitempty"`
 	LastMeasuredAt    string        `json:"last_measured_at,omitempty"`
@@ -133,8 +130,6 @@ type Facts struct {
 	ReadingsOutsideRuns  int       `json:"readings_outside_runs_since,omitempty"`
 	LastRunAt            string    `json:"last_run_at,omitempty"`
 	DaysSinceRun         int       `json:"days_since_run"`
-	LastGoalWorkAt       string    `json:"last_goal_work_at,omitempty"`
-	DaysSinceGoalWork    int       `json:"days_since_goal_work"`
 	RecentRuns           []RunFact `json:"recent_runs,omitempty"`
 	Alarms               []Alarm   `json:"alarms"`
 	SchedulesPaused      bool      `json:"schedules_paused"`
@@ -159,14 +154,6 @@ func runSegment(id string) string {
 		return ""
 	}
 	return top
-}
-
-func completed(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "success", "partial":
-		return true
-	}
-	return false
 }
 
 func days(now, then time.Time) int {
@@ -195,23 +182,17 @@ func Evaluate(in Input) Facts {
 		in.SilenceDays = DefaultSilenceDays
 	}
 	now := in.Now.UTC()
-	facts := Facts{Status: StatusNoGoal, Alarms: []Alarm{}, DaysSinceRunMeasured: -1, DaysSinceRun: -1, DaysSinceGoalWork: -1, SchedulesPaused: in.SchedulesPaused}
+	facts := Facts{Status: StatusNoGoal, Alarms: []Alarm{}, DaysSinceRunMeasured: -1, DaysSinceRun: -1, SchedulesPaused: in.SchedulesPaused}
 
 	primary := map[string]Metric{}
-	routeSet := map[string]bool{}
 	for _, m := range in.Metrics {
 		if m.Role != "primary" {
 			continue
 		}
 		primary[m.ID] = m
 		facts.PrimaryMetrics = append(facts.PrimaryMetrics, m.ID)
-		if r := strings.TrimSpace(m.Route); r != "" && !routeSet[r] {
-			routeSet[r] = true
-			facts.GoalRoutes = append(facts.GoalRoutes, r)
-		}
 	}
 	sort.Strings(facts.PrimaryMetrics)
-	sort.Strings(facts.GoalRoutes)
 	if len(primary) == 0 {
 		facts.Summary = "No goal metric is configured, so the goal cannot be checked."
 		return facts
@@ -266,11 +247,6 @@ func Evaluate(in Input) Facts {
 	runFacts := make([]RunFact, 0, len(runs))
 	for _, r := range runs {
 		fact := RunFact{RunID: r.RunID, FinishedAt: finishedAt(r).UTC().Format(time.RFC3339), Status: r.Status, Routes: r.Routes, GoalMeasured: r.Measured}
-		for _, route := range r.Routes {
-			if routeSet[route] && completed(r.Status) {
-				fact.GoalWorkRan = true
-			}
-		}
 		if !fact.GoalMeasured {
 			fact.GoalMeasured = measuredBy(r, readings)
 		}
@@ -282,22 +258,12 @@ func Evaluate(in Input) Facts {
 		facts.RecentRuns = runFacts
 	}
 
-	var lastRun, lastGoalWork time.Time
+	var lastRun time.Time
 	if len(runs) > 0 {
 		lastRun = finishedAt(runs[0])
 		facts.LastRunAt = lastRun.UTC().Format(time.RFC3339)
 	}
 	facts.DaysSinceRun = days(now, lastRun)
-	lastGoalWorkIndex := -1
-	for i, f := range runFacts {
-		if f.GoalWorkRan {
-			lastGoalWork = finishedAt(runs[i])
-			lastGoalWorkIndex = i
-			facts.LastGoalWorkAt = lastGoalWork.UTC().Format(time.RFC3339)
-			break
-		}
-	}
-	facts.DaysSinceGoalWork = days(now, lastGoalWork)
 	n := in.SilenceDays
 
 	// Every primary has its own DB measurement and freshness contract.
@@ -313,80 +279,7 @@ func Evaluate(in Input) Facts {
 		}
 	}
 
-	// 2. Goal work ran but recorded no reading.
-	unmeasured := 0
-	for i, f := range runFacts {
-		if f.GoalWorkRan && !f.GoalMeasured && finishedAt(runs[i]).After(lastRunReading) {
-			unmeasured++
-		}
-	}
-	if unmeasured > 0 {
-		since := "ever"
-		if !lastRunReading.IsZero() {
-			since = "since " + dateLabel(lastRunReading)
-		}
-		facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmGoalWorkNotMeasuring, Message: fmt.Sprintf("The goal work (%s) ran %d time(s) %s without a reading linked to that execution. DB measurements are checked separately.", strings.Join(facts.GoalRoutes, ", "), unmeasured, since)})
-	}
-
-	// 3. The goal work is skipped while other work runs.
-	if len(routeSet) > 0 && (lastGoalWork.IsZero() || facts.DaysSinceGoalWork >= n) {
-		others := runFacts
-		if lastGoalWorkIndex >= 0 {
-			others = runFacts[:lastGoalWorkIndex]
-		}
-		if len(others) > 0 {
-			counts := map[string]int{}
-			failedGoal := 0
-			for _, f := range others {
-				goalRoute := false
-				for _, route := range f.Routes {
-					if routeSet[route] {
-						goalRoute = true
-					}
-				}
-				if goalRoute {
-					failedGoal++
-					continue
-				}
-				label := strings.Join(f.Routes, "+")
-				if label == "" {
-					label = "no route"
-				}
-				counts[label]++
-			}
-			labels := make([]string, 0, len(counts))
-			for label := range counts {
-				labels = append(labels, label)
-			}
-			sort.Slice(labels, func(i, j int) bool {
-				if counts[labels[i]] != counts[labels[j]] {
-					return counts[labels[i]] > counts[labels[j]]
-				}
-				return labels[i] < labels[j]
-			})
-			parts := make([]string, 0, len(labels))
-			for _, label := range labels {
-				parts = append(parts, fmt.Sprintf("%s ×%d", label, counts[label]))
-			}
-			msg := fmt.Sprintf("The goal work (%s) has not completed in any run", strings.Join(facts.GoalRoutes, ", "))
-			if !lastGoalWork.IsZero() {
-				msg = fmt.Sprintf("The goal work (%s) has not completed for %d days (last on %s)", strings.Join(facts.GoalRoutes, ", "), facts.DaysSinceGoalWork, dateLabel(lastGoalWork))
-			}
-			msg += fmt.Sprintf("; the %d run(s) since", len(others))
-			if len(parts) > 0 {
-				msg += " took other routes: " + strings.Join(parts, ", ")
-			}
-			if failedGoal > 0 {
-				if len(parts) > 0 {
-					msg += ";"
-				}
-				msg += fmt.Sprintf(" %d goal run(s) failed", failedGoal)
-			}
-			facts.Alarms = append(facts.Alarms, Alarm{Kind: AlarmGoalWorkSkipped, Days: facts.DaysSinceGoalWork, Message: msg + "."})
-		}
-	}
-
-	// 4. No run at all.
+	// Workflow activity is separate from measurement and goal contribution.
 	if lastRun.IsZero() || facts.DaysSinceRun >= n {
 		msg := "The workflow has never run."
 		if !lastRun.IsZero() {
@@ -467,7 +360,7 @@ func summary(f Facts) string {
 		parts = append(parts, a.Message)
 	}
 	if len(parts) == 0 {
-		parts = append(parts, "The goal is measured and its work is running.")
+		parts = append(parts, "Primary DB measurements are current and recent workflow runs are recorded. Goal progress and contribution require agent review.")
 	}
 	if f.SchedulesPaused {
 		if f.PauseAlreadyReported {

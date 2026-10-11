@@ -744,7 +744,8 @@ export const DEFAULT_PULSE_AUTONOMY: PulseAutonomy = { level: 1, run: 'auto', ou
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
 export interface PulseGoalAlarm {
-  kind: 'not_measured' | 'measurement_stale' | 'no_run' | 'goal_work_skipped' | 'goal_work_not_measuring'
+  /** Current facts use measurement/no-run kinds; stored historical checks retain their original text. */
+  kind: string
   days?: number
   message: string
 }
@@ -772,6 +773,15 @@ export interface PulseGoalStatus {
     last_run_measured_at?: string
     days_since_run_measured: number
     last_run_at?: string
+    days_since_run: number
+    /** Recorded execution evidence; goal contribution is judged by Pulse/Builder. */
+    recent_runs?: {
+      run_id: string
+      finished_at: string
+      status: string
+      routes?: string[]
+      goal_measured: boolean
+    }[]
     alarms: PulseGoalAlarm[]
     schedules_paused: boolean
     pause_already_reported?: boolean

@@ -37,6 +37,15 @@ contradict each other, access wired through general Crew sharing, platform rules
 
 ## What it does
 
+Go supplies DB measurement/freshness facts and recorded execution statuses and
+route selections. Pulse and Builder judge which work matters from the objective,
+plan and step/source evidence. There is no mandatory metric-to-route mapping;
+measurement scope labels do not classify execution or prove causal contribution.
+The route-derived goal-work alarms/booleans were removed (PLAT-822). Genuine
+measurement gaps and absence of workflow runs remain code facts. Existing saved
+scope/history needs no migration, and earlier checks remain historical verdicts.
+
+
 1. **Goal check first.** Is the goal measured, is it moving, and is the work that drives it running? A failure is
    the top item, ahead of step and plan findings.
 2. **Answers goal questions.** Decision requests (`report_human_inputs`) and, later, chat question cards on work

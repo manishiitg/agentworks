@@ -7,11 +7,116 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/goalcheck"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
+
+// PLAT-822: real metric tools and run recording preserve DB/run evidence without
+// interpreting scope labels, or even an equal route name, as goal contribution.
+func TestGoalRunEvidenceDoesNotRequireMetricRouteMappings(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	ws := "Workflow/run-evidence"
+	workspace := &mockWorkspaceAPI{files: map[string]string{ws + "/workflow.json": `{"id":"run-evidence","label":"Run evidence","pulse":{"enabled":true}}`}}
+	host := httptest.NewServer(workspace)
+	defer host.Close()
+	t.Setenv("WORKSPACE_API_URL", host.URL)
+	_, executors, _ := createGoalMetricTools()
+	call := func(name string, args map[string]interface{}) string {
+		t.Helper()
+		args["workspace_path"] = ws
+		out, err := executors[name].(func(context.Context, map[string]interface{}) (string, error))(ctx, args)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return out
+	}
+	metrics := []interface{}{}
+	observations := []interface{}{}
+	now := time.Now().UTC().Truncate(time.Second)
+	for i, scope := range []string{"", "all", "segment-a,segment-b", "region-*", "delivery"} {
+		id := []string{"unscoped", "whole", "segments", "region", "matching-label"}[i]
+		metrics = append(metrics, map[string]interface{}{"id": id, "criterion_id": id, "name": id, "role": "primary", "unit": "count", "direction": "increase", "definition": "Source-backed response count", "source": "response rows", "window": "snapshot", "collection_frequency": "daily", "freshness_hours": 96, "route": scope})
+		observations = append(observations, map[string]interface{}{"metric": id, "criterion_id": id, "unit": "count", "route": scope, "run_id": "source-batch-" + id, "observed_at": now.Add(-time.Minute).Format(time.RFC3339), "value": 4, "evidence": []string{"source row"}})
+	}
+	call("configure_goal_metrics", map[string]interface{}{"metrics": metrics})
+	call("record_goal_observations", map[string]interface{}{"observations": observations})
+	before := call("get_goal_metrics", map[string]interface{}{})
+	// Existing DBs retain old history, even if they contain a retired derived
+	// column. The new recorder does not read/write that classification.
+	db, err := sql.Open("sqlite", filepath.Join(root, ws, "db", "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE goal_run_facts (
+ run_folder TEXT NOT NULL, finished_at TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL, routes_json TEXT NOT NULL DEFAULT '[]', goal_work_ran INTEGER NOT NULL DEFAULT 0,
+ goal_measured INTEGER NOT NULL DEFAULT 0, recorded_at TEXT NOT NULL, PRIMARY KEY(run_folder,finished_at))`)
+	if err == nil {
+		oldAt := now.Add(-goalCheckHistoryWindow - time.Hour).Format(time.RFC3339)
+		_, err = db.Exec(`INSERT INTO goal_run_facts VALUES('iteration-older-sched/default',?,?,'completed','[]',1,0,?)`, oldAt, oldAt, oldAt)
+	}
+	closeErr := db.Close()
+	if err != nil || closeErr != nil {
+		t.Fatalf("old run store: %v %v", err, closeErr)
+	}
+	for i, run := range []string{"iteration-1-sched/default", "iteration-2-sched/default"} {
+		if i == 1 {
+			dir := filepath.Join(root, ws, "runs", run, "execution", "routing")
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "route_selection.json"), []byte(`{"selected_route_id":"delivery"}`), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := stepworkflow.RecordGoalRunFacts(ctx, ws, run, "completed", now.Add(-time.Hour), now.Add(time.Duration(i-2)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view, err := computeGoalStatus(ctx, ws, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Facts.Status != goalcheck.StatusOK || len(view.Facts.Alarms) != 0 || len(view.Facts.RecentRuns) != 2 || len(view.Facts.Measurements) != 5 || len(view.Facts.RecentRuns[0].Routes) != 1 || view.Facts.RecentRuns[0].Routes[0] != "delivery" || view.Facts.RecentRuns[0].GoalMeasured {
+		t.Fatalf("scope labels or separate producers corrupted measurement/execution evidence: %+v", view.Facts)
+	}
+	encoded, _ := json.Marshal(view)
+	for _, retired := range []string{"goal_work_ran", "goal_routes", "days_since_goal_work", "last_goal_work_at", "goal_work_skipped", "goal_work_not_measuring", "its work is running"} {
+		if strings.Contains(string(encoded), retired) {
+			t.Fatalf("derived goal-work claim still exposed: %s", retired)
+		}
+	}
+	if after := call("get_goal_metrics", map[string]interface{}{}); after != before {
+		t.Fatal("execution recording changed measurement definitions/history")
+	}
+	if runs, err := stepworkflow.LoadGoalRunFacts(ctx, ws, now.AddDate(-1, 0, 0)); err != nil || len(runs) != 3 {
+		t.Fatalf("old execution history lost: %+v %v", runs, err)
+	}
+	stale, err := computeGoalStatus(ctx, ws, now.Add(5*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{goalcheck.AlarmMeasurementStale: false, goalcheck.AlarmNoRun: false}
+	for _, alarm := range stale.Facts.Alarms {
+		if _, ok := want[alarm.Kind]; !ok {
+			t.Fatalf("unexpected alarm after real evidence gaps: %+v", alarm)
+		}
+		want[alarm.Kind] = true
+	}
+	if !want[goalcheck.AlarmMeasurementStale] || !want[goalcheck.AlarmNoRun] {
+		t.Fatalf("genuine measurement/run silence disappeared: %+v", stale.Facts)
+	}
+	query := pulseLifecycleGoalCheckStep(ctx, ws, "run-evidence-check", workflowNotificationContentInstructions{}).query
+	if !strings.Contains(query, "No metric-to-route declaration is required") || !strings.Contains(query, `"recent_runs"`) {
+		t.Fatal("Pulse goal turn lacks evidence and agentic judgment guidance")
+	}
+}
 
 // Exercise the real tool -> existing SQLite schema upgrade -> Pulse facts path.
 func TestGoalMeasurementDBHistoryAndPulseFacts(t *testing.T) {

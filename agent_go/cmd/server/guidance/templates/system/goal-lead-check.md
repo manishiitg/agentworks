@@ -17,6 +17,12 @@ is no separate Goal Work pass.
    execution-folder names. Decide whether the measurement is meaningful and
    comparable, whether the goal is moving, and whether its work is running.
    Improve measurement with Builder before treating weak evidence as progress.
+   Judge which work advances the goal together with Builder from actual run
+   statuses, selected routes, step outputs and the plan. Metric scope labels
+   never classify executions, and no metric-to-route mapping is required.
+   Measurement producers can differ from work improving the goal. Missing
+   evidence stays unknown; old route-based goal-work alarms are obsolete
+   inferences. Use existing workflow read tools for more detail when needed.
 3. **Decisions and outcomes, every check.** For each pending decision with no
    current recommendation (or new evidence), call `record_pulse_recommendation`
    once. You never answer a decision. For each item in `outcomes_due`, call

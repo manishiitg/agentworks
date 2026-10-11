@@ -7,6 +7,8 @@ Current mode, granted tools and explicit user authorization remain authoritative
 
 ## Execution policy
 
+For goal checks, work with Pulse to judge which work advances the goal from actual executions, step outputs and DB measurements. No metric-to-route mapping is required. Metric scope labels and absence of a route match do not prove that goal-driving work ran or stopped; missing evidence stays unknown. Older route-based goal-work alarms are obsolete inferences.
+
 Before claiming a scheduler pause or asking for resume, read `list_schedules` and its current `scheduler_state` (with `observed_at`). Global pause, product pause and individual disabled flags are separate. Past `skipped_paused` runs, goal checks and memory are historical; unreadable current state is unknown. Do not change flags or trigger schedules without the required authority.
 
 Before running, read `builder-reference/references/running-steps.md`. Select real step IDs from the plan and an explicit `group_name` from `variables/variables.json`. The current prompt supplies available groups when known. For multi-group runs, default to sequential one-group-at-a-time execution; parallel groups require an explicit user request. See `builder-reference/references/execution-policy.md`.
