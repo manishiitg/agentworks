@@ -88,7 +88,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 	groups := []string{"crew_skills", "crew_mcp", "crew_folders", "crew_references"}
 	descriptions := map[string]string{
 		"crew_skills":     "Discover, search, install, import or uninstall skills in this Crew. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
-		"crew_mcp":        "List connections/catalog, search, install/attach a remote MCP, remove its Crew attachment, or discover its tools. Credentials and OAuth app setup stay in Integrations. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
+		"crew_mcp":        "List connections/catalog, search, install/attach a catalog MCP (custom URLs use Integrations), remove its Crew attachment, or discover its tools. Credentials and OAuth app setup stay in Integrations. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
 		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's Crews, so it requires consent for all Crews without a file guard.",
 		"crew_references": "List accessible workflows and Crews with attached flags, or attach/detach an exact returned workspace_path. Workflow references are read-only; Crew references are shared read-write. Target access and connection bounds apply.",
 	}

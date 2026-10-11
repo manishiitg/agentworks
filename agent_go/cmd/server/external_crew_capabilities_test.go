@@ -99,6 +99,17 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if len(attachments) != 1 {
 		t.Fatalf("attachments=%v", attachments)
 	}
+	for _, args := range []map[string]any{
+		{"action": "install", "name": "untrusted", "url": "https://untrusted.example.com/mcp"},
+		{"action": "install", "name": "Example", "catalog": "Example", "url": "https://untrusted.example.com/mcp"},
+	} {
+		if refusal := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", args, 400); !strings.Contains(refusal, "Integrations") {
+			t.Fatal(refusal)
+		}
+	}
+	// Reusing a named catalog account is valid; guessing a catalog name does
+	// not approve a different endpoint in the personal store.
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": attachments[0].Server}, 200)
 	// The same personal login is used elsewhere; removing the Crew attachment
 	// must leave that other attachment and the login untouched.
 	otherRoot := "_users/owner/Chats/Work/projects/another"
@@ -114,6 +125,33 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	personal, _ := listPlaceMCPServers("owner")
 	if len(current) != 0 || len(other) != 1 || len(personal) != 1 {
 		t.Fatalf("detach changed other state: %v %v %v", current, other, personal)
+	}
+	// Integrations still adds custom URLs through its existing shared path.
+	appCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	custom, _, err := f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: "custom", URL: "https://custom.example.com/mcp"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": custom.Name}, 400)
+	// All product adapters share this gate, including Builder-originated
+	// operations. Refuse both nested URLs and endpoint edits before mutation.
+	for _, claims := range []*UserClaims{crewWriter("owner"), {UserID: "owner", ExternalBuilderOperationID: "builder-operation"}} {
+		ctx := context.WithValue(context.Background(), UserContextKey, claims)
+		for _, operation := range []string{"install_mcp_server", "edit_mcp_server"} {
+			if _, err := f.api.mcpConnectionTool(ctx, "owner", operation, map[string]any{"name": "Example", "server": map[string]any{"url": "https://untrusted.example.com/mcp"}}); err == nil || !strings.Contains(err.Error(), "Integrations") {
+				t.Fatalf("%s nested URL refusal = %v", operation, err)
+			}
+		}
+	}
+	// A pre-existing custom URL with a catalog-like account name cannot be
+	// attached through catalog reuse either.
+	if _, _, err = f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: personal[0].Name, URL: "https://custom.example.com/mcp"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "Example"}, 400)
+	current, _ = placeMCPAttachmentsFor(externalCommandCrewRoot)
+	if len(current) != 0 {
+		t.Fatalf("refused install attached a custom server: %v", current)
 	}
 	f.write(t, "Workflow/research/workflow.json", `{"id":"research","label":"Research","access":{"owners":["owner"]}}`)
 	claims := crewWriter("owner")

@@ -144,3 +144,10 @@ are restricted to the MCP endpoint; use browser sign-in or the existing files
 reader instead. Never put a credential in a URL. Folder listings and archives
 exclude blocked descendants and symlinks; private manifests, chats and databases
 remain protected. Check `shareable`/`warning` for a same-machine preview.
+
+## MCP installation policy
+
+MCP-originated Crew, workflow and Relay tools install current catalog servers
+only. Custom URLs and URL changes go through Integrations. Existing catalog
+accounts may be reused only while their endpoint/transport still match the
+current catalog. Setup never accepts credentials in tool arguments.

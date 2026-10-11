@@ -141,6 +141,33 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	if catalog == "" && url == "" {
 		catalog = name
 	}
+	if claims := GetUserFromContext(ctx); claims != nil && (claims.AccessToken != nil || claims.ExternalBuilderOperationID != "") {
+		// MCP-originated authoring cannot introduce a free URL, including a
+		// nested server.url or an edit of an existing connection. Integrations
+		// remains the user's path for custom servers. Check reused accounts
+		// before ensurePersonalMCP can attach them under a catalog-like name.
+		if url != "" {
+			return "", fmt.Errorf("MCP tools can install catalog servers only; add custom URLs through Integrations")
+		}
+		if label == "" {
+			saved, found, err := lookupPersonalMCP(person, name)
+			if err != nil {
+				return "", err
+			}
+			if found {
+				entry, approved := api.placeMCPCatalogEntry(saved.Catalog)
+				if !approved || saved.URL != entry.config.URL || saved.Transport != string(entry.config.GetProtocol()) || len(saved.Headers) != 0 {
+					return "", fmt.Errorf("this connection is not a current catalog server; manage custom connections through Integrations")
+				}
+				if catalog == name {
+					catalog = saved.Catalog
+				}
+			}
+		}
+		if _, approved := api.placeMCPCatalogEntry(catalog); !approved {
+			return "", fmt.Errorf("MCP tools can install catalog servers only; choose a catalog name or use Integrations for custom URLs")
+		}
+	}
 	if place != "" && operation != "edit_mcp_server" && !placeMCPCanAttach(ctx, person, place) {
 		return "", fmt.Errorf("you can add connections only where you can edit this workflow, Crew or Code")
 	}

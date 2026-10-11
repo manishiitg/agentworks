@@ -13,6 +13,18 @@ form duplicated the existing interaction tools and blocked unattended runs.
 
 Ticket: [PLAT-864](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-864.md).
 
+## 2026-10-11 — MCP-originated installs use the current catalog (PLAT-856)
+
+Allow external tools to install or reuse current catalog MCP servers only;
+custom URLs and endpoint edits stay in Integrations. Enforce this once in the
+shared connection handler for Crew, workflow and Relay authoring. Validate a
+reused account's catalog, URL and transport before attaching it; a catalog-like
+name does not authorize a custom endpoint. Why: an agent following untrusted
+text must not attach an arbitrary service under the project's authority.
+The owner chose the catalog-only policy; existing website roles still apply.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Crew artifact links retain live access and connection bounds (PLAT-856)
 
 Extend `get_file_link` and authenticated downloads to Crews using existing

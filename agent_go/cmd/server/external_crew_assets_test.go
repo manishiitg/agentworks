@@ -145,6 +145,7 @@ func TestExternalCrewLinksOverMCPAndAssetAccess(t *testing.T) {
 			t.Fatalf("new file restriction = %d", w.Code)
 		}
 	}
+	reader.AccessToken.FileGuard = nil
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["code"]}]}`)
 	for _, raw := range []string{preview, download} {
 		if w := serve(reader, raw, "read", "GET", ""); w.Code != 403 && w.Code != 404 {

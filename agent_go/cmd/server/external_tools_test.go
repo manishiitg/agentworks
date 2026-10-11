@@ -347,6 +347,17 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	wantCatalog = append(wantCatalog, kbTools...)
 	wantCatalog = append(wantCatalog, caplayerproduct.ExternalTools()...)
+	// A shared tool can be admitted by several product manifests; its
+	// implementation appears once, at the first admitted position.
+	unique := wantCatalog[:0]
+	seenProducts := map[string]bool{}
+	for _, name := range wantCatalog {
+		if !seenProducts[name] {
+			seenProducts[name] = true
+			unique = append(unique, name)
+		}
+	}
+	wantCatalog = unique
 	for _, name := range run {
 		if denied[name] {
 			continue

@@ -192,10 +192,13 @@ func TestAddShareabilityMetadataClassifiesDeploymentHosts(t *testing.T) {
 }
 
 func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
-	f := newExternalToolsFixture(t)
+	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("PUBLIC_URL", "https://customer.example")
-	const userID = "work-user"
-	f.write(t, "_users/"+userID+"/Chats/Work/projects/demo/output/report.txt", "ready")
+	const userID = "owner"
+	const root = "_users/owner/Chats/Work/projects/demo"
+	f.write(t, root+"/product.json", `{"schema_version":1,"product":"work","id":"demo","title":"Demo","session_id":"demo-session"}`)
+	f.write(t, root+"/workflow.json", `{"id":"demo","label":"Demo","created_by":"owner"}`)
+	f.write(t, root+"/output/report.txt", "ready")
 	reg := &recordingRegistrar{}
 	if err := f.api.registerWorkShareLinkTool(reg, userID, "Chats/Work/projects/demo"); err != nil {
 		t.Fatal(err)
@@ -253,7 +256,7 @@ func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
 	// Resumed Work conversations carry the expanded private path. It must
 	// register the same tool and still emit the canonical user-scoped URL.
 	physical := &recordingRegistrar{}
-	if err := f.api.registerWorkShareLinkTool(physical, userID, "_users/work-user/Chats/Work/projects/demo"); err != nil {
+	if err := f.api.registerWorkShareLinkTool(physical, userID, "_users/owner/Chats/Work/projects/demo"); err != nil {
 		t.Fatalf("register share tool for resumed Work path: %v", err)
 	}
 	out, err := physical.tools["get_file_link"].exec(context.Background(), map[string]interface{}{"path": "output/report.txt"})
