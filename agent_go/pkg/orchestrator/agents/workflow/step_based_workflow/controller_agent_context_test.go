@@ -4,7 +4,7 @@ import "testing"
 
 func TestAgentContinuationUsesOnlyNewDelegationInstruction(t *testing.T) {
 	opts := agentSequenceCallOptions{
-		ReentryMessage:      "durable route description\n\n## Orchestrator Instructions\n\ninspect the latest run",
+		ReentryMessage:      "durable route description\n\n## Agent Instructions\n\ninspect the latest run",
 		ContinuationMessage: "inspect the latest run",
 	}
 
