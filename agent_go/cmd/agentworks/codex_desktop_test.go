@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -88,6 +89,9 @@ func TestCodexDesktopAmbiguousOfferDoesNotStartTurn(t *testing.T) {
 	err = codexDesktopOffer(context.Background(), "desktop+unix://"+socket, agentworksclient.LocalBridgeReply{Attachment: agentworksclient.AgentAttachment{SessionID: "00000000-0000-0000-0000-000000000001", Provider: "codex"}, Messages: []agentworksclient.AgentLiveMessage{{MessageID: "message", Message: "peer content"}}})
 	if err == nil {
 		t.Fatal("disconnect fabricated admission")
+	}
+	if errors.Is(err, agentworksclient.ErrNativeOfferRejected) {
+		t.Fatal("disconnect after the delivery write was classified as definite failure")
 	}
 	if e := <-done; e != nil {
 		t.Fatal(e)

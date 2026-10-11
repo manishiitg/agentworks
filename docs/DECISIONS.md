@@ -5,7 +5,9 @@
 Send AgentWorks acknowledgement/reply instructions on the first authorized offer
 of an attachment, then on the next offer after 24 hours. Persist the timestamp
 with the offer before delivery, retaining the same ambiguity/no-replay policy as
-messages. Keep sender provenance and the session's permission boundary on every
+messages. Restore the timestamp on a definite pre-delivery failure; preserve it
+on ambiguous writes. Claude channels do not consume formatting guidance. Keep a
+short command-discovery hint and sender provenance and the session's permission boundary on every
 offer. A fresh attachment resets guidance; provider-added warnings remain under
 the provider's control. Why: avoid repeating setup text on every message while
 keeping durable context and truthful delivery.

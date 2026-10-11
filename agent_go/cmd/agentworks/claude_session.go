@@ -79,7 +79,13 @@ func nativeClaudeSession(remote, session string) (claudeSessionRecord, string, e
 	return record, strings.TrimSpace(string(key)), nil
 }
 
-func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient.LocalBridgeReply) error {
+func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient.LocalBridgeReply) (offerErr error) {
+	mayHaveDelivered := false
+	defer func() {
+		if offerErr != nil && !mayHaveDelivered {
+			offerErr = errors.Join(agentworksclient.ErrNativeOfferRejected, offerErr)
+		}
+	}()
 	a := out.Attachment
 	record, key, err := nativeClaudeSession(remote, a.SessionID)
 	if err != nil {
@@ -99,6 +105,7 @@ func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient
 	if err = encoder.Encode(map[string]any{"type": "auth", "token": key}); err != nil {
 		return err
 	}
+	mayHaveDelivered = true
 	if err = encoder.Encode(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text}}); err != nil {
 		return err
 	}

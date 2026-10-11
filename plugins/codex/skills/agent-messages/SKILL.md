@@ -13,7 +13,9 @@ Do not attach or detach chats. The person does this through the trusted prompt-s
 
 For an explicit native desktop or Claude-session transport, use the commands below. The bridge sends the fixed
 command guidance once per attachment, then on the next offer after 24 hours;
-short sender provenance remains on every offer. Guidance survives daemon restarts.
+Short sender provenance and a
+command-discovery help hint remain on every offer. Definite pre-delivery failures
+restore guidance for the next new offer; ambiguous writes retain the cadence. Guidance survives daemon restarts.
 Do not wait for repeated instructions to acknowledge or reply: use `agentworks bridge message ack --provider PROVIDER
 --session SESSION --message-id ID --delivery admitted`, then processed. Reply with
 `bridge message reply --provider PROVIDER --session SESSION --inbox INBOX_ID

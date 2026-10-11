@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -80,10 +81,11 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(root)
+	var bridgeOptions agentworksclient.LocalBridgeOptions
 	start := func() (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
-		go func() { done <- agentworksclient.ServeLocalBridge(ctx, root) }()
+		go func() { done <- agentworksclient.ServeLocalBridge(ctx, root, bridgeOptions) }()
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			if _, e := agentworksclient.CallLocalBridge(context.Background(), root, agentworksclient.LocalBridgeRequest{Action: "ping"}); e == nil {
@@ -328,6 +330,12 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("person-confirmed exact resume failed")
 	}
+	channelOffer := send("channel offer on new attachment")
+	drain.Transport = "claude_channel"
+	if out := wait(channelOffer["message_id"].(string)); out.IncludeGuidance {
+		t.Fatal("channel advanced guidance it does not display")
+	}
+	drain.Transport = "claude_hook"
 	resumed := send("offer on a new attachment")
 	if out := wait(resumed["message_id"].(string)); !out.IncludeGuidance {
 		t.Fatal("new attachment inherited old command guidance")
@@ -365,6 +373,39 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	// Exercise failure classification through real OAuth/SSE/local delivery.
+	stop(cancel, done)
+	nativeOffers := make(chan agentworksclient.LocalBridgeReply, 4)
+	firstNative := true
+	bridgeOptions.NativeOffer = func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
+		nativeOffers <- out
+		if firstNative {
+			firstNative = false
+			return errors.Join(agentworksclient.ErrNativeOfferRejected, errors.New("unavailable native endpoint"))
+		}
+		return agentworksclient.ErrNativeOfferUnconfirmed
+	}
+	cancel, done = start()
+	defer cancel()
+	nativeAttach := attach
+	nativeAttach.NativeRemote = "claude+session:///example"
+	local(nativeAttach)
+	for i, text := range []string{"definitely failed native offer", "native offer with refreshed guidance", "unconfirmed offer retains guidance cadence"} {
+		send(text)
+		select {
+		case delivered := <-nativeOffers:
+			if delivered.IncludeGuidance != (i < 2) {
+				t.Fatal("native failure or ambiguity lost guidance cadence", i)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("native stream never offered message")
+		}
+	}
+	stop(cancel, done)
+	bridgeOptions = agentworksclient.LocalBridgeOptions{}
+	cancel, done = start()
+	defer cancel()
+	local(attach)
 	wrong := drain
 	wrong.SessionID = "another-session"
 	wrong.HostKey = "another-host"
@@ -385,8 +426,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if e := store.RevokeFamily(context.Background(), strings.TrimPrefix(senderID, "oauth-"), "owner"); e != nil {
 		t.Fatal(e)
 	}
-	if out := local(drain); len(out.Messages) != 0 {
-		t.Fatal("revoked sender cached body released")
+	if out := local(drain); len(out.Messages) != 0 || out.IncludeGuidance {
+		t.Fatal("revoked sender body or guidance released")
 	}
 	call(freshSender, map[string]any{"action": "send", "agent_name": "fresh-sender", "target": "agent:hook-reviewer", "message": "pending for receiver", "submission_id": "receiver-revoke"})
 	deadline = time.Now().Add(5 * time.Second)

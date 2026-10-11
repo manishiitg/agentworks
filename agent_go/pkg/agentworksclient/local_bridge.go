@@ -40,16 +40,17 @@ type LocalBridgeRequest struct {
 }
 
 type LocalBridgeReply struct {
-	Attached        bool               `json:"attached"`
-	IncludeGuidance bool               `json:"include_guidance,omitempty"`
-	Attachment      AgentAttachment    `json:"attachment,omitempty"`
-	Messages        []AgentLiveMessage `json:"messages,omitempty"`
-	Error           string             `json:"error,omitempty"`
-	Result          json.RawMessage    `json:"result,omitempty"`
-	Sessions        []AgentAttachment  `json:"sessions,omitempty"`
-	LastError       string             `json:"last_error,omitempty"`
-	Offline         bool               `json:"offline,omitempty"`
-	Pending         int                `json:"pending"`
+	Attached           bool               `json:"attached"`
+	IncludeGuidance    bool               `json:"include_guidance,omitempty"`
+	Attachment         AgentAttachment    `json:"attachment,omitempty"`
+	Messages           []AgentLiveMessage `json:"messages,omitempty"`
+	Error              string             `json:"error,omitempty"`
+	Result             json.RawMessage    `json:"result,omitempty"`
+	Sessions           []AgentAttachment  `json:"sessions,omitempty"`
+	LastError          string             `json:"last_error,omitempty"`
+	Offline            bool               `json:"offline,omitempty"`
+	Pending            int                `json:"pending"`
+	previousGuidanceAt time.Time
 }
 
 type localOffer struct {
@@ -88,6 +89,10 @@ type localBridge struct {
 }
 
 var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receipt")
+
+// ErrNativeOfferRejected means no message content reached the provider.
+// A disconnect after a delivery write must never be classified as rejected.
+var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
@@ -685,7 +690,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		out.Messages = filtered
 		previousGuidanceAt := s.LastGuidanceAt
-		if len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
+		out.previousGuidanceAt = previousGuidanceAt
+		if in.Transport != "claude_channel" && len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
 			out.IncludeGuidance = true
 			s.LastGuidanceAt = time.Now().UTC()
 		}
@@ -765,6 +771,9 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 				continue
 			}
 			b.mu.Lock()
+			if out.IncludeGuidance && errors.Is(err, ErrNativeOfferRejected) && b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s {
+				s.LastGuidanceAt = out.previousGuidanceAt
+			}
 			s.LastError = "Native queue did not confirm acceptance; use explicit mailbox read."
 			_ = b.save()
 			b.mu.Unlock()
