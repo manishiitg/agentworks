@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-11 — MCP offer evidence stays separate from connection status (PLAT-856)
+
+Show provider offer badges, an Offers filter and expandable evidence only in
+Available MCPs. Join by exact catalog connector names; metadata cannot add a
+connector or grant access. Read the maintained public catalog without app
+credentials, with a five-minute shared cache and a bundled offline snapshot.
+Retain source review dates and mark unverified, future-dated or older-than-30-day
+evidence as needing review. Provider API allowances may differ from MCP limits.
+Why: help people choose tools without implying remaining credits or changing setup.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-36.
+
+
 ## 2026-10-11 — Native Claude channels receive named-agent messages (PLAT-861)
 
 Make native delivery opt-in for one exact session with a purpose and explicit
