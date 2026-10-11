@@ -6,7 +6,7 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Ordinary local launches offer Goals, Crew and Code. The explicit development
+# Ordinary local launches offer Goals and Crew. The explicit development
 # opt-in below enables server products without changing local authentication.
 LOCAL_SERVER_PRODUCTS=false
 
@@ -100,13 +100,13 @@ POSITIONAL_ARGS=()
 print_usage() {
     printf '%s\n' 'Usage: ./run_server_with_logging.sh [options]'
     printf '%s\n' ''
-    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend (workflows, Crew, Code).'
+    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend (workflows, Crew).'
     printf '%s\n' ''
     printf '%s\n' 'Options:'
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
-    printf '%s\n' '  --with-server-products        Opt into Vault, Brain, Relays and LLM Gateway locally.'
+    printf '%s\n' '  --with-server-products        Opt into Code, Vault, Brain, Relays and LLM Gateway locally.'
     printf '%s\n' '  --with-gateway                Alias for --with-server-products.'
     printf '%s\n' '  --only-gateway                Start the standalone server gateway for development (no local app).'
     printf '%s\n' '  --build                       Build and serve the frontend (use with --only-frontend).'
@@ -196,7 +196,7 @@ configure_local_product_profile() {
     else
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
         export VITE_DEPLOYMENT_MODE=local
-        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"work\", \"code\"]}"
+        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"work\"]}"
         # Empty values prevent godotenv from reviving old service configuration.
         export CAPLAYER_SERVICE_URL=""
         export CAPLAYER_SERVICE_TOKEN=""

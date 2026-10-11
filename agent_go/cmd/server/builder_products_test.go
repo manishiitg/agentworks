@@ -21,7 +21,7 @@ import (
 
 func assertNoDisabledProductGuidance(t *testing.T, label, body string) {
 	t.Helper()
-	pattern := regexp.MustCompile(`\b(Vault|Brain|Relays?)\b`)
+	pattern := regexp.MustCompile(`\b(Vault|Brain|Relays?)\b|\bCode (projects?|workspaces?|dashboards?|scripts?|owners?|is|remains|stays|may|can use)\b|\bCode's|Crew(?:/Code| or Code| and Code)|\bCodes\b|[Ii]n a Code\b`)
 	for _, line := range strings.Split(body, "\n") {
 		if pattern.MatchString(line) {
 			t.Errorf("%s mentions disabled product: %s", label, line)
@@ -47,9 +47,18 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 			t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", tc.opt)
 			selection := builderProductSelection(nil)
 			for _, p := range []agentprofiles.Profile{workproduct.BuiltinAgentProfile(), codeproduct.BuiltinAgentProfile()} {
+				if !selection.Has(p.ID) {
+					continue
+				}
+				if err := agentprofiles.ResolveFeatures(&p); err != nil {
+					t.Fatal(err)
+				}
 				text := p.ForProducts(selection).SystemPromptTemplate
 				if !tc.enabled {
 					assertNoDisabledProductGuidance(t, p.ID+" prompt", text)
+					for _, extension := range agentprofiles.FeaturePromptExtensions(p.ForProducts(selection)) {
+						assertNoDisabledProductGuidance(t, p.ID+" feature prompt", selection.Text(extension))
+					}
 				}
 				if strings.Contains(text, "Vault") != tc.enabled || strings.Contains(text, "<!-- product:") {
 					t.Fatalf("%s prompt differs from deployment: %s", p.ID, text)
@@ -74,7 +83,11 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 				}
 			}
 			loaded := skills.LoadAttachableIn("", "", []string{"work-mcp", "code-mcp", "work-integrations", "code-integrations", "work-dashboard", "code-dashboard"})
-			if len(loaded) != 6 {
+			wantSkills := 3
+			if tc.enabled {
+				wantSkills = 6
+			}
+			if len(loaded) != wantSkills {
 				t.Fatalf("canonical skill fixture incomplete: %d", len(loaded))
 			}
 			for _, skill := range loaded {
@@ -84,6 +97,13 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 				}
 				if !tc.enabled && strings.Contains(body, "Vault") {
 					t.Fatalf("%s leaked Vault: %s", skill.Name, body)
+				}
+			}
+			for _, name := range []string{"work-workflow-files", "work-schedules-and-bots"} {
+				for _, skill := range skills.LoadAttachableIn("", "", []string{name}) {
+					if !tc.enabled {
+						assertNoDisabledProductGuidance(t, name, selection.Skill(skill).Content)
+					}
 				}
 			}
 		})
@@ -97,6 +117,7 @@ func TestBuilderProductsGateCachedAndExternalTools(t *testing.T) {
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
 	blocked := append(knowledgebase.ToolNames(), caplayerproduct.ExternalTools()...)
 	blocked = append(blocked, "brain_schedule", "brain_secrets", "read_knowledgebase", "run_relay", "test_relay", "publish_relay")
+	blocked = append(blocked, "create_code_workspace", "ask_my_code", "list_my_code_projects", "list_code_workspaces")
 	gate := newProductToolGate(nil)
 	claims := &UserClaims{UserID: "default"}
 	resolve := (&StreamingAPI{}).bindToolExecutionContext(context.WithValue(context.Background(), UserContextKey, claims), "product-selection-test", QueryRequest{}, false)

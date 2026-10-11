@@ -5,12 +5,15 @@ address, local login or SSO configuration does not determine installed products.
 
 | Installation | Default product set |
 | --- | --- |
-| Source local / DMG | Goals/workflows, Crew, Code |
-| Source local with `--with-server-products` | Local products plus Relays, Brain, Vault, LLM Gateway |
+| Source local / DMG | Goals/workflows, Crew |
+| Source local with `--with-server-products` | Local products plus Code, Relays, Brain, Vault, LLM Gateway |
 | Server | Configured server products and account permissions |
 
+Local users use their own CLI for standalone coding. Workflow/Crew builders
+retain their native CLI providers and workflow script authoring.
+
 Normal local installs retain project MCPs, project secrets, local knowledge and
-workflow learnings. The packaged desktop does not include the four server
+workflow learnings. The packaged desktop does not include Code or the four shared server
 products or support the source-development opt-in.
 
 ## Shared policy

@@ -65,7 +65,7 @@ include the warning; do not call it a shareable link. A URL based on `localhost`
 must have a reachable `PUBLIC_URL` before the link can be shared.
 
 Crew dashboard links follow current Crew access, including legacy links after
-server-side root resolution. Code remains private to its owner. Links contain
+server-side root resolution.<!-- product:code --> Code remains private to its owner.<!-- /product --> Links contain
 no credentials and grant no access. Each viewer's live permissions govern
 script-backed data; do not promise that sharing a URL grants data-source access.
 
@@ -130,12 +130,12 @@ never Slack channels. Call only targets accessible to the current user.
 Function-call authorization and folder access are separate: a callable target
 does not automatically grant access to its files.
 
-Code may call accessible Crews/workflows. A Code project has no functions of its
+<!-- product:code -->Code may call accessible Crews/workflows. A Code project has no functions of its
 own and nothing can call into it: Code is private, Crews and workflows are
 shared, and nothing shared reaches into a private space. To reach another chat
 of the same Code, use `ask_project_chat`. Codes do not appear in the public
 Crew/MCP catalog.
-
+<!-- /product -->
 **Where calls run.** Each caller has one continuing conversation with each
 Crew it calls, created on the first call. Follow-up calls land in the same
 conversation, so the target remembers earlier calls from you. Calls never run

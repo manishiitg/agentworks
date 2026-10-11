@@ -27,7 +27,7 @@ func Canonical(product string) string {
 }
 func ServerOnly(product string) bool {
 	switch Canonical(product) {
-	case "relays", "knowledgebase", "mcp-gateway", "llm-gateway":
+	case "code", "relays", "knowledgebase", "mcp-gateway", "llm-gateway":
 		return true
 	default:
 		return false
@@ -66,7 +66,7 @@ func Enabled(product string) bool {
 				available = available || InstallationAvailable(candidate)
 			}
 			if !available {
-				surfaces = "agentworks,work,code"
+				surfaces = "agentworks,work"
 			}
 		}
 		if !Contains(surfaces, product) {
@@ -113,6 +113,8 @@ func ToolProduct(name string) string {
 		return "knowledgebase"
 	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "query_vault_db", "mutate_vault_db", "list_vault_mcp_servers", "call_vault_mcp_tool", "manage_vault_tools", "read_vault_audit", "manage_my_vaults", "manage_global_secret", "manage_vault_secret", "share_mcp_to_vault":
 		return "mcp-gateway"
+	case "create_code_workspace", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit":
+		return "code"
 	case "create_relay", "update_relay", "test_relay", "publish_relay", "run_relay", "get_relay_run", "get_relay_releases", "inspect_relay_graph":
 		return "relays"
 	default:
@@ -124,7 +126,7 @@ func (s Selection) AllowsTool(name string) bool { p := ToolProduct(name); return
 // BindingProduct refers to trusted product.yaml tool-factory namespaces,
 // rather than external MCP names supplied by a private connection.
 func BindingProduct(id string) string {
-	for namespace, product := range map[string]string{"caplayer.": "mcp-gateway", "knowledgebase.": "knowledgebase", "relay.": "relays"} {
+	for namespace, product := range map[string]string{"code.": "code", "caplayer.": "mcp-gateway", "knowledgebase.": "knowledgebase", "relay.": "relays"} {
 		if strings.HasPrefix(id, namespace) {
 			return product
 		}
@@ -142,6 +144,8 @@ func SkillProduct(name string) string {
 		return "knowledgebase"
 	case "vault-access", "caplayer-access":
 		return "mcp-gateway"
+	case "code-mcp", "code-integrations", "code-workflow-files", "code-skills", "code-schedules-and-bots", "code-dashboard", "code-ui-control", "code-background-work", "cowork-assistant", "cowork-browser-tasks", "cowork-automations":
+		return "code"
 	case "relay-builder", "relay-dashboard":
 		return "relays"
 	default:

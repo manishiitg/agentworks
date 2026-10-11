@@ -11,12 +11,12 @@ func TestLocalInstallationExcludesServerProducts(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code,relays,knowledgebase,mcp-gateway,llm-gateway")
 	t.Setenv("CAPLAYER_SERVICE_URL", "http://127.0.0.1:18745")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("x", 32))
-	for _, product := range []string{"relays", "knowledgebase", "mcp-gateway", "llm-gateway", " MCP-GATEWAY "} {
+	for _, product := range []string{"code", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", " MCP-GATEWAY "} {
 		if productEnabled(product) || userAllowedProduct(nil, product) || userAllowedProduct(&UserClaims{UserID: "default"}, product) {
 			t.Fatalf("local installation admits excluded product %q", product)
 		}
 	}
-	for _, product := range []string{"agentworks", "work", "code"} {
+	for _, product := range []string{"agentworks", "work"} {
 		if !productEnabled(product) || !userAllowedProduct(nil, product) {
 			t.Fatalf("local product %q must remain available", product)
 		}
@@ -50,7 +50,7 @@ func TestLocalInstallationServerProductsRequireExplicitOptIn(t *testing.T) {
 		}
 	}
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "1")
-	for _, product := range []string{"relays", "knowledgebase", "mcp-gateway", "llm-gateway"} {
+	for _, product := range []string{"code", "relays", "knowledgebase", "mcp-gateway", "llm-gateway"} {
 		if !productEnabled(product) || !userAllowedProduct(&UserClaims{UserID: "default"}, product) {
 			t.Fatalf("explicit local opt-in must admit %q", product)
 		}
@@ -73,7 +73,7 @@ func TestLocalInstallationServerProductsRequireExplicitOptIn(t *testing.T) {
 func TestServerInstallationRetainsSharedProducts(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_PRODUCTS", "")
-	for _, product := range []string{"relays", "knowledgebase", "mcp-gateway", "llm-gateway"} {
+	for _, product := range []string{"code", "relays", "knowledgebase", "mcp-gateway", "llm-gateway"} {
 		if !productEnabled(product) {
 			t.Fatalf("server excludes shared product %q", product)
 		}

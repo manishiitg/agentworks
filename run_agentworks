@@ -10,7 +10,7 @@
 #   ./run_agentworks --only-frontend         # frontend only
 #   ./run_agentworks --only-frontend --debug-memory  # + heap snapshots (:9333) & RSS log
 #   ./run_agentworks --only-gateway          # standalone server gateway development
-#   ./run_agentworks --with-server-products  # local opt-in: Vault, Brain, Relays, LLM Gateway
+#   ./run_agentworks --with-server-products  # local opt-in: Code, Vault, Brain, Relays, LLM Gateway
 #   ./run_agentworks --background            # full stack, detached
 #   ./run_agentworks --help                  # all options
 set -euo pipefail

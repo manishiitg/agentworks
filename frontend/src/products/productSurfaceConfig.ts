@@ -34,7 +34,7 @@ export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
   if (isLocalProductInstallation()) {
     const local = Array.isArray(configured) ? configured.filter(isProductSurface).filter(surface => !SERVER_ONLY_SURFACES.includes(surface)) : []
-    return local.length ? [...new Set(local)] : ['agentworks', 'work', 'code']
+    return local.length ? [...new Set(local)] : ['agentworks', 'work']
   }
   const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'relays', 'work', 'mcp-gateway', 'knowledgebase'] : ['agentworks', 'relays', 'work', 'knowledgebase']
   if (!Array.isArray(configured)) return defaults
@@ -77,7 +77,7 @@ export function gatewayBaseUrl(): string | null {
   return url
 }
 
-const SERVER_ONLY_SURFACES: ProductSurface[] = ['relays', 'knowledgebase', 'mcp-gateway']
+const SERVER_ONLY_SURFACES: ProductSurface[] = ['code', 'relays', 'knowledgebase', 'mcp-gateway']
 
 export function isLocalProductInstallation(): boolean {
   // Packaged local assets omit server entries. Source development uses the

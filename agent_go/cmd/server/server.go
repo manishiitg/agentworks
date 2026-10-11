@@ -13354,7 +13354,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Connect a catalog server or user-supplied remote MCP URL to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew or Code with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and requires group grants.<!-- /product -->",
+		"Connect a catalog server or user-supplied remote MCP URL to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and requires group grants.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13535,7 +13535,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"add_mcp_server",
-		"Add a remote MCP server to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew or Code with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. <!-- product:mcp-gateway -->Use Vault for access shared across places.<!-- /product -->",
+		"Add a remote MCP server to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. <!-- product:mcp-gateway -->Use Vault for access shared across places.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

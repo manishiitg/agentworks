@@ -57,9 +57,9 @@ Inspect `list_mcp_servers` first. Reconnect, remove, discover and select using t
 exact connection name, not the catalog provider when there are multiple accounts.
 To reconnect an existing account, omit label. Never replace another account or
 change its selection. Named connections do not share the legacy Google/provider
-group login. Code's `manage_my_mcp_servers` supports the same `catalog` and `label`
+group login.<!-- product:code --> Code's `manage_my_mcp_servers` supports the same `catalog` and `label`
 arguments with `action="connect"`, and exact `name` for an existing connection.
-Select each returned private connection separately for its project.
+Select each returned private connection separately for its project.<!-- /product -->
 <!-- product:mcp-gateway -->
 Vault MCPs are available automatically through the executing user's current user/group permissions, independent of project MCP selections. Do not call select/deselect for Vault. Tool grants and regex rules are checked at the gateway on every call. Secrets still require explicit selection by name.
 <!-- /product -->

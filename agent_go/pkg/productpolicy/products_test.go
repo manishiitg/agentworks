@@ -30,12 +30,12 @@ func TestInstallationSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			profile(t, tc.mode, tc.opt, tc.products, tc.surfaces)
-			for _, p := range []string{"knowledgebase", "mcp-gateway", "llm-gateway", "relays", "caplayer", "brain"} {
+			for _, p := range []string{"code", "knowledgebase", "mcp-gateway", "llm-gateway", "relays", "caplayer", "brain"} {
 				if Enabled(p) != tc.server {
 					t.Errorf("Enabled(%s)=%t", p, Enabled(p))
 				}
 			}
-			for _, p := range []string{"agentworks", "work", "code"} {
+			for _, p := range []string{"agentworks", "work"} {
 				if !Enabled(p) {
 					t.Errorf("core project %s unavailable", p)
 				}
@@ -59,8 +59,14 @@ func TestInstallationSelection(t *testing.T) {
 func TestCallerCannotEnableUninstalledProducts(t *testing.T) {
 	profile(t, "local", "0", "", "")
 	s := Selection{Allowed: func(string) bool { return true }}
-	if s.Has("vault") {
+	if s.Has("vault") || s.Has("code") {
 		t.Fatal("caller bypassed local installation")
+	}
+	if s.AllowsBinding("code.create-project") || s.AllowsTool("create_code_workspace") || s.AllowsSkill("code-mcp") {
+		t.Fatal("disabled Code capability remains available")
+	}
+	if !s.AllowsSkill("code-authoring") || !s.AllowsTool("execute_shell_command") {
+		t.Fatal("ordinary CLI/script authoring was removed")
 	}
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "1")
 	s = Selection{Allowed: func(p string) bool { return p != "knowledgebase" }}
@@ -118,6 +124,7 @@ func TestProjectionCleanupPreservesUserSkillsAndSymlinks(t *testing.T) {
 		return p
 	}
 	disabled := mkdir("brain", true)
+	disabledCode := mkdir("code-mcp", true)
 	user := mkdir("vault-access", false)
 	local := mkdir("workflow-learnings", true)
 	outside := t.TempDir()
@@ -129,6 +136,9 @@ func TestProjectionCleanupPreservesUserSkillsAndSymlinks(t *testing.T) {
 	}
 	if _, err := os.Stat(disabled); !os.IsNotExist(err) {
 		t.Fatal("disabled projection remains")
+	}
+	if _, err := os.Stat(disabledCode); !os.IsNotExist(err) {
+		t.Fatal("disabled Code projection remains")
 	}
 	for _, p := range []string{user, local, outside, filepath.Join(root, ".agents", "skills", "relay-builder")} {
 		if _, err := os.Lstat(p); err != nil {

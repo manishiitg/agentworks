@@ -316,7 +316,7 @@ it.each([false, true])('filters Ctrl+K products for local server-product opt-in=
   const surfaces = [...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id'))
   expect(surfaces).toEqual(optIn
     ? ['product:agentworks', 'product:relays', 'product:work', 'product:code', 'product:mcp-gateway', 'product:knowledgebase']
-    : ['product:agentworks', 'product:work', 'product:code'])
+    : ['product:agentworks', 'product:work'])
 })
 
 it('respects account entitlements within an opted-in local installation', async () => {
@@ -328,12 +328,12 @@ it('respects account entitlements within an opted-in local installation', async 
     .toEqual(['product:code', 'product:mcp-gateway'])
 })
 
-it('rejects a stale server-product shortcut after local opt-in is withdrawn', async () => {
+it.each(['mcp-gateway', 'code'])('rejects a stale %s shortcut after local opt-in is withdrawn', async product => {
   await renderNavigation('@products ', localProducts, true, () => {
     Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: true })
   })
-  const vault = quickNavigationItems(useAuthStore.getState().user, 'code').find(item => item.id === 'product:mcp-gateway')!
+  const shortcut = quickNavigationItems(useAuthStore.getState().user, 'code').find(item => item.id === `product:${product}`)!
   Object.assign(window.__APP_RUNTIME_CONFIG__!, { localServerProducts: false })
-  expect(openQuickNavigation(vault)).toBe(false)
+  expect(openQuickNavigation(shortcut)).toBe(false)
   expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
 })

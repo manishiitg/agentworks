@@ -23,17 +23,17 @@ describe('product surface deployment configuration', () => {
       enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
       defaultProductSurface: 'mcp-gateway', gatewayUrl: 'http://127.0.0.1:18745', gatewaySso: true,
     } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'code'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(gatewayBaseUrl()).toBeNull()
     expect(hasGatewaySSO()).toBe(false)
-    for (const product of ['relays', 'knowledgebase', 'mcp-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
+    for (const product of ['code', 'relays', 'knowledgebase', 'mcp-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
   })
 
   it('uses local defaults and cannot opt into server products in a local build', () => {
     vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
-    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['mcp-gateway', 'knowledgebase', 'relays'], gatewayUrl: 'http://127.0.0.1:18745' } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'code'])
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['code', 'mcp-gateway', 'knowledgebase', 'relays'], gatewayUrl: 'http://127.0.0.1:18745' } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(gatewayBaseUrl()).toBeNull()
   })
 
@@ -55,7 +55,7 @@ describe('product surface deployment configuration', () => {
       enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
       gatewayUrl: 'http://127.0.0.1:18745',
     } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'code'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(gatewayBaseUrl()).toBeNull()
   })
   it('ignores a retired product in saved deployment configuration', () => {

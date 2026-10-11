@@ -2,10 +2,10 @@
 
 Electron shell for the standalone Mac app. It bundles the `agent-server` and `workspace-server` binaries, managing their lifecycle automatically.
 
-The local app offers workflows (Goals), Crew and Code. Relays, Brain, Vault and
+The local app offers workflows (Goals) and Crew. Code, Relays, Brain, Vault and
 LLM Gateway are server products and are excluded from local installations. The
 DMG neither includes nor starts a Vault sidecar. Project MCPs and secrets remain
-available within workflows, Crew and Code. Existing workspace and Vault data are
+available within workflows and Crew. Existing workspace and Vault data are
 not deleted during upgrades.
 
 ## Prerequisites

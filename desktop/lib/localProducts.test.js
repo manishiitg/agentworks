@@ -17,7 +17,7 @@ test('desktop excludes server products and inherited Vault connections', () => {
   const env = localProductEnv(inherited);
   assert.equal(env.AGENTWORKS_DEPLOYMENT_MODE, 'local');
   assert.equal(env.AGENTWORKS_LOCAL_SERVER_PRODUCTS, '0');
-  assert.equal(env.AGENTWORKS_ENABLED_PRODUCT_SURFACES, 'agentworks,work,code');
+  assert.equal(env.AGENTWORKS_ENABLED_PRODUCT_SURFACES, 'agentworks,work');
   assert.equal(env.AGENTWORKS_DEFAULT_PRODUCT_SURFACE, 'agentworks');
   assert.equal(env.CAPLAYER_SERVICE_URL, '');
   assert.equal(env.CAPLAYER_SERVICE_TOKEN, '');

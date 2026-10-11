@@ -13,4 +13,4 @@ Place the following binaries here to run the Electron app locally (unpackaged):
 
 When packaged with electron-builder, these are copied from `resources/` into the app's `Contents/Resources/`.
 
-The local app includes workflows, Crew and Code. Relays, Brain, Vault and LLM Gateway are server products. The DMG does not package or start a Vault sidecar.
+The local app includes workflows and Crew. Code, Relays, Brain, Vault and LLM Gateway are server products. The DMG does not package or start a Vault sidecar.
