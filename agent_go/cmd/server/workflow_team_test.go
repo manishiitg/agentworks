@@ -177,7 +177,7 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if w := save("leader", m.Team, 0); w.Code != 409 {
 		t.Fatal("stale team policy accepted")
 	}
-	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1, AfterRun: &ScheduleAfterRun{}}
+	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1, AfterRun: &ScheduleAfterRun{}}
 	if e := teamScheduleAuthority(m.Team, "first", sched); e == nil {
 		t.Fatal("editing implicitly granted schedule management")
 	}
