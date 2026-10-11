@@ -540,7 +540,11 @@ func listShares(o *options, shares map[string]shareState) {
 }
 
 func statusCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "status", Args: cobra.NoArgs, Short: "Show which folders are being shared", RunE: func(cmd *cobra.Command, _ []string) error {
+	var agents bool
+	cmd := &cobra.Command{Use: "status", Args: cobra.NoArgs, Short: "Show which folders are being shared", RunE: func(cmd *cobra.Command, _ []string) error {
+		if agents {
+			return agentSessionStatus(o, cmd.Context())
+		}
 		if err := o.useShareConfig(); err != nil {
 			return err
 		}
@@ -556,6 +560,8 @@ func statusCommand(o *options) *cobra.Command {
 		listShares(o, shares)
 		return nil
 	}}
+	cmd.Flags().BoolVar(&agents, "agents", false, "List explicitly attached local coding-agent sessions")
+	return cmd
 }
 
 // printDebug prints what is needed to explain a failed or odd connection.

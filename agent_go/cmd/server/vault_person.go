@@ -27,7 +27,7 @@ func personVaultActive(person string) bool {
 	}
 	claims := &UserClaims{UserID: person}
 	access := userAccessForClaims(claims)
-	return person != "" && !access.Disabled && workflowAccessForClaims(claims) != WorkflowAccessRead
+	return person != "" && !access.Disabled && userAllowedProduct(claims, "mcp-gateway") && workflowAccessForClaims(claims) != WorkflowAccessRead
 }
 
 // vaultOwnerOf reports whether person owns vaultID, according to the Vault service.

@@ -2,10 +2,15 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Pausing a workflow sends one disable per schedule at the same moment. Each
@@ -54,5 +59,68 @@ func TestConcurrentScheduleDisablesAllPersist(t *testing.T) {
 	}
 	if len(got.Schedules) != n {
 		t.Errorf("schedules = %d, want %d", len(got.Schedules), n)
+	}
+}
+
+// Drive the sharing handler, real workspace HTTP writer and disk lock. A brief
+// concurrent save must not make a just-created workflow unshareable; cancelled
+// or persistently blocked requests must leave its access record untouched.
+func TestWorkflowManifestAccessWaitsForConcurrentSave(t *testing.T) {
+	f := newTeamTestFixture(t)
+	m, _, err := ReadWorkflowManifest(teamTestContext("leader"), teamTestRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Team = nil
+	f.manifest(t, m)
+	lockPath := filepath.Join(f.root, teamTestRoot, "workflow.json")
+	hold := func() func() {
+		unlock, e := knowledgeManifestLock(lockPath)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var once sync.Once
+		release := func() { once.Do(unlock) }
+		t.Cleanup(release)
+		return release
+	}
+	save := func(ctx context.Context, readers []string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]any{"workspace_path": teamTestRoot, "owners": []string{"leader"}, "editors": []string{}, "readers": readers})
+		r := httptest.NewRequest(http.MethodPut, "/api/workflow/access", strings.NewReader(string(body))).WithContext(ctx)
+		w := httptest.NewRecorder()
+		f.api.handleSetWorkflowAccess(w, r)
+		return w
+	}
+	release := hold()
+	timer := time.AfterFunc(60*time.Millisecond, release)
+	defer timer.Stop()
+	if w := save(teamTestContext("leader"), []string{"observer"}); w.Code != http.StatusOK {
+		t.Fatalf("brief concurrent save refused: %d %s", w.Code, w.Body.String())
+	}
+	after, _, err := ReadWorkflowManifest(teamTestContext("leader"), teamTestRoot)
+	if err != nil || after == nil || !containsID(after.effectiveReaders(), "observer") {
+		t.Fatalf("share not persisted: %v", err)
+	}
+	before := f.file("workflow.json")
+	release = hold()
+	ctx, cancel := context.WithCancel(teamTestContext("leader"))
+	defer cancel()
+	timer = time.AfterFunc(60*time.Millisecond, cancel)
+	defer timer.Stop()
+	if w := save(ctx, []string{}); w.Code == http.StatusOK {
+		t.Fatal("cancelled save was admitted")
+	}
+	if f.file("workflow.json") != before {
+		t.Fatal("cancelled save changed access")
+	}
+	if w := save(teamTestContext("leader"), []string{}); w.Code == http.StatusOK || !strings.Contains(w.Body.String(), "VERSION_CONFLICT") {
+		t.Fatalf("persistent lock did not return retry refusal: %d %s", w.Code, w.Body.String())
+	}
+	if f.file("workflow.json") != before {
+		t.Fatal("timed-out save changed access")
+	}
+	release()
+	if w := save(teamTestContext("leader"), []string{}); w.Code != http.StatusOK {
+		t.Fatalf("retry after release: %d %s", w.Code, w.Body.String())
 	}
 }

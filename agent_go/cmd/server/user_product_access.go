@@ -111,7 +111,9 @@ func userProductPolicy(userID, username, email string) (products []string, restr
 // userAllowedWorkflowID.
 func userAllowedProduct(claims *UserClaims, product string) bool {
 	product = strings.TrimSpace(product)
-	if !productpolicy.Enabled(product) {
+	// A local installation excludes products it does not ship. A server's
+	// AGENT_PRODUCTS list does not revoke access granted per account.
+	if productpolicy.Local() && !productpolicy.Enabled(product) {
 		return false
 	}
 	if product == "" || claims == nil {

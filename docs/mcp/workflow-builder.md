@@ -1,6 +1,6 @@
 # Workflow Builder over MCP
 
-Workflow owners and editors can ask the configured AgentWorks Builder model to edit a selected workflow through MCP. The message continues that person's existing workflow chat: the owner's main chat, or the editor's own chat. The conversation is shared with the browser; execution permissions belong to each operation independently.
+Workflow owners and editors can edit plans and source files directly over MCP, using the current website roles, connection consent, native validators, revisions and plan changelog. They can also ask the configured AgentWorks Builder model to edit a selected workflow. The message continues that person's existing workflow chat: the owner's main chat, or the editor's own chat. The conversation is shared with the browser; execution permissions belong to each operation independently.
 
 This release provides managed plan and source-file editing. It does not expose native shell, arbitrary connected MCP tools, account administration, sharing changes, secrets, background reviewers, workflow execution, or report/database authoring through the Builder model. Existing separately authorized Run tools remain available for execution. Crew `ask_crew` and typed function-call behavior are unchanged.
 
@@ -14,13 +14,35 @@ For OAuth, explicitly request all four scopes:
 workflows:read files:read runs:execute builder:chat
 ```
 
-The consent page requires selection of workflows the signed-in person currently owns or may edit. Every workflow permission on this Builder connection is bounded to those selections. Access and refresh tokens retain the bounds; changing them requires a new authorization. A compatible OAuth client must explicitly request Builder scopes; omitted scopes and the ordinary CLI device-login flow retain their previous defaults.
+OAuth Builder consent follows the account: no workflow selection is requested. Each call resolves the current account, project and team permissions. Existing bounded grants keep their workflow limits. A compatible OAuth client must explicitly request Builder scopes; omitted scopes and the ordinary CLI device-login flow retain their previous defaults.
 
-The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Direct `plan:write` grants remain unavailable. Old connections are not upgraded. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
+The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Typed `plan` operations reuse the same consent; the unused `plan:write` permission is retired. Existing Builder-chat consent also authorizes these direct edits, explained in the consent details and Connect notice. Old plan:write-only grants lose that unused permission without receiving Builder consent. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
 
 Managed source-file writes require the workflow documents to be mounted locally on the server. Remote-only workspace deployments fail those writes closed. A shared, server-owned auth state directory outside workflow documents is required for the durable operation records.
 
-## Operations
+## Direct plan and file edits
+
+Read `get_plan` for the combined plan/configuration revision. Discover the
+current native operations with `plan action=list`; there are 20 operations,
+including create, add/update steps, manage routes, change type, maintain and
+restore from the existing changelog. Pass the returned operation name as
+`action`, its exact `arguments`, `expected_revision` and a unique `request_id`.
+These edits use no model turn or chat identity. Current team route ownership
+and shared-source rules still apply; readers are refused.
+
+All artifacts are prepared before the shared commit lock validates and writes
+them. Identical successful retries return the durable receipt. A commit rejected
+before its first write stores a failed receipt, and identical retries return
+that same refusal. Interrupted writes require inspecting the plan/changelog;
+reuse of a request ID for different arguments is refused.
+
+Use `files action=read|write` with `workflow_id` for permitted source files,
+current `expected_revision` and `request_id`. Relay Python uses these guarded
+writes and `relay action=test|get_run|publish|run|releases`, retaining the native
+runtime, draft/release separation and durable execution receipts. Relays have
+no workflow plan. No separate file, dashboard or plan write permission is issued.
+
+## Model-assisted Builder operations
 
 Discover the available names with `get_api_spec`. Get a specific schema with `get_api_spec({"names":["builder_chat"]})`, then invoke the inner operation with `call_tool`:
 
@@ -79,4 +101,4 @@ go test ./internal/agentworksproduct ./pkg/accesstokens ./cmd/server/virtual-too
 go test -race ./cmd/server -run '^TestExternalBuilderOperations' -count=1
 ```
 
-The automated lifecycle tests use a deterministic model hook. Before enabling this on a deployment, smoke-test with its configured model and an actual external AI client against a throwaway workflow: submit a small edit, confirm it appears in the same browser chat, answer a question, cancel a second operation, and inspect the resulting plan/files. This implementation has not been deployed or validated against a live hosted model.
+The automated lifecycle tests use a deterministic model hook. Before enabling this on a deployment, smoke-test with its configured model and an actual external AI client against a throwaway workflow: submit a small edit, confirm it appears in the same browser chat, answer a question, cancel a second operation, and inspect the resulting plan/files. Record live checks against the deployment revision in PLAT-856; remote regression tests alone do not establish hosted model or deployment validation.

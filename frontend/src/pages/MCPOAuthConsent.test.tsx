@@ -59,7 +59,7 @@ it('leads with a few plain lines and keeps the exact permissions behind details'
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'crews:read', 'crews:run', 'crews:write'], [])
   try {
     const lines = [...view.host.querySelectorAll('main > div > ul > li')].map(li => li.textContent)
-    expect(lines).toEqual(['See and run your workflows', 'Use your Crews', 'Make changes: edit your Crews, Relays and workflows, as far as your role allows'])
+    expect(lines).toEqual(['See and run your workflows', 'Use your Crews', 'Edit your own Crews and run their sandboxed commands, browser, database and connected tools (logged)'])
     expect(view.host.querySelector('details')).not.toBeNull()
     expect(view.host.querySelector('details')!.textContent).toContain('Read workflow files, including test code')
   } finally { await view.cleanup() }
@@ -79,6 +79,8 @@ it('shows the reason the server gives when a connection is refused', async () =>
 it('asks for no workflow selection: Builder follows the account', async () => {
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'builder:chat'], [])
   try {
+    expect(view.host.textContent).toContain('Edit workflow plans directly, without a model turn')
+    expect(view.host.textContent).toContain('native validation, revisions and the plan changelog')
     expect(view.host.querySelector('input[type=checkbox]')).toBeNull()
     const allow = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     expect(allow.disabled).toBe(false)

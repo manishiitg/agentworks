@@ -237,3 +237,18 @@ func TestVaultReadLevelReadsButNeverChanges(t *testing.T) {
 		t.Fatal("manager lost manage tools")
 	}
 }
+
+// A hidden menu is insufficient: Code-only creators must be refused by the
+// actual personal Vault routes before any service request or credential save.
+func TestCodeOnlyAccountCannotManageVaults(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"coder","role":"creator","products":["code"]}]}`)
+	api := &StreamingAPI{}
+	for _, handler := range []http.HandlerFunc{api.handleMyVaultsOp, api.handleMyVaultSecret} {
+		w := httptest.NewRecorder()
+		handler(w, adminRequest("POST", "/api/my-vaults/op", `{"operation":"list"}`, &UserClaims{UserID: "coder"}, nil))
+		if w.Code != 403 {
+			t.Fatalf("Code-only direct Vault request: %d %s", w.Code, w.Body)
+		}
+	}
+}

@@ -3,7 +3,6 @@ package producthost
 import (
 	"cmp"
 	"slices"
-	"strings"
 
 	api "github.com/manishiitg/agentworks/packages/server-product-sdk"
 )
@@ -48,7 +47,7 @@ func summarizeAudit(events []api.AuditEvent) api.AuditSummary {
 				bucket.UpstreamErrors++
 			}
 		}
-		if !strings.HasPrefix(e.ID, "llm-") || e.Phase == "started" {
+		if e.Kind != "llm" || e.Phase == "started" {
 			continue
 		}
 		if out.Costs == nil {

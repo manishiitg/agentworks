@@ -142,9 +142,10 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 	if m != nil && m.Kind == "relay" {
 		product = "relays"
 	}
-	// Installation availability does not replace project grants. In particular,
-	// a workflow reader or bot route may have access without a product-home grant.
-	if !productEnabled(product) {
+	// Only a local installation narrows workflows to its product set. On a
+	// server, AGENT_PRODUCTS chooses product homes, not project access: a
+	// workflow reader or bot route may have access without a product-home grant.
+	if localProductInstallation() && !productEnabled(product) {
 		return WorkflowAccessNone
 	}
 	account := workflowAccessForClaims(claims)

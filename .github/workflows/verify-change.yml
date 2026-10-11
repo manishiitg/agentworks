@@ -5,6 +5,8 @@ name: Verify change
 # only when this passes. Tests to run are named in the head commit message:
 #   Verify-Test: ./cmd/server -run '^TestCodeChatAsk'
 #   Verify-Vitest: src/components/PanelSwitcher.test.tsx
+#   Verify-Frontend-Build: true
+#   Verify-Browser: scripts/test-mcp-offers-browser.mjs
 on:
   push:
     branches: ['verify/**']
@@ -24,6 +26,37 @@ jobs:
     with:
       arch: arm64
 
+  darwin-live:
+    if: >-
+      contains(github.event.head_commit.message, 'Verify-Darwin-Live: true')
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - name: Build local runtime artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime-artifacts
+          (cd agent_go && go mod download && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.cliVersion=$GITHUB_SHA" -o ../runtime-artifacts/agentworks ./cmd/agentworks)
+          bash scripts/build-darwin-voice-binary.sh agent_go runtime-artifacts/agent-server arm64
+          (cd workspace && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../runtime-artifacts/workspace-server .)
+          cp -R plugins runtime-artifacts/plugins
+          printf '%s\n' "$GITHUB_SHA" > runtime-artifacts/revision.txt
+          (cd runtime-artifacts && shasum -a 256 agentworks agent-server workspace-server > SHA256SUMS)
+          tar -czf agentworks-darwin-live.tar.gz runtime-artifacts
+      - uses: actions/upload-artifact@v6
+        with:
+          name: agentworks-darwin-live
+          path: agentworks-darwin-live.tar.gz
+          retention-days: 3
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -40,7 +73,7 @@ jobs:
           git diff --name-only "$base" HEAD > changed.txt
           echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "files:"; cat changed.txt
-          echo "go=$(grep -qE '^(agent_go|workspace)/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "go=$(grep -qE '^(agent_go|workspace|mcp-gateway)/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "frontend=$(grep -q '^frontend/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
           git log -1 --format=%B > message.txt
 
@@ -97,14 +130,20 @@ jobs:
           if [ ! -s ../tests.txt ]; then echo "No Verify-Test lines; build and vet only."; exit 0; fi
           while IFS= read -r line; do
             echo "::group::go test $line"
-            eval "go test $line -count=1"
+            case "$line" in
+              'workspace '*|'mcp-gateway '*)
+                module="${line%% *}"
+                args="${line#* }"
+                (cd "../$module" && eval "go test $args -count=1") ;;
+              *) eval "go test $line -count=1" ;;
+            esac
             echo "::endgroup::"
           done < ../tests.txt
 
       - uses: actions/setup-node@v6
         if: steps.changed.outputs.frontend == 'true'
         with:
-          node-version: "22"
+          node-version: "26"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -120,6 +159,49 @@ jobs:
       - name: Ticket check
         if: hashFiles('scripts/tickets.py') != ''
         run: python3 scripts/tickets.py check
+
+      - name: Frontend production build and bundle budget
+        if: >-
+          steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Frontend-Build: true')
+        working-directory: frontend
+        run: npm run build
+
+      # The pinned Playwright installer stalls after downloading Chromium on Node 26.
+      # Keep product validation on Node 26 and use the proven browser runtime here.
+      - name: Set up browser runner
+        if: >-
+          steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Browser:')
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Chromium checks named in the commit
+        if: >-
+          steps.changed.outputs.frontend == 'true' && contains(github.event.head_commit.message, 'Verify-Browser:')
+        working-directory: frontend
+        env:
+          BROWSER_CHECK_ARTIFACT_DIR: ${{ runner.temp }}/browser-check-artifacts
+        run: |
+          # Keep the browser runner separate from the app's locked dependency tree.
+          runtime="$RUNNER_TEMP/browser-runtime"
+          mkdir -p "$runtime"
+          printf '%s\n' '{"private":true}' > "$runtime/package.json"
+          npm install --prefix "$runtime" --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+          ln -s "$runtime/node_modules/playwright" node_modules/playwright
+          "$runtime/node_modules/.bin/playwright" install --with-deps chromium
+          grep -E '^Verify-Browser:' ../message.txt | sed 's/^Verify-Browser:[[:space:]]*//' > ../browser-tests.txt
+          while IFS= read -r file; do
+            [[ "$file" == scripts/test-*-browser.mjs && -f "$file" ]] || { echo "Invalid browser check: $file"; exit 1; }
+            node "$file"
+          done < ../browser-tests.txt
+
+      - uses: actions/upload-artifact@v6
+        if: >-
+          always() && contains(github.event.head_commit.message, 'Verify-Browser:')
+        with:
+          name: frontend-browser-checks
+          path: ${{ runner.temp }}/browser-check-artifacts
+          if-no-files-found: ignore
 
   # Windows: runs only when the commit names tests for it. Each line is "Verify-Windows-Test: <directory> <go test arguments>",
   # for example: Verify-Windows-Test: workspace ./localfiles -run '^TestWindowsShell'. The CLI is always built for Windows.

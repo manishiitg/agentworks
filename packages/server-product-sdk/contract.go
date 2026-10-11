@@ -32,6 +32,7 @@ type Group struct {
 }
 
 type AuditEvent struct {
+	Kind            string   `json:",omitempty"` // Host-stamped: llm or mcp; independent of caller IDs.
 	LLMCost         *LLMCost `json:",omitempty"`
 	ID              string
 	CallID          string

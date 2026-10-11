@@ -1223,6 +1223,16 @@ if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
     export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
     export CAPLAYER_SERVICE_TOKEN=""
     export CAPLAYER_SERVICE_TOKEN_FILE="$VAULT_TOKEN_FILE"
+    # Product credentials are independent of Vault administration and other products.
+    if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
+        PRODUCT_TOKEN_FILE="${VAULT_STATE_DIR}/llm-gateway-service-token"
+        if [ ! -s "$PRODUCT_TOKEN_FILE" ]; then
+            (umask 077 && openssl rand -hex 32 > "$PRODUCT_TOKEN_FILE")
+        fi
+        chmod 600 "$PRODUCT_TOKEN_FILE"
+        export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN=""
+        export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE="$PRODUCT_TOKEN_FILE"
+    fi
 fi
 # Keep managed browser cookies and logins across local server restarts. Workflow
 # isolation is added beneath this root by the browser launcher.

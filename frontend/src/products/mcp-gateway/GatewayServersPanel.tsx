@@ -194,7 +194,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       const needsReview = tools.filter(tool => tool.Status === 'quarantined').length
       const approved = tools.filter(tool => tool.Status === 'active').length
       return {
-        id: c.ID, name, source: c.OAuthCredentialID ? `Vault · ${c.OAuthServer}` : 'Vault', status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
+        id: c.ID, name, provider: row.catalogMatch?.Name ?? c.Provider, source: c.OAuthCredentialID ? `Vault · ${c.OAuthServer}` : 'Vault', status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
         statusDot: gatewayStatusDot(c.Status), toolCount: c.Status === 'authentication_required' ? undefined : tools.length,
         controls: !readOnly && c.Status === 'authentication_required' && c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in" onAuthChange={valid => { if (valid) bump() }} /> : undefined,
         toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${name}`,
@@ -215,7 +215,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       }
     })
     const personal = !standalone && row.agentworks?.connection === 'connected' ? [{
-      id: `private:${row.key}`, name: row.agentworks.name, source: 'This place', status: row.agentworks.status === 'not_loaded' ? 'Connected · Tools not loaded' : statusIndicator(row.agentworks.connection, row.agentworks.status).title,
+      id: `private:${row.key}`, name: row.agentworks.name, provider: row.catalogMatch?.Name ?? row.agentworks.name, source: 'This place', status: row.agentworks.status === 'not_loaded' ? 'Connected · Tools not loaded' : statusIndicator(row.agentworks.connection, row.agentworks.status).title,
       toolCount: row.agentworks.status === 'not_loaded' ? undefined : row.agentworks.toolCount,
       toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} AgentWorks tools on ${row.agentworks!.name}`,
       loadTools: async () => {

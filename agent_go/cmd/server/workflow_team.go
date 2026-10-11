@@ -984,6 +984,12 @@ func (api *StreamingAPI) registerWorkflowTeamTools(reg definitionToolRegistrar, 
 			return "", fmt.Errorf("account does not allow edits")
 		}
 		ctx = teamUserContext(withTeamPlanReceipt(ctx), user)
+		unlock, lockErr := teamLock(ctx, root)
+		if lockErr != nil {
+			return "", lockErr
+		}
+		defer unlock()
+		ctx = context.WithValue(ctx, teamLockHeldKey{}, root)
 		raw, exists, e := readFileFromWorkspace(ctx, root+"/"+rel)
 		if e != nil {
 			return "", e

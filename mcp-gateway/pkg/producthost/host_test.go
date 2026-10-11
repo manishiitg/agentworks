@@ -100,7 +100,7 @@ func TestMountedProductRejectsUntrustedActorAndRoleHeaders(t *testing.T) {
 			w.WriteHeader(204)
 		})}, nil
 	}
-	if err := Mount(mux, st, "w", secret, []api.Factory{f}); err != nil {
+	if err := Mount(mux, st, "w", func(string) (string, error) { return secret, nil }, []api.Factory{f}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

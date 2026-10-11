@@ -1,0 +1,17 @@
+{
+  "name": "agentworks",
+  "owner": {
+    "name": "AgentWorks"
+  },
+  "plugins": [
+    {
+      "name": "agentworks",
+      "source": "./plugins/claude",
+      "description": "Person-controlled AgentWorks messaging for Claude Code",
+      "version": "1.0.0"
+    }
+  ],
+  "metadata": {
+    "description": "AgentWorks coding-agent communication plugins"
+  }
+}

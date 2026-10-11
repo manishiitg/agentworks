@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2, MoreHorizontal, Plus, RefreshCw, Search } from 'lucide-react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ExternalLink, Loader2, MoreHorizontal, Plus, RefreshCw, Search } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import IconPopover from '../ui/IconPopover'
@@ -9,6 +9,10 @@ import { GROUP_ORDER } from '../connectors/catalog'
 import { WorkspaceViewTabs } from '../workflow/WorkspaceViewTabs'
 import { McpServerHeader } from './McpServerHeader'
 import { McpToolCard } from './McpToolCard'
+import { useMcpOffers } from '../../hooks/useMcpOffers'
+import { FREE_TOOLS_CATALOG_URL, offerNeedsReview, type McpOffer } from '../../api/mcpOfferMetadata'
+
+const McpOfferBadge = lazy(() => import('./McpOfferBadge').then(module => ({ default: module.McpOfferBadge })))
 
 export interface McpToolRow {
   id: string; name: string; description?: string; status?: string
@@ -20,6 +24,8 @@ export interface McpAction {
 }
 export interface McpConnectionRow {
   id: string; name: string; source?: string; status: string; statusDot?: string
+  /** Catalog provider identity, independent of the connection's account label. */
+  provider?: string
   sectionId?: string
   toolCount?: number; tools?: McpToolRow[]; loadTools?: () => Promise<McpToolRow[]>
   toolsLabel?: (open: boolean) => string; toolsNotice?: ReactNode; settings?: ReactNode
@@ -47,11 +53,24 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   const activeView = view ?? tab
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('name')
+  const [offerFilter, setOfferFilter] = useState('all')
+  const { catalog: offerCatalog, refresh: refreshOffers } = useMcpOffers(activeView === 'available')
   const [picks, setPicks] = useState<Record<string, string[]>>({})
-  useEffect(() => { setQuery(''); setSort('name') }, [activeView])
+  useEffect(() => { setQuery(''); setSort('name'); setOfferFilter('all') }, [activeView])
   const matches = (item: { name: string; description?: string }) => `${item.name} ${item.description || ''}`.toLowerCase().includes(query.trim().toLowerCase())
   const connections = servers.filter(matches).sort((a, b) => sort === 'tools' ? (b.toolCount ?? 0) - (a.toolCount ?? 0) : a.name.localeCompare(b.name))
-  const available = catalog.filter(matches).sort((a, b) => a.name.localeCompare(b.name))
+  const connectedProviders = new Set(servers.map(server => server.provider?.trim().toLowerCase()))
+  const isAdded = (item: McpCatalogRow) => (item.addedCount ?? 0) > 0 || connectedProviders.has(item.name.trim().toLowerCase())
+  const offerFor = (item: McpCatalogRow): McpOffer | undefined => isAdded(item) ? undefined : offerCatalog.offers[item.name.trim().toLowerCase()]
+  const hasOffers = catalog.some(offerFor)
+  const matchesOffer = (item: McpCatalogRow) => {
+    if (offerFilter === 'all' || !hasOffers) return true
+    const offer = offerFor(item)
+    if (!offer) return false
+    const needsReview = offerNeedsReview(offer, offerCatalog.freshnessDays)
+    return offerFilter === 'review' ? needsReview : !needsReview && offer.kind === offerFilter
+  }
+  const available = catalog.filter(item => matches(item) && matchesOffer(item)).sort((a, b) => a.name.localeCompare(b.name))
   const groups = [...new Set(available.map(item => item.batch?.name || item.category || 'Connectors'))]
   const count = activeView === 'connected' ? connections.length : available.length
   return <div className="space-y-4 text-xs" data-testid="mcp-connections-panel">
@@ -66,8 +85,12 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
       <select aria-label="Sort servers" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={sort} onChange={event => setSort(event.target.value)}>
         <option value="name">Sort A–Z</option>{showTools && activeView === 'connected' && <option value="tools">Sort by tools</option>}
       </select>
+      {activeView === 'available' && hasOffers && <select aria-label="Filter by offer" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={offerFilter} onChange={event => setOfferFilter(event.target.value)}>
+        <option value="all">Offers: All</option><option value="recurring">Free tiers</option><option value="trial">Trial credits</option>
+        <option value="grant">Grants</option><option value="open_source">Open source</option><option value="review">Needs review</option>
+      </select>}
       <span className="text-muted-foreground">{count} {count === 1 ? 'result' : 'results'}</span>
-      {refresh && <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Refresh MCPs" disabled={loading} onClick={refresh}><RefreshCw className={loading ? 'animate-spin' : ''} /></Button>}
+      {refresh && <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Refresh MCPs" disabled={loading} onClick={() => { refresh(); if (activeView === 'available') refreshOffers() }}><RefreshCw className={loading ? 'animate-spin' : ''} /></Button>}
     </div>
     {notices.map((notice, i) => <div key={`${i}:${notice.message}`} role={notice.tone === 'info' ? undefined : 'alert'} className={notice.tone === 'info' ? 'text-muted-foreground' : 'text-destructive'}>
       {notice.message}{notice.retry && <Button variant="ghost" size="xs" onClick={notice.retry}>Retry</Button>}
@@ -95,17 +118,18 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
           const selected = batch ? picks[batch.id] ?? [] : []
           return <section key={group} aria-label={group} className="space-y-2">
             <h4 className="font-medium text-muted-foreground">{GROUP_ORDER.find(item => item.id === group)?.label || group}</h4>
-            <div className="space-y-2">{items.map(item => <div key={item.id} className="rounded-md border border-border p-3"><div className="flex items-center gap-3">
+            <div className="space-y-2">{items.map(item => { const offer = offerFor(item); return <div key={item.id} className="rounded-md border border-border p-3"><div className="flex items-center gap-3">
               {batch && <input type="checkbox" aria-label={`Add ${item.name}`} disabled={item.connect?.disabled} checked={selected.includes(item.id)} onChange={() => setPicks(value => ({ ...value, [batch.id]: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }))} />}
               <ConnectionIcon icon={brandSlugFor(item.name)} name={item.name} size="xs" />
-              <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-2"><p className="truncate text-sm font-medium">{item.name}</p>{!!item.addedCount && <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400">{item.addedCount} added</span>}</div>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
+              <div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-center gap-2"><p className="min-w-0 truncate text-sm font-medium">{item.name}</p>{!!item.addedCount && <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400">{item.addedCount} added</span>}{offer && <Suspense fallback={null}><McpOfferBadge offer={offer} freshnessDays={offerCatalog.freshnessDays} /></Suspense>}</div>{item.description && <p className="mt-1 truncate text-muted-foreground" title={item.description}>{item.description}</p>}</div>
               {(item.connectControl || (item.connect && <Button variant="outline" size="sm" disabled={item.connect.disabled} aria-label={item.connect.ariaLabel} data-testid={item.testId} onClick={() => void item.connect!.run()}>{item.connect.icon || <Plus />}{item.connect.label}</Button>))}
-            </div>{item.details && <div className="mt-3">{item.details}</div>}</div>)}</div>
+            </div>{item.details && <div className="mt-3">{item.details}</div>}</div> })}</div>
             {batch && selected.length > 0 && <Button size="sm" disabled={items.some(item => item.connect?.disabled)} onClick={() => { void Promise.resolve(batch.connect(selected)).then(result => { if (result !== false) setPicks(value => ({ ...value, [batch.id]: [] })) }) }}>Connect {selected.length} {selected.length === 1 ? 'service' : 'services'}</Button>}
           </section>
         })}
       </section>
       {addCustom && <div className="border-t border-border pt-4" aria-label="Add custom server"><Button variant="outline" size="sm" disabled={addCustom.disabled} onClick={() => void addCustom.run()} data-testid="mcp-add-custom"><Plus />{addCustom.label}</Button></div>}
+      {catalog.some(item => !isAdded(item)) && <div className="flex justify-end"><a href={FREE_TOOLS_CATALOG_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline">Browse all free tools<ExternalLink className="h-3 w-3" aria-hidden /></a></div>}
     </>}
     {help && <details className="text-muted-foreground"><summary className="w-fit cursor-pointer">Connection help</summary><div className="mt-2 space-y-2">{help}</div></details>}
     {children}

@@ -12,35 +12,49 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/spf13/viper"
 )
 
 const teamTestRoot = "Workflow/team-example"
 
 type teamTestFixture struct {
-	store *fakeWorkspaceDocumentStore
-	api   *StreamingAPI
-	root  string
+	api  *StreamingAPI
+	root string
 }
 
 func newTeamTestFixture(t *testing.T) *teamTestFixture {
 	t.Helper()
-	server, store := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", server.URL)
 	t.Setenv("MULTI_USER_MODE", "true")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	oldDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", root)
+	t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
+	router := gin.New()
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
+	router.PUT("/api/documents/*filepath", workspacehandlers.UpdateDocument)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
 	t.Setenv("WORKSPACE_FILE_STATE_DIR", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"leader","username":"leader","role":"creator"},{"id":"first","username":"first","role":"editor"},{"id":"second","username":"second","role":"editor"},{"id":"observer","username":"observer","role":"viewer"}]}`)
-	if e := os.MkdirAll(filepath.Join(root, teamTestRoot), 0755); e != nil {
+	if e := os.MkdirAll(filepath.Join(root, teamTestRoot, "planning"), 0755); e != nil {
 		t.Fatal(e)
 	}
 	raw := `{"steps":[{"type":"agent","id":"parent","title":"Coordinate","description":"Coordinate route contributions","items":[{"id":"coordinate","type":"user_message","message":"Coordinate contributions."}],"next_step_id":"end","predefined_routes":[{"route_id":"first-route","route_name":"First","sub_agent_step":{"type":"agent","id":"first-route","title":"First contribution","description":"Measure first contribution","items":[{"id":"measure","type":"user_message","message":"Measure contribution."}],"next_step_id":"end"}},{"route_id":"second-route","route_name":"Second","sub_agent_step":{"type":"agent","id":"second-route","title":"Second contribution","description":"Measure second contribution","items":[{"id":"measure","type":"user_message","message":"Measure contribution."}],"next_step_id":"end"}}]}],"orphan_steps":[]}`
-	store.files[teamTestRoot+"/planning/plan.json"] = raw
-	store.files[teamTestRoot+"/planning/step_config.json"] = `{"steps":[]}`
-	f := &teamTestFixture{store: store, api: &StreamingAPI{}, root: root}
+	if err := os.WriteFile(filepath.Join(root, teamTestRoot, "planning/plan.json"), []byte(raw), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, teamTestRoot, "planning/step_config.json"), []byte(`{"steps":[]}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	f := &teamTestFixture{api: &StreamingAPI{}, root: root}
 	f.manifest(t, &WorkflowManifest{SchemaVersion: 1, ID: "team-example", Label: "Team example", Access: &WorkflowAccess{Owners: []string{"leader"}}, Team: &WorkflowTeam{LeaderID: "leader", Revision: 1, Contributors: []WorkflowContributor{{UserID: "first", Run: true}, {UserID: "second", Run: true}, {UserID: "observer"}}, Routes: []WorkflowRouteAssignment{{StepID: "parent", RouteID: "first-route", ContributorID: "first"}, {StepID: "parent", RouteID: "second-route", ContributorID: "second"}}}})
 	return f
 }
@@ -50,23 +64,19 @@ func (f *teamTestFixture) manifest(t *testing.T, m *WorkflowManifest) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	f.store.mu.Lock()
-	f.store.files[teamTestRoot+"/workflow.json"] = string(b)
-	f.store.mu.Unlock()
 	if e = os.WriteFile(filepath.Join(f.root, teamTestRoot, "workflow.json"), b, 0644); e != nil {
 		t.Fatal(e)
 	}
 }
 func (f *teamTestFixture) file(p string) string {
-	f.store.mu.Lock()
-	defer f.store.mu.Unlock()
-	return f.store.files[teamTestRoot+"/"+p]
+	raw, _ := os.ReadFile(filepath.Join(f.root, teamTestRoot, p))
+	return string(raw)
 }
 func (f *teamTestFixture) hasHistory(tool, user string) bool {
-	f.store.mu.Lock()
-	defer f.store.mu.Unlock()
-	for path, raw := range f.store.files {
-		if strings.HasPrefix(path, teamTestRoot+"/planning/changelog/") && strings.Contains(raw, `"user_id": "`+user+`"`) && strings.Contains(raw, tool) {
+	paths, _ := filepath.Glob(filepath.Join(f.root, teamTestRoot, "planning/changelog/*.json"))
+	for _, p := range paths {
+		raw, _ := os.ReadFile(p)
+		if strings.Contains(string(raw), `"user_id": "`+user+`"`) && strings.Contains(string(raw), tool) {
 			return true
 		}
 	}
@@ -150,6 +160,20 @@ func TestWorkflowTeamNativeEditsRejectOtherEditorsAndStaleRevisions(t *testing.T
 	}
 	if _, e := first.tools["edit_team_source"].exec(context.Background(), map[string]interface{}{"path": "code/first-route/main.py", "content": "print('measure')", "expected_revision": "missing"}); e != nil {
 		t.Fatal(e)
+	}
+	// The local commit preserves native source capacity and file mode, and
+	// still writes the same canonical changelog without re-entering HTTP locks.
+	source := filepath.Join(f.root, teamTestRoot, "code/first-route/main.py")
+	if e := os.Chmod(source, 0755); e != nil {
+		t.Fatal(e)
+	}
+	large := "#" + strings.Repeat("x", 3<<20) + "\nprint('measure')"
+	if _, e := first.tools["edit_team_source"].exec(context.Background(), map[string]interface{}{"path": "code/first-route/main.py", "content": large, "expected_revision": teamRevision("print('measure')")}); e != nil {
+		t.Fatal(e)
+	}
+	info, e := os.Stat(source)
+	if e != nil || info.Mode().Perm() != 0755 || f.file("code/first-route/main.py") != large {
+		t.Fatal("native source replacement lost its content or mode", e)
 	}
 	if !f.hasHistory("edit_team_source", "first") {
 		t.Fatal("source edit lost its authenticated change history")
@@ -350,9 +374,9 @@ func TestWorkflowTeamPulseTargetsContributorBuilderAndKeepsInboxPrivate(t *testi
 // through the workspace boundary, including a collision with a real step ID.
 func TestWorkflowTeamItemIDsDoNotGrantStepAuthority(t *testing.T) {
 	f := newTeamTestFixture(t)
-	f.store.mu.Lock()
-	f.store.files[teamTestRoot+"/planning/plan.json"] = strings.ReplaceAll(f.store.files[teamTestRoot+"/planning/plan.json"], `"id":"coordinate"`, `"id":"measure"`)
-	f.store.mu.Unlock()
+	if err := os.WriteFile(filepath.Join(f.root, teamTestRoot, "planning/plan.json"), []byte(strings.ReplaceAll(f.file("planning/plan.json"), `"id":"coordinate"`, `"id":"measure"`)), 0644); err != nil {
+		t.Fatal(err)
+	}
 	first := f.tools(t, "first")
 	change := func(id, itemID, message string) error {
 		_, err := first.tools["update_step"].exec(context.Background(), map[string]interface{}{

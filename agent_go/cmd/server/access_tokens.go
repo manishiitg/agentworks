@@ -115,7 +115,7 @@ func authenticateAccessToken(w http.ResponseWriter, r *http.Request, raw string)
 		externalError(w, 401, "unauthorized", "Access tokens must use the Authorization header.")
 		return nil, false
 	}
-	if !(serverProductTokenPath(r) || (r.Method == "GET" && r.URL.Path == "/api/external/v1/devices/connect") || (r.Method == "GET" && r.URL.Path == "/api/external/v1/tools") || (r.Method == "POST" && r.URL.Path == "/api/external/v1/call") || ((r.Method == "GET" || r.Method == "HEAD") && r.URL.Path == "/api/external/v1/files/content") || (r.URL.Path == externalMCPPath && (r.Method == "POST" || r.Method == "GET" || r.Method == "DELETE")) || (r.Method == "GET" && (r.URL.Path == "/api/external/v1/skill.md" || r.URL.Path == "/api/external/v1/skill.zip" || r.URL.Path == "/api/external/v1/agentworks.plugin"))) {
+	if !(serverProductTokenPath(r) || (r.Method == "GET" && r.URL.Path == "/api/external/v1/agents/events") || (r.Method == "GET" && r.URL.Path == "/api/external/v1/devices/connect") || (r.Method == "GET" && r.URL.Path == "/api/external/v1/tools") || (r.Method == "POST" && r.URL.Path == "/api/external/v1/call") || ((r.Method == "GET" || r.Method == "HEAD") && r.URL.Path == "/api/external/v1/files/content") || (r.URL.Path == externalMCPPath && (r.Method == "POST" || r.Method == "GET" || r.Method == "DELETE")) || (r.Method == "GET" && (r.URL.Path == "/api/external/v1/skill.md" || r.URL.Path == "/api/external/v1/skill.zip" || r.URL.Path == "/api/external/v1/agentworks.plugin"))) {
 		externalError(w, 403, "forbidden", "Access tokens are valid only for the external tools API.")
 		return nil, false
 	}
@@ -169,6 +169,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			Name                    string               `json:"name"`
 			FileGuard               *wf.FolderGuard      `json:"file_guard"`
 			LocalFullAccess         bool                 `json:"local_full_access"`
+			LocalReadOnly           bool                 `json:"local_read_only"`
 			Scopes                  []string             `json:"scopes"`
 			WorkflowIDs             []string             `json:"workflow_ids"`
 			AllWorkflows            bool                 `json:"all_workflows"`
@@ -188,7 +189,12 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 400, "invalid_arguments", "Expected one JSON object.")
 			return
 		}
-		if req.LocalFullAccess {
+		localPreset := req.LocalFullAccess || req.LocalReadOnly
+		if req.LocalFullAccess && req.LocalReadOnly {
+			externalError(w, 400, "invalid_arguments", "Choose full access or read-only access.")
+			return
+		}
+		if localPreset {
 			if IsMultiUserMode() || c.UserID != GetDefaultUserID() {
 				externalError(w, 403, "forbidden", "Full local tokens are available only to the local single-user account.")
 				return
@@ -197,11 +203,21 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			// a client cannot choose a different identity or broaden folder grants.
 			req.Name = "agentworks-local"
 			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthScopes)
+			if req.LocalReadOnly {
+				req.Name = "agentworks-local-reader"
+				readScopes := []string{}
+				for _, scope := range req.Scopes {
+					if strings.HasSuffix(scope, ":read") || scope == "code:review" {
+						readScopes = append(readScopes, scope)
+					}
+				}
+				req.Scopes = readScopes
+			}
 			req.AllWorkflows, req.AllCrews = true, true
 			req.WorkflowIDs, req.CrewIDs = nil, nil
 			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""
 		}
-		if !req.LocalFullAccess && (req.ExpiresInDays < 1 || req.ExpiresInDays > 90) {
+		if req.ExpiresInDays < 0 || req.ExpiresInDays > 90 || !localPreset && req.ExpiresInDays < 1 {
 			externalError(w, 400, "invalid_arguments", "Choose an expiry between 1 and 90 days.")
 			return
 		}
@@ -210,7 +226,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		}
 		now := time.Now()
 		t := accesstokens.Token{Name: req.Name, UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider, Scopes: req.Scopes, FileGuard: req.FileGuard, WorkflowIDs: req.WorkflowIDs, AllWorkflows: req.AllWorkflows, CrewIDs: req.CrewIDs, AllCrews: req.AllCrews, KnowledgebaseFolders: req.KnowledgebaseFolders, KnowledgebaseIdentityID: req.KnowledgebaseIdentityID, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
-		if req.LocalFullAccess {
+		if localPreset && req.ExpiresInDays == 0 {
 			t.NonExpiring = true
 			t.ExpiresAt = accesstokens.PermanentExpiry()
 		}
@@ -351,6 +367,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
 		return false
 	}
+	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
+		return tool.Name == "messages" && namedAgentOperationAllowed(c, false)
+	}
 	if isExternalCrewTool(tool.Name) && !productEnabled("work") || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
 		return false
 	}
@@ -399,7 +418,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
 	}
-	if strings.HasPrefix(tool.Name, "builder_") {
+	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" || tool.Name == "workflow_upgrade" {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}
 	if isExternalRelayAuthoringTool(tool.Name) {
@@ -419,6 +438,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		if tool.Name == "crew_files" {
 			return t.Allows("crews:write")
 		}
+		if tool.Name == "crew_execution" || tool.Name == "crew_integrations" {
+			status, _ := externalCrewAuthorGate(c)
+			return t.Allows("crews:write") && status == 0
+		}
 		switch tool.Name {
 		case externalCrewCommandsTool:
 			// Discovery includes list for readers; dispatch checks the action,
@@ -436,9 +459,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			return t.Allows("crews:write")
 		}
 		return t.Allows("crews:read")
-	}
-	if tool.plan {
-		return t.Allows("plan:write")
 	}
 	// Execution implies workflow visibility: a token that may run must be
 	// able to discover workflows, read plans, and poll run evidence.

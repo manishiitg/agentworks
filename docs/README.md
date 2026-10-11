@@ -2,6 +2,16 @@
 
 Start with the operator journey, then use the subsystem references when you need implementation detail.
 
+## Start here for developers
+
+- [Install](getting-started/README.md) the app, or [self-host](../deploy/README.md) on your own machines.
+- [Workflow system overview](workflow/README.md): how authoring, execution, scheduling, and monitoring fit together.
+- [Workflow manifest](workflow/workflow_manifest_architecture.md) and [step config](workflow/step_config_format_specification.md): the files that define a workflow.
+- [MCP bridge](core/mcp_bridge_layer.md): exposing AgentWorks tools to external agents, and calling external tools.
+- [Providers and model routing](core/llm_configuration_and_resilience.md): the coding CLIs AgentWorks runs on.
+- [Security](security/README.md): sandboxing, accounts, credentials, and sharing.
+- [Contributing](../README.md#contributing): issues, pull requests, and checks.
+
 ## Start Here
 
 - [Communication protocols](communication-protocols.md): direct messages, structured functions, MCP/CLI, Crew, workflow-to-workflow calls and Relays.

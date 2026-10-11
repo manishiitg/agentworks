@@ -92,6 +92,23 @@ func TestWorkflowDBToolRegistryExposesQueryAndMutation(t *testing.T) {
 }
 
 func TestWorkflowDBWorkspacePathRecognizesWorkProject(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", "/srv/workspace")
+	for _, candidate := range []string{"Crew/demo", "Crew/demo/db/db.sqlite", "/srv/workspace/Crew/demo/db/migrations/example.sql"} {
+		if got := workflowDBWorkspacePathFromCandidate(candidate); got != "Crew/demo" {
+			t.Fatalf("shared Crew database context=%q for %q", got, candidate)
+		}
+	}
+	for candidate, want := range map[string]string{
+		"Workflow/demo/Crew/other/db/db.sqlite":                "Workflow/demo",
+		"/srv/workspace/Workflow/demo/Crew/other/db/db.sqlite": "Workflow/demo",
+		"reports/Crew/other/db/db.sqlite":                      "",
+		"/untrusted/Crew/other/db/db.sqlite":                   "",
+		"Crew/demo/code/Crew/other":                            "Crew/demo",
+	} {
+		if got := workflowDBWorkspacePathFromCandidate(candidate); got != want {
+			t.Fatalf("database workspace=%q want=%q for %q", got, want, candidate)
+		}
+	}
 	for _, candidate := range []string{
 		"Chats/Work/projects/demo",
 		"_users/alice/Chats/Work/projects/demo/db/db.sqlite",

@@ -18,10 +18,12 @@ import (
 const externalCrewMaxSideChats = 4
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Your own chats with a Crew, as in the Crew screen. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to 4) or close a side chat; talk in it with ask_crew chat_id. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats.", true, false, map[string]any{
+	add("manage_crew_chats", "Your own chats with a Crew, as in the Crew screen. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to 4) or close a side chat; talk in it with ask_crew chat_id. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":    externalString("Crew ID from list_crews."),
-		"action":     map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "delete", "stop"}},
+		"action":     map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "delete", "stop", "tools", "tool"}},
 		"chat_id":    externalString("main or a side chat id from list."),
+		"tool_name":  externalString("Exact native name from tools."),
+		"arguments":  map[string]any{"type": "object"},
 		"session_id": externalString("An earlier chat's session_id from list, for read or delete."),
 	}, "crew_id", "action")
 }
@@ -84,8 +86,16 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	crewID, action := externalArg(args, "crew_id"), externalArg(args, "action")
 	if t := claims.AccessToken; t != nil {
 		scope := "crews:run"
-		if action == "list" || action == "read" {
+		if action == "list" || action == "read" || action == "tools" {
 			scope = "crews:read"
+		}
+		if action == "tool" {
+			switch externalArg(args, "tool_name") {
+			case "list_ui_capabilities", "get_ui_state", "query_agent", "list_agents":
+				scope = "crews:read"
+			case "run_in_background":
+				scope = "crews:write"
+			}
 		}
 		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
@@ -95,6 +105,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+		return
+	}
+	if action == "tools" || action == "tool" {
+		api.externalCrewSessionToolsCall(w, r, args, crew)
 		return
 	}
 	workspace := crew.Binding.WorkspacePath

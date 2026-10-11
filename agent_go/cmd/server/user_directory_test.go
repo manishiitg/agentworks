@@ -511,3 +511,23 @@ func TestAdminAddedEmailIsStoredLowercase(t *testing.T) {
 		t.Fatalf("case-different duplicate: created=%v err=%v users=%d", created, err, len(dir.Users))
 	}
 }
+
+func TestRegisteredProductIDsIncludesConfiguredLLMGateway(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENT_PRODUCTS", "work,llm-gateway")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,llm-gateway,mcp-gateway")
+	found := false
+	for _, id := range registeredProductIDs() {
+		found = found || id == "llm-gateway"
+	}
+	if !found {
+		t.Fatal("LLM Gateway cannot be assigned to users")
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
+	for _, id := range registeredProductIDs() {
+		if id == "llm-gateway" {
+			t.Fatal("LLM Gateway exposed in ordinary local install")
+		}
+	}
+}

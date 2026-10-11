@@ -25,8 +25,9 @@ var externalCrewCapabilities = map[string]map[string]string{
 }
 
 type crewCapabilityTool struct {
-	schema  map[string]any
-	execute func(context.Context, map[string]any) (string, error)
+	description string
+	schema      map[string]any
+	execute     func(context.Context, map[string]any) (string, error)
 }
 type crewCapabilityRegistrar map[string]crewCapabilityTool
 
@@ -40,6 +41,9 @@ func (r crewCapabilityRegistrar) RegisterCustomTool(name, description string, sc
 		return err
 	}
 	normalized["additionalProperties"] = false
+	if normalized["required"] == nil {
+		delete(normalized, "required")
+	}
 	// MCP setup keeps credential entry in Integrations and excludes arbitrary process config.
 	if name == "install_mcp_server" {
 		props := normalized["properties"].(map[string]any)
@@ -52,7 +56,7 @@ func (r crewCapabilityRegistrar) RegisterCustomTool(name, description string, sc
 	if name == "trigger_mcp_discovery" {
 		normalized["required"] = []any{"name"}
 	}
-	r[name] = crewCapabilityTool{normalized, execute}
+	r[name] = crewCapabilityTool{description: description, schema: normalized, execute: execute}
 	return nil
 }
 func (r crewCapabilityRegistrar) RegisterCustomToolWithTimeout(name, description string, schema map[string]any, execute func(context.Context, map[string]any) (string, error), _ time.Duration, category string) error {

@@ -267,7 +267,13 @@ func run() (runErr error) {
 	if err != nil {
 		return err
 	}
-	if err = producthost.Mount(mux, st, "w1", humanToken, products); err != nil {
+	if err = producthost.Mount(mux, st, "w1", func(id string) (string, error) {
+		token, err := producthost.ServiceTokenFromEnv(id)
+		if err == nil && token == humanToken {
+			return "", errors.New("product credential must differ from the Vault admin credential")
+		}
+		return token, err
+	}, products); err != nil {
 		return err
 	}
 	if !managed {

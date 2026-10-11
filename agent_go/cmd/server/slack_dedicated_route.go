@@ -167,6 +167,16 @@ func (api *StreamingAPI) slackToolRoute(ctx context.Context, session, channel st
 		target := services.ChannelRoute{WorkflowID: execution.Request.PresetQueryID, ProfileID: execution.Request.AgentProfileID, ConversationKey: execution.Request.AgentProfileConversationKey, WorkspacePath: execution.Request.SelectedFolder}
 		return api.slackRouteForTurn(ctx, execution.Request.BotConnectionID, channel, routes, target, execution.Request)
 	}
+	if authority, direct := ctx.Value(externalCrewDirectAuthorityKey{}).(externalCrewDirectAuthority); direct {
+		if api.externalCrewDirectOwner(ctx, authority.root) != nil {
+			return ChannelRoute{}, false, false
+		}
+		target, err := api.slackToolTarget(ctx, authority.root, "work")
+		if err != nil {
+			return ChannelRoute{}, false, false
+		}
+		return api.slackRouteForTurn(ctx, slackConnectionIDForRoute(ctx, target), channel, routes, target, QueryRequest{SelectedFolder: authority.root})
+	}
 	route, found = routes[channel]
 	return route, found, false
 }

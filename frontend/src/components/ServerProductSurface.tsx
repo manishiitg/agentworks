@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ModePresetBar } from './ModePresetBar'
 
-/** Public shell; the separately built server owns the product UI and assets. */
+/** Public shell for reviewed first-party code. Same-origin session/API access
+ * is intentional; sandbox/CSP restrict browser capabilities, not account scope. */
 export function ServerProductSurface({ product, label }: { product: 'llm-gateway'; label: string }) {
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
@@ -18,7 +19,7 @@ export function ServerProductSurface({ product, label }: { product: 'llm-gateway
     <ModePresetBar reduced walkthroughPaused />
     <main className="min-w-0 flex-1" aria-label={label}>
       {error ? <p role="alert" className="p-6 text-muted-foreground">{error}</p>
-        : ready ? <iframe title={label} src={`${prefix}/ui/`} className="h-full w-full border-0" />
+        : ready ? <iframe title={label} src={`${prefix}/ui/`} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" className="h-full w-full border-0" />
           : <p role="status" className="p-6 text-muted-foreground">Loading {label}…</p>}
     </main>
   </div>

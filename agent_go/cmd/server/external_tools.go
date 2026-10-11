@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -91,10 +92,10 @@ func externalTools() ([]externalTool, error) {
 		add("list_step_code", "List saved Python code by workflow step, with plan step IDs and titles where available. Uses code/<step-id>/ for current workflows and learnings/<step-id>/ for legacy workflows.", false, true, p)
 		add("get_file_link", "Get an existing workflow, Relay or Crew file/folder's authenticated browser preview URL. Files include a download URL, size and content type. Pass exactly one of workflow_id (files:read) or crew_id (crews:read); existing visibility, project bounds and file guards apply. Links contain no credentials and grant no access; recipients must sign in with their own current project access.", false, false, map[string]any{"path": externalString("Canonical project-relative file or folder path."), "workflow_id": externalString("Workflow or Relay ID."), "crew_id": externalString("Crew ID returned by crew list.")}, "path")
 		defined[len(defined)-1].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workflow_id"}}, map[string]any{"required": []any{"crew_id"}}}
-		add("read_file", "Read a workflow file up to 2 MiB. Binary content is base64.", false, true, map[string]any{"path": externalString("Workflow-relative file path.")}, "path")
+		add("read_file", "Read a workflow file: text up to 2 MiB, smaller binary content as base64. Larger files up to 11 MiB return size and revision metadata without content, for guarded replacement or authenticated download.", false, true, map[string]any{"path": externalString("Workflow-relative file path.")}, "path")
 		add("write_file", "Write UTF-8 source or documentation (content), or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB), within your current owner/editor role and existing workflow or Relay authoring consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Revision returned by read_file, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "expected_revision", "request_id")
-		// Tokens read and run, like the Slack and WhatsApp run-mode channels:
-		// file writes, plan mutations, and Builder execution are not exposed.
+		// Product declarations admit tools; current roles and existing connection
+		// consent separately authorize reads, execution and direct authoring.
 		// Catalog membership is admitted by product.yaml (chat.run
 		// external_tools plus the run.tools proxy surface); these definitions
 		// are implementations only.
@@ -198,7 +199,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
 		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
-		add("read_crew_file", "Read a Crew project file up to 2 MiB. UTF-8 text returns content; binary files return content_base64. Private areas and symlinks are refused; larger files return a size error. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
+		add("read_crew_file", "Read a Crew project file: text up to 2 MiB returns content and smaller binary files return content_base64. Larger files up to 11 MiB return size/revision metadata without content, for guarded replacement or authenticated download. Private areas and symlinks are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
 		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, declared internal triggers only; conversational ask uses messages. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.
@@ -242,6 +243,8 @@ func externalTools() ([]externalTool, error) {
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
+		externalPlanMutationDefinition(add)
+		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
 		externalTriggerDefinitions(add)
@@ -260,6 +263,10 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalCrewFilesDefinition(add)
 		externalCrewDiagnosticsDefinition(add)
+		if err := externalCrewExecutionDefinition(add); err != nil {
+			externalCatalogErr = err
+			return
+		}
 		externalDatabaseDefinitions(add)
 		externalAfterRunDefinitions(add)
 		externalMessagingDefinitions(add)
@@ -456,6 +463,12 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if call.Arguments == nil {
 		call.Arguments = map[string]any{}
+	}
+	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
+		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "read", "ack"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
+			externalError(w, 403, "insufficient_scope", "This connection only supports messaging for its attached agent.")
+			return
+		}
 	}
 	catalog, err := externalTools()
 	if err != nil {
@@ -783,13 +796,21 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	// Relay chat is Builder-only; direct API tools handle published execution.
 	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "call_workflow_function" && externalArg(args, "function") == "ask") {
-		externalError(w, 400, "relay_builder_only", "Use builder action=chat to edit a Relay, relay action=test for draft tests, or relay action=run for published versions.")
+		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Relay source, relay action=test for draft tests, or relay action=run for published versions. Builder chat can delegate edits when requested.")
 		return
 	}
 	// Conversation access follows the builder runtime: workflow readers may
 	// chat with its existing read-only tool policy, and control their own turns.
 	if strings.HasPrefix(tool.Name, "builder_") {
 		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	if tool.Name == "plan" {
+		api.externalPlanMutationCall(w, r, args, *selected)
+		return
+	}
+	if tool.Name == "workflow_upgrade" {
+		api.externalContractUpgradeCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "get_file_link" {

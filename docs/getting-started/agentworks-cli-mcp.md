@@ -164,7 +164,7 @@ CLI grants run in full run mode —
 future accessible workflows. Existing authoring consent is optional: `builder:chat` covers workflow
 authoring, and `relays:write` covers Relay authoring. Source and documentation
 edits reuse that consent and the same live owner/editor roles as the website; no
-separate file-write permission is needed. Direct `plan:write` is never issued. Every
+separate file-write permission is needed. Typed `plan` edits use existing Builder consent; `plan:write` is retired. Every
 call checks the grant scopes and the user's current workflow
 access. CLI grants cannot call account management, the general query endpoint,
 or the workspace proxy; only the external tool, asset-content, skill, and
@@ -1030,3 +1030,5 @@ mapping note: internal runtime tools, bridge variables and reference paths do
 not confer external access. Only explicitly marked sources are served. Adding
 an external topic requires metadata in its canonical source, not a second
 external Go registration. Existing account roles and consent still gate calls.
+
+Direct plan authoring uses `agentworks plan list --workflow ID` for native operation schemas and `agentworks plan edit --workflow ID --input change.json` for an edit. The JSON contains the returned native `action` and `arguments`, the combined `expected_revision` from `plan get`, and a unique `request_id`. Reuse the same request ID and arguments after an uncertain response to inspect its receipt. Existing Builder consent, current owner/editor/team rules and the plan changelog apply. Relay edits use the guarded source file tools followed by `relay action=test` and run inspection.

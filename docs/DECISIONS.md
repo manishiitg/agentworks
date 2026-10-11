@@ -1,5 +1,234 @@
 # Decisions and open issues
 
+## 2026-10-11 — Optional server product boundary and inference tokens (PLAT-869)
+
+Keep product implementation source separate from the public core and from
+production deployment configuration. Compose optional factories at build time
+against an immutable core commit. Public builds contain no private factories or
+private dependencies. Ordinary local installations retain Goals and Crew; source
+development can explicitly opt into installed server products.
+
+The embedded product UI is reviewed **trusted first-party code**, served on the
+platform origin. It intentionally has the person's session/API authority and
+same-origin DOM access. The iframe and response CSP restrict navigation, forms,
+popups, external resources and framing; they do **not** isolate malicious code
+from the platform account. Do not load unreviewed/third-party assets this way.
+The response CSP sandbox remains effective if a script removes the iframe's
+sandbox attribute. A future untrusted extension needs a separate origin and an
+explicit message/API boundary.
+
+Use a distinct service credential for each installed product, independent of the
+Vault admin credential. Credentials are server-only, at least 32 characters,
+loaded from protected environment/files and never returned to clients. The host
+rejects shared product credentials and reuse of the Vault admin token. The
+platform proxy checks the active account, current product entitlement and current
+admin role before asserting actor/role headers. The host accepts these assertions
+only on the authenticated product hop. A product credential can impersonate
+people **within that product**; treat it as privileged infrastructure. Directory
+shadow-user binding does not authorize a browser or CLI request. Existing Vault
+admin synchronization remains a separate privileged platform operation.
+
+The `llm:use` user-token scope permits model discovery and inference only. It
+cannot reach product management or UI routes. Current account status, product
+entitlement and per-user model access remain required; a token is not a snapshot
+of permissions. Browser administration uses the person's current platform role.
+
+Persist product audit events with explicit host metadata and namespaced physical
+IDs. Caller IDs remain opaque logical request IDs and cannot determine event
+kind. Coalesce admission/completion before status filtering or totals. Preserve
+legacy host envelopes for reads. Completed interrupted estimates contribute to
+provisional cost totals; unmatched admissions cannot establish a final bill.
+
+SDK v1 is experimental and still includes LLM-specific contracts. Validate a
+second real product before promising a stable general extension API. The public
+proxy registry remains an explicit installation allowlist.
+
+Ticket: PLAT-869 (private platform tracker).
+
+
+## 2026-10-11 — Attached local agents accept all account senders (PLAT-861)
+
+Remove sender allow fields from attachment commands and runtime state. An opt-in
+attachment accepts all senders in the same AgentWorks account, including agents
+registered later. Keep connection authentication, product authorization, exact
+session leases, revocation and explicit admission receipts. Bare in-chat attach
+proposes a unique name/purpose and asks the person to confirm. Prefer the verified
+native route for that exact session; otherwise use hooks.
+Why: the owner wants local agents to communicate without maintaining sender lists.
+Existing restricted attachments require a new person confirmation before this
+policy takes effect. A guest-run Crew retains its guest actor and cannot use the
+owner's storage namespace to enter the owner's local chat. Codex MCP routes by
+host-supplied per-call thread metadata, never a model-selected session argument.
+This supersedes earlier attachment sender-allowlist decisions.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-56 and 861-68.
+
+
+## 2026-10-11 — Codex messaging uses the compatible plugin entry point (PLAT-861)
+
+Use `.codex-plugin/plugin.json` and `.mcp.json` for the Codex-specific package.
+The installed provider must discover its four hooks and messaging MCP server,
+not only its skills. Keep provider hook review separate from installation and
+never execute a person attach command through the model when interception fails.
+Why: installed Codex versions can omit OpenAI extension components from a portable
+root manifest, leaving an apparently installed plugin unable to attach chats.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-63.
+
+## 2026-10-11 — Delivery command guidance belongs to an attachment (PLAT-861)
+
+Send AgentWorks acknowledgement/reply instructions on the first authorized offer
+of an attachment, then on the next offer after 24 hours. Persist the timestamp
+with the offer before delivery, retaining the same ambiguity/no-replay policy as
+messages. Restore the timestamp on a definite pre-delivery failure; preserve it
+on ambiguous writes. Claude channels do not consume formatting guidance. Keep a
+short command-discovery hint and sender provenance and the session's permission boundary on every
+offer. A fresh attachment resets guidance; provider-added warnings remain under
+the provider's control. Why: avoid repeating setup text on every message while
+keeping durable context and truthful delivery.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-61.
+
+## 2026-10-11 — Existing desktop and Claude sessions accept explicit native transports (PLAT-861)
+
+Allow a person to select an exact Codex desktop IPC endpoint or Claude's enabled
+session-messaging registration. Desktop delivery discovers the exact chat owner,
+requires its untrusted-input capability and labels peer content as AgentWorks
+tool output. Only an explicit ended-turn refusal permits an idle wake; ambiguous
+delivery never starts another turn automatically. Claude writes remain offers
+until the receiver acknowledges admission. Keep provider trust prompts intact,
+and preserve process/session binding for narrow CLI replies. These optional
+native protocols are version-sensitive and fail closed when unsupported.
+Why: reach existing chats live while preserving identity and truthful receipts.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-51/52/54/55.
+
+## 2026-10-11 — Attached agents have restricted child connections and explicit resume (PLAT-861)
+
+Derive a separate messaging-only CLI connection bound to the stable agent ID and
+name. Authenticate and refresh only while its parent login remains authorized.
+Keep parent credentials outside messaging children; parent sign-out revokes their
+authority. Session end marks the retained identity offline; a person command
+confirms reconnecting the same session. Persist the received message sequence
+before release, allowing offered bodies and processed metadata to be compacted
+without replaying ambiguous deliveries. Why: separate mailbox authority, retain
+consent across resume, and bound local storage without inventing receipts.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-28/41/43.
+
+## 2026-10-11 — Person-attached plugins use a durable local message bridge (PLAT-861)
+
+Package Claude and Codex hooks, MCP connections, person commands and messaging
+skills. Hooks are the default turn-boundary route; optional native channels/queues
+wake idle sessions, otherwise notify the person. tmux remains opt-in. Bind sessions
+from the host hook input, never from the newest chat or a project match. Consume
+person attach commands before model execution and keep trust prompts intact.
+Persist offers before delivery to prevent duplicate automatic turns after restart;
+ambiguous crashes require explicit mailbox reads. Recheck cached message authority
+before release. Native acceptance and agent processing remain distinct receipts.
+Why: real-time coordination must preserve the person's session, input and consent.
+Messaging plugins expose only messaging for the attached identity; broader
+AgentWorks MCP tools require a separate person opt-in. CLI-only attachment is a
+tool boundary, not OS isolation against credential access.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-35/36/37/38.
+
+## 2026-10-11 — MCP offer evidence stays separate from connection status (PLAT-856)
+
+Show provider offer badges, an Offers filter and expandable evidence only in
+Available MCPs before a provider has a saved project or Vault connection. Hide
+offers on providers kept available for adding another account; use their catalog
+identity rather than account labels. Join by exact catalog connector names; metadata cannot add a
+connector or grant access. Read the maintained public catalog without app
+credentials, with a five-minute shared cache and a bundled offline snapshot.
+Retain source review dates and mark unverified, future-dated or older-than-30-day
+evidence as needing review. Provider API allowances may differ from MCP limits.
+Why: help people choose tools without implying remaining credits or changing setup.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-37.
+## 2026-10-11 — Direct Crew workflow triggers retain connection ceilings (PLAT-856)
+
+Expose native attachment/trigger discovery, invocation and polling through
+Crew execution. Preserve the external identity and token, filter workflow
+references by current access and read/file consent, and require runs:execute
+for dispatch. Reuse the exact Crew's secretless internal binding and its native
+idempotent delivery; detached, revoked or foreign targets fail before dispatch.
+Human sign-in, infrastructure consent and incoming sender approvals keep their
+existing website flows. Function progress/results remain bound to their actual
+receiving execution; callers inspect status and answer their pending questions.
+Why: typed parity must preserve project, session and human approval authority.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
+## 2026-10-11 — Direct workflow plans use existing Builder consent (PLAT-856)
+
+Expose the native typed plan executors directly over MCP. Require the combined
+plan/configuration revision, current editable project/team authority and existing
+Builder authoring consent. Stage all artifacts before the shared commit lock's
+validated replacement and retain the native plan changelog and retry receipt.
+Retire unused `plan:write`, dropping it from old grants without replacement.
+Consent details, local token text and the Connect notice explain direct edits
+to new and existing Builder-chat connections. A rejected commit before its
+first write retains a failed receipt; identical retries return that refusal.
+Why: external agents need direct edits with the same validators and roles.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
+## 2026-10-11 — Crew integration management matches website roles (PLAT-856)
+
+Shared Google account grant changes require an administrator in both chat tools
+and direct MCP, matching Sending accounts. Code private account management
+keeps its existing owner scope. Crew execution history belongs to the Crew:
+only its current owner reads it, including calls made before ownership transfer.
+Keep metadata for 30 days, capped at 1,000 calls per Crew and 100,000 overall;
+never store payloads or outputs. Audit all directly executed Crew session tools,
+including presentation actions, status queries and background cancellation.
+Why: role parity and useful, bounded owner audit.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
+## 2026-10-11 — Native Claude channels receive named-agent messages (PLAT-861)
+
+Make native delivery opt-in for one exact session with a purpose and explicit
+registered-sender allowlist. Push durable messages through an authenticated SSE
+connection into the stdio bridge's official Claude channel; mailbox reads remain
+a fallback. Rotating the attachment fences old listeners and acknowledgements.
+Keep stored, admitted and processed distinct: a notification write cannot prove
+receipt; the receiving agent explicitly acknowledges admission and processing.
+Reply through the original conversation. Reconnect with bounded backoff and
+stable message IDs; unacknowledged events may replay after a bridge restart.
+Why: an accepted mailbox send must not imply another coding session was notified.
+Native delivery takes priority over guarded terminal input and mailbox fallback.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-26.
+
+## 2026-10-11 — Local MCP tokens offer read-only access and expiry (PLAT-856)
+
+Offer full access or read-only access as presets using existing permissions.
+Derive both from the current single-user account; the read-only preset includes
+read scopes and authorized Code review, never run, write, account management
+or unrestricted Vault tool execution. Allow an optional 1–90 day expiry;
+zero keeps the existing until-revoked local option. Why: an inspection client
+should not need execution authority or a permanent token.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
+## 2026-10-11 — Direct Crew execution follows existing authoring authority (PLAT-856)
+
+Expose the native shell, browser and managed database handlers directly over
+MCP for the Crew owner with existing `crews:write` consent and current editable
+account access. Resolve the Crew on every call; carry the product sandbox and
+connection file limits into a separate execution context instead of adopting
+the owner's chat. Reuse managed database migration, transactional mutation and
+snapshot handlers. Browser and database operations require unrestricted Crew
+file consent so these adapters cannot expand a narrowed file grant.
+Why: the owner requested full Builder-tool parity over MCP with website roles,
+including execution; a read-only database view alone does not cover authoring.
+No new scope or role is introduced. This supersedes the external database's
+read-only-only boundary for authorized Crew authoring; existing reads remain.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Recency follows exact names in quick navigation (PLAT-746)
 
 Keep exact name matches first in Ctrl+K search, then order matches by their

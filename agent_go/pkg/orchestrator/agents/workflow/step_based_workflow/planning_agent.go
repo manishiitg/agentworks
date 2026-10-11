@@ -5383,6 +5383,7 @@ func createCreatePlanExecutor(workspacePath string, logger loggerv2.Logger, read
 			return "", fmt.Errorf("failed to write plan.json: %w", err)
 		}
 
+		logPlanChange(ctx, workspacePath, PlanChangelogEntry{Tool: "create_plan", Reason: "Initialize an empty workflow plan", Target: "planning/plan.json", BeforeRef: "missing", AfterSnapshot: emptyPlan}, readFile, writeFile, logger)
 		logger.Info(fmt.Sprintf("🆕 Created new empty plan.json at %s", planPath))
 		return fmt.Sprintf(`Created empty plan.json at %s. For the first step, pass insert_after_step_id="" to insert at the beginning.
 

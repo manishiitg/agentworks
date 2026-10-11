@@ -13,6 +13,36 @@ edits it.
 
 ## Create and edit
 
+`crew_execution` runs native tools directly without a Builder model turn. Call
+`action=list` with `crew_id` for the enabled names, descriptions and exact input
+schemas, then use that tool name as `action` and its parameters as `arguments`.
+Available tools include `execute_shell_command`, `agent_browser`,
+`mutate_workflow_db`, `apply_workflow_db_migration` and
+`create_workflow_database_snapshot` and `call_selected_mcp_tool`. For connected
+MCP, discover this Crew's actual servers/tools first through `crew_mcp` and
+`crew_diagnostics`; live attachment, selected-tool and Vault checks apply; authorized Vault defaults
+remain available under their current account/group permissions.
+`crew_integrations action=list` exposes the enabled shared Slack, Google account
+and incoming-email tools with their native schemas. Attached workflow tools also
+appear in `crew_execution`: list attachments/triggers, run a trigger with a stable
+`delivery_id`, then poll its returned `run_id` and `trigger_id`. The attachment,
+exact Crew binding and current workflow access are checked. Workflow read/file
+consent and target bounds apply; a run additionally requires `runs:execute`.
+Function progress is reported only by the receiving execution, whose final
+message or checked result file completes the call; external callers use
+`functions action=status` and `reply` for their own pending questions. Account-wide Google grant
+changes require a current administrator and all-Crew consent; Google sign-in
+and incoming sender approval retain their human app flows. Every call requires Crew ownership,
+existing `crews:write` consent and a current editable account. Shell commands
+run inside the Crew sandbox with the connection's file guard, default timeout
+25 seconds. Browser, database and connected integration operations require unrestricted Crew file
+consent. Author migration files in `db/migrations/` through the sandboxed shell,
+then apply their bare filenames with the managed migration tool. Database
+reads remain available through `query_database`. These calls do not borrow or
+start the owner's chat; inspect results before retrying a mutation. Use
+`crew_execution action=history` for the last 100 owner-only audit records: connection,
+operation, timing and outcome, with commands, values and payloads withheld.
+
 - `crew` action=create takes `name`, `role`, `purpose` (the Crew's standing instructions; what it is
   for and how it works) and optionally `icon`, `selected_skills`, `files` (path -> text content),
   `functions`, `schedules`. action=update edits one you own section by section (omitted parts stay):
@@ -181,3 +211,5 @@ refresh through `crew_mcp action=discover`. Credentials, endpoint configuration,
 unattached private accounts and server-wide raw logs are excluded.
 
 For local/external agent coordination, discover account-owned addresses with `messages action=list_agents`. Register your own stable `agent_name` using `action=register`, send to `target=agent:<name>`, and poll `action=read` with your name and no `inbox_id` at the start and end of work. Save `next_cursor`; replies use the returned `reply_address` as `inbox_id`. Registration defaults to the creating connection; additional connection IDs must be explicitly allowed. Named addresses do not bypass Crew/project scopes or access, and messages do not wake external clients.
+
+Use `manage_crew_chats action=tools` with an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable Crew ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.

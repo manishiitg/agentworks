@@ -140,19 +140,23 @@ func externalScopedFile(root *os.Root, p string) (wf.File, error) {
 	if !st.Mode().IsRegular() {
 		return result, &externalUpstreamError{400, "path is not a regular file"}
 	}
-	if st.Size() > wf.MaxFileBytes {
-		return result, &externalUpstreamError{413, fmt.Sprintf("file exceeds %d byte limit", wf.MaxFileBytes)}
+	if st.Size() > wf.MaxBinaryFileBytes {
+		return result, &externalUpstreamError{413, fmt.Sprintf("file exceeds %d byte limit", wf.MaxBinaryFileBytes)}
 	}
-	data, err := io.ReadAll(io.LimitReader(f, wf.MaxFileBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, wf.MaxBinaryFileBytes+1))
 	if err != nil {
 		return result, err
 	}
-	if len(data) > wf.MaxFileBytes {
+	if len(data) > wf.MaxBinaryFileBytes {
 		return result, &externalUpstreamError{413, "file exceeds limit"}
 	}
 	result.Exists = true
 	result.Size = int64(len(data))
 	result.Revision = wf.Revision(data)
+	if len(data) > wf.MaxFileBytes {
+		result.Encoding = "binary"
+		return result, nil
+	}
 	result.Encoding = "utf-8"
 	if utf8.Valid(data) && !strings.ContainsRune(string(data), 0) {
 		result.Content = string(data)

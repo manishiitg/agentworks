@@ -2,6 +2,7 @@ package producthost
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"slices"
 	"testing"
@@ -172,5 +173,56 @@ func TestAuditSummaryIncludesAllMatchingRequestsAndCosts(t *testing.T) {
 				t.Fatalf("empty tenant summary: %+v %v", empty, err)
 			}
 		})
+	}
+}
+
+func TestAuditKindDoesNotDependOnCallerID(t *testing.T) {
+	for _, backend := range []string{"memory", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			h, st := auditHost(t, backend)
+			now := time.Now().UTC().Truncate(time.Second)
+			e := api.AuditEvent{ID: "142b73c8-69fe-4e7d-b16d-f4d64cb68c8d", WorkspaceID: "w", UserID: "alice", Timestamp: now, PublicName: "llm:tiny", Decision: "allow", Outcome: "ok", Phase: "started"}
+			if err := h.AppendAudit(e); err != nil {
+				t.Fatal(err)
+			}
+			e.Phase = ""
+			e.LLMCost = &api.LLMCost{Status: "estimated", AmountNanoUSD: 125}
+			if err := h.AppendAudit(e); err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range []string{e.ID, "llm-native-tool"} {
+				if err := st.AppendAudit(store.AuditEvent{ID: id, WorkspaceID: "w", Timestamp: now, Output: []byte(`{"tool":"result"}`)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rows, err := h.Query(context.Background(), api.AuditFilter{WorkspaceID: "w", Kind: "llm"})
+			if err != nil || len(rows) != 1 || rows[0].Kind != "llm" || rows[0].ID != e.ID || rows[0].Phase != "" || rows[0].LLMCost == nil || rows[0].LLMCost.AmountNanoUSD != 125 {
+				t.Fatal("UUID cost lost or admission duplicated", rows, err)
+			}
+			mcp, err := h.Query(context.Background(), api.AuditFilter{WorkspaceID: "w", Kind: "mcp"})
+			if err != nil || len(mcp) != 2 {
+				t.Fatal("native MCP kind inferred from ID", mcp, err)
+			}
+			summary, err := h.Summary(context.Background(), api.AuditFilter{WorkspaceID: "w"})
+			if err != nil || summary.Total != 3 || summary.Costs == nil || summary.Costs.AmountNanoUSD != 125 {
+				t.Fatal("UUID cost omitted from totals", summary, err)
+			}
+		})
+	}
+}
+
+func TestAuditReadsLegacyProductEnvelope(t *testing.T) {
+	h, st := auditHost(t, "sqlite")
+	e := api.AuditEvent{ID: "llm-legacy", WorkspaceID: "w", UserID: "alice", Timestamp: time.Now().UTC(), PublicName: "llm:tiny", LLMCost: &api.LLMCost{Status: "estimated", AmountNanoUSD: 10}}
+	payload, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendAudit(store.AuditEvent{ID: e.ID, WorkspaceID: e.WorkspaceID, UserID: e.UserID, Timestamp: e.Timestamp, PublicName: e.PublicName, Output: payload}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := h.Query(context.Background(), api.AuditFilter{WorkspaceID: "w", Kind: "llm"})
+	if err != nil || len(rows) != 1 || rows[0].LLMCost == nil || rows[0].LLMCost.AmountNanoUSD != 10 {
+		t.Fatal("legacy cost lost", rows, err)
 	}
 }

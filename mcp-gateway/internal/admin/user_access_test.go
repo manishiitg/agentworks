@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,7 +61,12 @@ func TestInspectUserAndMemberHistory(t *testing.T) {
 // read per the server's readOnlyHint, unmarked tools count as write, and an
 // admin's label overrides both.
 func TestReadOnlyServerGrant(t *testing.T) {
-	st := store.NewMemoryStore()
+	dbPath := filepath.Join(t.TempDir(), "vault.sqlite")
+	st, err := store.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
 	st.AddWorkspace(store.Workspace{ID: "w"})
 	st.AddUser(store.User{ID: "priya", WorkspaceID: "w"})
 	st.AddGroup(store.Group{ID: "sales", WorkspaceID: "w", Name: "Sales"})
@@ -73,10 +79,23 @@ func TestReadOnlyServerGrant(t *testing.T) {
 	add("mail__search", `{"readOnlyHint":true}`)
 	add("mail__send", `{}`)
 	a := &Admin{Store: st, WorkspaceID: "w"}
-	if err := a.SetGroupServer("sales", "c", true); err != nil {
+	readOnly := true
+	if err := a.setGroupServerLevel("sales", "c", true, &readOnly); err != nil {
 		t.Fatal(err)
 	}
-	st.SetGroupServerReadOnly("sales", "c", true)
+	// The first durable attach already has its requested level; restart before
+	// any other mutation and verify that reattaching preserves it.
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Store = st
+	if err = a.SetGroupServer("sales", "c", true); err != nil {
+		t.Fatal(err)
+	}
 	allowed := func() []string {
 		out, err := a.userAccess("priya")
 		if err != nil {

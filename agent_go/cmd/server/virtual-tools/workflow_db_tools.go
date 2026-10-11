@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -582,6 +583,27 @@ func workflowDBWorkspacePathFromCandidate(candidate string) string {
 		if parts[i] == "Chats" && (parts[i+1] == "Work" || parts[i+1] == "Code") && parts[i+2] == "projects" && strings.TrimSpace(parts[i+3]) != "" {
 			return filepath.ToSlash(filepath.Join("Chats", parts[i+1], "projects", parts[i+3]))
 		}
+	}
+	// Shared Crews are top-level workspaces. A source/input subdirectory named
+	// Crew must never select another project's database. Absolute candidates
+	// are accepted only beneath a known workspace mount.
+	crewCandidate := clean
+	if filepath.IsAbs(clean) {
+		crewCandidate = ""
+		for _, mount := range []string{os.Getenv("WORKSPACE_DOCS_PATH"), "/app/workspace-docs", "/workspace-docs"} {
+			if strings.TrimSpace(mount) == "" {
+				continue
+			}
+			prefix := filepath.ToSlash(filepath.Clean(mount)) + "/"
+			if strings.HasPrefix(clean, prefix) {
+				crewCandidate = strings.TrimPrefix(clean, prefix)
+				break
+			}
+		}
+	}
+	crewParts := strings.Split(crewCandidate, "/")
+	if len(crewParts) >= 2 && crewParts[0] == "Crew" && strings.TrimSpace(crewParts[1]) != "" {
+		return filepath.ToSlash(filepath.Join("Crew", crewParts[1]))
 	}
 	for i := 0; i+1 < len(parts); i++ {
 		if parts[i] == "Workflow" && strings.TrimSpace(parts[i+1]) != "" {

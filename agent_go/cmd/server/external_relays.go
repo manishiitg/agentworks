@@ -18,8 +18,8 @@ func externalRelayDefinitions(add func(string, string, bool, bool, map[string]an
 	id := map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
 	key := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
 	label := map[string]any{"type": "string", "minLength": 1, "maxLength": 80}
-	add("create_relay", "Create a Relay you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Build the Python program with builder action=chat; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
-	add("update_relay", "Rename a Relay. Python Relays return the value of run(INPUT, ctx); output_step_id applies only to older graph Relays. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
+	add("create_relay", "Create a Relay you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Author relay.py directly with files action=write using the current file revision and a request_id; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
+	add("update_relay", "Rename a Relay. Native DBOS Relays return the value of run(INPUT); legacy programs keep their declared entrypoint. output_step_id applies only to older graph Relays. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
 	add("get_relay_releases", "Inspect a Relay's active and previous published versions.", false, true, nil)
 	add("publish_relay", "Publish the validated draft as an immutable Relay version using the existing publisher. Requires Builder permission and owner/editor access. Repeating an unchanged draft returns the same version.", true, true, nil)
 	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll relay action=get_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
@@ -147,7 +147,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
-	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Use builder action=chat to build relay.py with native DBOS workflows and steps. The returned value of run(INPUT) is the API result; function: " + function + "."})
+	externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "created": true, "next": "Read relay.py with files action=read, then edit it directly with files action=write (expected_revision and request_id). Use native DBOS workflows and steps, then relay action=test and action=get_run. The returned value of run(INPUT) is the API result; function: " + function + "."})
 }
 
 func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, selected DiscoveredWorkflow) {

@@ -18,6 +18,19 @@ export default function McpConnectBody({ codeReview }: { codeReview: boolean }) 
           </p>
         </div>
       )}
+      <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Crew authoring access</p>
+        <p className="mt-1">Existing connections with permission to edit your Crews can also run sandboxed commands,
+          control their browser, change their database and use their connected tools. Your current role, Crew ownership
+          and connection limits apply. Calls appear in the owner-only Crew execution history. Revoke a connection here
+          if you no longer want it to have that access.</p>
+      </div>
+      <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Builder authoring access</p>
+        <p className="mt-1">Existing connections approved for Builder chat can also edit workflow plans directly,
+          without a model turn. Current owner, editor and team rules, connection limits, native validation, revisions
+          and the plan changelog apply. Revoke a connection here if you no longer want it to have that access.</p>
+      </div>
       <CliMcpSetupPanel />
     </div>
   )

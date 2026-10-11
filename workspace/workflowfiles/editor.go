@@ -284,12 +284,12 @@ func readRegular(root *os.Root, name string) ([]byte, os.FileMode, error) {
 	if err != nil || !os.SameFile(info, observed) {
 		return nil, 0, fileError(403, "file changed during access")
 	}
-	if info.Size() > MaxFileBytes {
-		return nil, 0, fileError(413, "file exceeds 2 MiB")
+	if info.Size() > MaxBinaryFileBytes {
+		return nil, 0, fileError(413, "file exceeds binary size limit")
 	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
-	if len(data) > MaxFileBytes {
-		return nil, 0, fileError(413, "file exceeds 2 MiB")
+	data, err := io.ReadAll(io.LimitReader(f, MaxBinaryFileBytes+1))
+	if len(data) > MaxBinaryFileBytes {
+		return nil, 0, fileError(413, "file exceeds binary size limit")
 	}
 	if data == nil {
 		data = []byte{}
@@ -349,6 +349,41 @@ func atomicRootWrite(root *os.Root, name string, data []byte, mode os.FileMode) 
 	}
 	defer dir.Close()
 	return dir.Sync()
+}
+
+// ReplaceManagedFile is for trusted typed editors after authorization of the
+// complete edit under LockWorkspace. It deliberately has no HTTP endpoint.
+// Use the same anchored directories, metadata preservation and atomic replace
+// as guarded file edits; typed plans also write protected changelog artifacts.
+func ReplaceManagedFile(root *os.Root, p string, content []byte) error {
+	return replaceManagedFile(root, p, content, MaxFileBytes)
+}
+
+// Native typed commits already validate roles and hold the workspace lock.
+// Their existing preparation ceiling is 8 MiB; external raw text edits remain
+// limited to 2 MiB. This helper has no HTTP endpoint or request-selected limit.
+func ReplaceNativeManagedFile(root *os.Root, p string, content []byte) error {
+	return replaceManagedFile(root, p, content, 8<<20)
+}
+
+func replaceManagedFile(root *os.Root, p string, content []byte, maxBytes int) error {
+	clean, err := CleanRelative(p)
+	if err != nil || clean == "." {
+		return fileError(400, "invalid managed file path")
+	}
+	if len(content) > maxBytes {
+		return fileError(413, "managed file exceeds size limit")
+	}
+	parent, err := OpenDirectory(root, path.Dir(clean), true)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	_, mode, err := readRegular(parent, path.Base(clean))
+	if err != nil {
+		return err
+	}
+	return atomicRootWrite(parent, path.Base(clean), content, mode)
 }
 func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error) {
 	return e.WriteWithPatch(ctx, r, nil)
@@ -576,7 +611,7 @@ func (e *Editor) Read(scope, p string, g *FolderGuard) (File, error) {
 	}
 	// A binary file returns its revision and size, never its bytes as text, so
 	// it can be replaced with a content_base64 write.
-	if data != nil && (!utf8.Valid(data) || strings.ContainsRune(string(data), 0)) {
+	if data != nil && (len(data) > MaxFileBytes || !utf8.Valid(data) || strings.ContainsRune(string(data), 0)) {
 		return File{Path: p, Exists: true, Encoding: "binary", Revision: revision(data), Size: int64(len(data))}, nil
 	}
 	return File{Path: p, Exists: data != nil, Content: string(data), Encoding: "utf-8", Revision: revision(data), Size: int64(len(data))}, nil

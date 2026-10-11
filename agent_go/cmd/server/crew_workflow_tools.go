@@ -11,6 +11,11 @@ import (
 	"github.com/google/uuid"
 )
 
+var crewWorkflowExecutionMembers = map[string]bool{
+	"list_attached_workflows": true, "list_workflow_triggers": true,
+	"run_workflow_trigger": true, "get_workflow_trigger_run": true,
+}
+
 // registerCrewWorkflowRunTools gives a Crew run the workflow side of the
 // bidirectional integration: list an attached workflow's triggers, run one
 // through a platform-internal binding scoped to this Crew, and poll the run.
@@ -32,6 +37,11 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		claims.Email = record.Email
 	}
 	withClaims := func(ctx context.Context) context.Context {
+		// Direct MCP retains its real connection ceilings. Never turn a bounded
+		// external connection into the website's unrestricted project identity.
+		if isExternalCrewDirectCall(ctx) {
+			return ctx
+		}
 		copy := *claims
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
@@ -39,6 +49,9 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		return crewWorkflowRunCaller(ctx, workspacePath)
 	}
 	attached := func(ctx context.Context, target string) (*WorkflowManifest, error) {
+		if isExternalCrewDirectCall(ctx) && !api.externalCrewReferenceAllowed(ctx, GetUserFromContext(ctx), target, false) {
+			return nil, fmt.Errorf("attached workflow is outside current access or connection consent")
+		}
 		return crewAttachedWorkflowManifest(ctx, workspacePath, target)
 	}
 
@@ -64,6 +77,9 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		reader := GetUserFromContext(ctx)
 		readerOnly := reader != nil && isCrewProjectPath(workspacePath) && !crewProjectOwnedByCaller(reader.UserID, workspacePath)
 		for _, ref := range refs {
+			if isExternalCrewDirectCall(ctx) && !api.externalCrewReferenceAllowed(ctx, reader, ref, false) {
+				continue
+			}
 			entry := attachedWorkflow{WorkspacePath: ref}
 			manifest, exists, err := ReadWorkflowManifest(ctx, ref)
 			if err != nil || !exists || manifest == nil {

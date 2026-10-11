@@ -66,6 +66,28 @@ func prepareTeamEdit(ctx context.Context, root, revision string) context.Context
 	return ctx
 }
 func commitTeamEdit(ctx context.Context, result string) error {
+	return commitTeamEditWithFiles(ctx, result, readFileFromWorkspace, writeFileToWorkspace, deleteWorkspaceFile)
+}
+
+// Direct transports supply an anchored local writer while retaining exactly
+// the native staging, current team policy and rollback validation. Calling the
+// HTTP document writer while this root lock is held would re-enter its lock.
+// A validation refusal before the first writer is a known failed operation.
+// Once a writer was attempted, transports must retain reconciliation semantics.
+type teamCommitBeforeWriteError struct{ error }
+
+func (e *teamCommitBeforeWriteError) Unwrap() error { return e.error }
+
+func commitTeamEditWithFiles(ctx context.Context, result string,
+	read func(context.Context, string) (string, bool, error),
+	write func(context.Context, string, string) error,
+	remove func(context.Context, string) error) (commitErr error) {
+	writeAttempted := false
+	defer func() {
+		if commitErr != nil && !writeAttempted {
+			commitErr = &teamCommitBeforeWriteError{commitErr}
+		}
+	}()
 	r := ctx.Value(teamPlanReceiptKey{}).(*teamPlanReceipt)
 	var status map[string]interface{}
 	if json.Unmarshal([]byte(result), &status) == nil && status["success"] == false {
@@ -95,7 +117,7 @@ func commitTeamEdit(ctx context.Context, result string) error {
 	exists := map[string]bool{}
 	// Validate every file before the first write, against the latest policy.
 	for _, p := range paths {
-		raw, found, e := readFileFromWorkspace(baselineCtx, p)
+		raw, found, e := read(baselineCtx, p)
 		if e != nil {
 			return e
 		}
@@ -113,10 +135,11 @@ func commitTeamEdit(ctx context.Context, result string) error {
 	commitCtx := context.WithValue(ctx, teamCommitPermitKey{}, true)
 	written := []string{}
 	for _, p := range paths {
-		if e := writeFileToWorkspace(commitCtx, p, pending[p]); e != nil {
+		writeAttempted = true
+		if e := write(commitCtx, p, pending[p]); e != nil {
 			reconcileCtx, cancel := context.WithTimeout(context.WithoutCancel(commitCtx), 10*time.Second)
 			rollback := []string{}
-			raw, found, readErr := readFileFromWorkspace(context.WithValue(reconcileCtx, teamPlanReceiptKey{}, nil), p)
+			raw, found, readErr := read(context.WithValue(reconcileCtx, teamPlanReceiptKey{}, nil), p)
 			if readErr != nil {
 				rollback = append(rollback, p)
 			} else if found && raw == pending[p] {
@@ -128,9 +151,9 @@ func commitTeamEdit(ctx context.Context, result string) error {
 				q := written[i]
 				var restore error
 				if exists[q] {
-					restore = writeFileToWorkspace(reconcileCtx, q, previous[q])
+					restore = write(reconcileCtx, q, previous[q])
 				} else {
-					restore = deleteWorkspaceFile(reconcileCtx, q)
+					restore = remove(reconcileCtx, q)
 				}
 				if restore != nil {
 					rollback = append(rollback, q)

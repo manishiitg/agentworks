@@ -163,6 +163,11 @@ func (api *StreamingAPI) slackCLIFullAccess(ctx context.Context, session, worksp
 	if channel := stringFromRequestMap(args, "route_id"); channel != "" && slackChannelIDPattern.MatchString(channel) {
 		if _, routes, err := api.slackRoutes(ctx); err == nil {
 			if route, found, _ := api.slackToolRoute(ctx, session, channel, routes); found {
+				if isExternalCrewDirectCall(ctx) {
+					if _, err := api.authorizeSlackToolRoute(ctx, session, channel, route); err != nil {
+						return "", err
+					}
+				}
 				connID = slackToolConnectionID(ctx, api, session, route)
 			}
 		}

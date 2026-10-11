@@ -302,6 +302,12 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 		return e
 	}
 	noteWorkspaceMutation(configPath, false)
+	if held, err := deleteHeldTeamFile(ctx, configPath); held {
+		if err == nil {
+			publishPlanChanged(configPath)
+		}
+		return err
+	}
 	pathSegments := strings.Split(configPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {
@@ -347,6 +353,13 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	}
 	defer release()
 	noteWorkspaceMutation(filePath, false)
+	if held, err := writeHeldTeamFile(ctx, filePath, content); held {
+		if err == nil {
+			teamPlanSaved(ctx, filePath, content)
+			publishPlanChanged(filePath)
+		}
+		return err
+	}
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {

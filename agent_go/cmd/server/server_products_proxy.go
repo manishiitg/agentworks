@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -16,7 +17,7 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 	path := strings.TrimPrefix(r.URL.Path, "/api/server-products/")
 	product, tail, ok := strings.Cut(path, "/")
 	// Explicit product allowlist; adding a private build alone cannot activate it.
-	if !ok || product != "llm-gateway" || !productEnabled(product) {
+	if !ok || !registeredServerProducts[product] || !productEnabled(product) {
 		http.NotFound(w, r)
 		return
 	}
@@ -55,7 +56,7 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		writeUsersJSON(w, 200, map[string]any{"users": out})
 		return
 	}
-	target, secret, err := capLayerServiceConfig()
+	target, secret, err := serverProductServiceConfig(product)
 	if err != nil {
 		http.Error(w, "server product unavailable", 503)
 		return
@@ -80,6 +81,13 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		}
 	}, ModifyResponse: func(resp *http.Response) error {
 		resp.Header.Del("Set-Cookie")
+		if strings.HasPrefix(tail, "ui/") {
+			// Reviewed first-party UI, intentionally using the person's session.
+			// CSP sandbox cannot be removed by scripts inside the child document.
+			resp.Header.Set("Content-Security-Policy", serverProductUICSP)
+			resp.Header.Set("Referrer-Policy", "no-referrer")
+			resp.Header.Set("X-Content-Type-Options", "nosniff")
+		}
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 			return errors.New("unexpected server product redirect")
 		}
@@ -119,4 +127,32 @@ func serverProductQueryAllowed(r *http.Request) bool {
 		return err == nil && n > 0 && n <= 1000
 	}
 	return r.Method == "POST" && (strings.HasSuffix(r.URL.Path, "/v1/messages") || strings.HasSuffix(r.URL.Path, "/v1/messages/count_tokens")) && len(q["beta"]) == 1 && q.Get("beta") == "true"
+}
+
+// The registry is explicit: a credential or private binary cannot activate a product.
+var registeredServerProducts = map[string]bool{"llm-gateway": true}
+
+const serverProductUICSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-same-origin"
+
+func serverProductServiceConfig(product string) (*url.URL, string, error) {
+	if !registeredServerProducts[product] {
+		return nil, "", errors.New("unsupported server product")
+	}
+	target, err := capLayerServiceURL()
+	if err != nil {
+		return nil, "", err
+	}
+	key := "AGENTWORKS_PRODUCT_" + strings.ToUpper(strings.ReplaceAll(product, "-", "_")) + "_SERVICE_TOKEN"
+	secret := strings.TrimSpace(os.Getenv(key))
+	if file := strings.TrimSpace(os.Getenv(key + "_FILE")); file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, "", errors.New("product credential unavailable")
+		}
+		secret = strings.TrimSpace(string(data))
+	}
+	if len(secret) < 32 {
+		return nil, "", errors.New("dedicated product credential required")
+	}
+	return target, secret, nil
 }

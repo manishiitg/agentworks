@@ -112,6 +112,9 @@ const (
 
 // AuditEvent records one attempted tool call, including bounded payload snapshots.
 type AuditEvent struct {
+	// Product metadata is stamped by the host, separate from tool output or caller IDs.
+	ProductID       string          `json:",omitempty"`
+	ProductEvent    json.RawMessage `json:",omitempty"`
 	ID              string
 	CallID          string
 	Timestamp       time.Time
@@ -872,12 +875,24 @@ func (s *MemoryStore) GroupGrantsFor(groupID string) []string {
 }
 
 func (s *MemoryStore) AddGroupServerGrant(groupID, connectorID string) {
+	s.AddGroupServerGrantWithLevel(groupID, connectorID, nil)
+}
+
+// Grant and access level are one persisted transition. Omitted level preserves
+// an existing restriction and defaults only a genuinely new grant to full.
+func (s *MemoryStore) AddGroupServerGrantWithLevel(groupID, connectorID string, readOnly *bool) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if s.groupServers[groupID] == nil {
 		s.groupServers[groupID] = map[string]bool{}
 	}
 	s.groupServers[groupID][connectorID] = true
+	if readOnly != nil {
+		if s.serverReadOnly[groupID] == nil {
+			s.serverReadOnly[groupID] = map[string]bool{}
+		}
+		s.serverReadOnly[groupID][connectorID] = *readOnly
+	}
 	if s.isPlatformGroupLocked(groupID) {
 		delete(s.platformRevoked, "server:"+connectorID)
 	}
@@ -1247,6 +1262,7 @@ func (s *MemoryStore) auditAt(i int) AuditEvent {
 }
 
 func cloneAuditEvent(e AuditEvent) AuditEvent {
+	e.ProductEvent = append(json.RawMessage(nil), e.ProductEvent...)
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
 	e.Input = append(json.RawMessage(nil), e.Input...)
 	e.Output = append(json.RawMessage(nil), e.Output...)

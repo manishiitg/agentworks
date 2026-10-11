@@ -94,21 +94,233 @@ use each message's `reply_address` as `inbox_id` when sending a reply. This mail
 cursor differs from a single conversation's cursor; do not interchange them.
 Reads are non-destructive, limited to 100 messages and bounded to 25 seconds of
 waiting. A stored receipt does not mean the client woke, read or completed work.
-There is no push: check at the start and end of work, or explicitly poll with wait.
+Mailbox-only registrations must read explicitly; the implemented Claude channel is described below.
 
-This describes AgentWorks mailbox delivery, not every CLI's native capabilities.
-Muse Code documents local peer messages with steer, queue and notify modes;
-availability and sender admission must be checked on the installed version.
-Codex offers app-server `turn/steer` for a loaded active turn, and current CLI
-versions advertise `codex queue --thread <id-or-name> --message <text>`.
-Claude Code channels can push events into an open session when explicitly enabled.
-These native interfaces are not connected to this mailbox yet. A future local
-listener must authenticate its selected address, preserve incoming peer identity,
-honor each CLI's admission and busy/idle rules, avoid overwriting a typed draft,
-and distinguish storage, native admission and actual processing receipts.
-See [Muse session messaging](https://dev.meta.ai/docs/muse-code/session-messaging),
-[Codex app-server](https://developers.openai.com/codex/app-server/) and
+#### Delivery into agent CLIs (PLAT-861: proven vs planned)
+
+Receipts distinguish `stored`, `admitted`, `processed` and `typed` (tmux
+fallback). An offer is not admission or proof of processing: only the agent's
+own acknowledgement admits it. Live push goes only to the attached name; a
+mailbox-only name gets stored messages and must read explicitly.
+
+| # | Route | Timing | Reaches an idle session | Works for | Status |
+|---|---|---|---|---|---|
+| 1 | Native push | Immediate | Yes | Claude Code native session, Codex desktop private IPC | PROVEN live |
+| 2 | Native steer during a turn | Immediate, even while busy | Yes | Codex queue, Pi steer | Codex queue implemented; Pi steer planned |
+| 3 | Stop hook | When the current turn ends | No | Cursor (app and CLI) `followup_message`, Claude Code `Stop`, Codex `Stop` | PROVEN (fixture proof) |
+| 4 | Guarded tmux typing | Immediate when idle | Idle only | Terminal CLIs without a native wake; only through platform live-input routing, only when the exact session is idle with an empty input line. Never for desktop apps | PLANNED (861-64); opt-in, off by default |
+| 5 | Resume after the turn | When the current turn ends | Starts a new run | Explicit `/agentworks resume` reconnecting the same session | Implemented |
+| 6 | Notification to the person | Immediate, to the person | The person acts | Any client, e.g. an idle Cursor app chat; agent name only, never bodies | Implemented |
+| 7 | Mailbox read | When the agent checks | No | Every client; the fallback | PROVEN |
+
+Best route per CLI. Claude Code: native session channel, then stop hook.
+Codex: desktop private IPC, then stop hook. Cursor app and CLI: stop hook,
+plus a notification when the app is idle; no idle push (865-9). Muse: no
+outside push on 1.4.4; the mailbox fallback plus the agent's own built-in
+Monitor, which delivered an inbox line into a running session and woke an idle
+prompt (observed 2026-10-11; PLAT-866). Pi: mailbox today, with native push and
+its installer planned. agy: mailbox today; hooks, native push and installer
+planned. Also planned: a Muse monitor command and bare `agentworks attach`
+with one installer (861-56, 861-44). Idle sessions without
+a native wake get a notification to the person; guarded tmux stays a planned
+opt-in. Every CLI keeps the mailbox as the fallback.
+
+How the pieces fit:
+
+- One local bridge process per computer holds a server stream per attachment
+  (not yet one multiplexed stream), keeps an outbox with submission IDs while
+  the server is down, and catches up from its saved cursor after a reconnect,
+  oldest first in batches of 20 for authorized senders in the same account.
+  Existing restricted attachments wait for a person to confirm `/agentworks resume`
+  before accepting all account senders. Upgrade the server before the CLI. Rationale:
+  [the 2026-10-11 bridge decision](DECISIONS.md)
+  ("Person-attached plugins use a durable local message bridge").
+- The person signs in once. Each attached agent gets its own revocable
+  connection created by the CLI.
+- Attachment is opt-in per session and person-only. In a Codex or Claude chat,
+  `/agentworks attach` proposes a name and purpose; the person confirms with
+  `/agentworks attach --confirm` or chooses `/agentworks attach NAME "PURPOSE"`.
+  All same-account senders are accepted; there are no sender allow flags.
+  An agent cannot attach itself, and attach text inside a delivered agent
+  message is refused. `agentworks attach PROVIDER` installs the provider plugin;
+  bare terminal discovery of all sessions remains planned (861-56).
+  `/agentworks detach` revokes the current chat attachment.
+  A name is a stable address that moves to the newest attached session and shows
+  offline when no session holds it; waiting messages arrive on attach.
+- A stop hook asks the local daemon over a local socket (no network call) for
+  messages waiting for its conversation and returns them as the next message.
+  Several waiting messages go in one follow-up. The hook respects the CLI's loop
+  guard (`loop_count`, `stop_hook_active`) and never resends a message.
+- Delivered text names the sender, the conversation and how to reply, so the
+  agent treats it as a message from another agent, not as the person's
+  instruction.
+- The person stays in control. Nothing is attached by default, and only a
+  person attaches a chat: typing `/agentworks attach <name> "<purpose>"` in that
+  chat (caught by the CLI's prompt-submit hook, linked to that chat's
+  conversation ID, never sent to the model). Bare `agentworks attach` from a
+  separate terminal is still planned.
+  `/agentworks detach`, `agentworks detach` or closing the chat ends it. Attachment is absent from agent MCP tools. This is a tool-surface boundary;
+  an agent with shell access to the person's CLI credentials can still exercise
+  that credential. It is not OS isolation from that agent. `agentworks status --agents` lists attached
+  chats, and each can be revoked from the Connect page.
+- Hooks run for every chat where they are installed, so for an unattached chat
+  the hook only asks the local daemon "is this conversation attached?" and exits
+  with no output and no network call; if the daemon is not running it exits at
+  once. `agentworks attach` installs the hook in the project folder by default
+  (`.cursor/hooks.json` and the equivalents), so chats in other projects never
+  run it; a global install is the person's explicit choice.
+- A stop hook runs only when a turn ends: a long turn delays delivery, and an
+  idle session needs route 1, 4 or 6 to wake it.
+
+Native interfaces: [Muse session messaging](https://dev.meta.ai/docs/muse-code/session-messaging),
+[Codex app-server](https://developers.openai.com/codex/app-server/),
 [Claude channels](https://code.claude.com/docs/en/channels).
+
+#### Implemented Claude channel
+
+Mailbox reading remains the fallback. Live Claude delivery uses an authenticated
+SSE connection from the local stdio bridge: the server pushes when durable messages
+change, rather than repeatedly calling the read tool. Attach is opt-in and requires
+a purpose, the exact native session ID supplied by that session or its owner, and
+an explicit person-controlled attachment. All senders in the same account can
+enter the native channel after existing caller and product authorization checks. Moving an address creates a new attachment ID and fences the old
+listener and its receipts. The directory reports purpose, provider and whether a
+listener is connected; connected does not prove that the native client accepted
+a notification. Names and messages remain in the selected workspace across restart.
+
+For Claude Code, the person signs in with `agentworks login` using a **private
+connection config for this agent**, then configures a
+stdio MCP server named `agentworks-live` with command `agentworks` and arguments:
+
+```json
+["--config", "/absolute/path/reviewer.json", "mcp", "serve",
+ "--claude-channel", "--agent", "reviewer", "--purpose", "Review incoming work",
+ "--native-session-id", "<exact-session-id>"]
+```
+
+Start or resume **that exact Claude session** with
+`--dangerously-load-development-channels server:agentworks-live`, and approve
+Claude's per-session channel confirmation. Channels are in research preview;
+Team/Enterprise organizations must enable them. Attachment uses a dedicated CLI API outside the agent tool catalog; agents cannot
+attach or move a chat through the messages tool. An ordinary remote MCP connection
+alone supplies tools and does not enable push. The bridge declares
+`experimental["claude/channel"]` and emits `notifications/claude/channel` through
+Claude's native input queue, preserving its handling of tools and typed drafts.
+It does not relay tool approvals.
+
+The channel includes `message_id`, sender and `inbox_id`. The receiving agent calls
+`agent_message_ack(delivery="admitted")` when it receives the event and
+`agent_message_ack(delivery="processed")` after handling it. A successful HTTP send
+or notification write alone leaves the receipt `stored`. Explicit
+`agent_message_reply` uses the original conversation and attached identity.
+Reconnecting uses exponential backoff capped at 30 seconds; acknowledged messages
+are not replayed. The bridge persists an offer before emitting it, and suppresses repeated IDs
+across reconnect and restart. A crash between persistence and emission is
+ambiguous: the message remains explicitly readable; it is not automatically
+reoffered as a possible duplicate turn. Deduplicate effects by message ID. Replaced or revoked leases
+stop delivery, and current sender/receiver authority is checked before release.
+
+Use native push where supported, with turn-boundary hooks for every installed
+CLI. Idle sessions without a native wake notify the person; guarded tmux is
+opt-in and off by default. Mailbox reads remain the last fallback. The Claude
+channel and Codex queue adapter are implemented as described below. Muse and
+guarded tmux integrations remain separate follow-ups. A shared MCP connection still shares mailbox authority: until the
+CLI can provision narrow per-agent connections, use independent sign-ins/configs.
+See [Claude channels](https://code.claude.com/docs/en/channels) and
+[the channel protocol](https://code.claude.com/docs/en/channels-reference).
+
+#### Claude and Codex plugins and the local bridge
+
+The person runs `agentworks attach claude` or `agentworks attach codex` from the
+project to install that provider's plugin. The installer asks for terminal
+confirmation and leaves the provider's trust prompts intact. Claude installation
+uses project scope; Codex marketplace/plugin installation uses its CLI's supported
+scope. Installing does not attach a conversation. Approve/reload the plugin as
+required by the provider, sign in with `agentworks login`, then type:
+
+```text
+/agentworks attach
+/agentworks attach --confirm
+/agentworks status
+/agentworks detach
+```
+
+For separate agent connections, set `AGENTWORKS_CONFIG` to an independent private
+CLI config before launching that provider. Shared configs still share authority.
+Bare attach proposes a unique name and purpose for this exact provider session.
+The person confirms with `/agentworks attach --confirm`, or chooses
+`/agentworks attach NAME "PURPOSE"`. All account senders are accepted; sender
+allow fields have been removed. Existing attachments created under the old policy
+are held offline until the person confirms `/agentworks resume`; their sender
+permissions never widen silently. Update the server before installing this CLI. Claude's namespaced command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
+consumes this person command before the model receives it and supplies its exact
+session_id. The Claude channel child is bound to its own ancestor PID plus process
+start time; it learns the session ID from this hook registration, never by selecting
+the newest chat or by a project/name match. No per-session native ID flag is needed
+for the plugin. An agent MCP tool cannot attach/detach.
+
+Default UserPromptSubmit and Stop hooks only use the private local socket; an
+unattached hook emits nothing and makes no server request. Stop loop guards prevent
+unbounded continuation. SessionEnd detaches when the host emits it; some clients
+delay that event after switching tabs. Use explicit detach when ending participation.
+`agentworks status --agents` lists local attachments. Terminal `agentworks detach`
+requires the exact provider/session and person confirmation.
+
+The installed plugin starts only a credential-less messaging MCP child for its
+exact provider process. Tools use the attached identity for explicit send, peer
+directory, bounded manual read, acknowledgement and same-conversation reply.
+Unattached tools cannot use the default CLI login. A full AgentWorks MCP connection
+is a separate person opt-in. This limits plugin tools; it does not isolate shared
+OS credentials from an agent with shell access.
+
+One local bridge process holds current per-attachment server SSE streams, private
+session leases and a durable offer journal. This is not yet one multiplexed stream
+but does create an independent messaging-only child connection for each attached
+agent, bound to its stable agent ID and name. The parent login manages these
+connections and revoking it immediately stops authentication and refresh. A child
+cannot register another identity, read another agent, or use the general tool
+catalog. It supports named-agent messaging; product calls need a separate connection. Before releasing
+cached messages it rechecks attachment, current sender and receiver authority and
+message retention on the server. Writes and SDK enqueues are offers, not fabricated
+admitted receipts. Claude/hook receivers acknowledge admitted and processed;
+Codex queue exit zero proves native queue admission, with processed still explicit.
+Replies retain the original conversation.
+
+For optional Claude idle wake, `agentworks claude` enables the custom development
+channel and Claude requests the person's confirmation. Custom marketplace packaging
+alone does not put our plugin on the research-preview allowlist: --channels only
+accepts Anthropic-approved or organization-approved plugins. An organization can
+approve `{ "marketplace": "agentworks", "plugin": "agentworks" }` using
+allowedChannelPlugins; Team/Enterprise also needs channelsEnabled. Default hooks
+need no channel launch flag. [Claude channel restrictions](https://code.claude.com/docs/en/channels).
+
+The hook selects an exact Claude session registration or a Codex desktop IPC
+route when its verified provider ancestor supports it. It never selects another
+chat by recency or name. For a separate Codex native queue, the person supplies `--native-remote unix:///ABSOLUTE/SOCKET`
+on the chat attach command or terminal attachment. It must be the private local
+Codex daemon that owns the exact session UUID; the adapter never guesses a daemon
+or targets a session by name. A normal CLI/desktop chat may be unreachable through
+that endpoint. Without native setup, hooks plus a desktop notification apply.
+The installer never bypasses Codex hook trust. [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins).
+
+The cache is private (directory/socket 0700/0600), bounded to 2,000 messages per
+session and 32 MiB total. Bodies are cleared when offered or acknowledged;
+processed metadata is reclaimed under quota pressure, offered metadata after
+seven days, or by the person's `/agentworks cleanup`. Pending bodies are retained
+for explicit recovery. The persisted monotonic receive watermark survives cleanup
+and restart, so retired IDs cannot create duplicate automatic turns. Replies to
+retired IDs use an explicit mailbox read and the returned inbox address. Legacy
+direct channels retain only bounded offer metadata and a watermark, never bodies.
+SessionEnd retains the identity offline and stops delivery; SessionStart explains
+that `/agentworks resume` confirms reconnecting the same session. Explicit detach
+removes local state and revokes its child connection. The write-before-delivery crash window is intentionally ambiguous rather
+than automatically creating a duplicate turn; recover by explicit mailbox read.
+Native failures leave an offer pending for explicit handling and notify the person.
+Desktop notifications contain only an agent name, never message bodies. macOS/Linux
+local bridge is supported; Windows native bridge support remains a follow-up.
+
+Plugin files: [Claude](../plugins/claude/README.md), [Codex](../plugins/codex/README.md).
+
 
 CLI uses the same authenticated server, including a local server:
 
@@ -332,3 +544,81 @@ Agents use `human_feedback` for immediate interaction such as a live CAPTCHA,
 and `create_human_input_request` for a durable request that can wait.
 The dedicated `human_input` step is retired. Existing plans need a reviewed
 [drained-deploy migration](workflow/human-input-step-retirement.md).
+
+### Existing desktop and Claude session transports
+
+For an already-open Codex desktop chat, explicitly attach its exact UUID with
+`--native-remote desktop+unix:///ABSOLUTE/CODEX_HOME/ipc/ipc.sock` and
+`--native-pid PID` of its exact running Codex process. This opt-in
+adapter uses the desktop's same-user coordination API, discovers the owner of
+that UUID, and requires its untrusted-app-input capability. Peer messages arrive
+as `agentworks.agent_message` tool content. A running turn receives them through
+the native live path; an explicitly ended turn can start an idle turn. A timeout
+or disconnect never triggers a second attempt. Permission settings, models,
+composer drafts and existing follow-ups remain under the host's control. This
+protocol is version-sensitive and fails closed if the installed app changes.
+The same-user IPC trusts processes running under the person's OS account; it is
+not isolation from other local processes of that user. Native idle wake starts
+under that chat's existing approval/sandbox settings, stated before attach.
+Native message batches are capped at 96 KiB; larger batches require an explicit
+inbox read, with no automatic retry.
+
+Claude's person-enabled session-messaging feature can receive without restarting
+an existing chat: select the exact registration file with
+`--native-remote claude+session:///ABSOLUTE/HOME/.claude/sessions/PID.json` and
+its matching `--session UUID`. The CLI validates that UUID, current process and
+private socket/key; it never selects by session name. This optional provider
+transport is version-sensitive. Socket writes remain offers because this version
+has no acceptance receipt. The receiver must explicitly acknowledge admission and
+processing. The official Claude MCP channel remains available separately.
+
+AgentWorks includes acknowledgement/reply instructions on the first offer for
+an attachment and refreshes them on the next offer after 24 hours. The private
+bridge persists that timestamp with its offer journal, so a daemon restart does
+not repeat guidance. A definite pre-delivery failure restores the prior timestamp
+for the next new offer; ambiguous writes retain it. Claude channels use MCP tool
+metadata and do not consume this formatting timestamp. Every offer still carries
+a short help hint and sender-content label,
+sender, message ID, inbox ID and exact attachment metadata. A newly attached
+session gets fresh instructions. Claude's own native peer/permission warning is
+added by Claude; this cadence only controls AgentWorks text. Sender content cannot
+attach or detach a session or grant permissions.
+
+A native receiver whose plugin has not been reloaded can use the narrow fallback
+`agentworks bridge message ack --provider claude --message-id ID --delivery admitted`
+and then `processed`, or `bridge message reply --provider claude --message-id ID
+--message TEXT --submission-id ID`. The same command also offers `send`, `read`
+and `peers` for this exact attached session. These commands use the exact provider ancestor
+and private local child connection. Codex requires its host `CODEX_THREAD_ID` and the stored provider process key;
+a supplied UUID cannot replace a missing host thread identity. Codex messaging
+MCP children also require a host-supplied UUID and refuse ambiguous shared-process
+selection. Use
+`--provider codex`. They cannot create attachments or use the parent tool catalog.
+
+A stable agent reuses its private child connection when moved between sessions
+under the same parent. A newly created child supersedes abandoned siblings for
+that address/parent. If an existing child is expired or revoked, a person-confirmed
+reattach derives a replacement once from the currently approved parent. Resume
+requires a fresh provider process key. Offline identities retain their address;
+explicit detach revokes their child. Cleanup retires offered metadata, so later
+replies need an explicit inbox read and `--inbox` instead of the retired message ID.
+
+Local bridge and credential-less messaging-plugin reads filter historical
+messages through the current receiver lease,
+same-account sender identity and live peer authorization. Explicit inbox replies require
+an inbox containing a currently authorized incoming message. Neither check fabricates
+admission. Codex shell replies use CODEX_THREAD_ID as a routing hint together with
+the provider process key. A shell of the same OS user can change that variable or
+read that user's private credentials; these checks are not OS isolation between
+desktop chats. Codex messaging MCP uses host-supplied
+`_meta["x-codex-turn-metadata"].thread_id` for each call, so a shared desktop
+child routes separate chats independently. A per-session host environment is
+the fallback where that metadata is absent. Model tool arguments cannot choose
+a UUID; missing or invalid host identity is refused. Install broader shell permissions only under the host's
+existing person-controlled trust settings.
+
+A separately approved full AgentWorks MCP/CLI connection retains its own broader
+mailbox permissions. Its general `messages` read tool is outside the bridge lease and account
+checks; installing messaging does not silently reduce or expand those separate
+grants. These checks apply to `bridge message read` and the credential-less
+messaging plugin's `agent_message_read`/reply tools.

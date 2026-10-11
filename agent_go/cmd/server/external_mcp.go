@@ -144,8 +144,19 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
+		if tool.Name == "plan" {
+			instructions += " Direct plans: plan action=list returns native schemas. Read get_plan for expected_revision, then edit with the exact arguments and a unique request_id; identical retries return the receipt. Current roles, Builder consent, native validators and plan changelog apply."
+		}
+		if tool.Name == "workflow_upgrade" {
+			instructions += " Contract upgrades: workflow_upgrade action=status lists owed migrations in order; do a migration's work (plan action=migrate_agent_steps for 1.0.47), then action=stamp with version and confirm=workflow_id. The Builder's stamp checks and ordering apply."
+		}
+		if tool.Name == "crew_execution" {
+			instructions += " Direct Crew tools: crew_execution and crew_integrations action=list return native schemas; authorized owners execute them without a model turn. History is redacted and owner-only. manage_crew_chats tools/tool addresses only your own chat; background starts require its initialized native sandbox and UI actions return actual browser receipts. Human sign-in and approval retain app flows."
+		}
+	}
+	for _, tool := range allowed {
 		if tool.Name == "create_workflow" {
-			instructions += " Workflow creation: use create_workflow with folder_name, workflow_json and plan_json. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for builder action=chat and authorized KB project bindings. Creation does not run it."
+			instructions += " Workflow creation: use create_workflow with folder_name, workflow_json and plan_json. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for direct plan edits, guarded files and authorized KB project bindings. Creation does not run it."
 		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions

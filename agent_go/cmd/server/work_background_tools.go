@@ -9,6 +9,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // registerWorkBackgroundTools reuses AgentWorks' established asynchronous
@@ -31,12 +32,18 @@ func (api *StreamingAPI) registerWorkBackgroundTools(
 		return fmt.Errorf("Work background tools require an active agent")
 	}
 
+	return api.registerWorkBackgroundToolSet(llmAgent, parentReq, sessionID, userID, llmAgent.AttachedSkills())
+}
+
+// The direct adapter supplies a caller-owned, initialized chat and the same
+// native request/skills; session lookup and consent validation are transport-owned.
+func (api *StreamingAPI) registerWorkBackgroundToolSet(registrar definitionToolRegistrar, parentReq QueryRequest, sessionID, userID string, skills []*llmtypes.Skill) error {
 	tierConfig := resolveDelegationTierConfig(parentReq.DelegationTierConfig)
 	definitions := virtualtools.CreateDelegationTools(tierConfig, true)
 	executors := virtualtools.CreateDelegationToolExecutors()
 	category := virtualtools.GetDelegationToolCategory()
 	backgroundDelegate := func(ctx context.Context, name, instruction string) (string, error) {
-		ctx = withDelegatedParentSkillDefinitions(ctx, llmAgent.AttachedSkills())
+		ctx = withDelegatedParentSkillDefinitions(ctx, skills)
 		return api.executeBackgroundDelegatedTask(ctx, parentReq, sessionID, name, instruction)
 	}
 	querier := &bgAgentQuerierImpl{registry: api.bgAgentRegistry}
@@ -79,7 +86,7 @@ func (api *StreamingAPI) registerWorkBackgroundTools(
 			}
 			return captured(ctx, args)
 		}
-		if err := llmAgent.RegisterCustomToolWithTimeout(publicName, description, parameters, wrapped, 0, category); err != nil {
+		if err := registrar.RegisterCustomToolWithTimeout(publicName, description, parameters, wrapped, 0, category); err != nil {
 			return fmt.Errorf("register %s: %w", publicName, err)
 		}
 	}

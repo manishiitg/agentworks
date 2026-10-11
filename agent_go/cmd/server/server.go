@@ -3094,6 +3094,8 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
+	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
+	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")

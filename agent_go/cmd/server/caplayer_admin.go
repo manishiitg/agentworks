@@ -168,18 +168,26 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 	proxy.ServeHTTP(w, r)
 }
 
-func capLayerServiceConfig() (*url.URL, string, error) {
+func capLayerServiceURL() (*url.URL, error) {
 	if !productEnabled("mcp-gateway") {
-		return nil, "", errors.New("Vault is unavailable in this installation")
+		return nil, errors.New("Vault is unavailable in this installation")
 	}
 	target, err := url.Parse(strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")))
 	if err != nil || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" {
-		return nil, "", errors.New("invalid service URL")
+		return nil, errors.New("invalid service URL")
 	}
 	ip := net.ParseIP(target.Hostname())
 	loopback := target.Hostname() == "localhost" || (ip != nil && ip.IsLoopback())
 	if target.Scheme != "https" && !(target.Scheme == "http" && loopback) {
-		return nil, "", errors.New("service requires HTTPS or loopback")
+		return nil, errors.New("service requires HTTPS or loopback")
+	}
+	return target, nil
+}
+
+func capLayerServiceConfig() (*url.URL, string, error) {
+	target, err := capLayerServiceURL()
+	if err != nil {
+		return nil, "", err
 	}
 	secret := strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_TOKEN"))
 	if file := strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_TOKEN_FILE")); file != "" {

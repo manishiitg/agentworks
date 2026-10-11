@@ -205,11 +205,17 @@ describe('intersectAllowedProductSurfaces', () => {
   })
 })
 
- it('requires explicit configuration and an installed gateway for the private LLM surface', () => {
+ it('uses the same-origin LLM surface without a gateway URL', () => {
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', gatewayUrl: 'http://127.0.0.1:18745' } })
     expect(enabledProductSurfaces()).not.toContain('llm-gateway')
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'llm-gateway'], gatewayUrl: 'http://127.0.0.1:18745' } })
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'llm-gateway'])
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'llm-gateway'] } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'llm-gateway'])
   })
+
+it('allows an explicitly configured same-origin LLM default on a managed server', () => {
+ vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['llm-gateway', 'work'], defaultProductSurface:'llm-gateway' } })
+ expect(enabledProductSurfaces()).toEqual(['llm-gateway','work'])
+ expect(deploymentDefaultProductSurface()).toBe('llm-gateway')
+})

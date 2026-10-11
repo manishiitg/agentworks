@@ -3,6 +3,7 @@ package producthost
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -84,15 +85,16 @@ func (s *Store) BeginAudit(e api.AuditEvent) error {
 	return s.AppendAudit(e)
 }
 func (s *Store) AppendAudit(e api.AuditEvent) error {
+	e.Kind = "llm"
 	payload, err := json.Marshal(e)
 	if err != nil {
 		return err
 	}
-	id := e.ID
+	id := "server-product:llm-gateway:" + base64.RawURLEncoding.EncodeToString([]byte(e.ID))
 	if e.Phase == "started" {
 		id += ":admission"
 	}
-	return s.store.AppendAudit(store.AuditEvent{ID: id, CallID: e.CallID, Timestamp: e.Timestamp, WorkspaceID: e.WorkspaceID, UserID: e.UserID, GroupIDs: e.GroupIDs, ClientID: e.ClientID, ConnectorID: e.ConnectorID, PublicName: e.PublicName, UpstreamName: e.UpstreamName, Decision: e.Decision, Outcome: e.Outcome, DurationMs: e.DurationMs, ErrorText: e.ErrorText, Output: payload})
+	return s.store.AppendAudit(store.AuditEvent{ProductID: "llm-gateway", ProductEvent: payload, ID: id, CallID: e.CallID, Timestamp: e.Timestamp, WorkspaceID: e.WorkspaceID, UserID: e.UserID, GroupIDs: e.GroupIDs, ClientID: e.ClientID, ConnectorID: e.ConnectorID, PublicName: e.PublicName, UpstreamName: e.UpstreamName, Decision: e.Decision, Outcome: e.Outcome, DurationMs: e.DurationMs, ErrorText: e.ErrorText})
 }
 func (s *Store) Query(ctx context.Context, f api.AuditFilter) ([]api.AuditEvent, error) {
 	if err := ctx.Err(); err != nil {
@@ -114,13 +116,16 @@ func (s *Store) Query(ctx context.Context, f api.AuditFilter) ([]api.AuditEvent,
 	indices := map[string]int{}
 	for _, row := range rows {
 		var e api.AuditEvent
-		if strings.HasPrefix(row.ID, "llm-") {
-			if json.Unmarshal(row.Output, &e) != nil || e.ID == "" {
+		if row.ProductID == "llm-gateway" {
+			if json.Unmarshal(row.ProductEvent, &e) != nil || e.ID == "" {
 				continue
 			}
+			e.Kind = "llm"
+		} else if legacyProductEvent(row, &e) {
+			e.Kind = "llm"
 		} else {
 			e = api.AuditEvent{
-				ID: row.ID, CallID: row.CallID, Timestamp: row.Timestamp,
+				Kind: "mcp", ID: row.ID, CallID: row.CallID, Timestamp: row.Timestamp,
 				WorkspaceID: row.WorkspaceID, UserID: row.UserID, GroupIDs: row.GroupIDs,
 				ClientID: row.ClientID, ConnectorID: row.ConnectorID, PublicName: row.PublicName,
 				UpstreamName: row.UpstreamName, Decision: row.Decision, Outcome: row.Outcome,
@@ -128,7 +133,8 @@ func (s *Store) Query(ctx context.Context, f api.AuditFilter) ([]api.AuditEvent,
 				InputTruncated: row.InputTruncated, OutputTruncated: row.OutputTruncated,
 			}
 		}
-		if index, exists := indices[e.ID]; exists {
+		key := e.Kind + "\x00" + e.ID
+		if index, exists := indices[key]; exists {
 			// Completion always wins, regardless of backend ordering. Keep an
 			// unmatched admission visible after a crash; it is not a billed total.
 			if out[index].Phase == "started" && e.Phase != "started" {
@@ -136,12 +142,12 @@ func (s *Store) Query(ctx context.Context, f api.AuditFilter) ([]api.AuditEvent,
 			}
 			continue
 		}
-		indices[e.ID] = len(out)
+		indices[key] = len(out)
 		out = append(out, e)
 	}
 	filtered := out[:0]
 	for _, e := range out {
-		isLLM := strings.HasPrefix(e.ID, "llm-")
+		isLLM := e.Kind == "llm"
 		if (f.Kind != "" && f.Kind != "llm" && f.Kind != "mcp") ||
 			(f.Kind == "llm" && !isLLM) || (f.Kind == "mcp" && isLLM) ||
 			(f.Decision != "" && e.Decision != f.Decision) ||
@@ -163,4 +169,17 @@ func (s *Store) Summary(ctx context.Context, f api.AuditFilter) (api.AuditSummar
 		return api.AuditSummary{}, err
 	}
 	return summarizeAudit(events), nil
+}
+
+// Read old host envelopes narrowly for compatibility. New writes carry explicit
+// host metadata and namespaces, so a caller UUID never determines the event kind.
+func legacyProductEvent(row store.AuditEvent, event *api.AuditEvent) bool {
+	if row.ProductID != "" || !strings.HasPrefix(row.ID, "llm-") || json.Unmarshal(row.Output, event) != nil {
+		return false
+	}
+	expected := event.ID
+	if event.Phase == "started" {
+		expected += ":admission"
+	}
+	return event.ID != "" && expected == row.ID && event.WorkspaceID == row.WorkspaceID && event.UserID == row.UserID && event.PublicName == row.PublicName && event.Timestamp.Equal(row.Timestamp)
 }
