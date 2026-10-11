@@ -338,7 +338,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 		"preparation":      externalPreparation(claims),
 	}
 	if token := claims.AccessToken; token != nil {
-		caps := map[string]any{"scopes": token.Scopes, "expires_at": token.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")}
+		caps := map[string]any{"connection_id": token.ID, "scopes": token.Scopes, "expires_at": token.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")}
 		if token.AllWorkflows {
 			caps["workflows"] = "all"
 		} else {

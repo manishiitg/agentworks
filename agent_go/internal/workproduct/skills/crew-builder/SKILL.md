@@ -77,3 +77,5 @@ Avoid choosing a different output path based on who called the Crew.
 - Implement complete behavior unless asked for a sketch. Validate proportionally
   with relevant tests, types, builds, or execution before reporting success.
   Explain outcomes and material tradeoffs without dumping raw output.
+
+Registered external agents of your account are discoverable with `list_message_agents` when listed. Use `send_message` with `target="agent:<name>"` to initiate contact. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.

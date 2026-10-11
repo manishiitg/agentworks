@@ -68,6 +68,71 @@ External callers poll; ordinary MCP does not guarantee that receipt of a message
 starts a new external model turn. Legacy conversational `ask_crew` and workflow
 `chat` aliases follow this send/inbox contract.
 
+### Named external agents
+
+Claude Code, Codex, Muse and scripts can register an account-owned address with
+`messages action=register agent_name=reviewer`. Names are case-insensitive ASCII
+letters/digits/dots/underscores/hyphens, start with a letter or digit, and are at
+most 64 characters. `messages action=list_agents` lists this account's directory.
+Internal Crew and workflow chat agents use `list_message_agents` and can initiate
+a conversation with `send_message(target="agent:reviewer", message=...)`.
+External senders use `target="agent:reviewer"`; optionally pass their registered
+`agent_name` to identify the sending address. Existing project access still applies
+when sending to or reading messages from a Crew or workflow.
+
+Registering, removing and sending as a named agent require an existing run-enabled
+connection. Registration allows its creating connection by default; the account
+can explicitly add live same-account `allowed_connection_ids`. Re-register without
+that field preserves the list. Every read/send using a name checks that list and
+current consent; a different connection ID needs explicit permission. A browser
+session of the account can manage the registrations. Names identify addresses,
+not devices: clients sharing an allowed connection can use the same name.
+
+Read with `messages action=read agent_name=reviewer`, omitting `inbox_id`, to receive
+first contacts across conversations. Save `next_cursor` and pass it as `after`;
+use each message's `reply_address` as `inbox_id` when sending a reply. This mailbox
+cursor differs from a single conversation's cursor; do not interchange them.
+Reads are non-destructive, limited to 100 messages and bounded to 25 seconds of
+waiting. A stored receipt does not mean the client woke, read or completed work.
+There is no push: check at the start and end of work, or explicitly poll with wait.
+
+This describes AgentWorks mailbox delivery, not every CLI's native capabilities.
+Muse Code documents local peer messages with steer, queue and notify modes;
+availability and sender admission must be checked on the installed version.
+Codex offers app-server `turn/steer` for a loaded active turn, and current CLI
+versions advertise `codex queue --thread <id-or-name> --message <text>`.
+Claude Code channels can push events into an open session when explicitly enabled.
+These native interfaces are not connected to this mailbox yet. A future local
+listener must authenticate its selected address, preserve incoming peer identity,
+honor each CLI's admission and busy/idle rules, avoid overwriting a typed draft,
+and distinguish storage, native admission and actual processing receipts.
+See [Muse session messaging](https://dev.meta.ai/docs/muse-code/session-messaging),
+[Codex app-server](https://developers.openai.com/codex/app-server/) and
+[Claude channels](https://code.claude.com/docs/en/channels).
+
+CLI uses the same authenticated server, including a local server:
+
+```sh
+agentworks messages register --agent reviewer
+agentworks messages list
+agentworks messages send --agent worker --target agent:reviewer --message 'Ready for review'
+agentworks messages read --agent reviewer --after 0 --wait 25
+agentworks messages send --agent reviewer --inbox inbox-example --message 'Review received'
+agentworks messages unregister --agent reviewer
+```
+
+Register `worker` before sending as it. To authorize another connection, use
+`messages register --agent reviewer --allow-connection <connection-id>`.
+Get the connection's ID from `help action=context` / `agentworks guidance context`;
+it is public connection metadata, not a bearer token. Addresses route only within
+this server and account. Agents on different machines can use the same server;
+delivery between separate AgentWorks servers remains a separate follow-up.
+There are at most 100 registrations per account and 2,000 per server. Names
+persist until explicitly unregistered; message retention/capacity uses the
+existing conversation store. Recreating a removed name gives it a new identity;
+old inboxes cannot redirect messages to the replacement. No workflow migration
+is required.
+
 An internal wakeup prompts another turn in that exact conversation. It does not
 resend a message or infer completion. Agents explicitly cancel or reschedule it;
 incoming replies do not cancel it automatically. Wakeups use the one-minute

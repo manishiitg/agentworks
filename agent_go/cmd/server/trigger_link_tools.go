@@ -38,11 +38,12 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
-	Kind        string // triggerCallerCrew or triggerCallerWorkflow
-	Path        string
-	Label       string
-	CrewID      string
-	CrewProfile string
+	NamedAgentID string // Message-only address; never used for structured functions.
+	Kind         string // triggerCallerCrew or triggerCallerWorkflow
+	Path         string
+	Label        string
+	CrewID       string
+	CrewProfile  string
 	// CrewOwner is the user whose workspace holds a Crew target. Crews are
 	// shared server-wide, so it may differ from the requester.
 	CrewOwner string
@@ -68,9 +69,10 @@ func (t triggerTarget) describe() map[string]interface{} {
 
 // triggerLinkCaller identifies the calling Crew or workflow.
 type triggerLinkCaller struct {
-	Stamp triggerCaller
-	Label string
-	Path  string
+	NamedAgentID string // Selected from an authorized account registration, never a display label.
+	Stamp        triggerCaller
+	Label        string
+	Path         string
 	// Chat is the calling Code chat when it calls a sibling chat; it is set
 	// only from the trusted turn (codeChatsFor).
 	Chat *codeChat

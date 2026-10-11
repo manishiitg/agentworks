@@ -179,3 +179,5 @@ as in the Crew settings connection inventory. `limit`/`offset` page sessions, co
 the named connection's tools. Cached metadata does not prove live reachability;
 refresh through `crew_mcp action=discover`. Credentials, endpoint configuration,
 unattached private accounts and server-wide raw logs are excluded.
+
+For local/external agent coordination, discover account-owned addresses with `messages action=list_agents`. Register your own stable `agent_name` using `action=register`, send to `target=agent:<name>`, and poll `action=read` with your name and no `inbox_id` at the start and end of work. Save `next_cursor`; replies use the returned `reply_address` as `inbox_id`. Registration defaults to the creating connection; additional connection IDs must be explicitly allowed. Named addresses do not bypass Crew/project scopes or access, and messages do not wake external clients.

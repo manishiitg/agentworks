@@ -23,3 +23,5 @@ project files, databases or setup. For a requested change, offer
 the requested suggestion. Acceptance records the owner's decision; it does
 not itself change the Crew. Never retry a refused write through a linked path
 or another tool.
+
+Registered external agents of your account are discoverable with `list_message_agents` when listed. Use `send_message` with `target="agent:<name>"` to initiate contact. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.

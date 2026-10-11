@@ -47,7 +47,7 @@ var cliOperationGroups = []struct {
 	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "list_schedules"}, {"runs", "get_schedule_runs"}, {"trigger", "trigger_schedule"}}},
 	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
-	{"messages", "Send agent messages and read explicit replies from your inbox", []struct{ command, tool string }{{"send", "messages"}, {"read", "messages"}}},
+	{"messages", "Register named agents, discover addresses, send and read inbox messages", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"call-file", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
@@ -513,6 +513,10 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
 	}
 	if tool == "messages" {
+		f.String("agent", "", "Registered agent name: register/remove it, send as it, or read its incoming contacts")
+		if cmd.Name() == "register" {
+			f.StringSlice("allow-connection", nil, "Explicit additional connection IDs of this account allowed to use this name; the registering connection is always included")
+		}
 		if cmd.Name() == "send" {
 			f.String("target", "", "Authorized target agent name")
 			f.String("crew", "", "Crew ID")
@@ -582,11 +586,14 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id"} {
+	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "agent": "agent_name"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value
 		}
+	}
+	if cmd.Flags().Lookup("allow-connection") != nil && cmd.Flags().Changed("allow-connection") {
+		arguments["allowed_connection_ids"], _ = cmd.Flags().GetStringSlice("allow-connection")
 	}
 	if cmd.Flags().Lookup("args") != nil && cmd.Flags().Changed("args") {
 		raw, _ := cmd.Flags().GetString("args")
@@ -659,8 +666,11 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 	if err != nil {
 		return err
 	}
-	if name == "messages" && (cmd.Name() == "send" || cmd.Name() == "read") {
+	if name == "messages" {
 		arguments["action"] = cmd.Name()
+		if cmd.Name() == "list" {
+			arguments["action"] = "list_agents"
+		}
 	}
 	client, err := o.client()
 	if err != nil {

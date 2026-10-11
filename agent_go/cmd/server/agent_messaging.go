@@ -27,6 +27,7 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	NamedAgentID   string `json:"named_agent_id,omitempty"`
 	UserID         string `json:"user_id"`
 	Kind           string `json:"kind"`
 	ID             string `json:"id"`
@@ -41,6 +42,7 @@ type agentMessageEndpoint struct {
 	FunctionCallID string `json:"function_call_id,omitempty"`
 }
 type agentMessage struct {
+	AgentSequence      int       `json:"agent_sequence,omitempty"`
 	ID                 string    `json:"message_id"`
 	Sequence           int       `json:"sequence"`
 	From               int       `json:"from"`
@@ -59,9 +61,11 @@ type agentConversation struct {
 	Next      int                     `json:"next_sequence"`
 }
 type agentMessageStore struct {
-	Conversations []agentConversation        `json:"conversations"`
-	Wakeups       []agentWakeup              `json:"wakeups,omitempty"`
-	Expired       []expiredAgentConversation `json:"expired,omitempty"`
+	Agents            []namedMessageAgent        `json:"agents,omitempty"`
+	NextAgentSequence int                        `json:"next_agent_sequence,omitempty"`
+	Conversations     []agentConversation        `json:"conversations"`
+	Wakeups           []agentWakeup              `json:"wakeups,omitempty"`
+	Expired           []expiredAgentConversation `json:"expired,omitempty"`
 }
 
 type expiredAgentConversation struct {
@@ -191,6 +195,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 }
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
+	e.NamedAgentID = c.NamedAgentID
 	if c.Chat != nil {
 		e.Session = c.Chat.SessionID
 		e.ChatKey = c.Chat.Key
@@ -198,6 +203,9 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 	return e
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
+	if t.NamedAgentID != "" {
+		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: userID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
+	}
 	e := agentMessageEndpoint{UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
 	if t.Kind == triggerCallerCrew {
 		e.UserID = t.ownerOr(userID)
@@ -212,6 +220,9 @@ func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint 
 	return e
 }
 func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLinkCaller) bool {
+	if e.NamedAgentID != c.NamedAgentID {
+		return false
+	}
 	if e.UserID != userID || e.Kind != c.Stamp.Type || e.ID != c.Stamp.ID {
 		return false
 	}
@@ -227,7 +238,7 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
 func endpointTarget(e agentMessageEndpoint) triggerTarget {
-	t := triggerTarget{Kind: e.Kind, Path: e.Path, Label: e.Label, CrewID: e.ID, CrewProfile: e.Profile, CrewOwner: e.UserID, TeamRecipientID: e.UserID}
+	t := triggerTarget{NamedAgentID: e.NamedAgentID, Kind: e.Kind, Path: e.Path, Label: e.Label, CrewID: e.ID, CrewProfile: e.Profile, CrewOwner: e.UserID, TeamRecipientID: e.UserID}
 	if e.Kind == triggerCallerWorkflow {
 		t.Manifest = &WorkflowManifest{ID: e.ID}
 	}
@@ -237,6 +248,10 @@ func endpointTarget(e agentMessageEndpoint) triggerTarget {
 	return t
 }
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
+	if e.NamedAgentID != "" {
+		_, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
+		return err
+	}
 	if e.External {
 		return nil
 	}
@@ -360,6 +375,13 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	c := &s.Conversations[index]
+	if source := c.Endpoints[side]; source.NamedAgentID != "" {
+		current, lookupErr := namedAgentByID(ctx, userID, source.NamedAgentID)
+		if lookupErr != nil || !namedAgentConnectionAllowed(current, GetUserFromContext(ctx)) {
+			agentMessageMu.Unlock()
+			return nil, fmt.Errorf("named agent unavailable or access denied")
+		}
+	}
 	dest := c.Endpoints[1-side]
 	if err = validateMessageDestination(ctx, dest); err != nil {
 		agentMessageMu.Unlock()
@@ -401,6 +423,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
 	if dest.External {
 		m.Delivery = "stored"
+	}
+	if dest.NamedAgentID != "" {
+		s.NextAgentSequence++
+		m.AgentSequence = s.NextAgentSequence
 	}
 	if claims := GetUserFromContext(ctx); c.Endpoints[side].External && claims != nil && claims.AccessToken != nil {
 		m.SenderConnectionID = claims.AccessToken.ID
@@ -941,7 +967,11 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			var target triggerTarget
 			if id == "" {
 				raw, _ := args["target"].(string)
-				target, err = resolveFunctionTarget(ctx, GetUserFromContext(ctx), caller, raw)
+				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "agent:") {
+					target, err = resolveNamedMessageAgent(ctx, userID, strings.TrimSpace(raw)[len("agent:"):])
+				} else {
+					target, err = resolveFunctionTarget(ctx, GetUserFromContext(ctx), caller, raw)
+				}
 				if err != nil {
 					return "", err
 				}
@@ -970,6 +1000,18 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			return string(raw), err
 		}},
 	}
+	tools = append(tools, struct {
+		name, description string
+		parameters        map[string]interface{}
+		execute           func(context.Context, map[string]interface{}) (string, error)
+	}{"list_message_agents", "List registered external agents of your account. Send a first message with send_message(target=agent:<name>). These agents poll their inbox; a stored receipt does not wake a client or prove work finished.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+		out, err := listNamedMessageAgents(internalBotRequestContext(ctx, userID), userID)
+		if err != nil {
+			return "", err
+		}
+		raw, err := json.Marshal(out)
+		return string(raw), err
+	}})
 	tools = append(tools, struct {
 		name, description string
 		parameters        map[string]interface{}
@@ -1008,7 +1050,7 @@ func (api *StreamingAPI) agentMessageSessionClosed(session string) bool {
 }
 
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
-	if existing.UserID != requested.UserID || existing.Kind != requested.Kind || existing.ID != requested.ID || existing.Profile != requested.Profile || existing.Path != requested.Path || existing.External != requested.External {
+	if existing.NamedAgentID != requested.NamedAgentID || existing.UserID != requested.UserID || existing.Kind != requested.Kind || existing.ID != requested.ID || existing.Profile != requested.Profile || existing.Path != requested.Path || existing.External != requested.External {
 		return false
 	}
 	return requested.Session == "" || existing.Session == requested.Session

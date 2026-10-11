@@ -1,5 +1,22 @@
 # Decisions and open issues
 
+## 2026-10-11 — Named agents share the message contract (PLAT-861)
+
+Register account-owned names for local and external agents in the durable message
+store. Use explicit same-account connection allowlists and existing run/read
+consent; names are addresses, not device identities. Internal chat agents can
+message registered agents first. A mailbox delivery cursor spans conversations;
+reply addresses retain conversation cursors. Keep external delivery pull-based,
+with start/end-of-work reads and bounded waits; this server does not yet bridge
+mailbox messages into native CLI sessions.
+Removing/recreating a name gives it a new ID so historical inboxes cannot address
+a replacement. Existing anonymous inboxes, project checks, limits and retention
+remain compatible; no saved-plan migration is needed.
+Why: agent coordination needs discoverable stable addresses across clients and
+restarts without granting another connection access merely from knowing a name.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+
 ## 2026-10-11 — Refuse unsafe deployment browser directories (PLAT-847)
 
 Before creating browser sockets or artifacts, validate each deployment directory

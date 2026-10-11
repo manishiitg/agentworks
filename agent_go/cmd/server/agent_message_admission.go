@@ -22,6 +22,12 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), claims, dest, true); err != nil {
 			return err
 		}
+		if source.NamedAgentID != "" {
+			agent, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID)
+			if err != nil || !namedAgentConnectionAllowed(agent, claims) {
+				return fmt.Errorf("sending named agent is no longer authorized")
+			}
+		}
 	}
 	for _, e := range c.Endpoints {
 		claims := &UserClaims{UserID: e.UserID}
@@ -29,6 +35,11 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return fmt.Errorf("message participant account is disabled")
 		}
 		if e.External {
+			if e.NamedAgentID != "" {
+				if _, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		actor := firstNonEmptyTrimmed(e.Guest, e.UserID)

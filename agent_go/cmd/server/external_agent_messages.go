@@ -13,6 +13,10 @@ import (
 // An inbox is an address, not an access grant. Recheck both the authenticated
 // caller and the peer's current product/token selection on every operation.
 func (api *StreamingAPI) externalMessagePeer(ctx context.Context, claims *UserClaims, inboxID string, send bool) (agentMessageEndpoint, error) {
+	return api.externalMessagePeerForCaller(ctx, claims, externalCrewCaller(claims), inboxID, send)
+}
+
+func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (agentMessageEndpoint, error) {
 	agentMessageMu.Lock()
 	store, err := readAgentMessageStore(ctx)
 	agentMessageMu.Unlock()
@@ -24,7 +28,7 @@ func (api *StreamingAPI) externalMessagePeer(ctx context.Context, claims *UserCl
 			continue
 		}
 		for side, endpoint := range conversation.Endpoints {
-			if endpoint.External && endpoint.UserID == claims.UserID && endpoint.Kind == triggerCallerUser && endpoint.ID == claims.UserID {
+			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
 				peer := conversation.Endpoints[1-side]
 				if err := api.externalAuthorizeMessagePeer(ctx, claims, peer, send); err != nil {
 					return agentMessageEndpoint{}, err
@@ -38,7 +42,7 @@ func (api *StreamingAPI) externalMessagePeer(ctx context.Context, claims *UserCl
 			continue
 		}
 		for side, endpoint := range conversation.Endpoints {
-			if endpoint.External && endpoint.UserID == claims.UserID && endpoint.Kind == triggerCallerUser && endpoint.ID == claims.UserID {
+			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
 				if err := api.externalAuthorizeMessagePeer(ctx, claims, conversation.Endpoints[1-side], send); err != nil {
 					return agentMessageEndpoint{}, err
 				}
@@ -53,7 +57,15 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
 	if peer.External {
-		return denied
+		if peer.UserID != claims.UserID || !namedAgentOperationAllowed(claims, send) {
+			return denied
+		}
+		if peer.NamedAgentID != "" {
+			if _, err := namedAgentByID(ctx, peer.UserID, peer.NamedAgentID); err != nil {
+				return denied
+			}
+		}
+		return nil
 	}
 	if peer.Profile == codeproduct.ProfileID {
 		if peer.UserID != claims.UserID || !externalCodeRunAllowed(claims) {
@@ -113,6 +125,12 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
 		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
 	}
+	if strings.HasPrefix(strings.ToLower(name), "agent:") {
+		if !namedAgentOperationAllowed(claims, send) {
+			return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
+		}
+		return resolveNamedMessageAgent(ctx, claims.UserID, name[len("agent:"):])
+	}
 	targets := []triggerTarget{}
 	if workflowID == "" {
 		crews, err := api.externalCrewsVisible(ctx, claims, "")
@@ -158,14 +176,19 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 
 func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Request, args map[string]any, target triggerTarget) {
 	claims := GetUserFromContext(r.Context())
+	caller, err := api.externalMessageCaller(r.Context(), claims, args)
+	if err != nil {
+		externalCommunicationError(w, 404, "not_found", err)
+		return
+	}
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	if inbox != "" {
-		peer, err := api.externalMessagePeer(r.Context(), claims, inbox, true)
+		peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, true)
 		if err != nil {
 			externalCommunicationError(w, 404, "not_found", err)
 			return
 		}
-		if target.Kind != "" && (peer.Kind != target.Kind || peer.ID != target.stampID() || peer.Profile != normalizeInternalProfileID(target.CrewProfile) || target.Chat != nil && peer.Session != target.Chat.SessionID) {
+		if target.Kind != "" && (target.NamedAgentID != "" && peer.NamedAgentID != target.NamedAgentID || target.NamedAgentID == "" && (peer.Kind != target.Kind || peer.ID != target.stampID() || peer.Profile != normalizeInternalProfileID(target.CrewProfile) || target.Chat != nil && peer.Session != target.Chat.SessionID)) {
 			externalError(w, 400, "invalid_arguments", "inbox_id belongs to another target conversation")
 			return
 		}
@@ -173,7 +196,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
-	out, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, externalCrewCaller(claims), target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"))
+	out, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"))
 	if err != nil {
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
@@ -185,6 +208,19 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	claims := GetUserFromContext(r.Context())
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	switch externalArg(args, "action") {
+	case "register", "unregister":
+		api.externalNamedAgentRegistration(w, r, args)
+	case "list_agents":
+		if !namedAgentOperationAllowed(claims, false) {
+			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
+			return
+		}
+		out, err := listNamedMessageAgents(r.Context(), claims.UserID)
+		if err != nil {
+			externalCommunicationError(w, 400, "directory_refused", err)
+			return
+		}
+		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
 	case "send":
@@ -199,22 +235,48 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		api.externalSendMessage(w, r, args, target)
 	case "read":
+		if inbox == "" && externalArg(args, "agent_name") != "" {
+			out, err := api.readNamedAgentMessages(r.Context(), claims, args)
+			if err != nil {
+				externalCommunicationError(w, 404, "read_refused", err)
+				return
+			}
+			externalJSON(w, out)
+			return
+		}
 		if inbox == "" {
 			externalError(w, 400, "invalid_arguments", "inbox_id is required for a bounded conversation read")
 			return
 		}
-		if _, err := api.externalMessagePeer(r.Context(), claims, inbox, false); err != nil {
+		caller, err := api.externalMessageCaller(r.Context(), claims, args)
+		if err != nil {
+			externalCommunicationError(w, 404, "not_found", err)
+			return
+		}
+		if _, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, false); err != nil {
 			externalCommunicationError(w, 404, "not_found", err)
 			return
 		}
 		wait := time.Duration(externalInt(args, "wait_seconds", 0)) * time.Second
-		out, err := api.readAgentMessages(r.Context(), claims.UserID, externalCrewCaller(claims), inbox, externalInt(args, "after", 0), externalInt(args, "limit", 30), wait)
+		out, err := api.readAgentMessages(r.Context(), claims.UserID, caller, inbox, externalInt(args, "after", 0), externalInt(args, "limit", 30), wait)
 		if err != nil {
 			externalCommunicationError(w, 400, "read_refused", err)
 			return
 		}
 		// Access can be revoked while a bounded read waits; do not release its page.
-		peer, err := api.externalMessagePeer(r.Context(), claims, inbox, false)
+		if wait > 0 && caller.NamedAgentID != "" && claims.AccessToken != nil {
+			live, e := agentMessageConnectionClaims(r.Context(), claims.AccessToken.ID)
+			if e != nil || live.UserID != claims.UserID || !namedAgentOperationAllowed(live, false) {
+				externalError(w, 404, "not_found", "Connection is no longer authorized.")
+				return
+			}
+			claims = live
+		}
+		if _, err = api.externalMessageCaller(r.Context(), claims, args); err != nil {
+			externalCommunicationError(w, 404, "not_found", err)
+			return
+		}
+		peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, false)
 		if err != nil {
 			externalCommunicationError(w, 404, "not_found", err)
 			return
@@ -228,20 +290,22 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, out)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be send, read or state")
+		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read or state")
 	}
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "Send conversational agent messages or read explicit replies from your authenticated inbox. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
-		"action":        map[string]any{"type": "string", "enum": []any{"send", "read", "state"}},
-		"crew_id":       externalString("Crew ID for an initial send or owner-only state inspection."),
-		"workflow_id":   externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":        externalString("Accessible Crew or workflow name/ID for an initial send."),
-		"message":       externalString("Message to send; required for action send."),
-		"inbox_id":      externalString("Inbox returned by send; required for action read, reusable for later sends."),
-		"submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Unique ID for this message. Reuse on uncertain delivery."},
-		"after":         externalInteger(0, 1000000000), "limit": externalInteger(1, 100),
+	add("messages", "Register an account-owned agent_name with action=register; list_agents discovers agent:<name> addresses and unregister removes a name. Registration defaults to this connection; explicitly allowed_connection_ids can use the same name. Re-register without that field preserves the reader list. Names are addresses, not authenticated device identities. Send conversational agent messages or read explicit replies from your authenticated inbox. Read with agent_name and no inbox_id to discover first contacts across conversations; each reply_address is an inbox_id for a later send. Named reads use a mailbox cursor; conversation reads use their own cursor. External agents poll; storage never wakes a client. Registration and named sends require existing run consent; read-only connections cannot register or send. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state"}},
+		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),
+		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
+		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
+		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
+		"target":                 externalString("Accessible Crew or workflow name/ID, or agent:<name> from this account's directory, for an initial send."),
+		"message":                externalString("Message to send; required for action send."),
+		"inbox_id":               externalString("Inbox returned by send; required for action read, reusable for later sends."),
+		"submission_id":          map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Unique ID for this message. Reuse on uncertain delivery."},
+		"after":                  externalInteger(0, 1000000000), "limit": externalInteger(1, 100),
 		"wait_seconds": externalInteger(0, externalCrewMaxWaitSeconds),
 	}, "action")
 }
