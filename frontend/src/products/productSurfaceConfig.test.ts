@@ -20,14 +20,14 @@ describe('product surface deployment configuration', () => {
   it('excludes shared server products from local installations despite stale configuration', () => {
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
       deploymentMode: 'local',
-      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway', 'video-studio', 'sparkquill'],
+      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway', 'video-studio', 'sparkquill', 'llm-gateway'],
       defaultProductSurface: 'knowledgebase', gatewayUrl: 'http://127.0.0.1:18745', gatewaySso: true,
     } })
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(gatewayBaseUrl()).toBeNull()
     expect(hasGatewaySSO()).toBe(false)
-    for (const product of ['code', 'relays', 'knowledgebase', 'mcp-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
+    for (const product of ['code', 'relays', 'knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
   })
 
   it('uses local defaults and cannot opt into server products in a local build', () => {
@@ -204,3 +204,12 @@ describe('intersectAllowedProductSurfaces', () => {
     expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['relays'])).toEqual(['relays'])
   })
 })
+
+ it('requires explicit configuration and an installed gateway for the private LLM surface', () => {
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', gatewayUrl: 'http://127.0.0.1:18745' } })
+    expect(enabledProductSurfaces()).not.toContain('llm-gateway')
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'llm-gateway'], gatewayUrl: 'http://127.0.0.1:18745' } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'llm-gateway'])
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'llm-gateway'] } })
+    expect(enabledProductSurfaces()).toEqual(['agentworks'])
+  })

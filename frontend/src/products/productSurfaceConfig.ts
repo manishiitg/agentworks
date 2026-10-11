@@ -1,10 +1,10 @@
-export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'sparkquill', 'work', 'code', 'mcp-gateway', 'knowledgebase'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'sparkquill', 'work', 'code', 'mcp-gateway', 'llm-gateway', 'knowledgebase'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
   agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio',
-  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', knowledgebase: 'Brain',
+  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain',
 }
 
 type ProductRuntimeConfig = {
@@ -39,7 +39,7 @@ export function enabledProductSurfaces(): ProductSurface[] {
   const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'relays', 'work', 'mcp-gateway', 'knowledgebase'] : ['agentworks', 'relays', 'work', 'knowledgebase']
   if (!Array.isArray(configured)) return defaults
 
-  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
+  const enabled = configured.filter(isProductSurface).filter(surface => !['mcp-gateway', 'llm-gateway'].includes(surface) || gatewayBaseUrl() !== null)
   return enabled.length > 0 ? [...new Set(enabled)] : defaults
 }
 

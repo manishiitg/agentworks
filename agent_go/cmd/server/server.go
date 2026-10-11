@@ -2446,6 +2446,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// A browser connection changed: wake that user's open tabs so the toolbar refetches the status instead of polling it.
 	browserrelay.SetChangeHook(func(user, _ string) { livefeed.Default.PublishToUser(livefeed.Browser, user, "") })
 	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)
+	apiRouter.PathPrefix("/server-products/").HandlerFunc(api.handleServerProduct)
 	common.ScopeAgentMCP = api.scopeAgentMCP
 	router.HandleFunc("/internal/vault/mcp", api.handleVaultRuntimeMCP).Methods("GET", "POST", "DELETE")
 	router.HandleFunc("/internal/caplayer/oauth-token", api.handleCapLayerOAuthToken).Methods("POST")

@@ -195,6 +195,7 @@ func Fingerprint(upstreamName, description string, inputSchema []byte, extra ...
 // MemoryStore is the M0 Store implementation. All methods are safe for
 // concurrent use.
 type MemoryStore struct {
+	extensionState  map[string]ExtensionState
 	mu              sync.RWMutex
 	persistence     *sqlitePersistence
 	workspaces      map[string]Workspace
