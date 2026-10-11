@@ -83,6 +83,14 @@ to its real source (`technical_review`, `strategic_review`, or generic `pulse`).
 For an authorized workflow change, supply the tool's structured `apply_contract`;
 the consumer must not infer the repair from the question's prose alone.
 
+An obsolete agent-issued pending proposal can be withdrawn by Builder using
+`withdraw_human_input_request` with a reason and evidence references. The original
+question, options and approval contract stay in history. This is agent judgment,
+not an owner answer or permission to perform the proposal. Human-created requests,
+suggestions and answered/claimed decisions are not eligible; provenance that is
+unknown stays unknown. Pulse discusses withdrawal with Builder rather than
+answering or withdrawing the owner's decisions itself.
+
 The native card's controls have distinct meanings:
 
 - **Ask in chat** opens a contextual discussion. It does not answer the question.

@@ -32,7 +32,7 @@ import { ReportHumanInputPanel } from './ReportHumanInputPanel'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 describe('decision card refresh from the server live feed', () => {
-  it('moves a saved answer out of pending on a human_inputs notice, without the chat or a manual refresh', async () => {
+  it.each(['answered', 'withdrawn'] as const)('moves a %s request out of pending on a human_inputs notice, without the chat or a manual refresh', async (status) => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
     const workspace = 'Workflow/example'
     const input = { id: 'decision-1', workspace_path: workspace, source: 'technical_review',
@@ -45,12 +45,29 @@ describe('decision card refresh from the server live feed', () => {
     try {
       await act(async () => root.render(<ReportHumanInputPanel workspacePath={workspace} />))
       expect(container.textContent).toContain('Needs your decision')
-      const answered = { ...input, status: 'answered' as const, selected_option_id: 'approve' }
+      const answered: ReportHumanInput = status === 'answered'
+        ? { ...input, status, selected_option_id: 'approve' }
+        : { ...input, status, withdrawal: {
+          reason: 'The measurement repair is complete under current authority.',
+          evidence: ['pulse/work/repair-receipt.json'], actor_id: 'owner', session_id: 'builder-chat', withdrawn_at: '2026-10-11T04:00:00Z',
+        } }
       vi.mocked(agentApi.listReportHumanInputs).mockResolvedValue({ success: true, inputs: [answered] })
       await act(async () => { liveFeedListeners.forEach(notify => notify()) })
       expect(container.textContent).not.toContain('Needs your decision')
       expect(container.textContent).not.toContain('Save answer')
       expect(container.textContent).toContain('Approve measurement?')
+      if (status === 'withdrawn') {
+        expect(container.textContent).toContain('Withdrawn')
+        const history = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Recent decisions'))
+        await act(async () => history!.click())
+        const request = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Approve measurement?'))
+        await act(async () => request!.click())
+        expect(container.textContent).toContain('Withdrawn by Builder')
+        expect(container.textContent).toContain(answered.withdrawal!.reason)
+        expect(container.textContent).toContain('pulse/work/repair-receipt.json')
+        expect(container.textContent).not.toContain('You answered')
+        expect(container.textContent).not.toContain('Action taken by')
+      }
     } finally {
       await act(async () => root.unmount())
       container.remove()

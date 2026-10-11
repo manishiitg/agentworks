@@ -260,6 +260,7 @@ chat:
       - answer_human_input_request
       - mark_human_input_consumed
       - dismiss_duplicate_human_input_request
+      - withdraw_human_input_request
       - notify_user
       - send_slack_message
       - google_workspace_cli

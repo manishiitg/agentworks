@@ -340,7 +340,7 @@ export function ReportHumanInputPanel({
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <span className={`min-w-0 font-medium ${statusTone(input)}`}>{reportHumanInputStatusLabel(input)}</span>
-                  <span className="text-muted-foreground">{inputTime(input.consumed_at || input.answered_at || input.dismissed_at || input.updated_at)}</span>
+                  <span className="text-muted-foreground">{inputTime(input.withdrawal?.withdrawn_at || input.consumed_at || input.answered_at || input.dismissed_at || input.updated_at)}</span>
                 </span>
                 <span className={`mt-0.5 block min-w-0 ${expanded ? 'whitespace-normal leading-5 text-foreground' : 'truncate text-muted-foreground'}`}>{input.question}</span>
               </span>
@@ -363,6 +363,13 @@ export function ReportHumanInputPanel({
                   <div className="flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-2 py-1.5 text-amber-100">
                     <Clock3 className="h-3.5 w-3.5 shrink-0" />
 				<span>{input.status === 'claimed' ? 'The saved decision is being processed.' : 'Answered, not applied yet. Apply it in the Builder chat.'}</span>
+                  </div>
+                )}
+                {input.status === 'withdrawn' && input.withdrawal && (
+                  <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
+                    <div><span className="font-medium text-foreground">Withdrawn by Builder: </span>{input.withdrawal.reason}</div>
+                    <div className="mt-1 text-[11px]">This proposal no longer needs your answer.</div>
+                    <div className="mt-1">Evidence cited: {input.withdrawal.evidence.join('; ')}</div>
                   </div>
                 )}
                 {input.outcome_summary && (
@@ -402,7 +409,7 @@ export function ReportHumanInputPanel({
                     )}
                   </div>
                 )}
-                {!answer && !input.note && !input.outcome_summary && <div>No saved answer details.</div>}
+                {!answer && !input.note && !input.outcome_summary && !input.withdrawal && <div>No saved answer details.</div>}
               </div>
             )}
           </div>
