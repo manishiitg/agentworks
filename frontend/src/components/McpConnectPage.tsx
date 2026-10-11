@@ -18,11 +18,11 @@ export default function McpConnectPage() {
           <WorkspaceBackButton />
           <span aria-hidden="true" className="h-4 w-px bg-border" />
           <Plug className="h-4 w-4 text-primary" />
-          <h1 className="text-sm font-semibold text-foreground">Connect an AI agent (MCP)</h1>
+          <h1 className="text-sm font-semibold text-foreground">Connect AI agents</h1>
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl p-4 sm:p-6">
+        <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
           <McpConnectBody codeReview={codeReview} />
         </div>
       </div>

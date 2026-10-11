@@ -99,3 +99,15 @@ func TestAgentDeliveryGuidanceEnvelope(t *testing.T) {
 		}
 	}
 }
+
+// Regression: the app bundle on the reported laptop is ChatGPT.app with an embedded CodexCLI.app.
+func TestCodexDesktopHostDiscovery(t *testing.T) {
+	for _, command := range []string{"/Applications/Codex.app/Contents/Resources/codex app-server", "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex app-server"} {
+		if !codexDesktopHost(command) {
+			t.Fatal("desktop host not recognized", command)
+		}
+	}
+	if codexDesktopHost("/usr/local/bin/codex app-server") {
+		t.Fatal("standalone CLI mistaken for desktop")
+	}
+}

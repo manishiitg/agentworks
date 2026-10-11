@@ -76,25 +76,25 @@ func pluginCommand(o *options) *cobra.Command {
 					status.Action = "status"
 					if current, e := agentworksclient.CallLocalBridge(ctx, root, status); e == nil {
 						if current.Attached {
-							return pluginBlock(o, "AgentWorks already attached as agent:"+current.Attachment.AgentName+" ("+current.Attachment.Purpose+").")
+							return pluginBlock(o, pluginAttachmentStatus(current))
 						}
 						if current.Offline {
 							return pluginBlock(o, "AgentWorks identity agent:"+current.Attachment.AgentName+" is offline. Confirm reconnecting this exact session with /agentworks resume.")
 						}
 					}
-					req.AgentName, req.Purpose, err = proposedAgentIdentity(req.Provider, req.SessionID, input.Cwd)
+					req.AgentName, _, err = proposedAgentIdentity(req.Provider, req.SessionID, input.Cwd)
 					if err != nil {
 						return pluginBlock(o, err.Error())
 					}
 					if len(words) == 2 {
-						return pluginBlock(o, "Attach as agent:"+req.AgentName+" ("+req.Purpose+")? All senders in your AgentWorks account can message this session. Confirm with /agentworks attach --confirm, or choose /agentworks attach NAME \"PURPOSE\".")
+						return pluginBlock(o, "Attach as agent:"+req.AgentName+"? All senders in your AgentWorks account can message this session. Confirm with /agentworks attach --confirm, or choose /agentworks attach NAME. Your agent can set its purpose afterward.")
 					}
 				} else {
-					if len(words) < 4 {
-						return pluginBlock(o, "Use /agentworks attach, or /agentworks attach NAME \"PURPOSE\".")
+					if len(words) < 3 {
+						return pluginBlock(o, "Use /agentworks attach, or /agentworks attach NAME.")
 					}
-					req.AgentName, req.Purpose = words[2], words[3]
-					for i := 4; i < len(words); i++ {
+					req.AgentName = words[2]
+					for i := 3; i < len(words); i++ {
 						if words[i] != "--native-remote" || i+1 >= len(words) {
 							return pluginBlock(o, "Unknown attach option; sender allow fields have been removed.")
 						}
@@ -128,6 +128,9 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, err.Error())
 				}
 			case "detach", "status", "resume", "cleanup":
+				if req.Action == "resume" {
+					req.NativeRemote = discoverNativeRemote(req.Provider, req.SessionID, req.HostKey)
+				}
 				if len(words) != 2 {
 					return pluginBlock(o, "detach and status take no arguments")
 				}
@@ -142,7 +145,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, "AgentWorks identity retained offline as agent:"+out.Attachment.AgentName+". Submit /agentworks resume to confirm reconnecting this exact session.")
 			}
 			if out.Attached {
-				return pluginBlock(o, "AgentWorks attached as agent:"+out.Attachment.AgentName+" ("+out.Attachment.Purpose+"). All account senders are accepted. Native delivery is used when available; otherwise hooks deliver at turn boundaries.")
+				return pluginBlock(o, pluginAttachmentStatus(out))
 			}
 			return pluginBlock(o, "This conversation is not attached to AgentWorks.")
 		}
@@ -308,6 +311,24 @@ func proposedAgentIdentity(provider, session, cwd string) (string, string, error
 	return provider + "-" + strings.Trim(slug.String(), "-") + "-" + strings.ReplaceAll(id.String(), "-", ""), "Coding in " + folder, nil
 }
 
+func pluginAttachmentStatus(out agentworksclient.LocalBridgeReply) string {
+	text := "AgentWorks attached as agent:" + out.Attachment.AgentName + "."
+	if out.Attachment.Purpose != "" {
+		text += " Purpose: " + out.Attachment.Purpose + "."
+	}
+	text += " All account senders are accepted."
+	if out.NativeDelivery {
+		if out.NativeRouteStatus == "stale" {
+			return text + " Native route is stale. The person must resume this chat after restarting it; pending messages remain in the mailbox."
+		}
+		if out.LastError != "" {
+			return text + " Native route selected. Last delivery: " + out.LastError
+		}
+		return text + " Native live delivery is selected."
+	}
+	return text + " Hooks deliver at turn boundaries; native live delivery is unavailable for this attachment."
+}
+
 func discoverNativeRemote(provider, session, hostKey string) string {
 	if hostKey == "" {
 		return ""
@@ -338,7 +359,7 @@ func discoverNativeRemote(provider, session, hostKey string) string {
 			if e != nil || len(parts) < 2 {
 				break
 			}
-			if key, e := providerPIDHostKey(provider, pid); e == nil && key == hostKey && strings.Contains(string(out), "/Codex.app/") {
+			if key, e := providerPIDHostKey(provider, pid); e == nil && key == hostKey && codexDesktopHost(string(out)) {
 				remote := "desktop+unix://" + filepath.Join(home, ".codex", "ipc", "ipc.sock")
 				if validateCodexRemote(remote) == nil {
 					return remote
@@ -348,6 +369,57 @@ func discoverNativeRemote(provider, session, hostKey string) string {
 		}
 	}
 	return ""
+}
+
+// Refresh only within the approved process/session. A new process key requires person resume.
+func refreshNativeRoute(provider, session, hostKey, remote string) string {
+	if hostKey == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if provider == "claude" {
+		files, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
+		for _, file := range files {
+			candidate := "claude+session://" + file
+			if record, _, err := nativeClaudeSession(candidate, session); err == nil {
+				if key, err := providerPIDHostKey(provider, record.PID); err == nil && key == hostKey {
+					return candidate
+				}
+			}
+		}
+		return ""
+	}
+	if provider != "codex" || validateCodexRemote(remote) != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	processes, err := exec.CommandContext(ctx, "ps", "-axo", "pid=", "-o", "args=").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(processes), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !strings.Contains(strings.ToLower(line), "codex") {
+			continue
+		}
+		pid, _ := strconv.Atoi(fields[0])
+		if key, err := providerPIDHostKey(provider, pid); err == nil && key == hostKey {
+			if !strings.HasPrefix(remote, "desktop+unix://") || codexDesktopHost(line) {
+				return remote
+			}
+		}
+	}
+	return ""
+}
+
+// Desktop Codex ships both as Codex.app and as CodexCLI.app inside the host app.
+// This is still checked against the exact provider PID/start-time key before use.
+func codexDesktopHost(command string) bool {
+	return strings.Contains(command, "/Codex.app/") || strings.Contains(command, "/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/")
 }
 
 func providerHostKey(provider string) (string, error) {
@@ -383,9 +455,9 @@ func bridgeCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, Notify: notifyAgentWaiting})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Notify: notifyAgentWaiting})
 	}})
-	var provider, session, messageID, delivery, message, submission, target, inbox string
+	var provider, session, messageID, delivery, message, submission, target, inbox, purpose string
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
 		if err != nil {
@@ -400,14 +472,14 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			session = os.Getenv("CODEX_THREAD_ID")
 		}
-		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" {
-			return errors.New("choose ack, reply, peers, send or read")
+		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" {
+			return errors.New("choose ack, reply, peers, send, read or purpose")
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
 			return err
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox})
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose})
 		if err != nil {
 			return err
 		}
@@ -423,6 +495,7 @@ func bridgeCommand(o *options) *cobra.Command {
 	call.Flags().StringVar(&message, "message", "", "Explicit reply or message")
 	call.Flags().StringVar(&submission, "submission-id", "", "Stable send ID")
 	call.Flags().StringVar(&target, "target", "", "Named peer address")
+	call.Flags().StringVar(&purpose, "purpose", "", "Describe what this attached agent works on")
 	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
 	cmd.AddCommand(call)
 
@@ -461,7 +534,7 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 }
 
 func attachPluginCommand(o *options) *cobra.Command {
-	var nativeSession, name, purpose, nativeRemote string
+	var nativeSession, name, nativeRemote string
 	var nativeHostKey string
 	var nativePID int
 	cmd := &cobra.Command{Use: "attach PROVIDER", Args: cobra.ExactArgs(1), Short: "Person-controlled plugin installation; optionally attach an exact session", RunE: func(cmd *cobra.Command, args []string) error {
@@ -548,7 +621,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "attach", Provider: provider, SessionID: nativeSession, HostKey: nativeHostKey, ConfigPath: path, AgentName: name, Purpose: purpose, NativeRemote: nativeRemote})
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "attach", Provider: provider, SessionID: nativeSession, HostKey: nativeHostKey, ConfigPath: path, AgentName: name, NativeRemote: nativeRemote})
 		if err != nil {
 			return err
 		}
@@ -558,7 +631,6 @@ func attachPluginCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVar(&nativeSession, "session", "", "Exact native session UUID; omitted installs the plugin only")
 	cmd.Flags().StringVar(&nativeRemote, "native-remote", "", "Explicit native endpoint: unix:// daemon, desktop+unix:// desktop IPC, or claude+session:// registration")
 	cmd.Flags().StringVar(&name, "name", "", "Stable agent name")
-	cmd.Flags().StringVar(&purpose, "purpose", "", "What this session does")
 	return cmd
 }
 
@@ -648,6 +720,19 @@ func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
 		text = "agent:" + a.AgentName + ". " + notice
 	}
 	if runtime.GOOS == "darwin" {
+		if helper, err := exec.LookPath("terminal-notifier"); err == nil {
+			args := []string{"-title", "AgentWorks", "-message", text, "-group", "agentworks-" + a.AgentName}
+			if a.Provider == "codex" {
+				if id, err := uuid.Parse(a.SessionID); err == nil {
+					args = append(args, "-open", "codex://threads/"+id.String())
+				}
+			}
+			if exec.CommandContext(ctx, helper, args...).Run() == nil {
+				return
+			}
+		}
+		// Without the optional helper macOS attributes this basic alert to Script Editor.
+		// No click-through claim: the person must open their agent chat manually.
 		quoted, _ := json.Marshal(text)
 		_ = exec.CommandContext(ctx, "osascript", "-e", "display notification "+string(quoted)+" with title \"AgentWorks\"").Run()
 	} else if runtime.GOOS == "linux" {

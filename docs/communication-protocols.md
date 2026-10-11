@@ -138,8 +138,8 @@ How the pieces fit:
 - The person signs in once. Each attached agent gets its own revocable
   connection created by the CLI.
 - Attachment is opt-in per session and person-only. In a Codex or Claude chat,
-  `/agentworks attach` proposes a name and purpose; the person confirms with
-  `/agentworks attach --confirm` or chooses `/agentworks attach NAME "PURPOSE"`.
+  `/agentworks attach` proposes a name; the person confirms with
+  `/agentworks attach --confirm` or chooses `/agentworks attach NAME`.
   All same-account senders are accepted; there are no sender allow flags.
   An agent cannot attach itself, and attach text inside a delivered agent
   message is refused. `agentworks attach PROVIDER` installs the provider plugin;
@@ -155,7 +155,7 @@ How the pieces fit:
   agent treats it as a message from another agent, not as the person's
   instruction.
 - The person stays in control. Nothing is attached by default, and only a
-  person attaches a chat: typing `/agentworks attach <name> "<purpose>"` in that
+  person attaches a chat: typing `/agentworks attach <name>` in that
   chat (caught by the CLI's prompt-submit hook, linked to that chat's
   conversation ID, never sent to the model). Bare `agentworks attach` from a
   separate terminal is still planned.
@@ -247,9 +247,15 @@ required by the provider, sign in with `agentworks login`, then type:
 
 For separate agent connections, set `AGENTWORKS_CONFIG` to an independent private
 CLI config before launching that provider. Shared configs still share authority.
-Bare attach proposes a unique name and purpose for this exact provider session.
+Bare attach proposes a unique name for this exact provider session.
 The person confirms with `/agentworks attach --confirm`, or chooses
-`/agentworks attach NAME "PURPOSE"`. All account senders are accepted; sender
+`/agentworks attach NAME`. Purpose is optional at attachment. The attached agent
+sets one line of up to 80 characters with `agent_message_set_purpose` or
+`agentworks bridge message purpose --provider codex --purpose "Review changes"`
+(use `claude` for Claude). Updates check the exact lease, cannot rename or attach,
+and allow at most one change per minute. Set it once after attachment; update
+when the person asks or after 24 hours if the work clearly changed.
+All account senders are accepted; sender
 allow fields have been removed. Existing attachments created under the old policy
 are held offline until the person confirms `/agentworks resume`; their sender
 permissions never widen silently. Update the server before installing this CLI. Claude's namespaced command `/agentworks:agentworks` is also accepted. The UserPromptSubmit hook
@@ -257,7 +263,10 @@ consumes this person command before the model receives it and supplies its exact
 session_id. The Claude channel child is bound to its own ancestor PID plus process
 start time; it learns the session ID from this hook registration, never by selecting
 the newest chat or by a project/name match. No per-session native ID flag is needed
-for the plugin. An agent MCP tool cannot attach/detach.
+for the plugin. An agent MCP tool cannot attach/detach. Attach/status show whether the selected
+route is native live delivery or hooks. Optional macOS `terminal-notifier` alerts
+link to the exact Codex thread when notification access is enabled; otherwise
+a basic alert requires opening the chat manually.
 
 Default UserPromptSubmit and Stop hooks only use the private local socket; an
 unattached hook emits nothing and makes no server request. Stop loop guards prevent

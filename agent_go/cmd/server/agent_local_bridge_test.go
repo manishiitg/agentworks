@@ -142,7 +142,6 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	attach.Action = "attach"
 	attach.ConfigPath = path
 	attach.AgentName = "hook-reviewer"
-	attach.Purpose = "Review work"
 	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("wrong exact session")
 	}
@@ -180,6 +179,23 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{}); e != nil || out.IsError {
 		t.Fatalf("attached directory failed: %+v %v", out, e)
+	}
+	// Purpose updates use only this exact child's existing identity, without attachment authority.
+	purposeTool := plugin.GetTool("agent_message_set_purpose")
+	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Review workflow communication"}}}); e != nil || result.IsError {
+		t.Fatalf("own purpose update failed: %+v %v", result, e)
+	}
+	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Change again"}}}); e != nil || !result.IsError {
+		t.Fatal("purpose changes were not rate limited")
+	}
+	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "update_purpose", "agent_name": "hook-reviewer", "attachment_id": "retired-lease", "purpose": "Old session"}); e == nil {
+		t.Fatal("stale attachment updated purpose")
+	}
+	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "update_purpose", "agent_name": "other-agent", "purpose": "Take over"}); e == nil {
+		t.Fatal("child changed another agent purpose")
+	}
+	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "register", "agent_name": "hook-reviewer", "purpose": "Register"}); e == nil {
+		t.Fatal("purpose child acquired registration authority")
 	}
 	// A desktop MCP child is shared, so only host metadata chooses the chat.
 	codexPlugin, e := agentworksclient.NewPluginMCPServer(context.Background(), root, "codex", "desktop-parent", false)
@@ -458,6 +474,50 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 				t.Fatal("failed offer produced no recovery notice")
 			}
 		}
+	}
+	stop(cancel, done)
+	// A missing registration may be retried once only before any content write,
+	// and only after resolving a route for the already-approved process/session.
+	routes := make(chan string, 4)
+	bridgeOptions.NativeRoute = func(provider, session, host, remote string) string {
+		if provider != base.Provider || session != base.SessionID || host != base.HostKey {
+			return ""
+		}
+		return "claude+session:///replacement"
+	}
+	bridgeOptions.NativeOffer = func(_ context.Context, remote string, _ agentworksclient.LocalBridgeReply) error {
+		routes <- remote
+		if remote != "claude+session:///replacement" {
+			return agentworksclient.ErrNativeOfferRejected
+		}
+		return agentworksclient.ErrNativeOfferUnconfirmed
+	}
+	cancel, done = start()
+	defer cancel()
+	local(nativeAttach)
+	routeStatus := base
+	routeStatus.Action = "status"
+	if local(routeStatus).NativeRouteStatus != "stale" {
+		t.Fatal("stale native route reported healthy")
+	}
+	send("registration changed before content write")
+	for _, expected := range []string{nativeAttach.NativeRemote, "claude+session:///replacement"} {
+		select {
+		case route := <-routes:
+			if route != expected {
+				t.Fatal("wrong native retry route", route)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("definite pre-write failure was not repaired")
+		}
+	}
+	if local(routeStatus).NativeRouteStatus != "ok" {
+		t.Fatal("replacement native route not persisted")
+	}
+	select {
+	case notice := <-nativeNotices:
+		t.Fatal("repaired route emitted a fallback notification", notice)
+	default:
 	}
 	stop(cancel, done)
 	bridgeOptions = agentworksclient.LocalBridgeOptions{}

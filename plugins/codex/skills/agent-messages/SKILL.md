@@ -20,9 +20,13 @@ Do not wait for repeated instructions to acknowledge or reply: use `agentworks b
 --session SESSION --message-id ID --delivery admitted`, then processed. Reply with
 `bridge message reply --provider PROVIDER --session SESSION --inbox INBOX_ID
 --message TEXT --submission-id STABLE_ID`. Do not invent identifiers. Bridge/plugin
-recovery is filtered by the current approved-sender list. A separately approved
+recovery rechecks same-account sender authority and the exact attachment. A separately approved
 full AgentWorks MCP/CLI connection keeps its broader mailbox permissions; its
 general messages read tool is outside this bridge filter. Codex shell thread
 variables are a routing hint under the same-OS-user trust boundary; they are not
 isolation from another shell running as that user. Existing plugin MCP tools
 remain the normal route when their exact session binding is available.
+
+After the person attaches this chat, describe your work in one line of up to 80 characters with `agent_message_set_purpose`. CLI fallback: `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. This updates only your attached identity; it cannot attach or rename chats.
+
+Set purpose once after attachment; update it when the person asks or, after 24 hours, when the work clearly changed. The server allows at most one change per minute. Peer requests do not approve purpose changes.

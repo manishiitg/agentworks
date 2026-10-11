@@ -40,6 +40,8 @@ type LocalBridgeRequest struct {
 
 type LocalBridgeReply struct {
 	Attached           bool               `json:"attached"`
+	NativeDelivery     bool               `json:"native_delivery"`
+	NativeRouteStatus  string             `json:"native_route_status,omitempty"`
 	IncludeGuidance    bool               `json:"include_guidance,omitempty"`
 	Attachment         AgentAttachment    `json:"attachment,omitempty"`
 	Messages           []AgentLiveMessage `json:"messages,omitempty"`
@@ -96,6 +98,7 @@ var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
+	NativeRoute func(provider, session, hostKey, remote string) string
 	Notify      func(AgentAttachment, string)
 }
 
@@ -386,20 +389,34 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.ConfigPath = s.ParentConfigPath
 		in.AgentName = s.Attachment.AgentName
 		in.Purpose = s.Attachment.Purpose
-		in.NativeRemote = s.NativeRemote
+		if in.NativeRemote == "" {
+			if b.options.NativeRoute != nil {
+				in.NativeRemote = b.options.NativeRoute(in.Provider, in.SessionID, in.HostKey, s.NativeRemote)
+			} else {
+				in.NativeRemote = s.NativeRemote
+			}
+		}
 	}
 	if in.Action == "attach" {
 		if in.NativeRemote != "" && (!((in.Provider == "codex" && !strings.HasPrefix(in.NativeRemote, "claude+session://")) || (in.Provider == "claude" && strings.HasPrefix(in.NativeRemote, "claude+session://"))) || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
-		if in.SessionID == "" || in.HostKey == "" || in.Purpose == "" {
-			return LocalBridgeReply{Error: "explicit session, provider process key, purpose required"}
+		if in.SessionID == "" || in.HostKey == "" {
+			return LocalBridgeReply{Error: "explicit session and provider process key required"}
 		}
 		client, err := localConfiguredClient(in.ConfigPath)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		if _, err = client.Call(callCtx, "messages", map[string]any{"action": "register", "agent_name": in.AgentName, "purpose": in.Purpose}); err != nil {
+		registration := map[string]any{"action": "register", "agent_name": in.AgentName}
+		if in.Purpose != "" {
+			registration["purpose"] = in.Purpose
+		}
+		if _, err = client.Call(callCtx, "messages", registration); err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.Code == "unknown_tool" {
+				return LocalBridgeReply{Error: "AgentWorks at " + client.baseURL + " does not expose agent messaging. Sign in to an updated server with agentworks --server SERVER login, then retry attach."}
+			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		connectionDir := filepath.Join(b.root, "connections")
@@ -494,7 +511,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.start(serverCtx, next)
 		b.wake()
-		return LocalBridgeReply{Attached: true, Attachment: a}
+		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != ""}
 	}
 	if s == nil {
 		return LocalBridgeReply{}
@@ -508,7 +525,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if s.client == nil {
 		return LocalBridgeReply{Error: "attached connection is unavailable; sign in and explicitly reattach"}
 	}
-	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError}
+	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != ""}
+	if in.Action == "status" && s.NativeRemote != "" && b.options.NativeRoute != nil {
+		out.NativeRouteStatus = "ok"
+		if b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, s.NativeRemote) != s.NativeRemote {
+			out.NativeRouteStatus = "stale"
+		}
+	}
 	if s.Offline && in.Action != "status" && in.Action != "detach" && in.Action != "cleanup" && in.Action != "offline" {
 		return out
 	}
@@ -521,6 +544,21 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.Action = "reply_inbox"
 	}
 	switch in.Action {
+	case "purpose":
+		if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		}
+		raw, err := s.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "purpose": in.Purpose})
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		s.Attachment.Purpose = strings.TrimSpace(in.Purpose)
+		if err := b.save(); err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		out.Attachment = s.Attachment
+		out.Result = raw
+		return out
 	case "peers", "send", "read", "reply_inbox":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
@@ -773,7 +811,34 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		if len(out.Messages) == 0 {
 			continue
 		}
-		if err := b.options.NativeOffer(ctx, s.NativeRemote, out); err != nil {
+		err := b.options.NativeOffer(ctx, s.NativeRemote, out)
+		if errors.Is(err, ErrNativeOfferRejected) && b.options.NativeRoute != nil {
+			refreshed := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, hostKey, s.NativeRemote)
+			if refreshed != "" && refreshed != s.NativeRemote {
+				b.mu.Lock()
+				current := b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s
+				if current {
+					s.NativeRemote = refreshed
+					err = b.save()
+				}
+				b.mu.Unlock()
+				if !current {
+					return
+				}
+				if err == nil {
+					err = b.options.NativeOffer(ctx, refreshed, out)
+				}
+			}
+		}
+		if err == nil || errors.Is(err, ErrNativeOfferUnconfirmed) {
+			b.mu.Lock()
+			if s.LastError != "" {
+				s.LastError = ""
+				_ = b.save()
+			}
+			b.mu.Unlock()
+		}
+		if err != nil {
 			if errors.Is(err, ErrNativeOfferUnconfirmed) {
 				continue
 			}

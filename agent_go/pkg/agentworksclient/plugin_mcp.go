@@ -47,6 +47,10 @@ func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		raw, _ := json.Marshal(out)
 		return mcp.NewToolResultText(string(raw)), nil
 	}
+	s.AddTool(mcp.NewTool("agent_message_set_purpose", mcp.WithDescription("Set one line (up to 80 characters) describing this exact attached agent. At most one change per minute. Does not attach, rename or change permissions."), mcp.WithString("purpose", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		purpose, _ := req.GetArguments()["purpose"].(string)
+		return call(ctx, LocalBridgeRequest{Action: "purpose", Purpose: purpose}, req)
+	})
 	s.AddTool(mcp.NewTool("agent_message_peers", mcp.WithDescription("Discover authorized named agents for this attached identity.")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return call(ctx, LocalBridgeRequest{Action: "peers"}, req)
 	})
