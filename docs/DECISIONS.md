@@ -1,5 +1,21 @@
 # Decisions and open issues
 
+## 2026-10-11 — Crew setup capabilities execute directly over MCP (PLAT-856)
+
+Expose grouped Crew file lifecycle, skill packages, MCP connections, attached
+folders and project references through existing authoring consent and current
+website roles. Resolve the Crew on the server; mutations require its owner and
+an enabled editable account. File patches reuse the shared diff parser and
+revision/retry receipts. Moves check both paths and all children; deletion of
+folders is empty-only. MCP removal detaches this Crew without deleting the
+login. OAuth setup stays in Integrations. Skills use the Crew's workspace.
+Account-wide folder operations require all-Crew consent without a file guard,
+because their grants affect every Crew of the account. References respect
+current target access and token bounds; Crew references grant shared writes,
+workflow references remain read-only. No new permission scope is introduced.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Executing workflow agents call declared functions (PLAT-861)
 
 Bind discovery, call, status and reply tools into execution agent definitions
@@ -13,6 +29,7 @@ needed because this adds runtime tools without changing the plan shape.
 Why: agents need the same typed delegation available in Builder and MCP.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+
 
 ## 2026-10-11 — Approval completes after the applying agent checks the result (PLAT-824)
 

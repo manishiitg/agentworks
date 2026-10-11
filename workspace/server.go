@@ -228,6 +228,7 @@ func registerAPIRoutes(r *gin.Engine) {
 		})
 		api.POST("/shared-assets", requireConfiguredWorkspaceAPIToken(), handlers.SharedAssets)
 		api.POST("/shared-file-write", requireConfiguredWorkspaceAPIToken(), handlers.SharedFileWrite)
+		api.POST("/shared-file-lifecycle", requireConfiguredWorkspaceAPIToken(), handlers.SharedFileLifecycle)
 		api.POST("/documents", handlers.CreateDocument)
 		api.GET("/documents", handlers.ListDocuments)
 

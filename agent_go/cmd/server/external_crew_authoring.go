@@ -1054,6 +1054,7 @@ func (api *StreamingAPI) externalWriteCrewFile(w http.ResponseWriter, r *http.Re
 		Actor: claims.UserID, Identity: wf.EditIdentity{UserID: claims.UserID, Username: claims.Username, Source: "public_mcp"}}
 	if claims.AccessToken != nil {
 		req.Identity.ConnectionID = claims.AccessToken.ID
+		req.Guard = claims.AccessToken.FileGuard
 		req.Actor += "/" + claims.AccessToken.ID
 	}
 	externalPostSharedFileWrite(w, r, req)

@@ -16,7 +16,7 @@ const scopeDescriptions: Record<string, string> = {
   'runs:execute': 'Start, watch, and cancel workflow runs',
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',
-  'crews:write': 'Create Crews and edit the Crews you own (identity, skills, functions, schedules, files, dashboards)',
+  'crews:write': 'Create Crews and edit the Crews you own (identity, skills, MCP connections, references, functions, schedules, files, dashboards). With access to all your Crews, manage approved account-wide folder attachments',
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Save shared knowledge within your folder grants',
   'code:run': 'Send messages into your own Code projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role. Never granted by default',

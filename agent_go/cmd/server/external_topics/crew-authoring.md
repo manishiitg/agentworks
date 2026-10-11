@@ -70,6 +70,46 @@ type, properties, required, items, enum).
   To select a newly authored skill, use `settings` or `crew action=update`
   with `skills` after writing it. This does not edit server-wide or built-in skills.
 
+## File lifecycle, packages and references
+
+All tools below take `crew_id`. Reads require `crews:read`; changes require
+`crews:write`, current Crew ownership and an enabled editable account. The
+connection's Crew bounds apply. These calls execute directly without a model turn.
+
+- `crew_files action=patch`: `path`, `diff`, `expected_revision` from `files`
+  read and stable `request_id`. The shared diff parser and durable edit receipts
+  support retries. `mkdir` needs `path` and `expected_revision: "missing"`.
+  `move` needs `path`, `destination`, and a revision for files. Both paths and
+  all children are checked against guards and protected paths. The destination
+  must be absent and its parent must exist. `delete` removes a file with its
+  revision, or an empty folder. Lifecycle operations return applied status;
+  inspect current paths before retrying after a lost response.
+- `crew_skills action=list|search|install|import|uninstall`: `query` for search,
+  `source` for install (a public registry source or an authorized `brain:`
+  folder), `github_url` and optional private-repository `token` for GitHub import,
+  `folder_name` for uninstall.
+  Packages live in this Crew's `skills/` folder. Select them through existing
+  `settings`. Built-in skills stay immutable. File guards restrict inventory
+  and installation; uninstall across native-provider folders needs unrestricted
+  Crew file consent.
+- `crew_mcp action=list|search|install|remove|discover`: search takes `query`;
+  install takes `name` with optional `url`, `catalog`, `label`; remove/discover
+  take the exact connection `name`. Install attaches the authenticated person's
+  connection to this Crew. Complete sign-in and credentials in Integrations.
+  Remove detaches only this Crew, preserving other projects and its login.
+  Discovery is limited to attached connections; select through `settings`.
+- `crew_folders action=list|attach|detach` manages account-wide grants. Attach
+  takes an existing absolute `path`, unique `alias`, `access` (`read_only` or
+  `read_write`) and optional `reason`; detach takes the returned `id`. The
+  owner needs all-Crew consent without a file guard. Administrator-assigned
+  roots still apply; revocation refreshes existing account runtimes.
+- `crew_references action=list|attach|detach`: optional `query` for discovery;
+  attach/detach use the exact returned `workspace_path`. Lists include attached
+  flags. Workflow references stay read-only and need workflow/file read consent
+  plus target bounds. Crew references enable shared writes and need Crew read
+  and write consent plus target bounds. A file guard cannot be widened through
+  references. Detach permits cleanup of an obsolete saved reference.
+
 ## Schedules and settings
 
 - A schedule sends an instruction (`message` or `messages`) on a cron or cadence, with a timezone; a

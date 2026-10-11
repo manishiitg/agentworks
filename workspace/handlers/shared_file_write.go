@@ -42,7 +42,7 @@ func SharedFileWrite(c *gin.Context) {
 		return
 	}
 	defer editor.Close()
-	receipt, err := editor.Write(c.Request.Context(), req)
+	receipt, err := editor.WriteWithPatch(c.Request.Context(), req, ApplyDiffPatchDirect)
 	if err != nil {
 		code, message := wf.ErrorDetails(err)
 		c.JSON(wf.StatusCode(err), gin.H{"error": message, "code": code})

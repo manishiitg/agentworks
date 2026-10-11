@@ -12790,7 +12790,7 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 			return "", fmt.Errorf("failed to install skill: %w", err)
 		}
 		if len(result.InstalledSkills) == 0 {
-			return "No skills were installed. Check the source format (e.g., 'owner/repo@skill-name').", nil
+			return "", fmt.Errorf("no skills were installed; check the source")
 		}
 		return fmt.Sprintf("Installed into this workspace's private skills/ folder: %s. %s", strings.Join(result.InstalledSkills, ", "), skillSelectionHint(productID, "These skills")), nil
 	}
@@ -12800,7 +12800,7 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 			return "", fmt.Errorf("failed to import skill: %w", err)
 		}
 		if !resp.Success {
-			return fmt.Sprintf("Failed to import skill: %s", resp.Error), nil
+			return "", fmt.Errorf("failed to import skill: %s", resp.Error)
 		}
 		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
 	}
@@ -12943,7 +12943,7 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 				return "folder_name is required.", nil
 			}
 			if err := skillFuncs.DeleteSkill(ctx, folderName); err != nil {
-				return fmt.Sprintf("Failed to uninstall skill %q: %v", folderName, err), nil
+				return "", fmt.Errorf("failed to uninstall skill %q: %w", folderName, err)
 			}
 			return fmt.Sprintf("Successfully uninstalled skill %q from workspace.", folderName), nil
 		},
@@ -13136,7 +13136,9 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				if err != nil {
 					return "", err
 				}
-				ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
+				if GetUserFromContext(ctx) == nil {
+					ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
+				}
 				return api.mcpConnectionTool(ctx, userID, name, args)
 			}
 		}

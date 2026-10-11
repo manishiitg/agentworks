@@ -204,7 +204,7 @@ func (api *StreamingAPI) placeRootForSession(sessionID string) string {
 // falls through to the platform and Vault servers; denied is true when it has one the session may not use.
 func (api *StreamingAPI) placeAttachedMatch(ctx context.Context, sessionID, server string) (internal string, cfg mcpclient.MCPServerConfig, found, denied bool, err error) {
 	server = strings.TrimSpace(server)
-	root := api.placeRootForSession(sessionID)
+	root := api.mcpPlaceRoot(ctx, sessionID)
 	if root == "" || server == "" {
 		return "", mcpclient.MCPServerConfig{}, false, false, nil
 	}
@@ -221,8 +221,8 @@ func (api *StreamingAPI) placeAttachedMatch(ctx context.Context, sessionID, serv
 	if len(matches) > 1 {
 		return "", mcpclient.MCPServerConfig{}, true, true, fmt.Errorf("more than one connection of this place is named %q; use the exact name", server)
 	}
-	person := ""
-	if api.eventStore != nil {
+	person := GetUserIDFromContext(ctx)
+	if api.eventStore != nil && sessionID != "" {
 		person = api.mcpSessionPerson(sessionID)
 	}
 	if !placeMCPUsableBy(ctx, person, root) {
@@ -245,4 +245,14 @@ func (api *StreamingAPI) resolvePlaceAttachedMCP(ctx context.Context, sessionID,
 		return nil, true, err
 	}
 	return &executor.ResolvedMCPServer{Name: internal, Config: cfg, ConnectionSessionID: internal}, true, nil
+}
+
+// Set only after the external transport resolves and authorizes a Crew ID.
+type externalCrewMCPPlaceKey struct{}
+
+func (api *StreamingAPI) mcpPlaceRoot(ctx context.Context, sessionID string) string {
+	if root, _ := ctx.Value(externalCrewMCPPlaceKey{}).(string); root != "" {
+		return root
+	}
+	return api.placeRootForSession(sessionID)
 }

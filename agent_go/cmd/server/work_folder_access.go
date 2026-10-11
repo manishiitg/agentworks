@@ -598,8 +598,10 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 		reason, _ := args["reason"].(string)
 		var added workflowtypes.WorkflowFolderGrant
 		var folderEnv map[string]string
+		identityKey := ""
 		err := workFolderAccessStore.update(ctx, func(doc *workFolderAccessDoc) error {
 			key := workFolderAccessKeyForClaims(*doc, claims)
+			identityKey = key
 			grant, addErr := applyWorkFolderAdd(doc, key, workFolderAddInput{Path: path, Alias: alias, Access: access, Reason: reason}, workFolderClaimsAreAdmin(claims))
 			added = grant
 			if addErr == nil {
@@ -621,6 +623,9 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			}
 			common.SetSessionFolderGuard(sessionID, reads, writes)
 			common.SetSessionFolderGuardBlockedWritePaths(sessionID, blockedWrites)
+		}
+		if sessionID == "" {
+			invalidateWorkFolderSessions(ctx, identityKey, "Work folder access changed")
 		}
 		common.ReplaceSessionShellEnvPrefix(sessionID, "WORK_FOLDER_", folderEnv)
 		encoded, err := json.MarshalIndent(map[string]interface{}{"folder": added, "note": "The folder is attached and available now."}, "", "  ")
@@ -675,6 +680,9 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			}
 			common.SetSessionFolderGuard(sessionID, reads, writes)
 			common.SetSessionFolderGuardBlockedWritePaths(sessionID, blockedWrites)
+		}
+		if sessionID == "" {
+			invalidateWorkFolderSessions(ctx, key, "Work folder access was revoked")
 		}
 		common.ReplaceSessionShellEnvPrefix(sessionID, "WORK_FOLDER_", folderEnv)
 		return "Folder detached from Work.", nil

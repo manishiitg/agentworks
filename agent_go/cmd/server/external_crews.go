@@ -86,7 +86,9 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 	return out
 }
 
-func isExternalCrewTool(name string) bool { return externalCrewTools[name] }
+func isExternalCrewTool(name string) bool {
+	return externalCrewTools[name] || externalCrewCapabilities[name] != nil || name == "crew_files"
+}
 
 // externalCrewsVisible lists the Crews this connection may use.
 func (api *StreamingAPI) externalCrewsVisible(ctx context.Context, claims *UserClaims, query string) ([]map[string]interface{}, error) {
@@ -167,6 +169,14 @@ func externalCrewFunctionSummaries(ctx context.Context, crew crewProjectBinding,
 }
 
 func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
+	if externalCrewCapabilities[name] != nil {
+		api.externalCrewCapabilityCall(w, r, name, args)
+		return
+	}
+	if name == "crew_files" {
+		api.externalCrewFilesCall(w, r, args)
+		return
+	}
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	str := func(key string) string {

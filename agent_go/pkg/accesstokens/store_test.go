@@ -453,3 +453,24 @@ func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
 		t.Fatalf("CLI revoked device: %v", err)
 	}
 }
+
+// A Crew-only connection must be able to narrow files without requesting an
+// unrelated dashboard permission; the cap never changes its read/write scope.
+func TestCrewFileGuardsDoNotNeedDashboardConsent(t *testing.T) {
+	now := time.Now()
+	store, err := Open(filepath.Join(t.TempDir(), "tokens.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, scopes := range [][]string{{"crews:read"}, {"crews:read", "crews:write"}} {
+		record, raw, err := store.Issue(context.Background(), Token{Name: "Crew", UserID: "owner", Scopes: scopes, CrewIDs: []string{"team"}, FileGuard: &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}, BlockedPaths: []string{"code/private"}}, ExpiresAt: now.Add(time.Hour)}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := store.Authenticate(context.Background(), raw, now)
+		if err != nil || loaded.ID != record.ID || !slices.Equal(loaded.Scopes, scopes) || loaded.Allows("dashboards:read") || loaded.FileGuard == nil || loaded.FileGuard.Allows("code/private/report.md", false) || !loaded.FileGuard.Allows("code/report.md", false) {
+			t.Fatalf("Crew guard changed consent: %+v %v", loaded, err)
+		}
+	}
+}

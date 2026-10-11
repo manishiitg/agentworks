@@ -47,6 +47,7 @@ type WriteRequest struct {
 	Content  string       `json:"content"`
 	// ContentBase64 writes a binary file (image, PDF, spreadsheet) instead of
 	// UTF-8 Content; the same path, grant, revision and receipt rules apply.
+	Diff             string       `json:"diff,omitempty"`
 	ContentBase64    string       `json:"content_base64,omitempty"`
 	ExpectedRevision string       `json:"expected_revision"`
 	RequestID        string       `json:"request_id"`
@@ -350,6 +351,12 @@ func atomicRootWrite(root *os.Root, name string, data []byte, mode os.FileMode) 
 	return dir.Sync()
 }
 func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error) {
+	return e.WriteWithPatch(ctx, r, nil)
+}
+
+// WriteWithPatch keeps the original diff in the receipt fingerprint and applies
+// it under the same revision lock as writes. Identical retries never reapply it.
+func (e *Editor) WriteWithPatch(ctx context.Context, r WriteRequest, patch func(string, string) (string, error)) (WriteReceipt, error) {
 	if e.db == nil {
 		return WriteReceipt{}, fileError(403, "editor is read-only")
 	}
@@ -369,6 +376,9 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	}
 	if r.RequestID == "" || len(r.RequestID) > 128 || r.Actor == "" || r.ExpectedRevision == "" {
 		return WriteReceipt{}, fileError(400, "request_id, actor and expected_revision are required")
+	}
+	if r.Diff != "" && (patch == nil || r.Content != "" || r.ContentBase64 != "" || len(r.Diff) > MaxFileBytes) {
+		return WriteReceipt{}, fileError(400, "invalid diff patch")
 	}
 	content := []byte(r.Content)
 	binary := r.ContentBase64 != ""
@@ -449,6 +459,9 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	}
 	current := revision(before)
 	target := Revision(content)
+	if record.Status == "prepared" {
+		target = record.Receipt.Revision
+	}
 	if record.Status == "prepared" && current == target {
 		record.Status = "completed"
 		record.Receipt.Applied = true
@@ -465,6 +478,20 @@ func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error
 	// A text write never replaces a binary file; a binary write may.
 	if !binary && before != nil && (!utf8.Valid(before) || strings.ContainsRune(string(before), 0)) {
 		return WriteReceipt{}, fileError(400, "only UTF-8 text is writable")
+	}
+	if r.Diff != "" {
+		if before == nil {
+			return WriteReceipt{}, fileError(404, "patch target does not exist")
+		}
+		patched, patchErr := patch(string(before), r.Diff)
+		if patchErr != nil {
+			return WriteReceipt{}, fileError(400, "patch did not apply: "+patchErr.Error())
+		}
+		if len(patched) > MaxFileBytes || !utf8.ValidString(patched) || strings.ContainsRune(patched, 0) {
+			return WriteReceipt{}, fileError(400, "invalid patched content")
+		}
+		content = []byte(patched)
+		target = Revision(content)
 	}
 	kept := ""
 	if !binary {

@@ -17,7 +17,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	// Inside a workflow, Relay, Crew or Code the connections are that place's (shared with everyone who has
 	// access to it); outside any place they are still the person's own.
 	session := executor.SessionIDFromContext(ctx)
-	place := api.placeRootForSession(session)
+	place := api.mcpPlaceRoot(ctx, session)
 	if place != "" {
 		ctx = context.WithValue(ctx, placeScopedKey{}, true)
 	}

@@ -159,8 +159,8 @@ func Validate(t Token, now time.Time) error {
 	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
-	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !(t.Allows("dashboards:read") && (t.Allows("crews:write") || t.Allows("code:run"))) {
-		return errors.New("file guards require existing workflow, Relay, Crew or Code authoring consent")
+	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") && !(t.Allows("dashboards:read") && t.Allows("code:run")) {
+		return errors.New("file guards require Crew access or existing workflow, Relay or Code authoring consent")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
 		return err

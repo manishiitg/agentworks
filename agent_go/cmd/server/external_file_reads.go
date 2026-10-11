@@ -49,10 +49,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
-	var guard *wf.FolderGuard
-	if claims := GetUserFromContext(ctx); !crewRoot && claims != nil && claims.AccessToken != nil {
-		guard = claims.AccessToken.FileGuard
-	}
+	guard := externalFileGuard(ctx, crewRoot)
 	if req.Operation == "read" && !guard.Allows(p, false) || req.Operation != "read" && !guard.AllowsTraversal(p) {
 		return wf.Result{}, &externalUpstreamError{403, "file is outside folder grants"}
 	}
@@ -335,8 +332,10 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	return result, nil
 }
 
-func externalFileGuard(ctx context.Context, crewRoot bool) *wf.FolderGuard {
-	if claims := GetUserFromContext(ctx); !crewRoot && claims != nil && claims.AccessToken != nil {
+// File guards narrow every selected project, including Crew. Product roles
+// and Crew privacy checks remain independent and cannot override these caps.
+func externalFileGuard(ctx context.Context, _ bool) *wf.FolderGuard {
+	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 		return claims.AccessToken.FileGuard
 	}
 	return nil

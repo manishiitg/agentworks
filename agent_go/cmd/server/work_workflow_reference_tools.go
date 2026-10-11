@@ -261,6 +261,9 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 		claims.Email = record.Email
 	}
 	withClaims := func(ctx context.Context) context.Context {
+		if current := GetUserFromContext(ctx); current != nil && current.UserID == userID {
+			return ctx
+		}
 		copy := *claims
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
@@ -353,6 +356,9 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		claims.Email = record.Email
 	}
 	withClaims := func(ctx context.Context) context.Context {
+		if current := GetUserFromContext(ctx); current != nil && current.UserID == userID {
+			return ctx
+		}
 		copy := *claims
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}

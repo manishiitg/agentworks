@@ -121,6 +121,22 @@ func TestWorkspaceSkillsLifecycle(t *testing.T) {
 	if err != nil || !bytes.Equal(got, asset) {
 		t.Fatal("import lost binary assets")
 	}
+
+	// Crew external tools resolve shared Crew roots rather than workflow paths.
+	// The same package handler must keep that install/list/uninstall local.
+	write("Crew/team/product.json", []byte(`{"product":"work","id":"team"}`))
+	payload, _ = json.Marshal(map[string]interface{}{"workspace_path": "Crew/team", "name": "crew-local", "files": map[string][]byte{"SKILL.md": skill("crew-local"), "assets/image.bin": asset}})
+	call("/import", string(payload), 200)
+	if !strings.Contains(string(call("/list", `{"workspace_path":"Crew/team"}`, 200)), `"folder_name":"crew-local"`) {
+		t.Fatal("Crew install missing from its inventory")
+	}
+	call("/delete", `{"workspace_path":"Crew/team","name":"crew-local"}`, 200)
+	if _, err := os.Stat(filepath.Join(docs, "Crew/team/skills/crew-local")); !os.IsNotExist(err) {
+		t.Fatal("Crew uninstall left its files")
+	}
+	if _, err := os.Stat(filepath.Join(docs, "Workflow/mine/skills/new/assets/image.bin")); err != nil {
+		t.Fatal("Crew uninstall changed a workflow")
+	}
 }
 
 func TestWorkspaceSkillsRefuseEscapesAndManagedUninstall(t *testing.T) {
