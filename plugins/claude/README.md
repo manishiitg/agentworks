@@ -46,3 +46,6 @@ Without a channel launch the hooks remain the default route. The plugin channel
 learns the exact session ID through the person hook and binds only to its own
 Claude ancestor process (PID plus start time), never another chat in the project.
 See https://code.claude.com/docs/en/channels .
+
+Existing native sessions can use explicit desktop/session transports and the
+process-bound `agentworks bridge message` fallback. See [native transports](../../docs/communication-protocols.md#existing-desktop-and-claude-session-transports).

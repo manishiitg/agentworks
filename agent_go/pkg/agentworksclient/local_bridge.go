@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -83,6 +84,8 @@ type localBridge struct {
 	workers  sync.WaitGroup
 	closed   bool
 }
+
+var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receipt")
 
 type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, AgentAttachment, []AgentLiveMessage) error
@@ -370,7 +373,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		in.NativeRemote = s.NativeRemote
 	}
 	if in.Action == "attach" {
-		if in.NativeRemote != "" && (in.Provider != "codex" || b.options.NativeOffer == nil) {
+		if in.NativeRemote != "" && (!((in.Provider == "codex" && !strings.HasPrefix(in.NativeRemote, "claude+session://")) || (in.Provider == "claude" && strings.HasPrefix(in.NativeRemote, "claude+session://"))) || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
 		if in.SessionID == "" || in.Purpose == "" || in.AllowedSenders == nil {
@@ -535,7 +538,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if in.Action == "drain" && (s.NativeRemote != "" || s.nativeCalls > 0) {
 			return out
 		}
-		providerForTransport := map[string]string{"claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
+		providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
 		if providerForTransport[in.Transport] != s.Attachment.Provider {
 			return LocalBridgeReply{Error: "unsupported delivery adapter for this provider"}
 		}
@@ -671,7 +674,7 @@ func localPending(s *localSession) bool {
 
 func (b *localBridge) nativeLoop(ctx context.Context, s *localSession) {
 	for ctx.Err() == nil {
-		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, Transport: "codex_queue"})
+		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, Transport: nativeCodexTransport(s.NativeRemote)})
 		if !out.Attached || out.Error != "" {
 			return
 		}
@@ -679,6 +682,9 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession) {
 			continue
 		}
 		if err := b.options.NativeOffer(ctx, s.NativeRemote, s.Attachment, out.Messages); err != nil {
+			if errors.Is(err, ErrNativeOfferUnconfirmed) {
+				continue
+			}
 			b.mu.Lock()
 			s.LastError = "Native queue did not confirm acceptance; use explicit mailbox read."
 			_ = b.save()
@@ -704,4 +710,14 @@ func compactLocalOffers(s *localSession, all bool) {
 			delete(s.Offers, id)
 		}
 	}
+}
+
+func nativeCodexTransport(remote string) string {
+	if strings.HasPrefix(remote, "claude+session://") {
+		return "claude_session"
+	}
+	if strings.HasPrefix(remote, "desktop+unix://") {
+		return "codex_desktop"
+	}
+	return "codex_queue"
 }

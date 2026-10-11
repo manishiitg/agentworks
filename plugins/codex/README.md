@@ -44,3 +44,6 @@ endpoint before enabling native delivery. Without it, hooks plus desktop
 notification are used. Queue exit zero means native admission, not processing.
 See https://developers.openai.com/plugins/build/plugins and
 https://learn.chatgpt.com/docs/hooks .
+
+Existing native sessions can use explicit desktop/session transports and the
+process-bound `agentworks bridge message` fallback. See [native transports](../../docs/communication-protocols.md#existing-desktop-and-claude-session-transports).

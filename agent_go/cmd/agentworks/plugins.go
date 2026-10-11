@@ -85,8 +85,13 @@ func pluginCommand(o *options) *cobra.Command {
 						}
 						i++
 						req.NativeRemote = words[i]
-						if req.Provider != "codex" || validateCodexRemote(req.NativeRemote) != nil {
-							return pluginBlock(o, "Codex native queue requires an exact local unix:// socket")
+						if req.Provider == "claude" {
+							_, _, err = nativeClaudeSession(req.NativeRemote, req.SessionID)
+						} else {
+							err = validateCodexRemote(req.NativeRemote)
+						}
+						if err != nil {
+							return pluginBlock(o, err.Error())
 						}
 					case "--allow-none":
 						explicit = true
@@ -290,6 +295,44 @@ func bridgeCommand(o *options) *cobra.Command {
 		}
 		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, Notify: notifyAgentWaiting})
 	}})
+	var provider, session, messageID, delivery, message, submission, target, inbox string
+	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
+		host, err := providerHostKey(provider)
+		if err != nil {
+			return err
+		}
+		if provider == "codex" && os.Getenv("CODEX_THREAD_ID") != "" {
+			if session != "" && session != os.Getenv("CODEX_THREAD_ID") {
+				return errors.New("thread does not match the host session")
+			}
+			session = os.Getenv("CODEX_THREAD_ID")
+		}
+		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" {
+			return errors.New("choose ack, reply, peers, send or read")
+		}
+		root, err := agentworksclient.DefaultLocalBridgeRoot()
+		if err != nil {
+			return err
+		}
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox})
+		if err != nil {
+			return err
+		}
+		if !out.Attached {
+			return errors.New("this exact provider session is not attached")
+		}
+		return o.output(out)
+	}}
+	call.Flags().StringVar(&provider, "provider", "", "Attached provider")
+	call.Flags().StringVar(&session, "session", "", "Exact session; Codex uses its host thread environment")
+	call.Flags().StringVar(&messageID, "message-id", "", "Offered message ID")
+	call.Flags().StringVar(&delivery, "delivery", "", "admitted or processed")
+	call.Flags().StringVar(&message, "message", "", "Explicit reply or message")
+	call.Flags().StringVar(&submission, "submission-id", "", "Stable send ID")
+	call.Flags().StringVar(&target, "target", "", "Named peer address")
+	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
+	cmd.AddCommand(call)
+
 	return cmd
 }
 
@@ -326,6 +369,7 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 
 func attachPluginCommand(o *options) *cobra.Command {
 	var nativeSession, name, purpose, nativeRemote string
+	var nativeHostKey string
 	var senders []string
 	cmd := &cobra.Command{Use: "attach PROVIDER", Args: cobra.ExactArgs(1), Short: "Person-controlled plugin installation; optionally attach an exact session", RunE: func(cmd *cobra.Command, args []string) error {
 		provider := args[0]
@@ -373,10 +417,16 @@ func attachPluginCommand(o *options) *cobra.Command {
 			return errors.New("attachment not approved")
 		}
 		if nativeRemote != "" {
-			if provider != "codex" {
-				return errors.New("native remote is Codex only")
+			if provider == "claude" {
+				var record claudeSessionRecord
+				record, _, err = nativeClaudeSession(nativeRemote, nativeSession)
+				if err == nil {
+					nativeHostKey, err = providerPIDHostKey("claude", record.PID)
+				}
+			} else {
+				err = validateCodexRemote(nativeRemote)
 			}
-			if err = validateCodexRemote(nativeRemote); err != nil {
+			if err != nil {
 				return err
 			}
 		}
@@ -395,14 +445,14 @@ func attachPluginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "attach", Provider: provider, SessionID: nativeSession, ConfigPath: path, AgentName: name, Purpose: purpose, AllowedSenders: senders, NativeRemote: nativeRemote})
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "attach", Provider: provider, SessionID: nativeSession, HostKey: nativeHostKey, ConfigPath: path, AgentName: name, Purpose: purpose, AllowedSenders: senders, NativeRemote: nativeRemote})
 		if err != nil {
 			return err
 		}
 		return o.output(out)
 	}}
 	cmd.Flags().StringVar(&nativeSession, "session", "", "Exact native session UUID; omitted installs the plugin only")
-	cmd.Flags().StringVar(&nativeRemote, "native-remote", "", "Explicit local Codex daemon unix:// socket for native queue")
+	cmd.Flags().StringVar(&nativeRemote, "native-remote", "", "Explicit native endpoint: unix:// daemon, desktop+unix:// desktop IPC, or claude+session:// registration")
 	cmd.Flags().StringVar(&name, "name", "", "Stable agent name")
 	cmd.Flags().StringVar(&purpose, "purpose", "", "What this session does")
 	cmd.Flags().StringSliceVar(&senders, "allow-sender", []string{}, "Explicit approved sender names")
@@ -430,6 +480,9 @@ func claudeLauncherCommand(o *options) *cobra.Command {
 
 func validateCodexRemote(remote string) error {
 	u, err := url.Parse(remote)
+	if u != nil && u.Scheme == "desktop+unix" {
+		u.Scheme = "unix"
+	}
 	if err != nil || u.Scheme != "unix" || u.Host != "" || !filepath.IsAbs(u.Path) || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("native queue needs a local absolute unix:// socket")
 	}
@@ -448,6 +501,12 @@ func validateCodexRemote(remote string) error {
 }
 
 func codexNativeOffer(ctx context.Context, remote string, a agentworksclient.AgentAttachment, messages []agentworksclient.AgentLiveMessage) error {
+	if a.Provider == "claude" && strings.HasPrefix(remote, "claude+session://") {
+		return claudeSessionOffer(ctx, remote, a, messages)
+	}
+	if strings.HasPrefix(remote, "desktop+unix://") {
+		return codexDesktopOffer(ctx, remote, a, messages)
+	}
 	if err := validateCodexRemote(remote); err != nil {
 		return err
 	}
@@ -521,4 +580,19 @@ func agentSessionStatus(o *options, ctx context.Context) error {
 		return o.output(map[string]any{"sessions": []any{}, "bridge": "not running"})
 	}
 	return o.output(out)
+}
+
+func providerPIDHostKey(provider string, pid int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "comm=", "-o", "lstart=").Output()
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 6 || !strings.EqualFold(filepath.Base(fields[0]), provider) {
+		return "", errors.New("registered provider process is unavailable")
+	}
+	h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[len(fields)-5:], " ")))
+	return hex.EncodeToString(h[:]), nil
 }

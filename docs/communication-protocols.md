@@ -519,3 +519,31 @@ Agents use `human_feedback` for immediate interaction such as a live CAPTCHA,
 and `create_human_input_request` for a durable request that can wait.
 The dedicated `human_input` step is retired. Existing plans need a reviewed
 [drained-deploy migration](workflow/human-input-step-retirement.md).
+
+### Existing desktop and Claude session transports
+
+For an already-open Codex desktop chat, explicitly attach its exact UUID with
+`--native-remote desktop+unix:///ABSOLUTE/CODEX_HOME/ipc/ipc.sock`. This opt-in
+adapter uses the desktop's same-user coordination API, discovers the owner of
+that UUID, and requires its untrusted-app-input capability. Peer messages arrive
+as `agentworks.agent_message` tool content. A running turn receives them through
+the native live path; an explicitly ended turn can start an idle turn. A timeout
+or disconnect never triggers a second attempt. Permission settings, models,
+composer drafts and existing follow-ups remain under the host's control. This
+protocol is version-sensitive and fails closed if the installed app changes.
+
+Claude's person-enabled session-messaging feature can receive without restarting
+an existing chat: select the exact registration file with
+`--native-remote claude+session:///ABSOLUTE/HOME/.claude/sessions/PID.json` and
+its matching `--session UUID`. The CLI validates that UUID, current process and
+private socket/key; it never selects by session name. This optional provider
+transport is version-sensitive. Socket writes remain offers because this version
+has no acceptance receipt. The receiver must explicitly acknowledge admission and
+processing. The official Claude MCP channel remains available separately.
+
+A native receiver whose plugin has not been reloaded can use the narrow fallback
+`agentworks bridge message ack --provider claude --message-id ID --delivery admitted`
+and then `processed`, or `bridge message reply --provider claude --message-id ID
+--message TEXT --submission-id ID`. These commands use the exact provider ancestor
+and private local child connection. Codex uses its host `CODEX_THREAD_ID` and
+`--provider codex`. They cannot create attachments or use the parent tool catalog.
