@@ -152,3 +152,20 @@ MCP-originated Crew, workflow and Relay tools install current catalog servers
 only. Custom URLs and URL changes go through Integrations. Existing catalog
 accounts may be reused only while their endpoint/transport still match the
 current catalog. Setup never accepts credentials in tool arguments.
+The same catalog-only gate applies to Crew agent turns, including function and
+message runs that execute as the owner. Custom setup stays in Integrations.
+
+## Read-only diagnostics
+
+`crew_diagnostics` uses existing `crews:read` consent and current Crew access.
+Use `action=browser` for configured mode, live capability status and the Crew's
+scoped browser sessions. It does not launch or control a browser. The managed
+Crew browser follows shared project access; Chrome extension status remains
+account scoped and is returned only to the Crew owner.
+
+Use `action=connections` to list attached MCP connection status. Pass an exact
+attached `name` for cached tool names/descriptions, plus `include_tools=true`
+for parameter metadata. `limit`/`offset` page sessions, connection summaries or
+the named connection's tools. Cached metadata does not prove live reachability;
+refresh through `crew_mcp action=discover`. Credentials, endpoint configuration,
+unattached private accounts and server-wide raw logs are excluded.

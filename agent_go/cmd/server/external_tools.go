@@ -259,6 +259,7 @@ func externalTools() ([]externalTool, error) {
 			return
 		}
 		externalCrewFilesDefinition(add)
+		externalCrewDiagnosticsDefinition(add)
 		externalDatabaseDefinitions(add)
 		externalAfterRunDefinitions(add)
 		externalMessagingDefinitions(add)

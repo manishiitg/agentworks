@@ -12,10 +12,13 @@ import (
 	"time"
 
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func crewCapabilityHTTP(t *testing.T, f *externalToolsFixture, claims *UserClaims, name string, args map[string]any, status int) string {
@@ -259,4 +262,81 @@ func TestExternalCrewAccountFoldersRequireBroadConsent(t *testing.T) {
 	outside := args()
 	outside["path"] = t.TempDir()
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_folders", outside, 400)
+}
+
+// Real MCP calls read the disk-backed Crew while unrelated browsers, private
+// accounts, endpoint config and raw cache errors stay outside the response.
+func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
+	f.api.logger = loggerv2.NewNoop()
+	for _, name := range []string{"attached", "unattached"} {
+		if _, err := addPlaceMCPServer("owner", placeMCPServer{Name: name, URL: "https://mcp.example.com/hidden-endpoint", Transport: "http"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := attachPersonalLoginToPlace("owner", "attached", externalCommandCrewRoot); err != nil {
+		t.Fatal(err)
+	}
+	internal, config, err := placeMCPServerConfig("owner", "attached")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := mcpcache.GetCacheManager(f.api.logger)
+	entry := &mcpcache.CacheEntry{ServerName: internal, CreatedAt: time.Now(), IsValid: true, TTLMinutes: 30, ErrorMessage: "private-diagnostic-marker", Tools: []llmtypes.Tool{
+		{Function: &llmtypes.FunctionDefinition{Name: "lookup", Description: "Find a record", Parameters: &llmtypes.Parameters{Type: "object", Properties: map[string]any{"query": map[string]any{"type": "string"}}, Required: []string{"query"}}}},
+		{Function: &llmtypes.FunctionDefinition{Name: "count", Description: "Count records"}},
+	}}
+	if err := cache.Put(entry, config); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cache.Invalidate(mcpcache.GenerateUnifiedCacheKey(internal, config)) })
+	selectedBrowser := browserSessionForWorkspace("owner", externalCommandCrewRoot)
+	unrelatedBrowser := browserSessionForWorkspace("owner", "Crew/another-crew")
+	browser.GetSessionTracker().Touch(selectedBrowser, "crew-chat", "crew-chat")
+	browser.GetSessionTracker().Touch(unrelatedBrowser, "unrelated-chat", "unrelated-chat")
+	t.Cleanup(func() {
+		browser.GetSessionTracker().Remove(selectedBrowser)
+		browser.GetSessionTracker().Remove(unrelatedBrowser)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	reader := crewReader("other")
+	srv := serveExternalMCP(t, f.api, reader)
+	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	call := func(args map[string]any) map[string]any {
+		t.Helper()
+		args["crew_id"] = "team"
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": args})
+		requireRemoteSuccess(t, result, "crew_diagnostics")
+		raw := marshalStructured(t, result)
+		for _, hidden := range []string{"unattached", "hidden-endpoint", "private-diagnostic-marker", unrelatedBrowser} {
+			if strings.Contains(raw, hidden) {
+				t.Fatalf("diagnostics leaked %q", hidden)
+			}
+		}
+		var out map[string]any
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	status := call(map[string]any{"action": "browser"})
+	if status["capabilities"].(map[string]any)["effective_mode"] != "headless" || status["extension"].(map[string]any)["available_to_caller"] != false || status["sessions"].(map[string]any)["total"] != float64(1) {
+		t.Fatalf("Crew browser status = %v", status)
+	}
+	connections := call(map[string]any{"action": "connections"})
+	if connections["connections"].(map[string]any)["total"] != float64(1) {
+		t.Fatalf("attached connections = %v", connections)
+	}
+	tools := call(map[string]any{"action": "connections", "name": "attached", "include_tools": true, "limit": 1})["connection"].(map[string]any)
+	page := tools["tools"].(map[string]any)
+	if tools["status"] != "cached" || page["total"] != float64(2) || page["has_more"] != true || len(page["items"].([]any)) != 1 {
+		t.Fatalf("tool metadata page = %v", tools)
+	}
+	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "unattached"}, 403)
+	bounded := crewReader("other")
+	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"different"}
+	crewCapabilityHTTP(t, f, bounded, "crew_diagnostics", map[string]any{"action": "browser"}, 403)
 }

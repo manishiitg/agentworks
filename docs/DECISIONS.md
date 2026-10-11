@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-11 — Crew diagnostics use existing read access (PLAT-856)
+
+Expose browser capability status, the website's Crew-scoped browser inventory
+and attached MCP connection/cache metadata through existing `crews:read` consent.
+Resolve current project access and connection bounds on each call. Never adopt
+the owner's chat; Chrome extension status remains account scoped and owner only.
+Read status without starting a browser, distinguish cached tools from live
+reachability, and omit credentials, endpoint configuration and server-wide logs.
+Why: external clients need the same setup diagnostics without execution rights
+or a new permission level.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Checked deployment migration and communication expiration (PLAT-861)
 
 Allow an explicit offline agent-step batch after the server and document writers
@@ -22,7 +35,6 @@ reconnect while a revoked submission cannot start a new turn. Why: transport
 acceptance must not freeze permission or hide an undeliverable message.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
-
 
 ## 2026-10-11 — Incoming agent messages show the message first (PLAT-825)
 

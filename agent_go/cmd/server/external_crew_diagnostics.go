@@ -1,0 +1,174 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/url"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/mcpagent/mcpcache"
+)
+
+func crewDiagnosticPage[T any](items []T, limit, offset int) map[string]any {
+	start := min(max(offset, 0), len(items))
+	end := min(start+min(max(limit, 1), 100), len(items))
+	return map[string]any{"items": items[start:end], "total": len(items), "has_more": end < len(items), "next_offset": end}
+}
+
+func externalCrewDiagnosticsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
+	add("crew_diagnostics", "Read this Crew's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current Crew access.", false, false, map[string]any{
+		"crew_id":       externalString("Crew ID from crew action=list."),
+		"action":        map[string]any{"type": "string", "enum": []any{"browser", "connections"}},
+		"name":          externalString("Exact attached connection name; connections only. Omit to list connection summaries."),
+		"include_tools": map[string]any{"type": "boolean", "description": "Include cached parameter schemas for a named connection. Default false."},
+		"limit":         externalInteger(1, 100), "offset": externalInteger(0, 100000),
+	}, "crew_id", "action")
+}
+
+func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	claims := GetUserFromContext(r.Context())
+	id, action, name := externalArg(args, "crew_id"), externalArg(args, "action"), externalArg(args, "name")
+	if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:read") || !claims.AccessToken.AllowsCrew(id)) {
+		externalError(w, 403, "insufficient_scope", "This connection does not allow reading this Crew.")
+		return
+	}
+	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id)
+	if !ok {
+		externalError(w, 404, "not_found", "Crew not found or not allowed.")
+		return
+	}
+	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
+	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	limit, offset := externalInt(args, "limit", 50), externalInt(args, "offset", 0)
+	if action == "browser" {
+		if name != "" || args["include_tools"] != nil {
+			externalError(w, 400, "invalid_arguments", "name and include_tools apply only to connections.")
+			return
+		}
+		if profile.Runtime.Capabilities.Browser == agentprofiles.CapabilityDisabled || !containsExactString(profile.ToolPolicy.Enabled, "agent_browser") {
+			externalError(w, 404, "tool_unavailable", "This Crew profile does not enable browser tools.")
+			return
+		}
+		settings, err := readWorkspaceBrowserSettings(r.Context(), root)
+		if err != nil {
+			externalError(w, 502, "browser_settings_unavailable", "Cannot read this Crew's browser settings.")
+			return
+		}
+		// Query the shared capability handler without adopting the owner's chat
+		// or a retained caller session. Status never launches a browser.
+		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, "")
+		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, "")
+		probe := browser.NewExecutor(browser.NewClient(getWorkspaceAPIURL()), browser.WithBrowserRuntimeConfig(browser.NewBrowserRuntimeConfig(settings.Mode, []int{settings.Port})))
+		raw, err := probe.HandleAgentBrowser(ctx, map[string]any{"command": "status"})
+		if err != nil {
+			externalError(w, 502, "browser_status_unavailable", "Cannot inspect this Crew's browser status.")
+			return
+		}
+		var status any
+		if err := json.Unmarshal([]byte(raw), &status); err != nil {
+			externalFailure(w, err)
+			return
+		}
+		request := r.Clone(r.Context())
+		request.URL = &url.URL{RawQuery: url.Values{"workspace_path": {root}}.Encode()}
+		sessions := api.liveBrowserSessions(request)
+		extension := map[string]any{"available_to_caller": crew.OwnedByCaller}
+		if crew.OwnedByCaller {
+			connection := browserrelay.Default.Status(claims.UserID, browserSessionForWorkspace(claims.UserID, root))
+			extension["selected"], extension["connected"], extension["tabs"] = connection.Selected, connection.Connected, connection.Tabs
+			extension["extension_version"], extension["latest_extension_version"] = connection.ExtensionVersion, connection.LatestVersion
+		}
+		externalJSON(w, map[string]any{"crew_id": id, "action": action, "settings": settings, "capabilities": status, "extension": extension, "sessions": crewDiagnosticPage(sessions, limit, offset)})
+		return
+	}
+	if action != "connections" {
+		externalError(w, 400, "invalid_arguments", "Unknown diagnostics action.")
+		return
+	}
+	if !containsExactString(profile.ToolPolicy.Enabled, "list_mcp_servers") {
+		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable MCP tools.")
+		return
+	}
+	attachments, err := placeMCPAttachmentsFor(root)
+	if err != nil {
+		externalError(w, 502, "connections_unavailable", "Cannot read this Crew's attached connections.")
+		return
+	}
+	rows := []map[string]any{}
+	for _, attached := range attachments {
+		if name != "" && attached.Server != name {
+			continue
+		}
+		store := attachmentStore(attached, root)
+		servers, err := listPlaceMCPServers(store)
+		if err != nil {
+			externalError(w, 502, "connections_unavailable", "Cannot read an attached connection.")
+			return
+		}
+		row := map[string]any{"name": attached.Server, "status": "unavailable", "active": false, "connected": false, "cached_tool_count": 0}
+		for _, server := range servers {
+			if server.Name != attached.Server {
+				continue
+			}
+			dir, _ := placeMCPDir(store)
+			active := placeMCPCanAttach(r.Context(), attached.Owner, root)
+			connected := placeMCPServerConnected(dir, store, server)
+			row["label"], row["catalog"], row["active"], row["connected"] = server.Label, server.Catalog, active, connected
+			row["status"] = "not_connected"
+			if !active {
+				row["status"] = "inactive"
+				break
+			}
+			if !connected {
+				break
+			}
+			row["status"] = "not_loaded"
+			internal, config, err := placeMCPServerConfig(store, server.Name)
+			if err != nil {
+				break
+			}
+			entry, found := mcpcache.GetCacheManager(api.logger).Get(mcpcache.GenerateUnifiedCacheKey(internal, config))
+			if !found {
+				break
+			}
+			tools := []map[string]any{}
+			for _, tool := range entry.Tools {
+				if tool.Function == nil {
+					continue
+				}
+				item := map[string]any{"name": tool.Function.Name, "description": tool.Function.Description}
+				if include, _ := args["include_tools"].(bool); include {
+					item["parameters"] = tool.Function.Parameters
+				}
+				tools = append(tools, item)
+			}
+			row["status"], row["cached_tool_count"] = "cached", len(tools)
+			if name != "" {
+				row["tools"] = crewDiagnosticPage(tools, limit, offset)
+			}
+			break
+		}
+		rows = append(rows, row)
+	}
+	if name != "" {
+		if len(rows) != 1 {
+			externalError(w, 403, "forbidden", "Use an exact connection name attached to this Crew.")
+			return
+		}
+		externalJSON(w, map[string]any{"crew_id": id, "action": action, "connection": rows[0]})
+		return
+	}
+	if include, _ := args["include_tools"].(bool); include {
+		externalError(w, 400, "invalid_arguments", "include_tools requires an exact attached connection name.")
+		return
+	}
+	externalJSON(w, map[string]any{"crew_id": id, "action": action, "connections": crewDiagnosticPage(rows, limit, offset), "metadata_source": "attached connection cache"})
+}
