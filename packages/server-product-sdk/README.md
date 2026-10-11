@@ -59,3 +59,10 @@ retained events, independent of display limits.
 This first SDK includes LLM-specific types. Its general extension contract is
 experimental until a second real product validates composition, credentials,
 storage, audit and UI integration.
+
+The LLM product can be the only enabled server surface. The shared host URL and
+internal directory credential configure infrastructure; they do not require or
+grant access to Vault's surface. Inference always uses the independent product
+credential. Browser audit clients are `platform`; user-token clients are
+`access-token:<token ID>`, allowing per-token audit filtering without storing the
+secret. Group lookups preserve built-in/ownership metadata and detach owners.

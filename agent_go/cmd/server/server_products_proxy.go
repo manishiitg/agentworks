@@ -1,13 +1,18 @@
 package server
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Separately built server products use the platform's current user and role
@@ -47,7 +52,7 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		}
 		out := make([]map[string]string, 0, len(users))
 		for _, user := range users {
-			if err := syncVaultDirectoryUser(r.Context(), &UserRecord{ID: user.ID, Email: user.Email}); err != nil {
+			if err := syncServerProductDirectoryUser(r.Context(), user.ID, user.Email); err != nil {
 				http.Error(w, "user directory synchronization unavailable", 503)
 				return
 			}
@@ -75,7 +80,11 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		}
 		pr.Out.Header.Set("Authorization", "Bearer "+secret)
 		pr.Out.Header.Set("X-AgentWorks-Actor", claims.UserID)
-		pr.Out.Header.Set("X-AgentWorks-Client", "platform")
+		client := "platform"
+		if claims.AccessToken != nil {
+			client = "access-token:" + claims.AccessToken.ID
+		}
+		pr.Out.Header.Set("X-AgentWorks-Client", client)
 		if admin {
 			pr.Out.Header.Set("X-AgentWorks-Admin", "1")
 		}
@@ -138,7 +147,7 @@ func serverProductServiceConfig(product string) (*url.URL, string, error) {
 	if !registeredServerProducts[product] {
 		return nil, "", errors.New("unsupported server product")
 	}
-	target, err := capLayerServiceURL()
+	target, err := gatewayServiceURL()
 	if err != nil {
 		return nil, "", err
 	}
@@ -155,4 +164,36 @@ func serverProductServiceConfig(product string) (*url.URL, string, error) {
 		return nil, "", errors.New("dedicated product credential required")
 	}
 	return target, secret, nil
+}
+
+// Bind existing directory accounts through the shared host's fixed internal
+// endpoint. Called only after the platform's current administrator check. This
+// does not grant the Vault surface or expose its admin credential to a product.
+func syncServerProductDirectoryUser(ctx context.Context, id, email string) error {
+	target, secret, err := gatewayAdminServiceConfig()
+	if err != nil {
+		return err
+	}
+	target.Path = strings.TrimRight(target.Path, "/") + "/api/admin/users/sync"
+	payload, err := json.Marshal(map[string]string{"ID": id, "Email": email})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+secret)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(req)
+	if err != nil {
+		return errors.New("directory synchronization unavailable")
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 8192))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return errors.New("directory synchronization refused")
+	}
+	return nil
 }

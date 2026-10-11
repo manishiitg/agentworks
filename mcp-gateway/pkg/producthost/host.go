@@ -22,7 +22,7 @@ func (s *Store) GetUser(id string) (api.User, bool) {
 }
 func (s *Store) GetGroup(id string) (api.Group, bool) {
 	g, ok := s.store.GetGroup(id)
-	return api.Group{ID: g.ID, WorkspaceID: g.WorkspaceID, Name: g.Name}, ok
+	return api.Group{ID: g.ID, WorkspaceID: g.WorkspaceID, Name: g.Name, Description: g.Description, BuiltIn: g.BuiltIn, Kind: g.Kind, Owners: slices.Clone(g.Owners)}, ok
 }
 func (s *Store) GroupsOf(id string) []string { return s.store.GroupsOf(id) }
 func (s *Store) ListUsers(w string) []api.User {

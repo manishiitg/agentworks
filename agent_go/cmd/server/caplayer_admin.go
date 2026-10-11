@@ -168,10 +168,7 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 	proxy.ServeHTTP(w, r)
 }
 
-func capLayerServiceURL() (*url.URL, error) {
-	if !productEnabled("mcp-gateway") {
-		return nil, errors.New("Vault is unavailable in this installation")
-	}
+func gatewayServiceURL() (*url.URL, error) {
 	target, err := url.Parse(strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")))
 	if err != nil || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" {
 		return nil, errors.New("invalid service URL")
@@ -185,7 +182,17 @@ func capLayerServiceURL() (*url.URL, error) {
 }
 
 func capLayerServiceConfig() (*url.URL, string, error) {
-	target, err := capLayerServiceURL()
+	if !productEnabled("mcp-gateway") {
+		return nil, "", errors.New("Vault is unavailable in this installation")
+	}
+	return gatewayAdminServiceConfig()
+}
+
+// Internal directory synchronization belongs to the shared host, independently
+// of whether the Vault product surface is enabled. Browser Vault routes retain
+// their separate product/role gates through capLayerServiceConfig.
+func gatewayAdminServiceConfig() (*url.URL, string, error) {
+	target, err := gatewayServiceURL()
 	if err != nil {
 		return nil, "", err
 	}

@@ -119,3 +119,18 @@ func TestMountedProductRejectsUntrustedActorAndRoleHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupMetadataRoundTripAndOwnersAreDetached(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddGroup(store.Group{ID: "g", WorkspaceID: "w", Name: "Team", Description: "Shared access", BuiltIn: true, Kind: "vault", Owners: []string{"alice"}})
+	h := New(st)
+	g, ok := h.GetGroup("g")
+	if !ok || g.Description != "Shared access" || !g.BuiltIn || g.Kind != "vault" || len(g.Owners) != 1 || g.Owners[0] != "alice" {
+		t.Fatal("group metadata dropped", g)
+	}
+	g.Owners[0] = "mutated"
+	again, _ := h.GetGroup("g")
+	if again.Owners[0] != "alice" {
+		t.Fatal("returned owner slice aliases store state")
+	}
+}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -118,5 +119,59 @@ func TestServerProductProxyRequiresDedicatedTokenAndSecuresUI(t *testing.T) {
 	}
 	if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("UI response policy missing")
+	}
+}
+
+func TestServerProductLLMOnlyDeploymentAndTokenClientIdentity(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENT_PRODUCTS", "llm-gateway")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "llm-gateway")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","email":"alice@example.test","role":"admin","products":["llm-gateway"]}]}`)
+	clients := []string{}
+	bindings := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/admin/users/sync" {
+			bindings++
+			if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("v", 32) {
+				t.Error("directory sync did not use its separate host credential")
+			}
+		} else {
+			clients = append(clients, r.Header.Get("X-AgentWorks-Client"))
+			if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("p", 32) {
+				t.Error("product request did not use its product credential")
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", upstream.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("v", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	t.Setenv("AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN", strings.Repeat("p", 32))
+	t.Setenv("AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE", "")
+	api := &StreamingAPI{}
+	for _, id := range []string{"", "one", "two"} {
+		claims := &UserClaims{UserID: "alice", Username: "alice"}
+		if id != "" {
+			claims.AccessToken = &accesstokens.Token{ID: id, Scopes: []string{"llm:use"}}
+		}
+		w := httptest.NewRecorder()
+		api.handleServerProduct(w, adminRequest("GET", "/api/server-products/llm-gateway/v1/models", "", claims, nil))
+		if w.Code != 200 {
+			t.Fatal("LLM-only discovery unavailable", w.Code, w.Body)
+		}
+	}
+	if strings.Join(clients, ",") != "platform,access-token:one,access-token:two" {
+		t.Fatal("token client identity lost", clients)
+	}
+	w := httptest.NewRecorder()
+	api.handleServerProduct(w, adminRequest("GET", "/api/server-products/llm-gateway/admin/users", "", &UserClaims{UserID: "alice", Username: "alice"}, nil))
+	if w.Code != 200 || bindings != 1 {
+		t.Fatal("LLM-only directory unavailable", w.Code, bindings)
+	}
+	if _, _, err := capLayerServiceConfig(); err == nil {
+		t.Fatal("LLM-only deployment enabled Vault access")
 	}
 }

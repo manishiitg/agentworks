@@ -648,7 +648,11 @@ admin synchronization remains a separate privileged platform operation.
 The `llm:use` user-token scope permits model discovery and inference only. It
 cannot reach product management or UI routes. Current account status, product
 entitlement and per-user model access remain required; a token is not a snapshot
-of permissions. Browser administration uses the person's current platform role.
+of permissions. Browser administration uses the person's current platform role. LLM-only
+installations do not require the Vault surface. The platform's fixed internal
+directory binding uses its separate host admin credential without enabling Vault
+routes. Audit client identity preserves each validated user token's stable ID;
+browser sessions use `platform`.
 
 Persist product audit events with explicit host metadata and namespaced physical
 IDs. Caller IDs remain opaque logical request IDs and cannot determine event
