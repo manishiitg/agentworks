@@ -88,7 +88,8 @@ connection's Crew bounds apply. These calls execute directly without a model tur
   `move` needs `path`, `destination`, and a revision for files. Both paths and
   all children are checked against guards and protected paths. The destination
   must be absent and its parent must exist. `delete` removes a file with its
-  revision, or an empty folder. Lifecycle operations return applied status;
+  revision, or an empty folder. Omit `expected_revision` when moving or deleting
+  an existing folder. Lifecycle operations return applied status;
   inspect current paths before retrying after a lost response.
 - `crew_skills action=list|search|install|import|uninstall`: `query` for search,
   `source` for install (a public registry source or an authorized `brain:`
@@ -99,8 +100,9 @@ connection's Crew bounds apply. These calls execute directly without a model tur
   and installation; uninstall across native-provider folders needs unrestricted
   Crew file consent.
 - `crew_mcp action=list|search|install|remove|discover`: search takes `query`;
-  install takes `name` with optional `catalog` and `label` (catalog servers only;
-  custom URLs use Integrations); remove/discover
+  install accepts the exact `name` returned by list, a catalog name (case-insensitive),
+  or `catalog` alone, with optional `label`; use `name` and a
+  custom remote HTTPS `url` for a server outside the catalog; remove/discover
   take the exact connection `name`. Install attaches the authenticated person's
   connection to this Crew. Complete sign-in and credentials in Integrations.
   Remove detaches only this Crew, preserving other projects and its login.
@@ -148,13 +150,14 @@ remain protected. Check `shareable`/`warning` for a same-machine preview.
 
 ## MCP installation policy
 
-MCP-originated Crew, workflow and Relay tools install current catalog servers
-only. Custom URLs and URL changes go through Integrations. Existing catalog
-accounts may be reused only while their endpoint/transport still match the
-current catalog. Setup never accepts credentials in tool arguments.
-The same catalog-only gate applies to Crew agent turns, including function and
-message runs that execute as the owner, and the owner's own interactive Crew
-chat. Custom setup stays in Integrations.
+Catalog and custom remote MCP servers are allowed through the same authoring
+tools in Crew, workflow and Relay, including the owner's Crew chat, function and
+message runs and external MCP callers. Pass a catalog name or `name` plus an
+HTTPS `url`; reuse a saved custom connection by its exact name. Existing roles,
+product authoring consent and project bounds still apply. Setup reuses the
+website's URL validation and public-only auth probing; private-network endpoints
+and arbitrary local process configuration remain refused. Enter credentials
+and OAuth app setup in Integrations, never in tool arguments.
 
 ## Read-only diagnostics
 

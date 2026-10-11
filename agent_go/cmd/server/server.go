@@ -12780,6 +12780,13 @@ func (api *StreamingAPI) buildSkillCallbacks() *todo_creation_human.SkillCallbac
 	return api.buildSkillCallbacksForProduct("")
 }
 
+func skillSelectionHintForContext(ctx context.Context, productID, skillNames string) string {
+	if root, _ := ctx.Value(externalCrewMCPPlaceKey{}).(string); root != "" && productID == "work" {
+		return "Use settings with this crew_id to inspect and select installed skills for future Crew turns, or use Setup > Skills in the app."
+	}
+	return skillSelectionHint(productID, skillNames)
+}
+
 func skillSelectionHint(productID, skillNames string) string {
 	if strings.EqualFold(strings.TrimSpace(productID), codeproduct.ProfileID) {
 		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future turns in this workspace, call update_project_skill_selection(action=\"select\", skill=\"<folder-name>\"); the selection is saved in workflow.json and shown in Setup > Skills.", skillNames)
@@ -12823,7 +12830,7 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 		if len(result.InstalledSkills) == 0 {
 			return "", fmt.Errorf("no skills were installed; check the source")
 		}
-		return fmt.Sprintf("Installed into this workspace's private skills/ folder: %s. %s", strings.Join(result.InstalledSkills, ", "), skillSelectionHint(productID, "These skills")), nil
+		return fmt.Sprintf("Installed into this workspace's private skills/ folder: %s. %s", strings.Join(result.InstalledSkills, ", "), skillSelectionHintForContext(ctx, productID, "These skills")), nil
 	}
 	scoped.ImportSkill = func(ctx context.Context, githubURL, token string) (string, error) {
 		resp, err := skills.ImportGitHubSkillInto(wsURL, githubURL, token, projectSkillsDir)
@@ -12833,7 +12840,7 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 		if !resp.Success {
 			return "", fmt.Errorf("failed to import skill: %s", resp.Error)
 		}
-		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
+		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHintForContext(ctx, productID, "It")), nil
 	}
 	scoped.DeleteSkill = func(ctx context.Context, folderName string) error {
 		return skills.UninstallSkillIn(ctx, wsURL, workspacePath, folderName)
@@ -13151,6 +13158,10 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			properties["label"] = map[string]interface{}{"type": "string", "description": "Human-readable account label. Creates a separate account with its own login. Omit for reconnecting an existing exact connection name."}
 			properties["catalog"] = map[string]interface{}{"type": "string", "description": "Catalog provider name. Use with label to create another account of the same provider."}
 			description += " For another account of the same provider, pass catalog and label; each returned connection name has independent credentials. Reconnect/remove/select by exact connection name, not provider alias."
+		}
+		if name == "install_mcp_server" {
+			delete(params, "required")
+			params["anyOf"] = []any{map[string]any{"required": []string{"name"}}, map[string]any{"required": []string{"catalog"}}}
 		}
 		if name == "trigger_mcp_discovery" {
 			// The per-chat executor below discovers one connection (private or governed) and

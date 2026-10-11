@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-11 — Catalog and custom MCP servers share existing authority (PLAT-856)
+
+Allow custom remote MCP URLs and saved custom connections through the same
+setup tools as catalog servers: Crew chat, function/message turns, external
+Crew/workflow/Relay authoring and Integrations. Reuse the shared website setup
+path for URL validation, public-only auth probing and private account storage.
+Keep current project roles, product authoring consent, connection bounds and
+credential entry in Integrations; this decision adds no role or permission.
+Why: the owner wants servers outside the catalog available everywhere the
+user is already authorized to configure MCP connections. This replaces the
+earlier catalog-only policy.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-11 — Delivered-message identity comes from the server (PLAT-825)
 
 Choose the agent-message card only from metadata stamped during authorized
@@ -119,21 +133,6 @@ never guess an answer or silently insert another question agent. Why: the fixed
 form duplicated the existing interaction tools and blocked unattended runs.
 
 Ticket: [PLAT-864](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-864.md).
-
-## 2026-10-11 — MCP-originated installs use the current catalog (PLAT-856)
-
-Allow external tools to install or reuse current catalog MCP servers only;
-custom URLs and endpoint edits stay in Integrations. Enforce this once in the
-shared connection handler for Crew, workflow and Relay authoring. Validate a
-reused account's catalog, URL and transport before attaching it; a catalog-like
-name does not authorize a custom endpoint. Apply the same gate to every Crew
-agent turn, including function and message runs that execute as the owner;
-their server-bound workspace identifies the Crew without external caller claims.
-Why: an agent following untrusted
-text must not attach an arbitrary service under the project's authority.
-The owner chose the catalog-only policy; existing website roles still apply.
-
-Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
 
 ## 2026-10-11 — Crew artifact links retain live access and connection bounds (PLAT-856)
 

@@ -56,6 +56,11 @@ func TestBrainSkillSearchAndInstallIntoWorkspace(t *testing.T) {
 	if imported.WorkspacePath != "Workflow/w" || imported.Name != "release-notes" || !strings.Contains(string(imported.Files["SKILL.md"]), "Release notes from merged PRs") || string(imported.Files["assets/logo.png"]) != string(png) {
 		t.Fatalf("install sent %+v (%s)", imported, message)
 	}
+	externalCtx := context.WithValue(ctx, externalCrewMCPPlaceKey{}, "Crew/test-team")
+	externalMessage, err := installBrainSkill(externalCtx, workspace.URL, "Crew/test-team", "Company/Skills/release-notes", "work")
+	if err != nil || !strings.Contains(externalMessage, "settings with this crew_id") || strings.Contains(externalMessage, "read_skill") || strings.Contains(externalMessage, "update_project_skill_selection") {
+		t.Fatalf("external skill installation guidance = %q (%v)", externalMessage, err)
+	}
 	if source, ok := brainSkillFolder("brain:/Company/Skills/release-notes/"); !ok || source != "Company/Skills/release-notes" {
 		t.Fatalf("brain source = %q %v", source, ok)
 	}

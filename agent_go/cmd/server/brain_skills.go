@@ -71,7 +71,7 @@ func installBrainSkill(ctx context.Context, workspaceAPIURL, workspacePath, fold
 		return "", fmt.Errorf("install Brain skill %s: %w", folder, err)
 	}
 	version, _ := got["version"].(string)
-	return fmt.Sprintf("Installed Brain skill **%s** (version %s, %d files) into this workspace's skills/ folder as `%s`. Re-install it to take a newer version. %s", folder, version, len(files), name, skillSelectionHint(productID, "It")), nil
+	return fmt.Sprintf("Installed Brain skill **%s** (version %s, %d files) into this workspace's skills/ folder as `%s`. Re-install it to take a newer version. %s", folder, version, len(files), name, skillSelectionHintForContext(ctx, productID, "It")), nil
 }
 
 // brainSkillSearch lists company skills matching query for search_skills; empty when Brain is unavailable here.

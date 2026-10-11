@@ -88,7 +88,7 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 		requireRemoteSuccess(t, result, externalCrewCommandsTool)
 		return marshalStructured(t, result)
 	}
-	call(map[string]any{"action": "create", "name": "review", "description": "Review work", "prompt": "Review this work."})
+	call(map[string]any{"action": "create", "name": "review", "description": "Review work", "prompt": "Review this work.", "icon": "zap"})
 	commandPath := externalCommandCrewRoot + "/commands/custom/review/COMMAND.md"
 	if saved := f.read(t, commandPath); !strings.Contains(saved, "{{context}}") || !strings.Contains(saved, "Review this work.") {
 		t.Fatalf("command did not use shared validation/storage: %s", saved)
@@ -103,8 +103,8 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &menu); err != nil || w.Code != 200 || menu.Total != 1 || menu.Commands[0].Frontmatter.Name != "review" {
 		t.Fatalf("app slash menu = %d %s (%v)", w.Code, w.Body.String(), err)
 	}
-	call(map[string]any{"action": "update", "name": "review", "description": "Review changes", "prompt": "Review changes."})
-	if saved := f.read(t, commandPath); !strings.Contains(saved, "Review changes.") {
+	call(map[string]any{"action": "update", "name": "review", "prompt": "Review changes."})
+	if saved := f.read(t, commandPath); !strings.Contains(saved, "Review changes.") || !strings.Contains(saved, `icon: "zap"`) || !strings.Contains(saved, `description: "Review work"`) {
 		t.Fatalf("command update was not stored: %s", saved)
 	}
 	// Product commands are not editable through this custom-only directory.

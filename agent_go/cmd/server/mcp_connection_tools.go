@@ -66,9 +66,14 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name, _ = args["server_name"].(string)
+		name = strings.TrimSpace(name)
 	}
 	if name == "" {
-		return "", fmt.Errorf("name is required")
+		name, _ = args["catalog"].(string)
+		name = strings.TrimSpace(name)
+	}
+	if name == "" {
+		return "", fmt.Errorf("name or catalog is required")
 	}
 	if operation == "remove_mcp_server" && place != "" {
 		a, found := placeAttachmentNamed(place, name)
@@ -140,37 +145,23 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	catalog, _ := args["catalog"].(string)
 	label, catalog = strings.TrimSpace(label), strings.TrimSpace(catalog)
 	if catalog == "" && url == "" {
+		// Prefer a saved exact connection (including a custom server) before
+		// interpreting the selector as a provider from the catalog.
+		existing, found, err := lookupPersonalMCP(person, name)
+		if err != nil {
+			return "", err
+		}
 		catalog = name
-	}
-	claims := GetUserFromContext(ctx)
-	if isCrewProjectPath(place) || claims != nil && (claims.AccessToken != nil || claims.ExternalBuilderOperationID != "") {
-		// Crew agent turns (including owner-authority function and message
-		// runs) and MCP-originated authoring cannot introduce a free URL, including a
-		// nested server.url or an edit of an existing connection. Integrations
-		// remains the user's path for custom servers. Check reused accounts
-		// before ensurePersonalMCP can attach them under a catalog-like name.
-		if url != "" {
-			return "", fmt.Errorf("MCP tools can install catalog servers only; add custom URLs through Integrations")
-		}
-		if label == "" {
-			saved, found, err := lookupPersonalMCP(person, name)
-			if err != nil {
-				return "", err
-			}
-			if found {
-				entry, approved := api.placeMCPCatalogEntry(saved.Catalog)
-				if !approved || saved.URL != entry.config.URL || saved.Transport != string(entry.config.GetProtocol()) || len(saved.Headers) != 0 {
-					return "", fmt.Errorf("this connection is not a current catalog server; manage custom connections through Integrations")
-				}
-				if catalog == name {
-					catalog = saved.Catalog
-				}
-			}
-		}
-		if _, approved := api.placeMCPCatalogEntry(catalog); !approved {
-			return "", fmt.Errorf("MCP tools can install catalog servers only; choose a catalog name or use Integrations for custom URLs")
+		if found {
+			catalog = existing.Catalog
 		}
 	}
+	if entry, found := api.placeMCPCatalogEntry(catalog); found {
+		catalog = entry.Catalog
+	}
+	// Catalog and custom remote servers use the same live project/account
+	// authority. URL validation, public-only auth probing and private credential
+	// storage stay in the shared website setup path below.
 	if place != "" && operation != "edit_mcp_server" && !placeMCPCanAttach(ctx, person, place) {
 		return "", fmt.Errorf("you can add connections only where you can edit this workflow, Crew or Code")
 	}
@@ -202,6 +193,9 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 			body.Name = strings.ToLower(name)
 		} else if label == "" {
 			body.Name = name
+			if entry, found := api.placeMCPCatalogEntry(catalog); found && (strings.EqualFold(name, entry.Catalog) || strings.EqualFold(name, entry.Name)) {
+				body.Name = entry.Name
+			}
 		}
 		saved, _, err = api.ensurePersonalMCP(ctx, person, body, catalog)
 	}

@@ -349,12 +349,24 @@ func (api *StreamingAPI) placeMCPCatalog() []placeMCPCatalogServer {
 var placeMCPCatalogNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
 
 func (api *StreamingAPI) placeMCPCatalogEntry(name string) (placeMCPCatalogServer, bool) {
-	for _, entry := range api.placeMCPCatalog() {
-		if entry.Catalog == strings.TrimSpace(name) {
+	name = strings.TrimSpace(name)
+	entries := api.placeMCPCatalog()
+	for _, entry := range entries {
+		if entry.Catalog == name {
 			return entry, true
 		}
 	}
-	return placeMCPCatalogServer{}, false
+	var match placeMCPCatalogServer
+	found := false
+	for _, entry := range entries {
+		if strings.EqualFold(entry.Catalog, name) || strings.EqualFold(entry.Name, name) {
+			if found { // Sanitized/case-folded provider aliases must be unique.
+				return placeMCPCatalogServer{}, false
+			}
+			match, found = entry, true
+		}
+	}
+	return match, found
 }
 
 // GET /api/me/mcp/catalog: the catalog servers a person can add as their own.

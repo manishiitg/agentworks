@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 	"io"
@@ -665,9 +666,21 @@ func (api *StreamingAPI) discoverResolvedServerTools(ctx context.Context, resolv
 			}
 		}
 	}()
+	// Discovery deliberately bypasses reads, but must publish fresh metadata for
+	// diagnostics and subsequent runtime loads under this account's exact key.
+	serverTools := api.extractServerTools(result.Tools, result.ToolToServer, resolved.Name)
+	cache := mcpcache.GetCacheManager(api.logger)
+	entry := &mcpcache.CacheEntry{
+		ServerName: resolved.Name, Tools: serverTools, SystemPrompt: result.SystemPrompt,
+		CreatedAt: time.Now(), TTLMinutes: cache.GetTTL(),
+		Protocol: string(resolved.Config.GetProtocol()), IsValid: true,
+	}
+	if err := cache.Put(entry, resolved.Config); err != nil {
+		return nil, fmt.Errorf("could not save discovered MCP tool metadata")
+	}
 	details := []mcpclient.ToolDetail{}
 	names := []string{}
-	for _, tool := range api.extractServerTools(result.Tools, result.ToolToServer, resolved.Name) {
+	for _, tool := range serverTools {
 		if tool.Function == nil {
 			continue
 		}

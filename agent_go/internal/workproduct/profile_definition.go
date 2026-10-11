@@ -106,7 +106,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 		commandsPath := path.Join(runtime.WorkspacePath, commands.CustomCommandsSubPath)
 		return agentprofiles.ToolSpec{
 			Name: "manage_custom_commands", Category: "custom_commands",
-			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
+			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt and icon. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{
@@ -140,16 +140,29 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 					}
 					return fmt.Sprintf("Deleted /%s. The slash menu will refresh the next time it opens.", name), nil
 				case "create", "update":
-					description, _ := args["description"].(string)
-					prompt, _ := args["prompt"].(string)
-					icon, _ := args["icon"].(string)
-					if icon == "" {
-						icon = "terminal"
+					description, prompt, icon := "", "", "terminal"
+					modes := []string{"multi-agent"}
+					if action == "update" {
+						existing, err := commands.GetCommandAt(workspaceAPIURL, commandsPath, name)
+						if err != nil {
+							return "", err
+						}
+						description, prompt, icon = existing.Frontmatter.Description, existing.Content, existing.Frontmatter.Icon
+						modes = existing.Frontmatter.Modes
+					}
+					if value, ok := args["description"].(string); ok {
+						description = value
+					}
+					if value, ok := args["prompt"].(string); ok {
+						prompt = value
+					}
+					if value, ok := args["icon"].(string); ok {
+						icon = value
 					}
 					if strings.TrimSpace(description) == "" || strings.TrimSpace(prompt) == "" {
 						return "", fmt.Errorf("description and prompt are required")
 					}
-					content := customCommandMarkdown(name, description, icon, prompt, []string{"multi-agent"})
+					content := customCommandMarkdown(name, description, icon, prompt, modes)
 					var err error
 					if action == "create" {
 						_, err = commands.CreateCommandAt(workspaceAPIURL, commandsPath, name, content)

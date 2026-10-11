@@ -76,6 +76,9 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 			return fileError(403, "symbolic links cannot be changed")
 		}
 		if info.IsDir() {
+			if r.ExpectedRevision != "" {
+				return fileError(400, "folder move/delete requires omitting expected_revision")
+			}
 			if r.Action == "delete" { // Remove is intentionally not recursive.
 				dir, openErr := OpenDirectory(parent, path.Base(p), false)
 				if openErr != nil {
