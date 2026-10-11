@@ -350,6 +350,9 @@ func TestWorkflowTeamPulseTargetsContributorBuilderAndKeepsInboxPrivate(t *testi
 // through the workspace boundary, including a collision with a real step ID.
 func TestWorkflowTeamItemIDsDoNotGrantStepAuthority(t *testing.T) {
 	f := newTeamTestFixture(t)
+	f.store.mu.Lock()
+	f.store.files[teamTestRoot+"/planning/plan.json"] = strings.ReplaceAll(f.store.files[teamTestRoot+"/planning/plan.json"], `"id":"coordinate"`, `"id":"measure"`)
+	f.store.mu.Unlock()
 	first := f.tools(t, "first")
 	change := func(id, itemID, message string) error {
 		_, err := first.tools["update_step"].exec(context.Background(), map[string]interface{}{
@@ -362,6 +365,9 @@ func TestWorkflowTeamItemIDsDoNotGrantStepAuthority(t *testing.T) {
 	}
 	if err := change("first-route", "measure", "Measure the assigned contribution."); err != nil {
 		t.Fatalf("repeated item ID in another route blocked an authorized edit: %v", err)
+	}
+	if err := change("parent", "measure", "Overwrite shared coordination."); err == nil {
+		t.Fatal("repeated item ID granted authority over a shared step's item")
 	}
 	// An item named like an actual shared step must not erase that step from
 	// the protected projection or overwrite its index entry.
