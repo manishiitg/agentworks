@@ -260,11 +260,21 @@ func pluginPromptWords(s string) ([]string, error) {
 // Find only the exact ancestor process, never a project/name/most-recent
 // session. PID plus process start time fences PID reuse. Session ID is learned
 // from the host's hook input when the person attaches.
+func providerProcessField(provider string) string {
+	// macOS comm truncates the executable path (including desktop Codex's
+	// bundle path). ucomm gives its kernel basename. Claude rewrites its
+	// process title, so retain its existing comm identity instead.
+	if runtime.GOOS == "darwin" && provider == "codex" {
+		return "ucomm="
+	}
+	return "comm="
+}
+
 func providerHostKey(provider string) (string, error) {
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", "comm=", "-o", "lstart=").Output()
+		out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", providerProcessField(provider), "-o", "lstart=").Output()
 		cancel()
 		if err != nil {
 			return "", errors.New("cannot identify provider ancestor")
@@ -585,7 +595,7 @@ func agentSessionStatus(o *options, ctx context.Context) error {
 func providerPIDHostKey(provider string, pid int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "comm=", "-o", "lstart=").Output()
+	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", providerProcessField(provider), "-o", "lstart=").Output()
 	if err != nil {
 		return "", err
 	}

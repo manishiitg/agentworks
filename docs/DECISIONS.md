@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-11 — Existing desktop and Claude sessions accept explicit native transports (PLAT-861)
+
+Allow a person to select an exact Codex desktop IPC endpoint or Claude's enabled
+session-messaging registration. Desktop delivery discovers the exact chat owner,
+requires its untrusted-input capability and labels peer content as AgentWorks
+tool output. Only an explicit ended-turn refusal permits an idle wake; ambiguous
+delivery never starts another turn automatically. Claude writes remain offers
+until the receiver acknowledges admission. Keep provider trust prompts intact,
+and preserve process/session binding for narrow CLI replies. These optional
+native protocols are version-sensitive and fail closed when unsupported.
+Why: reach existing chats live while preserving identity and truthful receipts.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-44/45.
+
 ## 2026-10-11 — Attached agents have restricted child connections and explicit resume (PLAT-861)
 
 Derive a separate messaging-only CLI connection bound to the stable agent ID and

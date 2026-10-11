@@ -18,6 +18,9 @@ import (
 // accesses the separately protected browser/app-tools pipe, guesses a chat, or
 // changes permissions, models, the composer, or existing queued follow-ups.
 func codexDesktopOffer(ctx context.Context, remote string, a agentworksclient.AgentAttachment, messages []agentworksclient.AgentLiveMessage) error {
+	if _, err := uuid.Parse(a.SessionID); err != nil {
+		return errors.New("desktop delivery requires an exact thread UUID")
+	}
 	remote = strings.TrimPrefix(remote, "desktop+")
 	if err := validateCodexRemote(remote); err != nil {
 		return err
