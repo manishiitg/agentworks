@@ -345,3 +345,37 @@ func TestWorkflowTeamPulseTargetsContributorBuilderAndKeepsInboxPrivate(t *testi
 		t.Fatalf("old route inbox survived reassignment: %v", e)
 	}
 }
+
+// Repeated message item IDs never confer route ownership. Drive native edits
+// through the workspace boundary, including a collision with a real step ID.
+func TestWorkflowTeamItemIDsDoNotGrantStepAuthority(t *testing.T) {
+	f := newTeamTestFixture(t)
+	first := f.tools(t, "first")
+	change := func(id, itemID, message string) error {
+		_, err := first.tools["update_step"].exec(context.Background(), map[string]interface{}{
+			"step_id": id, "changes": map[string]interface{}{
+				"items":  []interface{}{map[string]interface{}{"id": itemID, "type": "user_message", "message": message}},
+				"reason": "Clarify measurement instructions",
+			}, "expected_plan_revision": teamRevision(f.file("planning/plan.json")),
+		})
+		return err
+	}
+	if err := change("first-route", "measure", "Measure the assigned contribution."); err != nil {
+		t.Fatalf("repeated item ID in another route blocked an authorized edit: %v", err)
+	}
+	// An item named like an actual shared step must not erase that step from
+	// the protected projection or overwrite its index entry.
+	if err := change("first-route", "parent", "Measure the assigned contribution."); err != nil {
+		t.Fatal(err)
+	}
+	before := f.file("planning/plan.json")
+	if err := change("parent", "parent", "Overwrite shared coordination."); err == nil {
+		t.Fatal("item ID collision granted authority over the shared step")
+	}
+	if f.file("planning/plan.json") != before {
+		t.Fatal("rejected shared edit changed the saved plan")
+	}
+	if err := change("second-route", "measure", "Overwrite another contribution."); err == nil {
+		t.Fatal("item ID granted authority over another Contributor's route")
+	}
+}

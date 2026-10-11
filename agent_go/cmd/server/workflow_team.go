@@ -80,6 +80,16 @@ func teamJSON(raw string) (map[string]interface{}, error) {
 	return v, e
 }
 
+// Only these schema fields contain steps or route containers. Items and other
+// payload objects can also have id/type fields, but never carry step authority.
+func teamPlanChild(key string) bool {
+	switch key {
+	case "steps", "orphan_steps", "predefined_routes", "routes", "sub_agent_step":
+		return true
+	}
+	return false
+}
+
 // Routes are identified by parent step and stable route ID, never display name.
 func teamWalk(v interface{}, visit func(map[string]interface{})) {
 	switch x := v.(type) {
@@ -89,8 +99,10 @@ func teamWalk(v interface{}, visit func(map[string]interface{})) {
 				visit(x)
 			}
 		}
-		for _, child := range x {
-			teamWalk(child, visit)
+		for key, child := range x {
+			if teamPlanChild(key) {
+				teamWalk(child, visit)
+			}
 		}
 	case []interface{}:
 		for _, child := range x {
@@ -163,7 +175,7 @@ func teamRouteSteps(plan map[string]interface{}, route map[string]interface{}) m
 					if id, ok := c.(string); ok && index[id] != nil && !ids[id] {
 						scan(index[id])
 					}
-				} else {
+				} else if teamPlanChild(k) {
 					scan(c)
 				}
 			}
@@ -209,7 +221,9 @@ func teamProtectedProjection(plan map[string]interface{}, team *WorkflowTeam, ac
 					return nil
 				}
 				for k, c := range x {
-					x[k] = mask(c)
+					if teamPlanChild(k) {
+						x[k] = mask(c)
+					}
 				}
 				return x
 			case []interface{}:
