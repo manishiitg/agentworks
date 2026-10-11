@@ -242,6 +242,7 @@ func externalTools() ([]externalTool, error) {
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
+		externalPlanMutationDefinition(add)
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
 		externalTriggerDefinitions(add)
@@ -794,6 +795,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	// chat with its existing read-only tool policy, and control their own turns.
 	if strings.HasPrefix(tool.Name, "builder_") {
 		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	if tool.Name == "plan" {
+		api.externalPlanMutationCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "get_file_link" {

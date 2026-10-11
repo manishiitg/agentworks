@@ -28,6 +28,16 @@ evidence as needing review. Provider API allowances may differ from MCP limits.
 Why: help people choose tools without implying remaining credits or changing setup.
 
 Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-37.
+## 2026-10-11 — Direct workflow plans use existing Builder consent (PLAT-856)
+
+Expose the native typed plan executors directly over MCP. Require the combined
+plan/configuration revision, current editable project/team authority and existing
+Builder authoring consent. Stage all artifacts before the shared commit lock's
+validated replacement and retain the native plan changelog and retry receipt.
+Retire unused `plan:write`, dropping it from old grants without replacement.
+Why: external agents need direct edits with the same validators and roles.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
 
 ## 2026-10-11 — Crew integration management matches website roles (PLAT-856)
 

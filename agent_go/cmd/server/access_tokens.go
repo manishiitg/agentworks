@@ -415,7 +415,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
 	}
-	if strings.HasPrefix(tool.Name, "builder_") {
+	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" {
 		return externalBuilderEnabled() && c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}
 	if isExternalRelayAuthoringTool(tool.Name) {
@@ -456,9 +456,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			return t.Allows("crews:write")
 		}
 		return t.Allows("crews:read")
-	}
-	if tool.plan {
-		return t.Allows("plan:write")
 	}
 	// Execution implies workflow visibility: a token that may run must be
 	// able to discover workflows, read plans, and poll run evidence.

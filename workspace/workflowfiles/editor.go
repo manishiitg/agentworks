@@ -350,6 +350,30 @@ func atomicRootWrite(root *os.Root, name string, data []byte, mode os.FileMode) 
 	defer dir.Close()
 	return dir.Sync()
 }
+
+// ReplaceManagedFile is for trusted typed editors after authorization of the
+// complete edit under LockWorkspace. It deliberately has no HTTP endpoint.
+// Use the same anchored directories, metadata preservation and atomic replace
+// as guarded file edits; typed plans also write protected changelog artifacts.
+func ReplaceManagedFile(root *os.Root, p string, content []byte) error {
+	clean, err := CleanRelative(p)
+	if err != nil || clean == "." {
+		return fileError(400, "invalid managed file path")
+	}
+	if len(content) > MaxFileBytes {
+		return fileError(413, "managed file exceeds size limit")
+	}
+	parent, err := OpenDirectory(root, path.Dir(clean), true)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	_, mode, err := readRegular(parent, path.Base(clean))
+	if err != nil {
+		return err
+	}
+	return atomicRootWrite(parent, path.Base(clean), content, mode)
+}
 func (e *Editor) Write(ctx context.Context, r WriteRequest) (WriteReceipt, error) {
 	return e.WriteWithPatch(ctx, r, nil)
 }

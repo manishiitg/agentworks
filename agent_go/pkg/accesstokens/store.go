@@ -26,11 +26,11 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "code:run", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
+var Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "code:run", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
-var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "plan:write", "builder:chat"}
+var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}
 
 type Token struct {
 	ID           string          `json:"id"`
@@ -66,7 +66,7 @@ func PermanentExpiry() time.Time { return time.Date(9999, 12, 31, 23, 59, 59, 0,
 // adding replacement permissions. Existing connections retain their bounds.
 func CurrentScopes(scopes []string) []string {
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
-		return scope == "files:write" || scope == "dashboards:write"
+		return scope == "files:write" || scope == "dashboards:write" || scope == "plan:write"
 	})
 }
 
@@ -98,7 +98,7 @@ func (t Token) FullBuilderAccess() bool {
 
 // BuilderAccess is explicit authoring consent. It follows the account's own permission (every workflow the person
 // may edit, checked live on every call) unless a token names specific workflow IDs (an older grant, or a personal
-// access token made for a few workflows). Direct file writes reuse this authoring consent and never grant direct plan authoring.
+// access token made for a few workflows). Direct files and typed plan tools reuse this authoring consent.
 func (t Token) BuilderAccess() bool {
 	if t.AllWorkflows && len(t.WorkflowIDs) > 0 || !t.AllWorkflows && (len(t.WorkflowIDs) == 0 || len(t.WorkflowIDs) > 200) {
 		return false
@@ -150,9 +150,6 @@ func Validate(t Token, now time.Time) error {
 	for _, s := range t.Scopes {
 		if !slices.Contains(Scopes, s) || seen[s] {
 			return errors.New("invalid or duplicate permission")
-		}
-		if s == "plan:write" {
-			return errors.New("direct plan:write permissions are not issued; use scoped Builder chat")
 		}
 		seen[s] = true
 	}

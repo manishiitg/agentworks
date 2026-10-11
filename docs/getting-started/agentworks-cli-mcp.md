@@ -164,7 +164,7 @@ CLI grants run in full run mode —
 future accessible workflows. Existing authoring consent is optional: `builder:chat` covers workflow
 authoring, and `relays:write` covers Relay authoring. Source and documentation
 edits reuse that consent and the same live owner/editor roles as the website; no
-separate file-write permission is needed. Direct `plan:write` is never issued. Every
+separate file-write permission is needed. Typed `plan` edits use existing Builder consent; `plan:write` is retired. Every
 call checks the grant scopes and the user's current workflow
 access. CLI grants cannot call account management, the general query endpoint,
 or the workspace proxy; only the external tool, asset-content, skill, and

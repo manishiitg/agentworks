@@ -16,7 +16,7 @@ workflows:read files:read runs:execute builder:chat
 
 The consent page requires selection of workflows the signed-in person currently owns or may edit. Every workflow permission on this Builder connection is bounded to those selections. Access and refresh tokens retain the bounds; changing them requires a new authorization. A compatible OAuth client must explicitly request Builder scopes; omitted scopes and the ordinary CLI device-login flow retain their previous defaults.
 
-The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Direct `plan:write` grants remain unavailable. Old connections are not upgraded. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
+The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Typed `plan` operations reuse the same consent; the unused `plan:write` permission is retired. Old connections are not upgraded. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
 
 Managed source-file writes require the workflow documents to be mounted locally on the server. Remote-only workspace deployments fail those writes closed. A shared, server-owned auth state directory outside workflow documents is required for the durable operation records.
 
@@ -80,3 +80,10 @@ go test -race ./cmd/server -run '^TestExternalBuilderOperations' -count=1
 ```
 
 The automated lifecycle tests use a deterministic model hook. Before enabling this on a deployment, smoke-test with its configured model and an actual external AI client against a throwaway workflow: submit a small edit, confirm it appears in the same browser chat, answer a question, cancel a second operation, and inspect the resulting plan/files. This implementation has not been deployed or validated against a live hosted model.
+
+Direct plan editing uses `plan action=list` for native operation schemas.
+Read `get_plan` first, then pass its combined `expected_revision`, a unique
+`request_id`, and the operation's `arguments`. Identical retries return a durable
+receipt; stale plans/configuration fail. Native validation, current team route
+ownership and the existing plan changelog apply. Readers cannot edit. Use
+`write_file` and `relay` for Relay Python authoring and tests.
