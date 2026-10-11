@@ -154,3 +154,51 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 		t.Fatal(list)
 	}
 }
+
+// The native session registry, transport and presentation broker enforce the
+// same per-person boundary; unavailable browsers never report a successful UI edit.
+func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	f.api.bgAgentRegistry = NewBackgroundAgentRegistry()
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile.Definition, productConversationBinding{ConversationKey: "team", WorkspacePath: externalCommandCrewRoot, ResourceID: "team", Title: "Test Team"}, "own-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.api.activeSessions = map[string]*ActiveSessionInfo{record.SessionID: {UserID: "owner"}}
+	f.api.bgAgentRegistry.Register("another-person-session", &BackgroundAgent{ID: "private-agent", SessionID: "another-person-session", Name: "private background task", Status: BGAgentRunning})
+	server := serveExternalMCP(t, f.api, crewWriter("owner"))
+	cli := dialExternalMCP(t, ctx, server.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "list_agents"} {
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "manage_crew_chats", "arguments": map[string]any{"crew_id": "team", "chat_id": "main", "action": "tool", "tool_name": name, "arguments": map[string]any{}}})
+		requireRemoteSuccess(t, result, name)
+		raw, _ := json.Marshal(result)
+		if strings.Contains(string(raw), "private background task") {
+			t.Fatal("another session's background agent was exposed")
+		}
+		if name == "get_ui_state" && !strings.Contains(string(raw), "browser_disconnected") {
+			t.Fatalf("unattached browser result: %s", raw)
+		}
+	}
+	call := func(claims *UserClaims, args map[string]any, want int) {
+		t.Helper()
+		args["crew_id"] = "team"
+		req := httptest.NewRequest("POST", "/api/external/call", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
+		rec := httptest.NewRecorder()
+		f.api.externalCrewChatsCall(rec, req, args)
+		if rec.Code != want {
+			t.Fatalf("status %d want %d: %s", rec.Code, want, rec.Body)
+		}
+	}
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "list_agents"}, 404)
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "run_in_background", "arguments": map[string]any{"name": "task", "instruction": "do work"}}, 403)
+	call(crewWriter("other"), map[string]any{"action": "tools", "chat_id": "own-session"}, 404)
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "get_ui_state", "arguments": map[string]any{"session_id": "another-person-session"}}, 400)
+}

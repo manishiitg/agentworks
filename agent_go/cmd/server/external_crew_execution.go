@@ -259,6 +259,31 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	common.SetSessionFolderGuard(session, reads, writes)
 	common.SetSessionFolderGuardBlockedPaths(session, blocked)
 	common.SetSessionFolderGuardBlockedWritePaths(session, blockedWrites)
+	if guard == nil {
+		// Account folders are an account-wide grant, so a single-Crew token
+		// cannot acquire them implicitly. References keep current visibility and
+		// the connection's existing target bounds.
+		if claims.AccessToken == nil || claims.AccessToken.AllCrews {
+			folderReads, folderWrites, readOnly, env := workFolderGuardInputs(r.Context())
+			cfg := common.GetSessionShellConfig(session)
+			common.SetSessionFolderGuard(session, appendUniqueStrings(cfg.ReadPaths, folderReads...), appendUniqueStrings(cfg.WritePaths, folderWrites...))
+			common.SetSessionFolderGuardBlockedWritePaths(session, appendUniqueStrings(cfg.BlockedWritePaths, readOnly...))
+			common.ReplaceSessionShellEnvPrefix(session, "WORK_FOLDER_", env)
+		}
+		references, refErr := readWorkWorkflowReferences(r.Context(), root)
+		if refErr != nil {
+			externalError(w, 502, "references_unavailable", "Cannot resolve the Crew's current reference policy.")
+			return
+		}
+		allowed := []string{}
+		for _, ref := range references {
+			write := isCrewProjectPath(ref)
+			if api.externalCrewReferenceAllowed(r.Context(), claims, ref, write) {
+				allowed = append(allowed, ref)
+			}
+		}
+		updateWorkSessionWorkflowGuard(session, allowed)
+	}
 	common.SetSessionSandbox(session, profile.Runtime.Sandbox.IsStrict(), profile.Runtime.Sandbox.NetworkDisabled())
 	bindConversationBrowserIsolation(session, claims.UserID, root, nil)
 	// Only trusted transport code assigns database authority and location.
