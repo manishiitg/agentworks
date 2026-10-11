@@ -83,7 +83,7 @@ describe('terminal toolbar shared tools', () => {
     useChatStore.getState().setTabStreaming('A', true)
     await act(async () => renderComposer(undefined, false))
     const submit = host.querySelector<HTMLButtonElement>('[data-testid="chat-submit-button"]')!
-    expect(submit.textContent).toContain('Queue next')
+    expect(submit.getAttribute('aria-label')).toBe('Queue next')
     await act(async () => submit.click())
     expect(send).toHaveBeenLastCalledWith('review this file', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
     const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
@@ -93,6 +93,35 @@ describe('terminal toolbar shared tools', () => {
     })
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(send).toHaveBeenLastCalledWith('second message', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
+  })
+  it('opens slash commands from the send-options menu without changing the draft or delivery mode', async () => {
+    await act(async () => {
+      setUserCommands([{ command: 'menu-review', description: 'Review via menu', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => ctx.onSubmit('review via menu') }])
+      useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
+      renderComposer(undefined, false)
+    })
+    expect(host.querySelector('[data-testid="chat-command-menu-button"]')).toBeNull()
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Send options: Queue next"]')!
+    await act(async () => {
+      trigger.focus()
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+    const commands = document.querySelector<HTMLElement>('[data-testid="chat-command-menu-button"]')!
+    expect(commands.textContent).toContain('Slash commands')
+    await act(async () => {
+      commands.focus()
+      commands.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
+    expect(input.value).toBe('review this file')
+    expect(document.activeElement).toBe(input)
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+    expect(useChatStore.getState().getTabConfig('A')?.sendDeliveryMode).toBe('queue')
+    const command = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes('/menu-review'))!
+    expect(command).toBeTruthy()
+    await act(async () => command.click())
+    expect(send).toHaveBeenCalledWith('review via menu', expect.objectContaining({ sourceTabId: 'A' }))
   })
   const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
   const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!

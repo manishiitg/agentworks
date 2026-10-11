@@ -19,23 +19,23 @@ it('lets a keyboard user select Queue next, send with that intent, and retain it
   HTMLElement.prototype.scrollIntoView = vi.fn()
   try {
     await act(async () => root.render(<Composer busy />))
-    expect(host.querySelector('[data-testid="chat-submit-button"]')?.textContent).toContain('Steer')
+    expect(host.querySelector('[data-testid="chat-submit-button"]')?.getAttribute('aria-label')).toBe('Steer')
     await act(async () => {
-      const trigger = host.querySelector<HTMLButtonElement>('[role="combobox"]')!
+      const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
       trigger.focus()
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     })
-    const queue = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent?.includes('Queue next'))!
+    const queue = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(option => option.textContent?.includes('Queue next'))!
     expect(queue).toBeTruthy()
     await act(async () => {
       queue.focus()
       queue.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
-    expect(host.querySelector('[data-testid="chat-submit-button"]')?.textContent).toContain('Queue next')
+    expect(host.querySelector('[data-testid="chat-submit-button"]')?.getAttribute('aria-label')).toBe('Queue next')
     await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="chat-submit-button"]')!.click())
     expect(send).toHaveBeenLastCalledWith('queue')
     await act(async () => root.render(<Composer busy={false} />))
-    expect(host.querySelector('[data-testid="chat-submit-button"]')?.textContent).toContain('Send')
+    expect(host.querySelector('[data-testid="chat-submit-button"]')?.getAttribute('aria-label')).toBe('Send')
     await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="chat-submit-button"]')!.click())
     expect(send).toHaveBeenLastCalledWith('queue')
   } finally {

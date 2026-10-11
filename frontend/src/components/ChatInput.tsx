@@ -2958,27 +2958,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       autoSubmitOnStop={sparkQuillComposerLayout ? () => readVoiceAutoSendPref() : undefined}
     />
   )
-  const sparkleEl = productCommandsAvailable ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onMouseDown={event => { event.preventDefault(); event.stopPropagation() }}
-          onClick={openCommandMenu}
-          className="h-7 w-7 p-0"
-          data-testid="chat-command-menu-button"
-          aria-label="Browse commands"
-        >
-          <Wand2 className="w-3.5 h-3.5" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>Browse commands</p>
-      </TooltipContent>
-    </Tooltip>
-  ) : null
   const attachmentEl = (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -3662,7 +3641,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               {(
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
-                      {/* New chat and the commands (wand) sit with the send controls, on the right (owner 2026-10-03). */}
+                      {/* New chat sits with the send controls; commands live in the send-options popup. */}
                       {showNewChatAction && onNewChat ? (
                   // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
                   <button
@@ -3679,7 +3658,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     </span>
                   </button>
                 ) : null}
-                      {sparkleEl}
                       {!nativeTerminalTools && micEl}
                       {/* Stop and send stay separate; Enter follows the selected delivery mode. */}
                       {backgroundWorkPill}
@@ -3689,6 +3667,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         busy={isStreaming || transcriptTurnActive}
                         disabled={submitButtonDisabled}
                         onSend={handleSendButtonClick}
+                        onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
                     </div>
