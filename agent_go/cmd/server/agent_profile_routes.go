@@ -33,6 +33,7 @@ const maxAgentProfileRequestBytes = 2 << 20
 // among a product-curated set of coding-agent runtimes (see ProviderOption's
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
+	DeliveryMode        string               `json:"delivery_mode,omitempty"`
 	CodeChatMode        string               `json:"code_chat_mode,omitempty"`
 	CodeChatAttachments []string             `json:"code_chat_attachments,omitempty"`
 	CodeLocalFiles      *codeLocalFileTarget `json:"code_local_files,omitempty"`
@@ -139,6 +140,9 @@ func hasSelectedServers(servers []string) bool {
 }
 
 func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	if !validChatDeliveryMode(input.DeliveryMode) {
+		return QueryRequest{}, fmt.Errorf("delivery_mode must be steer or queue")
+	}
 	if input.CodeChatMode != "" && profile.ID != "code" {
 		return QueryRequest{}, fmt.Errorf("chat mode is available only in Code")
 	}
@@ -163,6 +167,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		CodeChatMode:                input.CodeChatMode,
 		CodeChatAttachments:         input.CodeChatAttachments,
 		Query:                       input.Message,
+		DeliveryMode:                input.DeliveryMode,
 		ConnectionID:                firstNonEmptyTrimmed(input.ConnectionID, conversation.ConnectionID),
 		SessionTitle:                firstNonEmptyTrimmed(conversation.Title, profile.Name),
 		AgentMode:                   "multi-agent",

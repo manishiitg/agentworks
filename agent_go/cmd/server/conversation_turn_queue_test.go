@@ -26,6 +26,8 @@ func TestRetainedDeliveryPrecedesTurnQueueOnlyForHumanInput(t *testing.T) {
 		want bool
 	}{
 		{"ordinary chat", QueryRequest{AgentMode: "multi-agent"}, context.Background(), true},
+		{"selected steer", QueryRequest{AgentMode: "multi-agent", DeliveryMode: "steer"}, context.Background(), true},
+		{"selected queue", QueryRequest{AgentMode: "multi-agent", DeliveryMode: "queue"}, context.Background(), false},
 		{"workflow chat", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual"}, context.Background(), true},
 		{"synthetic notification", QueryRequest{AgentMode: "multi-agent", IsAutoNotification: true}, context.Background(), false},
 		{"scheduled turn", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "cron"}, context.Background(), false},

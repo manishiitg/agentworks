@@ -390,9 +390,10 @@ export interface ChatTabConfig {
   restoredConversationWorkshopModeLabel?: string  // Builder/Optimizer/Run label for pending resumed workflow conversation
   restoredConversationRuntimeLabel?: string  // Provider/model display for pending resumed conversation
   restoredConversationNativeResume?: boolean  // Whether restore should use the CLI path instead of visible file-context fallback
+  sendDeliveryMode?: 'steer' | 'queue'  // Remember the person’s choice within this chat.
   queuedMessages: string[]  // Queue of messages to send one by one when chat completes
   pastedAttachments?: PastedAttachment[]  // Long pastes captured as attachment chips, prepended on send
-  pendingSubmission?: { id: string; message: string; sessionId: string; targetTabId?: string; status?: 'pending' | 'uncertain' }
+  pendingSubmission?: { id: string; message: string; sessionId: string; targetTabId?: string; status?: 'pending' | 'uncertain'; deliveryMode?: 'steer' | 'queue' }
   queuedSubmission?: { id: string; messages: string[]; sessionId: string; queueIndex?: number; queuePrefix?: string[]; accepted?: boolean }
   queueError?: string
   isQueueProcessing?: boolean  // Lock to prevent multiple ChatArea instances from double-processing the queue

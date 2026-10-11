@@ -86,6 +86,9 @@ export interface GetEventsResponse {
 }
 
 export interface PendingQueuedMessage {
+  message_id?: string
+  steering?: boolean
+  delivery_error?: string
   client_message_id: string
   content: string
   queued_at?: string

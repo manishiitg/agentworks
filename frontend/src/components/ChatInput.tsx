@@ -20,7 +20,9 @@ import { SessionStopButton } from './SessionStopButton'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
-import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
+import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
+import { ChatSendModeButton } from './chat/ChatSendModeButton'
+import { DurableChatQueue } from './chat/DurableChatQueue'
 import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import FileSelectionDialog from './FileSelectionDialog'
@@ -619,6 +621,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // briefly so it does not swap with Send (useHeldTurnInFlight).
   const isTurnShownInFlight = useHeldTurnInFlight(foregroundTurnActive, activeTab?.isCompleted ?? false, activeTabId ?? null)
   const canSteer = activeTab?.canSteer ?? false
+  const deliveryMode = tabConfig?.sendDeliveryMode ?? 'steer'
   const tabSessionId = activeTab?.sessionId ?? null
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
   const activeSession = useChatStore(state => {
@@ -2187,6 +2190,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         try {
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
+            deliveryMode,
           })
         } catch (error) {
           console.error('[ChatInput] Live message submission failed', error)
@@ -2214,7 +2218,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const submittedDraft = captureChatDraft(submittedTabId)
       let accepted: boolean | void
       try {
-        accepted = await onSubmit(query, { sourceTabId: submittedTabId })
+        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode })
       } catch (error) {
         console.error('[ChatInput] Message submission failed', error)
         accepted = false
@@ -2240,7 +2244,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, canSubmit, isStreaming, isUploadingFiles, queueStreamingMessage, pendingNativeChoice])
+  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, canSubmit, isStreaming, isUploadingFiles, queueStreamingMessage, pendingNativeChoice])
 
   // SparkQuill's voice auto-send: handleVoiceText already merged the
   // transcript into localInputText, but queryToSubmit (which also layers in
@@ -3161,6 +3165,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           <div ref={setMicBannerHost} className="empty:hidden" />
+          {tabSessionId && activeTabId && !isViewOnly && <DurableChatQueue key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canSteer={canSteer || supportsLiveCodingAgentInput} />}
         </>}>
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
@@ -3676,44 +3681,24 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 ) : null}
                       {sparkleEl}
                       {!nativeTerminalTools && micEl}
-                      {/* Enter still sends/steers a follow-up while the primary
-                          button stops the running session. */}
+                      {/* Stop and send stay separate; Enter follows the selected delivery mode. */}
                       {backgroundWorkPill}
-                      {showStopButton ? stopButton : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <ChatComposerSendButton
-                              product={isProductSurface}
-                              type="button"
-                              onClick={handleSendButtonClick}
-                              disabled={submitButtonDisabled}
-                              data-testid="chat-submit-button"
-                              aria-label={nativeTerminalTools ? "Send to terminal" : "Send message"}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {isViewOnly
-                                ? 'View only — cannot continue this conversation'
-                                : isUploadingFiles
-                                  ? 'Wait for the file upload to finish'
-                                : !inputText?.trim()
-                                  ? 'Type a message to send'
-                                  : isCdpDisconnected
-                                    ? 'Chrome CDP not reachable. Check connection.'
-                                    : !tabSessionId && !canBootstrapWorkflowPhaseTab && !canBootstrapMultiAgentTab
-                                        ? 'Session not ready yet'
-                                        : 'Send message'
-                              }
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      {showStopButton && stopButton}
+                      <ChatSendModeButton
+                        mode={deliveryMode}
+                        busy={isStreaming || transcriptTurnActive}
+                        disabled={submitButtonDisabled}
+                        onSend={handleSendButtonClick}
+                        onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
+                      />
                     </div>
                 </div>
               )}
             </ChatComposerControls>
         </ChatComposerForm>
+        <p className="mt-1 text-right text-[10px] text-muted-foreground">
+          Enter to {isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'queue next' : 'steer') : 'send'} · Shift+Enter for a new line
+        </p>
         <input
           ref={fileUploadInputRef}
           type="file"

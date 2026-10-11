@@ -787,6 +787,8 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
+	// DeliveryMode is a person’s choice for this message; empty preserves steering.
+	DeliveryMode               string `json:"delivery_mode,omitempty"`
 	ExternalBuilderOperationID string `json:"-"` // Set from authenticated execution claims.
 	// secretsWorkspacePath is the workflow/project whose stored secrets this turn loaded (PLAT-658): a retained CLI
 	// launched with them is not steered once they change.
@@ -1509,7 +1511,7 @@ func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
 	claims := GetUserFromContext(ctx)
-	if conversationTurnQueueExecution(ctx) || req.DisableLiveInputDelivery ||
+	if conversationTurnQueueExecution(ctx) || req.DisableLiveInputDelivery || req.DeliveryMode == "queue" ||
 		req.IsAutoNotification || req.PulseLifecycleTurn ||
 		(claims != nil && claims.AccessToken != nil) {
 		return false
@@ -2816,6 +2818,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal", api.handleGetMainTerminal).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal/stream", api.handleMainTerminalStream).Methods("GET")
 	// The chat's own background work and a per-item Stop (PLAT-705); owner-scoped, not diagnostics-only.
+	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages", api.handleQueuedConversationMessages).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}", api.handleRemoveQueuedConversationMessage).Methods("DELETE")
+	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}/steer", api.handleSteerQueuedConversationMessage).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/execution-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionExecutionTree)).Methods("GET")
@@ -3854,6 +3859,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorMsg := fmt.Sprintf("Invalid request body: %v", err)
 		http.Error(w, errorMsg, http.StatusBadRequest)
+		return
+	}
+	if !validChatDeliveryMode(req.DeliveryMode) {
+		http.Error(w, "delivery_mode must be steer or queue", http.StatusBadRequest)
 		return
 	}
 	// External Builder authority is carried only by authenticated dispatch/queue

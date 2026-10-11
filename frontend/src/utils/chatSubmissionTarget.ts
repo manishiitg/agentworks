@@ -1,4 +1,5 @@
 export interface ChatSubmissionOptions {
+  deliveryMode?: 'steer' | 'queue'
   isAutoNotification?: boolean
   sourceTabId?: string
   sourceSessionId?: string

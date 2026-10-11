@@ -2750,7 +2750,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       useChatStore.getState().getTab(currentTab.tabId)?.sessionId !== options.sourceSessionId
     )) return false
     const receipt = { id: options?.submissionId ?? crypto.randomUUID(), message: trimmedQuery,
-      sessionId: tabSessionId, targetTabId: currentTab.tabId }
+      sessionId: tabSessionId, targetTabId: currentTab.tabId, deliveryMode: options?.deliveryMode }
     const submittedAtPerformanceMS = options?.submittedAtPerformanceMS ?? performance.now()
     const submittedAtClientTime = options?.submittedAtClientTime ?? new Date().toISOString()
     recordChatSubmissionTelemetry('submitted', tabSessionId, receipt.id, {
@@ -3080,6 +3080,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         enabled_servers: requestPayload.enabled_servers,
       })
 
+      requestPayload.delivery_mode = options?.deliveryMode
+
       // Mark auto-notification requests so backend treats them as synthetic turns
       if (options?.isAutoNotification) {
         requestPayload.is_auto_notification = true
@@ -3299,6 +3301,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const retry = retryTarget && retryTarget.sessionId === pending?.sessionId ? pending : undefined
     const submissionId = options?.submissionId ?? retry?.id ?? crypto.randomUUID()
     const captured: ChatSubmissionOptions = { ...options, identity,
+      deliveryMode: retry?.deliveryMode ?? options?.deliveryMode,
       sourceTabId: sourceTab?.tabId,
       sourceSessionId: options?.sourceSessionId ?? (!isBuilder ? sourceTab?.sessionId ?? undefined : undefined),
       submissionId,

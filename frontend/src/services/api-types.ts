@@ -89,6 +89,7 @@ export type ExtendedLLMConfiguration = Omit<LLMConfiguration, 'api_keys'> & {
 
 // Agent streaming types
 export interface AgentQueryRequest {
+  delivery_mode?: 'steer' | 'queue'
   connection_id?: string
   query: string
   provider?: LLMProvider
@@ -215,6 +216,7 @@ export interface AgentQueryResponse {
 // skills from the same shared controls as AgentWorks; the server accepts those
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
+  delivery_mode?: 'steer' | 'queue'
   code_chat_mode?: 'server' | 'local'
   /** Read-only uploads for this Local chat; revalidated against the owner/session folder. */
   code_chat_attachments?: string[]

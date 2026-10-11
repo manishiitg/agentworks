@@ -121,6 +121,17 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Each chat can choose Steer or Queue next (PLAT-791)
+
+The composer remembers a delivery preference within the chat. Steer remains the default:
+a follow-up can change the current task. Queue next creates a separate durable turn that
+runs after the active turn completes, in submission order. Both submit through the normal
+query contract; the server makes the routing decision using the actual session state.
+Queued messages stay visible across reloads, with Remove and Steer now actions. Stop
+remains separate from Send so a follow-up can be sent while the agent is working.
+Explicitly queued turns are retained until dispatch rather than expiring after 30 minutes.
+Ticket: [PLAT-791](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/sessions/plat-791.md).
+
 ### 2026-10-11 — Dashboard editing uses existing product authoring consent (PLAT-856)
 
 Remove separate dashboard-write consent from issuance, OAuth and tool gates.

@@ -11,7 +11,7 @@ export function clientMessageEventId(clientMessageId: string): string {
   return CLIENT_MESSAGE_EVENT_ID_PREFIX + clientMessageId
 }
 
-function userMessageMetadata(event: PollingEvent): Record<string, unknown> {
+export function userMessageMetadata(event: PollingEvent): Record<string, unknown> {
   const outer = event.data as unknown as Record<string, unknown> | undefined
   const inner = (outer?.data ?? {}) as Record<string, unknown>
   const metadata = inner.metadata
@@ -118,6 +118,7 @@ export function pendingQueuedProvisionals(
             timestamp,
             metadata: {
               client_message_id: message.client_message_id,
+              ...(message.message_id ? { queue_message_id: message.message_id } : {}),
               provisional: true,
               delivery_status: 'queued_for_turn',
               ...(message.queue_position ? { queue_position: message.queue_position } : {}),

@@ -1183,6 +1183,19 @@ export const agentApi = {
   },
 
   // Start a new agent query
+  getQueuedMessages: async (sessionId: string): Promise<import('../../shared/session/types').PendingQueuedMessage[]> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages`, { headers: { 'X-Session-ID': sessionId } })
+    return response.data.messages
+  },
+
+  removeQueuedMessage: async (sessionId: string, messageId: string) => {
+    await api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`, { headers: { 'X-Session-ID': sessionId } })
+  },
+
+  steerQueuedMessage: async (sessionId: string, messageId: string) => {
+    await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/steer`, {}, { headers: { 'X-Session-ID': sessionId } })
+  },
+
   startQuery: async (request: AgentQueryRequest, sessionId?: string, context?: ChatRequestContext): Promise<AgentQueryResponse> => {
     const config = chatRequestConfig(sessionId, context)
     const response = await api.post('/api/query', request, config)

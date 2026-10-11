@@ -67,14 +67,16 @@ type queuedConversationPrincipal struct {
 }
 
 type queuedConversationTurn struct {
-	ID           string                      `json:"id"`
-	UserID       string                      `json:"user_id"`
-	SessionID    string                      `json:"session_id"`
-	Request      QueryRequest                `json:"request"`
-	Principal    queuedConversationPrincipal `json:"principal,omitempty"`
-	SubmissionID string                      `json:"submission_id,omitempty"`
-	CreatedAt    time.Time                   `json:"created_at"`
-	StartedAt    *time.Time                  `json:"started_at,omitempty"`
+	ID            string                      `json:"id"`
+	UserID        string                      `json:"user_id"`
+	SessionID     string                      `json:"session_id"`
+	Request       QueryRequest                `json:"request"`
+	Principal     queuedConversationPrincipal `json:"principal,omitempty"`
+	SubmissionID  string                      `json:"submission_id,omitempty"`
+	CreatedAt     time.Time                   `json:"created_at"`
+	StartedAt     *time.Time                  `json:"started_at,omitempty"`
+	Steering      bool                        `json:"steering,omitempty"`
+	DeliveryError string                      `json:"delivery_error,omitempty"`
 }
 
 type conversationTurnQueueDocument struct {
@@ -230,7 +232,7 @@ func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, 
 		return queuedConversationTurn{}, false
 	}
 	for i := range turns {
-		if turns[i].SessionID != sessionID || turns[i].StartedAt != nil {
+		if turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" {
 			continue
 		}
 		now := time.Now().UTC()
@@ -605,6 +607,11 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		}
 		turns = dropStaleWaitingTurns(turns, time.Now().UTC())
 		for i := range turns {
+			if turns[i].Steering {
+				// An interrupted steer may have reached the CLI. Never replay it blindly.
+				turns[i].DeliveryError = "Delivery unconfirmed after restart. Check the chat before resending."
+				turns[i].Steering = false
+			}
 			turns[i].StartedAt = nil
 		}
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
@@ -637,7 +644,7 @@ const staleWaitingTurnAge = 30 * time.Minute
 func dropStaleWaitingTurns(turns []queuedConversationTurn, now time.Time) []queuedConversationTurn {
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
-		if turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
+		if turn.Request.DeliveryMode != "queue" && turn.DeliveryError == "" && turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
 			logTurnQueue("dropping a message that waited %s without starting (session %s)", now.Sub(turn.CreatedAt).Round(time.Minute), turn.SessionID)
 			continue
 		}
@@ -652,6 +659,9 @@ func logTurnQueue(format string, args ...interface{}) {
 
 // PendingQueuedMessage is a keyed message waiting in the durable turn queue.
 type PendingQueuedMessage struct {
+	MessageID       string    `json:"message_id"`
+	Steering        bool      `json:"steering,omitempty"`
+	DeliveryError   string    `json:"delivery_error,omitempty"`
 	ClientMessageID string    `json:"client_message_id"`
 	Content         string    `json:"content"`
 	QueuedAt        time.Time `json:"queued_at"`
@@ -668,9 +678,13 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 	if err != nil {
 		return nil
 	}
+	return pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+}
+
+func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sessionID string) []PendingQueuedMessage {
 	var pending []PendingQueuedMessage
 	for _, turn := range turns {
-		if turn.SessionID != sessionID || turn.StartedAt != nil {
+		if turn.UserID != userID || turn.SessionID != sessionID || (turn.StartedAt != nil && !turn.Steering) {
 			continue
 		}
 		clientMessageID := sanitizeClientMessageID(turn.SubmissionID)
@@ -678,6 +692,9 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 			continue
 		}
 		pending = append(pending, PendingQueuedMessage{
+			MessageID:       turn.ID,
+			Steering:        turn.Steering,
+			DeliveryError:   turn.DeliveryError,
 			ClientMessageID: clientMessageID,
 			Content:         turn.Request.Query,
 			QueuedAt:        turn.CreatedAt,

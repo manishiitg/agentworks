@@ -62,6 +62,7 @@ describe('agent profile query binding', () => {
       restored_conversation_path: 'Chats/product-history.json',
     } as unknown as AgentQueryRequest
 
+    expect(buildAgentProfileChatRequest({ ...payload, delivery_mode: 'queue' }, 'project-123').delivery_mode).toBe('queue')
     expect(buildAgentProfileChatRequest(payload, 'project-123')).toEqual({
       message: 'Explain today\'s portfolio changes',
       conversation_key: 'project-123',

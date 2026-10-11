@@ -65,6 +65,7 @@ describe('terminal toolbar shared tools', () => {
     useChatStore.setState({ activeTabId: 'A', chatTabs: { A: terminalTab('A'), B: terminalTab('B') }, activeSessionsCache: [], tabEvents: {} })
     useWorkspaceStore.setState({ activeFolder: 'Workflow/project' })
     vi.spyOn(useWorkspaceStore.getState(), 'fetchFiles').mockResolvedValue(undefined)
+    vi.spyOn(agentApi, 'getQueuedMessages').mockResolvedValue([])
     vi.spyOn(agentApi, 'listTerminals').mockResolvedValue({ terminals: [] } as never)
     vi.spyOn(agentApi, 'uploadPlannerFile').mockResolvedValue({ data: { file_path: 'Workflow/project/example.txt', absolute_path: '/workspace/Workflow/project/example.txt' } } as never)
     vi.spyOn(agentApi, 'getMainTerminal').mockImplementation(async sessionId => ({ terminal_id: `${sessionId}:main`, session_id: sessionId, tmux_session: `${sessionId}-tmux`, process_state: 'live', active: false } as never))
@@ -76,6 +77,22 @@ describe('terminal toolbar shared tools', () => {
   afterEach(async () => {
     await act(async () => root?.unmount())
     useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear()
+  })
+  it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
+    useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
+    useChatStore.getState().setTabStreaming('A', true)
+    await act(async () => renderComposer(undefined, false))
+    const submit = host.querySelector<HTMLButtonElement>('[data-testid="chat-submit-button"]')!
+    expect(submit.textContent).toContain('Queue next')
+    await act(async () => submit.click())
+    expect(send).toHaveBeenLastCalledWith('review this file', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
+    const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'second message')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(send).toHaveBeenLastCalledWith('second message', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
   })
   const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
   const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
