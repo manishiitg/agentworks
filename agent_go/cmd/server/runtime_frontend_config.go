@@ -20,6 +20,11 @@ import (
 // AGENTWORKS_ENABLED_PRODUCT_SURFACES/AGENTWORKS_DEFAULT_PRODUCT_SURFACE so
 // the frontend's product-surface switcher pins to its intended surface(s).
 func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
+	// Managed workspace services require a private token held by the agent
+	// proxy. Browsers must never call the service directly or receive its token.
+	if strings.TrimSpace(os.Getenv("WORKSPACE_API_TOKEN")) != "" {
+		workspaceURL = fmt.Sprintf("http://localhost:%d/api/wp", actualPort)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:%d\",\n  workspaceApiBaseUrl: %q", actualPort, workspaceURL)
 	fmt.Fprintf(&b, ",\n  cdpEnabled: %t", browser.CDPEnabled())

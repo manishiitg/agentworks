@@ -6,6 +6,7 @@ import (
 )
 
 func TestRuntimeFrontendConfigJSDefaultsToAgentWorksWorkAndCode(t *testing.T) {
+	t.Setenv("WORKSPACE_API_TOKEN", "")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
@@ -17,6 +18,19 @@ func TestRuntimeFrontendConfigJSDefaultsToAgentWorksWorkAndCode(t *testing.T) {
 	want := "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:45678\",\n  workspaceApiBaseUrl: \"http://localhost:45679\",\n  cdpEnabled: true,\n  enabledProductSurfaces: [\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\"],\n  defaultProductSurface: \"agentworks\"\n};\n"
 	if got != want {
 		t.Fatalf("a plain AgentWorks deployment must expose AgentWorks, Relays, Crew, Code, Vault, and Brain\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestRuntimeFrontendManagedWorkspaceUsesAgentProxy(t *testing.T) {
+	t.Setenv("WORKSPACE_API_TOKEN", "private-workspace-test-token")
+	got := runtimeFrontendConfigJS(45678, "http://localhost:45679")
+	if !strings.Contains(got, `workspaceApiBaseUrl: "http://localhost:45678/api/wp"`) {
+		t.Fatalf("managed workspace requests must use the authenticated agent proxy: %s", got)
+	}
+	for _, privateValue := range []string{"private-workspace-test-token", "http://localhost:45679"} {
+		if strings.Contains(got, privateValue) {
+			t.Fatalf("runtime config exposes private workspace connection details: %s", got)
+		}
 	}
 }
 
