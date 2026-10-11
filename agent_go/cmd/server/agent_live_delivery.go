@@ -36,8 +36,12 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || (externalArg(args, "action") != "attach" && externalArg(args, "action") != "detach") {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || (externalArg(args, "action") != "attach" && externalArg(args, "action") != "detach" && externalArg(args, "action") != "validate") {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
+		return
+	}
+	if externalArg(args, "action") == "validate" {
+		api.validateAgentOffers(w, r, args)
 		return
 	}
 	api.externalAgentAttachment(w, r, args)
@@ -95,7 +99,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
-		if !slices.Contains([]string{"codex", "claude", "muse", "cursor"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || purpose == "" || len(purpose) > 512 {
+		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || purpose == "" || len(purpose) > 512 {
 			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and purpose (1 to 512 bytes).")
 			return
 		}
@@ -139,7 +143,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if !slices.Contains([]string{"admitted", "typed", "processed", "failed"}, delivery) || !slices.Contains([]string{"codex_queue", "claude_channel", "muse_session", "tmux", "mailbox"}, transport) || delivery == "typed" && transport != "tmux" || delivery == "admitted" && transport == "tmux" {
+		if !slices.Contains([]string{"admitted", "typed", "processed", "failed"}, delivery) || !slices.Contains([]string{"codex_queue", "claude_channel", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "muse_session", "tmux", "mailbox"}, transport) || delivery == "typed" && transport != "tmux" || delivery == "admitted" && transport == "tmux" {
 			externalError(w, 400, "invalid_arguments", "Use an adapter receipt: admitted, typed (tmux only), processed (explicit agent acknowledgement), or failed.")
 			return
 		}
@@ -167,7 +171,8 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				m.Delivery = delivery
 				m.LiveTransport = transport
 				m.LiveSession = a.Attachment.SessionID
-				if transport == "claude_channel" && a.Attachment.Provider != "claude" || transport == "codex_queue" && a.Attachment.Provider != "codex" || transport == "muse_session" && a.Attachment.Provider != "muse" {
+				providerForTransport := map[string]string{"claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
+				if providerForTransport[transport] != "" && a.Attachment.Provider != providerForTransport[transport] {
 					externalError(w, 400, "invalid_arguments", "Receipt transport does not match the attached provider.")
 					return
 				}
@@ -369,4 +374,47 @@ func recordAgentMessageOffer(ctx context.Context, agentID, attachmentID, message
 		}
 	}
 	return fmt.Errorf("message changed")
+}
+
+// Recheck durable offers immediately before releasing a local cached body. This
+// reads current authority without fabricating admitted/processed receipts.
+func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	a, live, err := currentAgentAttachment(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
+	if err != nil {
+		externalError(w, 403, "attachment_refused", "Exact attachment unavailable or access denied.")
+		return
+	}
+	var ids []string
+	raw, _ := json.Marshal(args["message_ids"])
+	if json.Unmarshal(raw, &ids) != nil || len(ids) > 20 {
+		externalError(w, 400, "invalid_arguments", "At most 20 message IDs required.")
+		return
+	}
+	agentMessageMu.Lock()
+	s, err := readAgentMessageStore(r.Context())
+	agentMessageMu.Unlock()
+	if err != nil {
+		externalError(w, 500, "store_unavailable", "Cannot validate pending messages.")
+		return
+	}
+	permitted := []string{}
+	for _, id := range ids {
+		for _, c := range s.Conversations {
+			for _, m := range c.Messages {
+				if m.ID != id || m.LiveAttachment != a.Attachment.ID || c.Endpoints[1-m.From].NamedAgentID != a.ID || m.Delivery != "stored" {
+					continue
+				}
+				src := c.Endpoints[m.From]
+				if !slices.Contains(a.Attachment.AllowedSenders, src.NamedAgentID) || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+					continue
+				}
+				permitted = append(permitted, id)
+			}
+		}
+	}
+	if _, _, err = currentAgentAttachment(r.Context(), live, a.Name, a.Attachment.ID); err != nil {
+		externalError(w, 403, "attachment_refused", "Attachment changed.")
+		return
+	}
+	externalJSON(w, map[string]any{"message_ids": permitted})
 }

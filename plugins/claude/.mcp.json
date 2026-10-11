@@ -1,0 +1,10 @@
+{
+  "agentworks-live": {
+    "command": "agentworks",
+    "args": [
+      "plugin",
+      "mcp",
+      "claude"
+    ]
+  }
+}

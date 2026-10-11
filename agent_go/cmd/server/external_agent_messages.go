@@ -307,7 +307,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
 		"message_id":             externalString("Incoming message ID being explicitly acknowledged."),
 		"delivery":               externalString("Adapter receipt: admitted, typed, processed or failed; processed requires an explicit receiving-agent acknowledgement."),
-		"transport":              externalString("Receipt route: codex_queue, claude_channel, muse_session, tmux or mailbox."),
+		"transport":              externalString("Receipt route: codex_queue, codex_hook, claude_channel, claude_hook, muse_session, tmux or mailbox."),
 		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),

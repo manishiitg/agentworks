@@ -1,5 +1,22 @@
 # Decisions and open issues
 
+## 2026-10-11 — Person-attached plugins use a durable local message bridge (PLAT-861)
+
+Package Claude and Codex hooks, MCP connections, person commands and messaging
+skills. Hooks are the default turn-boundary route; optional native channels/queues
+wake idle sessions, otherwise notify the person. tmux remains opt-in. Bind sessions
+from the host hook input, never from the newest chat or a project match. Consume
+person attach commands before model execution and keep trust prompts intact.
+Persist offers before delivery to prevent duplicate automatic turns after restart;
+ambiguous crashes require explicit mailbox reads. Recheck cached message authority
+before release. Native acceptance and agent processing remain distinct receipts.
+Why: real-time coordination must preserve the person's session, input and consent.
+Messaging plugins expose only messaging for the attached identity; broader
+AgentWorks MCP tools require a separate person opt-in. CLI-only attachment is a
+tool boundary, not OS isolation against credential access.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-35/36/37/38.
+
 ## 2026-10-11 — MCP offer evidence stays separate from connection status (PLAT-856)
 
 Show provider offer badges, an Offers filter and expandable evidence only in

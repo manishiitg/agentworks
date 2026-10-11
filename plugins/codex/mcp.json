@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "agentworks": {
+      "command": "agentworks",
+      "args": [
+        "plugin",
+        "mcp",
+        "codex"
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "agentworks",
+  "version": "1.0.0",
+  "description": "AgentWorks named-agent communication with person-controlled session attachment",
+  "author": {
+    "name": "AgentWorks"
+  },
+  "homepage": "https://github.com/manishiitg/agentworks",
+  "license": "MIT"
+}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -76,7 +77,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	call(stranger, map[string]any{"action": "register", "agent_name": "stranger"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", AllowedSenders: []string{"sender"}, Log: os.Stderr})
+	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", AllowedSenders: []string{"sender"}, JournalDir: filepath.Join(t.TempDir(), "private-journal"), Log: os.Stderr})
 	if err != nil {
 		t.Fatal(err)
 	}
