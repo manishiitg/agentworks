@@ -41,6 +41,9 @@ func (r crewCapabilityRegistrar) RegisterCustomTool(name, description string, sc
 		return err
 	}
 	normalized["additionalProperties"] = false
+	if normalized["required"] == nil {
+		delete(normalized, "required")
+	}
 	// MCP setup keeps credential entry in Integrations and excludes arbitrary process config.
 	if name == "install_mcp_server" {
 		props := normalized["properties"].(map[string]any)
