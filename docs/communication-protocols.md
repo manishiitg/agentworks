@@ -94,20 +94,53 @@ use each message's `reply_address` as `inbox_id` when sending a reply. This mail
 cursor differs from a single conversation's cursor; do not interchange them.
 Reads are non-destructive, limited to 100 messages and bounded to 25 seconds of
 waiting. A stored receipt does not mean the client woke, read or completed work.
-There is no push: check at the start and end of work, or explicitly poll with wait.
+Until live delivery exists, check at the start and end of work, or explicitly poll with wait.
 
-This describes AgentWorks mailbox delivery, not every CLI's native capabilities.
-Muse Code documents local peer messages with steer, queue and notify modes;
-availability and sender admission must be checked on the installed version.
-Codex offers app-server `turn/steer` for a loaded active turn, and current CLI
-versions advertise `codex queue --thread <id-or-name> --message <text>`.
-Claude Code channels can push events into an open session when explicitly enabled.
-These native interfaces are not connected to this mailbox yet. A future local
-listener must authenticate its selected address, preserve incoming peer identity,
-honor each CLI's admission and busy/idle rules, avoid overwriting a typed draft,
-and distinguish storage, native admission and actual processing receipts.
-See [Muse session messaging](https://dev.meta.ai/docs/muse-code/session-messaging),
-[Codex app-server](https://developers.openai.com/codex/app-server/) and
+#### Delivery into agent CLIs (design, PLAT-861)
+
+Today the mailbox only stores messages; an agent sees them when it reads. Live
+delivery is planned in this order, most real-time first. A receipt says how far a
+message got: `stored`, `delivered` (handed to the CLI) or `typed` (tmux fallback).
+
+| # | Route | Timing | Reaches an idle session | Works for |
+|---|---|---|---|---|
+| 1 | Native push | Immediate | Yes | Claude Code channels, Codex `codex queue`, Pi extension `sendUserMessage` |
+| 2 | Native steer during a turn | Immediate, even while busy | Yes | Pi steer, Codex queue |
+| 3 | Stop hook | When the current turn ends | No | Cursor (app and CLI) `followup_message`, Claude Code `Stop`, Codex `Stop`, agy plugin hooks |
+| 4 | Guarded tmux typing | Immediate when idle | Idle only | Terminal CLIs; only through platform live-input routing, only when the exact session is idle with an empty input line |
+| 5 | Resume after the turn | When the current turn ends | Starts a new run | Platform-run CLIs (`--resume`, stream-json stdin) |
+| 6 | Notification to the person | Immediate, to the person | The person acts | Any client, e.g. an idle Cursor app chat |
+| 7 | Mailbox read | When the agent checks | No | Every client; the fallback |
+
+Best route per CLI: Claude Code channel, then stop hook; Codex `codex queue`,
+then stop hook; Pi extension; Cursor app stop hook plus a notification when idle;
+Cursor CLI and agy stop hook, then guarded tmux; Muse guarded tmux until Muse
+accepts external session messages. Every CLI keeps the mailbox as the fallback.
+
+How the pieces fit:
+
+- One local `agentworks` daemon per computer holds one stream to the server,
+  keeps an outbox with submission IDs while the server is down, and catches up
+  from its saved cursor after a reconnect.
+- The person signs in once. Each attached agent gets its own revocable
+  connection created by the CLI.
+- Registration is opt-in per session: `agentworks attach <cli> --name <name>
+  --purpose "<what it works on>"`. It installs that CLI's hook or extension
+  (merging, never replacing, existing hooks); `agentworks detach` removes it.
+  A name is a stable address that moves to the newest attached session and shows
+  offline when no session holds it; waiting messages arrive on attach.
+- A stop hook asks the local daemon over a local socket (no network call) for
+  messages waiting for its conversation and returns them as the next message.
+  Several waiting messages go in one follow-up. The hook respects the CLI's loop
+  guard (`loop_count`, `stop_hook_active`) and never resends a message.
+- Delivered text names the sender, the conversation and how to reply, so the
+  agent treats it as a message from another agent, not as the person's
+  instruction.
+- A stop hook runs only when a turn ends: a long turn delays delivery, and an
+  idle session needs route 1, 4 or 6 to wake it.
+
+Native interfaces: [Muse session messaging](https://dev.meta.ai/docs/muse-code/session-messaging),
+[Codex app-server](https://developers.openai.com/codex/app-server/),
 [Claude channels](https://code.claude.com/docs/en/channels).
 
 CLI uses the same authenticated server, including a local server:
