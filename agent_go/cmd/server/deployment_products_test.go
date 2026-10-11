@@ -79,3 +79,20 @@ func TestServerInstallationRetainsSharedProducts(t *testing.T) {
 		}
 	}
 }
+
+// A server whose AGENT_PRODUCTS omits agentworks/relays (a dedicated product
+// host) still shows its workflows and Relays to the people granted them.
+func TestServerProductListDoesNotHideGrantedWorkflows(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENT_PRODUCTS", "video-studio,work,code")
+	owner := &UserClaims{UserID: "owner"}
+	for _, kind := range []string{"", "relay"} {
+		manifest := &WorkflowManifest{ID: "wf_server", Kind: kind, Access: &WorkflowAccess{Owners: []string{"owner"}}}
+		if workflowAccessForManifest(owner, manifest) == WorkflowAccessNone {
+			t.Fatalf("server product list hid an owned %q workflow", kind)
+		}
+	}
+	if !userAllowedProduct(nil, "agentworks") {
+		t.Fatal("server product list must not revoke product access")
+	}
+}
