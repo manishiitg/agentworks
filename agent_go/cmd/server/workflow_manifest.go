@@ -1612,7 +1612,8 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 	// A Code project's workflow.json is the same product-owned file (PLAT-701):
 	// its schedules carry no group_names, so the rewrite failed validation on
 	// every read, and had it passed it would have dropped the product fields.
-	mayPersistManifestMigrations := !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
+	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
+	mayPersistManifestMigrations := heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",
