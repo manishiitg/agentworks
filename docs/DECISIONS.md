@@ -42,7 +42,12 @@ and attached MCP connection/cache metadata through existing `crews:read` consent
 Resolve current project access and connection bounds on each call. Never adopt
 the owner's chat; Chrome extension status remains account scoped and owner only.
 Read status without starting a browser, distinguish cached tools from live
-reachability, and omit credentials, endpoint configuration and server-wide logs.
+reachability, and omit credentials, host endpoints/ports, raw errors, commands
+and owner chat IDs. Inventory includes explicitly shared Crew/Playwright browsers
+and the caller's private sessions, following the website. Crew readers may see
+attached names and tool summaries; full parameter schemas require Crew ownership.
+Why this boundary: private connection discovery is account governed; shared
+project visibility should not expose full account connection schemas.
 Why: external clients need the same setup diagnostics without execution rights
 or a new permission level.
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,7 +269,7 @@ func TestExternalCrewAccountFoldersRequireBroadConsent(t *testing.T) {
 // Real MCP calls read the disk-backed Crew while unrelated browsers, private
 // accounts, endpoint config and raw cache errors stay outside the response.
 func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
-	f, _ := newExternalCrewCommandFixture(t)
+	f, workspaceURL := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
 	f.api.logger = loggerv2.NewNoop()
 	for _, name := range []string{"attached", "unattached"} {
@@ -295,9 +297,22 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	unrelatedBrowser := browserSessionForWorkspace("owner", "Crew/another-crew")
 	browser.GetSessionTracker().Touch(selectedBrowser, "crew-chat", "crew-chat")
 	browser.GetSessionTracker().Touch(unrelatedBrowser, "unrelated-chat", "unrelated-chat")
+	browser.GetSessionTracker().RecordAction(selectedBrowser, "open", []string{"https://example.com/private-command-marker"})
+	browser.GetSessionTracker().Touch("owner-private-browser", "owner-run", "owner-run")
+	browser.GetSessionTracker().Touch("reader-private-browser", "reader-run", "reader-run")
+	f.api.activeSessions = map[string]*ActiveSessionInfo{
+		"owner-run":  {UserID: "owner", WorkspacePath: externalCommandCrewRoot},
+		"reader-run": {UserID: "other", WorkspacePath: externalCommandCrewRoot},
+	}
+	f.api.playwrightLive.sessions = map[string]*playwrightLiveSession{
+		"shared-test":    {id: "pw-shared-test", owner: "owner", workspace: playwrightScope("owner", externalCommandCrewRoot), run: "private-playwright-run", label: "Crew test"},
+		"unrelated-test": {id: "pw-unrelated-test", owner: "owner", workspace: playwrightScope("owner", "Crew/another-crew"), run: "unrelated-run", label: "Unrelated test"},
+	}
 	t.Cleanup(func() {
 		browser.GetSessionTracker().Remove(selectedBrowser)
 		browser.GetSessionTracker().Remove(unrelatedBrowser)
+		browser.GetSessionTracker().Remove("owner-private-browser")
+		browser.GetSessionTracker().Remove("reader-private-browser")
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -311,7 +326,7 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": args})
 		requireRemoteSuccess(t, result, "crew_diagnostics")
 		raw := marshalStructured(t, result)
-		for _, hidden := range []string{"unattached", "hidden-endpoint", "private-diagnostic-marker", unrelatedBrowser} {
+		for _, hidden := range []string{"unattached", "hidden-endpoint", "private-diagnostic-marker", unrelatedBrowser, "crew-chat", "private-playwright-run", "private-command-marker", "owner-private-browser", "pw-unrelated-test", "host-probe-error-marker", "authorized_endpoints", "configured_cdp_ports", "reachable_cdp_ports", "check_errors", "recording_error", "agent_session", "workflow_session", `"port"`} {
 			if strings.Contains(raw, hidden) {
 				t.Fatalf("diagnostics leaked %q", hidden)
 			}
@@ -323,17 +338,62 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 		return out
 	}
 	status := call(map[string]any{"action": "browser"})
-	if status["capabilities"].(map[string]any)["effective_mode"] != "headless" || status["extension"].(map[string]any)["available_to_caller"] != false || status["sessions"].(map[string]any)["total"] != float64(1) {
+	if status["capabilities"].(map[string]any)["effective_mode"] != "headless" || status["extension"].(map[string]any)["available_to_caller"] != false || status["sessions"].(map[string]any)["total"] != float64(3) {
 		t.Fatalf("Crew browser status = %v", status)
+	}
+	for _, item := range status["sessions"].(map[string]any)["items"].([]any) {
+		row := item.(map[string]any)
+		wantScope := "shared_crew"
+		if row["browser_session"] == "reader-private-browser" {
+			wantScope = "caller"
+		}
+		if row["scope"] != wantScope || row["read_only"] != "true" {
+			t.Fatalf("browser scope = %v", row)
+		}
+	}
+	// Real capability probes can carry a workspace host/error or CDP endpoint.
+	// Exercise both failure and success; neither may appear in diagnostics.
+	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
+	upstream, err := url.Parse(workspaceURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	connected := false
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cdp-check" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"connected": connected, "error": "host-probe-error-marker"})
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(probe.Close)
+	t.Setenv("WORKSPACE_API_URL", probe.URL)
+	call(map[string]any{"action": "browser"})
+	connected = true
+	if got := call(map[string]any{"action": "browser"})["capabilities"].(map[string]any)["effective_mode"]; got != "cdp" {
+		t.Fatalf("reachable CDP summary = %v", got)
 	}
 	connections := call(map[string]any{"action": "connections"})
 	if connections["connections"].(map[string]any)["total"] != float64(1) {
 		t.Fatalf("attached connections = %v", connections)
 	}
-	tools := call(map[string]any{"action": "connections", "name": "attached", "include_tools": true, "limit": 1})["connection"].(map[string]any)
+	tools := call(map[string]any{"action": "connections", "name": "attached", "limit": 1})["connection"].(map[string]any)
 	page := tools["tools"].(map[string]any)
 	if tools["status"] != "cached" || page["total"] != float64(2) || page["has_more"] != true || len(page["items"].([]any)) != 1 {
 		t.Fatalf("tool metadata page = %v", tools)
+	}
+	if _, exposed := page["items"].([]any)[0].(map[string]any)["parameters"]; exposed {
+		t.Fatal("reader saw full schemas")
+	}
+	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "attached", "include_tools": true}, 403)
+	ownerSrv := serveExternalMCP(t, f.api, crewReader("owner"))
+	ownerClient := dialExternalMCP(t, ctx, ownerSrv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, ownerClient)
+	ownerTools := callRemoteTool(t, ctx, ownerClient, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": map[string]any{"crew_id": "team", "action": "connections", "name": "attached", "include_tools": true}})
+	requireRemoteSuccess(t, ownerTools, "crew_diagnostics")
+	if raw := marshalStructured(t, ownerTools); !strings.Contains(raw, `"parameters"`) || !strings.Contains(raw, `"required":["query"]`) {
+		t.Fatalf("owner full schema = %s", raw)
 	}
 	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "unattached"}, 403)
 	bounded := crewReader("other")

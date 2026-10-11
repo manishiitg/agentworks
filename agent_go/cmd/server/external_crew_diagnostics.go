@@ -20,11 +20,11 @@ func crewDiagnosticPage[T any](items []T, limit, offset int) map[string]any {
 }
 
 func externalCrewDiagnosticsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("crew_diagnostics", "Read this Crew's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current Crew access.", false, false, map[string]any{
+	add("crew_diagnostics", "Read this Crew's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas for the Crew owner only. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current Crew access.", false, false, map[string]any{
 		"crew_id":       externalString("Crew ID from crew action=list."),
 		"action":        map[string]any{"type": "string", "enum": []any{"browser", "connections"}},
 		"name":          externalString("Exact attached connection name; connections only. Omit to list connection summaries."),
-		"include_tools": map[string]any{"type": "boolean", "description": "Include cached parameter schemas for a named connection. Default false."},
+		"include_tools": map[string]any{"type": "boolean", "description": "Crew owner only: include cached parameter schemas for a named connection. Default false."},
 		"limit":         externalInteger(1, 100), "offset": externalInteger(0, 100000),
 	}, "crew_id", "action")
 }
@@ -72,21 +72,49 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 			externalError(w, 502, "browser_status_unavailable", "Cannot inspect this Crew's browser status.")
 			return
 		}
-		var status any
+		var status map[string]any
 		if err := json.Unmarshal([]byte(raw), &status); err != nil {
 			externalFailure(w, err)
 			return
 		}
 		request := r.Clone(r.Context())
 		request.URL = &url.URL{RawQuery: url.Values{"workspace_path": {root}}.Encode()}
-		sessions := api.liveBrowserSessions(request)
+		// The app intentionally shares Crew browsers and Playwright recordings.
+		// Export a small inventory, not owner chat IDs, recorded commands or
+		// recording errors (which may contain host paths).
+		sessions := []map[string]string{}
+		shared := browserSessionForWorkspace(claims.UserID, root)
+		for _, item := range api.liveBrowserSessions(request) {
+			row := map[string]string{}
+			for _, key := range []string{"browser_session", "label", "kind", "state", "read_only", "recording_state", "age", "idle"} {
+				if value, found := item[key]; found {
+					row[key] = value
+				}
+			}
+			row["scope"] = "caller"
+			if item["browser_session"] == shared || item["kind"] == "playwright" {
+				row["scope"] = "shared_crew"
+			}
+			if !crew.OwnedByCaller {
+				row["read_only"] = "true"
+			}
+			sessions = append(sessions, row)
+		}
+		// Do not forward raw status: its CDP endpoints, ports and probe errors
+		// describe the host. Keep only the declared capability summary.
+		capabilities := map[string]any{}
+		for _, key := range []string{"configured_mode", "effective_mode", "cdp_supported", "headless_available"} {
+			if value, found := status[key]; found {
+				capabilities[key] = value
+			}
+		}
 		extension := map[string]any{"available_to_caller": crew.OwnedByCaller}
 		if crew.OwnedByCaller {
 			connection := browserrelay.Default.Status(claims.UserID, browserSessionForWorkspace(claims.UserID, root))
 			extension["selected"], extension["connected"], extension["tabs"] = connection.Selected, connection.Connected, connection.Tabs
 			extension["extension_version"], extension["latest_extension_version"] = connection.ExtensionVersion, connection.LatestVersion
 		}
-		externalJSON(w, map[string]any{"crew_id": id, "action": action, "settings": settings, "capabilities": status, "extension": extension, "sessions": crewDiagnosticPage(sessions, limit, offset)})
+		externalJSON(w, map[string]any{"crew_id": id, "action": action, "settings": map[string]any{"mode": settings.Mode}, "capabilities": capabilities, "extension": extension, "sessions": crewDiagnosticPage(sessions, limit, offset)})
 		return
 	}
 	if action != "connections" {
@@ -95,6 +123,10 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 	}
 	if !containsExactString(profile.ToolPolicy.Enabled, "list_mcp_servers") {
 		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable MCP tools.")
+		return
+	}
+	if include, _ := args["include_tools"].(bool); include && !crew.OwnedByCaller {
+		externalError(w, 403, "forbidden", "Only the Crew owner can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
 		return
 	}
 	attachments, err := placeMCPAttachmentsFor(root)
