@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
@@ -78,6 +79,16 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	busyStarted := make(chan struct{})
+	busyRelease := make(chan struct{})
+	bridge.AddTool(mcp.NewTool("fixture_busy"), func(toolCtx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		close(busyStarted)
+		select {
+		case <-busyRelease:
+		case <-toolCtx.Done():
+		}
+		return mcp.NewToolResultText("finished"), nil
+	})
 	stdin, input := io.Pipe()
 	output, stdout := io.Pipe()
 	defer input.Close()
@@ -136,6 +147,12 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	send := func(c *agentworksclient.Client, name, text string) map[string]any {
 		return call(c, map[string]any{"action": "send", "agent_name": name, "target": "agent:reviewer", "message": text, "submission_id": text})
 	}
+	write(map[string]any{"jsonrpc": "2.0", "id": 50, "method": "tools/call", "params": map[string]any{"name": "fixture_busy", "arguments": map[string]any{}}})
+	select {
+	case <-busyStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("tool did not start")
+	}
 	send(stranger, "stranger", "not approved")
 	receipt := send(sender, "sender", "native push proof")
 	if receipt["delivery"] != "stored" || !strings.Contains(receipt["next"].(string), "agent_name") {
@@ -149,6 +166,10 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	meta := params["meta"].(map[string]any)
 	if params["content"] != "native push proof" || meta["message_id"] != receipt["message_id"] {
 		t.Fatalf("wrong sender/identity: %v", incoming)
+	}
+	close(busyRelease)
+	if finished := next(); finished["id"] != float64(50) {
+		t.Fatalf("busy tool was interrupted: %v", finished)
 	}
 	page := call(receiver, map[string]any{"action": "read", "agent_name": "reviewer"})
 	for _, item := range page["messages"].([]any) {
