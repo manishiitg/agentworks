@@ -137,6 +137,19 @@ How the pieces fit:
 - Delivered text names the sender, the conversation and how to reply, so the
   agent treats it as a message from another agent, not as the person's
   instruction.
+- The person stays in control. Nothing is attached by default, and only a
+  person attaches a chat: typing `/agentworks attach <name> "<purpose>"` in that
+  chat (caught by the CLI's prompt-submit hook, linked to that chat's
+  conversation ID, never sent to the model) or running `agentworks attach`.
+  `/agentworks detach`, `agentworks detach` or closing the chat ends it. An agent
+  cannot attach its own chat or another one. `agentworks status` lists attached
+  chats, and each can be revoked from the Connect page.
+- Hooks run for every chat where they are installed, so for an unattached chat
+  the hook only asks the local daemon "is this conversation attached?" and exits
+  with no output and no network call; if the daemon is not running it exits at
+  once. `agentworks attach` installs the hook in the project folder by default
+  (`.cursor/hooks.json` and the equivalents), so chats in other projects never
+  run it; a global install is the person's explicit choice.
 - A stop hook runs only when a turn ends: a long turn delays delivery, and an
   idle session needs route 1, 4 or 6 to wake it.
 
