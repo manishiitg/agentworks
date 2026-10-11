@@ -1,5 +1,8 @@
 # Crew messages, functions and triggers
 
+See [Communication protocols](communication-protocols.md) for the consolidated
+cross-product reference, including workflow-to-workflow and Relay calls.
+
 Use a conversation when agents need to talk. Use a declared function when a caller
 needs a defined task executed with checked inputs and a tracked terminal outcome.
 

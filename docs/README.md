@@ -4,6 +4,7 @@ Start with the operator journey, then use the subsystem references when you need
 
 ## Start Here
 
+- [Communication protocols](communication-protocols.md): direct messages, structured functions, MCP/CLI, Crew, workflow-to-workflow calls and Relays.
 - [Getting Started](getting-started/README.md): install AgentWorks, complete first-launch setup, and create a first automation.
 - [Build Your First Workflow](getting-started/first-workflow.md): define an outcome, choose a worker, run it, review evidence, and improve the next run.
 
@@ -44,6 +45,7 @@ this is the complete map.
 
 ### Top level
 
+- [Communication protocols](communication-protocols.md)
 - [Channel connectors](channel-connectors.md)
 - [Google CLI authentication and agent terminals](google-cli-authentication.md)
 - [Header Consolidation](header-consolidation.md)

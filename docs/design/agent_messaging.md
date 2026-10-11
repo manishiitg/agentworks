@@ -1,5 +1,8 @@
 # Agent conversations and function executions
 
+For the cross-product map, tools and examples, start with
+[Communication protocols](../communication-protocols.md).
+
 AgentWorks has two separate contracts. Conversations are explicit messages between
 agents. Functions are isolated executions of declared internal triggers.
 
