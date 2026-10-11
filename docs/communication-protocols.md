@@ -564,3 +564,13 @@ reattach derives a replacement once from the currently approved parent. Resume
 requires a fresh provider process key. Offline identities retain their address;
 explicit detach revokes their child. Cleanup retires offered metadata, so later
 replies need an explicit inbox read and `--inbox` instead of the retired message ID.
+
+Manual reads filter historical messages through the current receiver lease,
+approved sender IDs and live peer authorization. Explicit inbox replies require
+an inbox containing a currently approved incoming sender. Neither check fabricates
+admission. Codex shell replies use CODEX_THREAD_ID as a routing hint together with
+the provider process key. A shell of the same OS user can change that variable or
+read that user's private credentials; these checks are not OS isolation between
+desktop chats. Credential-less MCP children cannot choose a different UUID through
+their tool arguments. Install broader shell permissions only under the host's
+existing person-controlled trust settings.

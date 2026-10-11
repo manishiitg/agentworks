@@ -317,7 +317,7 @@ func bridgeCommand(o *options) *cobra.Command {
 		}
 		if provider == "codex" {
 			if os.Getenv("CODEX_THREAD_ID") == "" {
-				return errors.New("Codex messaging requires the host CODEX_THREAD_ID; a supplied UUID cannot select another chat")
+				return errors.New("Codex messaging requires CODEX_THREAD_ID; same-user shell variables are not isolation between chats")
 			}
 			if session != "" && session != os.Getenv("CODEX_THREAD_ID") {
 				return errors.New("thread does not match the host session")

@@ -405,11 +405,12 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		externalError(w, 500, "store_unavailable", "Cannot validate pending messages.")
 		return
 	}
+	history, _ := args["history"].(bool)
 	permitted := []string{}
 	for _, id := range ids {
 		for _, c := range s.Conversations {
 			for _, m := range c.Messages {
-				if m.ID != id || m.LiveAttachment != a.Attachment.ID || c.Endpoints[1-m.From].NamedAgentID != a.ID || m.Delivery != "stored" {
+				if m.ID != id || c.Endpoints[1-m.From].NamedAgentID != a.ID || !history && (m.LiveAttachment != a.Attachment.ID || m.Delivery != "stored") {
 					continue
 				}
 				src := c.Endpoints[m.From]

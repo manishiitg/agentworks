@@ -518,6 +518,20 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		case "send":
 			args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
 		case "reply_inbox":
+			history, e := s.client.Call(callCtx, "messages", map[string]any{"action": "read", "agent_name": s.Attachment.AgentName, "inbox_id": in.InboxID, "after": 0, "limit": 20})
+			if e != nil {
+				return LocalBridgeReply{Error: e.Error()}
+			}
+			filtered, e := filterAttachedMailbox(callCtx, s, history)
+			if e != nil {
+				return LocalBridgeReply{Error: e.Error()}
+			}
+			var checked struct {
+				Messages []json.RawMessage `json:"messages"`
+			}
+			if json.Unmarshal(filtered, &checked) != nil || len(checked.Messages) == 0 {
+				return LocalBridgeReply{Error: "inbox has no currently approved sender for this attachment"}
+			}
 			// Explicit mailbox recovery survives local metadata compaction.
 			// The server still verifies this caller's inbox participation.
 			args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
@@ -534,6 +548,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		raw, err := s.client.Call(callCtx, "messages", args)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
+		}
+		if in.Action == "read" {
+			raw, err = filterAttachedMailbox(callCtx, s, raw)
+			if err != nil {
+				return LocalBridgeReply{Error: err.Error()}
+			}
 		}
 		out.Result = raw
 		return out
@@ -771,4 +791,52 @@ func nativeCodexTransport(remote string) string {
 		return "codex_desktop"
 	}
 	return "codex_queue"
+}
+
+// Manual recovery obeys the same current sender and peer authorization as push,
+// including historical messages, without recording any delivery receipt.
+func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMessage) (json.RawMessage, error) {
+	var result map[string]json.RawMessage
+	if json.Unmarshal(raw, &result) != nil {
+		return nil, errors.New("invalid mailbox response")
+	}
+	var messages []json.RawMessage
+	if json.Unmarshal(result["messages"], &messages) != nil || len(messages) > 20 {
+		return nil, errors.New("invalid bounded mailbox response")
+	}
+	ids := []string{}
+	for _, message := range messages {
+		var value struct {
+			ID string `json:"message_id"`
+		}
+		if json.Unmarshal(message, &value) != nil || value.ID == "" {
+			return nil, errors.New("invalid mailbox message")
+		}
+		ids = append(ids, value.ID)
+	}
+	validated, err := s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids, "history": true}, true)
+	if err != nil {
+		return nil, errors.New("mailbox attachment or sender no longer authorized")
+	}
+	var checked struct {
+		IDs []string `json:"message_ids"`
+	}
+	if json.Unmarshal(validated, &checked) != nil {
+		return nil, errors.New("invalid mailbox authorization response")
+	}
+	allowed := map[string]bool{}
+	for _, id := range checked.IDs {
+		allowed[id] = true
+	}
+	filtered := []json.RawMessage{}
+	for i, message := range messages {
+		if allowed[ids[i]] {
+			filtered = append(filtered, message)
+		}
+	}
+	result["messages"], err = json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
 }

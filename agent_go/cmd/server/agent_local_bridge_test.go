@@ -230,6 +230,29 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if len(responses) != 1 || responses[0].(map[string]any)["inbox_id"] != offer.Messages[0].InboxID {
 		t.Fatal("reply lost conversation")
 	}
+	call(freshSender, map[string]any{"action": "register", "agent_name": "unapproved"})
+	unapproved := call(freshSender, map[string]any{"action": "send", "agent_name": "unapproved", "target": "agent:hook-reviewer", "message": "unapproved body", "submission_id": "unapproved-recovery"})
+	read := base
+	read.Action = "read"
+	var history struct {
+		Messages []struct {
+			Sender string `json:"sender"`
+		} `json:"messages"`
+	}
+	if json.Unmarshal(local(read).Result, &history) != nil {
+		t.Fatal("invalid recovered mailbox")
+	}
+	for _, message := range history.Messages {
+		if message.Sender == "unapproved" {
+			t.Fatal("recovery leaked unapproved sender")
+		}
+	}
+	blockedReply := base
+	blockedReply.Action, blockedReply.InboxID = "reply", unapproved["inbox_id"].(string)
+	blockedReply.Message, blockedReply.SubmissionID = "must not send", "unapproved-reply"
+	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, blockedReply); e == nil {
+		t.Fatal("replied to unapproved inbox")
+	}
 	cleanup := base
 	cleanup.Action = "cleanup"
 	local(cleanup)
