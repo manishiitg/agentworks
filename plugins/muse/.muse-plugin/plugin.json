@@ -13,7 +13,7 @@
       {"id": "stop", "event": "Stop", "command": ["python3", "hooks/stop.py"], "timeoutMs": 10000},
       {"id": "session-end", "event": "SessionEnd", "command": ["python3", "hooks/session_end.py"], "timeoutMs": 10000}
     ],
-    "mcpServers": [{"id": "agentworks", "transport": "stdio", "command": ["agentworks", "mcp", "serve"]}],
+    "mcpServers": [{"id": "agentworks", "transport": "stdio", "command": ["agentworks", "plugin", "mcp", "muse"]}],
     "reminders": []
   }
 }

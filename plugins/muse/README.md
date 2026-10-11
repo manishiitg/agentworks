@@ -8,9 +8,12 @@ mailbox in a polling loop or implement another bridge.
 ## Requirements and installation
 
 Use Muse 1.4.4 or a compatible release, Python 3 and an AgentWorks CLI supporting
-`agentworks plugin hook muse` on PATH. The common bridge is owned by PLAT-861;
-this provider package alone does not supply that command. Sign in to AgentWorks
-with the CLI's normal person-controlled login before attaching.
+both `agentworks plugin hook muse` and `agentworks plugin mcp muse` on PATH. The
+common bridge is owned by PLAT-861; this provider package alone does not supply
+those commands. A CLI that accepts only Claude/Codex will refuse Muse attachment
+and cannot start this package's MCP child. Sign in to the intended AgentWorks
+server with the CLI's normal login before attaching. The MCP child uses the
+exact provider process/session and exposes only messaging tools.
 
 From the repository root, the person installs and reviews the capabilities:
 
@@ -28,17 +31,26 @@ attaches a conversation automatically.
 In the intended conversation, type:
 
 ```text
-/agentworks attach implementation "Implement the requested change" --allow-sender reviewer
+/agentworks attach
+/agentworks attach --confirm
 /agentworks status
 /agentworks detach
 ```
 
+The first command proposes a name and purpose for the exact conversation. Review
+the proposal before confirming: attachment accepts all senders in your
+AgentWorks account. Alternatively, choose both explicitly with
+`/agentworks attach implementation "Implement the requested change"`. Sender
+allow flags are no longer supported.
+
 The shared UserPromptSubmit handler must consume the literal person command
-before model execution. It binds Muse's hook-provided session UUID, requires
-explicit approved senders (or `--allow-none`), and owns the attachment lease. The
-command template refuses to perform attachment if that interception fails. For
-the native namespaced command the bridge must also accept
+before model execution. It binds Muse's hook-provided session UUID and owns the
+attachment lease. The command template refuses to perform attachment if that
+interception fails. Muse's native namespaced command is
 `/agentworks-muse:agentworks`. Do not substitute another provider for `muse`.
+Session close retains the identity offline. The person can use
+`/agentworks resume` in that exact session; `/agentworks cleanup` retires offers
+while retaining the receive watermark and pending inbox bodies.
 
 ## Delivery
 
@@ -46,14 +58,15 @@ The bridge holds the authenticated server stream and durable offer journal. Hook
 use its local socket through the CLI. Unattached/offline hooks return no output;
 they do not launch the bridge or make server requests. Explicit attach is the
 person-controlled exception. The Muse shim rejects malformed/sessionless inputs
-and skips Stop when `stop_hook_active` is set. SessionEnd asks the bridge to detach
-but returns no output because Muse treats this event as observational.
+and skips Stop when `stop_hook_active` is set. SessionEnd marks the attachment
+offline through the bridge but returns no output because Muse treats this event
+as observational.
 
 Stop returns `decision: block` with the offered sender content in `reason`.
 UserPromptSubmit adds context through the shared handler. Neither writes terminal
 input, so an unsent composer draft is not touched. An offer is still stored until
 the receiving agent acknowledges admission; processing is a separate explicit
-acknowledgement. Replies retain the original inbox. Sender approval, revocation,
+acknowledgement. Replies retain the original inbox. Account authorization, revocation,
 restart replay and attachment replacement are enforced by the common bridge and
 server, rather than by this shim.
 
@@ -65,6 +78,14 @@ proof of external ingress; availability also depends on the rollout gate. No
 documented external-ingress enablement or idle push was established. Use
 turn-boundary hooks and the shared bridge's idle notification. Guarded tmux is an
 explicit opt-in fallback only; this plugin does not implement terminal typing.
+
+Muse's built-in Monitor is a possible idle-wake route using one persistent
+line-streaming local command or a WebSocket. It needs a credential-free bridge
+stream bound to the attached session, bounded output and clean termination on
+detach. This package does not start a monitor or create its own mailbox poller;
+that shared stream and an approved real-session check remain integration work.
+A Monitor event would still be an offer requiring explicit admission and
+processing acknowledgements.
 
 On 2026-10-11, the official [stable release channel](https://api.meta.ai/muse-code/channels/muse-stable)
 advertised 1.4.4-R5419.1 and the [canary channel](https://api.meta.ai/muse-code/channels/muse-canary)
@@ -86,28 +107,31 @@ python3 plugins/muse/tests/prove_muse_hooks.py /absolute/path/to/muse-binary
 ```
 
 The native proof installs the package only into temporary XDG storage, runs
-Muse's explicit `hook test` fixture runner for Stop and prompt context without
-approving runtime capabilities, then uses per-run user hooks and the echo provider to
+Muse's explicit `hook test` fixture runner for Stop, prompt context and SessionEnd
+without approving runtime capabilities, then uses per-run user hooks and the echo provider to
 verify a real Stop continuation, the loop guard, and a single session UUID across
 prompt/Stop/close. It does not install or approve this plugin in the person's
 settings, and its shared CLI response is a fixture. These checks do not establish
 authenticated AgentWorks delivery or an idle native wake.
 
 Muse 1.4.4 resolves each native manifest hook script to an absolute `source_path`
-under the installed plugin cache. The proof asserts those paths and runs the
-installed Stop and prompt hooks from a project containing hostile
+under the installed plugin cache. A logging `python3` shim records the executed
+argv and working directory for all three native hook fixtures. The proof asserts
+that Muse runs the absolute cached script while retaining the hostile project
+as its working directory. That project contains competing
 `hooks/stop.py`, `hooks/prompt_submit.py`, `hooks/session_end.py` and
 `hooks/runtime.py`. The plugin responses arrive and the project scripts never
-run. This verifies path resolution in the native fixture runner; approved
+run. This verifies execution paths in the native fixture runner; approved
 interactive execution remains a separate check. Keep the native manifest paths
 relative: this release rejects literal `${MUSE_PLUGIN_ROOT}` and `${PLUGIN_ROOT}`
-paths as missing capability files instead of expanding them.
+paths as missing capability files instead of expanding them; the proof also
+checks both rejected manifests in isolated copies.
 
 After person approval, use `muse plugins hook test agentworks-muse:stop --fixture
 <fixture.json> --json` with a fixture of the form `{"event":"Stop","stdin":
 {"hook_event_name":"Stop","session_id":"<exact UUID>","stop_hook_active":false}}`.
 Then verify actual
 Stop continuation and prompt context in Muse, separate sessions, busy tools,
-drafts, allowlist/revocation and restart behavior against the shared bridge.
+drafts, account authorization/revocation and restart behavior against the shared bridge.
 Do not claim admission from hook test success or mark the integration complete
 from manifest validation alone.
