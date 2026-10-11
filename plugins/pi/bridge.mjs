@@ -26,7 +26,7 @@ export class LocalBridge {
   }
 
   async call(request, { signal, timeout = 3000 } = {}) {
-    if (!await this.available()) throw new Error('AgentWorks local bridge is unavailable');
+    if (!await this.available()) throw new Error('AgentWorks local bridge is unavailable. Start agentworks bridge serve, then reconnect or attach in Pi.');
     if (signal?.aborted) throw new Error('AgentWorks local request cancelled');
     const body = JSON.stringify({ ...request, provider: 'pi' });
     return new Promise((resolve, reject) => {
@@ -47,8 +47,13 @@ export class LocalBridge {
           try {
             const result = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             // Never surface raw server errors: they may contain credential/config data.
-            if (res.statusCode !== 200 || result.error) throw new Error('AgentWorks local bridge refused the request');
-            resolve(result);
+            if (res.statusCode !== 200 || result.error) {
+              const error = new Error('AgentWorks local bridge refused the request');
+              // The current shared protocol has only an error string. Recognize
+              // these exact APIError prefixes without surfacing its private tail.
+              error.terminalReceipt = /^AgentWorks (receipt_refused|attachment_changed|not_admitted) \(HTTP 409\):/.test(result.error || '');
+              reject(error);
+            } else resolve(result);
           } catch { reject(new Error('AgentWorks local bridge refused the request')); }
         });
       });

@@ -14,6 +14,12 @@ export default function (pi: ExtensionAPI) {
       appendFileSync(process.env.PLAT868_DRAFT_REPORT, JSON.stringify({ draft: ctx.ui.getEditorText() }) + '\n');
     }
   });
+  // A second extension may wrap input. Complete frames still prove admission;
+  // changed sender content must remain unconfirmed even if its marker survives.
+  pi.on('input', async event => {
+    if (event.source !== 'extension' || !event.text.includes('[agentworks-')) return { action: 'continue' };
+    return { action: 'transform', text: 'FIXTURE_WRAPPER\n' + event.text.replace('FIXTURE_MESSAGE_altered', 'FIXTURE_MESSAGE_changed') };
+  });
   pi.registerTool({
     name: 'fixture_wait', label: 'Fixture wait', description: 'Wait in a real Pi tool run',
     parameters: Type.Object({}),
