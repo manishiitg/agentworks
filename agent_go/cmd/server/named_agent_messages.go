@@ -16,11 +16,13 @@ import (
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
 type namedMessageAgent struct {
-	ID          string    `json:"agent_id"`
-	UserID      string    `json:"user_id"`
-	Name        string    `json:"name"`
-	Connections []string  `json:"allowed_connection_ids"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string                `json:"agent_id"`
+	UserID      string                `json:"user_id"`
+	Name        string                `json:"name"`
+	Connections []string              `json:"allowed_connection_ids"`
+	CreatedAt   time.Time             `json:"created_at"`
+	Purpose     string                `json:"purpose,omitempty"`
+	Attachment  *namedAgentAttachment `json:"attachment,omitempty"`
 }
 
 func normalizeMessageAgentName(name string) (string, error) {
@@ -132,7 +134,12 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt})
+			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "provider": func() string {
+				if a.Attachment != nil {
+					return a.Attachment.Provider
+				}
+				return ""
+			}()})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
@@ -223,6 +230,14 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 			connections = s.Agents[index].Connections
 		}
 		s.Agents[index].Connections = connections
+		if purpose, present := args["purpose"]; present {
+			text, ok := purpose.(string)
+			if !ok || len(strings.TrimSpace(text)) > 512 {
+				externalError(w, 400, "invalid_arguments", "purpose must be a string of at most 512 bytes")
+				return
+			}
+			s.Agents[index].Purpose = strings.TrimSpace(text)
+		}
 	}
 	if err = saveAgentMessageStore(r.Context(), s); err != nil {
 		externalCommunicationError(w, 400, "registration_refused", err)
@@ -297,7 +312,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					if position >= limit {
 						continue
 					}
-					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": c.Endpoints[m.From].Label, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery}
+					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": c.Endpoints[m.From].Label, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
 					items = append(items, nil)
 					copy(items[position+1:], items[position:])
 					items[position] = item

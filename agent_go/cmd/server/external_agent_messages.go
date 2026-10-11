@@ -201,6 +201,10 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
 	}
+	if caller.NamedAgentID != "" {
+		out["agent_name"] = caller.Label
+		out["next"] = "Accepted means stored, not received by a live session. To read use messages action=read with agent_name and inbox_id. To reply in this conversation use action=send with your agent_name and this inbox_id; omit target."
+	}
 	externalJSON(w, out)
 }
 
@@ -210,6 +214,8 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	switch externalArg(args, "action") {
 	case "register", "unregister":
 		api.externalNamedAgentRegistration(w, r, args)
+	case "attach", "detach", "ack":
+		api.externalAgentAttachment(w, r, args)
 	case "list_agents":
 		if !namedAgentOperationAllowed(claims, false) {
 			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
@@ -290,13 +296,21 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, out)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read or state")
+		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read, state, attach, detach or ack")
 	}
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "Register an account-owned agent_name with action=register; list_agents discovers agent:<name> addresses and unregister removes a name. Registration defaults to this connection; explicitly allowed_connection_ids can use the same name. Re-register without that field preserves the reader list. Names are addresses, not authenticated device identities. Send conversational agent messages or read explicit replies from your authenticated inbox. Read with agent_name and no inbox_id to discover first contacts across conversations; each reply_address is an inbox_id for a later send. Named reads use a mailbox cursor; conversation reads use their own cursor. External agents poll; storage never wakes a client. Registration and named sends require existing run consent; read-only connections cannot register or send. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state"}},
+	add("messages", "Register an account-owned agent_name with action=register; list_agents discovers agent:<name> addresses and unregister removes a name. Registration defaults to this connection; explicitly allowed_connection_ids can use the same name. Re-register without that field preserves the reader list. Names are addresses, not authenticated device identities. Send conversational agent messages or read explicit replies from your authenticated inbox. Read with agent_name and no inbox_id to discover first contacts across conversations; each reply_address is an inbox_id for a later send. Named reads use a mailbox cursor; conversation reads use their own cursor. Mailbox storage alone does not wake a client. An opt-in exact session attachment receives approved senders through the authenticated event stream; agentworks mcp serve --claude-channel exposes official native Claude notifications. Stored, admitted and processed are different: admission and processing require explicit receiver acknowledgements. Attach requires purpose, provider, native_session_id and an explicit allowed_senders list; moving the name fences its old attachment. Registration and named sends require existing run consent; read-only connections cannot register or send. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "attach", "detach", "ack"}},
+		"purpose":                externalString("What this attached agent works on; 1 to 512 bytes."),
+		"provider":               externalString("Native client: codex, claude, muse or cursor; attach only."),
+		"native_session_id":      externalString("Exact native session/thread ID reported by the receiving client, never inferred."),
+		"attachment_id":          externalString("Exact generation returned by attach; required for detach and receipt acknowledgements."),
+		"allowed_senders":        map[string]any{"type": "array", "maxItems": 100, "items": externalString("Registered sender name explicitly approved for live delivery; attach requires this list.")},
+		"message_id":             externalString("Incoming message ID being explicitly acknowledged."),
+		"delivery":               externalString("Adapter receipt: admitted, typed, processed or failed; processed requires an explicit receiving-agent acknowledgement."),
+		"transport":              externalString("Receipt route: codex_queue, claude_channel, muse_session, tmux or mailbox."),
 		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),

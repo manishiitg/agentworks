@@ -94,13 +94,13 @@ use each message's `reply_address` as `inbox_id` when sending a reply. This mail
 cursor differs from a single conversation's cursor; do not interchange them.
 Reads are non-destructive, limited to 100 messages and bounded to 25 seconds of
 waiting. A stored receipt does not mean the client woke, read or completed work.
-Until live delivery exists, check at the start and end of work, or explicitly poll with wait.
+Mailbox-only registrations must read explicitly; the implemented Claude channel is described below.
 
 #### Delivery into agent CLIs (design, PLAT-861)
 
-Today the mailbox only stores messages; an agent sees them when it reads. Live
-delivery is planned in this order, most real-time first. A receipt says how far a
-message got: `stored`, `delivered` (handed to the CLI) or `typed` (tmux fallback).
+The Claude channel is implemented; the shared daemon and remaining adapters
+below are planned. Receipts distinguish `stored`, `admitted`, `processed` and
+`typed` (tmux fallback). An offer is not admission or proof of processing.
 
 | # | Route | Timing | Reaches an idle session | Works for |
 |---|---|---|---|---|
@@ -156,6 +156,55 @@ How the pieces fit:
 Native interfaces: [Muse session messaging](https://dev.meta.ai/docs/muse-code/session-messaging),
 [Codex app-server](https://developers.openai.com/codex/app-server/),
 [Claude channels](https://code.claude.com/docs/en/channels).
+
+#### Implemented Claude channel
+
+Mailbox reading remains the fallback. Live Claude delivery uses an authenticated
+SSE connection from the local stdio bridge: the server pushes when durable messages
+change, rather than repeatedly calling the read tool. Attach is opt-in and requires
+a purpose, the exact native session ID supplied by that session or its owner, and
+an explicit list of registered sender names. Only those sender IDs can enter the
+native channel. Moving an address creates a new attachment ID and fences the old
+listener and its receipts. The directory reports purpose, provider and whether a
+listener is connected; connected does not prove that the native client accepted
+a notification. Names and messages remain in the selected workspace across restart.
+
+For Claude Code, configure a **private connection config for this agent** and a
+stdio MCP server named `agentworks-live` with command `agentworks` and arguments:
+
+```json
+["--config", "/absolute/path/reviewer.json", "mcp", "serve",
+ "--claude-channel", "--agent", "reviewer", "--purpose", "Review incoming work",
+ "--native-session-id", "<exact-session-id>", "--allow-sender", "worker"]
+```
+
+Start or resume **that exact Claude session** with
+`--dangerously-load-development-channels server:agentworks-live`, and approve
+Claude's per-session channel confirmation. Channels are in research preview;
+Team/Enterprise organizations must enable them. An ordinary remote MCP connection
+alone supplies tools and does not enable push. The bridge declares
+`experimental["claude/channel"]` and emits `notifications/claude/channel` through
+Claude's native input queue, preserving its handling of tools and typed drafts.
+It does not relay tool approvals.
+
+The channel includes `message_id`, sender and `inbox_id`. The receiving agent calls
+`agent_message_ack(delivery="admitted")` when it receives the event and
+`agent_message_ack(delivery="processed")` after handling it. A successful HTTP send
+or notification write alone leaves the receipt `stored`. Explicit
+`agent_message_reply` uses the original conversation and attached identity.
+Reconnecting uses exponential backoff capped at 30 seconds; acknowledged messages
+are not replayed. Unacknowledged messages can be offered again after a bridge
+restart with the same message ID: deduplicate effects by that ID. Within a running
+bridge, reconnect suppresses repeated notifications. Replaced or revoked leases
+stop delivery, and current sender/receiver authority is checked before release.
+
+Delivery order is native first, guarded tmux second, mailbox last. The Claude
+channel is implemented. Codex's native queue, Muse's native admission and guarded
+tmux adapters remain separate follow-ups; attachment metadata does not implement
+those adapters. A shared MCP connection still shares mailbox authority: until the
+CLI can provision narrow per-agent connections, use independent sign-ins/configs.
+See [Claude channels](https://code.claude.com/docs/en/channels) and
+[the channel protocol](https://code.claude.com/docs/en/channels-reference).
 
 CLI uses the same authenticated server, including a local server:
 

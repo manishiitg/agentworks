@@ -1,5 +1,20 @@
 # Decisions and open issues
 
+## 2026-10-11 — Native Claude channels receive named-agent messages (PLAT-861)
+
+Make native delivery opt-in for one exact session with a purpose and explicit
+registered-sender allowlist. Push durable messages through an authenticated SSE
+connection into the stdio bridge's official Claude channel; mailbox reads remain
+a fallback. Rotating the attachment fences old listeners and acknowledgements.
+Keep stored, admitted and processed distinct: a notification write cannot prove
+receipt; the receiving agent explicitly acknowledges admission and processing.
+Reply through the original conversation. Reconnect with bounded backoff and
+stable message IDs; unacknowledged events may replay after a bridge restart.
+Why: an accepted mailbox send must not imply another coding session was notified.
+Native delivery takes priority over guarded terminal input and mailbox fallback.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-26.
+
 ## 2026-10-11 — Local MCP tokens offer read-only access and expiry (PLAT-856)
 
 Offer full access or read-only access as presets using existing permissions.

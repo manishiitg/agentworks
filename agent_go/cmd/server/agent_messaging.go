@@ -52,6 +52,9 @@ type agentMessage struct {
 	SenderConnectionID string    `json:"sender_connection_id,omitempty"`
 	Delivery           string    `json:"delivery"`
 	Error              string    `json:"delivery_error,omitempty"`
+	LiveTransport      string    `json:"live_transport,omitempty"`
+	LiveSession        string    `json:"live_session,omitempty"`
+	LiveAttachment     string    `json:"live_attachment,omitempty"`
 	Wakeup             bool      `json:"wakeup,omitempty"`
 }
 type agentConversation struct {
@@ -107,6 +110,9 @@ func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 	}
 	err = writeFileToWorkspace(ctx, agentMessagesPath, string(raw))
 	agentMessageVersion.Add(1)
+	if err == nil {
+		notifyAgentLiveChanged()
+	}
 	return err
 }
 
@@ -443,7 +449,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	return out, nil
 }
 func agentMessageReceipt(id string, m agentMessage) map[string]interface{} {
-	return map[string]interface{}{"accepted": true, "status": "accepted", "message_id": m.ID, "inbox_id": id, "conversation_id": id, "sequence": m.Sequence, "next": "Replies are optional. Read explicitly sent messages with read_agent_messages or messages action=read using inbox_id."}
+	return map[string]interface{}{"accepted": true, "status": "accepted", "delivery": m.Delivery, "message_id": m.ID, "inbox_id": id, "conversation_id": id, "sequence": m.Sequence, "next": "Replies are optional. Read explicitly sent messages with read_agent_messages or messages action=read using inbox_id."}
 }
 
 func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, caller triggerLinkCaller, inboxID string, after, limit int, wait time.Duration) (map[string]interface{}, error) {

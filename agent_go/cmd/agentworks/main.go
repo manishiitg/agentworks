@@ -174,17 +174,40 @@ func newCommand(o *options) *cobra.Command {
 	}
 	root.AddCommand(plan)
 	mcpCmd := &cobra.Command{Use: "mcp", Short: "Expose this hosted connection as MCP"}
-	mcpCmd.AddCommand(&cobra.Command{Use: "serve", Args: cobra.NoArgs, Short: "Serve MCP over stdio (stdout is reserved for protocol messages)", RunE: func(cmd *cobra.Command, _ []string) error {
+	serveMCP := &cobra.Command{Use: "serve", Args: cobra.NoArgs, Short: "Serve MCP over stdio (stdout is reserved for protocol messages)", RunE: func(cmd *cobra.Command, _ []string) error {
+		listenCtx, cancel := context.WithCancel(cmd.Context())
+		defer cancel()
 		client, err := o.client()
 		if err != nil {
 			return err
 		}
-		bridge, err := agentworksclient.NewMCPServer(cmd.Context(), client)
+		channel, _ := cmd.Flags().GetBool("claude-channel")
+		var bridge *server.MCPServer
+		if channel {
+			name, _ := cmd.Flags().GetString("agent")
+			purpose, _ := cmd.Flags().GetString("purpose")
+			session, _ := cmd.Flags().GetString("native-session-id")
+			senders, _ := cmd.Flags().GetStringSlice("allow-sender")
+			bridge, err = agentworksclient.NewClaudeChannelServer(listenCtx, client, agentworksclient.ClaudeChannelOptions{AgentName: name, Purpose: purpose, SessionID: session, AllowedSenders: senders, Log: o.stderr})
+		} else {
+			for _, flag := range []string{"agent", "purpose", "native-session-id", "allow-sender"} {
+				if cmd.Flags().Changed(flag) {
+					return fmt.Errorf("--%s requires --claude-channel", flag)
+				}
+			}
+			bridge, err = agentworksclient.NewMCPServer(cmd.Context(), client)
+		}
 		if err != nil {
 			return err
 		}
-		return server.NewStdioServer(bridge).Listen(cmd.Context(), o.stdin, o.stdout)
-	}})
+		return server.NewStdioServer(bridge).Listen(listenCtx, o.stdin, o.stdout)
+	}}
+	serveMCP.Flags().Bool("claude-channel", false, "Opt this exact Claude session into live AgentWorks channel delivery")
+	serveMCP.Flags().String("agent", "", "Stable account-owned agent address")
+	serveMCP.Flags().String("purpose", "", "What this session does (one or two sentences)")
+	serveMCP.Flags().String("native-session-id", "", "Exact Claude session ID supplied by the session or its owner")
+	serveMCP.Flags().StringSlice("allow-sender", []string{}, "Registered sender names allowed to push into this session; repeat or comma separate")
+	mcpCmd.AddCommand(serveMCP)
 	root.AddCommand(mcpCmd)
 	return root
 }
