@@ -163,6 +163,22 @@ ticket (`tickets/pulse_platform/<area>/plat-NNN.md` in the private deployments r
 and what is left; that ticket is the source of truth. Add an entry here only
 for a decision that changes behaviour, keep it short, and link the ticket.
 
+### 2026-10-11 — Composer actions share the send-options menu (PLAT-791)
+
+Keep the editable composer compact: New chat, Slash commands, Stop current turn,
+and background-task controls live in the arrow popup. A small activity dot on
+the arrow signals background work; its submenu shows the running count and each
+task's status, Open and Stop actions. Stop current turn interrupts only the
+foreground turn; each task's Stop targets that background item. View-only chats
+and run footers retain their existing controls. Why: the owner requested fewer
+standalone buttons and approved the consolidated design.
+Ticket: [PLAT-791](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/sessions/plat-791.md).
+
+The local launcher refreshes frontend dependencies when manifests change or
+declared packages are missing. After a failed install it can reuse existing
+packages only if all declared dependencies remain installed; a Vite executable
+alone does not establish that a newly added UI import can be served.
+
 ### 2026-10-11 — Each chat can choose Steer or Queue next (PLAT-791)
 
 The composer remembers a delivery preference within the chat. Steer remains the default:

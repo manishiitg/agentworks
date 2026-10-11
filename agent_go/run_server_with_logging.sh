@@ -243,30 +243,47 @@ FRONTEND_HOST="${FRONTEND_HOST:-}"
 FRONTEND_BIND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_URL_HOST="${FRONTEND_URL_HOST:-127.0.0.1}"
 
-# ensure_frontend_deps runs `npm install` only when package.json or package-lock.json changed since the
-# last successful install here (a stamp inside node_modules). An install that fails while a usable
-# node_modules already exists warns and carries on instead of stopping the launcher: a half-finished
-# install by another process used to block every start even though the existing packages worked.
-# Returns 1 only when the install failed and there is nothing usable to start with.
+# Check package manifests rather than resolving entry points: type-only and CSS
+# packages need to be installed too, but do not have a JavaScript entry point.
+frontend_deps_present() {
+    node - "$1" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+const dir = process.argv[2]
+const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'))
+const missing = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
+    .filter(name => !fs.existsSync(path.join(dir, 'node_modules', name, 'package.json')))
+if (missing.length) {
+    console.error(`Missing frontend packages: ${missing.join(', ')}`)
+    process.exit(1)
+}
+NODE
+}
+
+# Refresh when manifests change or declared packages are missing. After a failed
+# install, the old dependencies are usable only if all declared packages remain
+# installed; the Vite executable alone cannot establish this (PLAT-791).
 ensure_frontend_deps() {
     local dir="$1" log="$2" want have stamp
     stamp="$dir/node_modules/.agentworks-deps-stamp"
     want="$(cat "$dir/package.json" "$dir/package-lock.json" 2>/dev/null | shasum | awk '{print $1}')"
     have="$(cat "$stamp" 2>/dev/null || true)"
-    if [ -n "$want" ] && [ "$want" = "$have" ] && [ -x "$dir/node_modules/.bin/vite" ]; then
+    if [ -n "$want" ] && [ "$want" = "$have" ] && [ -x "$dir/node_modules/.bin/vite" ] && frontend_deps_present "$dir" >> "$log" 2>&1; then
         echo "📦 Frontend dependencies are up to date (skipping npm install)."
         return 0
     fi
     echo "📦 Ensuring frontend dependencies (npm install)..."
     if ( cd "$dir" || exit 1; npm install ) >> "$log" 2>&1; then
+        frontend_deps_present "$dir" >> "$log" 2>&1 || return 1
         [ -n "$want" ] && printf '%s' "$want" > "$stamp" 2>/dev/null || true
         return 0
     fi
-    if [ -x "$dir/node_modules/.bin/vite" ]; then
+    if [ -x "$dir/node_modules/.bin/vite" ] && frontend_deps_present "$dir" >> "$log" 2>&1; then
         echo "⚠️  npm install failed (see $log); continuing with the existing node_modules."
         echo "   If the frontend does not start: cd $dir && rm -rf node_modules && npm ci"
         return 0
     fi
+    echo "❌ Frontend dependencies are incomplete; refusing to start Vite. See $log"
     return 1
 }
 
@@ -697,12 +714,8 @@ EOF
         echo "❌ Error: frontend package.json not found: ${FRONTEND_DIR}/package.json"
         exit 1
     fi
-    # Always run `npm install` before serving the frontend. It is idempotent:
-    # when node_modules already matches package-lock.json it just does a fast
-    # check (~1-2s) and installs nothing; when a pull added a dependency (e.g.
-    # @xterm/xterm) it installs only the missing/changed packages. This avoids
-    # the Vite "Failed to resolve import" failure after a dependency was added,
-    # without ever reinstalling everything.
+    # Refresh dependencies when the manifest stamp changes or a declared
+    # package is missing. A complete matching install can be reused.
     # Dev launches also pass --force below. npm can leave Vite's generated
     # dependency metadata internally consistent while a referenced chunk is
     # missing after a pull; forced optimization rebuilds that cache before the

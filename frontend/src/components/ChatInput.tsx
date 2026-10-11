@@ -14,10 +14,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
+import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
+import { useSessionBackgroundWork } from '../hooks/useSessionBackgroundWork'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
 import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
@@ -2861,6 +2862,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const backgroundWorkPill = activeTabId && tabSessionId && !hasRunFooter && !terminalViewSelected
     ? <BackgroundWorkPill key={`bg-${activeTabId}`} tabId={activeTabId} />
     : null
+  const [sendOptionsOpen, setSendOptionsOpen] = useState(false)
+  const backgroundWork = useSessionBackgroundWork(!isViewOnly && tabSessionId && !hasRunFooter && !terminalViewSelected ? activeTabId : undefined, sendOptionsOpen)
 
   // Check if query is valid (view-only tabs cannot submit)
   const hasValidQuery = Boolean(inputText?.trim())
@@ -3643,27 +3646,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               {(
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
-                      {/* New chat sits with the send controls; commands live in the send-options popup. */}
-                      {showNewChatAction && onNewChat ? (
-                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
-                  <button
-                    type="button"
-                    onClick={onNewChat}
-                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
-                    aria-label="Start a new chat"
-                    title={isTurnInFlight ? 'Stop this chat and start a new one' : 'Start a new chat'}
-                    data-testid="chat-new-chat"
-                  >
-                    <Plus className="h-3.5 w-3.5 shrink-0" />
-                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
-                      New chat
-                    </span>
-                  </button>
-                ) : null}
                       {!nativeTerminalTools && micEl}
-                      {/* Stop and send stay separate; Enter follows the selected delivery mode. */}
-                      {backgroundWorkPill}
-                      {showStopButton && stopButton}
+                      {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
                       <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
                         {deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
                       </Button>}>
@@ -3673,6 +3657,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         disabled={submitButtonDisabled}
                         onSend={handleSendButtonClick}
                         onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
+                        onNewChat={showNewChatAction ? onNewChat : undefined}
+                        onStop={showStopButton && foregroundTurnActive ? onStopStreaming : undefined}
+                        backgroundWork={backgroundWork}
+                        onOpenChange={setSendOptionsOpen}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
                       </Suspense>

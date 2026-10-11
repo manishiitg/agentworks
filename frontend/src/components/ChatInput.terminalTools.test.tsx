@@ -53,9 +53,11 @@ describe('terminal toolbar shared tools', () => {
   let root: Root
   let client: QueryClient
   const send = vi.fn(async () => true)
+  const stopTurn = vi.fn(() => useChatStore.getState().setTabStreaming('A', false))
+  const newChat = vi.fn()
   const renderComposer = (tabId?: string, enabled = true) => root.render(<QueryClientProvider client={client}>
     <TerminalFocusLayout tabId={tabId} enabled={enabled} className="h-screen">
-      <ChatInput tabId={tabId} onSubmit={send} onStopStreaming={vi.fn()} />
+      <ChatInput tabId={tabId} onSubmit={send} onStopStreaming={stopTurn} onNewChat={newChat} showNewChatAction />
     </TerminalFocusLayout>
   </QueryClientProvider>)
   beforeEach(async () => {
@@ -76,7 +78,7 @@ describe('terminal toolbar shared tools', () => {
   })
   afterEach(async () => {
     await act(async () => root?.unmount())
-    useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear()
+    useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear(); stopTurn.mockClear(); newChat.mockClear()
   })
   it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
     useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
@@ -122,6 +124,75 @@ describe('terminal toolbar shared tools', () => {
     expect(command).toBeTruthy()
     await act(async () => command.click())
     expect(send).toHaveBeenCalledWith('review via menu', expect.objectContaining({ sourceTabId: 'A' }))
+  })
+  it('keeps chat and background actions inside the arrow menu and stops only the selected work', async () => {
+    let items = [
+      { id: 'task-1', kind: 'sub_agent' as const, label: 'code review', started_at: new Date().toISOString(), can_stop: true, status: 'Reading files' },
+      { id: 'task-2', kind: 'step' as const, label: 'refresh', started_at: new Date().toISOString(), can_stop: true },
+    ]
+    vi.spyOn(agentApi, 'getSessionBackgroundWork').mockImplementation(async () => ({ session_id: 'A-session', items }))
+    const stopItem = vi.spyOn(agentApi, 'stopSessionBackgroundWork').mockImplementation(async (_sessionId, itemId) => { items = items.filter(item => item.id !== itemId) })
+    const scroll = vi.fn()
+    const card = document.createElement('div')
+    card.dataset.backgroundAgentId = 'task-1'
+    card.scrollIntoView = scroll
+    document.body.append(card)
+    try {
+      await act(async () => {
+        useChatStore.getState().setTabViewMode('A', 'formatted')
+        useChatStore.getState().setTabStreaming('A', true)
+        useChatStore.getState().setTabHasRunningBgAgents('A', true)
+        renderComposer(undefined, false)
+      })
+      expect(host.querySelector('[data-testid="chat-background-activity"]')).toBeTruthy()
+      expect(host.querySelector('[data-testid="background-work-pill"]')).toBeNull()
+      expect(document.querySelector('[data-testid="chat-new-chat"]')).toBeNull()
+      expect(document.querySelector('[data-testid="chat-stop-button"]')).toBeNull()
+      const openMenu = async () => act(async () => {
+        const trigger = host.querySelector<HTMLElement>('[aria-label="Send options: Steer"]')!
+        trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+      })
+      const openTasks = async (count: number) => act(async () => {
+        const tasks = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === `${count} running`)!
+        expect(tasks).toBeTruthy()
+        tasks.focus(); tasks.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+      })
+      const select = async (element: HTMLElement) => act(async () => {
+        element.focus(); element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      })
+      await openMenu()
+      await openTasks(2)
+      expect(document.querySelector('[data-testid="background-work-status"]')?.textContent).toBe('Reading files')
+      await select(document.querySelector<HTMLElement>('[aria-label="Open Sub-agent: code review"]')!)
+      expect(scroll).toHaveBeenCalled()
+      await openMenu()
+      await openTasks(2)
+      await select(document.querySelector<HTMLElement>('[aria-label="Stop Sub-agent: code review"]')!)
+      expect(stopItem).toHaveBeenCalledExactlyOnceWith('A-session', 'task-1')
+      expect(stopTurn).not.toHaveBeenCalled()
+      expect(document.querySelectorAll('[data-testid="background-work-item"]')).toHaveLength(1)
+      await act(async () => {
+        const remaining = document.querySelector<HTMLElement>('[aria-label="Stop Step: refresh"]')!
+        remaining.focus(); remaining.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+      })
+      await select(document.querySelector<HTMLElement>('[data-testid="chat-stop-button"]')!)
+      expect(stopTurn).toHaveBeenCalledOnce()
+      expect(stopItem).toHaveBeenCalledTimes(1)
+      await openMenu()
+      expect(document.querySelector('[data-testid="chat-stop-button"]')).toBeNull()
+      await openTasks(1)
+      expect(document.querySelector('[data-testid="background-work-item"]')?.textContent).toContain('Step: refresh')
+      await act(async () => {
+        const remaining = document.querySelector<HTMLElement>('[aria-label="Stop Step: refresh"]')!
+        remaining.focus(); remaining.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+      })
+      await select(document.querySelector<HTMLElement>('[data-testid="chat-new-chat"]')!)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(newChat).toHaveBeenCalledOnce()
+      expect(document.querySelector('[role="menu"]')).toBeNull()
+      expect(send).not.toHaveBeenCalled()
+      expect(useChatStore.getState().getTabConfig('A')?.inputText).toBe('review this file')
+    } finally { card.remove() }
   })
   const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
   const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
