@@ -108,7 +108,7 @@ func TestNoUpgradeMandatesMeasurementTopology(t *testing.T) {
 		workflowContractEvalRetirementVersion,
 	} {
 		got := workflowVersionUpgradePlan(&WorkflowManifest{Version: version})
-		if len(got) != 3 || got[0].label != "upgrade-nested-agent-artifacts" || got[1].label != "upgrade-managed-db-scripts" || got[2].label != "upgrade-step-description-layout" {
+		if len(got) != 4 || got[0].label != "upgrade-nested-agent-artifacts" || got[1].label != "upgrade-managed-db-scripts" || got[2].label != "upgrade-step-description-layout" {
 			t.Errorf("older marker %s migration plan = %+v, want nested Agent artifacts, managed DB scripts, then step description layout", version, got)
 		}
 	}

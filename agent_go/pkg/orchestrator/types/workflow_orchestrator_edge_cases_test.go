@@ -308,7 +308,7 @@ func TestWorkflowEdgeOrchestratorAcceptsZeroPredefinedRoutes(t *testing.T) {
 			{
 				"type":                 "todo_task",
 				"id":                   "empty-todo",
-				"title":                "Empty Todo Task",
+				"title":                "Empty Agent",
 				"description":          "Create one todo and mark it done. Reply with the single word DONE.",
 				"context_dependencies": []string{},
 				"context_output":       "td.json",

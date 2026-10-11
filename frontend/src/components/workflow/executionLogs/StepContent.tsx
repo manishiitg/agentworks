@@ -1145,11 +1145,11 @@ export function StepContent(props: StepContentProps) {
               </div>
             </div>
           )}
-          {/* Todo Task Section */}
+          {/* Agent Section */}
           {visibleTodoTask.length > 0 && (
             <div className="p-4 bg-muted/30 border-t border-border">
               <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                <ListTodo className="w-4 h-4" /> Todo Task Logs
+                <ListTodo className="w-4 h-4" /> Agent Logs
               </h4>
               <div className="space-y-6">
                 {Object.entries(
@@ -1560,11 +1560,11 @@ export function StepContent(props: StepContentProps) {
                             </div>
                           )}
 
-                          {/* Archived Todo Task */}
+                          {/* Archived Agent */}
                           {archive.todo_task && archive.todo_task.length > 0 && (
                             <div>
                               <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                                <ListTodo className="w-3 h-3" /> Todo Task ({archive.todo_task.length})
+                                <ListTodo className="w-3 h-3" /> Agent ({archive.todo_task.length})
                               </div>
                               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                               {archive.todo_task.map((task: any, idx: number) => (

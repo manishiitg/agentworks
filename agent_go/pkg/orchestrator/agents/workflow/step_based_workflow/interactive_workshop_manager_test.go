@@ -96,7 +96,7 @@ func TestInteractiveWorkshopPromptDocumentsAgentRouteReuse(t *testing.T) {
 		"re-entry user message",
 		"The sequence's own conversation remains responsible for reasoning, verification",
 		"restart only when the prior conversation is stale, wrong, or contaminated",
-		"## MESSAGE SEQUENCE ROUTE PATTERNS",
+		"## AGENT ROUTE PATTERNS",
 	}
 	for _, snippet := range docMustContain {
 		if !strings.Contains(doc, snippet) {
@@ -123,7 +123,7 @@ func TestOptimizerPromptDocumentsAgentRoutePatterns(t *testing.T) {
 
 	doc := guidance.RenderSystemDoc("agent")
 	docMustContain := []string{
-		"## MESSAGE SEQUENCE ROUTE PATTERNS",
+		"## AGENT ROUTE PATTERNS",
 		"Use these patterns when designing or repairing an agent's `predefined_routes`",
 		"Use a `agent` route when the parent agent should preserve specialist memory",
 		"restart only when the prior conversation is stale, wrong, or contaminated",

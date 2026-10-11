@@ -434,7 +434,7 @@ func TestWorkshopPromptMovedSectionsAreReferencedNotInlined(t *testing.T) {
 	migrations := []migration{
 		{kind: "code-authoring", oldBodyMarker: "## main.py authoring rules"},
 		{kind: "stores", oldBodyMarker: "Three persistent stores — skill vs knowledgebase vs db"},
-		{kind: "agent", oldBodyMarker: "## MESSAGE SEQUENCE ROUTE PATTERNS"},
+		{kind: "agent", oldBodyMarker: "## AGENT ROUTE PATTERNS"},
 		{kind: "optimize-playbook", oldBodyMarker: "## OPTIMIZATION GUIDELINES"},
 		{kind: "file-layout", oldBodyMarker: "## FILE LAYOUT"},
 	}

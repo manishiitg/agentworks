@@ -1778,7 +1778,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	todoSessionID := hcpo.setupSubAgentSessionGuard("todo", stepID, todoReadPaths, todoWritePaths)
 	config.MCPSessionID = todoSessionID
 	dbAccess := hcpo.resolveDBAccess(stepConfig)
-	// An orchestrator step is never scripted (its job is runtime delegation),
+	// An agent step is never scripted (its job is runtime delegation),
 	// so it never gets the scripted executor's direct DB path.
 	directDBAccess := false
 	configureWorkflowDBSession(todoSessionID, hcpo.GetWorkspacePath(), dbAccess, directDBAccess)
@@ -2021,7 +2021,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	if baseAgent := agent.GetBaseAgent(); baseAgent != nil {
 		if baseAgent.Agent() != nil {
 			attachGlobalLearnings := hcpo.resolveLearningsAccess(stepConfig) != LearningsAccessNone
-			// An orchestrator step is never scripted (PLAT-287).
+			// An agent step is never scripted (PLAT-287).
 			hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), false)
 			if inherited := backgroundAgentSkillsFromContext(ctx); len(inherited) > 0 {
 				if err := applyInheritedBackgroundSkills(ctx, baseAgent, inherited); err != nil {

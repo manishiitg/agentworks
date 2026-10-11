@@ -266,7 +266,7 @@ A saved scripted route is also offered to its Agent step as a named tool (route 
 
 Use an `agent` route when the parent agent should preserve specialist memory. Normal repeated calls reuse the route conversation and each call is delivered as a re-entry user message. Set `agent_restart=true` to restart only when the prior conversation is stale, wrong, or contaminated.
 
-## MESSAGE SEQUENCE ROUTE PATTERNS
+## AGENT ROUTE PATTERNS
 
 - Stateful specialist: re-enter one route for follow-up work.
 - Test/fix loop: validate externally, then re-enter the specialist with concrete failures.

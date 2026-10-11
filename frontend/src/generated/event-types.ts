@@ -187,7 +187,7 @@ export type EventTypeString =
   // Workflow Events
   // Batch Execution Events (only cancellation is emitted)
   | 'batch_execution_canceled'
-  // Todo Task Events
+  // Agent Events
   | 'todo_task_route_selected'
   | 'todo_task_step_completed'
   // Delegation Events
@@ -264,7 +264,7 @@ export interface EventTypeToDataMap {
   // Workflow Events
   // Batch Execution Events (only cancellation is emitted)
   'batch_execution_canceled': BatchExecutionCanceledEvent;
-  // Todo Task Events
+  // Agent Events
   'todo_task_route_selected': TodoTaskRouteSelectedEvent;
   'todo_task_step_completed': TodoTaskStepCompletedEvent;
   // Delegation Events
@@ -286,7 +286,7 @@ export interface EventTypeToDataMap {
   'product_interaction': ProductInteractionEvent;
 }
 
-// Todo Task event data types (not in generated schema)
+// Agent event data types (not in generated schema)
 export interface TodoTaskRouteSelectedEvent {
   timestamp?: string;
   trace_id?: string;

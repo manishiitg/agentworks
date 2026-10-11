@@ -408,7 +408,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 				cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				if err := opts.Delegation.ExecCtx.cancelOutstandingAndWait(cleanupCtx); err != nil {
-					hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Orchestrator step %s could not fully stop owned sub-agents during cleanup: %v", step.GetID(), err))
+					hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Agent step %s could not fully stop owned sub-agents during cleanup: %v", step.GetID(), err))
 				}
 			}()
 		}

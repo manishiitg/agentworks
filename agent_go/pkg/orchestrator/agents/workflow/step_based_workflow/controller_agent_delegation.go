@@ -172,10 +172,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 
 	stepConfig := getAgentConfigs(orchestratorStep)
 
-	// Orchestrator steps have no scripted fast path. A fast_path_only request for one is a
+	// Agent steps have no scripted fast path. A fast_path_only request for one is a
 	// caller error rather than something to silently run through the LLM orchestrator.
 	if execCtx != nil && execCtx.SavedScriptOnly {
-		return false, "", fmt.Errorf("orchestrator step %q does not support scripted execution; put deterministic delegation in a regular scripted step that calls its routes", stepID)
+		return false, "", fmt.Errorf("agent step %q does not support scripted execution; put deterministic delegation in a regular scripted step that calls its routes", stepID)
 	}
 
 	// Learnings read gate — default-on unless learnings_access="none" or routing/eval.
@@ -461,7 +461,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		"KnowledgebasePath":     filepath.Join(docsRoot, fgKnowledgebasePath),
 		"DBPath":                filepath.Join(docsRoot, fgDBPath),
 		"DBAccess":              dbAccessForGuard,
-		"DBDirectAccess":        "false", // orchestrator steps are never scripted (PLAT-287)
+		"DBDirectAccess":        "false", // agent steps are never scripted (PLAT-287)
 		"WorkflowRoot":          filepath.Join(docsRoot, baseWorkspacePath),
 		"LearningsPath":         filepath.Join(docsRoot, fgGlobalLearningsPath),
 	}
