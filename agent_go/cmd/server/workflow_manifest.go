@@ -1871,9 +1871,19 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	// All team settings writers share the source-edit commit lock. A caller
 	// already holding it (team assignment/commit) passes trusted context.
 	if held, _ := ctx.Value(teamLockHeldKey{}).(string); held != workspacePath {
-		if saved, ok, e := ReadWorkflowManifest(ctx, workspacePath); e != nil {
+		// Read the saved policy without read-time migration: the reader can
+		// itself call this writer to persist defaults.
+		raw, ok, e := readFileFromWorkspace(ctx, manifestPath(workspacePath))
+		if e != nil {
 			return e
-		} else if ok && saved.Team != nil {
+		}
+		var saved WorkflowManifest
+		if ok {
+			if e := json.Unmarshal([]byte(raw), &saved); e != nil {
+				return fmt.Errorf("parse saved workflow policy: %w", e)
+			}
+		}
+		if saved.Team != nil {
 			unlock, e := teamLock(ctx, workspacePath)
 			if e != nil {
 				return e

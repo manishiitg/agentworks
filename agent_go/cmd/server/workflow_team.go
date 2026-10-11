@@ -525,6 +525,11 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 	if root == "" {
 		return func() {}, nil
 	}
+	// These permits are created only after the typed writer validates policy.
+	// Do not re-enter the migrating manifest reader while saving that manifest.
+	if permit, _ := ctx.Value(teamManifestPermitKey{}).(bool); rel == "workflow.json" && permit {
+		return func() {}, nil
+	}
 	m, ok, e := ReadWorkflowManifest(ctx, root)
 	if e != nil {
 		return nil, e
@@ -720,6 +725,9 @@ func teamRawPathPolicy(ctx context.Context, path string, write bool) error {
 	}
 	root, rel := teamWorkspacePath(path)
 	if root == "" || !teamProtectedSource(rel) {
+		return nil
+	}
+	if permit, _ := ctx.Value(teamManifestPermitKey{}).(bool); rel == "workflow.json" && permit {
 		return nil
 	}
 	m, ok, e := ReadWorkflowManifest(ctx, root)

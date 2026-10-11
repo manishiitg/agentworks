@@ -278,10 +278,10 @@ func TestWorkflowTeamPulseTargetsContributorBuilderAndKeepsInboxPrivate(t *testi
 	}
 	oldFind, oldTurn := findPulseBuilderChat, agentMessageTurn
 	findPulseBuilderChat = func(_ *StreamingAPI, _ context.Context, user string, _ *WorkflowManifest, _ string, _ string) (string, error) {
-		if user != "first" {
+		if user != "first" && user != "second" {
 			return "", fmt.Errorf("wrong private Builder recipient: %s", user)
 		}
-		return "team-first-builder", nil
+		return "team-" + user + "-builder", nil
 	}
 	delivered := make(chan error, 1)
 	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, _ map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
@@ -318,5 +318,14 @@ func TestWorkflowTeamPulseTargetsContributorBuilderAndKeepsInboxPrivate(t *testi
 	}
 	if _, e = f.api.readAgentMessages(teamTestContext("second"), "second", caller, inbox, 0, 20, 0); e == nil {
 		t.Fatal("another Contributor read the private reply address")
+	}
+	// Reassignment does not remove the old recipient's membership. An old
+	// address must still not redirect route work back to that person's chat.
+	m.Team.Routes[0].ContributorID = "second"
+	m.Team.Revision++
+	f.manifest(t, m)
+	_, e = f.api.askBuilder(ctx, pulseBuilderAskRequest{UserID: "leader", WorkspacePath: teamTestRoot, PulseSession: conv.SessionID, RouteStepID: "parent", RouteID: "first-route", Message: "Continue the route work", InboxID: inbox})
+	if e == nil || !strings.Contains(e.Error(), "Builder changed") {
+		t.Fatalf("old route inbox survived reassignment: %v", e)
 	}
 }

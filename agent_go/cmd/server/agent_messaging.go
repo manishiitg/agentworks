@@ -252,6 +252,14 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			agentMessageMu.Unlock()
 			return nil, fmt.Errorf("conversation unavailable or access denied")
 		}
+		if target.TeamRecipientID != "" {
+			peer := c.Endpoints[1-side]
+			current := targetMessageEndpoint(userID, target)
+			if !sameAgentMessageContact(peer, current) || target.Chat != nil && peer.Session != target.Chat.SessionID {
+				agentMessageMu.Unlock()
+				return nil, fmt.Errorf("route Builder changed; create a new inbox for the current assignee")
+			}
+		}
 	} else {
 		if caller.isTarget(target) && caller.Chat == nil {
 			agentMessageMu.Unlock()
