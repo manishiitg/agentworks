@@ -3696,9 +3696,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               )}
             </ChatComposerControls>
         </ChatComposerForm>
-        <p className="mt-1 text-right text-[10px] text-muted-foreground">
-          Enter to {isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'queue next' : 'steer') : 'send'} · Shift+Enter for a new line
-        </p>
         <input
           ref={fileUploadInputRef}
           type="file"

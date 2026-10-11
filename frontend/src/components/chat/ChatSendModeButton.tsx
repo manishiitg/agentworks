@@ -15,14 +15,14 @@ export function ChatSendModeButton({ mode, busy, disabled, onModeChange, onSend 
   const label = busy ? (mode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
   const Icon = busy && mode === 'queue' ? Clock : ArrowUp
   return <div className="inline-flex shrink-0 rounded-md bg-primary text-primary-foreground">
-    <Button type="button" onClick={onSend} disabled={disabled} aria-label={label} data-testid="chat-submit-button"
-      className="h-7 gap-1.5 rounded-r-none px-2.5 text-xs">
-      <Icon className="h-3.5 w-3.5" />{label}
+    <Button type="button" size="xs" onClick={onSend} disabled={disabled} aria-label={label} data-testid="chat-submit-button"
+      className="gap-1 rounded-r-none px-1.5 text-[11px] [&_svg]:size-3">
+      <Icon className="h-3 w-3" />{label}
     </Button>
     <Select.Root value={mode} onValueChange={value => onModeChange(value as ChatDeliveryMode)}>
       <Select.Trigger aria-label={`Choose how to send while the agent is working: ${mode === 'queue' ? 'Queue next' : 'Steer'}`}
-        className="flex h-7 items-center rounded-r-md border-l border-primary-foreground/25 px-1.5 hover:bg-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ChevronDown className="h-3.5 w-3.5" />
+        className="flex h-6 w-5 items-center justify-center rounded-r-md border-l border-primary-foreground/25 hover:bg-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronDown className="h-3 w-3" />
       </Select.Trigger>
       <Select.Portal>
         <Select.Content position="popper" side="top" align="end" sideOffset={8}
@@ -43,6 +43,9 @@ export function ChatSendModeButton({ mode, busy, disabled, onModeChange, onSend 
                 <p className="ml-6 mt-0.5 text-xs text-muted-foreground">{description}</p>
               </Select.Item>)}
             </Select.Group>
+            <p className="mt-1.5 border-t border-border px-2.5 pb-1 pt-2 text-[10px] text-muted-foreground">
+              Enter to {label.toLowerCase()} · Shift+Enter for a new line
+            </p>
           </Select.Viewport>
         </Select.Content>
       </Select.Portal>

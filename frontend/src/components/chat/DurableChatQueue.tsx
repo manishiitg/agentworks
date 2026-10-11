@@ -80,7 +80,7 @@ export function DurableChatQueue({ sessionId, tabId, busy, canSteer }: {
   }
   const messages = query.data ?? []
   if (!messages.length && !error && !query.isError) return null
-  return <div className="mb-2 space-y-1.5" aria-label="Queued messages" aria-live="polite">
+  return <div className="mb-1 space-y-1" aria-label="Queued messages" aria-live="polite">
     {(error || query.isError) && <p role="alert" className="text-xs text-amber-500">{error || 'Could not refresh queued messages.'}
       <button type="button" className="ml-2 underline" onClick={() => void query.refetch()}>Retry</button>
     </p>}
@@ -88,22 +88,22 @@ export function DurableChatQueue({ sessionId, tabId, busy, canSteer }: {
       const pending = Boolean(message.steering || action === message.message_id)
       const Icon = pending ? Loader2 : Clock
       const text = askAIDisplayText(getDisplaySafeUserMessageContent(message.content))
-      return <div key={message.message_id || message.client_message_id} className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-xs font-medium text-amber-500">
-            <Icon className={`h-3.5 w-3.5 ${pending ? 'animate-spin' : ''}`} />
-            {message.delivery_error ? 'Delivery unconfirmed' : message.steering ? 'Steering…' : `Queued · next turn${message.queue_position ? ` · ${message.queue_position}` : ''}`}
+      const description = message.delivery_error || (message.steering ? 'Delivering to the current task' : 'Sends automatically when the current turn finishes')
+      return <div key={message.message_id || message.client_message_id} className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1.5">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+          <span title={description} className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
+            <Icon className={`h-3 w-3 shrink-0 ${pending ? 'animate-spin' : ''}`} />
+            {message.delivery_error ? 'Delivery unconfirmed' : message.steering ? 'Steering…' : `Queued${message.queue_position ? ` · ${message.queue_position}` : ''}`}
           </span>
-          {message.message_id && <div className="flex items-center gap-3 text-xs">
+          <details className="group min-w-0 text-xs text-foreground">
+            <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
+          </details>
+          {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
             {canSteer && !message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
             <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Remove</button>
           </div>}
         </div>
-        {text.length > 300 ? <details className="mt-1 text-sm text-foreground">
-          <summary className="cursor-pointer break-words">{text.slice(0, 150)}…</summary>
-          <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{text}</p>
-        </details> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{text}</p>}
-        <p className="mt-1 text-[11px] text-muted-foreground">{message.delivery_error || (message.steering ? 'Delivering to the current task' : 'Sends automatically when the current turn finishes')}</p>
+        {message.delivery_error && <p className="mt-1 text-[11px] text-muted-foreground">{message.delivery_error}</p>}
       </div>
     })}
   </div>

@@ -28,22 +28,25 @@ it('restores the server queue and keeps a failed remove visible until the server
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  let client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const render = () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy canSteer /></QueryClientProvider>)
   const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
   try {
     await act(async () => render())
     await flush()
     expect(host.textContent).toContain('Review the settings page.')
-    expect(host.textContent).toContain('Sends automatically when the current turn finishes')
+    expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeTruthy()
     expect(host.textContent).toContain('Steer now')
     fixture.remove.mockRejectedValueOnce(new Error('network unavailable'))
     const remove = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')!
     await act(async () => remove().click())
     await flush()
     expect(host.textContent).toContain('Review the settings page.')
-    // A re-mounted view fetches the same durable entry; it never resubmits it.
+    // A page refresh loses the entire browser query cache. Restore the same
+    // durable entry from the server without resubmitting it.
     await act(async () => root.render(null))
+    client.clear()
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => render())
     await flush()
     expect(host.textContent).toContain('Review the settings page.')
