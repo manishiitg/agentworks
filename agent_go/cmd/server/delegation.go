@@ -295,20 +295,6 @@ func (n *workshopExecutionBgNotifier) OnExecutionComplete(execID, name, result s
 	// cancellation. Treat it as failed and notify the waiting main agent. Marking
 	// it canceled would make processBackgroundAgentCompletion deliberately suppress
 	// the synthetic turn, which strands Pulse after a timed-out maintenance agent.
-	if err != nil && (strings.Contains(err.Error(), "context canceled") || strings.Contains(err.Error(), "context deadline exceeded")) {
-		if !agent.SetError(err.Error()) {
-			return
-		}
-		n.api.completeTrackedExecution(execID, trackedExecutionStatusFailed, err.Error(), meta)
-		duration := time.Since(agent.CreatedAt)
-		n.api.emitBackgroundAgentCompleted(n.sessionID, execID, name, "failed", "", err.Error(), duration.Truncate(time.Second).String())
-		suppressNotification := agent.GetSnapshot().Metadata["suppress_auto_notification"] == "true"
-		log.Printf("[BG AGENT] Background execution %s ended from context loss while still running (suppress_auto_notification=%t): %v", execID, suppressNotification, err)
-		if !suppressNotification {
-			n.api.bgAgentRegistry.NotifyCompletion(n.sessionID, execID)
-		}
-		return
-	}
 
 	duration := time.Since(agent.CreatedAt)
 	if len(meta) > 0 {
@@ -333,7 +319,7 @@ func (n *workshopExecutionBgNotifier) OnExecutionComplete(execID, name, result s
 		log.Printf("[BG AGENT] Suppressed child success notification for %s; enclosing execution %s owns the completion", execID, agent.GetSnapshot().ParentExecutionID)
 	}
 	if err != nil && suppressRepeatedChildFailureNotification(n.api.bgAgentRegistry, n.sessionID, agent) {
-		log.Printf("[BG AGENT] Suppressed repeated parent failure notification for %s; direct agent child already owns the same error", execID)
+		log.Printf("[BG AGENT] Suppressed repeated parent failure notification for %s; agent or workflow-step descendant already owns the same error", execID)
 	}
 
 	// A finished parent cannot still have live progress children. Settle any it

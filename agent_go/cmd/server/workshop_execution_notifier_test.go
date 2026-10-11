@@ -320,7 +320,7 @@ func TestWorkshopExecutionNotifierSuppressesNestedRunFailure(t *testing.T) {
 	const session = "nested-run-failure"
 	run := &BackgroundAgent{ID: "workflow-full-example", SessionID: session, Status: BGAgentRunning, CreatedAt: time.Now()}
 	step := &BackgroundAgent{ID: "workflow-step-example", ParentExecutionID: run.ID, SessionID: session, Kind: "workflow_step", Status: BGAgentRunning, CreatedAt: time.Now()}
-	item := &BackgroundAgent{ID: "agent-item-example", ParentExecutionID: step.ID, SessionID: session, Kind: "agent_item", Status: BGAgentFailed, Error: "sandbox unavailable", CreatedAt: time.Now()}
+	item := &BackgroundAgent{ID: "agent-item-example", ParentExecutionID: step.ID, SessionID: session, Kind: "agent_item", Status: BGAgentFailed, Error: "context deadline exceeded", CreatedAt: time.Now()}
 	registry.Register(session, run)
 	registry.Register(session, step)
 	registry.Register(session, item)
@@ -335,7 +335,7 @@ func TestWorkshopExecutionNotifierSuppressesNestedRunFailure(t *testing.T) {
 	}
 	// If the item has no auto-notification, an enclosing failure must still report.
 	item.SetMetadata(map[string]string{"suppress_auto_notification": "true"})
-	another := &BackgroundAgent{ID: "another-run", SessionID: session, Status: BGAgentFailed, Error: "sandbox unavailable"}
+	another := &BackgroundAgent{ID: "another-run", SessionID: session, Status: BGAgentFailed, Error: "context deadline exceeded"}
 	registry.Register(session, another)
 	item.ParentExecutionID = another.ID
 	if suppressRepeatedChildFailureNotification(registry, session, another) {
