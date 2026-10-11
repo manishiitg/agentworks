@@ -40,16 +40,18 @@ type LocalBridgeRequest struct {
 }
 
 type LocalBridgeReply struct {
-	Attached        bool               `json:"attached"`
-	IncludeGuidance bool               `json:"include_guidance,omitempty"`
-	Attachment      AgentAttachment    `json:"attachment,omitempty"`
-	Messages        []AgentLiveMessage `json:"messages,omitempty"`
-	Error           string             `json:"error,omitempty"`
-	Result          json.RawMessage    `json:"result,omitempty"`
-	Sessions        []AgentAttachment  `json:"sessions,omitempty"`
-	LastError       string             `json:"last_error,omitempty"`
-	Offline         bool               `json:"offline,omitempty"`
-	Pending         int                `json:"pending"`
+	Attached           bool               `json:"attached"`
+	IncludeGuidance    bool               `json:"include_guidance,omitempty"`
+	Attachment         AgentAttachment    `json:"attachment,omitempty"`
+	Messages           []AgentLiveMessage `json:"messages,omitempty"`
+	Error              string             `json:"error,omitempty"`
+	Result             json.RawMessage    `json:"result,omitempty"`
+	Sessions           []AgentAttachment  `json:"sessions,omitempty"`
+	LastError          string             `json:"last_error,omitempty"`
+	Offline            bool               `json:"offline,omitempty"`
+	Pending            int                `json:"pending"`
+	previousGuidanceAt time.Time
+	guidanceAt         time.Time
 }
 
 type localOffer struct {
@@ -89,9 +91,13 @@ type localBridge struct {
 
 var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receipt")
 
+// ErrNativeOfferRejected means no message content reached the provider.
+// A disconnect after a delivery write must never be classified as rejected.
+var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
+
 type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
-	Notify      func(AgentAttachment)
+	Notify      func(AgentAttachment, string)
 }
 
 func DefaultLocalBridgeRoot() (string, error) {
@@ -306,7 +312,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				}
 				b.wake()
 				if b.options.Notify != nil && s.NativeRemote == "" {
-					go b.options.Notify(s.Attachment)
+					go b.options.Notify(s.Attachment, "")
 				}
 				return nil
 			})
@@ -685,9 +691,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		out.Messages = filtered
 		previousGuidanceAt := s.LastGuidanceAt
-		if len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
+		out.previousGuidanceAt = previousGuidanceAt
+		if in.Transport != "claude_channel" && len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
 			out.IncludeGuidance = true
 			s.LastGuidanceAt = time.Now().UTC()
+			out.guidanceAt = s.LastGuidanceAt
 		}
 		for _, m := range out.Messages {
 			v := s.Offers[m.MessageID]
@@ -765,11 +773,18 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 				continue
 			}
 			b.mu.Lock()
-			s.LastError = "Native queue did not confirm acceptance; use explicit mailbox read."
+			if out.IncludeGuidance && errors.Is(err, ErrNativeOfferRejected) && s.LastGuidanceAt.Equal(out.guidanceAt) && b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s {
+				s.LastGuidanceAt = out.previousGuidanceAt
+			}
+			s.LastError = "Native delivery uncertain; ask the agent to read the mailbox."
+			if errors.Is(err, ErrNativeOfferRejected) {
+				s.LastError = "Message not delivered; ask the agent to read the mailbox."
+			}
+			notice := s.LastError
 			_ = b.save()
 			b.mu.Unlock()
 			if b.options.Notify != nil {
-				b.options.Notify(s.Attachment)
+				b.options.Notify(s.Attachment, notice)
 			}
 			continue // Persisted offer prevents a duplicate turn on an ambiguous failure.
 		}

@@ -550,7 +550,10 @@ processing. The official Claude MCP channel remains available separately.
 AgentWorks includes acknowledgement/reply instructions on the first offer for
 an attachment and refreshes them on the next offer after 24 hours. The private
 bridge persists that timestamp with its offer journal, so a daemon restart does
-not repeat guidance. Every offer still carries a short sender-content label,
+not repeat guidance. A definite pre-delivery failure restores the prior timestamp
+for the next new offer; ambiguous writes retain it. Claude channels use MCP tool
+metadata and do not consume this formatting timestamp. Every offer still carries
+a short help hint and sender-content label,
 sender, message ID, inbox ID and exact attachment metadata. A newly attached
 session gets fresh instructions. Claude's own native peer/permission warning is
 added by Claude; this cadence only controls AgentWorks text. Sender content cannot
