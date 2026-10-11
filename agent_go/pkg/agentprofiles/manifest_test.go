@@ -58,6 +58,37 @@ func TestLoadProductManifestSingleProfile(t *testing.T) {
 	}
 }
 
+func TestLoadProductManifestExecutionFunctionTools(t *testing.T) {
+	for name, extra := range map[string]string{
+		"omitted":  "",
+		"disabled": "execution:\n  function_tools:\n    tools: []\n",
+		"enabled":  "execution:\n  function_tools:\n    category: workflow_calls\n    tools: [list_functions, get_function_call]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := LoadProductManifest(manifestFS(extra, nil), "product.yaml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name == "enabled" && (m.Execution.FunctionTools.Category != "workflow_calls" || len(m.Execution.FunctionTools.Tools) != 2) {
+				t.Fatalf("lost execution admission: %+v", m.Execution.FunctionTools)
+			}
+		})
+	}
+	for name, extra := range map[string]string{
+		"missing category": "tools: [list_functions]",
+		"duplicate":        "category: functions\n    tools: [list_functions, list_functions]",
+		"empty name":       "category: functions\n    tools: ['']",
+		"untrimmed name":   "category: functions\n    tools: [' list_functions']",
+		"unknown field":    "category: functions\n    toolz: [list_functions]",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := LoadProductManifest(manifestFS("execution:\n  function_tools:\n    "+extra+"\n", nil), "product.yaml"); err == nil {
+				t.Fatal("invalid execution function declaration was accepted")
+			}
+		})
+	}
+}
+
 const childProfile = `profiles:
   - id: family-child
     name: Child

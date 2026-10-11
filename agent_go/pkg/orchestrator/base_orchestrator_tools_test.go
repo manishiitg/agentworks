@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -49,7 +50,7 @@ func TestHumanToolsCategoryIncludesDurableWorkflowDecisionTools(t *testing.T) {
 	}
 }
 
-func TestBaseOrchestratorPreRegistersDelegationCategoriesWithoutMutatingInput(t *testing.T) {
+func TestBaseOrchestratorPreRegistersRuntimeCategoriesWithoutMutatingInput(t *testing.T) {
 	input := map[string]string{"existing": "workspace"}
 	base, err := NewBaseOrchestrator(
 		loggerv2.NewNoop(), nil, OrchestratorTypeWorkflow, "", 0, "",
@@ -65,6 +66,12 @@ func TestBaseOrchestratorPreRegistersDelegationCategoriesWithoutMutatingInput(t 
 	for _, tool := range virtualtools.CreateSubAgentTools() {
 		if got := base.ToolCategories[tool.Function.Name]; got != wantCategory {
 			t.Fatalf("category for %s=%q, want %q", tool.Function.Name, got, wantCategory)
+		}
+	}
+	functionTools := agentworksproduct.ExecutionFunctionTools()
+	for _, name := range functionTools.Tools {
+		if got := base.ToolCategories[name]; got != functionTools.Category {
+			t.Fatalf("category for %s=%q, want %q", name, got, functionTools.Category)
 		}
 	}
 }
