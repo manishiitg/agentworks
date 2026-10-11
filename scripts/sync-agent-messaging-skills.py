@@ -26,15 +26,19 @@ def main():
     if unknown:
         parser.error("unknown provider: " + ", ".join(sorted(unknown)))
     text = SOURCE.read_bytes()
+    if not text.startswith(b"---\nname: agent-messages\n"):
+        parser.error("shared source must retain its agent-messages frontmatter name")
     stale = []
     for provider in providers:
         target = ROOT / TARGETS[provider]
+        # Preserve Muse's published skill name/id while sharing the whole body.
+        expected = text.replace(b"name: agent-messages\n", b"name: agentworks-messaging\n", 1) if provider == "muse" else text
         if args.check:
-            if not target.is_file() or target.read_bytes() != text:
+            if not target.is_file() or target.read_bytes() != expected:
                 stale.append(TARGETS[provider])
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(text)
+            target.write_bytes(expected)
     if stale:
         parser.exit(1, "Messaging skills need regeneration:\n" + "\n".join(stale) + "\n")
     print(f"Messaging skills {'checked' if args.check else 'generated'}: {', '.join(providers)}")
