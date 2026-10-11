@@ -17,7 +17,7 @@ step's `description` or sequence items.
 
 Before authoring, read `references/step-system-prompts.md` from this same
 builder-reference skill. It is the canonical source used by execution and
-orchestrator runtime code, not a separately maintained summary. Read its named
+routed-agent runtime code, not a separately maintained summary. Read its named
 section for the step type and the managed-DB sections it references. Template
 conditions and placeholders are resolved per run; they are not permission grants.
 
@@ -66,7 +66,7 @@ delegation instructions are also user messages, not description mutations.
 
 ### Use this section layout for the description
 
-This layout is for agent steps (agent and orchestrator). Scripted, routing, branch and Crew
+This layout is for `agent` steps, including normalized legacy records. Scripted, routing, branch and Crew
 steps are driven by code, routes, a question to a person or a Crew; keep their description short and do not force
 the sections on them.
 

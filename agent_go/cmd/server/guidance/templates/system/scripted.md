@@ -16,7 +16,9 @@ steps are normalized to a one-turn agent at runtime; they never use the removed
 direct scripted-agent path. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
 Use the others for branching (`branch` for a small in-flow decision, `routing` for a major
 sub-workflow fork), adaptive specialist coordination (`agent` with
-`predefined_routes`), or operator input (`human_input`).
+`predefined_routes`). Supply known operator values as required launch variables;
+use an agent's `human_feedback` for live interaction or a durable human request
+when the answer can wait. Read `references/human-in-the-loop.md`.
 
 ## Scripts are built by you, not healed by the run
 
@@ -134,7 +136,7 @@ steps and rejects invalid values before registering background execution.
 - Same-context ordered turns, a stateful conversation, self-validation/grounding
   gate, or stepping through a db array row-by-row → **`agent`**
   (incl. its `foreach` item).
-- Pausing for a fixed human approval/selection → **`branch` with `route_source="human"`**; capturing a free-form value → **`human_input` (`text`)**.
+- Pausing for a fixed human approval/selection → **`branch` with `route_source="human"`**. Known free-form values are declared launch variables with `required_variables` on their first consumer; live interaction uses an agent's **`human_feedback`**, and a decision that can wait uses **`create_human_input_request`**.
 
 ## Anti-patterns
 

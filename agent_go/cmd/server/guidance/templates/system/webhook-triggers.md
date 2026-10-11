@@ -265,7 +265,7 @@ Use `manage_workflow_webhook` action `list` to discover `steps`. To create or up
 
 Supported targets are top-level executable plan steps: scripted workers or
 agents, including agents with `predefined_routes` (and legacy
-orchestrator compatibility records). Human-input and routing/branch nodes are not
+orchestrator compatibility records). Routing/branch nodes are not
 standalone targets; select a route instead. Nested steps must be exposed as a
 top-level step to bind directly. Single-step webhooks skip prior and subsequent
 plan steps, automatic evaluation, and Pulse. They run the chosen step once for

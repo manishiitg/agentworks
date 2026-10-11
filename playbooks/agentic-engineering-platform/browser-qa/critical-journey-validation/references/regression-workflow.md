@@ -14,20 +14,20 @@ The builder declares DB contracts and authors the dashboard once. Saved scripts 
 
 | Step ID | Type and creation tool | Responsibility and durable output | Next |
 | --- | --- | --- | --- |
-| `prepare-regression` | Scripted / `add_scripted_step` | Initialize run + expected cases; resolve profile, test source, variables, fixtures, and dependencies. Record readiness and a selection file. | `readiness-gate` |
-| `readiness-gate` | Branch / `add_branch_step` | `ready` → execute suite; `blocked` → investigation. | `execute-regression` or `investigate-regression` |
-| `execute-regression` | Scripted / `add_scripted_step` | Run the saved manifest, persist original outcomes, finalize/redact attempt video and console/network logs, clean fixtures, and write `clean` or `attention`. | `investigation-gate` |
-| `investigation-gate` | Branch / `add_branch_step` | `clean` → aggregation; `attention` → investigation. | `finalize-regression` or `investigate-regression` |
-| `investigate-regression` | Message sequence / `add_message_sequence_step` | Inspect all relevant findings, capture bounded reproductions if useful, record classifications and repair proposals, verify evidence, and update verified KB knowledge. | Explicit `next_step_id: "finalize-regression"` |
-| `finalize-regression` | Scripted / `add_scripted_step` | Check case-set completeness and evidence, apply QA status rules, close the run, and persist summary rows for the dashboard. No HTML generation. | Explicit `next_step_id: "end"` |
+| `prepare-regression` | Scripted / `add_step(type="scripted", step={...})` | Initialize run + expected cases; resolve profile, test source, variables, fixtures, and dependencies. Record readiness and a selection file. | `readiness-gate` |
+| `readiness-gate` | Branch / `add_step(type="branch", step={...})` | `ready` → execute suite; `blocked` → investigation. | `execute-regression` or `investigate-regression` |
+| `execute-regression` | Scripted / `add_step(type="scripted", step={...})` | Run the saved manifest, persist original outcomes, finalize/redact attempt video and console/network logs, clean fixtures, and write `clean` or `attention`. | `investigation-gate` |
+| `investigation-gate` | Branch / `add_step(type="branch", step={...})` | `clean` → aggregation; `attention` → investigation. | `finalize-regression` or `investigate-regression` |
+| `investigate-regression` | Agent / `add_step(type="agent", step={...})` | Inspect all relevant findings, capture bounded reproductions if useful, record classifications and repair proposals, verify evidence, and update verified KB knowledge. | Explicit `next_step_id: "finalize-regression"` |
+| `finalize-regression` | Scripted / `add_step(type="scripted", step={...})` | Check case-set completeness and evidence, apply QA status rules, close the run, and persist summary rows for the dashboard. No HTML generation. | Explicit `next_step_id: "end"` |
 
-The branches protect real expensive-work and judgment boundaries. A small implementation may combine preflight into the runner if both share one failure domain; preserve the same output and completeness guarantees. Do not split tests into one agent per click or introduce an orchestrator for a fixed case list. If independent suites need separate execution boundaries, keep explicit manifests/results; use only supported script batch mechanics with bounded concurrency.
+The branches protect real expensive-work and judgment boundaries. A small implementation may combine preflight into the runner if both share one failure domain; preserve the same output and completeness guarantees. Do not split tests into one agent per click or introduce an agent with predefined routes for a fixed case list. If independent suites need separate execution boundaries, keep explicit manifests/results; use only supported script batch mechanics with bounded concurrency.
 
 Configure investigation to accept preflight-blocked runs that have no suite output. Give it the run pointer and query the DB; do not require a skipped runner's nonexistent file as a dependency. Every branch path must reach finalization or leave a durable explicit interrupted/error state when execution itself aborts.
 
 ## Scripted step contract
 
-- Resolve code layout from the current workflow; retain the saved Python `main.py` entrypoint and invoke the existing JS/TS or Python runner from it as appropriate. Use `update_scripted_step(code=...)` and current builder tools. Do not install dependencies every run.
+- Resolve code layout from the current workflow; retain the saved Python `main.py` entrypoint and invoke the existing JS/TS or Python runner from it as appropriate. Use `update_step(step_id=..., changes={"code": ..., "reason": ...})` and current builder tools. Do not install dependencies every run.
 - Inject configuration and secrets through supported runtime inputs. Use the actual test working directory and runner command saved in the foundation. Keep fresh test contexts and independent fixture state.
 - Persist run identity/expected cases before execution and write terminal case records in cleanup/finalization paths. Bounded per-case and run watchdogs must leave evidence; the outer process kill is not a normal retry strategy.
 - Preserve the test runner's exit code and assertion failures in records. The wrapper may successfully process a failing QA result and return valid structured output. Unexpected harness errors, missing manifests, or failed persistence remain execution errors and must not produce a `clean` selection.
@@ -45,7 +45,7 @@ For `readiness-gate`, `ready` means prerequisites were verified; otherwise persi
 
 Wire terminal steps with explicit `next_step_id` so execution cannot fall through into an unselected sibling. Create targets before references; remove/reroute incoming edges before deleting a target. Use caller `route_selections` for a known requested mode rather than ask the same question again.
 
-Do not branch once between application bug / stale test / environment issue for the entire suite: one run can contain all three. Investigation processes every case and saves classifications individually. Persist case-specific review decisions and let a later authorized remediation route consume them. Use `branch` with `route_source="human"` only for an explicitly attended bounded choice; free-form missing values use text `human_input`. Unattended runs defer unresolved decisions rather than auto-approve.
+Do not branch once between application bug / stale test / environment issue for the entire suite: one run can contain all three. Investigation processes every case and saves classifications individually. Persist case-specific review decisions and let a later authorized remediation route consume them. Use `branch` with `route_source="human"` only for an explicitly attended bounded choice; known free-form values must be declared launch variables with `required_variables` on their first consumer, and live interaction uses an agent's `human_feedback`. Unattended runs defer unresolved decisions rather than auto-approve.
 
 ## Browser recording and diagnostics
 

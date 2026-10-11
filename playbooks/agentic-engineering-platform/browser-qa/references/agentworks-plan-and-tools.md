@@ -22,27 +22,28 @@ Otherwise prefer one coherent step with a clear output and validation contract.
 
 | Need | Step type | AgentWorks planning tool | Browser QA examples |
 | --- | --- | --- | --- |
-| Reasoning, investigation, or adaptation with shared context | `message_sequence` | `add_message_sequence_step` | Explore an unknown application, diagnose a failure, compare evidence, propose an eligible repair. Use substantial do, verify, and repair items rather than one item per action. |
-| Fixed execution with deterministic inputs and outputs | `scripted` (internal plan type `regular`) | `add_scripted_step`, then `update_scripted_step(code=...)` | Run a saved Playwright suite, perform readiness checks, normalize results, apply an approved patch, or persist mechanical output. The checked-in `main.py` may invoke the existing JS, TS, or Python test runner. |
-| Small in-flow choice that quickly converges | `branch` | `add_branch_step` | Ready versus blocked or product defect versus test defect. A deterministic or agentic producer should write the route-selection evidence first. Use `route_source="human"` only for an explicitly attended, bounded decision. Persist long-lived approvals and consume them through a later action route. |
-| One major mode selector for substantially different sub-workflows | `routing` | `add_routing_step` | Choose setup, smoke, regression, or self-healing mode when one workflow intentionally supports those large paths. Use at most one routing step. The caller, schedule, or a prior producer supplies `route_selections`; every route starts a real subflow. |
-| A missing free-form value from a person | `human_input` | `add_human_input_step` | Ask for a base URL, test account label, or run note when it cannot be supplied as a variable. Keep long-lived approvals in the durable decision lifecycle; reserve an in-run human branch for an explicitly attended fixed choice. |
-| The parent must decide and revise the investigation strategy at runtime | `orchestrator` | `add_orchestrator_step` | A broad investigation where evidence determines which specialist checks to run next. Do not use it for a fixed suite, known checklist, simple parallelism, or a fixed retry rule. |
-| Reusable deterministic helper that should not run in the main path | orphan scripted step | `add_scripted_step(is_orphan=true, ...)` | A selector audit, evidence exporter, or one-off repair verifier launched from Workshop or referenced by a supported scripted batch. |
+| Reasoning, investigation, or adaptation with shared context | `agent` | `add_step(type="agent", step={...})` | Explore an unknown application, diagnose a failure, compare evidence, propose an eligible repair. Use substantial do, verify, and repair items rather than one item per action. |
+| Fixed execution with deterministic inputs and outputs | `scripted` | `add_step(type="scripted", step={...})`, then `update_step(step_id=..., changes={"code": ..., "reason": ...})` | Run a saved Playwright suite, perform readiness checks, normalize results, apply an approved patch, or persist mechanical output. The checked-in `main.py` may invoke the existing JS, TS, or Python test runner. |
+| Small in-flow choice that quickly converges | `branch` | `add_step(type="branch", step={...})` | Ready versus blocked or product defect versus test defect. A deterministic or agentic producer should write the route-selection evidence first. Use `route_source="human"` only for an explicitly attended, bounded decision. Persist long-lived approvals and consume them through a later action route. |
+| One major mode selector for substantially different sub-workflows | `routing` | `add_step(type="routing", step={...})` | Choose setup, smoke, regression, or self-healing mode when one workflow intentionally supports those large paths. Use at most one routing step. The caller, schedule, or a prior producer supplies `route_selections`; every route starts a real subflow. |
+| A known free-form value from a person | Launch input, not a step | Declare variables and the first consumer's `required_variables` | Supply the base URL, test account label, or run note before launch. Live interaction uses an agent's `human_feedback`; long-lived approvals use durable requests and a later consumer. |
+| The parent must decide and revise the investigation strategy at runtime | `agent` with `predefined_routes` | `add_step(type="agent", step={...})`; `manage_step_route` for route edits | A broad investigation where evidence determines which specialist checks to run next. Do not add routes for a fixed suite, known checklist, simple parallelism, or a fixed retry rule. |
+| Work belongs to a persistent specialist | `crew` | `add_step(type="crew", step={...})` | Invoke an attached Crew's enabled trigger and wait for its response. Discover the Crew and trigger before authoring the step. |
+| Reusable deterministic helper that should not run in the main path | orphan `scripted` step | `add_step(type="scripted", step={"is_orphan": true, ...})` | A selector audit, evidence exporter, or one-off repair verifier launched from Workshop or referenced by a supported scripted batch. |
 
-Use the corresponding `update_*` tool to revise a step. Use `change_step_type` when moving an existing step between `scripted` and `message_sequence`, and the supported plan deletion tool when removing steps. Never patch `planning/plan.json` directly.
+Use `update_step(step_id, changes)` to revise a step and `change_step_type` for supported `scripted` ↔ `agent` or `routing` ↔ `branch` conversions. Use `delete_plan_steps` when removing steps. Read `builder-reference/references/plan-editing-tools.md` and the live selected schema before mutations; fields belong inside `step`, `changes` or `parameters`. External MCP clients delegate through `builder action=chat` only when it is listed. Never patch `planning/plan.json` directly.
 
 ## Recommended Browser QA composition
 
 Use only the boundaries the customer process needs. A typical composition is:
 
-1. **Discover or diagnose — `message_sequence`.** Read the application profile and relevant knowledgebase notes, use the managed browser, and produce verified findings or a repair proposal.
+1. **Discover or diagnose — `agent`.** Read the application profile and relevant knowledgebase notes, use the managed browser, and produce verified findings or a repair proposal.
 2. **Execute — `scripted`.** Run the canonical Playwright command with bounded timeouts, the configured fixtures, and runner-owned recording. Emit machine-readable case and attempt results.
-3. **Classify — keep it with its owner when possible.** Deterministic status derivation belongs in the runner or a small script. Judgment about whether the application or test is wrong belongs in a message sequence.
+3. **Classify — keep it with its owner when possible.** Deterministic status derivation belongs in the runner or a small script. Judgment about whether the application or test is wrong belongs in an agent.
 4. **Choose — `branch` only when paths differ.** Consume an explicit status or route-selection file. Do not add a branch when failure should simply stop the owning step.
 5. **Queue review — persist and end.** Save the concrete diff, evidence, verification, hashes, and `pending_review` decision for later review. Do not keep the run open by default.
 6. **Apply and rerun — separate `scripted` action route.** Load the durable approval, recheck proposal and base identity, apply only the approved test change, rerun the canonical affected tests, and fail closed on incomplete coverage.
-7. **Persist and present.** Mechanical result writes belong in the scripted owner. Verified application facts can be contributed by the discovering message sequence. The report reads durable data rather than volatile run files.
+7. **Persist and present.** Mechanical result writes belong in the scripted owner. Verified application facts can be contributed by the discovering agent. The report reads durable data rather than volatile run files.
 
 Do not create separate steps for every route, click, locator, screenshot, assertion, report card, or retry.
 
@@ -50,7 +51,7 @@ Do not create separate steps for every route, click, locator, screenshot, assert
 
 ### Plan and validation
 
-- Use `add_message_sequence_step`, `add_scripted_step`, `add_branch_step`, `add_routing_step`, `add_human_input_step`, or `add_orchestrator_step` only after choosing the boundary above.
+- Use `add_step(type, step)` only after choosing one of the five supported types above. Supply required native fields, including `reason`, inside `step`; use the current schema rather than treating the examples as complete payloads.
 - Use `update_validation_schema` for machine-checkable completion. Validate expected case IDs, terminal status for every required case, evidence references, source revisions, and completeness counts. A summary saying “passed” is insufficient.
 - Use `context_output` and `context_dependencies` for compact within-run handoffs. A route producer should write the exact route-selection contract expected by its branch or routing step.
 - Use `update_step_config` for runtime skills, custom tools, execution tier, KB access/contribution, learnings access/objective, and code locking. Keep `lock_code=false` while a scripted step is still being proven; lock only under the current platform criteria.
@@ -85,7 +86,7 @@ Build the dashboard at `db/reports/index.html` over durable tables and assets th
 
 ### Run and debug
 
-- Use `execute_step` for a targeted Workshop run and `run_full_workflow` for one complete selected group. Pass known `human_inputs` and `route_selections` instead of asking again inside the workflow.
+- Use `execute_step` for a targeted Workshop run and `run_full_workflow` for one complete selected group. Supply known values as declared launch `variables` or in the selected group, scoped instructions through `human_inputs`, and fixed route choices through `route_selections`. Set the first consumer's `required_variables` so missing values stop execution.
 - Use `query_step`, `list_executions`, and `debug_step` for a bounded status or diagnostic check. Follow platform auto-notifications rather than building polling loops.
 - Use `send_step_message` to correct an active step by its returned execution ID. Use `stop_step` or `stop_all_executions` when execution must be cancelled.
 - Re-run the smallest affected deterministic step first, then the selected end-to-end route. Confirm persisted rows, durable evidence, and the live report as well as the step output.
