@@ -138,6 +138,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	}
 	label, _ := args["label"].(string)
 	catalog, _ := args["catalog"].(string)
+	label, catalog = strings.TrimSpace(label), strings.TrimSpace(catalog)
 	if catalog == "" && url == "" {
 		catalog = name
 	}

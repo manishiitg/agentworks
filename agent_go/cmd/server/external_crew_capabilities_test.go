@@ -128,7 +128,7 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	}
 	// Integrations still adds custom URLs through its existing shared path.
 	appCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	customHeaders := map[string]placeMCPHeader{"X-Api-Key": {Secret: "example_key"}}
+	customHeaders := map[string]placeMCPHeader{"X-Api-Key": {Secret: "EXAMPLE_KEY"}}
 	custom, _, err := f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: "custom", URL: "https://custom.example.com/mcp", Headers: customHeaders}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +149,9 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if _, _, err = f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: personal[0].Name, URL: "https://custom.example.com/mcp", Headers: customHeaders}, ""); err != nil {
 		t.Fatal(err)
 	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "Example"}, 400)
+	for _, label := range []string{"", " \t"} {
+		crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "Example", "label": label}, 400)
+	}
 	current, _ = placeMCPAttachmentsFor(externalCommandCrewRoot)
 	if len(current) != 0 {
 		t.Fatalf("refused install attached a custom server: %v", current)
