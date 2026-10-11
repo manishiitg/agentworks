@@ -181,6 +181,7 @@ pulse:
     - ask_builder
     - send_message
     - read_agent_messages
+    - list_message_agents
     - schedule_message_wakeup
     - get_function_call
 
@@ -339,6 +340,7 @@ chat:
       - preview_step_runtime
       - send_message
       - read_agent_messages
+      - list_message_agents
       - schedule_message_wakeup
       - submit_workflow_suggestion
       - get_ui_state
