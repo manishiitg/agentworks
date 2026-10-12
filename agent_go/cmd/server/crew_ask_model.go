@@ -1,6 +1,9 @@
 package server
 
-import "sort"
+import (
+	"slices"
+	"sort"
+)
 
 // crewAskModelSentence is the one sentence every Crew-facing description states about a free-text ask (856-59).
 const crewAskModelSentence = "A non-owner's ask is read-only (it reads files, memory, skills and functions; it writes nothing and uses no MCP tools); to make a Crew do something, call one of its functions. The owner's own ask has full access. Only the owner changes a Crew."
@@ -20,6 +23,20 @@ var crewAskAllowedTools = map[string]bool{
 // crewAskNativeBridgeTools are the ask's allowed tools that must be native bridge tools: every non-core tool is otherwise
 // reached by curl through the shell, which a guest's ask does not have. The core ones (search_tools, get_api_spec, the
 // shell) and built-in ones (WebSearch, EndConversation) are not custom tools. Unregistered names are skipped by the bridge.
+// crewAskBridgeTools adds the ask's native tools to the bridge tool names. It must not ask the product tool gate: this
+// runs before the session registers those tools (and declares them to the gate), so Admit refused every one of them
+// and the guest's turn got a bridge without read_project_files or send_message (856-59, live on a server with a
+// Claude bridge). The gate still decides at registration, and the bridge skips a name that was never registered.
+func crewAskBridgeTools(existing []string) []string {
+	out := append([]string(nil), existing...)
+	for _, name := range crewAskNativeBridgeTools() {
+		if !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func crewAskNativeBridgeTools() []string {
 	var names []string
 	for name := range crewAskAllowedTools {
