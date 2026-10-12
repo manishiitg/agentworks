@@ -12,6 +12,19 @@ inspect a prerequisite review without opening a diagnostics rail or guessing
 an execution from its step name.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+## 2026-10-12 — Moving a chat to another login is the person's command (PLAT-861)
+
+`agentworks attach --on LOGIN` (or `/agentworks attach [NAME] --on LOGIN` typed in the chat, or
+`attach --all --on LOGIN` in a terminal) moves one exact chat to another saved login. A coding agent's
+own-session attach refuses it, delivered message text cannot trigger it, and a bare attach or a restart keeps
+the chat on the login it already uses. The new login is attached first and the old lease and child connection
+are released afterwards, so a failed move leaves the chat where it was. Unread mail on the old login does not
+move; the person is told once and repeats the command to move anyway. Residual: another process of the same
+operating-system user can still ask the local bridge for a switch over its socket (tracked with 861-90).
+
+Why: one binding per chat keeps delivery unambiguous, and choosing a network is the person's decision.
+
+Ticket: PLAT-861, issue 861-104.
 
 ## 2026-10-12 — Bullpen administrators see metadata, never messages (PLAT-861)
 

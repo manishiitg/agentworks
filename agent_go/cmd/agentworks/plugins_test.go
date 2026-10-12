@@ -202,3 +202,20 @@ func TestAgentTerminalRefusesModelPTY(t *testing.T) {
 		t.Fatal("model PTY regression failed", err, string(out))
 	}
 }
+
+// The person command accepts only attach [NAME] [--on LOGIN]; any other shape is
+// refused with the usage text before anything is attached or moved.
+func TestAgentPersonAttachOnGrammarIsStrict(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, prompt := range []string{"/agentworks attach a b", "/agentworks attach --on", "/agentworks attach a --on --x", "/agentworks attach --force x", "/agentworks attach a --on b c"} {
+		var stdout, stderr bytes.Buffer
+		input, _ := json.Marshal(map[string]any{"session_id": "unattached", "hook_event_name": "UserPromptSubmit", "prompt": prompt})
+		if code := run(context.Background(), []string{"plugin", "hook", "codex"}, bytes.NewReader(input), &stdout, &stderr, func(string) string { return "" }); code != 0 {
+			t.Fatalf("%q: %s", prompt, stderr.String())
+		}
+		var out map[string]any
+		if json.Unmarshal(stdout.Bytes(), &out) != nil || out["decision"] != "block" || !strings.Contains(out["reason"].(string), "attach [NAME] [--on LOGIN]") {
+			t.Fatalf("%q was not refused with the usage text: %s", prompt, stdout.String())
+		}
+	}
+}

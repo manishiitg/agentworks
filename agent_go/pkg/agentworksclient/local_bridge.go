@@ -114,6 +114,7 @@ type localSession struct {
 	nativeStarted     bool
 	nativeCalls       int
 	piNextAt          time.Time // Observed SDK consumer, not persisted authority.
+	switchWarned      string    // Target login the person was already warned about (unread mail does not follow a move).
 }
 
 type localBridge struct {
@@ -657,6 +658,20 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				}
 			}
 		}
+		if in.SwitchConnection && s != nil && s.ParentConfigPath != in.ConfigPath {
+			// Mail waiting on the old login does not follow the chat. Say so once and
+			// let the person repeat the same command to move anyway.
+			unread := 0
+			for _, m := range s.Offers {
+				if !m.Offered && !m.Suppressed {
+					unread++
+				}
+			}
+			if unread > 0 && s.switchWarned != in.ConfigPath {
+				s.switchWarned = in.ConfigPath
+				return LocalBridgeReply{Error: fmt.Sprintf("%d unread messages are waiting on this chat's current login and will not move with it. Read them first (agentworks bridge message read), or repeat the same command to move anyway.", unread)}
+			}
+		}
 		if in.NativeRemote != "" && (!((in.Provider == "codex" && !strings.HasPrefix(in.NativeRemote, "claude+session://")) || (in.Provider == "claude" && strings.HasPrefix(in.NativeRemote, "claude+session://"))) || b.options.NativeOffer == nil) {
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
@@ -765,14 +780,19 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		for _, v := range old {
 			stopMuseWatch(v)
-			if in.SwitchConnection && v.ParentConfigPath != next.ParentConfigPath && v.client != nil && !v.Offline {
+			if in.SwitchConnection && v.ParentConfigPath != next.ParentConfigPath && v.client != nil {
 				// The chat now lives on the other connection. Release the old lease
 				// and child connection there; the new attachment is already saved, so
 				// a failure here only leaves a stale name the owner can see as offline.
-				_, _ = v.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": v.Attachment.AgentName, "attachment_id": v.Attachment.ID}, true)
-				if cfg, e := LoadConfig(v.ConfigPath); e == nil {
-					_ = v.client.RevokeOAuth(callCtx, cfg.RefreshToken)
+				// Short deadline: this runs while the bridge lock is held.
+				cleanup, release := context.WithTimeout(callCtx, 5*time.Second)
+				if !v.Offline {
+					_, _ = v.client.request(cleanup, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": v.Attachment.AgentName, "attachment_id": v.Attachment.ID}, true)
 				}
+				if cfg, e := LoadConfig(v.ConfigPath); e == nil {
+					_ = v.client.RevokeOAuth(cleanup, cfg.RefreshToken)
+				}
+				release()
 			}
 			if v.ConfigPath != next.ConfigPath {
 				_ = os.Remove(v.ConfigPath)
