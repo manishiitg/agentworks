@@ -614,7 +614,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 	if in.Action == "resume" {
 		if s == nil || !s.Offline {
-			return LocalBridgeReply{Error: "This exact session has no offline attachment to resume."}
+			return LocalBridgeReply{Error: "This chat is already connected, or was never attached. Type /agentworks attach in it."}
 		}
 		in.Action = "attach"
 		in.ConfigPath = s.ParentConfigPath
@@ -716,7 +716,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: "native queue is unavailable for this provider"}
 		}
 		if in.SessionID == "" || in.HostKey == "" {
-			return LocalBridgeReply{Error: "explicit session and provider process key required"}
+			return LocalBridgeReply{Error: "AgentWorks cannot tell which chat this is. Type /agentworks attach in the chat itself."}
 		}
 		client, err := localConfiguredClient(in.ConfigPath)
 		if err != nil {
@@ -857,7 +857,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// Both forms need the exact attached session's process key, so another local
 		// process reaching the bridge socket cannot share an attached chat.
 		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
-			return LocalBridgeReply{Error: "sharing needs this exact attached session"}
+			return LocalBridgeReply{Error: "This chat is not connected right now. Type /agentworks attach in it, then try again."}
 		}
 		if s.ParentConfigPath == "" {
 			return LocalBridgeReply{Error: "this chat has no saved login to share with; attach it again"}
@@ -890,7 +890,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{}
 	}
 	if s.client == nil {
-		return LocalBridgeReply{Error: "attached connection is unavailable; sign in and explicitly reattach"}
+		return LocalBridgeReply{Error: "This chat's connection is not available. Run agentworks login if needed, then type /agentworks attach in the chat."}
 	}
 	if (in.Action == "status" || in.Action == "drain") && b.recoverNativeRoute(s) {
 		if err := b.save(); err != nil {

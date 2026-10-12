@@ -82,7 +82,7 @@ func pluginCommand(o *options) *cobra.Command {
 			req.HostKey, err = piPIDHostKey(os.Getppid())
 			record, recordErr := piSessionForHost(root, req.HostKey, input.SessionID)
 			if err != nil || recordErr != nil || record.Mode != "tui" {
-				return pluginBlock(o, "Cannot identify this exact Pi SDK person-input session. Reload Pi and type /agentworks attach yourself.")
+				return pluginBlock(o, "AgentWorks cannot tell which Pi chat this is. Reload Pi and type /agentworks attach in the chat.")
 			}
 			if input.Event != "UserPromptSubmit" {
 				return nil
@@ -110,9 +110,16 @@ func pluginCommand(o *options) *cobra.Command {
 			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare") {
 				status, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
 				if e != nil || !status.Attached {
-					return pluginBlock(o, "This exact Pi session is not attached. Type /agentworks attach yourself.")
+					return pluginBlock(o, "This Pi chat is not connected. Type /agentworks attach in it.")
 				}
 				req.AttachmentID = status.Attachment.ID
+			}
+			if req.Provider != "pi" && (req.Action == "share" || req.Action == "unshare" || req.Action == "agents") {
+				// A chat that went offline (CLI update, bridge restart, closed and resumed)
+				// is reconnected as part of the command: same name, same login.
+				if msg := reconnectOffline(ctx, root, req); msg != "" {
+					return pluginBlock(o, msg)
+				}
 			}
 			switch req.Action {
 			case "attach":
@@ -125,7 +132,7 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, "Use /agentworks attach [NAME] [--on LOGIN]. No confirmation or resume command is needed.")
 				}
 				if req.HostKey == "" {
-					return pluginBlock(o, "Cannot identify this exact provider process. Run agentworks attach in your terminal to select a live session.")
+					return pluginBlock(o, "AgentWorks cannot tell which chat this is. Run agentworks attach in your terminal and choose the chat.")
 				}
 				if len(rest) == 1 {
 					req.AgentName = rest[0]
@@ -171,7 +178,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, err.Error())
 			}
 			if out.Offline {
-				return pluginBlock(o, "AgentWorks identity retained offline as agent:"+out.Attachment.AgentName+". Type /agentworks attach to reconnect this exact session.")
+				return pluginBlock(o, "agent:"+out.Attachment.AgentName+" is offline. Type /agentworks attach in this chat to reconnect it.")
 			}
 			if out.Attached {
 				if req.Provider == "pi" {
@@ -201,6 +208,9 @@ func pluginCommand(o *options) *cobra.Command {
 			req.Action = "status"
 			out, e := agentworksclient.CallLocalBridge(ctx, root, req)
 			if e == nil && out.Offline {
+				if req.Provider != "pi" && reconnectOffline(ctx, root, req) == "" {
+					return nil // back online on its own
+				}
 				return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": "AgentWorks identity agent:" + out.Attachment.AgentName + " is offline. The person can type /agentworks attach to reconnect this exact session."}})
 			}
 			return nil
@@ -220,6 +230,12 @@ func pluginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return nil
 		} // Unattached/offline hooks do not interfere with work.
+		if out.Offline && req.Action == "drain" && req.Provider != "pi" && reconnectOffline(ctx, root, req) == "" {
+			// A chat left offline by an update or a restart re-arms on its next hook event.
+			if again, e := agentworksclient.CallLocalBridge(ctx, root, req); e == nil {
+				out = again
+			}
+		}
 		if !out.Attached || len(out.Messages) == 0 && out.SetupContext == "" {
 			return nil
 		}
@@ -898,4 +914,26 @@ func providerPIDHostKey(provider string, pid int) (string, error) {
 	}
 	h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[len(fields)-5:], " ")))
 	return hex.EncodeToString(h[:]), nil
+}
+
+// reconnectOffline brings a locally offline attached chat back online as itself
+// (same name, same login) from a hook event of that exact session. It returns a
+// plain sentence for the person when the chat could not be reconnected, and an
+// empty string when the chat is online (or was never offline).
+func reconnectOffline(ctx context.Context, root string, req agentworksclient.LocalBridgeRequest) string {
+	status := req
+	status.Action = "status"
+	out, err := agentworksclient.CallLocalBridge(ctx, root, status)
+	if err != nil || !out.Offline {
+		return ""
+	}
+	if req.HostKey == "" {
+		return "This chat is not connected right now. Type /agentworks attach in it, then try again."
+	}
+	resume := req
+	resume.Action = "resume"
+	if reply, e := agentworksclient.CallLocalBridge(ctx, root, resume); e != nil || !reply.Attached {
+		return "This chat could not reconnect by itself. Type /agentworks attach in it, then try again."
+	}
+	return ""
 }

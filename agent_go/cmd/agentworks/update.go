@@ -226,5 +226,6 @@ func runUpdate(o *options, check, force bool) error {
 	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
 		return err
 	}
+	updateInstalledPlugins(context.Background(), o)
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
 }
