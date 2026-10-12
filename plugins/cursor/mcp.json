@@ -1,3 +1,8 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "agentworks-messages": {
+      "command": "agentworks",
+      "args": ["plugin", "mcp", "cursor"]
+    }
+  }
 }

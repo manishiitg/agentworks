@@ -1,0 +1,11 @@
+{
+  "name": "agentworks",
+  "owner": { "name": "AgentWorks" },
+  "plugins": [
+    {
+      "name": "agentworks",
+      "source": "./plugins/cursor",
+      "description": "AgentWorks messaging for Cursor CLI; desktop support is limited"
+    }
+  ]
+}

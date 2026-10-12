@@ -85,10 +85,20 @@ try {
     for (const client of ['Codex', 'Claude Code', 'Pi', 'Cursor', 'agy', 'Muse']) {
       await page.getByRole('button', { name: client, exact: true }).click()
       for (const heading of headings) assert.equal(await page.getByRole('heading', { name: heading, exact: true }).count(), 1, client + ': consistent section ' + heading)
-      if (['Cursor', 'agy'].includes(client)) {
+      if (client === 'agy') {
         assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 0)
         assert.match(await page.getByLabel('Coding agent setup').textContent(), /does not create a coding-chat messaging attachment/)
       } else assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 1)
+      if (client === 'Cursor') {
+        assert.equal(await page.getByLabel('Configure Cursor project hooks', { exact: true }).isVisible(), true)
+        await page.getByRole('button', { name: 'Cursor desktop', exact: true }).click()
+        assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 0)
+        assert.match(await page.getByLabel('Coding agent setup').textContent(), /not claim end-to-end desktop messaging/)
+        await page.screenshot({ path: path.join(output, 'bullpen-cursor-desktop-limit-' + name + '.png'), fullPage: true })
+        await page.getByRole('button', { name: 'Cursor CLI', exact: true }).click()
+        assert.equal(await page.getByLabel('Attach this chat', { exact: true }).isVisible(), true)
+        await page.screenshot({ path: path.join(output, 'bullpen-cursor-cli-' + name + '.png'), fullPage: true })
+      }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, name + ': no overflow for ' + client)
     }
     assert.equal(await page.getByLabel('Add Muse marketplace', { exact: true }).textContent(), 'muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks-plugins.git')

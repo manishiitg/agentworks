@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check package/delegation; shared Go regressions verify kernel/lease authority."""
 import json
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -16,14 +17,41 @@ def main():
     assert manifest["name"] == "agentworks"
     for key in ("hooks", "mcpServers"):
         assert (package / manifest[key]).is_file()
-    assert json.loads((package / manifest["mcpServers"]).read_text())["mcpServers"] == {}
+    assert json.loads((package / manifest["mcpServers"]).read_text())["mcpServers"] == {
+        "agentworks-messages": {"command": "agentworks", "args": ["plugin", "mcp", "cursor"]}
+    }
     assert manifest["skills"] == ["./skills/agent-messages", "./skills/agentworks-messaging"]
     for skill in manifest["skills"]:
         assert (package / skill / "SKILL.md").is_file()
     source = package.parent / "shared/skills/agent-messages/SKILL.md"
     assert (package / "skills/agent-messages/SKILL.md").read_bytes() == source.read_bytes()
-    hooks = json.loads((package / manifest["hooks"]).read_text())["hooks"]
+    assert json.loads((package / manifest["hooks"]).read_text())["hooks"] == {}, "Project hooks are the single registration"
+    hooks = json.loads((package / "hooks/hooks.json").read_text())["hooks"]
     assert hooks["stop"][0]["loop_limit"] == 5
+    spec = importlib.util.spec_from_file_location("cursor_project_setup", SCRIPT.with_name("setup_project.py"))
+    setup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(setup)
+    with tempfile.TemporaryDirectory(prefix="cursor-project-") as folder:
+        project = Path(folder) / "project with spaces"
+        (project / ".cursor").mkdir(parents=True)
+        target = project / ".cursor/hooks.json"
+        prior = {"version": 1, "custom": "retained", "hooks": {"stop": [{"command": "existing-check", "loop_limit": 2}]}}
+        target.write_text(json.dumps(prior))
+        _, changed = setup.configure(project, package)
+        assert changed
+        installed = json.loads(target.read_text())
+        assert installed["custom"] == "retained" and installed["hooks"]["stop"][0] == prior["hooks"]["stop"][0]
+        first = target.read_bytes()
+        assert setup.configure(project, package)[1] is False and target.read_bytes() == first
+        # An older path must not turn an update into duplicate delivery hooks.
+        installed["hooks"]["stop"].append({"command": "python3 /old/cursor_hook.py"})
+        target.write_text(json.dumps(installed))
+        before = target.read_bytes()
+        try:
+            setup.configure(project, package)
+            raise AssertionError("Duplicate delivery hook accepted")
+        except ValueError:
+            assert target.read_bytes() == before
     with tempfile.TemporaryDirectory(prefix="cursor-wrapper-") as folder:
         root = Path(folder)
         cli = root / "agentworks"

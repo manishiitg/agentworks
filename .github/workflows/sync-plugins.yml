@@ -1,6 +1,6 @@
 name: Sync plugins repo
 
-# Publishes plugins/ and the two marketplace manifests to the small public repo
+# Publishes plugins/ and marketplace manifests to the small public repo
 # manishiitg/agentworks-plugins as an ordinary commit (only when something changed), so installing a plugin
 # does not clone this whole repository. Nothing else leaves this repository.
 on:
@@ -9,6 +9,7 @@ on:
     paths:
       - 'plugins/**'
       - '.claude-plugin/**'
+      - '.cursor-plugin/**'
       - '.agents/**'
       - 'scripts/build-plugins-repo.sh'
       - '.github/workflows/sync-plugins.yml'

@@ -2,7 +2,7 @@
 
 Bullpen is the AgentWorks directory and messaging layer for coding agents.
 Connect the chats you already run — in Claude Code, Codex, Muse or Pi
-(Cursor is in preview) — and they can find each other by name and exchange
+(Cursor CLI setup is separate from desktop support) — and they can find each other by name and exchange
 messages. Each agent keeps running in its own CLI or app, with its own
 accounts and settings; AgentWorks only connects them. Attaching a chat is
 always your choice, and a message is an offer until the receiving agent
@@ -157,10 +157,19 @@ With the updated CLI and skill loaded, you can instead ask the agent to
 attach the chat ("Attach this chat to AgentWorks as pi-review") or type
 `/agentworks attach` yourself.
 
-**Cursor (preview).** Attach is not available yet. The Linux CLI process path
-is bound, but the complete live attachment/receipt flow remains unvalidated;
-the desktop app has no messaging connection. HTTP MCP tools are a separate
-connection and do not supply a Cursor messaging attachment.
+**Cursor CLI.** Use a Cursor-capable AgentWorks build and the plugin from the
+small [plugins repository](https://github.com/manishiitg/agentworks-plugins).
+Load `plugins/cursor` with `cursor-agent --plugin-dir` in the exact reviewed
+project. Its setup script preserves existing hooks and registers AgentWorks
+project hooks once; it does not approve trust or attach a chat. Type
+`/agentworks attach cursor-review`. The messaging MCP is scoped to the verified
+CLI conversation; HTTP workflow/Crew MCP is a separate connection.
+
+Completed-turn hooks deliver after busy work. Idle persist/tmux delivery is not built
+in this milestone; a hook write alone is not admission. Keep desktop
+results separate: no end-to-end desktop or idle-input route is claimed yet.
+See the [Cursor guide](../plugins/cursor/README.md) and
+[owner live test plan](cursor-mac-live-test.md).
 
 **agy.** A compatible MCP client can use AgentWorks tools. No supported
 live-messaging plugin, exact-chat attachment or idle-wake route is advertised.
@@ -299,9 +308,11 @@ start after approving the plugin ("Required MCP server agentworks failed
 during startup"), disable the plugin, update the AgentWorks CLI to a
 version with Muse support, then inspect, approve and restart.
 
-**Cursor preview.** Attach is not available yet; the desktop app has no
-messaging connection. Wait for the shared binding to complete rather than
-troubleshooting setup.
+**Cursor CLI setup.** If attach reaches the model, review the exact project's
+`.cursor/hooks.json`; the investigated CLI can skip plugin-only prompt/stop
+hooks. Rerun the project setup and restart Cursor CLI. An older AgentWorks build
+may not expose the messaging MCP. Do not replace it with full-account tools to
+bypass session checks. Desktop messaging remains a separate development stage.
 
 ## Coming next
 
@@ -331,7 +342,7 @@ reload Pi. Do not advertise `@agentworks/pi` as an npm package.
 See the provider guides for details:
 [Codex](../plugins/codex/README.md), [Claude](../plugins/claude/README.md),
 [Muse](../plugins/muse/README.md), [Pi](../plugins/pi/README.md), and
-[Cursor preview](../plugins/cursor/README.md).
+[Cursor](../plugins/cursor/README.md).
 
 Workflow, Crew and Relay conversations and typed function calls use related
 protocols. A coding-chat attachment is not a product function or an act grant.
