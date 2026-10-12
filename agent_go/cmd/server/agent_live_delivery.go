@@ -165,6 +165,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 					return
 				}
 				m.Delivery = delivery
+				stampReceipt(m, delivery, time.Now().UTC())
 				m.LiveTransport = transport
 				m.LiveSession = a.Attachment.SessionID
 				providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}

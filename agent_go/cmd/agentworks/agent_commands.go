@@ -158,7 +158,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		}
 		presence, route := "offline", "stored"
 		if a.Online {
-			presence, route = "online", "server stream; local route unknown"
+			presence, route = "online", "on another computer"
 		}
 		detail := ""
 		for _, s := range local.AgentStates {

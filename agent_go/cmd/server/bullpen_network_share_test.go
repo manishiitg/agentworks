@@ -114,6 +114,51 @@ func TestShareIntoAGroupBetweenAccounts(t *testing.T) {
 	if first["sender"] != "bob/scout" || first["untrusted"] != true || first["from_person"] != "bob" {
 		t.Fatalf("a message from a group member must be marked as another person's: %v", first)
 	}
+	// The sender sees where its message stands: waiting (the receiver is offline),
+	// then delivered, then handled, without bodies.
+	receipt, err := try(bob, map[string]any{"action": "send", "agent_name": "scout", "target": "agent:alice/helper", "message": "did you get this", "submission_id": "receipt-check"})
+	if err != nil || receipt["state"] != "waiting_offline" || !strings.Contains(receipt["state_text"].(string), "offline") {
+		t.Fatalf("the send result must say the receiver is offline: %v %v", receipt, err)
+	}
+	setDelivery := func(messageID, delivery string) {
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		st, _ := readAgentMessageStore(ctx)
+		for ci := range st.Conversations {
+			for mi := range st.Conversations[ci].Messages {
+				if m := &st.Conversations[ci].Messages[mi]; m.ID == messageID {
+					m.Delivery = delivery
+					stampReceipt(m, delivery, time.Now().UTC())
+				}
+			}
+		}
+		_ = saveAgentMessageStore(ctx, st)
+	}
+	stateOf := func(messageID string) string {
+		page, _ := try(bob, map[string]any{"action": "read", "agent_name": "scout"})
+		sent, _ := page["sent"].([]any)
+		for _, item := range sent {
+			if m := item.(map[string]any); m["message_id"] == messageID {
+				if m["body"] != nil || m["message"] != nil {
+					t.Fatal("a sent receipt must not carry the message body")
+				}
+				return m["state"].(string)
+			}
+		}
+		return "missing"
+	}
+	id := receipt["message_id"].(string)
+	if got := stateOf(id); got != "waiting_offline" {
+		t.Fatalf("sent receipt before delivery: %s", got)
+	}
+	setDelivery(id, "admitted")
+	if got := stateOf(id); got != "delivered" {
+		t.Fatalf("sent receipt after admission: %s", got)
+	}
+	setDelivery(id, "processed")
+	if got := stateOf(id); got != "handled" {
+		t.Fatalf("sent receipt after processing: %s", got)
+	}
 	if _, err = toGroup(carol, "snoop", "docs", "outsider to the group"); err == nil {
 		t.Fatal("a non-member sent to the group")
 	}

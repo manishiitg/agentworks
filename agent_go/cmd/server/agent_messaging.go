@@ -65,6 +65,8 @@ type agentMessage struct {
 	LiveAttachment     string    `json:"live_attachment,omitempty"`
 	Wakeup             bool      `json:"wakeup,omitempty"`
 	Group              string    `json:"group,omitempty"` // Set when this copy was sent to a whole group.
+	AdmittedAt         time.Time `json:"admitted_at,omitempty"`
+	ProcessedAt        time.Time `json:"processed_at,omitempty"`
 }
 type agentConversation struct {
 	ID        string                  `json:"inbox_id"`
@@ -480,6 +482,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	id := c.ID
 	out := agentMessageReceipt(id, m)
+	for k, v := range s.receiptFields(m, dest) {
+		out[k] = v
+	}
 	err = saveAgentMessageStore(ctx, s)
 	agentMessageMu.Unlock()
 	if err != nil {
@@ -568,7 +573,18 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		}
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
 			api.resumeAgentMessagesThrottled()
-			return map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}, nil
+			out := map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}
+			for _, c := range s.Conversations {
+				if c.ID != inboxID {
+					continue
+				}
+				for side := 0; side < 2; side++ {
+					if messageEndpointMatches(c.Endpoints[side], userID, caller) {
+						out["sent"] = s.sentReceipts(c, side, 20)
+					}
+				}
+			}
+			return out, nil
 		}
 		select {
 		case <-ctx.Done():

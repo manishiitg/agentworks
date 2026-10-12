@@ -458,7 +458,29 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			if len(items) > 0 {
 				next = items[len(items)-1]["sequence"].(int)
 			}
-			return map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}, nil
+			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
+			// What this agent sent recently, and where each message stands.
+			agentMessageMu.Lock()
+			fresh, readErr := readAgentMessageStore(ctx)
+			agentMessageMu.Unlock()
+			if readErr == nil {
+				sent := []map[string]interface{}{}
+				for _, c := range fresh.Conversations {
+					for side, end := range c.Endpoints {
+						if end.NamedAgentID == a.ID && end.UserID == claims.UserID {
+							sent = append(sent, fresh.sentReceipts(c, side, 10)...)
+						}
+					}
+				}
+				sort.Slice(sent, func(i, j int) bool { return sent[i]["sent_at"].(time.Time).After(sent[j]["sent_at"].(time.Time)) })
+				if len(sent) > 20 {
+					sent = sent[:20]
+				}
+				if len(sent) > 0 {
+					out["sent"] = sent
+				}
+			}
+			return out, nil
 		}
 		select {
 		case <-ctx.Done():
