@@ -422,6 +422,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == bullpenAdminTool {
 		return bullpenAdminToolAllowed(c)
 	}
+	if tool.Name == brainAdminTool {
+		return brainAdminToolAllowed(c)
+	}
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
 	}

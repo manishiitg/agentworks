@@ -594,6 +594,8 @@ chat:
       - set_allowed_models
       # Bullpen administration (users:manage, admins; every change needs a reason and is audited).
       - bullpen_admin
+      # Brain without the app: backup health, Brain's secrets, the person's Organize Brain schedule, what's new.
+      - brain_admin
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

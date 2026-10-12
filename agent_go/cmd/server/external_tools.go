@@ -243,6 +243,7 @@ func externalTools() ([]externalTool, error) {
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalBullpenAdminDefinition(add)
+		externalBrainAdminDefinition(add)
 		externalBuilderDefinitions(add)
 		externalPlanMutationDefinition(add)
 		if err := externalWorkflowCrewDefinition(add); err != nil {
@@ -633,6 +634,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 			api.externalCrewSettingsCall(w, r, tool.Name, call.Arguments)
 			return
 		}
+	}
+	if tool.Name == brainAdminTool {
+		api.externalBrainAdminCall(w, r, call.Arguments)
+		return
 	}
 	if isExternalKnowledgebaseTool(tool.Name) {
 		api.externalKnowledgebaseCall(w, r, tool.Name, call.Arguments)

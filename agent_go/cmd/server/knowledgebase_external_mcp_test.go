@@ -59,7 +59,7 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 			found[tool.Name] = true
 		}
 	}
-	if !reflect.DeepEqual(found, map[string]bool{"brain_browse": true, "brain_read": true, "brain_update": true, "brain_skills": true, "brain_access": true}) {
+	if !reflect.DeepEqual(found, map[string]bool{"brain_browse": true, "brain_read": true, "brain_update": true, "brain_skills": true, "brain_access": true, "brain_admin": true}) {
 		t.Fatal("MCP exposes legacy or missing tools", found)
 	}
 	spec := callRemoteTool(t, t.Context(), cli, externalMCPToolSpec, map[string]any{"names": []any{"brain_read", "brain_update"}})
@@ -90,6 +90,10 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	requireRemoteError(t, legacy, "legacy alias hidden", "unknown_tool")
 	grantAttempt := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_access", "arguments": map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "outsider", "role": "Reader", "expected_acl_version": access.(map[string]any)["acl_version"], "request_id": "remote-grant"}})
 	requireRemoteError(t, grantAttempt, "content connection cannot grant", "insufficient_scope")
+	news := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "whats_new"}})
+	requireRemoteSuccess(t, news, "what's new over MCP")
+	secrets := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "secrets_list"}})
+	requireRemoteError(t, secrets, "a folder-capped connection cannot manage Brain's secrets", "FORBIDDEN")
 
 	readToken, _, err := store.Issue(t.Context(), accesstokens.Token{UserID: "priya", Username: "priya", Name: "Reader", Scopes: []string{"knowledgebase:read"}, KnowledgebaseFolders: &caps, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 	if err != nil {
@@ -98,6 +102,8 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	readSrv := serveExternalMCP(t, api, &UserClaims{UserID: "priya", Username: "priya", AccessToken: &readToken})
 	reader := dialExternalMCP(t, t.Context(), readSrv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), reader)
+	markSeen := callRemoteTool(t, t.Context(), reader, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "mark_seen", "commit": strings.Repeat("a", 40)}})
+	requireRemoteError(t, markSeen, "a read-only connection cannot change Brain", "insufficient_scope")
 	readSpec := callRemoteTool(t, t.Context(), reader, externalMCPToolSpec, map[string]any{"names": []any{"brain_access"}})
 	requireRemoteSuccess(t, readSpec, "read-only action schemas")
 	var schemas struct {
