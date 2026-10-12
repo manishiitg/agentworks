@@ -69,9 +69,9 @@ export interface BullpenAdminAuditRow {
 
 export const bullpenApi = {
   agents: async (signal?: AbortSignal): Promise<BullpenAgent[]> =>
-    (await api.get<{ agents: BullpenAgent[] }>('/api/bullpen/agents', { signal })).data.agents,
+    (await api.get<{ agents: BullpenAgent[] | null }>('/api/bullpen/agents', { signal })).data.agents ?? [],
   sharing: async (signal?: AbortSignal): Promise<BullpenSharing> =>
-    (await api.get<BullpenSharing>('/api/bullpen/shares', { signal })).data,
+    ((data: BullpenSharing) => ({ shares: data.shares ?? [], blocks: data.blocks ?? [], shared_with_me: data.shared_with_me ?? [], incoming: data.incoming ?? [] }))((await api.get<BullpenSharing>('/api/bullpen/shares', { signal })).data),
   share: async (agentName: string, person: string, expiresInHours: number): Promise<void> => {
     await api.post('/api/bullpen/shares', { agent_name: agentName, person, expires_in_hours: expiresInHours })
   },
@@ -82,14 +82,14 @@ export const bullpenApi = {
     await api.post('/api/bullpen/blocks', { person, unblock })
   },
   notices: async (signal?: AbortSignal): Promise<BullpenNotice[]> =>
-    (await api.get<{ notices: BullpenNotice[] }>('/api/bullpen/notices', { signal })).data.notices,
+    (await api.get<{ notices: BullpenNotice[] | null }>('/api/bullpen/notices', { signal })).data.notices ?? [],
   dismissNotice: async (id: string): Promise<void> => {
     await api.delete('/api/bullpen/notices/' + encodeURIComponent(id))
   },
   adminAgents: async (q: string, cursor: string, signal?: AbortSignal): Promise<BullpenAdminPage> =>
-    (await api.get<BullpenAdminPage>('/api/bullpen/admin/agents', { params: { q, cursor }, signal })).data,
+    ((data: BullpenAdminPage) => ({ ...data, people: (data.people ?? []).map(person => ({ ...person, agents: person.agents ?? [] })) }))((await api.get<BullpenAdminPage>('/api/bullpen/admin/agents', { params: { q, cursor }, signal })).data),
   adminAudit: async (signal?: AbortSignal): Promise<BullpenAdminAuditRow[]> =>
-    (await api.get<{ audit: BullpenAdminAuditRow[] }>('/api/bullpen/admin/audit', { signal })).data.audit,
+    (await api.get<{ audit: BullpenAdminAuditRow[] | null }>('/api/bullpen/admin/audit', { signal })).data.audit ?? [],
   adminCloseAttachment: async (handle: string, reason: string): Promise<void> => {
     await api.post('/api/bullpen/admin/attachments/close', { handle, reason })
   },

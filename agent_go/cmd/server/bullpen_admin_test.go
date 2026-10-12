@@ -26,6 +26,9 @@ func TestBullpenAdminClosesAttachmentAndRemovesStaleName(t *testing.T) {
 	if code != "" || strings.Contains(strings.ToLower(toJSON(listed)), "native-session-secret") || strings.Contains(toJSON(listed), "attach-1") {
 		t.Fatalf("list failed or leaked a session or lease id: %s", toJSON(listed))
 	}
+	if raw := toJSON(listed); strings.Contains(raw, `"agents":null`) || !strings.Contains(raw, `"username":"root","agents":[]`) && !strings.Contains(raw, `"agents":[]`) {
+		t.Fatalf("a person with no agents must list agents as [], never null: %s", raw)
+	}
 	handle := attachmentHandle(live.ID, live.Attachment.ID)
 	if _, _, code, _ = api.bullpenAdminAct(ctx, "root", "close_attachment", map[string]any{"handle": handle}); code != "reason_required" {
 		t.Fatalf("change without a reason was allowed: %q", code)

@@ -251,7 +251,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 	query := strings.ToLower(strings.TrimSpace(externalArg(args, "q")))
 	people := []map[string]interface{}{}
 	for _, u := range dir.Users {
-		var agents []map[string]interface{}
+		agents := []map[string]interface{}{} // never nil: a person with no agents encodes as [], not null
 		match := query == "" || strings.Contains(strings.ToLower(u.Username), query)
 		for _, a := range s.Agents {
 			if a.UserID != u.ID {

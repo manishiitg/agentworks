@@ -26,7 +26,7 @@ export function AdminPanel() {
     Promise.all([bullpenApi.adminAgents(query.trim(), cursor, controller.signal), bullpenApi.adminAudit(controller.signal)]).then(([agents, rows]) => {
       if (controller.signal.aborted) return
       setPage(agents)
-      setAudit(rows)
+      setAudit(rows ?? [])
     }).catch(reason => { if (!controller.signal.aborted) setError(bullpenError(reason)) })
     return () => controller.abort()
   }, [attempt, query, cursor])
@@ -51,11 +51,11 @@ export function AdminPanel() {
       <input aria-label="Reason for the next change" value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="Reason for the next change (required)" className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
     </div>
 
-    {!page ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</p> : !page.people.length ? <p className="py-8 text-center text-sm text-muted-foreground">No one matches.</p> : <ul className="space-y-3">
-      {page.people.map(person => <li key={person.username} className="rounded-xl border border-border p-4">
-        <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{person.role}{person.disabled && ' · disabled'} · {person.agents.length} agent{person.agents.length === 1 ? '' : 's'}</span></p>
-        {person.agents.length > 0 && <ul className="mt-3 divide-y divide-border">
-          {person.agents.map(agent => <li key={agent.agent_id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+    {!page ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</p> : !(page.people ?? []).length ? <p className="py-8 text-center text-sm text-muted-foreground">No one matches.</p> : <ul className="space-y-3">
+      {(page.people ?? []).map(person => <li key={person.username} className="rounded-xl border border-border p-4">
+        <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{person.role}{person.disabled && ' · disabled'} · {(person.agents ?? []).length} agent{(person.agents ?? []).length === 1 ? '' : 's'}</span></p>
+        {(person.agents ?? []).length > 0 && <ul className="mt-3 divide-y divide-border">
+          {(person.agents ?? []).map(agent => <li key={agent.agent_id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
             <span className="min-w-0 break-all"><strong>{agent.agent_name}</strong> · {agent.online ? 'Connected' : agent.attached ? 'Attached, offline' : 'Offline'}{agent.provider && ' · ' + agent.provider}<span className="block text-xs text-muted-foreground">{agent.purpose || 'No purpose set.'} Created {when(agent.created_at)}</span></span>
             <span className="flex gap-2">
               {agent.attachment_handle && <Button variant="outline" size="sm" disabled={busy || !reasonOk} aria-label={'Disconnect ' + agent.agent_name + ' of ' + person.username} onClick={() => void change(() => bullpenApi.adminCloseAttachment(agent.attachment_handle!, reason.trim()), 'Disconnected ' + agent.agent_name + '. Its owner can attach again.')}>Disconnect</Button>}
