@@ -592,6 +592,8 @@ chat:
       - get_token_usage
       - set_token_limits
       - set_allowed_models
+      # Bullpen administration (users:manage, admins; every change needs a reason and is audited).
+      - bullpen_admin
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

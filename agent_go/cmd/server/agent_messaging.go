@@ -76,6 +76,8 @@ type agentMessageStore struct {
 	Shares            []agentShare               `json:"shares,omitempty"`
 	Blocks            []agentShareBlock          `json:"blocks,omitempty"`
 	ShareAudit        []agentShareAudit          `json:"share_audit,omitempty"`
+	AdminAudit        []bullpenAdminAudit        `json:"admin_audit,omitempty"`
+	Notices           []agentOwnerNotice         `json:"owner_notices,omitempty"`
 }
 
 type expiredAgentConversation struct {

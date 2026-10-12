@@ -2450,6 +2450,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/bullpen/shares", api.handleBullpenShareCreate).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/shares/{id}", api.handleBullpenShareRevoke).Methods("DELETE")
 	apiRouter.HandleFunc("/bullpen/blocks", api.handleBullpenBlock).Methods("POST")
+	apiRouter.HandleFunc("/bullpen/notices", api.handleBullpenNotices).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/notices/{id}", api.handleBullpenNoticeDismiss).Methods("DELETE")
+	apiRouter.HandleFunc("/bullpen/admin/agents", api.handleBullpenAdmin).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/admin/audit", api.handleBullpenAdmin).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/admin/attachments/close", api.handleBullpenAdmin).Methods("POST")
+	apiRouter.HandleFunc("/bullpen/admin/agents/remove", api.handleBullpenAdmin).Methods("POST")
 	// A browser connection changed: wake that user's open tabs so the toolbar refetches the status instead of polling it.
 	browserrelay.SetChangeHook(func(user, _ string) { livefeed.Default.PublishToUser(livefeed.Browser, user, "") })
 	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)

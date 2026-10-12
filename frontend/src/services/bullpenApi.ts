@@ -26,6 +26,47 @@ export interface BullpenSharing {
   incoming: { person: string; sender_agent: string; agent_name: string; messages: number; last_at: string }[]
 }
 
+export interface BullpenNotice {
+  notice_id: string
+  agent_name: string
+  text: string
+  at: string
+}
+
+export interface BullpenAdminAgent {
+  agent_id: string
+  agent_name: string
+  purpose?: string
+  provider?: string
+  online: boolean
+  created_at: string
+  attached: boolean
+  attachment_handle?: string
+}
+
+export interface BullpenAdminPerson {
+  username: string
+  role: string
+  disabled: boolean
+  agents: BullpenAdminAgent[]
+}
+
+export interface BullpenAdminPage {
+  people: BullpenAdminPerson[]
+  total: number
+  next_cursor?: string
+}
+
+export interface BullpenAdminAuditRow {
+  at: string
+  admin: string
+  event: string
+  person: string
+  agent_id?: string
+  reason: string
+  result: string
+}
+
 export const bullpenApi = {
   agents: async (signal?: AbortSignal): Promise<BullpenAgent[]> =>
     (await api.get<{ agents: BullpenAgent[] }>('/api/bullpen/agents', { signal })).data.agents,
@@ -39,6 +80,21 @@ export const bullpenApi = {
   },
   block: async (person: string, unblock = false): Promise<void> => {
     await api.post('/api/bullpen/blocks', { person, unblock })
+  },
+  notices: async (signal?: AbortSignal): Promise<BullpenNotice[]> =>
+    (await api.get<{ notices: BullpenNotice[] }>('/api/bullpen/notices', { signal })).data.notices,
+  dismissNotice: async (id: string): Promise<void> => {
+    await api.delete('/api/bullpen/notices/' + encodeURIComponent(id))
+  },
+  adminAgents: async (q: string, cursor: string, signal?: AbortSignal): Promise<BullpenAdminPage> =>
+    (await api.get<BullpenAdminPage>('/api/bullpen/admin/agents', { params: { q, cursor }, signal })).data,
+  adminAudit: async (signal?: AbortSignal): Promise<BullpenAdminAuditRow[]> =>
+    (await api.get<{ audit: BullpenAdminAuditRow[] }>('/api/bullpen/admin/audit', { signal })).data.audit,
+  adminCloseAttachment: async (handle: string, reason: string): Promise<void> => {
+    await api.post('/api/bullpen/admin/attachments/close', { handle, reason })
+  },
+  adminRemoveAgent: async (agentId: string, reason: string): Promise<void> => {
+    await api.post('/api/bullpen/admin/agents/remove', { agent_id: agentId, reason })
   },
 }
 

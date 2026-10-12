@@ -1,16 +1,17 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Share2, Terminal, UsersRound } from 'lucide-react'
+import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Share2, Shield, Terminal, UsersRound } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
 import { SharingPanel } from './SharingPanel'
+import { AdminPanel } from './AdminPanel'
 import { Button } from '../../components/ui/Button'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { bullpenApi, bullpenError, type BullpenAgent } from '../../services/bullpenApi'
+import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice } from '../../services/bullpenApi'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const views = [
@@ -18,6 +19,7 @@ const views = [
   { id: 'sharing' as const, label: 'Sharing', icon: Share2 },
   { id: 'setup' as const, label: 'Connect an agent', icon: Terminal },
 ]
+const adminView = { id: 'admin' as const, label: 'Administration', icon: Shield }
 const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
 
 function AgentAddress({ target }: { target: string }) {
@@ -43,6 +45,12 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
   const [query, setQuery] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [updated, setUpdated] = useState<Date | null>(null)
+  const [notices, setNotices] = useState<BullpenNotice[]>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    bullpenApi.notices(controller.signal).then(items => { if (!controller.signal.aborted) setNotices(items) }).catch(() => undefined)
+    return () => controller.abort()
+  }, [attempt])
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true); setError('')
@@ -61,6 +69,7 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
       <div><h2 className="text-lg font-semibold">Your agents</h2><p className="mt-1 text-sm text-muted-foreground">Names registered to your account on this server.</p></div>
       <div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading} onClick={() => setAttempt(value => value + 1)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Refresh agents</Button><Button size="sm" onClick={onConnect}>Connect an agent</Button></div>
     </div>
+    {notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}
     <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find an agent" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, providers and purpose" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
     {error ? <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p> : loading && !agents.length ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !agents.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><MessagesSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h3 className="font-medium">Bring your first agent into Bullpen</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Connect a coding chat so your other agents can find it, exchange messages and reply.</p><Button className="mt-5" onClick={onConnect}>Set up messaging</Button></div> : !visible.length ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : <div className="grid gap-3 md:grid-cols-2">
       {visible.map(agent => <article key={agent.agent_id} className="min-w-0 space-y-3 rounded-xl border border-border p-4">
@@ -76,19 +85,20 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
 }
 
 export function BullpenSurface() {
-  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'sharing', 'setup'] as const)
+  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'sharing', 'setup', 'admin'] as const)
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
-  useRegisterPanelSwitcher('bullpen', views, id => setView(id as 'agents' | 'sharing' | 'setup'))
+  const shownViews = user?.role === 'admin' ? [...views, adminView] : views
+  useRegisterPanelSwitcher('bullpen', shownViews, id => setView(id as 'agents' | 'sharing' | 'setup' | 'admin'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
     <ModePresetBar reduced walkthroughPaused />
     <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
         <header className="mb-6 border-b border-border pb-5"><div className="flex items-center gap-3"><MessagesSquare className="h-6 w-6 text-primary" /><h1 className="text-2xl font-semibold tracking-tight">Bullpen</h1></div><p className="mt-2 text-sm text-muted-foreground">Your connected agents, in one place.</p>
-          <nav aria-label="Bullpen views" className="mt-5 flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />Bullpen help<span className="sr-only"> (opens in a new tab)</span></a></nav>
+          <nav aria-label="Bullpen views" className="mt-5 flex flex-wrap gap-2">{shownViews.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />Bullpen help<span className="sr-only"> (opens in a new tab)</span></a></nav>
         </header>
-        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'sharing' ? (user ? <SharingPanel key={user.id} /> : <p>Sign in to manage sharing.</p>) : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'sharing' ? (user ? <SharingPanel key={user.id} /> : <p>Sign in to manage sharing.</p>) : view === 'admin' && user?.role === 'admin' ? <AdminPanel key={user.id} /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
       </div>}
     </main>
   </div>
