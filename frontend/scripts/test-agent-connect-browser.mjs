@@ -91,7 +91,7 @@ try {
       } else assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 1)
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, name + ': no overflow for ' + client)
     }
-    assert.equal(await page.getByLabel('Add Muse marketplace', { exact: true }).textContent(), 'muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks.git')
+    assert.equal(await page.getByLabel('Add Muse marketplace', { exact: true }).textContent(), 'muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks-plugins.git')
     assert.equal(await page.getByLabel('Attach this chat', { exact: true }).textContent(), '/agentworks-muse:agentworks attach muse-review')
     const museSetup = await page.getByLabel('Coding agent setup').textContent()
     assert.match(museSetup, /native Monitor wakes this attached chat/)

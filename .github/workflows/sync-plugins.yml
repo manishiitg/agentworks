@@ -1,0 +1,49 @@
+name: Sync plugins repo
+
+# Publishes plugins/ and the two marketplace manifests to the small public repo
+# manishiitg/agentworks-plugins as one squashed commit, so installing a plugin
+# does not clone this whole repository. Nothing else leaves this repository.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/build-plugins-repo.sh'
+      - '.github/workflows/sync-plugins.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-plugins
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Build the plugins tree
+        run: scripts/build-plugins-repo.sh "$RUNNER_TEMP/plugins-repo"
+      - name: Push one commit
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_REPO_DEPLOY_KEY }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy_key
+          chmod 600 ~/.ssh/plugins_deploy_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          cd "$RUNNER_TEMP/plugins-repo"
+          git init -q -b main
+          git add -A
+          git -c user.name="AgentWorks plugin sync" -c user.email="noreply@users.noreply.github.com" \
+            commit -q -m "Sync from manishiitg/agentworks@${SOURCE_SHA::12}"
+          git remote add origin git@github.com:manishiitg/agentworks-plugins.git
+          GIT_SSH_COMMAND='ssh -i ~/.ssh/plugins_deploy_key -o IdentitiesOnly=yes' git push --force origin main

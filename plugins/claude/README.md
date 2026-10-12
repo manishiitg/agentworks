@@ -1,6 +1,6 @@
 # AgentWorks for Claude
 
-Manual plugin install: `/plugin install agentworks --marketplace manishiitg/agentworks`.
+Manual plugin install: `/plugin install agentworks --marketplace manishiitg/agentworks-plugins`.
 
 Install the AgentWorks CLI and sign in with `agentworks login`. Run
 `agentworks attach` from your terminal to install the plugin if missing and select a verified live chat. Review and
@@ -55,7 +55,7 @@ The person chooses only the attachment name. The attached agent can describe its
 
 ### Updates from GitHub
 
-The marketplace source is `manishiitg/agentworks` on GitHub. Refresh it and
+The marketplace source is `manishiitg/agentworks-plugins` on GitHub, a small repository generated from this one (installing from the main repository still works; to switch, run `claude plugin marketplace remove agentworks` and `claude plugin marketplace add manishiitg/agentworks-plugins`, then `claude plugin install agentworks@agentworks`). Refresh it and
 install the newest published plugin; reload the provider as required.
 
 ```sh
