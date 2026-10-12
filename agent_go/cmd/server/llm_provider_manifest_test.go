@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	llm "github.com/manishiitg/multi-llm-provider-go"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 )
 
 func TestCodingProviderManifestDefinesAdminInstallCommands(t *testing.T) {
@@ -219,6 +221,24 @@ func TestFetchPiCLIModelsReturnsCuratedShortlist(t *testing.T) {
 // isolation) via the two overridable fetch points, with a canned "pi's own
 // listing" result that duplicates a live free model's ID without pricing --
 // exactly the live-observed failure mode.
+// A deployment that supplies its own Pi models offers only those: Pi's built-in catalog has no key there, and a
+// project that saved one of its models failed every turn with "No API key found".
+func TestFetchPiCLIModelsOffersOnlyTheDeploymentModelsWhenItSuppliesItsOwn(t *testing.T) {
+	dir := t.TempDir()
+	models := `{"providers":{"gateway":{"baseUrl":"https://gateway.example.com/v1","api":"openai-completions","apiKey":"$GATEWAY_API_KEY","models":[{"id":"model-a","name":"Model A"}]}}}`
+	if err := os.WriteFile(filepath.Join(dir, "models.json"), []byte(models), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(picli.EnvPiAgentTemplateDir, dir)
+	resp := fetchPiCLIModels(false)
+	if len(resp.Models) != 1 || resp.Models[0].ModelID != "gateway/model-a" || !resp.Models[0].IsDefault {
+		t.Fatalf("models = %#v, want only the deployment's model as the default", resp.Models)
+	}
+	if resp.SupportsCustom {
+		t.Fatal("a deployment's own models are the only ones with a key: custom model IDs must not be offered")
+	}
+}
+
 func TestFetchPiCLIModelsFullCatalogKeepsLiveOpenRouterPricingOverACLIDuplicate(t *testing.T) {
 	origORURL := openRouterModelsAPIURL
 	origListFn := listPiCLIModelsFn
