@@ -53,6 +53,12 @@ do not add a separate publish password or login to this internal URL. Publicly
 hosted static Dashboards remain a separate publish flow with their own visibility
 controls.
 
+<!-- product:code -->
+In a Code project the Dashboard is already in the project's Dashboard tab: tell the user to open it there instead of
+pasting the long link. Give the link only when asked, and say it opens only for the project owner (it needs sign-in, and
+a Code project is private); never call it shareable. Do not decode, quote or explain the `path` part of the URL.
+<!-- /product -->
+
 Call `get_file_link` with the path relative to the active {{product}} project. The
 server verifies that the target exists, rejects private or escaping paths,
 detects file versus folder, and returns the correct authenticated
