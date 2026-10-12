@@ -5,7 +5,7 @@ describe('shared AgentWorks and Crew global navigation shell', () => {
   it('mounts Ctrl+K above the product surface switch without an AgentWorks-only guard', () => {
     const source = readFileSync('src/App.tsx', 'utf8')
     const switcher = source.indexOf('{showQuickSwitcher && (')
-    const surfaceSwitch = source.indexOf("{productSurface === 'video-studio' ? (")
+    const surfaceSwitch = source.indexOf("{productSurface ===")
 
     expect(source).not.toContain('PanelSwitcher')
     expect(source).not.toContain("event.code === 'KeyJ'")

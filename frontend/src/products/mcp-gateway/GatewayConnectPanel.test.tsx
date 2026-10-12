@@ -15,6 +15,7 @@ describe('GatewayConnectPanel shared client setup', () => {
 
   async function renderPanel(connections: { id: string; client_name: string }[] = []) {
     vi.mocked(api.get).mockImplementation(async path => ({ data: path === '/api/vault/connection' ? { endpoint: `${BASE}/api/vault/mcp` } : { connections } }) as never)
+    await import('../../components/integrations/CliMcpSetupContent')
     container = document.createElement('div'); document.body.appendChild(container)
     const root = createRoot(container)
     await act(async () => { root.render(<GatewayConnectPanel base={BASE} />) })
