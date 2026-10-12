@@ -11,6 +11,7 @@ export interface BullpenAgent {
   online: boolean
   owner?: string
   shared?: boolean
+  shared_with_everyone?: boolean
 }
 
 export interface BullpenShare {
@@ -44,6 +45,7 @@ export interface BullpenAdminAgent {
   created_at: string
   attached: boolean
   attachment_handle?: string
+  shared_with_everyone?: boolean
 }
 
 export interface BullpenAdminPerson {
@@ -102,6 +104,9 @@ export const bullpenApi = {
     (await api.get<{ audit: BullpenAdminAuditRow[] | null }>('/api/bullpen/admin/audit', { signal })).data.audit ?? [],
   adminCloseAttachment: async (handle: string, reason: string): Promise<void> => {
     await api.post('/api/bullpen/admin/attachments/close', { handle, reason })
+  },
+  adminUnshareAgent: async (agentId: string, reason: string): Promise<void> => {
+    await api.post('/api/bullpen/admin/agents/unshare', { agent_id: agentId, reason })
   },
   adminRemoveAgent: async (agentId: string, reason: string): Promise<void> => {
     await api.post('/api/bullpen/admin/agents/remove', { agent_id: agentId, reason })

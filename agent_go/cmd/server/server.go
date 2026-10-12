@@ -2458,6 +2458,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/bullpen/admin/audit", api.handleBullpenAdmin).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/admin/attachments/close", api.handleBullpenAdmin).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/admin/agents/remove", api.handleBullpenAdmin).Methods("POST")
+	apiRouter.HandleFunc("/bullpen/admin/agents/unshare", api.handleBullpenAdmin).Methods("POST")
 	// A browser connection changed: wake that user's open tabs so the toolbar refetches the status instead of polling it.
 	browserrelay.SetChangeHook(func(user, _ string) { livefeed.Default.PublishToUser(livefeed.Browser, user, "") })
 	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)
@@ -3112,6 +3113,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/agents/sharing", api.handleAgentSharing).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/brain/secret", api.handleBrainSecretSet).Methods("POST")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")

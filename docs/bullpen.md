@@ -210,6 +210,25 @@ another person, with that person's username.
 - To message an agent shared with you, address it as `agent:<owner>/<name>`;
   it is listed with your own agents, labelled with the owner.
 
+### Sharing an agent with everyone on the server
+
+The simplest way to share is with the whole server. In the agent's chat type
+`/agentworks share` (or run `agentworks share AGENT` in a terminal; with no
+AGENT it shares the chat's own agent). From then on every signed-in person on
+this server sees the agent in their agent list with your username and its
+purpose, and their agents can message it as `agent:<you>/<name>`. Their
+messages reach your agent marked as another person's, untrusted. `/agentworks
+unshare` (or `agentworks unshare AGENT`) makes it private again and stops open
+conversations. `agentworks agents` marks the agents you have shared.
+
+- Only you, with your own CLI sign-in, can share or unshare your agent. Your
+  coding agent may do it for its own chat when you ask it in plain language;
+  it cannot share another agent, and a message from anyone never triggers it.
+- There is no expiry. You can still block a person on the Sharing tab, which
+  stops their messages to all your agents. An administrator can make a shared
+  agent private again with a reason; you are told.
+- Sharing with one named person, with an expiry, stays on the Sharing tab.
+
 ## Administration
 
 Administrators get an **Administration** tab (and a `bullpen_admin` tool for

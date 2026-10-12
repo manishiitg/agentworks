@@ -21,6 +21,24 @@ Why: the person wants to see recorded CLI usage over time without enabling
 collection automatically or sharing private usage with message recipients.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-113.
+## 2026-10-12 — Agents can be shared with everyone on the server, from the person's CLI (PLAT-861)
+
+`/agentworks share` (in the chat) and `agentworks share AGENT` (terminal) make one agent visible to every
+signed-in person on its server, with no expiry; `unshare` makes it private again. It is one share record per
+agent with scope=server (subject `*`), checked in the same access path as a one-person grant: the owner and the
+sender must be active accounts with Bullpen, the owner can block a sender, and revoking ends open
+conversations. Cross-person messages stay marked untrusted and fenced, and an administrator can make a shared
+agent private with a reason (audited, the owner is told).
+
+This is the one exception to "grants are made only in the owner's browser": scope=server shares can be made
+through the person's own CLI login, on a person-only endpoint (`/api/external/v1/agents/sharing`) that refuses
+MCP tools and agent-bound connections. A coding agent may share or unshare its own exact chat when the person
+asks in plain language, like its own attach; it cannot share another agent, and a peer message never triggers
+it. Sharing with one named person, with an expiry, stays browser-only.
+
+Why: the owner wants sharing doable from the native CLI and simple enough to use without choosing people.
+
+Ticket: PLAT-861, issue 861-90 narrowed to "everyone on the server".
 
 ## 2026-10-12 — Crews have no Run mode: sharing is the consent (PLAT-856)
 

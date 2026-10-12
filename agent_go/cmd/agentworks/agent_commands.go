@@ -24,7 +24,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share makes this chat's agent visible to everyone on the server, /agentworks unshare makes it private again; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -123,6 +123,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 			Provider string `json:"provider"`
 			Purpose  string `json:"purpose"`
 			Online   bool   `json:"online"`
+			Shared   bool   `json:"shared_with_everyone"`
 		} `json:"agents"`
 	}
 	if json.Unmarshal(raw, &data) != nil {
@@ -172,7 +173,11 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 				break
 			}
 		}
-		fmt.Fprintf(&b, "agent:%s | %s | %s | %s%s | %s\n", clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose))
+		shared := ""
+		if a.Shared {
+			shared = " | shared with everyone"
+		}
+		fmt.Fprintf(&b, "agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")
@@ -942,4 +947,54 @@ func loginLabel(server string) string {
 		return ""
 	}
 	return " (login: " + strings.Join(names, ", ") + ")"
+}
+
+// shareCommand and unshareCommand make an agent visible to everyone on its
+// server, or private again. With an AGENT name it is the person's terminal
+// command. Without one it acts on this chat's own attached agent, which a coding
+// agent may do for its own exact session when the person asked in plain language.
+func shareCommand(o *options, unshare bool) *cobra.Command {
+	verb, past := "share", "shared with everyone on this server"
+	if unshare {
+		verb, past = "unshare", "private again"
+	}
+	return &cobra.Command{Use: verb + " [AGENT]", Args: cobra.MaximumNArgs(1), Short: map[bool]string{false: "Share an agent with everyone on its server", true: "Make a shared agent private again"}[unshare], Long: "Everyone signed in to the server sees the agent in their agent list, with your name and its purpose, and their agents can message it. Messages from other people reach your agent marked as untrusted. You can block a person on the Bullpen page, and an administrator can make an agent private. " + verb + " with no AGENT acts on this chat's own agent.", RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			if err := personAgentTerminal(); err != nil {
+				return err
+			}
+			client, err := o.client()
+			if err != nil {
+				return err
+			}
+			if _, err = client.ShareAgent(cmd.Context(), verb, args[0]); err != nil {
+				return err
+			}
+			if o.jsonOutput {
+				return o.output(map[string]any{"agent_name": args[0], "action": verb})
+			}
+			_, err = fmt.Fprintf(o.stdout, "agent:%s is %s.\n", args[0], past)
+			return err
+		}
+		root, err := agentworksclient.DefaultLocalBridgeRoot()
+		if err != nil {
+			return err
+		}
+		own, fromAgent, err := ownAgentSession(cmd.Context(), root, o)
+		if err != nil {
+			return err
+		}
+		if !fromAgent {
+			return fmt.Errorf("name the agent: agentworks %s AGENT, or type /agentworks %s in the chat", verb, verb)
+		}
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host})
+		if err != nil {
+			return err
+		}
+		if o.jsonOutput {
+			return o.output(out)
+		}
+		_, err = fmt.Fprintf(o.stdout, "agent:%s is %s.\n", out.Attachment.AgentName, past)
+		return err
+	}}
 }

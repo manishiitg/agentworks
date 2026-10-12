@@ -138,3 +138,10 @@ func (c *Client) CreateAgentConnection(ctx context.Context, name string) (Config
 	}
 	return Config{Server: c.baseURL, Token: v.Access, RefreshToken: v.Refresh, ExpiresAt: time.Now().Add(time.Duration(v.Expires) * time.Second)}, nil
 }
+
+// ShareAgent shares one of the person's own agents with everyone on the server
+// (action share), makes it private again (unshare) or lists what is shared
+// (list). It needs the person's own CLI login; an agent connection is refused.
+func (c *Client) ShareAgent(ctx context.Context, action, agentName string) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodPost, "/api/external/v1/agents/sharing", map[string]any{"action": action, "agent_name": agentName}, true)
+}

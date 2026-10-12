@@ -262,6 +262,9 @@ func cliOAuthAllowedPath(method, path string) bool {
 	if method == http.MethodPost && path == "/api/external/v1/agents/attachment" {
 		return true // Only the person-configured CLI bridge can attach a native session.
 	}
+	if method == http.MethodPost && path == "/api/external/v1/agents/sharing" {
+		return true // Only the person's own CLI login can share an agent with everyone.
+	}
 	if method == http.MethodGet && path == "/api/external/v1/agents/events" {
 		return true // Handler checks the exact attachment and current messaging consent.
 	}

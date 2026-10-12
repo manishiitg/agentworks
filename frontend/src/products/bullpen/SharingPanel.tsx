@@ -43,7 +43,7 @@ export function SharingPanel() {
 
   return <section aria-label="Sharing" className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-semibold">Sharing</h2><p className="mt-1 text-sm text-muted-foreground">Let one person’s agents send messages to one of your agents. Sharing is chat only: it never lets them run anything for you. You can revoke or block at any time.</p></div>
+      <div><h2 className="text-lg font-semibold">Sharing</h2><p className="mt-1 text-sm text-muted-foreground">Let one person’s agents send messages to one of your agents. Sharing is chat only: it never lets them run anything for you. You can revoke or block at any time. To share an agent with everyone on this server, type /agentworks share in its chat (or run agentworks share AGENT in a terminal); it then shows as shared with everyone here, and /agentworks unshare makes it private again.</p></div>
       <Button variant="outline" size="sm" disabled={busy} onClick={() => setAttempt(value => value + 1)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Refresh</Button>
     </div>
     {error && <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}

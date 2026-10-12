@@ -107,7 +107,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, personCommandHelp)
 			}
 			req.Action = words[1]
-			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents") {
+			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare") {
 				status, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
 				if e != nil || !status.Attached {
 					return pluginBlock(o, "This exact Pi session is not attached. Type /agentworks attach yourself.")
@@ -141,6 +141,19 @@ func pluginCommand(o *options) *cobra.Command {
 				if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {
 					return pluginBlock(o, err.Error())
 				}
+			case "share", "unshare":
+				if len(words) != 2 {
+					return pluginBlock(o, "share and unshare take no arguments: they act on this chat's agent")
+				}
+				req.Action += "_person"
+				shared, e := agentworksclient.CallLocalBridge(ctx, root, req)
+				if e != nil {
+					return pluginBlock(o, e.Error())
+				}
+				if words[1] == "share" {
+					return pluginBlock(o, "agent:"+shared.Attachment.AgentName+" is now shared with everyone on this server. Messages from other people reach it marked as untrusted. Type /agentworks unshare to make it private again.")
+				}
+				return pluginBlock(o, "agent:"+shared.Attachment.AgentName+" is private again.")
 			case "detach", "agents":
 				if len(words) != 2 {
 					return pluginBlock(o, "detach and agents take no arguments")

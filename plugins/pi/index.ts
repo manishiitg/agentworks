@@ -49,11 +49,14 @@ export default function (pi: ExtensionAPI) {
         }
         shapeOk = shapeOk && rest.length <= 1 && !rest[0]?.startsWith('--');
       }
-      if (!['attach', 'detach', 'agents', 'help'].includes(action) || !shapeOk) {
+      if (!['attach', 'detach', 'agents', 'help', 'share', 'unshare'].includes(action) || !shapeOk) {
         ctx.ui.notify(help, 'info'); return { action: 'handled' };
       }
       if (action === 'help') { ctx.ui.notify(help, 'info'); return { action: 'handled' }; }
-      if (action === 'attach') {
+      if (action === 'share' || action === 'unshare') {
+        const result: any = await personCommand(event.text, ctx, host);
+        ctx.ui.notify(result.reason || 'AgentWorks command completed.', 'info');
+      } else if (action === 'attach') {
         if (!host.key) await host.start(ctx);
         const result: any = await personCommand(event.text, ctx, host);
         ctx.ui.notify(result.reason || 'AgentWorks command completed.', 'info');

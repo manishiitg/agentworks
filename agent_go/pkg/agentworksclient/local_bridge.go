@@ -849,6 +849,27 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if s == nil {
 		return LocalBridgeReply{}
 	}
+	switch in.Action {
+	case "share_person", "unshare_person", "share_own", "unshare_own":
+		// Sharing the chat's agent with everyone on its server. The person types it
+		// in the chat (_person), or the agent does it for its own exact session when
+		// the person asked in plain language (_own, fenced by the process key).
+		if strings.HasSuffix(in.Action, "_own") && (s.Offline || in.HostKey == "" || in.HostKey != s.HostKey) {
+			return LocalBridgeReply{Error: "own sharing needs this exact attached session"}
+		}
+		if s.ParentConfigPath == "" {
+			return LocalBridgeReply{Error: "this chat has no saved login to share with; attach it again"}
+		}
+		parent, err := localConfiguredClient(s.ParentConfigPath)
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], s.Attachment.AgentName)
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		return LocalBridgeReply{Attached: !s.Offline, Attachment: s.Attachment, Result: raw}
+	}
 	if in.Action == "detach_own" {
 		if !s.OwnCLI || in.HostKey == "" || in.HostKey != s.HostKey || in.AttachmentID != s.Attachment.ID {
 			return LocalBridgeReply{Error: "own detach requires this exact own-CLI-created lease; use the person command for a person-created attachment"}

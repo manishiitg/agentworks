@@ -100,6 +100,26 @@ var shareAccountActive = func(userID string) bool {
 	return rec != nil && !rec.Disabled && userAllowedProduct(&UserClaims{UserID: userID}, "bullpen")
 }
 
+// A share whose subject is shareScopeServer lets every signed-in person on this
+// server message the agent (until the owner unshares it). It has no expiry and is
+// checked in the same places as a one-person grant.
+const shareScopeServer = "*"
+const serverShareLifetime = 100 * 365 * 24 * time.Hour
+
+func (sh agentShare) serverScope() bool { return sh.SubjectUserID == shareScopeServer }
+
+// shareAllows says whether this grant lets that person message the agent: not the
+// owner, not blocked by the owner, and for a server-scope share any active account.
+func (s agentMessageStore) shareAllows(sh agentShare, person string) bool {
+	if person == "" || person == shareScopeServer || person == sh.OwnerUserID || s.shareBlocked(sh.OwnerUserID, person) {
+		return false
+	}
+	if sh.serverScope() {
+		return shareAccountActive(person)
+	}
+	return sh.SubjectUserID == person
+}
+
 func (sh agentShare) live(now time.Time) bool {
 	return sh.RevokedAt.IsZero() && now.Before(sh.ExpiresAt)
 }
@@ -113,8 +133,8 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 		if sh.ID != shareID {
 			continue
 		}
-		if !sh.live(now) || sh.RevocationVersion != version || sh.Capability != shareCapabilityChat || s.shareBlocked(sh.OwnerUserID, sh.SubjectUserID) ||
-			!shareAccountActive(sh.OwnerUserID) || !shareAccountActive(sh.SubjectUserID) {
+		subjectOK := sh.serverScope() || (!s.shareBlocked(sh.OwnerUserID, sh.SubjectUserID) && shareAccountActive(sh.SubjectUserID))
+		if !sh.live(now) || sh.RevocationVersion != version || sh.Capability != shareCapabilityChat || !subjectOK || !shareAccountActive(sh.OwnerUserID) {
 			return agentShare{}, denied
 		}
 		known := false
@@ -151,7 +171,7 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 	if a.UserID != sh.OwnerUserID {
 		owner, subject = b, a
 	}
-	if owner.UserID != sh.OwnerUserID || subject.UserID != sh.SubjectUserID || owner.NamedAgentID != sh.AgentID {
+	if owner.UserID != sh.OwnerUserID || !s.shareAllows(sh, subject.UserID) || owner.NamedAgentID != sh.AgentID {
 		return denied
 	}
 	for _, ag := range s.Agents {
@@ -185,7 +205,7 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 		return nil
 	}
 	sh, err := s.authorizeShare(src.ShareID, src.ShareVersion, now)
-	if err != nil || src.UserID != sh.SubjectUserID {
+	if err != nil || src.UserID == sh.OwnerUserID {
 		return err
 	}
 	hourly, pending, owner := 0, 0, 0
@@ -199,7 +219,7 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 			if recent {
 				owner++
 			}
-			if from.ShareID == sh.ID {
+			if from.ShareID == sh.ID && from.UserID == src.UserID {
 				if recent {
 					hourly++
 				}
@@ -225,6 +245,24 @@ func (s *agentMessageStore) suppressShare(shareID string) {
 		}
 		for mi := range c.Messages {
 			if m := &c.Messages[mi]; m.Delivery == "stored" || m.Delivery == "pending" || m.Delivery == "dispatching" {
+				m.Delivery = "suppressed"
+			}
+		}
+	}
+}
+
+// suppressFrom marks undelivered mail one person sent to an owner's shared
+// agents, so blocking them also stops what was already queued under a share
+// that stays in force for everyone else.
+func (s *agentMessageStore) suppressFrom(ownerID, personID string) {
+	for ci := range s.Conversations {
+		c := &s.Conversations[ci]
+		first, second := c.Endpoints[0].UserID, c.Endpoints[1].UserID
+		if c.Endpoints[0].ShareID == "" || !(first == ownerID && second == personID || first == personID && second == ownerID) {
+			continue
+		}
+		for mi := range c.Messages {
+			if m := &c.Messages[mi]; c.Endpoints[m.From].UserID == personID && (m.Delivery == "stored" || m.Delivery == "pending" || m.Delivery == "dispatching") {
 				m.Delivery = "suppressed"
 			}
 		}
@@ -262,8 +300,8 @@ func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims
 	if err != nil || peer.UserID == claims.UserID {
 		return denied
 	}
-	pair := (peer.UserID == sh.OwnerUserID && claims.UserID == sh.SubjectUserID && peer.NamedAgentID == sh.AgentID) ||
-		(peer.UserID == sh.SubjectUserID && claims.UserID == sh.OwnerUserID)
+	pair := (peer.UserID == sh.OwnerUserID && peer.NamedAgentID == sh.AgentID && s.shareAllows(sh, claims.UserID)) ||
+		(claims.UserID == sh.OwnerUserID && s.shareAllows(sh, peer.UserID))
 	if !pair {
 		return denied
 	}
@@ -303,7 +341,7 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, ref string) (trig
 		var best *agentShare
 		for i := range s.Shares {
 			sh := &s.Shares[i]
-			if sh.OwnerUserID == owner.ID && sh.SubjectUserID == subjectID && sh.AgentID == a.ID {
+			if sh.OwnerUserID == owner.ID && sh.AgentID == a.ID && s.shareAllows(*sh, subjectID) {
 				if _, e := s.authorizeShare(sh.ID, sh.RevocationVersion, now); e == nil && (best == nil || sh.CreatedAt.After(best.CreatedAt)) {
 					best = sh
 				}
@@ -321,7 +359,7 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, ref string) (trig
 func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[string]interface{} {
 	items := []map[string]interface{}{}
 	for _, sh := range s.Shares {
-		if sh.SubjectUserID != userID {
+		if !s.shareAllows(sh, userID) {
 			continue
 		}
 		if _, err := s.authorizeShare(sh.ID, sh.RevocationVersion, now); err != nil {
@@ -332,7 +370,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
-			items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "expires_at": sh.ExpiresAt, "purpose": a.Purpose, "online": namedAgentOnline(a)})
+			items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "expires_at": sh.ExpiresAt, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "purpose": a.Purpose, "online": namedAgentOnline(a)})
 		}
 	}
 	return items
@@ -385,6 +423,9 @@ func shareOwnerLabel(userID string) string { return shareOwnerLabeler()(userID) 
 func shareOwnerLabeler() func(string) string {
 	dir, err := loadUserDirectory()
 	return func(userID string) string {
+		if userID == shareScopeServer {
+			return "everyone"
+		}
 		if err == nil && dir != nil {
 			if rec := dir.byID(userID); rec != nil && rec.Username != "" {
 				return rec.Username
@@ -435,7 +476,7 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		} else if !sh.live(now) {
 			state = "expired"
 		}
-		shares = append(shares, map[string]interface{}{"share_id": sh.ID, "agent_name": name, "agent_id": sh.AgentID, "person": label(sh.SubjectUserID), "capability": sh.Capability, "created_at": sh.CreatedAt, "expires_at": sh.ExpiresAt, "state": state})
+		shares = append(shares, map[string]interface{}{"share_id": sh.ID, "agent_name": name, "agent_id": sh.AgentID, "person": label(sh.SubjectUserID), "capability": sh.Capability, "created_at": sh.CreatedAt, "expires_at": sh.ExpiresAt, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "state": state})
 	}
 	for _, b := range s.Blocks {
 		if b.OwnerUserID == claims.UserID {
@@ -635,6 +676,7 @@ func (api *StreamingAPI) handleBullpenBlock(w http.ResponseWriter, r *http.Reque
 				s.suppressShare(sh.ID)
 			}
 		}
+		s.suppressFrom(claims.UserID, subject.ID)
 		s.auditShare("blocked", claims.UserID, claims.UserID, subject.ID, "", "")
 	}
 	if err := saveAgentMessageStore(r.Context(), s); err != nil {

@@ -145,7 +145,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 	switch action {
 	case "list", "audit":
 		return api.bullpenAdminRead(ctx, action, args)
-	case "close_attachment", "remove_agent":
+	case "close_attachment", "remove_agent", "unshare_agent":
 	default:
 		return bullpenAdminResult(http.StatusBadRequest, "invalid_arguments", "action must be list, audit, close_attachment or remove_agent")
 	}
@@ -196,6 +196,24 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 		return bullpenAdminResult(http.StatusNotFound, "unknown_attachment", "No attachment with that handle.")
 	}
 	agentID := externalArg(args, "agent_id")
+	if action == "unshare_agent" {
+		for _, a := range s.Agents {
+			if a.ID != agentID {
+				continue
+			}
+			if s.revokeServerShares(a.ID, adminID, now) == 0 {
+				return save(map[string]interface{}{"state": "not_shared", "agent_name": a.Name, "owner": label(a.UserID)})
+			}
+			s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "agent_unshared", TargetUser: a.UserID, TargetAgent: a.ID, Reason: reason, Result: "done"})
+			s.Notices = append(s.Notices, agentOwnerNotice{ID: "notice-" + uuid.NewString(), OwnerUserID: a.UserID, AgentName: a.Name, At: now, Text: "An administrator stopped sharing " + a.Name + " with everyone on this server. Reason: " + reason + ". It is private again; share it again if you want."})
+			return save(map[string]interface{}{"state": "unshared", "agent_name": a.Name, "owner": label(a.UserID)})
+		}
+		s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "agent_unshared", TargetAgent: agentID, Reason: reason, Result: "not_found"})
+		if _, _, code, msg := save(nil); code != "" {
+			return bullpenAdminResult(http.StatusServiceUnavailable, code, msg)
+		}
+		return bullpenAdminResult(http.StatusNotFound, "unknown_agent", "No agent with that id.")
+	}
 	for i := range s.Agents {
 		a := s.Agents[i]
 		if a.ID != agentID {
@@ -260,7 +278,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			if query != "" && strings.Contains(strings.ToLower(a.Name), query) {
 				match = true
 			}
-			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil}
+			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "shared_with_everyone": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
 				item["attachment_handle"] = attachmentHandle(a.ID, a.Attachment.ID)
@@ -320,7 +338,7 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
-	action := map[string]string{"/api/bullpen/admin/agents": "list", "/api/bullpen/admin/audit": "audit", "/api/bullpen/admin/attachments/close": "close_attachment", "/api/bullpen/admin/agents/remove": "remove_agent"}[r.URL.Path]
+	action := map[string]string{"/api/bullpen/admin/agents": "list", "/api/bullpen/admin/audit": "audit", "/api/bullpen/admin/attachments/close": "close_attachment", "/api/bullpen/admin/agents/remove": "remove_agent", "/api/bullpen/admin/agents/unshare": "unshare_agent"}[r.URL.Path]
 	out, status, code, msg := api.bullpenAdminAct(r.Context(), claims.UserID, action, args)
 	if code != "" {
 		externalError(w, status, code, msg)
@@ -331,8 +349,8 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 }
 
 func externalBullpenAdminDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(bullpenAdminTool, "Bullpen administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener. Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
-		"action":   map[string]any{"type": "string", "enum": []any{"list", "audit", "close_attachment", "remove_agent"}},
+	add(bullpenAdminTool, "Bullpen administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) makes an agent that its owner shared with everyone private again (list shows shared_with_everyone). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
+		"action":   map[string]any{"type": "string", "enum": []any{"list", "audit", "close_attachment", "remove_agent", "unshare_agent"}},
 		"q":        map[string]any{"type": "string", "maxLength": 64},
 		"cursor":   map[string]any{"type": "string", "maxLength": 12},
 		"limit":    externalInteger(1, 100),

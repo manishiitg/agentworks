@@ -19,7 +19,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach codex-review', ownRequest: 'Attach this chat to AgentWorks as codex-review.',
     delivery: 'Desktop native delivery reaches the attached chat, including while it is idle. Hooks deliver at turn boundaries. A notification or a queue write alone is not a processed receipt.',
     menus: [
-      { entry: '/agentworks attach, detach, agents', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
+      { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
       { entry: '/ menu → Agentworks Codex: Agentworks', who: 'You', description: 'Person-command skill shown in the slash picker. Selecting it explains commands; type /agentworks attach to connect.' },
       { entry: '/ menu → Agentworks Codex: Agent Messages', who: 'The agent', description: 'Messaging skill shown in the slash picker; you do not run it to attach. The hooks accept /agentworks, not an invented namespaced attach spelling.' },
     ],
@@ -40,7 +40,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach claude-review', ownRequest: 'Attach this chat to AgentWorks as claude-review.',
     delivery: 'Native session messaging wakes an idle chat and offers messages to a running session. Hooks deliver at turn boundaries when that route is unavailable. Claude may add its own permission notice to each message.',
     menus: [
-      { entry: '/agentworks:agentworks attach, detach, agents', who: 'You', description: 'Namespaced person command. The short /agentworks spelling is also accepted by the hooks.' },
+      { entry: '/agentworks:agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Namespaced person command. The short /agentworks spelling is also accepted by the hooks.' },
       { entry: 'Agent Messages', who: 'The agent', description: 'Messaging skill and restricted tools; you do not run it to attach.' },
     ],
     troubleshooting: [
@@ -64,7 +64,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks-muse:agentworks attach muse-review', ownRequest: 'Attach this chat to AgentWorks as muse-review.',
     delivery: 'The native Monitor wakes this attached chat without polling. Wait until Muse reports that its Monitor is listening, then leave the chat idle. Hooks deliver at turn boundaries if the Monitor is unavailable. A wake hint is not a receipt.',
     menus: [
-      { entry: '/agentworks-muse:agentworks', who: 'You', description: 'Person command: attach [NAME], detach, agents. This is the entry to use.' },
+      { entry: '/agentworks-muse:agentworks', who: 'You', description: 'Person command: attach [NAME], detach, agents, share, unshare. This is the entry to use.' },
       { entry: '/agentworks-muse:messaging', who: 'The agent', description: 'Skill for finding peers, reading, sending, replying and acknowledging messages.' },
       { entry: '/agentworks-muse:monitor', who: 'The agent', description: 'Skill for starting idle wake. You do not run it manually.' },
       { entry: '/agentworks (if a user skill is installed)', who: 'Other tools', description: 'The general AgentWorks tools guide can have this name. It is not the namespaced attach command.' },
@@ -85,7 +85,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach pi-review', ownRequest: 'Attach this chat to AgentWorks as pi-review.',
     delivery: 'The native extension offers messages to this session; busy tools finish before queued follow-ups. The agent explicitly acknowledges admitted and processed. Native display alone is not admission.',
     menus: [
-      { entry: '/agentworks attach, detach, agents, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
+      { entry: '/agentworks attach, detach, agents, share, unshare, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
       { entry: '/reload', who: 'You', description: 'Pi’s built-in command reloads extensions.' },
       { entry: 'Six agent_message_* tools', who: 'The agent', description: 'Peers, send, read, reply, ack and purpose. There is no attach/detach model tool.' },
     ],

@@ -146,7 +146,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "provider": func() string {
+			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "shared_with_everyone": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
