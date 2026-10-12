@@ -215,18 +215,24 @@ Required first (both found 2026-10-07 on a0d687b63; the first two are done in ph
 The full review (Drift, Technical, Architecture) keeps its own self-deciding schedule (at most daily, at least
 weekly).
 
-## Phase 0: Workflow Review leaves Pulse and runs before every run
+## Phase 0: Workflow Review leaves Pulse; manual runs choose review
 
 Plan Drift ("Workflow Review") checks that the plan, steps, references and contracts still fit together. That is a
 change check, not goal work. Inside Pulse it runs on Pulse's clock (late after a change, wasted when nothing
 changed) and, when due, it runs alone and withholds Run/Change from Goal Work, so housekeeping delays the goal.
 
-Decision (owner, 2026-10-07): it becomes a normal pre-run check, like a compile step.
+Decision (owner, 2026-10-07; manual-run policy revised 2026-10-12, PLAT-825/825-26):
+scheduled runs retain a pre-run check; interactive testing does not require an AI review.
 
-- **Before every run** (run step, run workflow, scheduled run, Pulse-started run): the code-only reference map
+- **Individual step tests:** run directly with basic validation and permissions. Stale drift evidence alone
+  does not launch an AI reviewer or hold the test.
+- **Person-attended Builder/Run full-workflow runs:** if drift is due, ask "Review first, or run now?" The user's
+  `review_plan` choice either starts the existing background review or runs without clearing review debt.
+  Clean plans run directly.
+- **Unattended full runs** (schedules, functions, bots/external requests, Pulse turns): the code-only reference map
   (`CollectReferenceMap`, flags version) decides whether the plan changed or has new breaks since the last review.
   Unchanged and clean: the run starts immediately, no AI call.
-- **Changed or broken:** the Workflow Review agent runs first, fixes what it safely can, and the run starts on the
+- **Review selected or required by a schedule:** the Workflow Review agent runs first, fixes what it safely can, and the run starts on the
   reviewed plan. A break it cannot fix stops the run with the reason, and the Builder chat gets the finding (the
   workflow's agents fix workflows).
 - **Also on change:** after a Builder edit, an upgrade, or a platform rule change (flags version bump), so most runs

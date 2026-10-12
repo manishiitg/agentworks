@@ -62,17 +62,20 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	if check := api.scheduleCollisionCheck(phaseWorkspacePath, sessionID, syntheticReq.TriggeredBy); check != nil {
 		definitionAgent = scheduleGuardRegistrar{definitionAgent, todo_creation_human.GuardScheduleTools(definitionAgent, check)}
 	}
+	active, _ := api.getActiveSession(sessionID)
+	policy := resolveWorkflowChatPolicy(sessionID, syntheticReq, active, readOnly)
 	// Contract upgrades are an interactive boundary: manual Run Workflow / Run
 	// Step requests wait for operator approval, while saved schedules keep
 	// running their existing contract until the operator upgrades it separately.
-	// Workflow Review before every run (PLAT-697 phase 0): every chat, scheduled
-	// or not; a clean plan costs one code check.
+	// Step tests run directly. Interactive full runs offer Plan Drift when due;
+	// scheduled full runs retain the existing pre-run review policy.
 	if strings.TrimSpace(phaseWorkspacePath) != "" {
 		definitionAgent = workflowReviewPreRunRegistrar{
 			definitionRegistrar: definitionAgent,
 			api:                 api,
 			sessionID:           sessionID,
 			workspacePath:       phaseWorkspacePath,
+			interactive:         personAttendedWorkflowReview(sessionID, workflowPhaseID, syntheticReq, active, policy),
 		}
 	}
 	if shouldGuardWorkflowContractForRun(sessionID, syntheticReq.TriggeredBy) {
@@ -81,8 +84,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			workspacePath:       phaseWorkspacePath,
 		}
 	}
-	active, _ := api.getActiveSession(sessionID)
-	policy := resolveWorkflowChatPolicy(sessionID, syntheticReq, active, readOnly)
 	if err := api.registerWebhookTools(definitionAgent, userID, phaseWorkspacePath, policy); err != nil {
 		return err
 	}
@@ -574,4 +575,27 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 
 func shouldGuardWorkflowContractForRun(sessionID, triggeredBy string) bool {
 	return !isScheduledSessionIdentity(sessionID, triggeredBy)
+}
+
+// Being non-scheduled does not imply somebody can answer a review choice.
+// Reuse the chat's server-maintained provenance and fail closed for automation,
+// external clients, functions, bots and synthetic continuations.
+func personAttendedWorkflowReview(sessionID, phaseID string, req QueryRequest, active *ActiveSessionInfo, policy workflowChatPolicy) bool {
+	if phaseID != "workflow-builder" || policy.Origin != "interactive" || isGoalLeadSessionID(sessionID) ||
+		req.DisableLiveInputDelivery || req.IsAutoNotification || req.PulseLifecycleTurn || req.ExternalBuilderOperationID != "" {
+		return false
+	}
+	personTrigger := func(trigger string) bool {
+		switch strings.ToLower(strings.TrimSpace(trigger)) {
+		case "", "manual":
+			return true
+		default:
+			return false
+		}
+	}
+	if !personTrigger(req.TriggeredBy) || isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
+		return false
+	}
+	return active == nil || personTrigger(active.TriggeredBy) && !active.IsSyntheticTurn &&
+		!strings.HasPrefix(active.TurnProvider, "bot_") && active.BotPlatform == "" && active.ParentSessionID == "" && active.SessionKind == ""
 }

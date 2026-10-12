@@ -21,7 +21,9 @@ import (
 
 // Workflow Review (Plan Drift) is a pre-run check, not a Pulse pass
 // (PLAT-697 phase 0, docs/design/pulse_goal_owner.md). Before every run a code
-// check reads the plan's drift state: the same due set Pulse's Gate used to be
+// scheduled full run checks the plan's drift state; interactive full runs offer
+// review first or run now, and individual step tests bypass this AI review.
+// The due set is the one Pulse's Gate used to be
 // forced to act on (steps without a current drift review, steps flagged by a
 // plan edit, new broken references from the reference map, plan changes without
 // dependency receipts). Clean: the run starts with no AI call. Otherwise the
@@ -533,7 +535,25 @@ func (s *SchedulerService) ensureWorkflowReviewedBeforeRun(ctx context.Context, 
 	return workflowReviewGate{Proceed: true, Reviewed: true}
 }
 
-// manualRunWorkflowReview is the pre-run check for run tools called from a
+// manualWorkflowReviewChoice offers a choice without starting a review or a
+// workflow run. An already reviewed but unresolved plan still offers run now;
+// opting out never changes its saved review status or scheduled-run policy.
+func (api *StreamingAPI) manualWorkflowReviewChoice(workspacePath string) string {
+	if api == nil || api.scheduler == nil || strings.TrimSpace(workspacePath) == "" {
+		return ""
+	}
+	items, err := collectWorkflowReviewItems(workspacePath)
+	if err != nil {
+		return ""
+	}
+	decision, _, relevant := decideWorkflowReview(workspacePath, items, nil, readWorkflowReviewState(workspacePath))
+	if decision == workflowReviewProceed {
+		return ""
+	}
+	return fmt.Sprintf("Plan Drift review is due (%s). No workflow run or review started. Ask the user: \"Review the workflow first, or run now?\" Then call run_full_workflow with review_plan=true for review first, or review_plan=false for run now. Running without review keeps its drift findings pending; basic validation and permissions still apply.", describeWorkflowReviewItems(relevant, 3))
+}
+
+// manualRunWorkflowReview is the opted-in pre-run check for full runs called from a
 // chat (Builder, Run, a Pulse turn). It never blocks the tool call on an agent:
 // when a review is needed it starts it as a background job of the calling
 // chat, which shows "Reviewing the workflow before running…" and is notified

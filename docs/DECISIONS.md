@@ -1,5 +1,20 @@
 # Decisions and open issues
 
+## 2026-10-12 — Step tests run directly; full manual runs offer Plan Drift (PLAT-825)
+
+Remove the automatic AI drift prerequisite from `execute_step`. When Plan Drift
+is due in a person-attended Builder or Run chat's `run_full_workflow`, offer review first or run now;
+`review_plan` carries the user's choice. A clean plan starts directly. Opting out
+does not clear review debt or waive validation/permissions. Schedules, functions,
+bot/external requests and Pulse turns keep automatic full-run checks. Opting in
+uses the existing review job and completion notification; agents must not choose
+run now for the person.
+Why: iterative design and targeted testing should not wait for a whole-plan
+review; the owner can choose that review before a full manual run. Supersedes
+the October 7 automatic-review rule for interactive runs.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md), issue 825-26.
+
 ## 2026-10-12 — Agent item inspection uses its chat and task identity (PLAT-861)
 
 Bind provider event capture to the registered item execution and owning chat,
