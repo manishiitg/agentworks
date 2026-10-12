@@ -1,5 +1,22 @@
 # Decisions and open issues
 
+## 2026-10-12 — Brain is MCP first; the Brain page is a viewer (PLAT-856)
+
+Brain is used through people's own agents over MCP and the CLI. Every Brain operation that exists must be available
+there (content, history, sharing with roles, skills, backup health, Brain's secrets, the Organize Brain schedule,
+what's new) under the same permission checks as the page: folder roles and owner/admin rules. A feature that exists
+only in the page or the Brain chat is a gap to close, not a feature to build further. Secret values stay CLI-only
+(`agentworks brain secret set`, never through MCP), per 856-57.
+
+The page stays a read-only viewer (browse, read, history, who has access) and keeps the person's own sign-in and
+consent flows that need a browser. No editor, Share button or "what's new" view is planned for it. Agents handle
+version conflicts (a stale write is refused, then re-read and retried) and answer "what changed" from `whats_new` and
+`diff`.
+
+Why: the owner expects almost nobody to use the Brain page or its chat.
+
+Ticket: PLAT-856, issues 856 and 856-57.
+
 ## 2026-10-12 — Relay Access uses sharing without workflow goal teams (PLAT-825)
 
 Show the existing owner/editor/reader Sharing panel for Relays. Goal-team and
