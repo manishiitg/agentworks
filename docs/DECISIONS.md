@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-12 — Relay Access uses sharing without workflow goal teams (PLAT-825)
+
+Show the existing owner/editor/reader Sharing panel for Relays. Goal-team and
+route-assignment controls belong to workflows; do not mount them or call their
+plan-dependent API on a Relay, including while manifest discovery loads. The
+Access subtitle follows that product distinction; sharing checks remain the same.
+Why: a Relay has no workflow plan to configure, so that request produced an
+irrelevant error and misleading setup instructions.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md), issue 825-31.
+
 ## 2026-10-12 — Chat moves are open to agents (owner choice for an open system, PLAT-861)
 
 The owner chose, for now and to be revisited, that moving chats between logins has no person-only limits:

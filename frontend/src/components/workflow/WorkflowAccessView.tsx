@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ShieldCheck } from 'lucide-react'
 import WorkflowTeamView from './WorkflowTeamView'
+import WorkflowSharePopup from './WorkflowSharePopup'
 import UsersAdminPanel from '../admin/UsersAdminPanel'
 import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -15,6 +16,7 @@ import { normalizeWorkspacePath } from '../../utils/workspacePathUtils'
 
 interface WorkflowAccessViewProps {
   workspacePath: string | null
+  relayMode?: boolean
 }
 
 const ACCESS_TABS: Array<{ value: AccessTabId; label: string }> = [
@@ -33,13 +35,16 @@ const ACCESS_TABS: Array<{ value: AccessTabId; label: string }> = [
  *  - "Slack": the shared Slack bot and the list of workflow bots (admins
  *    only). Each workflow's own Slack setup stays in its Slack tab.
  */
-export default function WorkflowAccessView({ workspacePath }: WorkflowAccessViewProps) {
+export default function WorkflowAccessView({ workspacePath, relayMode = false }: WorkflowAccessViewProps) {
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const canManageUsers = useAuthStore(state => state.isMultiUserMode && (state.user?.is_admin === true || hasWorkflowOwnerAccess(state.user, state.isMultiUserMode)))
-  const myAccess = useWorkflowManifestStore(state =>
-    workspacePath ? state.workflows.find(w => w.workspace_path === normalizeWorkspacePath(workspacePath))?.my_access : undefined,
+  const workflow = useWorkflowManifestStore(state =>
+    workspacePath ? state.workflows.find(w => normalizeWorkspacePath(w.workspace_path) === normalizeWorkspacePath(workspacePath)) : undefined,
   )
+  const myAccess = workflow?.my_access
+  // The host already knows its product while manifest discovery is loading.
+  const isRelay = relayMode || workflow?.manifest.kind === 'relay'
   const canShareWorkflow = isMultiUser && !!workspacePath && (isAdmin || myAccess === 'owner' || myAccess === 'write')
 
   const workflowTab = isMultiUser && !!workspacePath && (canShareWorkflow || myAccess === 'read')
@@ -68,7 +73,9 @@ export default function WorkflowAccessView({ workspacePath }: WorkflowAccessView
           ? 'Accounts and roles for this deployment.'
           : activeTab === 'slack'
             ? 'The shared Slack bot and every workflow bot in this deployment.'
-            : `${scopeName} · one Leader owns the goal; Contributors work through assigned routes.`}
+            : isRelay
+              ? `${scopeName} · owners, editors and read-only access.`
+              : `${scopeName} · one Leader owns the goal; Contributors work through assigned routes.`}
         actions={
           activeTab ? (
             <WorkspaceViewActions
@@ -90,7 +97,9 @@ export default function WorkflowAccessView({ workspacePath }: WorkflowAccessView
         ) : (
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
-              <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
+              isRelay
+                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} />
+                : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />
             ) : activeTab === 'slack' ? (
