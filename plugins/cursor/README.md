@@ -147,6 +147,12 @@ With an existing Cursor login or API-key environment, run:
 python3 plugins/cursor/scripts/check_native_hook.py
 ```
 
+Use `--interactive` for the terminal UI path; print mode in CLI2026.10.01
+can complete without invoking stop or prompt hooks. The interactive probe owns
+only a new disposable CLI process. It verifies assistant markers from that
+workspace's native transcript, never from terminal echoes, and refuses to read
+transcripts outside the test workspace.
+
 The probe creates a temporary project, asks for a baseline response, and checks
 that a completed stop hook causes a second model response containing its unique
 marker. It uses ask mode without force/yolo flags. It does not grant workspace trust by
