@@ -243,7 +243,7 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
 	}
-	if grant.BoundAgentID != "" && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
+	if grant.BoundAgentID != "" && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/agents/usage" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
@@ -256,6 +256,9 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 }
 
 func cliOAuthAllowedPath(method, path string) bool {
+	if method == http.MethodPost && path == "/api/external/v1/agents/usage" {
+		return true // Numeric report handler fences the exact child connection, owner and lease.
+	}
 	if method == http.MethodPost && path == "/api/external/v1/agents/attachment" {
 		return true // Only the person-configured CLI bridge can attach a native session.
 	}
