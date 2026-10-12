@@ -641,10 +641,14 @@ export function isInspectableBackgroundActivity(event: PollingEvent): boolean {
   const metadata = fields.metadata as Record<string, unknown> | undefined
   const target = metadata?.inspection as Record<string, unknown> | undefined
   const parent = textField(fields.parent_execution_id)
+  // Main chat turns use query_<timestamp>; steered continuations use
+  // synthetic-turn:<message>. They are roots just like main/session owners.
+  const mainParent = !parent || parent.startsWith('main:') || parent.startsWith('session:') ||
+    /^query_\d+$/.test(parent) || parent.startsWith('synthetic-turn:')
   return Boolean(target && ['workspace_path', 'session_id', 'execution_id'].every(key => textField(target[key])) &&
     textField(target.execution_id) === textField(fields.agent_id) &&
     (!event.session_id || target.session_id === event.session_id) &&
-    (!parent || parent.startsWith('main:') || parent.startsWith('session:')))
+    mainParent)
 }
 
 function isProductMainConversationEvent(event: PollingEvent): boolean {

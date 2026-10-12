@@ -50,7 +50,17 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,`${name}: script does not overflow`)
   await page.screenshot({path:path.join(output,`step-inspection-${name}-script.png`),fullPage:true})
   assert.deepEqual(errors,[],`${name}: no script component errors`)
+  for (const parent of ['query','steer']) {
+   await page.goto(server.resolvedUrls.local[0]+`scripts/test-fixtures/step-inspection-qa.html?theme=${theme}&mode=launch&parent=${parent}`)
+   const inspect = page.getByRole('button',{name:'Inspect Write a status file',exact:true})
+   await inspect.waitFor()
+   await inspect.click()
+   await page.getByText('Create status.json with status INITIALIZED and report the result.',{exact:true}).waitFor()
+   assert.equal(await page.getByLabel('Inspect task').inputValue(),'work-task',`${name}: ${parent} native lifecycle opens the exact step`)
+   assert.deepEqual(errors,[],`${name}: no native launch component errors`)
+  }
+  await page.screenshot({path:path.join(output,`step-inspection-${name}-native-launch.png`),fullPage:true})
   await page.close()
  }
- console.log('Step inspection Chromium checks passed: desktop, phone and light mode; exact task navigation, chat-style records and script source/output and retained chat draft.')
+ console.log('Step inspection Chromium checks passed: desktop, phone and light mode; native query/steer launch inspection, exact task navigation, chat-style records and script source/output and retained chat draft.')
 } finally {await browser?.close(); await server.close()}

@@ -226,3 +226,24 @@ it('shows the pending review truthfully and opens its exact inspection from the 
   expect(host.querySelectorAll('[data-testid="terminal-inspectable-background-activity"]')).toHaveLength(1)
   expect(host.querySelector('[data-testid="terminal-inspectable-background-activity"]')?.textContent).toContain('completed')
 })
+
+// Native CLIs can launch through their shell bridge, without an execute_step
+// tool receipt. The exact server lifecycle target must be sufficient.
+it.each(['query_1791824440777049000', 'synthetic-turn:steer-message-1791824440777049000'])('opens a native main-turn step from its lifecycle (%s)', async parentID => {
+  const original = useChatStore.getState()
+  cleanups.push(() => useChatStore.setState(original, true))
+  const target = {session_id:'parent',execution_id:'step-run',workspace_path:'Workflow/example',name:'Example step',started_at:'2026-10-12T00:00:00Z'}
+  const started = {...event('native-step-start','background_agent_started',{agent_id:'step-run',execution_kind:'workflow_step',parent_execution_id:parentID,metadata:{inspection:target}}),session_id:'parent'}
+  const child = {...event('native-child-start','background_agent_started',{agent_id:'child',execution_kind:'agent_item',parent_execution_id:'step-run',metadata:{inspection:{...target,execution_id:'child',name:'Child task'}}}),session_id:'parent'}
+  const events = [user,started,child]
+  useChatStore.setState({activeTabId:'chat',chatTabs:{chat:{tabId:'chat',sessionId:'parent'} as ChatTab},tabEvents:{parent:events}})
+  const {host,render} = await mount({events})
+  expect(host.querySelectorAll('[data-testid="terminal-inspectable-background-activity"]')).toHaveLength(1)
+  expect(host.textContent).not.toContain('Child task')
+  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Inspect Example step"]')!.click())
+  expect(useChatStore.getState().getTab('chat')?.metadata?.stepInspections?.items).toEqual([target])
+  const done = {...event('native-step-end','background_agent_completed',{agent_id:'step-run',parent_execution_id:parentID,status:'completed',metadata:{inspection:target}}),session_id:'parent'}
+  await render({events:[...events,done]})
+  expect(host.querySelectorAll('[data-testid="terminal-inspectable-background-activity"]')).toHaveLength(1)
+  expect(host.querySelector('[data-testid="terminal-inspectable-background-activity"]')?.textContent).toContain('completed')
+})
