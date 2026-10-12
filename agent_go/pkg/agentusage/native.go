@@ -95,14 +95,18 @@ func (a anthropicCounters) normalized() (Counters, bool) {
 // Claude repeats a call's usage on assistant content blocks. Later native
 // updates replace earlier numbers for that ID; they are not additional calls.
 func Claude(r io.Reader, session string) (Native, error) {
-	type call struct {
-		counters Counters
-		model    string
-	}
-	calls := map[string]call{}
-	users := map[string]struct{}{}
-	var model string
-	err := records(r, func(line []byte) error {
+	return claudeLedger(r, session, &Ledger{}, records)
+}
+
+func ClaudeChunk(r io.Reader, session string, l *Ledger) (Native, error) {
+	return claudeLedger(r, session, l, l.walk)
+}
+
+func claudeLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, func([]byte) error) error) (Native, error) {
+	l.initialize()
+	calls, users := l.Calls, l.Users
+	model := l.Model
+	err := walk(r, func(line []byte) error {
 		var e struct {
 			Type    string `json:"type"`
 			Session string `json:"sessionId"`
@@ -124,7 +128,7 @@ func Claude(r io.Reader, session string) (Native, error) {
 			if len(users) >= MaxCalls {
 				return ErrLimit
 			}
-			users[e.ID] = struct{}{}
+			users[numericID(e.ID)] = struct{}{}
 		}
 		if e.Type != "assistant" || e.Message.Usage == nil {
 			return nil
@@ -140,13 +144,14 @@ func Claude(r io.Reader, session string) (Native, error) {
 		if !ok {
 			return ErrUnavailable
 		}
-		if _, found := calls[id]; !found && len(calls) >= MaxCalls {
+		if _, found := calls[numericID(id)]; !found && len(calls) >= MaxCalls {
 			return ErrLimit
 		}
 		model = ModelID(e.Message.Model)
-		calls[id] = call{c, model}
+		calls[numericID(id)] = c
 		return nil
 	})
+	l.Model = model
 	if err != nil {
 		return Native{}, err
 	}
@@ -155,9 +160,10 @@ func Claude(r io.Reader, session string) (Native, error) {
 	}
 	out := Native{Source: "Claude transcript usage", Model: model}
 	for _, c := range calls {
-		out.Input += c.counters.Input
-		out.Output += c.counters.Output
-		out.Cached += c.counters.Cached
+		seen[numericID(e.ID)] = struct{}{}
+		out.Input += c.Input
+		out.Output += c.Output
+		out.Cached += c.Cached
 	}
 	if !out.Counters.Valid() {
 		return Native{}, ErrUnavailable
@@ -234,10 +240,18 @@ func Codex(r io.Reader, session string) (Native, error) {
 // Muse has no verified token total in its session index. Sum only unique,
 // reported provider attribution records in the exact native session log.
 func Muse(r io.Reader, session string) (Native, error) {
-	var out Native
-	seen := map[string]struct{}{}
-	runs := map[string]struct{}{}
-	err := records(r, func(line []byte) error {
+	return museLedger(r, session, &Ledger{}, records)
+}
+
+func MuseChunk(r io.Reader, session string, l *Ledger) (Native, error) {
+	return museLedger(r, session, l, l.walk)
+}
+
+func museLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, func([]byte) error) error) (Native, error) {
+	l.initialize()
+	out := Native{Counters: l.Total}
+	seen, runs := l.Seen, l.Runs
+	err := walk(r, func(line []byte) error {
 		var e struct {
 			ID       string `json:"id"`
 			Sequence int64  `json:"sequence"`
@@ -280,17 +294,17 @@ func Muse(r io.Reader, session string) (Native, error) {
 		if e.ID == "" {
 			return ErrUnavailable
 		}
-		if _, ok := seen[e.ID]; ok {
+		if _, ok := seen[numericID(e.ID)]; ok {
 			return nil
 		}
 		if len(seen) >= MaxCalls {
 			return ErrLimit
 		}
-		seen[e.ID] = struct{}{}
 		c := Counters{q.Input, q.Output, q.Cached}
 		if !c.Valid() {
 			return ErrUnavailable
 		}
+		seen[numericID(e.ID)] = struct{}{}
 		out.Input += c.Input
 		out.Output += c.Output
 		out.Cached += c.Cached
@@ -299,10 +313,11 @@ func Muse(r io.Reader, session string) (Native, error) {
 			run = e.Payload.Run
 		}
 		if run != "" {
-			runs[run] = struct{}{}
+			runs[numericID(run)] = struct{}{}
 		}
 		return nil
 	})
+	l.Total = out.Counters
 	if err != nil {
 		return Native{}, err
 	}

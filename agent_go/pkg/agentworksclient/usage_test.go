@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,6 +15,9 @@ import (
 
 func TestUsageHourlyOptInRestartAndOff(t *testing.T) {
 	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := privateLiveDir(root); err != nil {
 		t.Fatal(err)
 	}

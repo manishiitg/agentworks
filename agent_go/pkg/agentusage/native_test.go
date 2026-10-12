@@ -13,6 +13,17 @@ func TestClaudeNativeUsage(t *testing.T) {
 	if e != nil || n.Input != 15 || n.Output != 4 || n.Cached != 13 || n.Calls == nil || *n.Calls != 1 || n.Turns == nil || *n.Turns != 1 {
 		t.Fatalf("numeric projection: %+v %v", n, e)
 	}
+	ledger := &Ledger{}
+	first := strings.Split(raw, "\n")
+	prefix := strings.Join(first[:2], "\n") + "\n"
+	if _, e = ClaudeChunk(strings.NewReader(prefix), "session", ledger); e != nil {
+		t.Fatal(e)
+	}
+	position := ledger.Offset
+	n, e = ClaudeChunk(strings.NewReader(first[2]+"\n"), "session", ledger)
+	if e != nil || n.Input != 15 || n.Output != 4 || *n.Calls != 1 || ledger.Offset <= position {
+		t.Fatal("numeric-only bounded catch-up duplicated or lost an updated call")
+	}
 	if _, e = Claude(strings.NewReader(raw), "other"); e != ErrIdentity {
 		t.Fatal("foreign session accepted")
 	}

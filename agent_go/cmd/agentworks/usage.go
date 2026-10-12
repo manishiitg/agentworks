@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -184,10 +187,45 @@ func readAttachedUsage(root string) func(context.Context, agentworksclient.Agent
 			budget = agentusage.MaxReadBytes
 		}
 		var input io.Reader = f
-		if st.Size() > budget {
-			if a.Provider != "codex" {
+		if a.Provider == "claude" || a.Provider == "muse" {
+			cfg, e := agentworksclient.LocalUsageSettings(root)
+			if e != nil || !cfg.Enabled {
+				return out, agentusage.ErrUnavailable
+			}
+			digest := sha256.Sum256([]byte(a.Provider + ":" + a.SessionID))
+			key := hex.EncodeToString(digest[:])
+			cache, e := agentworksclient.LoadUsageLedger(root, key)
+			if e != nil {
+				return out, agentusage.ErrUnavailable
+			}
+			identity := usageFileIdentity(st)
+			if cache.Generation != cfg.Generation || cache.Identity != identity || cache.Ledger.Offset > st.Size() {
+				cache = agentworksclient.UsageLedger{Generation: cfg.Generation, Identity: identity}
+			}
+			if _, e = f.Seek(cache.Ledger.Offset, io.SeekStart); e != nil {
+				return out, agentusage.ErrUnavailable
+			}
+			count := &usageReader{ctx: ctx, r: io.LimitReader(f, budget)}
+			if a.Provider == "claude" {
+				out, err = agentusage.ClaudeChunk(count, a.SessionID, &cache.Ledger)
+			} else {
+				out, err = agentusage.MuseChunk(count, a.SessionID, &cache.Ledger)
+			}
+			out.BytesRead = count.n
+			if err == nil || errors.Is(err, agentusage.ErrUnavailable) || errors.Is(err, agentusage.ErrLimit) {
+				if e = agentworksclient.SaveUsageLedger(root, key, cache); e != nil {
+					return out, agentusage.ErrUnavailable
+				}
+			}
+			if cache.Ledger.Offset < st.Size() {
 				return out, agentusage.ErrLimit
 			}
+			if out.Model == "" {
+				out.Model = model
+			}
+			return out, err
+		}
+		if st.Size() > budget {
 			// The latest cumulative Codex total remains complete even in a
 			// bounded tail. Prepend its exact identity header and discard the
 			// first partial tail line before decoding numeric records.
@@ -250,4 +288,22 @@ func readPiUsage(ctx context.Context, root string, a agentworksclient.AgentAttac
 	n, e := agentusage.PiStats(count, a.SessionID)
 	n.BytesRead = count.n
 	return n, e
+}
+
+func usageFileIdentity(info os.FileInfo) string {
+	v := reflect.ValueOf(info.Sys())
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	if v.IsValid() && v.Kind() == reflect.Struct {
+		dev, ino := v.FieldByName("Dev"), v.FieldByName("Ino")
+		if dev.IsValid() && ino.IsValid() {
+			return fmt.Sprint(dev.Interface(), ":", ino.Interface())
+		}
+		birth := v.FieldByName("CreationTime")
+		if birth.IsValid() {
+			return fmt.Sprint(birth.Interface())
+		}
+	}
+	return info.Name()
 }

@@ -71,6 +71,9 @@ func SetLocalUsage(root string, enabled bool) error {
 			return err
 		}
 		if !enabled {
+			if err = os.RemoveAll(filepath.Join(root, "usage-ledgers")); err != nil {
+				return err
+			}
 			state, err := readUsageState(root)
 			if err != nil {
 				return err
