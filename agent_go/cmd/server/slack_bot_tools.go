@@ -274,19 +274,27 @@ func productProjectLabel(ctx context.Context, profileID, workspacePath string) s
 	return strings.TrimSpace(label)
 }
 
-// productProjectDescription returns a product project's one-line description, or "".
+// productProjectDescription returns a product project's one-line description, or "". A Crew's description lives in its
+// product.json; the runtime manifest read first does not carry it.
 func productProjectDescription(ctx context.Context, profileID, workspacePath string) string {
-	raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil || !found {
-		return ""
+	read := func(raw string) string {
+		var manifest struct {
+			Description string `json:"description"`
+		}
+		if json.Unmarshal([]byte(raw), &manifest) != nil {
+			return ""
+		}
+		return strings.Join(strings.Fields(manifest.Description), " ")
 	}
-	var manifest struct {
-		Description string `json:"description"`
+	description := ""
+	if raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath); err == nil && found {
+		description = read(raw)
 	}
-	if json.Unmarshal([]byte(raw), &manifest) != nil {
-		return ""
+	if description == "" {
+		if raw, found, err := readFileFromWorkspace(ctx, filepath.ToSlash(filepath.Join(workspacePath, "product.json"))); err == nil && found {
+			description = read(raw)
+		}
 	}
-	description := strings.Join(strings.Fields(manifest.Description), " ")
 	if r := []rune(description); len(r) > 160 {
 		description = string(r[:157]) + "..."
 	}
