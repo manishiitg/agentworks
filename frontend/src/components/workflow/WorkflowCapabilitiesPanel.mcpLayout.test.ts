@@ -39,7 +39,7 @@ describe('Workflow MCP panel layout', () => {
     const access = readFileSync('src/components/workflow/WorkflowAccessView.tsx', 'utf8')
     expect(access).toContain('getAccessTabAskAIMessage(activeTab)')
     expect(access).toContain('onRefresh')
-    expect(host).toContain('<WorkflowAccessView workspacePath={workspacePath} />')
+    expect(host).toContain('<WorkflowAccessView workspacePath={workspacePath} relayMode={relayMode} />')
     // Folders moved under the Identity tabs; it no longer has a host header.
     expect(host).not.toContain("headerAction={refreshAndAskAI('folders')}")
     // Knowledge is a self-served umbrella (like capabilities sections): the
