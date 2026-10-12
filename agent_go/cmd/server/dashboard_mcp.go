@@ -232,6 +232,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			viewTarget := target
 			viewTarget.Edit = dashboardAuthoringAllowed(claims, &target)
 			row := dashboardDiscoveryRow(viewTarget, d)
+			addDashboardQuestionResource(r.Context(), viewTarget, d, row)
 			rows = append(rows, row)
 		}
 	}

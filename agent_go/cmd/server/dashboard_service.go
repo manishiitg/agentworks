@@ -360,9 +360,21 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		for _, d := range result.Dashboards {
 			viewTarget := target
 			viewTarget.Edit = includeDraft
-			rows = append(rows, dashboardDiscoveryRow(viewTarget, d))
+			row := dashboardDiscoveryRow(viewTarget, d)
+			addDashboardQuestionResource(r.Context(), viewTarget, d, row)
+			rows = append(rows, row)
 		}
 		writeDashboardPage(w, rows, args.Limit, args.Offset)
+		return
+	}
+	if args.Action == "get" && result.Dashboard != nil && result.Dashboard.Managed {
+		resource := map[string]any{}
+		addDashboardQuestionResource(r.Context(), target, *result.Dashboard, resource)
+		id, _ := resource["resource_id"].(string)
+		externalJSON(w, struct {
+			dashboards.Result
+			ResourceID string `json:"resource_id,omitempty"`
+		}{result, id})
 		return
 	}
 	externalJSON(w, result)

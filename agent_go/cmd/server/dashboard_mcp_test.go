@@ -145,6 +145,11 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	// A migrated Crew shares this same authoring/read path. Legacy owner links
 	// resolve to its canonical root, while readers cannot publish.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]},{"id":"reader","username":"reader","products":["agentworks","work"]}]}`)
+	// The changed product grants invalidate the owner's catalog; reconnect
+	// both clients before testing Crew operations under the new grants.
+	cli = reconnectAfterCatalogChange(t, ctx, cli, srv.URL+externalMCPPath)
+	rcli = dialExternalMCP(t, ctx, rsrv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, rcli)
 	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, map[string]string{"_users/owner/Chats/Work/projects/dashboard-team": "Crew/dashboard-team"})
 	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
 	crewCreated := call("create_dashboard", map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})

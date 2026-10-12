@@ -78,6 +78,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	})
 	router.GET("/api/documents/*file", func(c *gin.Context) {
 		rel := strings.TrimPrefix(c.Param("file"), "/")
+		if strings.HasPrefix(rel, "_system/dashboard_questions/") {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.GetDocument(c)
+			return
+		}
 		if (strings.HasPrefix(rel, "Workflow/invoices/") || strings.HasPrefix(rel, "Crew/dashboard-team/") || strings.HasPrefix(rel, "_users/owner/Chats/Code/projects/dashboard-code/")) && strings.HasSuffix(rel, "/raw") {
 			data, err := os.ReadFile(filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw")))
 			if err != nil {
@@ -101,6 +106,12 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	})
 	// Settings saves rewrite this one manifest through the workspace API.
 	router.PUT("/api/documents/*file", func(c *gin.Context) {
+		rel := strings.TrimPrefix(c.Param("file"), "/")
+		if strings.HasPrefix(rel, "_system/dashboard_questions/") {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.UpdateDocument(c)
+			return
+		}
 		if strings.TrimPrefix(c.Param("file"), "/") != "Workflow/invoices/workflow.json" {
 			c.Status(404)
 			return
