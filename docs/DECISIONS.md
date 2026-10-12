@@ -29,10 +29,13 @@ checked (the conversation carries `group:<id>`; both agents must still be member
 enabled); leaving ends access and drops undelivered mail. Cross-person messages keep the untrusted marking and
 fence; each sender is capped at 300 messages and 300 undelivered per group per hour. Earlier everyone-shares
 were migrated into a `general` group at server start. The server-wide everyone scope is no longer offered by
-the CLI or UI; per-person grants stay in the server API, unused. The shape of group creation is exempt from the
-browser-only rule for grants for the same reason as before: it is made with the person's own CLI login, on a
-person-only endpoint that refuses MCP tools and agent-bound connections, and a coding agent may do it for its
-own exact chat when the person asks. Administrators see groups and members and can take an agent out of its
+the CLI or UI; per-person grants stay in the server API, unused. Joining and leaving a group (which creates a group when a purpose is given) is open to the agent itself by
+choice of the owner for an open system, to be revisited: through the messages tool for the caller's own
+registered agent, with the person's own CLI login on a person-only endpoint that refuses MCP tools and
+agent-bound connections, or by the person in the chat. Bot routes, Crew, workflow and schedule principals and
+read-only tokens are refused. A coding agent may do it for its own exact chat when the person asks. A
+cross-person conversation binds to the first group two agents have in common; leaving that group ends it even
+if another shared group remains, and the next message starts a conversation in the other one. Administrators see groups and members and can take an agent out of its
 groups with a reason (audited, owner told).
 
 Why: the owner wants sharing to be simple, open and agentic, and groups give it a purpose and a place.

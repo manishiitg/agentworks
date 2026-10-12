@@ -22,7 +22,7 @@ const (
 	groupMembersMax     = 200
 	groupsPerAgent      = 50
 	groupSenderHourly   = 300 // messages (each fan-out copy counts) one person may send per group per hour
-	groupSenderPending  = 300 // undelivered messages one person may leave in one group
+	groupSenderPending  = 100 // undelivered messages one person may leave for one recipient in one group
 	defaultGroupName    = "general"
 	defaultGroupPurpose = "Everyone on this server"
 )
@@ -121,8 +121,11 @@ func (s agentMessageStore) groupConversationErr(c agentConversation) error {
 	return nil
 }
 
-// groupQuotaErr limits what one person sends into one group.
-func (s agentMessageStore) groupQuotaErr(src agentMessageEndpoint, now time.Time) error {
+// groupQuotaErr limits what one person sends into one group: messages per hour
+// across the group, and undelivered messages waiting for any one recipient (an
+// offline member does not use up the allowance for the others).
+func (s agentMessageStore) groupQuotaErr(c agentConversation, side int, now time.Time) error {
+	src, dest := c.Endpoints[side], c.Endpoints[1-side]
 	hourly, pending := 0, 0
 	for _, o := range s.Conversations {
 		for _, m := range o.Messages {
@@ -133,13 +136,16 @@ func (s agentMessageStore) groupQuotaErr(src agentMessageEndpoint, now time.Time
 			if now.Sub(m.SentAt) < time.Hour {
 				hourly++
 			}
-			if m.Delivery == "pending" || m.Delivery == "dispatching" || m.Delivery == "stored" {
+			if o.Endpoints[1-m.From].NamedAgentID == dest.NamedAgentID && (m.Delivery == "pending" || m.Delivery == "dispatching" || m.Delivery == "stored") {
 				pending++
 			}
 		}
 	}
-	if hourly >= groupSenderHourly || pending >= groupSenderPending {
-		return fmt.Errorf("group message limit reached; check back later")
+	if hourly >= groupSenderHourly {
+		return fmt.Errorf("you have sent %d messages into this group in the last hour; try again later", groupSenderHourly)
+	}
+	if pending >= groupSenderPending {
+		return fmt.Errorf("%s still has %d undelivered messages from you in this group; wait until it reads them", dest.Label, groupSenderPending)
 	}
 	return nil
 }
@@ -452,6 +458,15 @@ func (api *StreamingAPI) externalGroupAction(w http.ResponseWriter, r *http.Requ
 	if !namedAgentOperationAllowed(claims, action != "list_groups" && action != "group_members") {
 		externalError(w, http.StatusForbidden, "insufficient_scope", "Connection lacks messaging access.")
 		return
+	}
+	// Joining or leaving a group is for a person's own connection or an agent's
+	// own bound connection; bot routes and Crew, workflow or schedule principals
+	// are refused.
+	if action == "join_group" || action == "leave_group" {
+		if claims == nil || claims.Provider == "bot_route" || claims.Provider == "bot_owner" || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "" {
+			externalError(w, http.StatusForbidden, "forbidden", "Joining or leaving a group is done by a person's own connection or the agent's own connection.")
+			return
+		}
 	}
 	agentName := externalArg(args, "agent_name")
 	if agentName != "" {

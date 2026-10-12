@@ -207,7 +207,7 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 		return nil
 	}
 	if isGroupShareID(src.ShareID) {
-		return s.groupQuotaErr(src, now)
+		return s.groupQuotaErr(c, side, now)
 	}
 	sh, err := s.authorizeShare(src.ShareID, src.ShareVersion, now)
 	if err != nil || src.UserID == sh.OwnerUserID {

@@ -223,6 +223,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 			return bullpenAdminResult(http.StatusConflict, "agent_live", "That agent has a live listener. Close its attachment first; only a stale name can be removed.")
 		}
 		s.Agents = append(s.Agents[:i], s.Agents[i+1:]...)
+		s.removeFromAllGroups(a.ID, a.UserID, adminID)
 		for j := range s.Shares {
 			if sh := &s.Shares[j]; sh.AgentID == a.ID && sh.RevokedAt.IsZero() {
 				sh.RevokedAt = now

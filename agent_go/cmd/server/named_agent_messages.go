@@ -232,7 +232,9 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 			externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
 			return
 		}
+		gone := s.Agents[index]
 		s.Agents = append(s.Agents[:index], s.Agents[index+1:]...)
+		s.removeFromAllGroups(gone.ID, gone.UserID, claims.UserID)
 	} else {
 		if index < 0 {
 			if own >= 100 || len(s.Agents) >= agentConversationKeep {
