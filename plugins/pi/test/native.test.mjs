@@ -337,6 +337,10 @@ test('real Pi: crash before offer response warns; saved native evidence restores
 test('real Pi: native SDK usage is exact-session numeric-only and opt-in gated', async t => {
   const h = await harness(t);
   await h.usageStats(409);
+  // Pi persists a new session only after its first completed conversation.
+  // This offline fixture turn creates the native header and branch entries.
+  await h.command('prompt', { message: 'ESTABLISH_USAGE_FIXTURE' });
+  await until(() => h.events.some(e => e.type === 'agent_settled'), 'usage fixture persisted');
   await h.kill();
   const entries = await sessionEntries(h);
   entries.push({ type: 'usage', id: 'abcdef12', parentId: entries.at(-1)?.id || null, timestamp: new Date().toISOString(), kind: 'cache_warm', provider: 'plat868-fixture', model: 'fixture', usage: { input: 4, output: 9, cacheRead: 20, cacheWrite: 3, totalTokens: 36, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
