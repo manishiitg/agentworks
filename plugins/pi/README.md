@@ -132,7 +132,7 @@ multiple simultaneous sessions still need authenticated release evidence.
 No local running binary, listener or installed plugin is replaced by this task.
 
 
-Optional usage reporting needs extension0.1.3 and a CLI/server with Bullpen usage
+Optional usage reporting is pinned to the tested Pi SDK1.1.0 and needs extension0.1.3 and a CLI/server with Bullpen usage
 support. It remains off until the person runs `agentworks usage on` outside the
 agent. The exact live SDK session supplies its public getSessionStats numeric
 projection, including native cache-warming/compaction usage. No costs, paths,

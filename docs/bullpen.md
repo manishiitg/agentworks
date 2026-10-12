@@ -342,7 +342,9 @@ Usage is visible only to its owning account, including through MCP
 timezone; otherwise daily totals use UTC). Sharing an agent does not share
 its usage. No message bodies, tool arguments, local log paths or credentials
 are uploaded. Reads, record size, active sessions and history are bounded;
-check `usage status` when a cap is reported. Missing data is unavailable, not
+check `usage status` when a cap is reported. Oversized/unidentifiable records
+are skipped with a visible "some records skipped" warning; totals then include
+identifiable recorded usage only. Missing data is unavailable, not
 an estimated zero.
 
 Off stops local reads/uploads and clears current reporting and local numeric
