@@ -88,10 +88,15 @@ type LocalBridgeReply struct {
 type localOffer struct {
 	MuseHinted bool `json:"muse_hinted,omitempty"`
 	AgentLiveMessage
-	Offered    bool      `json:"offered"`
-	Suppressed bool      `json:"suppressed,omitempty"`
-	Transport  string    `json:"transport,omitempty"`
-	OfferedAt  time.Time `json:"offered_at,omitempty"`
+	Offered    bool `json:"offered"`
+	Suppressed bool `json:"suppressed,omitempty"`
+	// DeniedAt is when the server first left this stored message out of a pending
+	// check. A new lease (a restart or resume) is not yet the one the server
+	// offered it to, so the message waits for the stream to renew it instead of
+	// being dropped; it is given up only after DeniedAt is an hour old.
+	DeniedAt  time.Time `json:"denied_at,omitempty"`
+	Transport string    `json:"transport,omitempty"`
+	OfferedAt time.Time `json:"offered_at,omitempty"`
 }
 
 type localSession struct {
@@ -1060,7 +1065,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			if err := b.save(); err != nil {
 				return LocalBridgeReply{Error: err.Error()}
 			}
-			return out
+			if in.Transport != "muse_hook" {
+				return out
+			}
+			// Muse's receive tool is how messages are read: give the setup text and
+			// any waiting messages together instead of an apparently empty inbox.
 		}
 		if in.Action == "drain" && (s.NativeRemote != "" || s.nativeCalls > 0) {
 			return out
@@ -1144,10 +1153,19 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			previous[m.MessageID] = s.Offers[m.MessageID]
 			if allowed[m.MessageID] {
 				filtered = append(filtered, m)
+				if v := s.Offers[m.MessageID]; !v.DeniedAt.IsZero() {
+					v.DeniedAt = time.Time{}
+					s.Offers[m.MessageID] = v
+				}
 			} else {
 				v := s.Offers[m.MessageID]
-				v.Suppressed = true
-				v.Message = ""
+				if v.DeniedAt.IsZero() {
+					v.DeniedAt = time.Now().UTC()
+				}
+				if time.Since(v.DeniedAt) > time.Hour {
+					v.Suppressed = true
+					v.Message = ""
+				}
 				s.Offers[m.MessageID] = v
 			}
 		}
