@@ -337,8 +337,14 @@ test('real Pi: crash before offer response warns; saved native evidence restores
 test('real Pi: native SDK usage is exact-session numeric-only and opt-in gated', async t => {
   const h = await harness(t);
   await h.usageStats(409);
+  await h.kill();
+  const entries = await sessionEntries(h);
+  entries.push({ type: 'usage', id: 'abcdef12', parentId: entries.at(-1)?.id || null, timestamp: new Date().toISOString(), kind: 'cache_warm', provider: 'plat868-fixture', model: 'fixture', usage: { input: 4, output: 9, cacheRead: 20, cacheWrite: 3, totalTokens: 36, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
+  await writeFile(path.join(h.root, 'session.jsonl'), entries.map(e => JSON.stringify(e)).join('\n') + '\n');
+  await h.restart();
   h.setUsageEnabled(true);
   const expected = await h.command('get_session_stats');
+  assert.equal(expected.tokens.total, 36, 'native SDK includes the recorded cache-warming usage');
   const observed = await h.usageStats(200);
   assert.deepEqual(observed.tokens, expected.tokens);
   assert.equal(observed.sessionId, expected.sessionId);
