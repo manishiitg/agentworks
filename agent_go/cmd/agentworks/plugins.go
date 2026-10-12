@@ -315,9 +315,11 @@ func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) 
 	if out.IncludeGuidance {
 		b.WriteString("Replies are optional and must retain inbox_id. Acknowledge admitted when you receive each message, processed after handling.\n")
 	}
-	for _, m := range out.Messages {
-		raw, _ := json.Marshal(map[string]any{"sender": m.Sender, "message_id": m.MessageID, "inbox_id": m.InboxID, "message": m.Message, "agent_name": out.Attachment.AgentName, "attachment_id": out.Attachment.ID, "transport": transport})
-		b.Write(raw)
+	for i, m := range out.Messages {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(agentMessageBlock(m, out.Attachment.ID))
 		b.WriteByte('\n')
 	}
 	if !out.IncludeGuidance {

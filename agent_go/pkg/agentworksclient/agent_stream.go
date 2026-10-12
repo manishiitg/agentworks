@@ -28,10 +28,15 @@ type AgentLiveMessage struct {
 	MessageID    string `json:"message_id"`
 	InboxID      string `json:"inbox_id"`
 	Sender       string `json:"sender"`
-	SenderID     string `json:"sender_id"`
-	Message      string `json:"message"`
-	Sequence     int    `json:"sequence"`
-	Delivery     string `json:"delivery"`
+	// FromPerson is the owner's server username for a cross-person shared
+	// message (861-103); Untrusted marks it untrusted. Both are absent for
+	// same-account senders.
+	FromPerson string `json:"from_person"`
+	Untrusted  bool   `json:"untrusted"`
+	SenderID   string `json:"sender_id"`
+	Message    string `json:"message"`
+	Sequence   int    `json:"sequence"`
+	Delivery   string `json:"delivery"`
 }
 
 type AgentAttachmentOptions struct {

@@ -83,8 +83,11 @@ export default function (pi: ExtensionAPI) {
       const native = context.messages[lastUser];
       const incoming = native?.role === 'user' ? native.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '';
       const used = context.messages.slice(lastUser + 1).flatMap(m => m.role === 'assistant' ? m.content.filter(p => p.type === 'toolCall').map(p => p.arguments?.message_id) : []);
-      const offered = incoming.split('\n').filter(line => line.startsWith('{')).flatMap(line => {
-        try { const msg = JSON.parse(line); return msg.message_id && !msg.message?.includes('NO_ACK') ? [msg.message_id] : []; } catch { return []; }
+      const offered = incoming.split(/\[agentworks-[^\]\n]*:begin\]\n/).flatMap(frame => {
+        const end = frame.search(/\n\[agentworks-[^\]\n]*:end\]/);
+        const body = end >= 0 ? frame.slice(0, end) : frame;
+        const ack = body.match(/^reply: inbox \S+ · ack: message (\S+) · lease \S+$/m);
+        return ack && !body.includes('NO_ACK') ? [ack[1]] : [];
       });
       const next = offered.find(id => !used.includes(id));
       if (next) tool = { name: 'agent_message_ack', arguments: { message_id: next, delivery: 'admitted' } };
