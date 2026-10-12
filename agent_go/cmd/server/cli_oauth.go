@@ -262,6 +262,9 @@ func cliOAuthAllowedPath(method, path string) bool {
 	if method == http.MethodGet && path == "/api/external/v1/agents/events" {
 		return true // Handler checks the exact attachment and current messaging consent.
 	}
+	if method == http.MethodPost && path == "/api/external/v1/brain/secret" {
+		return true // The person's CLI sets a Brain secret (hidden input); the handler checks the scope, owner and live connection.
+	}
 	return (method == http.MethodGet && path == "/api/external/v1/devices/connect") || (method == http.MethodGet && path == "/api/external/v1/tools") || (method == http.MethodPost && path == "/api/external/v1/call") || ((method == http.MethodGet || method == http.MethodHead) && path == "/api/external/v1/files/content") || (method == http.MethodGet && (path == "/api/external/v1/skill.md" || path == "/api/external/v1/skill.zip" || path == "/api/external/v1/agentworks.plugin"))
 }
 

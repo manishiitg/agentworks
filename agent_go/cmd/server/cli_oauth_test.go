@@ -233,3 +233,14 @@ func TestCLIExecutorScopesAreExplicitAndIndependent(t *testing.T) {
 		t.Fatal("executor credentials escaped their transport")
 	}
 }
+
+// The person's CLI sets a Brain secret over its own sign-in: the route must be on the CLI token's path list (it was not, and
+// `agentworks brain secret set` answered 403 invalid_target), and nothing else about that path is open.
+func TestCLIOAuthMayPostTheBrainSecretRoute(t *testing.T) {
+	if !cliOAuthAllowedPath("POST", "/api/external/v1/brain/secret") {
+		t.Fatal("the CLI sign-in cannot reach the Brain secret route")
+	}
+	if cliOAuthAllowedPath("GET", "/api/external/v1/brain/secret") || cliOAuthAllowedPath("POST", "/api/external/v1/brain/secrets") {
+		t.Fatal("more of the Brain secret path is open to the CLI token than the one POST")
+	}
+}
