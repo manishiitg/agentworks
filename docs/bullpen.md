@@ -79,7 +79,7 @@ attachment, the chat stays exactly where it was; when the move succeeds, the old
 login releases the chat (if it cannot, you get a warning and the private
 connection file is kept for a retry). Unread messages waiting on the old login do
 not move with the chat: the first attempt tells you how many are waiting, and
-repeating the same command moves anyway. The chat's agent name is the one it has
+repeating the same command moves anyway (if the local listener restarts in between, it warns again). The chat's agent name is the one it has
 when you move it; a name it used on another login earlier is not remembered. To
 move every attached live chat at once, run
 `agentworks attach --all --on work` in your terminal: it lists the chats, asks
