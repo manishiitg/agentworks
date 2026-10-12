@@ -167,3 +167,34 @@ func ListLogins() []LoginInfo {
 	}
 	return out
 }
+
+// SaveLoginIfSameServer saves a named login while holding a lock on it, and
+// refuses when a concurrent login has meanwhile saved the same name for a
+// different server, so two sign-ins racing for one name cannot overwrite each other.
+func SaveLoginIfSameServer(path string, cfg Config) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	unlock, err := lockFileExclusive(lock)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	existing, err := LoadConfig(path)
+	if err != nil {
+		return err
+	}
+	if existing.Server != "" {
+		have, e1 := ValidateServer(existing.Server)
+		want, e2 := ValidateServer(cfg.Server)
+		if e1 != nil || e2 != nil || have != want {
+			return fmt.Errorf("this login name was just saved for %s by another sign-in; choose another name", existing.Server)
+		}
+	}
+	return SaveConfig(path, cfg)
+}

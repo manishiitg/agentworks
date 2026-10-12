@@ -32,4 +32,6 @@ test('private Pi IPC consumes only the exact one-use in-memory person command', 
   assert.equal(await claim(token, { host_key: 'other-host' }), 409);
   assert.equal(await claim(token), 200);
   assert.equal(await claim(token), 409, 'proof cannot replay after its first valid use');
+  for (const ok of ['/agentworks attach reviewer --on work', '/agentworks attach --on work', '/agentworks attach --on default']) assert.doesNotThrow(() => host.personToken(ok, ctx), ok);
+  for (const bad of ['/agentworks attach reviewer --on', '/agentworks attach --force x', '/agentworks attach a --on Work', '/agentworks attach a b --on work', '/agentworks attach a --on work b']) assert.throws(() => host.personToken(bad, ctx), bad);
 });

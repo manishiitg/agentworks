@@ -73,6 +73,7 @@ type LocalBridgeReply struct {
 	Attachment         AgentAttachment       `json:"attachment,omitempty"`
 	Messages           []AgentLiveMessage    `json:"messages,omitempty"`
 	Error              string                `json:"error,omitempty"`
+	Warning            string                `json:"warning,omitempty"`
 	Result             json.RawMessage       `json:"result,omitempty"`
 	Sessions           []AgentAttachment     `json:"sessions,omitempty"`
 	LastError          string                `json:"last_error,omitempty"`
@@ -147,6 +148,26 @@ func DefaultLocalBridgeRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "agentworks", "bridge"), nil
+}
+
+// localReleaseOld tells a login a chat has left to drop its lease and child
+// connection. Auth failures and an already-gone lease count as released.
+func localReleaseOld(ctx context.Context, v *localSession) error {
+	benign := func(err error) bool {
+		var apiErr *APIError
+		return errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404 || apiErr.Status == 409)
+	}
+	if !v.Offline {
+		if _, err := v.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": v.Attachment.AgentName, "attachment_id": v.Attachment.ID}, true); err != nil && !benign(err) {
+			return err
+		}
+	}
+	if cfg, e := LoadConfig(v.ConfigPath); e == nil {
+		if err := v.client.RevokeOAuth(ctx, cfg.RefreshToken); err != nil && !benign(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // localDifferentNetwork is true only when both parent logins are readable and
@@ -632,8 +653,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if s != nil && (in.ReuseIdentity || name == "") {
 			name = s.Attachment.AgentName
 		}
+		// Judge the collision on the login this chat will actually use: a bare
+		// reconnect keeps the chat's saved login, not the one named on the command.
+		effectiveConfig := in.ConfigPath
+		if s != nil && !in.SwitchConnection && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName || in.ReuseIdentity) {
+			effectiveConfig = s.ParentConfigPath
+		}
 		for k, other := range b.sessions {
-			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == name && !localDifferentNetwork(other.ParentConfigPath, in.ConfigPath) {
+			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == name && !localDifferentNetwork(other.ParentConfigPath, effectiveConfig) {
 				return LocalBridgeReply{Error: "agent:" + name + " is attached to another chat; detach it there first"}
 			}
 		}
@@ -778,23 +805,24 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
+		warning := ""
 		for _, v := range old {
 			stopMuseWatch(v)
+			keepFile := false
 			if in.SwitchConnection && v.ParentConfigPath != next.ParentConfigPath && v.client != nil {
 				// The chat now lives on the other connection. Release the old lease
-				// and child connection there; the new attachment is already saved, so
-				// a failure here only leaves a stale name the owner can see as offline.
+				// and child connection there. The new attachment is already saved and
+				// stays; if the release fails, keep the private connection file so it
+				// can be retried and tell the person, instead of silently dropping it.
 				// Short deadline: this runs while the bridge lock is held.
 				cleanup, release := context.WithTimeout(callCtx, 5*time.Second)
-				if !v.Offline {
-					_, _ = v.client.request(cleanup, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": v.Attachment.AgentName, "attachment_id": v.Attachment.ID}, true)
-				}
-				if cfg, e := LoadConfig(v.ConfigPath); e == nil {
-					_ = v.client.RevokeOAuth(cleanup, cfg.RefreshToken)
+				if err := localReleaseOld(cleanup, v); err != nil {
+					keepFile = true
+					warning = "The chat moved, but its old login could not be told (" + err.Error() + "). The old agent name may show as stale there; its private connection file was kept so the release can be retried."
 				}
 				release()
 			}
-			if v.ConfigPath != next.ConfigPath {
+			if v.ConfigPath != next.ConfigPath && !keepFile {
 				_ = os.Remove(v.ConfigPath)
 			}
 			if v.cancel != nil {
@@ -803,7 +831,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.start(serverCtx, next)
 		b.wake()
-		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != ""}
+		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning}
 	}
 	if s == nil {
 		return LocalBridgeReply{}

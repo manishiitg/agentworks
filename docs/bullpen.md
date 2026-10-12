@@ -76,7 +76,12 @@ login has changed since. To move a chat to another login, name it:
 or, from your own terminal, `agentworks attach --on work`. The chat keeps its
 name unless you give NAME. If the new login cannot be reached or refuses the
 attachment, the chat stays exactly where it was; when the move succeeds, the old
-login releases the chat. To move every attached live chat at once, run
+login releases the chat (if it cannot, you get a warning and the private
+connection file is kept for a retry). Unread messages waiting on the old login do
+not move with the chat: the first attempt tells you how many are waiting, and
+repeating the same command moves anyway. The chat's agent name is the one it has
+when you move it; a name it used on another login earlier is not remembered. To
+move every attached live chat at once, run
 `agentworks attach --all --on work` in your terminal: it lists the chats, asks
 you to retype the count, reports each chat separately and skips chats that are
 offline or ended. A coding agent cannot move a chat by itself: moving is always

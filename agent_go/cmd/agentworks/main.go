@@ -285,6 +285,16 @@ func (o *options) client() (*agentworksclient.Client, error) {
 	return client, nil
 }
 
+// saveLogin writes a login. A named login is saved under a lock that rechecks
+// the name, because the browser sign-in takes a while and another sign-in could
+// have taken the same name for a different server in the meantime.
+func (o *options) saveLogin(path string, cfg agentworksclient.Config) error {
+	if o.namedLogin {
+		return agentworksclient.SaveLoginIfSameServer(path, cfg)
+	}
+	return agentworksclient.SaveConfig(path, cfg)
+}
+
 // loginPath resolves a login name (or "default") to its saved connection file and
 // refuses names that have no saved login.
 func (o *options) loginPath(name string) (string, error) {
@@ -329,7 +339,7 @@ func loginCommand(o *options) *cobra.Command {
 					return fmt.Errorf("the login name %q already signs in to %s; choose another name", loginName, existing.Server)
 				}
 			}
-			o.configPath = named
+			o.configPath, o.namedLogin = named, true
 		}
 		cfg, path, err := o.connection(true)
 		if err != nil {
@@ -359,10 +369,10 @@ func loginCommand(o *options) *cobra.Command {
 		if _, err := client.Tools(cmd.Context()); err != nil {
 			return fmt.Errorf("verify token access: %w", err)
 		}
-		if err := agentworksclient.SaveConfig(path, cfg); err != nil {
+		if err := o.saveLogin(path, cfg); err != nil {
 			return err
 		}
-		return o.output(map[string]any{"server": cfg.Server, "logged_in": true})
+		return o.output(map[string]any{"server": cfg.Server, "logged_in": true, "name": firstNonEmpty(loginName, agentworksclient.DefaultLoginName)})
 	}}
 	cmd.Flags().StringVar(&loginName, "name", "", "Save this login under a name (for example work) instead of replacing the default login")
 	cmd.Flags().BoolVar(&tokenStdin, "token-stdin", false, "Read a legacy personal access token from stdin")
@@ -396,7 +406,7 @@ func (o *options) browserLogin(ctx context.Context, cfg agentworksclient.Config,
 			cfg.Token = tokens.AccessToken
 			cfg.RefreshToken = tokens.RefreshToken
 			cfg.ExpiresAt = time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
-			return agentworksclient.SaveConfig(path, cfg)
+			return o.saveLogin(path, cfg)
 		}
 		var apiErr *agentworksclient.APIError
 		if !errors.As(err, &apiErr) || (apiErr.Code != "authorization_pending" && apiErr.Code != "slow_down") {

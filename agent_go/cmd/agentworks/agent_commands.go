@@ -350,18 +350,24 @@ func moveAttachedChats(ctx context.Context, o *options, root string, sessions []
 		fmt.Fprintln(o.stdout, "Cancelled. No chat was changed.")
 		return nil
 	}
-	failed := 0
+	failed, incomplete := 0, 0
 	for _, s := range movable {
-		if err := attachLiveAgent(ctx, o, root, s, ""); err != nil {
+		err := attachLiveAgent(ctx, o, root, s, "")
+		var partial attachedButIncomplete
+		switch {
+		case errors.As(err, &partial):
+			incomplete++
+			fmt.Fprintf(o.stdout, "moved %s %s, but delivery setup failed: %v (re-run attach in that chat)\n", s.provider, s.session, err)
+		case err != nil:
 			failed++
-			fmt.Fprintf(o.stdout, "FAILED %s %s: %v (it stays where it was)\n", s.provider, s.session, err)
-			continue
+			fmt.Fprintf(o.stdout, "FAILED %s %s: %v (not moved; check where it is with agentworks agents)\n", s.provider, s.session, err)
+		default:
+			fmt.Fprintf(o.stdout, "moved %s %s\n", s.provider, s.session)
 		}
-		fmt.Fprintf(o.stdout, "moved %s %s\n", s.provider, s.session)
 	}
-	fmt.Fprintf(o.stdout, "%d of %d chats moved.\n", len(movable)-failed, len(movable))
-	if failed > 0 {
-		return fmt.Errorf("%d chats were not moved", failed)
+	fmt.Fprintf(o.stdout, "%d of %d chats moved (%d with delivery setup to redo).\n", len(movable)-failed, len(movable), incomplete)
+	if failed > 0 || incomplete > 0 {
+		return fmt.Errorf("%d chats were not moved and %d need delivery setup", failed, incomplete)
 	}
 	return nil
 }
@@ -369,6 +375,13 @@ func moveAttachedChats(ctx context.Context, o *options, root string, sessions []
 func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAgentSession, name string) error {
 	return attachLiveAgentWithSetup(ctx, o, root, chosen, name, true)
 }
+
+// attachedButIncomplete marks a failure after the bridge already committed the
+// attachment, so a caller never says the chat stayed where it was.
+type attachedButIncomplete struct{ err error }
+
+func (e attachedButIncomplete) Error() string { return e.err.Error() }
+func (e attachedButIncomplete) Unwrap() error { return e.err }
 
 func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chosen liveAgentSession, name string, installPlugin bool) error {
 	var err error
@@ -413,16 +426,19 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	}
 	if chosen.provider == "pi" && out.Attached {
 		if err = activatePiSession(ctx, root, chosen.host, chosen.session, out.Attachment.ID); err != nil {
-			return err
+			return attachedButIncomplete{err}
 		}
 		req.Action, req.AttachmentID = "status", out.Attachment.ID
 		out, err = agentworksclient.CallLocalBridge(ctx, root, req)
 		if err != nil {
-			return err
+			return attachedButIncomplete{err}
 		}
 	}
 	if o.jsonOutput {
 		return o.output(out)
+	}
+	if out.Warning != "" {
+		fmt.Fprintln(o.stderr, "Warning:", out.Warning)
 	}
 	if !installPlugin && !out.NativeDelivery {
 		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)

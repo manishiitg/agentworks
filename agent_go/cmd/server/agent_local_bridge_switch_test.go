@@ -137,6 +137,28 @@ func TestAgentLocalBridgeSwitchesConnectionAndKeepsItOtherwise(t *testing.T) {
 	if !attachedTo("bob") || attachedTo("alice") {
 		t.Fatal("a bare reattach moved the chat back to the default login")
 	}
+	// Two chats with the same agent name on different networks: a bare reconnect
+	// of the chat bound to the second network arrives with the first network's
+	// login, yet must keep its own login and not collide with the other chat.
+	secondNetwork := httptest.NewServer(AuthMiddleware(mux))
+	defer secondNetwork.Close()
+	aliceConfig, err := agentworksclient.LoadConfig(alicePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliceSecondPath := filepath.Join(t.TempDir(), "alice-second.json")
+	if err = agentworksclient.SaveConfig(aliceSecondPath, agentworksclient.Config{Server: secondNetwork.URL, Token: aliceConfig.Token}); err != nil {
+		t.Fatal(err)
+	}
+	second := agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "second-session", HostKey: "second-process", ConfigPath: aliceSecondPath, AgentName: "mover"}
+	if out := call(second); !out.Attached {
+		t.Fatalf("same name on another network was refused: %+v", out)
+	}
+	bareSecond := second
+	bareSecond.ConfigPath, bareSecond.AgentName, bareSecond.ReuseIdentity = bobPath, "", true
+	if out := call(bareSecond); !out.Attached {
+		t.Fatalf("bare reconnect was judged on the wrong network: %+v", out)
+	}
 	cancel()
 	select {
 	case <-done:

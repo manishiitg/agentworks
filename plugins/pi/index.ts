@@ -39,8 +39,17 @@ export default function (pi: ExtensionAPI) {
     try {
       if (event.text.includes('AgentWorks messages from other agents.') || event.text.includes('AgentWorks incoming message') || event.images?.length || /[\r\n]/.test(event.text)) throw new Error('Use a single literal AgentWorks command.');
       const words = event.text.trim().split(/\s+/), action = words[1];
-      if (!['attach', 'detach', 'agents', 'help'].includes(action) ||
-          words.length > (action === 'attach' ? 3 : 2) || words[2]?.startsWith('--')) {
+      // attach [NAME] [--on LOGIN]; every other command takes no arguments.
+      let rest = words.slice(2), shapeOk = rest.length === 0;
+      if (action === 'attach') {
+        shapeOk = true;
+        if (rest.length >= 2 && rest[rest.length - 2] === '--on') {
+          shapeOk = /^(?:default|[a-z0-9][a-z0-9._-]{0,31})$/.test(rest[rest.length - 1]);
+          rest = rest.slice(0, -2);
+        }
+        shapeOk = shapeOk && rest.length <= 1 && !rest[0]?.startsWith('--');
+      }
+      if (!['attach', 'detach', 'agents', 'help'].includes(action) || !shapeOk) {
         ctx.ui.notify(help, 'info'); return { action: 'handled' };
       }
       if (action === 'help') { ctx.ui.notify(help, 'info'); return { action: 'handled' }; }
