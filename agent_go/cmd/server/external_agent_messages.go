@@ -226,7 +226,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
 			return
 		}
-		out, err := listNamedMessageAgents(r.Context(), claims.UserID)
+		out, err := listNamedMessageAgents(withAgentUsageTimezone(r.Context(), externalArg(args, "usage_timezone")), claims.UserID)
 		if err != nil {
 			externalCommunicationError(w, 400, "directory_refused", err)
 			return
@@ -307,6 +307,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("messages", "Register an account-owned agent_name with action=register; list_agents discovers agent:<name> addresses and unregister removes a name. Registration defaults to this connection; explicitly allowed_connection_ids can use the same name. Re-register without that field preserves the reader list. Names are addresses, not authenticated device identities. Send conversational agent messages or read explicit replies from your authenticated inbox. Read with agent_name and no inbox_id to discover first contacts across conversations; each reply_address is an inbox_id for a later send. Named reads use a mailbox cursor; conversation reads use their own cursor. Mailbox storage alone does not wake a client. An opt-in exact session attachment receives all same-account senders through the authenticated event stream; agentworks mcp serve --claude-channel exposes official native Claude notifications. Stored, admitted and processed are different: admission and processing require explicit receiver acknowledgements. Only the person configures live attachment through the signed-in CLI bridge, supplying its name and exact native session; the agent can update its own purpose with action=update_purpose; agents cannot attach through this tool. Moving the name fences its old attachment. Registration and named sends require existing run consent; read-only connections cannot register or send. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
+		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
 		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose"}},
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),

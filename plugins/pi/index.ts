@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { AgentSession, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { LocalBridge } from './bridge.mjs';
 import { Delivery } from './delivery.mjs';
@@ -9,7 +9,7 @@ const help = 'AgentWorks: /agentworks attach [NAME] connects or reconnects this 
 export default function (pi: ExtensionAPI) {
   const bridge = new LocalBridge();
   const delivery = new Delivery(pi, bridge);
-  const host = new Host(bridge, delivery);
+  const host = new Host(bridge, delivery, AgentSession);
 
   pi.on('session_start', async (_event, ctx) => {
     try { await host.start(ctx); await delivery.start(ctx); }

@@ -1,3 +1,4 @@
+import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Share2, Shield, Terminal, UsersRound } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
@@ -77,8 +78,10 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
         <p className="line-clamp-2 break-words text-sm text-muted-foreground" title={agent.purpose}>{agent.purpose || 'No purpose set yet.'}</p>
         {agent.purpose && agent.purpose.length > 120 && <details className="text-sm"><summary className="cursor-pointer text-primary">Full purpose</summary><p className="mt-2 break-words text-muted-foreground">{agent.purpose}</p></details>}
         <AgentAddress target={agent.target} />
+        <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
     </div>}
+    {!error && <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}
     <p className="text-xs leading-5 text-muted-foreground">Connected means the server has an active delivery stream. Whether a message starts a turn depends on the agent’s delivery adapter. Stored, admitted and processed are separate receipts.{updated && ' Last refreshed ' + updated.toLocaleTimeString() + '.'}</p>
     <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
   </section>

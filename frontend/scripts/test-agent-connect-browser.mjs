@@ -12,18 +12,24 @@ try {
   await mkdir(output, { recursive: true }); await server.listen()
   browser = await chromium.launch({ headless: true })
   for (const [name, width, theme] of [['desktop', 1200, 'light'], ['mobile', 375, 'light'], ['dark', 1200, 'dark']]) {
-    const page = await browser.newPage({ viewport: { width, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] })
+    const page = await browser.newPage({ viewport: { width, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'Asia/Kolkata' })
     const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error('Browser component error:', error.stack) })
     page.on('console', msg => { if (['error', 'warning'].includes(msg.type()) || msg.text().includes('QA fixture')) console.error('Browser console:', msg.type(), msg.text()) })
     page.on('requestfailed', request => console.error('Browser failed request:', request.url(), request.failure()?.errorText))
     page.on('response', response => { if (response.status() >= 400 && !response.url().includes('/api/bullpen/agents')) console.error('Browser HTTP error:', response.status(), response.url()) })
     const purpose = 'Reviews workflow communication, runtime delivery and migration behavior. Coordinates exact-session native receipt checks and reports concrete follow-ups to the platform epic.'
     let directoryStatus = 200
-    let agents = [{ agent_id: 'reviewer', agent_name: 'reviewer', target: 'agent:reviewer', provider: 'codex', online: true, purpose }, { agent_id: 'writer', agent_name: 'writer', target: 'agent:writer', provider: 'claude', online: false, purpose: 'Writes documentation.' }]
+    const sample = { reading_id: 'sample', agent_id: 'reviewer', observed_at: '2026-10-11T19:15:00Z', window_start: '2026-10-11T18:15:00Z', session: { input_tokens: 120, output_tokens: 9, cached_tokens: 90, model: 'fixture-model', source: 'Codex session total' }, delta: { input_tokens: 20, output_tokens: 5, cached_tokens: 10 }, baseline: false }
+    let readings = [sample], deleted = false
+    let agents = [{ agent_id: 'reviewer', agent_name: 'reviewer', target: 'agent:reviewer', provider: 'codex', online: true, purpose, usage: { ...sample, reporting: true, available: true, today: sample.delta, today_timezone: 'Asia/Kolkata' } }, { agent_id: 'writer', agent_name: 'writer', target: 'agent:writer', provider: 'claude', online: false, purpose: 'Writes documentation.' }]
     await page.route('**/api/**', route => {
       if (!new URL(route.request().url()).pathname.startsWith('/api/')) return route.continue()
       const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS' }
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+      if (route.request().url().includes('/api/bullpen/usage')) {
+        if (route.request().method() === 'DELETE') { readings = []; deleted = true; return route.fulfill({ headers, contentType: 'application/json', body: '{"deleted":true}' }) }
+        return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ readings, before: 1, has_more: false, retention_days: 90, row_cap: 250000 }) })
+      }
       if (route.request().url().includes('/api/bullpen/agents')) return route.fulfill({ headers, status: directoryStatus, contentType: 'application/json', body: JSON.stringify({ agents }) })
       return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ tokens: [], connections: [], profiles: [], providers: [], presets: [], projects: [], sessions: [] }) })
     })
@@ -40,6 +46,18 @@ try {
     assert.equal(await page.getByText(purpose, { exact: true }).last().isVisible(), true)
     await page.getByRole('button', { name: 'Copy address agent:reviewer', exact: true }).click()
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'agent:reviewer')
+    await page.getByText('Hourly usage history', { exact: true }).click()
+    await page.getByRole('button', { name: 'Load history', exact: true }).click()
+    const localDate = await page.evaluate(value => new Date(value).toLocaleDateString(), sample.observed_at)
+    assert.equal(await page.getByLabel('Usage over time').getByText(localDate, { exact: true }).count(), 1, 'UTC reading grouped by viewer local date')
+    await page.getByRole('button', { name: 'Copy off command', exact: true }).click()
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'agentworks usage off')
+    await page.getByRole('button', { name: 'Delete saved history', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click()
+    await page.waitForTimeout(100)
+    assert.equal(deleted, true)
+    assert.equal(await page.getByLabel('Usage over time').locator('div').count(), 0)
+    await page.screenshot({ path: path.join(output, 'bullpen-usage-' + name + '.png') })
     await page.getByLabel('Find an agent').fill('documentation')
     assert.equal(await page.getByRole('heading', { name: 'reviewer', exact: true }).count(), 0)
     assert.equal(await page.getByRole('heading', { name: 'writer', exact: true }).isVisible(), true)

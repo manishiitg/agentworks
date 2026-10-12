@@ -43,6 +43,7 @@ func (c Counters) Difference(previous Counters) (Counters, bool) {
 }
 
 type Native struct {
+	BytesRead int64 `json:"-"`
 	Counters
 	Model  string `json:"model,omitempty"`
 	Source string `json:"source"`

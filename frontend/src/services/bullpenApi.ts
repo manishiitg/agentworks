@@ -1,6 +1,8 @@
 import api from './api'
 
 export interface BullpenAgent {
+  usage?: BullpenUsage
+  usage_unavailable?: boolean
   agent_id: string
   agent_name: string
   target: string
@@ -67,9 +69,17 @@ export interface BullpenAdminAuditRow {
   result: string
 }
 
+
+export interface UsageCounters { input_tokens: number; output_tokens: number; cached_tokens: number }
+export interface UsageReading { reading_id: string; agent_id: string; observed_at: string; window_start: string; session: UsageCounters & { model?: string; source: string; turn_count?: number; model_call_count?: number }; delta: UsageCounters; baseline: boolean; discontinuity?: boolean }
+export interface BullpenUsage extends UsageReading { reporting: boolean; available: boolean; reason?: string; today: UsageCounters; today_timezone: string }
+export interface UsageHistory { readings: UsageReading[]; before: number; has_more: boolean; retention_days: number; row_cap: number }
+
 export const bullpenApi = {
+  usage: async (before?: number): Promise<UsageHistory> => (await api.get<UsageHistory>('/api/bullpen/usage', { params: { before } })).data,
+  deleteUsage: async (): Promise<void> => { await api.delete('/api/bullpen/usage') },
   agents: async (signal?: AbortSignal): Promise<BullpenAgent[]> =>
-    (await api.get<{ agents: BullpenAgent[] | null }>('/api/bullpen/agents', { signal })).data.agents ?? [],
+    (await api.get<{ agents: BullpenAgent[] | null }>('/api/bullpen/agents', { signal, params: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } })).data.agents ?? [],
   sharing: async (signal?: AbortSignal): Promise<BullpenSharing> =>
     ((data: BullpenSharing) => ({ shares: data.shares ?? [], blocks: data.blocks ?? [], shared_with_me: data.shared_with_me ?? [], incoming: data.incoming ?? [] }))((await api.get<BullpenSharing>('/api/bullpen/shares', { signal })).data),
   share: async (agentName: string, person: string, expiresInHours: number): Promise<void> => {

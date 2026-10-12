@@ -1,3 +1,4 @@
+import { nativeUsageStats } from './usage.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
@@ -25,7 +26,7 @@ async function privateDirectory(dir) {
 // Activation cannot attach: it only checks an already created bridge lease.
 export class Host {
   #personTokens = new Map();
-  constructor(bridge, delivery) { this.bridge = bridge; this.delivery = delivery; }
+  constructor(bridge, delivery, usageClass) { this.bridge = bridge; this.delivery = delivery; this.usageClass = usageClass; }
 
   async start(ctx) {
     await this.stop();
@@ -42,7 +43,7 @@ export class Host {
     this.server = http.createServer(async (req, res) => {
       let body = '';
       try {
-        if (req.method !== 'POST' || !['/activate', '/person-input'].includes(req.url)) throw new Error();
+        if (req.method !== 'POST' || !['/activate', '/person-input', '/usage-stats'].includes(req.url)) throw new Error();
         for await (const chunk of req) { body += chunk; if (body.length > 4096) throw new Error(); }
         const input = JSON.parse(body);
         if (req.url === '/person-input') {
@@ -61,6 +62,15 @@ export class Host {
         if (!status.attached || status.attachment?.provider !== 'pi' ||
             status.attachment.native_session_id !== session ||
             status.attachment.attachment_id !== input.attachment_id) throw new Error();
+        if (req.url === '/usage-stats') {
+          const usage = await this.bridge.call({ action: 'usage_status', session_id: session, host_key: this.key, attachment_id: input.attachment_id });
+          if (!usage.result?.enabled) throw new Error();
+          const stats = await nativeUsageStats(ctx, this.usageClass);
+          if (ctx.sessionManager.getSessionId() !== session) throw new Error();
+          const still = await this.bridge.call({ action: 'usage_status', session_id: session, host_key: this.key, attachment_id: input.attachment_id });
+          if (!still.result?.enabled || still.result.generation !== usage.result.generation) throw new Error();
+          res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(stats)); return;
+        }
         if (this.delivery.attachment?.attachment_id !== input.attachment_id ||
             !this.delivery.current(this.delivery.generation)) await this.delivery.start(ctx, input.attachment_id);
         if (this.delivery.attachment?.attachment_id !== input.attachment_id) throw new Error();

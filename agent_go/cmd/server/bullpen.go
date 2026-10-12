@@ -31,7 +31,7 @@ func (api *StreamingAPI) handleBullpenAgents(w http.ResponseWriter, r *http.Requ
 	if claims == nil {
 		return
 	}
-	out, err := listNamedMessageAgents(r.Context(), claims.UserID)
+	out, err := listNamedMessageAgents(withAgentUsageTimezone(r.Context(), r.URL.Query().Get("timezone")), claims.UserID)
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "directory_unavailable", "The agent directory is unavailable. Try again.")
 		return

@@ -1,5 +1,27 @@
 # Decisions and open issues
 
+## 2026-10-12 — Bullpen usage is separate, optional and owner-only (PLAT-861)
+
+Native usage collection defaults off and requires the person's separate
+`agentworks usage on/off` terminal command. Attach, agents and MCP cannot enable
+it. Read only recorded numeric usage for the exact attached CLI session, prefer
+native totals, and sample immediately at enable then hourly. Never tokenize
+content or estimate tokens. Missing or capped data remains unavailable.
+
+Store owner-only current numbers and bounded 90-day hourly readings outside
+workspace files; sharing and administrator views do not include usage. Stamp
+readings UTC and display/group by viewer local date, counting a cross-midnight
+interval on its reading date. Baseline at enable; no retroactive hourly charge.
+Off clears current/local reporting while history persists until person deletion
+or expiry; generations and deletion watermarks fence delayed writes. Native
+model-at-reading metadata is separate from precise model attribution, and native
+turn counts are nullable rather than inferred from model calls.
+
+Why: the person wants to see recorded CLI usage over time without enabling
+collection automatically or sharing private usage with message recipients.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-113.
+
 ## 2026-10-12 — Crews have no Run mode: sharing is the consent (PLAT-856)
 
 A Crew no longer has a restricted "Run mode". Its owner creates it knowing it is shareable, so everyone it is

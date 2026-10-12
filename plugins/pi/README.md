@@ -130,3 +130,12 @@ These fixtures do not prove authenticated production rollout. Same-account
 server enforcement, real connection revocation, bridge/server restarts and
 multiple simultaneous sessions still need authenticated release evidence.
 No local running binary, listener or installed plugin is replaced by this task.
+
+
+Optional usage reporting needs extension0.1.3 and a CLI/server with Bullpen usage
+support. It remains off until the person runs `agentworks usage on` outside the
+agent. The exact live SDK session supplies its public getSessionStats numeric
+projection, including native cache-warming/compaction usage. No costs, paths,
+context values or message content leave that SDK endpoint. Older/missing SDK
+statistics fail unavailable, without estimates. `usage off` clears current
+reporting; history is deleted separately in Bullpen.

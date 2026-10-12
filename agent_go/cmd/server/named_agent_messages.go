@@ -154,6 +154,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 			}()})
 		}
 	}
+	hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}, nil

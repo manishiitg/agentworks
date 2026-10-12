@@ -314,3 +314,40 @@ See the provider guides for details:
 Workflow, Crew and Relay conversations and typed function calls use related
 protocols. A coding-chat attachment is not a product function or an act grant.
 See [communication protocols](communication-protocols.md) for those boundaries.
+
+
+## Optional native token usage
+
+Reporting is off by default. In your own terminal, run `agentworks usage on`,
+`agentworks usage off`, or `agentworks usage status`. Agents can read status;
+they cannot enable or disable collection. Attach does not enable usage.
+
+When enabled, the local listener reads the exact attached session immediately
+and once per hour, using the CLI's recorded numbers. Codex uses its native
+cumulative session total; Pi uses native `getSessionStats`; Claude and Muse
+aggregate their reported usage records with deduplication. Nothing tokenizes
+message text or estimates usage. Cursor and agy show unavailable until a
+supported exact-session numeric source exists. The UI names each source.
+
+Bullpen shows native session totals and today's tracked hourly readings, with
+model metadata and freshness. Its hourly/daily history uses your local timezone.
+A reading spanning midnight belongs to the date it was read; the initial
+baseline is not back-charged into the enabling hour. Models describe the native
+model at read time, and a reading can span a model change. Cached tokens are
+part of input; total is input plus output. These are native client reports,
+not a billing ledger.
+
+Usage is visible only to its owning account, including through MCP
+`messages action=list_agents` (`usage_timezone` optionally selects an IANA
+timezone; otherwise daily totals use UTC). Sharing an agent does not share
+its usage. No message bodies, tool arguments, local log paths or credentials
+are uploaded. Reads, record size, active sessions and history are bounded;
+check `usage status` when a cap is reported. Missing data is unavailable, not
+an estimated zero.
+
+Off stops local reads/uploads and clears current reporting and local numeric
+state. Hourly history stays for up to 90 days, with a 250,000-record owner cap.
+Use **Delete saved history** beside the off command in Bullpen to delete it;
+this does not change your computer's opt-in. Offline remote clears remain
+pending and are identified in status. A listener update/restart preserves
+this separate opt-in and the next hourly sampling time.

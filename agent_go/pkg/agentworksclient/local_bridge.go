@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentusage"
 )
 
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
@@ -119,6 +121,7 @@ type localSession struct {
 }
 
 type localBridge struct {
+	usageWake   chan struct{}
 	museCurrent map[string]string
 	mu          sync.Mutex
 	root        string
@@ -136,6 +139,8 @@ var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receip
 var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
+	UsageNow    func() time.Time
+	UsageRead   func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
 	HostAlive   func(provider, hostKey string) bool
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
 	NativeRoute func(provider, session, hostKey, remote string) string
@@ -285,7 +290,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	if err = os.Chmod(socket, 0600); err != nil {
 		return err
 	}
-	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{})}
+	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), usageWake: make(chan struct{}, 1)}
 	if len(options) > 0 {
 		b.options = options[0]
 	}
@@ -381,7 +386,12 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	houseCtx, houseCancel := context.WithCancel(ctx)
 	defer houseCancel()
 	go b.housekeeping(houseCtx)
+	usageCtx, usageCancel := context.WithCancel(houseCtx)
+	usageDone := make(chan struct{})
+	go func() { defer close(usageDone); b.runUsage(usageCtx) }()
 	defer func() {
+		usageCancel()
+		<-usageDone
 		b.mu.Lock()
 		b.closed = true
 		for _, s := range b.sessions {
@@ -505,6 +515,9 @@ func (b *localBridge) startNative(s *localSession) {
 }
 
 func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) LocalBridgeReply {
+	if in.Action == "usage_status" || in.Action == "usage_refresh" {
+		return b.usageControl(in)
+	}
 	if len(in.SessionID) > 128 || len(in.HostKey) > 128 {
 		return LocalBridgeReply{Error: "invalid native session"}
 	}

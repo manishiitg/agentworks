@@ -22,7 +22,7 @@ async function harness(t, options = {}) {
   await chmod(root, 0o700);
   const history = new Map();
   const requests = [], offers = [], waiters = [], failures = new Map(), processed = new Set(), nativeAdmitted = new Set();
-  let heldNext = false, heldDelivered = false, nextWait = 300;
+  let heldNext = false, heldDelivered = false, nextWait = 300, usageEnabled = false;
   let attached = options.attached ?? true, session, lease = 'lease-one';
   const attachment = () => ({ attachment_id: lease, agent_name: 'receiver', provider: 'pi', native_session_id: session });
   const respond = (res, input) => {
@@ -37,6 +37,7 @@ async function harness(t, options = {}) {
     assert.match(input.host_key || '', /^[a-f0-9]{64}$/, 'each native request binds the exact process');
     if (!session) session = input.session_id;
     res.setHeader('Content-Type', 'application/json');
+    if (input.action === 'usage_status') { res.end(JSON.stringify({ result: { enabled: usageEnabled, generation: 'fixture-generation' } })); return; }
     if (input.attachment_id && input.attachment_id !== lease) { res.end('{"attached":false}'); return; }
     if (['next', 'ack', 'reply', 'detach'].includes(input.action)) assert.equal(input.attachment_id, lease, 'active requests must carry the lease');
     if (input.action === 'read') { res.end(JSON.stringify({ attached, attachment: attachment(), result: { messages: [...history.values()].filter(m => m.attachment_id === lease) } })); return; }
@@ -117,16 +118,16 @@ async function harness(t, options = {}) {
     for (const msg of offers) history.set(msg.message_id, msg);
     for (const wake of [...waiters]) wake();
   };
-  const activate = async (override = {}, expected = 200) => {
+  const activate = async (override = {}, expected = 200, endpoint = '/activate') => {
     const record = JSON.parse(await readFile(path.join(root, 'pi-sessions', `${child.pid}.json`), 'utf8'));
     return new Promise((resolve, reject) => {
-      const req = http.request({ socketPath: record.socket, path: '/activate', method: 'POST' }, res => {
+      const req = http.request({ socketPath: record.socket, path: endpoint, method: 'POST' }, res => {
         let body = ''; res.on('data', c => { body += c; }); res.on('end', () => { assert.equal(res.statusCode, expected, body); resolve(JSON.parse(body)); });
       });
       req.on('error', reject); req.end(JSON.stringify({ host_key: record.host_key, session_id: record.session_id, attachment_id: lease, ...override }));
     });
   };
-  return { root, activate, get child() { return child; }, events, requests, command, offer,
+  return { root, activate, usageStats: status => activate({}, status, '/usage-stats'), setUsageEnabled: value => { usageEnabled = value; }, get child() { return child; }, events, requests, command, offer,
     failures, processed, kill,
     restart: async () => { await kill(); events.length = 0; heldNext = false; launch(); await command('get_state'); },
     holdNext: () => { heldNext = true; },
@@ -330,4 +331,19 @@ test('real Pi: crash before offer response warns; saved native evidence restores
   assert.equal(userMessage(h.events, 'recorded'), undefined, 'recovery does not resubmit the saved native message');
   await h.command('prompt', { message: 'REPLY:recorded' });
   await until(() => h.requests.some(r => r.action === 'reply' && r.message_id === 'recorded'), 'recovered native evidence permits explicit same-inbox reply');
+});
+
+
+test('real Pi: native SDK usage is exact-session numeric-only and opt-in gated', async t => {
+  const h = await harness(t);
+  await h.usageStats(409);
+  h.setUsageEnabled(true);
+  const expected = await h.command('get_session_stats');
+  const observed = await h.usageStats(200);
+  assert.deepEqual(observed.tokens, expected.tokens);
+  assert.equal(observed.sessionId, expected.sessionId);
+  assert.equal(observed.userMessages, expected.userMessages);
+  assert.deepEqual(Object.keys(observed).sort(), ['model', 'sessionId', 'tokens', 'userMessages']);
+  h.setUsageEnabled(false);
+  await h.usageStats(409);
 });
