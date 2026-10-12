@@ -6,6 +6,8 @@ import React, { memo, createContext, useContext, useCallback, useEffect, useMemo
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
 import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, XCircle } from 'lucide-react'
+import { InspectExecutionButton } from './chat/InspectExecutionButton'
+import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
 import { EventDispatcher } from './events/EventDispatcher'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
@@ -19,6 +21,7 @@ import {
   isInternalTranscriptMessage,
   pairToolCalls,
   runActivity,
+  isInspectableBackgroundActivity,
   shouldCollapseTranscriptUserMessage,
   type PairedToolCall,
   selectTerminalEvents,
@@ -240,6 +243,18 @@ const TranscriptEvent: React.FC<{
 
   const run = runActivity(event)
   if (run) return <RunActivityEvent {...run} timestamp={timestamp} event={event} />
+
+  if (isInspectableBackgroundActivity(event)) {
+    const target = readInspectionTarget((payload.metadata as Record<string, unknown> | undefined)?.inspection)
+    if (target) return <div data-testid="terminal-inspectable-background-activity" className="my-3 rounded-lg border border-border/60 bg-muted/40 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+        <CircleDashed className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" />
+        <span className="min-w-0 truncate font-medium text-foreground/85">{target.name || 'Background work'}</span>
+        <span className="shrink-0">{event.type === 'background_agent_started' ? 'Running' : event.type === 'background_agent_terminated' ? 'Stopped' : String(payload.status || 'Completed')}</span>
+        <InspectExecutionButton target={target} label={target.name === 'Workflow Review' ? 'Inspect review' : 'Inspect'} />
+      </div>
+    </div>
+  }
 
   // A failed turn: one card, in plain words, with the raw error behind a
   // disclosure. collapseTurnFailures already reduced the server's three
@@ -632,7 +647,7 @@ const PresentationActivityEvent: React.FC<{ label: string; title: string; destin
 // Running a step, the workflow, or an evaluation is the headline action of a
 // workflow turn, so it gets the same compact activity row a presentation gets
 // rather than disappearing into a collapsed "N tool calls" chip.
-const RunActivityEvent: React.FC<{ label: string; target: string; state: 'started' | 'failed'; timestamp: string; event: PollingEvent }> = ({ label, target, state, timestamp, event }) => (
+const RunActivityEvent: React.FC<{ label: string; target: string; state: 'starting' | 'started' | 'reviewing' | 'failed'; timestamp: string; event: PollingEvent }> = ({ label, target, state, timestamp, event }) => (
   <div data-testid="terminal-clear-run-activity" className="my-3 rounded-lg border border-border/60 bg-muted/40 px-3 py-2">
     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
       {state === 'failed'
@@ -643,7 +658,7 @@ const RunActivityEvent: React.FC<{ label: string; target: string; state: 'starte
         {target && <> · <span className="text-foreground">{target}</span></>}
       </span>
       <span className="hidden shrink-0 sm:inline">
-        {state === 'failed' ? 'could not start' : 'started'}
+        {state === 'failed' ? 'could not start' : state === 'reviewing' ? 'step waiting' : state === 'starting' ? 'requested' : 'started'}
       </span>
       {timestamp && <span className="ml-auto shrink-0 tabular-nums">{timestamp}</span>}
       <RunInspectionButton event={event} />

@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-12 — Inspection stays reachable from compact workflow chat (PLAT-861)
+
+Keep a compact inspection action for server-identified root background work in
+normal chat, including pre-run Workflow Review jobs. Keep child prompts/tools
+behind the inspector. A launch request says Starting until its matching receipt
+arrives; a review gate says Reviewing workflow and step waiting, rather than
+claiming the requested step started. Decode native JSON text envelopes when
+resolving execution receipts. Why: users must see what actually launched and
+inspect a prerequisite review without opening a diagnostics rail or guessing
+an execution from its step name.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+
 ## 2026-10-12 — Bullpen administrators see metadata, never messages (PLAT-861)
 
 The Bullpen administrator view and `bullpen_admin` tool (admin account plus

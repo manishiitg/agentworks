@@ -67,7 +67,7 @@ it('opens the exact dispatch from the compact run row launch receipt', async () 
  const event = (id: string, type: string, data: Record<string, unknown>): PollingEvent => ({id,type,timestamp:target.started_at,session_id:'parent',data:{type,data}} as PollingEvent)
  const start = event('launch-start','tool_call_start',{tool_call_id:'launch'})
  const events = [
-  event('launch-end','tool_call_end',{tool_call_id:'launch',result:'Started step. execution_id: "second"'}),
+  event('launch-end','tool_call_end',{tool_call_id:'launch',result:JSON.stringify({content:[{type:'text',text:'Started step. execution_id: "second"'}]})}),
   event('first-start','background_agent_started',{metadata:{inspection:target}}),
   event('second-start','background_agent_started',{metadata:{inspection:{...target,execution_id:'second'}}}),
  ]

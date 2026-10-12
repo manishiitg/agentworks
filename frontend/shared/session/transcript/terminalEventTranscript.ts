@@ -634,8 +634,22 @@ function isTranscriptEvent(event: PollingEvent): boolean {
 // Contract above. The main conversation must not flatten child payloads as if
 // the main agent said them, and product correctness must not depend on the
 // diagnostics-only child-terminal rail.
+/** Root background activity is a navigation target, never a child transcript. */
+export function isInspectableBackgroundActivity(event: PollingEvent): boolean {
+  if (!['background_agent_started', 'background_agent_completed', 'background_agent_terminated'].includes(event.type || '')) return false
+  const fields = eventFields(event)
+  const metadata = fields.metadata as Record<string, unknown> | undefined
+  const target = metadata?.inspection as Record<string, unknown> | undefined
+  const parent = textField(fields.parent_execution_id)
+  return Boolean(target && ['workspace_path', 'session_id', 'execution_id'].every(key => textField(target[key])) &&
+    textField(target.execution_id) === textField(fields.agent_id) &&
+    (!event.session_id || target.session_id === event.session_id) &&
+    (!parent || parent.startsWith('main:') || parent.startsWith('session:')))
+}
+
 function isProductMainConversationEvent(event: PollingEvent): boolean {
   if (!isTranscriptEvent(event)) return false
+  if (isInspectableBackgroundActivity(event)) return true
   const fields = eventFields(event)
   const metadata = fields.metadata && typeof fields.metadata === 'object'
     ? fields.metadata as Record<string, unknown>
@@ -888,7 +902,7 @@ export function selectTerminalEvents(
   keepInteractionKinds?: ReadonlySet<string>,
 ): PollingEvent[] {
   if (!events || events.length === 0) return []
-  events = normalizeTranscriptChunkEvents(events)
+  events = withRunLaunchResults(normalizeTranscriptChunkEvents(events))
 
   // The normal Chat/Schedule product surface is the main conversation, not a
   // terminal inspector. It intentionally excludes workflow-step and child
@@ -955,7 +969,7 @@ export function selectTerminalEvents(
   // reflect their persisted sequence; sorting those timestamp-first made a
   // completion appear above the task work it completed.
   return matched
-    .filter(event => (isTranscriptEvent(event) && !TERMINAL_RAIL_HIDDEN_TYPES.has(event.type || '')) || isKeptInteraction(event, keepInteractionKinds))
+    .filter(event => (isTranscriptEvent(event) && (!TERMINAL_RAIL_HIDDEN_TYPES.has(event.type || '') || isInspectableBackgroundActivity(event))) || isKeptInteraction(event, keepInteractionKinds))
     .filter(event => !isOwnTerminalLifecycleStart(event, terminal))
     .map((event, index) => ({ event, index }))
     .sort((a, b) => {
@@ -1090,7 +1104,7 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
   // Filter wrapper noise before lifecycle deduplication. Otherwise a generic
   // completion can supersede the richer delegated completion and then be
   // removed itself, accidentally hiding both records.
-  const transcriptEvents = collapseContextCompactions(normalizeTranscriptChunkEvents(events)).filter(isTranscriptEvent)
+  const transcriptEvents = collapseContextCompactions(withRunLaunchResults(normalizeTranscriptChunkEvents(events))).filter(isTranscriptEvent)
   const visibleEvents = dropRepeatedAssistantResponses(dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
     dropDuplicateExecutionPromptMessages(collapseCompletedLifecycleStarts(transcriptEvents)),
   ))))
@@ -1170,7 +1184,8 @@ function runToolLabel(event: PollingEvent): string {
 }
 
 /**
- * The row says a run STARTED, and nothing about how it ended.
+ * A start call requests a run; its receipt confirms launch or a review gate.
+ * Launch completion still says nothing about the execution outcome.
  *
  * `execute_step` returns "Step … started in background" the moment the step is
  * launched, so its tool_call_end means "launched", not "finished" — an earlier
@@ -1180,7 +1195,7 @@ function runToolLabel(event: PollingEvent): string {
  * already has its own row. So: one row per run, and only a failed launch is
  * reported as an outcome.
  */
-export function runActivity(event: PollingEvent): { label: string; target: string; state: 'started' | 'failed' } | null {
+export function runActivity(event: PollingEvent): { label: string; target: string; state: 'starting' | 'started' | 'reviewing' | 'failed' } | null {
   const type = event.type || ''
   if (type !== 'tool_call_start' && type !== 'tool_call_error') return null
   const label = runToolLabel(event)
@@ -1195,7 +1210,45 @@ export function runActivity(event: PollingEvent): { label: string; target: strin
       /* a partially streamed argument blob is not worth reporting on */
     }
   }
-  return { label, target, state: type === 'tool_call_error' ? 'failed' : 'started' }
+  if (type === 'tool_call_error') return {label, target, state: 'failed'}
+  const launch = textField(eventFields(event).run_launch_result)
+  if (/^Reviewing the workflow before running/i.test(launch)) return {label: 'Reviewing workflow', target, state: 'reviewing'}
+  if (/^(workflow_review_blocked:|.*(?:was NOT started|could not start))/i.test(launch)) return {label, target, state: 'failed'}
+  return launch ? {label, target, state: 'started'} : {label: label.replace(/^Running/, 'Starting'), target, state: 'starting'}
+}
+
+/** Native MCP receipts may be JSON-encoded text envelopes. */
+export function runToolResultText(value: unknown, depth = 0): string {
+  if (depth > 4) return ''
+  if (typeof value === 'string') {
+    try { return runToolResultText(JSON.parse(value), depth + 1) || value } catch { return value }
+  }
+  if (Array.isArray(value)) return value.map(item => runToolResultText(item, depth + 1)).filter(Boolean).join('\n')
+  if (!value || typeof value !== 'object') return ''
+  const record = value as Record<string, unknown>
+  for (const key of ['result', 'text', 'content', 'data']) {
+    const text = runToolResultText(record[key], depth + 1)
+    if (text) return text
+  }
+  return ''
+}
+
+// Retain the start row, but let its matching receipt determine whether a run
+// actually launched. The annotation is a view-only copy; original events stay intact.
+function withRunLaunchResults(events: PollingEvent[]): PollingEvent[] {
+  const results = new Map<string, string>()
+  const key = (event: PollingEvent) => JSON.stringify([event.session_id || textField(eventFields(event).session_id), toolCallField(event, 'tool_call_id')])
+  for (const event of events) {
+    if (event.type === 'tool_call_end' && runToolLabel(event) && toolCallField(event, 'tool_call_id')) results.set(key(event), runToolResultText(toolCallField(event, 'result')))
+  }
+  return events.map(event => {
+    if (event.type !== 'tool_call_start' || !runToolLabel(event) || !toolCallField(event, 'tool_call_id')) return event
+    const result = results.get(key(event))
+    if (!result) return event
+    const outer = event.data as unknown as Record<string, unknown>
+    const fields = {...eventFields(event), run_launch_result: result}
+    return {...event, data: (outer?.data && typeof outer.data === 'object' ? {...outer, data: fields} : fields) as PollingEvent['data']}
+  })
 }
 
 /** The end of a run tool's launch call: its row was already drawn by the start. */

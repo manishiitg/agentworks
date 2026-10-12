@@ -200,3 +200,29 @@ describe('activity belongs to the current agent turn', () => {
     expect(headers(host)[0].textContent).toContain('32.1s')
   })
 })
+
+// Reproduces the real manual execute_step receipt: review runs, step does not.
+it('shows the pending review truthfully and opens its exact inspection from the compact chat', async () => {
+  const original = useChatStore.getState()
+  cleanups.push(() => useChatStore.setState(original, true))
+  const target = {session_id: 'parent', execution_id: 'review-1', workspace_path: 'Workflow/example', name: 'Workflow Review', started_at: '2026-10-12T00:00:00Z'}
+  const start = {...event('launch', 'tool_call_start', {tool_call_id: 'launch', tool_name: 'execute_step', tool_params: {arguments: '{"step_id":"example-step","group_name":"Test Group"}'}}), session_id: 'parent'}
+  const review = {...event('review-start', 'background_agent_started', {agent_id: 'review-1', name: 'Workflow Review', execution_kind: 'sub_agent', parent_execution_id: 'main:parent', metadata: {inspection: target}}), session_id: 'parent'}
+  const child = {...event('child-start', 'background_agent_started', {agent_id: 'child', parent_execution_id: 'review-1', metadata: {inspection: {...target, execution_id: 'child'}}}), session_id: 'parent'}
+  const result = {...event('launch-end', 'tool_call_end', {tool_call_id: 'launch', tool_name: 'execute_step', result: 'Reviewing the workflow before running… The plan changed, so execute_step did not start yet.'}), session_id: 'parent'}
+  const events = [user, start, review, child, result]
+  useChatStore.setState({activeTabId: 'chat', chatTabs: {chat: {tabId: 'chat', sessionId: 'parent'} as ChatTab}, tabEvents: {parent: events}})
+  const {host, render} = await mount({events})
+  expect(host.textContent).toContain('Reviewing workflow')
+  expect(host.textContent).toContain('step waiting')
+  expect(host.textContent).not.toContain('Running step')
+  expect(host.querySelectorAll('[data-testid="terminal-inspectable-background-activity"]')).toHaveLength(1)
+  const inspect = host.querySelector<HTMLButtonElement>('[aria-label="Inspect Workflow Review"]')!
+  expect(inspect.textContent).toContain('Inspect review')
+  await act(async () => inspect.click())
+  expect(useChatStore.getState().getTab('chat')?.metadata?.stepInspections?.items).toEqual([target])
+  const done = {...event('review-done', 'background_agent_completed', {agent_id: 'review-1', parent_execution_id: 'main:parent', status: 'completed', metadata: {inspection: target}}), session_id: 'parent'}
+  await render({events: [...events, done]})
+  expect(host.querySelectorAll('[data-testid="terminal-inspectable-background-activity"]')).toHaveLength(1)
+  expect(host.querySelector('[data-testid="terminal-inspectable-background-activity"]')?.textContent).toContain('completed')
+})

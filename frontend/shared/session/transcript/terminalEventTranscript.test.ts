@@ -553,7 +553,7 @@ describe('buildTranscriptItems', () => {
     ])
     expect(items.map(i => i.kind)).toEqual(['event', 'event', 'event'])
     expect(runActivity(items[1].kind === 'event' ? items[1].event : evt({ id: 'x', session_id: 's1' }))).toEqual({
-      label: 'Running step', target: 'step-fetch · default', state: 'started',
+      label: 'Starting step', target: 'step-fetch · default', state: 'starting',
     })
   })
 
