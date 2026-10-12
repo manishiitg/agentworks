@@ -969,6 +969,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			if err := api.registerCrewAskFilesTool(registrar, userID, workspacePath); err != nil {
 				return err
 			}
+			gate.Declare("list_functions")
+			if err := api.registerCrewFunctionTools(crewFunctionListOnlyRegistrar{registrar}, userID, sessionID, QueryRequest{SelectedFolder: workspacePath}, crewTriggerLinkCaller(workspacePath), nil); err != nil {
+				return err
+			}
 		}
 		// A reader or guest can reply within its existing conversation. This
 		// does not grant permission to initiate work in another agent.

@@ -62,15 +62,19 @@ func crewAskFilesRun(ctx context.Context, root, workspacePath string, args map[s
 		if limit > 100 {
 			limit = 100
 		}
+		if crewCallerPrivatePath(path) {
+			return "", fmt.Errorf("file not found or private")
+		}
 		result, err := externalFileRequest(ctx, wf.Request{Root: root, Operation: action, Path: path, Query: query, Glob: glob,
 			Offset: intArg("offset", 0), Limit: limit, Depth: depth})
 		if err != nil {
 			return "", fmt.Errorf("%s", crewAskFilesError(err))
 		}
+		result = withoutCrewCallerPrivate(result)
 		out, _ := json.Marshal(result)
 		return string(out), nil
 	case "read":
-		if _, confined := confineSharedProjectPath(workspacePath, path); !confined {
+		if _, confined := confineSharedProjectPath(workspacePath, path); !confined || crewCallerPrivatePath(path) {
 			return "", fmt.Errorf("file not found or private")
 		}
 		result, err := externalFileRequest(ctx, wf.Request{Root: root, Path: path, Operation: "read"})

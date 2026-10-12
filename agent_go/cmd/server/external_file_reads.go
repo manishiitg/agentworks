@@ -369,3 +369,23 @@ func externalGuardReadResult(result wf.Result, err error, guard *wf.FolderGuard)
 	result.Entries = visible
 	return result, nil
 }
+
+// crewCallerPrivatePath is a Crew area that belongs to the owner and co-owners: the inputs and results of other
+// callers' function calls (triggers/deliveries) and the schedule run log. A guest's ask and any non-owner reader get
+// "file not found or private"; a caller still sees their own calls through the caller-filtered run tools (856-65).
+func crewCallerPrivatePath(p string) bool {
+	p = strings.ToLower(strings.Trim(path.Clean("/"+strings.TrimSpace(p)), "/"))
+	return p == "schedule-runs.json" || p == "triggers/deliveries" || strings.HasPrefix(p, "triggers/deliveries/")
+}
+
+// withoutCrewCallerPrivate removes those areas from a listing or search result.
+func withoutCrewCallerPrivate(result wf.Result) wf.Result {
+	kept := result.Entries[:0:0]
+	for _, entry := range result.Entries {
+		if !crewCallerPrivatePath(entry.Path) {
+			kept = append(kept, entry)
+		}
+	}
+	result.Entries = kept
+	return result
+}

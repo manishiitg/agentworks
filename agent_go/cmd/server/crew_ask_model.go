@@ -16,7 +16,7 @@ var crewAskAllowedTools = map[string]bool{
 	"list_skills": true, "search_skills": true, "send_message": true, "read_agent_messages": true,
 	"list_mcp_servers": true, "list_accessible_workflows": true, "list_attached_workflows": true,
 	"list_workflow_triggers": true, "list_project_schedules": true, "list_project_triggers": true,
-	"get_workflow_trigger_run": true, "list_work_folders": true, "list_functions": true,
+	"get_workflow_trigger_run": true, "list_functions": true,
 	crewSuggestionToolName: true, "WebSearch": true, "EndConversation": true,
 }
 

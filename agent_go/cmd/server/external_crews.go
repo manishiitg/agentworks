@@ -333,6 +333,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		if name == "search_crew_files" {
 			operation = "search"
 		}
+		if !crew.OwnedByCaller && crewCallerPrivatePath(str("path")) {
+			externalError(w, 404, "not_found", "File not found or private.")
+			return
+		}
 		result, err := externalFileRequest(ctx, wf.Request{
 			Root: agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), Operation: operation,
 			Path: str("path"), Query: str("query"), Glob: str("glob"),
@@ -342,9 +346,12 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalFailure(w, err)
 			return
 		}
+		if !crew.OwnedByCaller {
+			result = withoutCrewCallerPrivate(result)
+		}
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "result": result})
 	case "read_crew_file":
-		if _, confined := confineSharedProjectPath(crew.Binding.WorkspacePath, str("path")); !confined {
+		if _, confined := confineSharedProjectPath(crew.Binding.WorkspacePath, str("path")); !confined || !crew.OwnedByCaller && crewCallerPrivatePath(str("path")) {
 			externalError(w, 404, "not_found", "File not found or private.")
 			return
 		}

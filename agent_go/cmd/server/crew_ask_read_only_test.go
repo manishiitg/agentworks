@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"os"
 	"slices"
 	"strings"
@@ -41,7 +42,7 @@ func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 	want := []string{
 		"EndConversation", "WebSearch", crewAskFilesToolName, "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
 		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
-		"list_skills", "list_work_folders", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
+		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
 	}
 	var got []string
@@ -78,7 +79,7 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 
 // The read-only file tool reaches project files but never the private areas (chats, databases, manifests, hidden folders).
 func TestGuestAskFilesToolRefusesPrivateAreas(t *testing.T) {
-	for _, path := range []string{"builder/conversation/chat.json", "db/db.sqlite", "workflow.json", ".git/config", "../other/file.txt", "/etc/passwd"} {
+	for _, path := range []string{"builder/conversation/chat.json", "db/db.sqlite", "workflow.json", ".git/config", "../other/file.txt", "/etc/passwd", "schedule-runs.json", "triggers/deliveries/call-1.json", "./Triggers/Deliveries"} {
 		if _, err := crewAskFilesRun(context.Background(), "_users/owner/Chats/Work/projects/alpha", "Crew/alpha", map[string]interface{}{"action": "read", "path": path}); err == nil {
 			t.Errorf("%s must not be readable by a guest's ask", path)
 		}
@@ -108,5 +109,24 @@ func TestGuestAskNoticeSaysTheToolsAreDirect(t *testing.T) {
 	src, err := os.ReadFile("crew_session_mode.go")
 	if err != nil || !strings.Contains(string(src), "DIRECT tools") {
 		t.Fatal("the guest ask notice must tell the model its tools are direct")
+	}
+}
+
+// Other callers' function-call payloads and the schedule run log belong to the owner and co-owners: a guest's ask and
+// any non-owner reader never see them, in a read or in a listing or search result.
+func TestCallerPrivateCrewAreas(t *testing.T) {
+	for _, p := range []string{"schedule-runs.json", "triggers/deliveries", "triggers/deliveries/a/b.json", "./Triggers/Deliveries/x", "/triggers/deliveries/x"} {
+		if !crewCallerPrivatePath(p) {
+			t.Errorf("%s must be private to the owner", p)
+		}
+	}
+	for _, p := range []string{"", "triggers", "triggers/other.json", "docs/schedule-runs.json.md", "outputs/triggers/deliveries-note.md"} {
+		if crewCallerPrivatePath(p) {
+			t.Errorf("%s is ordinary project data", p)
+		}
+	}
+	listed := withoutCrewCallerPrivate(wf.Result{Entries: []wf.Entry{{Path: "docs/a.md"}, {Path: "triggers/deliveries/c1.json"}, {Path: "schedule-runs.json"}, {Path: "triggers/x.json"}}})
+	if len(listed.Entries) != 2 || listed.Entries[0].Path != "docs/a.md" || listed.Entries[1].Path != "triggers/x.json" {
+		t.Fatalf("private areas must be dropped from a listing: %+v", listed.Entries)
 	}
 }
