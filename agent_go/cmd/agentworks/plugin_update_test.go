@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -125,5 +127,41 @@ func TestCodexAppCommandLineAndHome(t *testing.T) {
 	t.Setenv("PATH", "")
 	if !providerAvailable("codex") {
 		t.Fatal("the Codex app must count as an available Codex")
+	}
+}
+
+// A turned-off Codex plugin stays off through a source switch: nothing is removed,
+// added or reinstalled, which would enable it again. The real command path is run
+// against a fake codex that records its arguments.
+func TestSourceSwitchLeavesADisabledCodexPluginAlone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	bin, home := t.TempDir(), t.TempDir()
+	log := filepath.Join(bin, "calls.log")
+	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n"
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	codexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	config := "[plugins.\"agentworks-codex@agentworks\"]\nenabled = false\n\n[marketplaces.agentworks]\nsource_type = \"git\"\nsource = \"https://github.com/manishiitg/agentworks.git\"\n"
+	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("PATH", bin)
+	var out strings.Builder
+	updateInstalledPlugins(context.Background(), &options{stderr: &out}, true)
+	raw, _ := os.ReadFile(log)
+	calls := string(raw)
+	if strings.Contains(calls, "plugin add") || strings.Contains(calls, "marketplace remove") || strings.Contains(calls, "marketplace add") {
+		t.Fatalf("a disabled plugin must not be removed, added or reinstalled:\n%s", calls)
+	}
+	if !strings.Contains(out.String(), "turned off") {
+		t.Fatalf("the person must be told why the source was not switched: %q", out.String())
 	}
 }
