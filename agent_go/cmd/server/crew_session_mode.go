@@ -157,7 +157,13 @@ var readerDeniedToolNames = func() map[string]struct{} {
 // is not a read-only Crew reader. The message names the mode and where to send
 // the change.
 func readerDeniedToolRefusal(ctx context.Context, tool string) string {
-	if _, denied := readerDeniedToolNames[strings.TrimSpace(tool)]; !denied {
+	_, denied := readerDeniedToolNames[strings.TrimSpace(tool)]
+	if !denied && crewAskDeniedToolSet[strings.TrimSpace(tool)] {
+		if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && cfg.CrewAskReadOnly {
+			return "The tool `" + strings.TrimSpace(tool) + "` is not available in a read-only ask: call one of the Crew's functions to act."
+		}
+	}
+	if !denied {
 		return ""
 	}
 	// Only a Crew reader: the same tool names (perform_ui_action, secrets) are
