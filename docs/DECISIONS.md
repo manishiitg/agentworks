@@ -30,8 +30,8 @@ is one read-only Agents view (your agents with a shared badge and admin notices,
 by others, who you blocked, and for administrators everyone on the server and recent admin changes) plus
 Connect an agent. Administrators make changes through the `bullpen_admin` tool (close_attachment,
 remove_agent, unshare_agent), each with a reason and an audit row. Per-person grants and blocks stay in the
-server API but have no UI or CLI. The per-sender cap (60 messages per hour and 100 undelivered per share)
-stays.
+server API but have no UI or CLI. The per-owner combined hourly cap on shared agents is removed (the owner
+confirmed it directly); the per-sender cap (60 messages per hour and 100 undelivered per share) stays.
 
 Why: simple for people and agents; actions belong with the agent or the CLI, not buttons.
 

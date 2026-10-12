@@ -195,7 +195,6 @@ func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, rec
 const (
 	shareSenderHourly  = 60  // messages one person may send through one grant per hour
 	shareSenderPending = 100 // undelivered messages one person may leave for one agent
-	shareOwnerHourly   = 300 // messages other people may send to one owner's agents per hour
 )
 
 // shareQuotaErr limits the shared person's messages, never the owner's replies.
@@ -208,7 +207,7 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 	if err != nil || src.UserID == sh.OwnerUserID {
 		return err
 	}
-	hourly, pending, owner := 0, 0, 0
+	hourly, pending := 0, 0
 	for _, o := range s.Conversations {
 		for _, m := range o.Messages {
 			from := o.Endpoints[m.From]
@@ -216,9 +215,6 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 				continue
 			}
 			recent := now.Sub(m.SentAt) < time.Hour
-			if recent {
-				owner++
-			}
 			if from.ShareID == sh.ID && from.UserID == src.UserID {
 				if recent {
 					hourly++
@@ -229,7 +225,7 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 			}
 		}
 	}
-	if hourly >= shareSenderHourly || pending >= shareSenderPending || owner >= shareOwnerHourly {
+	if hourly >= shareSenderHourly || pending >= shareSenderPending {
 		return fmt.Errorf("shared agent message limit reached; check back later")
 	}
 	return nil
