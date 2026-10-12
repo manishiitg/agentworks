@@ -39,7 +39,7 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 // A guest's ask has exactly this tool surface: a new tool fails here until it is classified (reviewer rule, 856-59).
 func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 	want := []string{
-		"EndConversation", "WebSearch", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
+		"EndConversation", "WebSearch", crewAskFilesToolName, "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
 		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_work_folders", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
@@ -73,5 +73,17 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 		if msg := readerDeniedToolRefusal(ctx, tool); msg != "" {
 			t.Errorf("%s is allowed in a read-only ask, got %q", tool, msg)
 		}
+	}
+}
+
+// The read-only file tool reaches project files but never the private areas (chats, databases, manifests, hidden folders).
+func TestGuestAskFilesToolRefusesPrivateAreas(t *testing.T) {
+	for _, path := range []string{"builder/conversation/chat.json", "db/db.sqlite", "workflow.json", ".git/config", "../other/file.txt", "/etc/passwd"} {
+		if _, err := crewAskFilesRun(context.Background(), "_users/owner/Chats/Work/projects/alpha", "Crew/alpha", map[string]interface{}{"action": "read", "path": path}); err == nil {
+			t.Errorf("%s must not be readable by a guest's ask", path)
+		}
+	}
+	if _, err := crewAskFilesRun(context.Background(), "x", "Crew/alpha", map[string]interface{}{"action": "write"}); err == nil {
+		t.Error("the tool has no write action")
 	}
 }

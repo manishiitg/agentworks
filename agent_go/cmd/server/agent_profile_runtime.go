@@ -963,6 +963,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
 				log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
 			}
+		} else {
+			// The ask reads project files only through this tool (no shell, no native file tools).
+			gate.Declare(crewAskFilesToolName)
+			if err := api.registerCrewAskFilesTool(registrar, userID, workspacePath); err != nil {
+				return err
+			}
 		}
 		// A reader or guest can reply within its existing conversation. This
 		// does not grant permission to initiate work in another agent.
