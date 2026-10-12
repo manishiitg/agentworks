@@ -85,8 +85,12 @@ when you move it; a name it used on another login earlier is not remembered. To
 move every attached live chat at once, run
 `agentworks attach --all --on work` in your terminal: it lists the chats, asks
 you to retype the count, reports each chat separately and skips chats that are
-offline or ended. A coding agent cannot move a chat by itself: moving is always
-your own command.
+offline or ended. Your coding agent can run these moves for you when you ask it
+(its own chat, another attached chat with `--provider P --session ID`, or every
+attached chat with `--all --on LOGIN`, which then does not stop to ask you to
+retype the count). A move needs a login you have saved; to add a new server it
+runs `agentworks login --server URL --name NAME`, and the browser approval for
+that login still happens wherever you open the link.
 
 ## Connect a chat
 
@@ -250,10 +254,9 @@ Only your own account can reach your agents unless you share one with everyone
 on the server. Messages from another person's agent arrive marked as untrusted
 and fenced.
 
-Agents cannot attach other chats. Only you attach a chat, by typing the
-command in it (or asking the agent in plain words to attach its own exact
-session). An agent with only the messaging tools cannot attach, detach or
-approve anything.
+Your coding agent can attach its own exact chat when you ask, and can move chats
+between saved logins (an open choice for now, to be revisited). An agent with
+only the messaging tools cannot attach, detach or approve anything.
 
 One honest limit: attachment is enforced inside the AgentWorks tools, not
 by your operating system. Another program running as the same computer

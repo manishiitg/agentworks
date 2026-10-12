@@ -182,6 +182,40 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatalf("own attach required plugin or picker: %s", output)
 	}
 	cli(true, "attach", "own-cli")
+	// The agent itself may move its own chat to another saved login and back
+	// (owner choice for an open system): the second account gains the agent, the
+	// first loses it, and the chat keeps its name.
+	moved, movedPath, _ := issue("move-target")
+	movedConfig, err := agentworksclient.LoadConfig(movedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerConfig, err := agentworksclient.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasAgent := func(c *agentworksclient.Client) bool {
+		raw, e := c.Call(context.Background(), "messages", map[string]any{"action": "list_agents"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		return strings.Contains(string(raw), `"agent_name":"own-cli"`)
+	}
+	for name, cfg := range map[string]agentworksclient.Config{"moved": movedConfig, "back": ownerConfig} {
+		loginFile, e := agentworksclient.LoginPath(name)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = agentworksclient.SaveConfig(loginFile, cfg); e != nil {
+			t.Fatal(e)
+		}
+	}
+	cli(true, "attach", "--on", "moved")
+	if !hasAgent(moved) {
+		t.Fatal("the moved chat's agent is not on the second login")
+	}
+	cli(true, "attach", "--on", "back")
+	cli(true, "attach", "own-cli")
 	cli(false, "attach", "another-chat", "--provider", "claude", "--session", "22222222-2222-4333-8444-555555555555")
 	longPurpose := strings.Repeat("Responsibilities and current scope. ", 5) + strings.Repeat("🤝", 100)
 	if output := cli(true, "bridge", "message", "purpose", "--provider", "codex", "--purpose", longPurpose+"\u202e\x1b"); !strings.Contains(output, strings.TrimSpace(longPurpose)) || strings.Contains(output, "\u202e") || strings.Contains(output, "\\u001b") {

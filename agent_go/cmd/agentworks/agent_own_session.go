@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -36,6 +39,13 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 		return own, true, nil
 	}
 	provider, pid, err := ownAgentAncestor(ctx)
+	if err != nil {
+		// The Codex desktop sandbox blocks ps, so the calling process cannot be
+		// walked. The desktop app-server itself can still confirm this exact thread.
+		if own, ok := codexDesktopOwnSession(ctx, o); ok {
+			return own, true, nil
+		}
+	}
 	if err != nil || provider == "" {
 		return liveAgentSession{}, provider != "", err
 	}
@@ -76,6 +86,60 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 		return liveAgentSession{}, true, fmt.Errorf("cannot identify one exact %s session for this tool call; expose native session metadata or reload its adapter, then retry (no other chat was selected)", provider)
 	}
 	return matches[0], true, nil
+}
+
+// codexDesktopHostPrefix marks a process key derived from the Codex desktop's
+// own connection instead of a ps entry, for tool calls whose sandbox blocks ps.
+const codexDesktopHostPrefix = "codex-desktop-"
+
+// codexDesktopSocket is the desktop app-server's local socket.
+func codexDesktopSocket() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return "desktop+unix://" + filepath.Join(home, ".codex", "ipc", "ipc.sock"), nil
+}
+
+// codexDesktopOwnSession verifies this tool call's exact Codex thread with the
+// running desktop app-server when ps is unavailable. It needs matching, valid
+// CODEX_THREAD_ID and CODEX_SESSION_ID values and a desktop owner that accepts
+// untrusted app input for that conversation; otherwise it selects nothing.
+func codexDesktopOwnSession(ctx context.Context, o *options) (liveAgentSession, bool) {
+	session := o.getenv("CODEX_THREAD_ID")
+	if session == "" || session != o.getenv("CODEX_SESSION_ID") {
+		return liveAgentSession{}, false
+	}
+	if _, err := uuid.Parse(session); err != nil {
+		return liveAgentSession{}, false
+	}
+	remote, err := codexDesktopSocket()
+	if err != nil || validateCodexRemote(remote) != nil {
+		return liveAgentSession{}, false
+	}
+	probe, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, call, err := openCodexDesktop(probe, remote)
+	if err != nil {
+		return liveAgentSession{}, false
+	}
+	defer conn.Close()
+	reply, err := call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": session}, 1, "")
+	if err != nil {
+		return liveAgentSession{}, false
+	}
+	var owner string
+	var support struct {
+		Untrusted bool `json:"supportsUntrustedAppInput"`
+	}
+	_ = json.Unmarshal(reply["handledByClientId"], &owner)
+	_ = json.Unmarshal(reply["result"], &support)
+	if owner == "" || !support.Untrusted {
+		return liveAgentSession{}, false
+	}
+	cwd, _ := os.Getwd()
+	sum := sha256.Sum256([]byte(remote + "\x00" + owner))
+	return liveAgentSession{provider: "codex", session: session, host: codexDesktopHostPrefix + hex.EncodeToString(sum[:]), cwd: cwd, remote: remote}, true
 }
 
 func ownAgentAncestor(ctx context.Context) (string, int, error) {

@@ -629,7 +629,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 	}
 	if in.Action == "attach" {
-		if in.OwnAttach && in.Provider == "codex" && s != nil {
+		if in.OwnAttach && in.Provider == "codex" && s != nil && !in.SwitchConnection {
 			if in.AgentName != "" && in.AgentName != s.Attachment.AgentName || !s.AccountSenders || s.client == nil {
 				return LocalBridgeReply{Error: "own attach cannot rename or take over an existing Codex attachment"}
 			}

@@ -1,5 +1,22 @@
 # Decisions and open issues
 
+## 2026-10-12 — Chat moves are open to agents (owner choice for an open system, PLAT-861)
+
+The owner chose, for now and to be revisited, that moving chats between logins has no person-only limits:
+an agent may run `agentworks attach --on LOGIN` for its own chat, `--on LOGIN --provider P --session ID` for
+another attached chat, and `--all --on LOGIN` without the retype prompt (a person terminal keeps the prompt
+unless `--yes`). A login can be any saved login, including one an agent just added with `agentworks login
+--server URL --name NAME`, whose browser approval still happens wherever the link is opened. The skill and
+docs no longer forbid an agent from acting on another agent's request to move; the CLI cannot see where a
+request came from. The earlier guards (saved logins only, nothing triggered by a cross-person message) are
+dropped.
+
+Also in this change: Codex desktop own-session attach no longer needs ps (it verifies the exact thread with
+the desktop app-server when ps is blocked, with a process key derived from that connection), and `--all`
+discovery probes only chats that already have a lease and skips per-thread errors (861-121).
+
+Ticket: PLAT-861.
+
 ## 2026-10-12 — Bullpen usage is separate, optional and owner-only (PLAT-861)
 
 Native usage collection defaults off and requires the person's separate

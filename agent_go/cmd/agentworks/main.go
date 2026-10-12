@@ -29,7 +29,10 @@ type options struct {
 	// switchPath is the person's chosen login for an attach that moves the chat.
 	switchPath string
 	// namedLogin is set by login --name so the save rechecks the name under a lock.
-	namedLogin     bool
+	namedLogin bool
+	// attachedOnly limits live-chat discovery to chats already attached through
+	// the bridge, which is all a move needs (and avoids probing every thread).
+	attachedOnly   bool
 	jsonOutput     bool
 	stdin          io.Reader
 	stdout, stderr io.Writer

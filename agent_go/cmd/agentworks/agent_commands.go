@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -189,9 +190,9 @@ type liveAgentSession struct{ provider, session, host, remote, cwd, name string 
 
 func attachPluginCommand(o *options) *cobra.Command {
 	var provider, session, remote, name, on string
-	var all bool
+	var all, yes bool
 	var pid int
-	cmd := &cobra.Command{Use: "attach [NAME]", Args: cobra.MaximumNArgs(1), Short: "Install, attach or reconnect a live coding-agent chat", Long: "Attach this chat, or reconnect it on the login it already uses. With --on LOGIN the chat moves to that saved login (see agentworks logins); the move keeps the chat's name unless you give NAME, and if the new login cannot be reached the chat stays where it was. With --all --on LOGIN every attached live chat is moved after you retype the listed count.", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "attach [NAME]", Args: cobra.MaximumNArgs(1), Short: "Install, attach or reconnect a live coding-agent chat", Long: "Attach this chat, or reconnect it on the login it already uses. With --on LOGIN the chat moves to that saved login (see agentworks logins); the move keeps the chat's name unless you give NAME, and if the new login cannot be reached the chat stays where it was. With --all --on LOGIN every attached live chat is moved after you retype the listed count (add --yes to skip the prompt). A coding agent may run all of these for you when you ask it to.", RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
 			name = args[0]
 		}
@@ -217,11 +218,36 @@ func attachPluginCommand(o *options) *cobra.Command {
 			return err
 		}
 		if fromAgent {
-			if on != "" || all {
-				return errors.New("moving a chat to another login is the person's action: type /agentworks attach --on LOGIN in the chat, or run agentworks attach --on LOGIN in your terminal")
+			if on == "" {
+				if provider != "" || session != "" || remote != "" || pid != 0 {
+					return errors.New("own-session attach does not accept provider, session, process or endpoint overrides")
+				}
+				return attachLiveAgentWithSetup(cmd.Context(), o, root, own, name, false)
 			}
-			if provider != "" || session != "" || remote != "" || pid != 0 {
-				return errors.New("own-session attach does not accept provider, session, process or endpoint overrides")
+			// An agent may move chats to a saved login (owner choice for an open
+			// system): its own chat, another attached chat by provider and session,
+			// or every attached chat, without the person's retype prompt.
+			if remote != "" || pid != 0 {
+				return errors.New("a move does not accept process or endpoint overrides")
+			}
+			o.attachedOnly = true
+			if all || provider != "" || session != "" {
+				sessions, e := discoverLiveAgents(cmd.Context(), root, o)
+				if e != nil {
+					return e
+				}
+				if all {
+					return moveAttachedChats(cmd.Context(), o, root, sessions, on, true)
+				}
+				for _, s := range sessions {
+					if s.provider == provider && s.session == session {
+						if s.name == "" {
+							return errors.New("that chat is not attached; only attached chats can be moved")
+						}
+						return attachLiveAgent(cmd.Context(), o, root, s, name)
+					}
+				}
+				return errors.New("no live attached chat has that provider and session")
 			}
 			return attachLiveAgentWithSetup(cmd.Context(), o, root, own, name, false)
 		}
@@ -270,7 +296,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 				return nil
 			}
 			if all {
-				return moveAttachedChats(cmd.Context(), o, root, sessions, on)
+				return moveAttachedChats(cmd.Context(), o, root, sessions, on, yes)
 			}
 			for i, s := range sessions {
 				fmt.Fprintf(o.stderr, "%d. %s %s (%s)\n", i+1, s.provider, s.session, s.name)
@@ -316,6 +342,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVar(&remote, "native-remote", "", "Exact native endpoint override")
 	cmd.Flags().IntVar(&pid, "native-pid", 0, "Exact process override")
 	cmd.Flags().StringVar(&on, "on", "", "Move this chat to a saved login (see agentworks logins)")
+	cmd.Flags().BoolVar(&yes, "yes", false, "With --all --on, move without the retype-the-count prompt")
 	cmd.Flags().BoolVar(&all, "all", false, "With --on, move every attached live chat after a counted confirmation")
 	cmd.Flags().StringVar(&name, "name", "", "Name override")
 	for _, flag := range []string{"provider", "session", "native-remote", "native-pid", "name"} {
@@ -327,7 +354,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 // moveAttachedChats moves every live chat that is already attached to the login
 // the person named. It lists the chats first and asks the person to retype the
 // count, reports each chat on its own, and never stops at the first failure.
-func moveAttachedChats(ctx context.Context, o *options, root string, sessions []liveAgentSession, on string) error {
+func moveAttachedChats(ctx context.Context, o *options, root string, sessions []liveAgentSession, on string, skipPrompt bool) error {
 	var movable []liveAgentSession
 	for _, s := range sessions {
 		if s.name == "" {
@@ -348,12 +375,14 @@ func moveAttachedChats(ctx context.Context, o *options, root string, sessions []
 	for i, s := range movable {
 		fmt.Fprintf(o.stderr, "%d. %s %s (agent:%s)\n", i+1, s.provider, s.session, s.name)
 	}
-	fmt.Fprintf(o.stderr, "Move these %d chats to the login %q? Retype %d to confirm (anything else cancels): ", len(movable), on, len(movable))
-	var answer string
-	_, _ = fmt.Fscanln(o.stdin, &answer)
-	if answer != strconv.Itoa(len(movable)) {
-		fmt.Fprintln(o.stdout, "Cancelled. No chat was changed.")
-		return nil
+	if !skipPrompt {
+		fmt.Fprintf(o.stderr, "Move these %d chats to the login %q? Retype %d to confirm (anything else cancels): ", len(movable), on, len(movable))
+		var answer string
+		_, _ = fmt.Fscanln(o.stdin, &answer)
+		if answer != strconv.Itoa(len(movable)) {
+			fmt.Fprintln(o.stdout, "Cancelled. No chat was changed.")
+			return nil
+		}
 	}
 	failed, incomplete := 0, 0
 	for _, s := range movable {
@@ -673,6 +702,19 @@ func providerHostAlive(provider, host string) bool {
 	if host == "" {
 		return false
 	}
+	if strings.HasPrefix(host, codexDesktopHostPrefix) {
+		// A key derived from the desktop's own connection: alive while its socket answers.
+		remote, err := codexDesktopSocket()
+		if err != nil {
+			return true
+		}
+		conn, err := net.DialTimeout("unix", strings.TrimPrefix(remote, "desktop+unix://"), time.Second)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "ps", "-axo", "pid=", "-o", providerProcessField(provider), "-o", "lstart=").Output()
@@ -766,7 +808,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		}
 		// mode=ro prevents this observer creating or mutating the desktop catalog.
 		db, e := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(codexDir, "state_5.sqlite"))+"?mode=ro")
-		if e == nil {
+		if e == nil && !o.attachedOnly {
 			rows, e := db.QueryContext(ctx, "SELECT id,cwd FROM threads WHERE archived=0 ORDER BY updated_at DESC")
 			if e == nil {
 				for rows.Next() {
@@ -784,6 +826,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		conn, call, e := openCodexDesktop(probeCtx, remote)
 		if e == nil {
 			defer conn.Close()
+			failures := 0
 			ids := make([]string, 0, len(candidates))
 			for id := range candidates {
 				ids = append(ids, id)
@@ -795,9 +838,16 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 				}
 				reply, e := call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": id}, 1, "")
 				if e != nil {
-					fmt.Fprintln(o.stderr, "Desktop discovery did not complete. Open the intended chat and type /agentworks attach if it is missing.")
-					break
+					// One thread failing is not the end of discovery; a dead desktop
+					// connection fails every probe, so stop after a few in a row.
+					failures++
+					if failures >= 5 || probeCtx.Err() != nil {
+						fmt.Fprintln(o.stderr, "Desktop discovery did not complete. Open the intended chat and type /agentworks attach if it is missing.")
+						break
+					}
+					continue
 				}
+				failures = 0
 				var owner string
 				var support struct {
 					Untrusted bool `json:"supportsUntrustedAppInput"`
