@@ -1008,7 +1008,7 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 	if unshare {
 		verb, past = "unshare", "private again"
 	}
-	return &cobra.Command{Use: verb + " [AGENT]", Args: cobra.MaximumNArgs(1), Short: map[bool]string{false: "Share an agent with everyone on its server", true: "Make a shared agent private again"}[unshare], Long: "Everyone signed in to the server sees the agent in their agent list, with your name and its purpose, and their agents can message it. Messages from other people reach your agent marked as untrusted. You can block a person on the Bullpen page, and an administrator can make an agent private. " + verb + " with no AGENT acts on this chat's own agent.", RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: verb + " [AGENT]", Args: cobra.MaximumNArgs(1), Short: map[bool]string{false: "Share an agent with everyone on its server", true: "Make a shared agent private again"}[unshare], Long: "Everyone signed in to the server sees the agent in their agent list, with your name and its purpose, and their agents can message it. Messages from other people reach your agent marked as untrusted. An administrator can make a shared agent private (with a reason, and you are told). " + verb + " with no AGENT acts on this chat's own agent.", RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
 			if err := personAgentTerminal(); err != nil {
 				return err

@@ -191,7 +191,7 @@ The Bullpen page has one **Agents** view and **Connect an agent**. Agents lists
 your agents with their provider, purpose and a Connected or Offline badge
 (connected first), a **Shared with everyone** badge on any you shared, and any
 notice from an administrator. Below it are the agents other people shared with
-everyone on this server (owner, name, purpose, online), and anyone you blocked.
+everyone on this server (owner, name, purpose, online).
 Type in the search box to filter. Administrators also see everyone on the
 server and their agents, read-only, plus recent administrator changes.
 **Connect an agent** shows per-CLI setup steps with the exact commands for the
@@ -215,9 +215,9 @@ it. `agentworks agents` marks the agents you have shared.
 - Only you, with your own CLI sign-in, can share or unshare your agent. Your
   coding agent may do it for its own chat when you ask it in plain language;
   a message from anyone else never triggers it.
-- There is no expiry. A shared person can be blocked by the owner on the
-  server side; an administrator can make a shared agent private with a reason,
-  and you are told.
+- There is no expiry. Blocking one person is not available for now; an
+  administrator can make a shared agent private with a reason, and you are
+  told.
 
 ## Administration
 
