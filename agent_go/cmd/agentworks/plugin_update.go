@@ -104,11 +104,17 @@ func migrateMarketplace(ctx context.Context, provider string) bool {
 		defer cancel()
 		return exec.CommandContext(step, provider, args...).Run() == nil
 	}
+	// The plugin's scope and state are recorded before anything is removed, so the
+	// reinstall and the rollback restore the same scope and report a lost enablement.
+	before := pluginListBlock(ctx, provider)
 	var remove, add, restore, reinstall []string
 	switch provider {
 	case "claude":
 		remove, add, restore = []string{"plugin", "marketplace", "remove", "agentworks"}, []string{"plugin", "marketplace", "add", pluginsRepo}, []string{"plugin", "marketplace", "add", oldPluginsRepo}
 		reinstall = []string{"plugin", "install", "agentworks@agentworks"}
+		if scope := pluginListScope(before); scope != "" {
+			reinstall = append(reinstall, "--scope", scope)
+		}
 	case "codex":
 		remove, add, restore = []string{"plugin", "marketplace", "remove", "agentworks"}, []string{"plugin", "marketplace", "add", pluginsRepo}, []string{"plugin", "marketplace", "add", oldPluginsRepo}
 		reinstall = []string{"plugin", "add", "agentworks-codex@agentworks"}
@@ -130,12 +136,71 @@ func migrateMarketplace(ctx context.Context, provider string) bool {
 	if reinstall != nil && !run(reinstall...) {
 		return false
 	}
+	after := pluginListBlock(ctx, provider)
+	if before != "" && !strings.Contains(strings.ToLower(before), "disabled") && (after == "" || strings.Contains(strings.ToLower(after), "disabled")) {
+		fmt.Fprintf(os.Stderr, "The %s plugin is installed but not enabled after the switch. Run: %s\n", provider, pluginEnableStep(provider))
+	}
 	return true
+}
+
+// pluginListBlock returns the part of "<provider> plugin list" that is about the
+// AgentWorks plugin (empty when the provider has no such listing or no entry).
+func pluginListBlock(ctx context.Context, provider string) string {
+	args := []string{"plugin", "list"}
+	if provider == "muse" {
+		args = []string{"plugins", "list"}
+	}
+	step, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(step, provider, args...).Output()
+	if err != nil {
+		return ""
+	}
+	var block []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "agentworks") {
+			block = append(block, line)
+		}
+	}
+	text := strings.Join(block, "\n")
+	if provider == "claude" {
+		// Claude prints the version, scope and status on the lines after the name.
+		lines := strings.Split(string(out), "\n")
+		for i, line := range lines {
+			if strings.Contains(line, "agentworks@agentworks") {
+				text = strings.Join(lines[i:min(i+4, len(lines))], "\n")
+				break
+			}
+		}
+	}
+	return text
+}
+
+func pluginListScope(block string) string {
+	for _, line := range strings.Split(block, "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "Scope:"); ok {
+			scope := strings.TrimSpace(rest)
+			if scope == "user" || scope == "project" || scope == "local" {
+				return scope
+			}
+		}
+	}
+	return ""
+}
+
+func pluginEnableStep(provider string) string {
+	switch provider {
+	case "claude":
+		return "claude plugin enable agentworks@agentworks, then reload Claude Code"
+	case "codex":
+		return "codex plugin add agentworks-codex@agentworks, then reload Codex"
+	}
+	return "muse plugins approve agentworks-muse, then restart Muse"
 }
 
 // updateInstalledPlugins runs the safe refresh commands and prints one plain
 // line per provider that still needs a step from the person.
-func updateInstalledPlugins(ctx context.Context, o *options) {
+func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return
@@ -151,7 +216,9 @@ func updateInstalledPlugins(ctx context.Context, o *options) {
 	})
 	for _, update := range installedPluginUpdates(home, onPath, read) {
 		if old[update.Provider] {
-			if migrateMarketplace(ctx, update.Provider) {
+			if !switchSource {
+				fmt.Fprintf(o.stderr, "Your %s plugin still updates from the large repository. Run agentworks update --switch-plugin-source to move it (about a minute; reload the app afterwards).\n", update.Provider)
+			} else if migrateMarketplace(ctx, update.Provider) {
 				fmt.Fprintf(o.stderr, "Switched the %s plugin source to the small plugins repository (%s).\n", update.Provider, pluginsRepo)
 			} else {
 				fmt.Fprintf(o.stderr, "Could not switch the %s plugin source to %s; it keeps using the full repository for now.\n", update.Provider, pluginsRepo)
