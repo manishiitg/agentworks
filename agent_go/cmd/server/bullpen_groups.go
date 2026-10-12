@@ -226,7 +226,13 @@ func (s agentMessageStore) groupsView(viewerID string, withMembers bool) []map[s
 				}
 			}
 		}
-		row := map[string]interface{}{"name": g.Name, "purpose": g.Purpose, "member_count": len(g.Members), "created_by": label(g.CreatorUserID), "joined_with": joined}
+		registered := 0
+		for _, m := range g.Members {
+			if s.registeredAgent(m.AgentID, m.UserID) {
+				registered++
+			}
+		}
+		row := map[string]interface{}{"name": g.Name, "purpose": g.Purpose, "member_count": registered, "created_by": label(g.CreatorUserID), "joined_with": joined}
 		if withMembers {
 			sort.Slice(members, func(i, j int) bool { return members[i]["agent_name"].(string) < members[j]["agent_name"].(string) })
 			row["members"] = members
@@ -382,6 +388,31 @@ func (api *StreamingAPI) groupLeave(ctx context.Context, ownerID, agentName, gro
 	return map[string]interface{}{"agent_name": me.Name, "state": "left", "left": left}, 0, "", ""
 }
 
+// pruneGhostMembers drops members whose agent is no longer registered, and groups
+// left with no members. It reports whether anything changed.
+func (s *agentMessageStore) pruneGhostMembers() bool {
+	changed := false
+	kept := s.Groups[:0]
+	for _, g := range s.Groups {
+		members := g.Members[:0]
+		for _, m := range g.Members {
+			if s.registeredAgent(m.AgentID, m.UserID) {
+				members = append(members, m)
+			} else {
+				changed = true
+			}
+		}
+		g.Members = members
+		if len(g.Members) > 0 {
+			kept = append(kept, g)
+		} else {
+			changed = true
+		}
+	}
+	s.Groups = kept
+	return changed
+}
+
 // migrateEveryoneShares moves the earlier share-with-everyone records into one
 // default group, so nothing that was shared stops being reachable.
 func (api *StreamingAPI) migrateEveryoneShares(ctx context.Context) {
@@ -392,10 +423,18 @@ func (api *StreamingAPI) migrateEveryoneShares(ctx context.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	changed := false
+	changed := s.pruneGhostMembers()
 	for i := range s.Shares {
 		sh := &s.Shares[i]
 		if !sh.serverScope() || !sh.live(now) {
+			continue
+		}
+		if !s.registeredAgent(sh.AgentID, sh.OwnerUserID) {
+			// An orphaned grant (its agent is gone) must not become a ghost member.
+			sh.RevokedAt = now
+			sh.RevocationVersion++
+			s.auditShare("share_migrated", sh.OwnerUserID, sh.OwnerUserID, sh.SubjectUserID, sh.ID, sh.AgentID)
+			changed = true
 			continue
 		}
 		index := s.groupIndex(defaultGroupName)

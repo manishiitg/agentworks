@@ -180,7 +180,17 @@ func TestShareIntoAGroupBetweenAccounts(t *testing.T) {
 	}
 	_ = saveAgentMessageStore(ctx, s)
 	agentMessageMu.Unlock()
+	// An orphaned old grant (its agent is gone) and a ghost member are dropped, not shown.
+	agentMessageMu.Lock()
+	s, _ = readAgentMessageStore(ctx)
+	s.Shares = append(s.Shares, agentShare{ID: "share-orphan", OwnerUserID: "bob", AgentID: "agent-gone", SubjectUserID: shareScopeServer, Capability: shareCapabilityChat, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(serverShareLifetime), RevocationVersion: 1})
+	s.Groups = append(s.Groups, agentGroup{ID: "group-ghost", Name: "ghosts", Purpose: "left behind", Members: []groupMember{{AgentID: "agent-gone", UserID: "bob"}}})
+	_ = saveAgentMessageStore(ctx, s)
+	agentMessageMu.Unlock()
 	env.api.migrateEveryoneShares(ctx)
+	if ghosts, e := carol.ShareAgent(ctx, "groups", "", "", ""); e != nil || strings.Contains(string(ghosts), `"ghosts"`) || strings.Contains(string(ghosts), "agent-gone") {
+		t.Fatalf("a group of ghost members must be gone: %s %v", ghosts, e)
+	}
 	general, err := carol.ShareAgent(ctx, "group", "", defaultGroupName, "")
 	if err != nil || !strings.Contains(string(general), `"bob/scout"`) {
 		t.Fatalf("an old everyone-share must become a member of the default group: %s %v", general, err)
