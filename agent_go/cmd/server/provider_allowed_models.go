@@ -165,7 +165,16 @@ func accountAllowedModels(ctx context.Context, provider, connectionID string) ([
 		if err != nil {
 			return nil, adminManagedProviderAccountName, err
 		}
-		return effectiveAllowedModels(settings.AllowedModels[provider], personAccountAllowedModels(modelLimitPerson(ctx), provider)), adminManagedProviderAccountName, nil
+		allowed := effectiveAllowedModels(settings.AllowedModels[provider], personAccountAllowedModels(modelLimitPerson(ctx), provider))
+		if len(allowed) == 0 && provider == "pi-cli" {
+			// A deployment that supplies its own Pi models has a key for those only (PI_CLI_AGENT_TEMPLATE_DIR): they are the
+			// account's list until an administrator sets one. The chat's model is then settled here, before its runtime is
+			// bound, so the running CLI, the saved request and live input (steering) all name the same model.
+			for _, model := range deploymentPiModels(false) {
+				allowed = append(allowed, model.ModelID)
+			}
+		}
+		return allowed, adminManagedProviderAccountName, nil
 	}
 	providerConnectionsMu.Lock()
 	records, err := loadProviderConnections(ctx)
