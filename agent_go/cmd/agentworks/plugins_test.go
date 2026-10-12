@@ -60,7 +60,7 @@ func TestAgentPluginUnattachedHookAndPersonCommand(t *testing.T) {
 	if code := run(context.Background(), []string{"plugin", "hook", "codex"}, strings.NewReader(input), &stdout, &stderr, func(string) string { return "" }); code != 0 {
 		t.Fatal(stderr.String())
 	}
-	if json.Unmarshal(stdout.Bytes(), &out) != nil || out["decision"] != "block" || !strings.Contains(out["reason"].(string), "Cannot identify this exact provider process") {
+	if json.Unmarshal(stdout.Bytes(), &out) != nil || out["decision"] != "block" || !strings.Contains(out["reason"].(string), "AgentWorks cannot tell which chat this is") {
 		t.Fatal("bare attach did not require a verified provider process", stdout.String())
 	}
 	if _, err := os.Stat(filepath.Join(cache, "agentworks", "bridge")); !os.IsNotExist(err) {
