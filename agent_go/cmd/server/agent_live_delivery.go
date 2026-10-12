@@ -152,7 +152,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				if m.ID != externalArg(args, "message_id") || dest.NamedAgentID != a.ID || dest.UserID != claims.UserID {
 					continue
 				}
-				if m.LiveAttachment != a.Attachment.ID || !s.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
+				if m.LiveAttachment != a.Attachment.ID || !s.shareSenderAllowed(*c, m.From, claims.UserID, time.Now().UTC()) {
 					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
 					return
 				}
