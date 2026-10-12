@@ -1,5 +1,15 @@
 # Decisions and open issues
 
+## 2026-10-13 — Other callers' function-call data is private to the owner (PLAT-856)
+
+`triggers/deliveries/` (the inputs and results of other callers' function calls, including other guests') and
+`schedule-runs.json` are private areas for a guest's free-text ask and for `read_crew_file`, `list_crew_files` and
+`search_crew_files` when the caller is not the owner; a caller still sees their own calls through the
+caller-filtered run tools. Today "owner" is `OwnedByCaller` (the Crew is the caller's own project); there is no
+co-owner role yet, so when co-owners land (856-59 step 2b) the private-area check must include them. A guest's ask
+also gets `list_functions` (read-only: knowing what a Crew can do is the point of an ask) and no longer gets
+`list_work_folders`, which lists account folders outside the Crew. Row 856-67.
+
 ## 2026-10-13 — Loading a product view preserves its browser history entry (PLAT-746)
 
 Product switches and explicit toolbar choices add history entries. Lazy mounting
