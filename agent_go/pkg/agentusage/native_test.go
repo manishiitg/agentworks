@@ -24,6 +24,12 @@ func TestClaudeNativeUsage(t *testing.T) {
 	if e != nil || n.Input != 15 || n.Output != 4 || *n.Calls != 1 || ledger.Offset <= position {
 		t.Fatal("numeric-only bounded catch-up duplicated or lost an updated call")
 	}
+	oversized := strings.Repeat("x", MaxLineBytes+20) + "\n" + `{"type":"assistant","message":{"usage":{"input_tokens":999}}}` + "\n" + first[2] + "\n"
+	skipped := &Ledger{}
+	n, e = ClaudeChunk(strings.NewReader(oversized), "session", skipped)
+	if e != nil || n.SkippedRecords != 2 || n.Input != 15 || skipped.Offset != int64(len(oversized)) {
+		t.Fatal("skipped record stalled numeric catch-up")
+	}
 	if _, e = Claude(strings.NewReader(raw), "other"); e != ErrIdentity {
 		t.Fatal("foreign session accepted")
 	}

@@ -43,7 +43,8 @@ func (c Counters) Difference(previous Counters) (Counters, bool) {
 }
 
 type Native struct {
-	BytesRead int64 `json:"-"`
+	SkippedRecords int64 `json:"skipped_records,omitempty"`
+	BytesRead      int64 `json:"-"`
 	Counters
 	Model  string `json:"model,omitempty"`
 	Source string `json:"source"`
@@ -119,6 +120,7 @@ func claudeLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, f
 			} `json:"message"`
 		}
 		if json.Unmarshal(line, &e) != nil {
+			l.Skipped++
 			return nil
 		}
 		if e.Session != "" && e.Session != session {
@@ -138,7 +140,8 @@ func claudeLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, f
 			id = e.Request
 		}
 		if id == "" {
-			return ErrUnavailable
+			l.Skipped++
+			return nil
 		}
 		c, ok := e.Message.Usage.normalized()
 		if !ok {
@@ -158,7 +161,7 @@ func claudeLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, f
 	if len(calls) == 0 {
 		return Native{}, ErrUnavailable
 	}
-	out := Native{Source: "Claude transcript usage", Model: model}
+	out := Native{Source: "Claude transcript usage", Model: model, SkippedRecords: l.Skipped}
 	for _, c := range calls {
 		out.Input += c.Input
 		out.Output += c.Output
@@ -280,6 +283,7 @@ func museLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, fun
 			} `json:"payload"`
 		}
 		if json.Unmarshal(line, &e) != nil {
+			l.Skipped++
 			return nil
 		}
 		if e.Stream.Kind == "session" && e.Stream.ID != "" && e.Stream.ID != session {
@@ -291,7 +295,8 @@ func museLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, fun
 			return nil
 		}
 		if e.ID == "" {
-			return ErrUnavailable
+			l.Skipped++
+			return nil
 		}
 		if _, ok := seen[numericID(e.ID)]; ok {
 			return nil
@@ -324,6 +329,7 @@ func museLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, fun
 		return Native{}, ErrUnavailable
 	}
 	out.Source = "Muse provider attribution"
+	out.SkippedRecords = l.Skipped
 	n := int64(len(seen))
 	out.Calls = &n
 	if len(runs) > 0 {

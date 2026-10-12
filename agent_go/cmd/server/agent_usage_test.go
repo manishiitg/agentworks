@@ -129,6 +129,9 @@ func TestAgentUsageAuthenticatedLifecycle(t *testing.T) {
 	x.At = time.Now()
 	report("sample", 409)
 	call("DELETE", "/api/bullpen/usage", owner, nil, 200)
+	if b := call("GET", "/api/bullpen/agents", owner, nil, 200); strings.Contains(string(b), "Codex session total") {
+		t.Fatal("delete retained current totals/model")
+	}
 	x.Generation = uuid.NewString()
 	x.ID = uuid.NewString()
 	x.Sequence = 1

@@ -14,6 +14,7 @@ export function AgentUsage({ usage, unavailable, provider }: { usage?: BullpenUs
     {usage.reporting && usage.available ? <>
       <p>This session: <strong>{exact.format(total(usage.session))}</strong> tokens · {usage.session.model || 'Model not reported'}</p>
       <p className="text-muted-foreground">Input {exact.format(usage.session.input_tokens)} · output {exact.format(usage.session.output_tokens)} · cached {exact.format(usage.session.cached_tokens)} (part of input)</p>
+      {Boolean(usage.session.skipped_records) && <p className="text-muted-foreground">Some records skipped ({exact.format(usage.session.skipped_records!)}). Totals include identifiable recorded usage only.</p>}
       <p className="text-muted-foreground">From {usage.session.source}. {stale ? 'Reading is stale. ' : ''}Last read {new Date(usage.observed_at).toLocaleString()}.</p>
     </> : <p className="text-muted-foreground">{usage.reporting ? usage.reason === 'cap_reached' ? 'Native read cap reached. Check agentworks usage status.' : 'Native usage unavailable; no zero estimate is substituted.' : 'Reporting is off. Saved hourly history remains.'}</p>}
   </div>

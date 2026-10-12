@@ -122,6 +122,10 @@ func (api *StreamingAPI) handleAgentUsageReport(w http.ResponseWriter, r *http.R
 		externalError(w, 400, "invalid_arguments", "Invalid reading identity.")
 		return
 	}
+	if x.Native.SkippedRecords < 0 || x.Native.SkippedRecords > agentusage.MaxTokens {
+		externalError(w, 400, "invalid_arguments", "Invalid native coverage.")
+		return
+	}
 	if req.Available && (x.Native.Turns != nil && (*x.Native.Turns < 0 || *x.Native.Turns > agentusage.MaxTokens) || x.Native.Calls != nil && (*x.Native.Calls < 0 || *x.Native.Calls > agentusage.MaxTokens)) {
 		externalError(w, 400, "invalid_arguments", "Invalid native counts.")
 		return
@@ -243,7 +247,7 @@ func (api *StreamingAPI) handleAgentUsageReport(w http.ResponseWriter, r *http.R
 			return
 		}
 		if old.Generation != x.Generation || old.AttachmentID != x.AttachmentID {
-			if !x.Baseline {
+			if !x.Baseline && old.Generation != "" {
 				externalError(w, 409, "usage_baseline_required", "Establish a new native baseline.")
 				return
 			}
@@ -367,6 +371,9 @@ func (api *StreamingAPI) handleBullpenUsage(w http.ResponseWriter, r *http.Reque
 		_, e = tx.ExecContext(r.Context(), "INSERT INTO agent_usage_deleted VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET at=excluded.at", claims.UserID, now.UnixNano())
 		if e == nil {
 			_, e = tx.ExecContext(r.Context(), "DELETE FROM agent_usage_readings WHERE owner=?", claims.UserID)
+		}
+		if e == nil {
+			_, e = tx.ExecContext(r.Context(), "DELETE FROM agent_usage_current WHERE owner=?", claims.UserID)
 		}
 		if e != nil || tx.Commit() != nil {
 			externalError(w, 503, "usage_unavailable", "History deletion failed; try again.")

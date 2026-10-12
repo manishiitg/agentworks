@@ -61,6 +61,9 @@ func usageCommand(o *options) *cobra.Command {
 				state = "on"
 			}
 			fmt.Fprintf(o.stdout, "Native usage: %s. %d tracked sessions; %d pending remote clears.\n", state, s.Sessions, s.PendingClear)
+			if s.SkippedRecords > 0 {
+				fmt.Fprintf(o.stdout, "Some records skipped: %d; totals include identifiable native usage only.\n", s.SkippedRecords)
+			}
 			if len(s.Caps) > 0 {
 				fmt.Fprintf(o.stdout, "Caps reached: %s\n", strings.Join(s.Caps, ", "))
 			}

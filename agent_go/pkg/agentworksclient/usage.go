@@ -21,6 +21,7 @@ type UsageSettings struct {
 }
 
 type UsageStatus struct {
+	SkippedRecords int64 `json:"skipped_records"`
 	UsageSettings
 	Sessions     int       `json:"tracked_sessions"`
 	PendingClear int       `json:"pending_remote_clears"`
@@ -149,6 +150,7 @@ func LocalUsageStatus(root string) (UsageStatus, error) {
 	}
 	out := UsageStatus{UsageSettings: cfg, Caps: s.Caps}
 	for _, x := range s.Bindings {
+		out.SkippedRecords += x.Last.Native.SkippedRecords
 		if x.Clearing {
 			out.PendingClear++
 		} else {

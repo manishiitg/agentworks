@@ -2,22 +2,24 @@ package agentusage
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 )
 
 // Ledger retains only reported numbers, hashes of native deduplication IDs and
 // a byte cursor. It is local-only and is erased when reporting turns off.
 type Ledger struct {
-	Offset int64               `json:"offset"`
-	Calls  map[string]Counters `json:"calls,omitempty"`
-	Users  map[string]struct{} `json:"users,omitempty"`
-	Seen   map[string]struct{} `json:"seen,omitempty"`
-	Runs   map[string]struct{} `json:"runs,omitempty"`
-	Total  Counters            `json:"total"`
-	Model  string              `json:"model,omitempty"`
+	Skipped    int64               `json:"skipped"`
+	Discarding bool                `json:"discarding,omitempty"`
+	Offset     int64               `json:"offset"`
+	Calls      map[string]Counters `json:"calls,omitempty"`
+	Users      map[string]struct{} `json:"users,omitempty"`
+	Seen       map[string]struct{} `json:"seen,omitempty"`
+	Runs       map[string]struct{} `json:"runs,omitempty"`
+	Total      Counters            `json:"total"`
+	Model      string              `json:"model,omitempty"`
 }
 
 func (l *Ledger) initialize() {
@@ -40,25 +42,39 @@ func numericID(id string) string { h := sha256.Sum256([]byte(id)); return hex.En
 // Consume complete JSONL rows only. A bounded read ending inside a row leaves
 // the cursor before it so the next hourly pass rereads that row exactly once.
 func (l *Ledger) walk(r io.Reader, visit func([]byte) error) error {
-	s := bufio.NewScanner(r)
-	s.Buffer(make([]byte, 65536), MaxLineBytes)
-	s.Split(func(data []byte, atEOF bool) (int, []byte, error) {
-		if i := bytes.IndexByte(data, '\n'); i >= 0 {
-			return i + 1, data[:i], nil
+	br := bufio.NewReaderSize(r, 65536)
+	var line []byte
+	for {
+		fragment, err := br.ReadSlice('\n')
+		complete := len(fragment) > 0 && fragment[len(fragment)-1] == '\n'
+		if l.Discarding {
+			l.Offset += int64(len(fragment))
+			if complete {
+				l.Discarding = false
+			}
+		} else if len(line)+len(fragment) > MaxLineBytes {
+			l.Skipped++
+			l.Offset += int64(len(line) + len(fragment))
+			line = nil
+			l.Discarding = !complete
+		} else {
+			line = append(line, fragment...)
+			if complete {
+				if e := visit(line[:len(line)-1]); e != nil {
+					return e
+				}
+				l.Offset += int64(len(line))
+				line = nil
+			}
 		}
-		if atEOF {
-			return 0, nil, nil
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
 		}
-		return 0, nil, nil
-	})
-	for s.Scan() {
-		if err := visit(s.Bytes()); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
 			return err
 		}
-		l.Offset += int64(len(s.Bytes()) + 1)
 	}
-	if s.Err() != nil {
-		return ErrLimit
-	}
-	return nil
 }

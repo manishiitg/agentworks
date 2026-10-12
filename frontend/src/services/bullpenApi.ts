@@ -71,7 +71,7 @@ export interface BullpenAdminAuditRow {
 
 
 export interface UsageCounters { input_tokens: number; output_tokens: number; cached_tokens: number }
-export interface UsageReading { reading_id: string; agent_id: string; observed_at: string; window_start: string; session: UsageCounters & { model?: string; source: string; turn_count?: number; model_call_count?: number }; delta: UsageCounters; baseline: boolean; discontinuity?: boolean }
+export interface UsageReading { reading_id: string; agent_id: string; observed_at: string; window_start: string; session: UsageCounters & { model?: string; source: string; skipped_records?: number; turn_count?: number; model_call_count?: number }; delta: UsageCounters; baseline: boolean; discontinuity?: boolean }
 export interface BullpenUsage extends UsageReading { reporting: boolean; available: boolean; reason?: string; today: UsageCounters; today_timezone: string }
 export interface UsageHistory { readings: UsageReading[]; before: number; has_more: boolean; retention_days: number; row_cap: number }
 
