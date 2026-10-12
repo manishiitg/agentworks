@@ -257,6 +257,8 @@ func attachPluginCommand(o *options) *cobra.Command {
 		// Explicit technical overrides remain hidden for adapter diagnostics.
 		var chosen liveAgentSession
 		var selected []liveAgentSession
+		// A move only concerns chats that already have a lease; do not probe every thread.
+		o.attachedOnly = all
 		if provider != "" && session != "" {
 			chosen = liveAgentSession{provider: provider, session: session, remote: remote}
 			if pid > 1 {
@@ -706,7 +708,7 @@ func providerHostAlive(provider, host string) bool {
 		// A key derived from the desktop's own connection: alive while its socket answers.
 		remote, err := codexDesktopSocket()
 		if err != nil {
-			return true
+			return false
 		}
 		conn, err := net.DialTimeout("unix", strings.TrimPrefix(remote, "desktop+unix://"), time.Second)
 		if err != nil {
@@ -796,30 +798,27 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		}
 	}
 	if desktopHost != "" && validateCodexRemote(remote) == nil {
-		candidates := map[string]string{}
-		for _, s := range local.Sessions {
-			if s.Provider == "codex" {
-				candidates[s.SessionID] = ""
-			}
-		}
+		candidates := codexProbeCandidates(local.Sessions)
 		codexDir := o.getenv("CODEX_HOME")
 		if codexDir == "" {
 			codexDir = filepath.Join(home, ".codex")
 		}
 		// mode=ro prevents this observer creating or mutating the desktop catalog.
 		db, e := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(codexDir, "state_5.sqlite"))+"?mode=ro")
-		if e == nil && !o.attachedOnly {
+		if e == nil {
+			catalog := map[string]string{}
 			rows, e := db.QueryContext(ctx, "SELECT id,cwd FROM threads WHERE archived=0 ORDER BY updated_at DESC")
 			if e == nil {
 				for rows.Next() {
 					var id, cwd string
 					if rows.Scan(&id, &cwd) == nil {
-						candidates[id] = cwd
+						catalog[id] = cwd
 					}
 				}
 				rows.Close()
 			}
 			db.Close()
+			mergeCodexCatalog(candidates, catalog, o.attachedOnly)
 		}
 		probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -1047,4 +1046,27 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 		_, err = fmt.Fprintf(o.stdout, "agent:%s is %s.\n", out.Attachment.AgentName, past)
 		return err
 	}}
+}
+
+// codexProbeCandidates are the Codex threads the bridge already has a lease for.
+func codexProbeCandidates(sessions []agentworksclient.AgentAttachment) map[string]string {
+	candidates := map[string]string{}
+	for _, s := range sessions {
+		if s.Provider == "codex" {
+			candidates[s.SessionID] = ""
+		}
+	}
+	return candidates
+}
+
+// mergeCodexCatalog adds the desktop's thread catalog to the candidates. A move
+// (attachedOnly) probes only threads that already have a lease, so the catalog
+// then only supplies their working directories instead of adding thousands of
+// threads to probe.
+func mergeCodexCatalog(candidates, catalog map[string]string, attachedOnly bool) {
+	for id, cwd := range catalog {
+		if _, leased := candidates[id]; leased || !attachedOnly {
+			candidates[id] = cwd
+		}
+	}
 }

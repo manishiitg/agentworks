@@ -50,7 +50,7 @@ The same GitHub repository serves each provider's catalog. Muse reads
 different provider commands. Claude Code reads `.claude-plugin/marketplace.json`
 and uses `agentworks@agentworks`. Existing Codex metadata remains unchanged.
 
-To update an older plugin to **0.1.6**, use the refresh/remove/reinstall commands
+To update an older plugin to **0.1.7**, use the refresh/remove/reinstall commands
 below, then inspect its version, approve it and restart Muse before attaching.
 
 Muse 1.4.4 keeps an installed marketplace plugin bound to its original snapshot.
@@ -106,7 +106,7 @@ Muse shows several AgentWorks entries in its slash menu:
 
 | Entry | Who uses it | What it does |
 |---|---|---|
-| `/agentworks-muse:agentworks` | The person | The only entry the person needs: `attach [NAME]`, `detach`, `agents` (see above). |
+| `/agentworks-muse:agentworks` | The person | The only entry the person needs: `attach [NAME] [--on LOGIN]`, `detach`, `agents`, `share`, `unshare` (see above). |
 | `/agentworks-muse:messaging` | The Muse agent | Skill for reading and replying to AgentWorks messages; the person does not run it. |
 | `/agentworks-muse:monitor` | The Muse agent | Skill for starting the idle wake-up Monitor; the person does not run it. |
 | `/agentworks` (user skill) | — | The general AgentWorks tools guide loaded from Claude (`~/.claude/skills/agentworks`); it is not the attach command, and typing `/agentworks attach` there does nothing. |

@@ -11,6 +11,12 @@ docs no longer forbid an agent from acting on another agent's request to move; t
 request came from. The earlier guards (saved logins only, nothing triggered by a cross-person message) are
 dropped.
 
+Limits to know: the Codex desktop fallback trusts matching CODEX_THREAD_ID and CODEX_SESSION_ID plus the
+desktop app-server\'s answer for that thread, so another process of the same operating-system user whose ps
+walk fails could claim a live thread by setting those variables (the same-user limit already accepted for host
+hints); and from inside that sandbox, `--all` and `--provider` moves find no Codex chats because finding the
+desktop owner still needs ps. Its liveness check is only that the desktop socket answers.
+
 Also in this change: Codex desktop own-session attach no longer needs ps (it verifies the exact thread with
 the desktop app-server when ps is blocked, with a process key derived from that connection), and `--all`
 discovery probes only chats that already have a lease and skips per-thread errors (861-121).
