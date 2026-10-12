@@ -111,10 +111,12 @@ func relayRecordedRuns(ctx context.Context, claims *UserClaims, workspace string
 			return nil, http.StatusNotFound, "Relay version not found"
 		}
 	}
+	seeAll := relayRunSeesAll(claims, manifest)
+	scope := map[bool]string{true: "all", false: "own"}[seeAll]
 	root, err := webhookWorkspaceRoot(rootWorkspace)
 	if errors.Is(err, fs.ErrNotExist) {
 		// Nothing has run here yet: no recorded runs, not an error.
-		return map[string]any{"version": version, "runs": []map[string]any{}, "scope": map[bool]string{true: "all", false: "own"}[relayRunSeesAll(claims, manifest)]}, 0, ""
+		return map[string]any{"version": version, "runs": []map[string]any{}, "scope": scope}, 0, ""
 	}
 	if err != nil {
 		return nil, http.StatusNotFound, "Relay workspace unavailable"
@@ -129,15 +131,18 @@ func relayRecordedRuns(ctx context.Context, claims *UserClaims, workspace string
 	sort.Slice(entries, func(i, j int) bool {
 		return reportRelayRunNumber(entries[i].Name()) > reportRelayRunNumber(entries[j].Name())
 	})
-	seeAll := relayRunSeesAll(claims, manifest)
 	viewer := ""
 	if claims != nil {
 		viewer = claims.UserID
 	}
 	runs := []map[string]any{}
-	scanned := 0
+	scanned, truncated := 0, false
 	for _, entry := range entries {
-		if len(runs) == limit || ctx.Err() != nil || !seeAll && scanned >= relayRunScanLimit {
+		if len(runs) == limit || ctx.Err() != nil {
+			break
+		}
+		if !seeAll && scanned >= relayRunScanLimit {
+			truncated = true // older runs were not examined
 			break
 		}
 		if !entry.IsDir() || reportRelayRunNumber(entry.Name()) == 0 {
@@ -189,7 +194,11 @@ func relayRecordedRuns(ctx context.Context, claims *UserClaims, workspace string
 		}
 		runs = append(runs, map[string]any{"run": entry.Name(), "run_id": trace.WorkflowID, "version": version, "status": trace.Status, "attempt": trace.Attempt, "started_at": started, "duration_s": duration, "steps": steps, "result": result})
 	}
-	return map[string]any{"version": version, "runs": runs, "scope": map[bool]string{true: "all", false: "own"}[seeAll]}, 0, ""
+	out := map[string]any{"version": version, "runs": runs, "scope": scope}
+	if truncated {
+		out["truncated"] = true
+	}
+	return out, 0, ""
 }
 
 func reportRelayRunNumber(name string) int {

@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-12 — Relay readers see only their own recorded runs (PLAT-847)
+
+Relay owners and editors see every caller's recorded run. Every other reader sees only the runs
+they started; a run with no recorded caller is hidden from them. The rule applies to the
+dashboard run data and to the relay tool's list action (`list_relay_runs`), and matches
+`relay action=get_run`, which already returned only the caller's own run. A published dashboard
+shown to a reader therefore shows only that reader's runs, not everyone's results. A reader who
+has more than 500 recorded runs sees `truncated: true` and only the newest ones are examined.
+
+Why: run results can hold other people's inputs; the owner decided readers get their own.
+
+Ticket: PLAT-847, issues 847-1 and 847-4.
+
 ## 2026-10-12 — Step tests run directly; full manual runs offer Plan Drift (PLAT-825)
 
 Remove the automatic AI drift prerequisite from `execute_step`. When Plan Drift
