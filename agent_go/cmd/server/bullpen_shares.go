@@ -370,6 +370,12 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 				return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: groupShareID(g.ID), ShareVersion: 1}, nil
 			}
 		}
+		// Groups are open and their members are listed to everyone, so naming the
+		// groups this agent is in reveals nothing new and tells the sender how to
+		// reach it. An agent in no group stays a neutral denial.
+		if groups := s.groupNamesOf(a.ID, owner.ID); len(groups) > 0 && shareAccountActive(owner.ID) {
+			return triggerTarget{}, fmt.Errorf("You can message agent:%s/%s after one of your agents joins a group it is in: %s. Type /agentworks share %s in your chat.", ownerName, a.Name, strings.Join(groups, ", "), groups[0])
+		}
 	}
 	return triggerTarget{}, denied
 }

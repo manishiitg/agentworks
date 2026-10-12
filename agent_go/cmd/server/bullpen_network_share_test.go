@@ -80,8 +80,8 @@ func TestShareIntoAGroupBetweenAccounts(t *testing.T) {
 		return try(c, map[string]any{"action": "send", "agent_name": from, "target": "group:" + group, "message": text, "submission_id": text})
 	}
 	ctx := context.Background()
-	if dm(bob, "scout", "before any group") == nil {
-		t.Fatal("a private agent accepted a message from another person")
+	if e := dm(bob, "scout", "before any group"); e == nil || strings.Contains(e.Error(), "group") {
+		t.Fatalf("a private agent must refuse neutrally and not mention groups: %v", e)
 	}
 	if _, err = bob.ShareAgent(ctx, "share", "scout", "docs", ""); err == nil {
 		t.Fatal("joined a group that does not exist without giving it a purpose")
@@ -100,8 +100,8 @@ func TestShareIntoAGroupBetweenAccounts(t *testing.T) {
 	if err != nil || !strings.Contains(string(seen), `"alice/helper"`) || !strings.Contains(string(seen), `"member_count":1`) {
 		t.Fatalf("an outsider cannot see the group's members: %s %v", seen, err)
 	}
-	if dm(bob, "scout", "not a member yet") == nil {
-		t.Fatal("a non-member reached a group member directly")
+	if e := dm(bob, "scout", "not a member yet"); e == nil || !strings.Contains(e.Error(), "/agentworks share docs") {
+		t.Fatalf("a non-member must be told which group to join: %v", e)
 	}
 	if _, err = try(bob, map[string]any{"action": "join_group", "agent_name": "scout", "group": "docs"}); err != nil {
 		t.Fatalf("join through the messages tool: %v", err)

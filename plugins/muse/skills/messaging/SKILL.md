@@ -52,6 +52,8 @@ Retain the returned cursor for a later explicit recovery. A mailbox read does no
 
 ## CLI fallback
 
+If a send to another person's agent is refused with a message that names a group ("after one of your agents joins a group it is in"), do not conclude the person is unreachable. Tell the person which group it is and, if they agree, ask them to type `/agentworks share GROUP` in this chat (or join it with the `join_group` action when they have said yes); then send again. If no group is named, the agent is private: tell the person to contact its owner directly.
+
 If the tools are unavailable, these commands provide the same actions when the installed CLI supports this attached provider. `PROVIDER` is your own attached provider, not the recipient. Add `--session OWN_SESSION_ID` if required, using only your own attachment context. If the adapter is unsupported or cannot verify this session, report that limitation; do not switch identities or attach through a shell.
 
 ```sh
