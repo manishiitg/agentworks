@@ -109,12 +109,15 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	for _, tool := range allowed {
 		// The catalog omits run tools from tokens lacking runs:execute, so
 		// execute_step's presence proves this connection runs.
-		if tool.Name == "create_dashboard" || tool.Name == "write_file" || tool.Name == "execute_step" || tool.Name == knowledgebase.ToolUpdate || isExternalVaultTool(tool.Name) {
+		if tool.Name == "create_dashboard" || tool.Name == "write_file" || tool.Name == "execute_step" || tool.Name == knowledgebase.ToolUpdate || isExternalVaultTool(tool.Name) || tool.Name == serverProductManagementTool {
 			instructions = externalMCPInstructions
 			break
 		}
 	}
 	for _, tool := range allowed {
+		if tool.Name == serverProductManagementTool {
+			instructions += " Installed private server products: server_product action=tools discovers their management schemas; action=call invokes them with current admin authority and users:manage consent. Inference keys do not authorize management. "
+		}
 		if isExternalKnowledgebaseTool(tool.Name) {
 			instructions += " Brain stores files of any type (text in content, other files in content_base64) and has five tools with action parameters: brain_browse (folders/entries), brain_read (read/search), brain_update (create/update/delete/create_folder), brain_skills (company skills: list, get to install one by writing its files under your own skills folder, publish a SKILL.md package; scripts need folder Owner), and brain_access (inspect; writable unrestricted external connections may also list, grant/revoke, and manage service accounts and configure backup using remote_url, username and pat_secret (the name of a platform secret holding the token) subject to live Owner/admin authority). The catalog reflects this connection's current read/write actions. Updates/deletes use expected_version and a stable request_id; saves are immediately visible to permitted readers. Every save is a Git commit by the person who made it, and Brain pushes its commits to the configured backup remote automatically a few minutes after the last save; there is no separate backup step. External MCP access changes apply directly after permission checks; grants/revokes require a current expected_acl_version and stable request_id. App access-chat changes still require app confirmation."
 			break

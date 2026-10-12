@@ -20,6 +20,7 @@ import (
 // Configuration snapshots keep related records and policy tombstones in one
 // SQLite transaction. High-volume call audits remain separate.
 type durableState struct {
+	ExtensionState  map[string]ExtensionState `json:",omitempty"`
 	SecretResources map[string]SecretResource
 	SecretGrants    map[string]map[string]bool
 	Format          int
@@ -57,7 +58,13 @@ type sqlitePersistence struct {
 }
 
 func (s *MemoryStore) durableState() durableState {
-	return durableState{s.secretResources, s.secretGrants, 1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.platformRevoked, s.serverReadOnly, s.toolAccess}
+	return durableState{
+		ExtensionState: s.extensionState, SecretResources: s.secretResources, SecretGrants: s.secretGrants, Format: 1,
+		Workspaces: s.workspaces, Users: s.users, Groups: s.groups, Members: s.members, Connectors: s.connectors,
+		Bearers: s.connectorBearer, Tools: s.tools, ToolVersions: s.toolVersions, Grants: s.grants, GroupGrants: s.groupGrants,
+		GroupServers: s.groupServers, Drafts: s.packageDrafts, Live: s.packageLive, Governed: s.governedTools,
+		History: s.policyEvents, Keys: s.apiKeys, PlatformRevoked: s.platformRevoked, ServerReadOnly: s.serverReadOnly, ToolAccess: s.toolAccess,
+	}
 }
 func (s *MemoryStore) restore(data []byte) error {
 	var state durableState
@@ -82,6 +89,7 @@ func (s *MemoryStore) restore(data []byte) error {
 	if state.ToolAccess == nil {
 		state.ToolAccess = map[string]string{}
 	}
+	s.extensionState = state.ExtensionState
 	s.serverReadOnly, s.toolAccess = state.ServerReadOnly, state.ToolAccess
 	s.secretResources, s.secretGrants, s.platformRevoked = state.SecretResources, state.SecretGrants, state.PlatformRevoked
 	s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer = state.Workspaces, state.Users, state.Groups, state.Members, state.Connectors, state.Bearers

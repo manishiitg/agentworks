@@ -516,3 +516,20 @@ func TestLocalPresetsAreBoundedAndExplicitlyRevocable(t *testing.T) {
 		t.Fatal("revoke did not free preset capacity", err)
 	}
 }
+
+func TestGatewayTokenDoesNotRequireWorkflowAttachment(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "tokens.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	now := time.Now()
+	_, raw, err := s.Issue(context.Background(), Token{Name: "Gateway", UserID: "alice", Scopes: []string{"llm:use"}, ExpiresAt: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := s.Authenticate(context.Background(), raw, now)
+	if err != nil || !token.Allows("llm:use") || token.Allows("users:write") {
+		t.Fatal(token, err)
+	}
+}

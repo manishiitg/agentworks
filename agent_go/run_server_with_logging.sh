@@ -192,7 +192,11 @@ configure_local_product_profile() {
     if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=1
         export VITE_DEPLOYMENT_MODE=local-full
-        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\", \"bullpen\"]}"
+        local default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen"]'
+        if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
+            default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen", "llm-gateway"]'
+        fi
+        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-$default_surfaces}"
     else
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
         export VITE_DEPLOYMENT_MODE=local
@@ -483,6 +487,49 @@ if [ "$TEST_CONNECTIONS" = true ]; then
     exit $?
 fi
 
+
+# Private builds may supply a separately assembled binary. Ordinary public and
+# local runs retain the existing Go command and never need a private checkout.
+prepare_gateway_product_credentials() {
+    [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ] || return 0
+    # Preserve an operator-supplied dedicated credential in either form.
+    if [ -n "${AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN:-}" ] || [ -n "${AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE:-}" ]; then
+        return 0
+    fi
+    local product_state_dir="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
+    local product_token_file="${product_state_dir}/llm-gateway-service-token"
+    mkdir -p "$product_state_dir" || return 1
+    if [ ! -s "$product_token_file" ]; then
+        (umask 077 && openssl rand -hex 32 > "$product_token_file") || return 1
+    fi
+    chmod 600 "$product_token_file" || return 1
+    export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN=""
+    export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE="$product_token_file"
+}
+
+launch_gateway_process() {
+    local gateway_binary="${AGENTWORKS_GATEWAY_BINARY:-}"
+    if [ -n "$gateway_binary" ]; then
+        if [[ "$gateway_binary" != /* ]] || [ ! -f "$gateway_binary" ] || [ ! -x "$gateway_binary" ]; then
+            echo "❌ AGENTWORKS_GATEWAY_BINARY must name an absolute executable file"
+            return 1
+        fi
+        prepare_gateway_product_credentials || return 1
+        if [ "$BACKGROUND_MODE" = true ]; then
+            nohup "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
+        else
+            "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
+        fi
+    else
+        if [ "$BACKGROUND_MODE" = true ]; then
+            nohup bash -lc 'cd "$1" && exec env GOWORK=off go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 &
+        else
+            (cd "$GATEWAY_DIR" && exec env GOWORK=off go run ./cmd/server) >> "$GATEWAY_LOG_PATH" 2>&1 &
+        fi
+    fi
+    GATEWAY_PID=$!
+}
+
 if [ "$ONLY_GATEWAY" = true ]; then
     export AGENTWORKS_DEPLOYMENT_MODE=server
     echo "🔌 Starting MCP Gateway only — no agent, workspace, or frontend"
@@ -519,15 +566,7 @@ if [ "$ONLY_GATEWAY" = true ]; then
     echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
     echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
-    if [ "$BACKGROUND_MODE" = true ]; then
-        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec env GOWORK=off go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
-    else
-        (
-            cd "$GATEWAY_DIR" || exit 1
-            exec env GOWORK=off go run ./cmd/server
-        ) >> "$GATEWAY_LOG_PATH" 2>&1 &
-    fi
-    GATEWAY_PID=$!
+    launch_gateway_process || exit 1
     for _attempt in $(seq 1 60); do
         if curl -fsS "${GATEWAY_PUBLIC_URL}/healthz" >/dev/null 2>&1; then
             echo "✅ MCP Gateway is healthy at: ${GATEWAY_PUBLIC_URL}/mcp"
@@ -1959,17 +1998,7 @@ start_mcp_gateway() {
     echo "=========================================" >> "$GATEWAY_LOG_PATH"
     echo "" >> "$GATEWAY_LOG_PATH"
 
-    if [ "$BACKGROUND_MODE" = true ]; then
-        # shellcheck disable=SC2086
-        nohup bash -lc "cd \"$GATEWAY_DIR\" && exec env GOWORK=off go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
-    else
-        (
-            cd "$GATEWAY_DIR" || exit 1
-            exec env GOWORK=off go run ./cmd/server
-        ) >> "$GATEWAY_LOG_PATH" 2>&1 &
-    fi
-
-    GATEWAY_PID=$!
+    launch_gateway_process || return 1
     echo "✅ MCP Gateway process started (PID: $GATEWAY_PID)"
     wait_for_gateway_health
 }

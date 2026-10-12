@@ -72,6 +72,7 @@ func externalTools() ([]externalTool, error) {
 		p["query"] = externalString("Filter workflow labels and IDs.")
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Pulse state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
 		externalAgentMessageDefinition(add)
+		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and the caller's access level.", false, true, nil)
 		for _, name := range []string{"list_files", "search_files"} {
@@ -517,6 +518,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "messages" {
 		api.externalAgentMessages(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == serverProductManagementTool {
+		api.externalServerProductCall(w, r, call.Arguments)
 		return
 	}
 	if isExternalVaultTool(tool.Name) {

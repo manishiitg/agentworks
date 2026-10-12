@@ -1154,7 +1154,83 @@ silence facts remain separate. Existing metric meaning and history stay intact;
 this requires no workflow migration. Older checks retain their historical text.
 [PLAT-822](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/metrics/plat-822.md).
 
-### 2026-10-10 — Managed browser socket parents belong to each deployment
+### 2026-10-11 — Optional server product boundary and inference tokens (PLAT-869)
+
+Keep product implementation source separate from the public core and from
+production deployment configuration. Compose optional factories at build time
+against an immutable core commit. Public builds contain no private factories or
+private dependencies. Ordinary local installations retain the enabled public
+local products; source development can explicitly opt into installed server products.
+
+The embedded product UI is reviewed **trusted first-party code**, served on the
+platform origin. It intentionally has the person's session/API authority and
+same-origin DOM access. The iframe and response CSP restrict navigation, forms,
+popups, external resources and framing; they do **not** isolate malicious code
+from the platform account. Do not load unreviewed/third-party assets this way.
+The response CSP sandbox remains effective if a script removes the iframe's
+sandbox attribute. A future untrusted extension needs a separate origin and an
+explicit message/API boundary. **No third-party server products may be installed
+until the UI is cross-origin and has an explicit API boundary.** Product responses
+cannot supply `Access-Control-*` headers through the platform proxy.
+
+Use a distinct service credential for each installed product, independent of the
+Vault admin credential. Credentials are server-only, at least 32 characters,
+loaded from protected environment/files and never returned to clients. The host
+rejects shared product credentials and reuse of the Vault admin token. The
+platform proxy checks the active account, current product entitlement and current
+admin role before asserting actor/role headers. The host accepts these assertions
+only on the authenticated product hop. A product credential can impersonate
+people **within that product**; treat it as privileged infrastructure. Directory
+shadow-user binding does not authorize a browser or CLI request. Existing Vault
+admin synchronization remains a separate privileged platform operation.
+
+The `llm:use` user-token scope permits model discovery and inference only. It
+cannot reach product management or UI routes or assert the user's administrator
+role to the product. Current account status, product
+entitlement and per-user model access remain required; a token is not a snapshot
+of permissions. Browser administration uses the person's current platform role. LLM-only
+installations do not require the Vault surface. The platform's fixed internal
+directory binding uses its separate host admin credential without enabling Vault
+routes. Audit client identity preserves each validated user token's stable ID;
+browser sessions use `platform`.
+
+Persist product audit events with explicit host metadata and namespaced physical
+IDs. Caller IDs remain opaque logical request IDs and cannot determine event
+kind. Coalesce admission/completion before status filtering or totals. Preserve
+legacy host envelopes for reads. Completed interrupted estimates contribute to
+provisional cost totals; unmatched admissions cannot establish a final bill.
+
+Browser JWTs also reject non-inference product writes (except the session
+bootstrap); management mutations require the dedicated MCP/CLI bridge.
+
+The product web UI is deliberately read-only: Connect, Models, Requests and
+Costs. A Bearer-authenticated POST bootstraps a short-lived opaque, HttpOnly,
+SameSite=Strict browser cookie scoped to that product. It expires no later than
+the parent app JWT, is revoked on app logout and is revalidated against current
+accounts/roles/product permissions on every request. Cookie requests can only
+read explicitly allowed product routes; inference, management, other products
+and platform APIs reject it. Server deployments require Secure cookies; local
+loopback development may use HTTP. No session token is placed in a URL.
+
+Management uses the generic `server_product` external MCP/CLI tool with current
+administrator authority, installed-product entitlement and `users:manage`
+consent. `action=tools` discovers the private product-owned catalog;
+`action=call` invokes a declared operation through a fixed management endpoint.
+Callers never select upstream URLs, methods, identity headers or credentials.
+The public core holds the transport/auth boundary; product schemas and handlers
+stay in the separate source repository. Management calls write a durable
+admission/completion receipt in host-owned auth state (actor, client, product,
+tool, status; no arguments or output); failed admission prevents forwarding.
+The minimal UI can show existing
+models, usage and setup; provider configuration remains operator-managed.
+
+SDK v1 is experimental and still includes LLM-specific contracts. Validate a
+second real product before promising a stable general extension API. The public
+proxy registry remains an explicit installation allowlist.
+
+Ticket: PLAT-869 (private platform tracker).
+
+## 2026-10-10 — Managed browser socket parents belong to each deployment
 
 Deployments with a browser staging namespace use a short private socket root
 derived from that namespace, keeping each browser's existing owner boundary.

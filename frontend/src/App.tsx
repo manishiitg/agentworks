@@ -1,3 +1,4 @@
+import { ServerProductSurface } from './components/ServerProductSurface'
 import LlmModalHost from './components/topbar/LlmModalHost'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Code is a second product definition over the same project surface.
@@ -801,6 +802,8 @@ function App() {
           <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'code' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Code" />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
+        ) : productSurface === 'llm-gateway' ? (
+          <ServerProductSurface product="llm-gateway" label="LLM Gateway" />
         ) : productSurface === 'mcp-gateway' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Vault" />}><GatewaySurface /></Suspense>
         ) : (

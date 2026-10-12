@@ -1,6 +1,6 @@
 import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { Check, ChevronDown, MessagesSquare, Waypoints } from 'lucide-react'
+import { Check, ChevronDown, MessagesSquare, Network, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
@@ -38,6 +38,7 @@ const products: Array<{
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
+  { id: 'llm-gateway', label: 'LLM Gateway', description: 'Shared models and request costs', icon: Network },
   { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
   { id: 'bullpen', label: 'Bullpen', description: 'Connect your agents and coordinate their work', icon: MessagesSquare },
 ]

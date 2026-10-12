@@ -112,6 +112,9 @@ const (
 
 // AuditEvent records one attempted tool call, including bounded payload snapshots.
 type AuditEvent struct {
+	// Product metadata is stamped by the host, separate from tool output or caller IDs.
+	ProductID       string          `json:",omitempty"`
+	ProductEvent    json.RawMessage `json:",omitempty"`
 	ID              string
 	CallID          string
 	Timestamp       time.Time
@@ -195,6 +198,7 @@ func Fingerprint(upstreamName, description string, inputSchema []byte, extra ...
 // MemoryStore is the M0 Store implementation. All methods are safe for
 // concurrent use.
 type MemoryStore struct {
+	extensionState  map[string]ExtensionState
 	mu              sync.RWMutex
 	persistence     *sqlitePersistence
 	workspaces      map[string]Workspace
@@ -1258,6 +1262,7 @@ func (s *MemoryStore) auditAt(i int) AuditEvent {
 }
 
 func cloneAuditEvent(e AuditEvent) AuditEvent {
+	e.ProductEvent = append(json.RawMessage(nil), e.ProductEvent...)
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
 	e.Input = append(json.RawMessage(nil), e.Input...)
 	e.Output = append(json.RawMessage(nil), e.Output...)

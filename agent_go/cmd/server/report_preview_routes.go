@@ -98,6 +98,9 @@ func mintReportPreviewToken(claims *UserClaims, workspacePath string) (string, e
 // scopeAllowsPath: a scoped token reaches only the paths its scope names.
 // Unscoped (normal session) tokens are unrestricted here.
 func scopeAllowsPath(scope, requestPath string) bool {
+	if strings.HasPrefix(scope, serverProductUIScopePrefix) {
+		return serverProductUIScopeAllowsPath(scope, requestPath)
+	}
 	switch scope {
 	case "":
 		return true

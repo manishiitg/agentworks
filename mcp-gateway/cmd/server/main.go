@@ -28,6 +28,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/setupagent"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/pkg/producthost"
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
 
@@ -262,6 +263,19 @@ func run() (runErr error) {
 	}
 	mux := gatewayRoutes(gw, managed)
 	adm.APIRoutes(mux)
+	products, err := serverProductFactories()
+	if err != nil {
+		return err
+	}
+	if err = producthost.Mount(mux, st, "w1", func(id string) (string, error) {
+		token, err := producthost.ServiceTokenFromEnv(id)
+		if err == nil && token == humanToken {
+			return "", errors.New("product credential must differ from the Vault admin credential")
+		}
+		return token, err
+	}, products); err != nil {
+		return err
+	}
 	if !managed {
 		adm.UIRoutes(mux)
 	}

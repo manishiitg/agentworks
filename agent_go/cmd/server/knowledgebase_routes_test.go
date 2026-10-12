@@ -221,15 +221,15 @@ func knowledgeTestCaller(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, UserContextKey, principalClaims(userID))
 }
 
-// Pins the owner decision: everyone may use Brain through the MCP, but only accounts holding the product (and
-// administrators) get it in the app. A disabled account gets neither.
-func TestBrainMCPIsOpenToEveryoneButAppNeedsTheProduct(t *testing.T) {
+// Every active account may use Brain through the app and MCP when the installation runs it (PLAT-856, 856-61).
+// Folder roles still bound content access; a disabled account gets neither surface.
+func TestBrainMCPAndAppAreOpenToEveryActiveAccount(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","role":"admin","products":[]},{"id":"matt","username":"matt","role":"viewer","products":["agentworks"]},{"id":"gone","username":"gone","role":"viewer","products":["agentworks"],"disabled":true}]}`)
 	t.Setenv("AGENT_PRODUCTS", "")
 	session := &UserClaims{UserID: "matt", Username: "matt"}
 	connection := &UserClaims{UserID: "matt", Username: "matt", AccessToken: &accesstokens.Token{Scopes: []string{"knowledgebase:read"}}}
-	if knowledgebaseProductAllowed(session) {
-		t.Fatal("an account without the product must not get Brain in the app")
+	if !knowledgebaseProductAllowed(session) {
+		t.Fatal("every active account gets Brain in the app, regardless of its other products")
 	}
 	if !knowledgebaseMCPAllowed(session) || !knowledgebaseProductAllowed(connection) {
 		t.Fatal("every active account may connect through the MCP")
@@ -237,7 +237,7 @@ func TestBrainMCPIsOpenToEveryoneButAppNeedsTheProduct(t *testing.T) {
 	if !knowledgebaseProductAllowed(&UserClaims{UserID: "admin", Username: "admin"}) {
 		t.Fatal("administrators have the product")
 	}
-	if knowledgebaseMCPAllowed(&UserClaims{UserID: "gone", Username: "gone"}) {
+	if knowledgebaseMCPAllowed(&UserClaims{UserID: "gone", Username: "gone"}) || knowledgebaseProductAllowed(&UserClaims{UserID: "gone", Username: "gone"}) {
 		t.Fatal("a disabled account has no access")
 	}
 }
