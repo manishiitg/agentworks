@@ -1652,7 +1652,7 @@ export interface ExecutionInspectionResponse {
   started_at: string
   completed_at?: string
   inspection?: ExecutionInspectionTarget
-  events: Array<{timestamp: string; type: string; role?: string; text?: string; tool_call?: {
+  events: Array<{timestamp: string; type: string; source_type?: string; role?: string; text?: string; tool_call?: {
    tool_call_id?: string; tool_name: string; arguments?: string; result?: string; error?: string; status: string
   }}>
  }

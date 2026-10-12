@@ -29,7 +29,25 @@ export function inspectionChat(response: ExecutionInspectionResponse) {
  const transcript = response.transcript
  const events: PollingEvent[] = []
  let lastAssistant = ''
+ let previousMessage: typeof transcript.events[number] | undefined
+ let kickoff = true
  for (const [index, event] of [...transcript.events].sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp)).entries()) {
+  const role = event.role || (event.type==='user_message' ? 'user' : event.type==='assistant_message' ? 'assistant' : '')
+  if (role==='user' || role==='assistant') {
+   const previous = previousMessage
+   if (previous && previous.role===role && event.text?.trim() && event.text.trim()===previous.text?.trim()) {
+    const pair = new Set([previous.source_type,event.source_type])
+    const carrierPair = role==='user' ? pair.has('orchestrator_agent_start') && pair.has('user_message') : pair.has('orchestrator_agent_end') && pair.has('llm_generation_end')
+    // Older transcripts lost carrier identity. Limit compatibility to the
+    // first adjacent kickoff echo, before any tools/answers, within 100 ms.
+    const delta = Date.parse(event.timestamp)-Date.parse(previous.timestamp)
+    const sinceStart = Date.parse(previous.timestamp)-Date.parse(transcript.started_at)
+    const legacyKickoff = kickoff && role==='user' && !previous.source_type && !event.source_type && delta>=0 && delta<=100 && sinceStart>=0 && sinceStart<=1000
+    if (carrierPair || legacyKickoff) continue
+   }
+   if (previousMessage || role==='assistant') kickoff=false
+   previousMessage={...event,role}
+  } else if (event.tool_call) {previousMessage=undefined;kickoff=false}
   const payload: Record<string,unknown> = {metadata:{execution_owner_id:transcript.agent_id,execution_kind:'background_agent'}}
   let type = ''
   if (event.tool_call) {

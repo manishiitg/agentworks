@@ -5,7 +5,7 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Terminal as TerminalIcon, XCircle } from 'lucide-react'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
@@ -668,7 +668,7 @@ const RunActivityEvent: React.FC<{ label: string; target: string; state: 'starti
 
 const TOOL_ARTIFACT_KEYS = ['result', 'output', 'error'] as const
 
-const ToolCallCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
+const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair, row = false }) => {
   const [open, toggleOpen] = useDisclosure(`tool:${pair.key}`)
   const artifact = useMemo(() => {
     for (const event of pair.events) {
@@ -697,7 +697,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   return (
     <div
       data-testid="terminal-clear-tool-call"
-      className={`rounded border ${
+      className={row ? 'border-b border-border/60 last:border-b-0' : `rounded border ${
         displayStatus === 'error'
           ? 'border-red-300/70 bg-red-50/70 dark:border-red-900/80 dark:bg-red-950/20'
           : 'border-border/70 bg-card'
@@ -709,7 +709,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/60"
       >
-        <span className={`shrink-0 font-mono ${markClass}`}>{mark}</span>
+        {row && displayStatus === 'ok' ? <TerminalIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> : <span role={displayStatus==='running' ? 'img' : undefined} aria-label={displayStatus==='running' ? 'Tool running' : undefined} className={`shrink-0 font-mono ${markClass}`}>{mark}</span>}
         <span className="truncate font-medium text-foreground">{pair.name}</span>
         {pair.server && (
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -729,7 +729,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
 
       {open && (
         <div className="space-y-2 border-t border-border/70 px-2 py-2">
-          {pair.args && <ToolCallField label="Arguments" value={pair.args} />}
+          {pair.args && <ToolCallField label={row ? 'Input' : 'Arguments'} value={pair.args} />}
           {(fullOutput.text || pair.result) && <ToolCallField label="Output" value={fullOutput.text || pair.result || ''} />}
           {artifact && !fullOutput.text && (
             <ShowFullContentButton ref_={artifact} loading={fullOutput.loading} error={fullOutput.error} onLoad={() => { void fullOutput.load() }} label="Load full output" />
@@ -751,7 +751,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
 const ToolCallField: React.FC<{ label: string; value: string }> = ({ label, value }) => {
   const [full, setFull] = useState(false)
   const formatted = useMemo(
-    () => label === 'Arguments' ? formatToolCallArguments(value) : formatToolCallResult(value),
+    () => label === 'Arguments' || label === 'Input' ? formatToolCallArguments(value) : formatToolCallResult(value),
     [label, value],
   )
   const isLong = formatted.text.length > PREVIEW_LIMIT
@@ -877,9 +877,10 @@ const WebSearchCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   )
 }
 
-const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }> }> = ({ item }) => {
+const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows' }> = ({ item, toolLayout }) => {
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
   const segments = useMemo(() => segmentToolBatch(item.key, pairs), [item.key, pairs])
+  if (toolLayout === 'rows') return <div data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{pairs.map(pair=><ToolCallCard key={pair.key} pair={pair} row />)}</div>
   if (segments.length === 1 && segments[0].kind === 'tools') {
     return <ToolChip chipKey={item.key} pairs={pairs} toolCount={item.toolCount} />
   }
@@ -952,6 +953,8 @@ interface TerminalEventTranscriptProps {
   /** Optional product skin for the transcript backdrop. AgentWorks keeps its
    * existing default; product surfaces can use their own visual identity. */
   surfaceClassName?: string
+  /** Inspection can show each recorded tool directly, with one disclosure for input/output. */
+  toolLayout?: 'grouped' | 'rows'
   /** Product interactions to show in place, inside the agent's turn, with the
    * product's own rendering (a celebration, an inline scene). Other
    * interaction kinds stay on the side channel. */
@@ -982,6 +985,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   streamingText = '',
   streamingStatus = '',
   surfaceClassName,
+  toolLayout,
   productRows,
   assistantLabel = 'Agent',
   assistantIcon,
@@ -1195,7 +1199,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             : item.kind === 'live'
             ? <LiveAssistantTranscript text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'tools'
-            ? <ToolBatch item={item} />
+            ? <ToolBatch item={item} toolLayout={toolLayout} />
             : item.kind === 'thinking'
               ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} />
               : (

@@ -246,6 +246,20 @@ fence. Never substitute today's script or another run's logs for missing records
 Why: users need to identify the execution type immediately and debug the actual
 conversation or code that belonged to that attempt.
 
+Retain lifecycle/provider carrier identity in the saved events, and join matching
+adjacent carriers only in the inspector's chat view. Older source-less records
+join only an identical initial prompt echo within 100 ms, before tools/answers
+and within one second of dispatch. Preserve the original evidence and repeated
+instructions in later turns or from the same known carrier.
+
+Use one step header/status and open its authored task conversation directly.
+Single-task selectors, overall result and validation are secondary technical
+details; multiple authored tasks have a compact selector. One refresh reloads
+the root and selected task, preserving selected-only polling and exact targets.
+Inspector tool rows expose input/output in one disclosure, without a batch
+disclosure. Keep validation under Run details; single-script source is visible
+by default and can be collapsed, with its output and exit code alongside it.
+
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-119.
 
 ## 2026-10-12 — Agent item inspection uses its chat and task identity (PLAT-861)

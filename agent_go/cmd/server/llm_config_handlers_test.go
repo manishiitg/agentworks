@@ -285,9 +285,16 @@ func TestMuseCLIIsPublishedAsCodingAgent(t *testing.T) {
 	if candidate.Usable {
 		t.Fatal("usable = true, want false when muse runtime and auth are missing")
 	}
-	if len(candidate.Options) != 1 || candidate.Options[0] != "muse-spark-1.3-contributor" {
-		t.Fatalf("options = %v, want [muse-spark-1.3-contributor]", candidate.Options)
+	wantOptions := []string{"muse-wonder-1.0", "muse-wonder-full-1.0", "muse-spark-1.3-contributor"}
+	if len(candidate.Options) != len(wantOptions) {
+		t.Fatalf("options = %v, want %v", candidate.Options, wantOptions)
 	}
+	for i, want := range wantOptions {
+		if candidate.Options[i] != want {
+			t.Fatalf("options = %v, want %v", candidate.Options, wantOptions)
+		}
+	}
+
 	if got := providerDisplayLabel("muse-cli"); got != "Muse" {
 		t.Fatalf("display label = %q, want Muse", got)
 	}

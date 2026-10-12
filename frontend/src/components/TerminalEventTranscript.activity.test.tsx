@@ -40,6 +40,25 @@ function footer(host: HTMLElement) { return host.querySelector('[data-testid="tr
 function headers(host: HTMLElement) { return host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]') }
 
 describe('activity belongs to the current agent turn', () => {
+  it('opens recorded inspector tool input and output directly from one row click', async () => {
+    const calls=[
+      event('inspect-tool','tool_call_start',{tool_call_id:'inspect-tool',tool_name:'read_file',arguments:'{"path":"status.json"}'}),
+      event('inspect-result','tool_call_end',{tool_call_id:'inspect-tool',tool_name:'read_file',result:'{"status":"INITIALIZED"}'}),
+    ]
+    const {host,render}=await mount({events:[user,calls[0]],toolLayout:'rows'})
+    expect(host.querySelector('[aria-label="Tool running"]')).not.toBeNull()
+    await render({events:[user,...calls],toolLayout:'rows'})
+    expect(host.querySelector('[aria-label="Tool running"]')).toBeNull()
+    expect(host.querySelector('[data-testid="terminal-clear-tool-batch-toggle"]')).toBeNull()
+    const row=host.querySelector('[data-testid="terminal-clear-tool-call"]')!
+    expect(row.textContent).not.toContain('INITIALIZED')
+    await act(async()=>row.querySelector<HTMLButtonElement>('button')!.click())
+    expect(row.textContent).toContain('Input')
+    expect(row.textContent).toContain('Output')
+    expect(row.textContent).toContain('status.json')
+    expect(row.textContent).toContain('INITIALIZED')
+  })
+
   it('renders one six-call group across duplicate native progress updates', async () => {
     const calls = Array.from({ length: 6 }, (_, index) => [
       event(`progress-${index}`, 'streaming_chunk', { source: 'transcript', content: 'The download finished; the full run is still in progress.' }),
