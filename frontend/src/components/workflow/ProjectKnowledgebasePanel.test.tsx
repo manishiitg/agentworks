@@ -12,9 +12,27 @@ vi.mock('./AskAIButton', () => ({ AskAIButton: ({ label }: { label: string }) =>
 let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   vi.mocked(knowledgebaseApi.bootstrap).mockResolvedValue({} as never)
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+})
+
+it.each(['bootstrap', 'project'] as const)('keeps Brain guidance visible when %s returns 404 and recovers on refresh', async endpoint => {
+  const missing = Object.assign(new Error('Brain not found'), { response: { status: 404 } })
+  vi.mocked(knowledgebaseApi.project).mockResolvedValue({ manifest_version: 'v1', brain_access: 'read', can_manage: false })
+  vi.mocked(knowledgebaseApi[endpoint]).mockRejectedValueOnce(missing)
+  await act(async () => root.render(<ProjectKnowledgebasePanel workspacePath="Workflow/payments"/>))
+  expect(container.querySelector('[aria-label="About Brain"]')).not.toBeNull()
+  expect(container.textContent).toContain('Share knowledge with your team')
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Brain access could not be loaded')
+  expect(container.querySelector('[role="radiogroup"]')).toBeNull()
+  expect(knowledgebaseApi.setProjectAccess).not.toHaveBeenCalled()
+  await act(async () => (container.querySelector('[aria-label="Refresh Brain"]') as HTMLButtonElement).click())
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+  const radios = [...container.querySelectorAll('input[type="radio"]')] as HTMLInputElement[]
+  expect(radios.find(radio => radio.checked)?.value).toBe('read')
+  expect(radios.every(radio => radio.disabled)).toBe(true)
+  expect(container.textContent).toContain('Only an owner of this project can change Brain access.')
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove() })
 
