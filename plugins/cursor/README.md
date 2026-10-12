@@ -148,9 +148,15 @@ python3 plugins/cursor/scripts/check_native_hook.py
 
 Use `--interactive` for the terminal UI path; print mode in CLI2026.10.01
 can complete without invoking stop or prompt hooks. The interactive probe owns
-only a new disposable CLI process. It verifies assistant markers from that
+only a new disposable CLI process. It stops after the second completed hook even
+when no owned transcript is available, reporting that narrower result without a
+full pass. It verifies assistant markers from that
 workspace's native transcript, never from terminal echoes, and refuses to read
 transcripts outside the test workspace.
+
+For a shared process-binding check, prepare with `--agentworks-cli /scratch/agentworks`.
+It runs the real hook and a deliberately mismatching read-only session pin in the
+isolated cache. A refused pin proves context derivation, not an attachment or receipt.
 
 The probe creates a temporary project, asks for a baseline response, and checks
 that a completed stop hook causes a second model response containing its unique

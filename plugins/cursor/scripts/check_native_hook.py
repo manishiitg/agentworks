@@ -30,6 +30,30 @@ def hook(directory):
     transcript = event.get("transcript_path")
     if isinstance(transcript, str) and Path(transcript).resolve().is_relative_to(root.resolve()):
         record["transcript_path"] = transcript
+    if settings.get("agentworks_cli"):
+        # Observe this native hook through the real shared CLI. The test owns an
+        # isolated cache with no bridge/account config; no attach is attempted.
+        cli = settings["agentworks_cli"]
+        try:
+            observed = subprocess.run([cli, "plugin", "hook", "cursor"],
+                                      input=json.dumps(event), capture_output=True,
+                                      text=True, timeout=14)
+            record["shared_hook_completed"] = observed.returncode == 0
+            if event.get("hook_event_name") != "sessionEnd":
+                wrong = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+                if event.get("conversation_id") == wrong:
+                    wrong = "11111111-2222-4333-8444-555555555555"
+                # Hooks carry UUID in their native payload, whereas Cursor shell
+                # tools provide it in env. Test that exact payload handoff here;
+                # this is not evidence of a model tool call or bridge receipt.
+                pin = subprocess.run([cli, "bridge", "message", "peers", "--provider", "cursor",
+                                      "--session", wrong, "--json"],
+                                     capture_output=True, text=True, timeout=3,
+                                     env=dict(os.environ, CURSOR_CONVERSATION_ID=event.get("conversation_id", "")))
+                record["shared_native_hook_context_verified"] = (pin.returncode != 0 and
+                       "session pin does not match native Cursor context" in pin.stderr)
+        except (OSError, subprocess.TimeoutExpired):
+            record["shared_hook_completed"] = False
     record["ancestors"] = []
     pid = os.getppid()
     for _ in range(8):
@@ -44,7 +68,14 @@ def hook(directory):
         # Linux Node launchers may retain node as comm but set a provider argv0.
         # Read only argv0, never prompt arguments, environment or credentials.
         try:
-            ancestor["argv0"] = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0", 1)[0].decode()
+            with Path(f"/proc/{pid}/cmdline").open("rb", buffering=0) as stream:
+                prefix = bytearray()
+                for _ in range(4096):
+                    byte = stream.read(1)
+                    if not byte or byte == b"\0":
+                        break
+                    prefix.extend(byte)
+                ancestor["argv0"] = prefix.decode()
         except (OSError, UnicodeError):
             pass
         record["ancestors"].append(ancestor)
@@ -152,10 +183,12 @@ def interactive_run(cli_args, root, env, followup):
         os.close(master)
 
 
-def prepare(root):
+def prepare(root, agentworks_cli=None):
     root.mkdir(mode=0o700, exist_ok=False)
     settings = {"baseline": "CURSOR_BASE_" + uuid.uuid4().hex,
                 "followup": "CURSOR_HOOK_" + uuid.uuid4().hex}
+    if agentworks_cli:
+        settings["agentworks_cli"] = str(Path(agentworks_cli).resolve(strict=True))
     (root / "probe.json").write_text(json.dumps(settings))
     (root / ".cursor").mkdir()
     command = shlex.join([sys.executable, str(Path(__file__).resolve()), "--hook", str(root)])
@@ -230,6 +263,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cli", default="cursor-agent")
     parser.add_argument("--hook", help=argparse.SUPPRESS)
+    parser.add_argument("--agentworks-cli", help="Optional scratch-only shared CLI for native binding checks; no attachment")
     parser.add_argument("--prepare", help="Create a new fixed workspace for operator review; does not run Cursor")
     parser.add_argument("--workspace", help="Run in the exact prepared workspace")
     parser.add_argument("--interactive", action="store_true", help="Use a fresh diagnostic CLI TUI instead of print mode")
@@ -240,7 +274,7 @@ def main():
         hook(args.hook)
         return 0
     if args.prepare:
-        prepare(Path(args.prepare))
+        prepare(Path(args.prepare), args.agentworks_cli)
         print(json.dumps({"prepared": True, "workspace": args.prepare,
                           "hook_script": str(Path(__file__).resolve())}))
         return 0

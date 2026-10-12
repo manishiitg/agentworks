@@ -65,7 +65,7 @@ func cursorObservedSession(root string, process cursorProcess, session string) (
 	}
 	defer dir.Close()
 	files, err := dir.ReadDir(257)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return liveAgentSession{}, err
 	}
 	if len(files) > 256 {
