@@ -1,12 +1,65 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// Exercise the launcher's actual profile helper without starting any service.
+// The installed private product is visible only under the explicit local opt-in.
+func TestRunServerPrivateProductSurfaceDefaults(t *testing.T) {
+	script, err := os.ReadFile("run_server_with_logging.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+	start := strings.Index(text, "configure_local_product_profile() {")
+	end := strings.Index(text, "\nconfigure_local_product_profile\n")
+	if start < 0 || end <= start {
+		t.Fatal("local product profile helper missing")
+	}
+	for _, tc := range []struct {
+		name, optIn, binary, configured string
+		wantLLM                         bool
+	}{
+		{"ordinary local", "false", "/composed-host", "", false},
+		{"public opt-in", "true", "", "", false},
+		{"private opt-in", "true", "/composed-host", "", true},
+		{"explicit exclusion", "true", "/composed-host", `["agentworks", "work"]`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := text[start:end] + `
+LOCAL_SERVER_PRODUCTS="$1"
+AGENTWORKS_GATEWAY_BINARY="$2"
+AGENTWORKS_ENABLED_PRODUCT_SURFACES="$3"
+configure_local_product_profile
+printf '%s\n' "$ENABLED_PRODUCT_SURFACES_JSON"
+`
+			output, err := exec.Command("bash", "-c", body, "profile-test", tc.optIn, tc.binary, tc.configured).CombinedOutput()
+			if err != nil {
+				t.Fatalf("profile failed: %v: %s", err, output)
+			}
+			var surfaces []string
+			if err := json.Unmarshal(output, &surfaces); err != nil {
+				t.Fatalf("invalid runtime surfaces: %v: %s", err, output)
+			}
+			hasLLM := false
+			for _, surface := range surfaces {
+				hasLLM = hasLLM || surface == "llm-gateway"
+			}
+			if hasLLM != tc.wantLLM {
+				t.Fatalf("LLM visibility = %v, want %v: %s", hasLLM, tc.wantLLM, output)
+			}
+			if tc.optIn == "true" && tc.configured != "" && strings.TrimSpace(string(output)) != tc.configured {
+				t.Fatalf("explicit surface configuration changed: %s", output)
+			}
+		})
+	}
+}
 
 // A failed install used to start Vite even when a newly declared UI package was
 // absent. Run the actual launcher helpers with a failing npm, without starting

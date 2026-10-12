@@ -66,6 +66,34 @@ func TestRuntimeFrontendLocalOptInAdvertisesServerProducts(t *testing.T) {
 	}
 }
 
+func TestRuntimeFrontendPrivateProductRequiresLocalOptInAndComposedBinary(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE", "llm-gateway")
+	for _, tc := range []struct {
+		name, optIn, binary, surfaces string
+		wantLLM                       bool
+	}{
+		{"ordinary local", "0", "/composed-host", "", false},
+		{"public opt-in", "1", "", "", false},
+		{"private opt-in", "1", "/composed-host", "", true},
+		{"explicit exclusion", "1", "/composed-host", "agentworks,work", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", tc.optIn)
+			t.Setenv("AGENTWORKS_GATEWAY_BINARY", tc.binary)
+			t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", tc.surfaces)
+			got := runtimeFrontendConfigJS(45678, "")
+			if hasLLM := strings.Contains(got, `"llm-gateway"`); hasLLM != tc.wantLLM {
+				t.Fatalf("LLM visibility = %v, want %v: %s", hasLLM, tc.wantLLM, got)
+			}
+			if tc.wantLLM && !strings.Contains(got, `defaultProductSurface: "llm-gateway"`) {
+				t.Fatalf("installed LLM product cannot be the default: %s", got)
+			}
+		})
+	}
+}
+
 func TestRuntimeFrontendConfigJSEmitsProductSurfaceAndBrandingKeys(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", " sparkquill , sparkquill ")

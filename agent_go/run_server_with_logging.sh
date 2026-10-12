@@ -192,7 +192,11 @@ configure_local_product_profile() {
     if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=1
         export VITE_DEPLOYMENT_MODE=local-full
-        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\", \"bullpen\"]}"
+        local default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen"]'
+        if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
+            default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen", "llm-gateway"]'
+        fi
+        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-$default_surfaces}"
     else
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
         export VITE_DEPLOYMENT_MODE=local
