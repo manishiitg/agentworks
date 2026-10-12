@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-12 — Dashboard items can be questioned in their project chat (PLAT-750)
+
+Offer Ask agent on right-clicked dashboard text/numbers or a selection, with an
+editable question before sending. Snapshot the item, nearby label/row, document
+and capture time so later refreshes cannot silently change what was asked.
+Deliver through the existing project chat callback and queue, preserving its
+permissions and busy-turn behavior. Existing HTML dashboards need no author
+changes; source provenance is verified by the agent rather than inferred from
+the visible value. Standalone viewing links keep this action disabled because
+they have no project chat destination; touch long-press keeps native selection.
+Why: users should be able to ask where a displayed figure came from or why it is
+unchanged without manually copying context into chat.
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md).
+
 ## 2026-10-12 — Workflow Crew detachment is explicit over MCP (PLAT-856)
 
 Expose the native Builder's workflow-to-Crew attachment list/detach operations as

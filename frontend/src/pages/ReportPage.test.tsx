@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../components/workflow/ReportViewer", () => ({
-  ReportView: ({ workspacePath }: { workspacePath: string }) => <div>Dashboard runtime {workspacePath}</div>,
+  ReportView: ({ workspacePath, allowContentQuestions }: { workspacePath: string; allowContentQuestions?: boolean }) => <div data-questions={String(allowContentQuestions)}>Dashboard runtime {workspacePath}</div>,
 }));
 
 import { ReportPage } from "./ReportPage";
@@ -26,6 +26,7 @@ describe("standalone report page", () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "work-user");
     try {
       expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
+      expect(view.host.querySelector('[data-questions]')?.getAttribute('data-questions')).toBe('false');
       expect(view.host.textContent).not.toContain("Live Dashboard");
     } finally {
       await act(async () => view.root.unmount());
@@ -36,6 +37,7 @@ describe("standalone report page", () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "other-user");
     try {
       expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
+      expect(view.host.querySelector('[data-questions]')?.getAttribute('data-questions')).toBe('false');
     } finally {
       await act(async () => view.root.unmount());
     }
