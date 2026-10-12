@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -67,14 +69,14 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 
 func pluginAgents(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) error {
 	req.Action = "peers"
-	peers, err := agentworksclient.CallLocalBridge(ctx, root, req)
+	peers, err := bridgeCall(ctx, root, o, req)
 	if err != nil {
 		return pluginBlock(o, err.Error())
 	}
 	if !peers.Attached {
 		return pluginBlock(o, "This chat is not attached. Type /agentworks attach first.")
 	}
-	local, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
+	local, _ := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "list"})
 	return pluginBlock(o, agentRoster(peers.Result, local))
 }
 
@@ -515,13 +517,13 @@ func detachAgentCommand(o *options) *cobra.Command {
 				request.Action = "detach_own"
 			}
 			if own.provider == "pi" || own.provider == "codex" || own.provider == "cursor" {
-				current, e := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: own.provider, SessionID: own.session, HostKey: own.host})
+				current, e := bridgeCall(cmd.Context(), root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: own.provider, SessionID: own.session, HostKey: own.host})
 				if e != nil {
 					return e
 				}
 				request.AttachmentID = current.Attachment.ID
 			}
-			if _, err = agentworksclient.CallLocalBridge(cmd.Context(), root, request); err != nil {
+			if _, err = bridgeCall(cmd.Context(), root, o, request); err != nil {
 				return err
 			}
 			fmt.Fprintln(o.stdout, "Detached this chat from AgentWorks.")
@@ -530,7 +532,7 @@ func detachAgentCommand(o *options) *cobra.Command {
 		if err := personAgentTerminal(); err != nil {
 			return err
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "list"})
+		out, err := bridgeCall(cmd.Context(), root, o, agentworksclient.LocalBridgeRequest{Action: "list"})
 		if err != nil {
 			return err
 		}
@@ -555,7 +557,7 @@ func detachAgentCommand(o *options) *cobra.Command {
 		if a.Provider == "pi" {
 			request.AttachmentID = a.ID
 		}
-		_, err = agentworksclient.CallLocalBridge(cmd.Context(), root, request)
+		_, err = bridgeCall(cmd.Context(), root, o, request)
 		if err != nil {
 			return err
 		}
@@ -1065,7 +1067,7 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 		if !fromAgent {
 			return fmt.Errorf("name the agent: agentworks %s%s --agent AGENT, or type /agentworks %s in the chat", verb, map[bool]string{true: " GROUP", false: ""}[!unshare], verb)
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host, Group: group, Purpose: purpose})
+		out, err := bridgeCall(cmd.Context(), root, o, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host, Group: group, Purpose: purpose})
 		if err != nil {
 			return err
 		}
@@ -1237,4 +1239,25 @@ func parseGroupWords(action string, rest []string, req *agentworksclient.LocalBr
 		}
 	}
 	return ""
+}
+
+// bridgeCall talks to the local helper and, when it is not running, starts it and
+// tries once more. Person commands always start it; background hook events do so
+// only when this computer has ever attached a chat, so a plugin that was never
+// used does not leave a helper behind.
+func bridgeCall(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) (agentworksclient.LocalBridgeReply, error) {
+	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
+	if err == nil || !(errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {
+		return out, err
+	}
+	background := req.Action == "status" || req.Action == "drain" || req.Action == "offline" || req.Action == "list" || req.Action == "ping"
+	if background {
+		if _, statErr := os.Stat(filepath.Join(root, "sessions.json")); statErr != nil {
+			return out, err
+		}
+	}
+	if ensureLocalBridge(ctx, root, o) != nil {
+		return out, errors.New("The AgentWorks helper is not running and could not be started. Run agentworks update, then try again.")
+	}
+	return agentworksclient.CallLocalBridge(ctx, root, req)
 }

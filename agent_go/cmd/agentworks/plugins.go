@@ -108,7 +108,7 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 			req.Action = words[1]
 			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare" || req.Action == "groups" || req.Action == "group") {
-				status, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
+				status, e := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
 				if e != nil || !status.Attached {
 					return pluginBlock(o, "This Pi chat is not connected. Type /agentworks attach in it.")
 				}
@@ -153,7 +153,7 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, usage)
 				}
 				req.Action += "_person"
-				done, e := agentworksclient.CallLocalBridge(ctx, root, req)
+				done, e := bridgeCall(ctx, root, o, req)
 				if e != nil {
 					return pluginBlock(o, e.Error())
 				}
@@ -170,7 +170,7 @@ func pluginCommand(o *options) *cobra.Command {
 			default:
 				return pluginBlock(o, personCommandHelp)
 			}
-			out, err = agentworksclient.CallLocalBridge(ctx, root, req)
+			out, err = bridgeCall(ctx, root, o, req)
 			if err != nil {
 				return pluginBlock(o, err.Error())
 			}
@@ -182,8 +182,8 @@ func pluginCommand(o *options) *cobra.Command {
 					req.AttachmentID = out.Attachment.ID
 				}
 				req.Action = "peers"
-				peers, e := agentworksclient.CallLocalBridge(ctx, root, req)
-				local, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
+				peers, e := bridgeCall(ctx, root, o, req)
+				local, _ := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "list"})
 				result := "Handled by AgentWorks. " + pluginAttachmentStatus(out)
 				if req.Provider == "muse" && !out.MonitorActive {
 					result += "\n" + museMonitorSetup
@@ -203,7 +203,7 @@ func pluginCommand(o *options) *cobra.Command {
 		}
 		if input.Event == "SessionStart" {
 			req.Action = "status"
-			out, e := agentworksclient.CallLocalBridge(ctx, root, req)
+			out, e := bridgeCall(ctx, root, o, req)
 			if e == nil && out.Offline {
 				if req.Provider != "pi" && reconnectOffline(ctx, root, req) == "" {
 					return nil // back online on its own
@@ -223,13 +223,13 @@ func pluginCommand(o *options) *cobra.Command {
 		} else {
 			return nil
 		}
-		out, err = agentworksclient.CallLocalBridge(ctx, root, req)
+		out, err = bridgeCall(ctx, root, o, req)
 		if err != nil {
 			return nil
 		} // Unattached/offline hooks do not interfere with work.
 		if out.Offline && req.Action == "drain" && req.Provider != "pi" && reconnectOffline(ctx, root, req) == "" {
 			// A chat left offline by an update or a restart re-arms on its next hook event.
-			if again, e := agentworksclient.CallLocalBridge(ctx, root, req); e == nil {
+			if again, e := bridgeCall(ctx, root, o, req); e == nil {
 				out = again
 			}
 		}

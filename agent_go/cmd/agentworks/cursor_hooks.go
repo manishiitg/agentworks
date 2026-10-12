@@ -183,7 +183,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 				return cursorBlock(o, usage)
 			}
 			req.Action += "_person"
-			done, e := agentworksclient.CallLocalBridge(ctx, root, req)
+			done, e := bridgeCall(ctx, root, o, req)
 			if e != nil {
 				return cursorBlock(o, e.Error())
 			}
@@ -197,7 +197,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			if len(words) != 2 || req.Action != "detach" && req.Action != "agents" && req.Action != "status" {
 				return cursorBlock(o, personCommandHelp)
 			}
-			state, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
+			state, e := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
 			if e != nil || !cursorAttached(state, req.SessionID, "") {
 				return cursorBlock(o, "This Cursor chat is not connected. Type /agentworks attach in it.")
 			}
@@ -206,7 +206,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 				req.Action = "peers"
 			}
 		}
-		out, e := agentworksclient.CallLocalBridge(ctx, root, req)
+		out, e := bridgeCall(ctx, root, o, req)
 		if e != nil {
 			return cursorBlock(o, "AgentWorks command was not completed. Check the local bridge and attachment.")
 		}
@@ -226,7 +226,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		return nil
 	}
 	ctxStatus, cancelStatus := context.WithTimeout(cmd.Context(), 3*time.Second)
-	state, err := agentworksclient.CallLocalBridge(ctxStatus, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
+	state, err := bridgeCall(ctxStatus, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
 	cancelStatus()
 	if err == nil && state.Offline && state.Attachment.Provider == "cursor" && state.Attachment.SessionID == req.SessionID {
 		// After an update or restart the chat comes back by itself, as itself, unless
@@ -236,7 +236,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		cancelBack()
 		if failed == "" {
 			ctxAgain, cancelAgain := context.WithTimeout(cmd.Context(), 3*time.Second)
-			state, err = agentworksclient.CallLocalBridge(ctxAgain, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
+			state, err = bridgeCall(ctxAgain, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
 			cancelAgain()
 		} else if input.Event == "SessionStart" {
 			return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": "AgentWorks identity is offline. Type /agentworks attach in this chat to reconnect it."})
@@ -253,11 +253,11 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	defer cancelDrain()
 	if input.Event == "SessionEnd" {
 		req.Action = "offline"
-		_, _ = agentworksclient.CallLocalBridge(ctxDrain, root, req)
+		_, _ = bridgeCall(ctxDrain, root, o, req)
 		return nil
 	}
 	req.Action, req.Transport = "drain", "cursor_hook"
-	out, err := agentworksclient.CallLocalBridge(ctxDrain, root, req)
+	out, err := bridgeCall(ctxDrain, root, o, req)
 	text := ""
 	if err != nil {
 		text = cursorFollowup(state, req.SessionID, req.AttachmentID, true)
