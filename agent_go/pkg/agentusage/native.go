@@ -160,7 +160,6 @@ func claudeLedger(r io.Reader, session string, l *Ledger, walk func(io.Reader, f
 	}
 	out := Native{Source: "Claude transcript usage", Model: model}
 	for _, c := range calls {
-		seen[numericID(e.ID)] = struct{}{}
 		out.Input += c.Input
 		out.Output += c.Output
 		out.Cached += c.Cached
