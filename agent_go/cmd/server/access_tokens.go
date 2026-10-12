@@ -422,6 +422,11 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
 	}
+	if tool.Name == "workflow_team" {
+		// Readers can discover get. Dispatch separately enforces current Builder
+		// consent, workflow authority and file access for either mutation.
+		return c.AccessToken == nil || c.AccessToken.Allows("workflows:read") || c.AccessToken.Allows("runs:execute")
+	}
 	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" || tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" {
 		return c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}

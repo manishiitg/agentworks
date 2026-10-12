@@ -22,6 +22,28 @@ Managed source-file writes require the workflow documents to be mounted locally 
 
 ## Direct plan and file edits
 
+Team administration uses `workflow_team` directly. Call `action=get` with the
+workflow ID to read the policy, stable route IDs and schedule revisions. Authorized
+managers with Builder consent also receive IDs/usernames for the complete enabled
+user directory, as in the website member picker; emails are omitted. Read-only
+workflow connections can discover and use `get`, but cannot read that management
+directory or mutate the policy. Call `action=update` with the complete `team` policy and
+`expected_revision` (`0` for initial enablement). The policy has one `leader_id`,
+`contributors`, `routes`, and optional `read_only_step_ids`. Each Contributor's
+`run`, `manage_schedules`, `approve`, `approval_ids`, `backup`, `publish` and
+`notify` grants are independent; route entries identify `step_id`, `route_id`
+and `contributor_id`. Copy the current policy to preserve intended grants.
+
+The website backend enforces owner-only enablement, current Leader/admin
+management, valid members/routes, reassignment and ownership transfer. Updates
+use the shared lock and revision check, current Builder consent and manifest
+file guard. They do not start a model turn. After a permission change, inspect
+schedules with `manage_schedules`, then use `workflow_team` with
+`action=reauthorize_schedule`, `schedule_id`, current `expected_revision` and
+`expected_schedule_revision` from `get`. This checks standing route/action grants
+and the exact schedule while retaining its timing and enabled state. If an update
+has an uncertain response, read the saved policy before retrying.
+
 Read `get_plan` for the combined plan/configuration revision. Discover the
 current native operations with `plan action=list`; there are 20 operations,
 including create, add/update steps, manage routes, change type, maintain and

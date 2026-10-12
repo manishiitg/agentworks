@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-12 — Workflow teams can be managed directly through MCP (PLAT-825)
+
+Expose `workflow_team` with get/update and explicit schedule reauthorization.
+Reuse the website team handler for enablement, membership, Leader transfer,
+route assignments and separate grants. Mutations need existing Builder consent,
+current editable owner/Leader authority, manifest file access and the saved team
+revision; queued calls recheck authority under the shared lock. Member discovery
+uses the UI directory, limited to IDs/names for authorized managers. Schedule
+reauthorization reuses current route/action grants and the manifest writer,
+preserving timing and enabled state. No model turn or new permission scope.
+Why: owners should manage their workflow through MCP with the same rules as the UI.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).
+
 ## 2026-10-12 — Bridge shutdown preserves a pending native receiver lease (PLAT-868)
 
 A pending local next request returns a retryable error when the bridge stops.
@@ -26,6 +40,7 @@ Why: product-owned content should use one validated interface, and discovery
 should be more frequent early without staying intrusive as users learn.
 
 Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 
 ## 2026-10-12 — Dashboard items can be questioned in their project chat (PLAT-750)
 

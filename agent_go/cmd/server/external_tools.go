@@ -251,6 +251,7 @@ func externalTools() ([]externalTool, error) {
 		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
+		externalWorkflowTeamDefinition(add)
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalNeedsYouDefinitions(add)
@@ -735,6 +736,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	access := workflowAccessForManifest(GetUserFromContext(r.Context()), selected.Manifest)
+	if tool.Name == "workflow_team" {
+		api.externalWorkflowTeamCall(w, r, args, *selected)
+		return
+	}
 	if tool.Name == "manage_triggers" {
 		api.externalWorkflowTriggerCall(w, r, args, *selected, access)
 		return

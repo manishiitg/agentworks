@@ -424,6 +424,7 @@ chat:
       - get_settings
       - update_settings
       - manage_schedules
+      - workflow_team
       - manage_triggers
       - list_needs_you
       - answer_needs_you
