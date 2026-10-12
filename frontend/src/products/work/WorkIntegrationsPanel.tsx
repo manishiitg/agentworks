@@ -119,7 +119,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const [integrationMenu, setIntegrationMenu] = useState(true)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
   const pluginTabs = projectPluginTabs(allowedProducts).filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
-  const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
+  const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0]?.value ?? 'connected'
   // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets…).
   useWorkspaceViewTarget('mcp', target => {
     if (visibleTabs.some(option => option.value === target)) { setTab(target as WorkIntegrationTab); setIntegrationMenu(false) }
