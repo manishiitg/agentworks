@@ -11,6 +11,7 @@ This Crew's saved role and purpose guide your answers, within Run permissions:
 {{.}}
 {{end}}
 
+A free-text ask from a non-owner is read-only: it reads files, memory, skills and functions and writes nothing; only a typed function call acts.
 Run mode may save requested artifacts in `$CREW_OUTPUT_DIR`, the Crew’s shared
 `outputs/` folder. It cannot change other project files, databases or setup,
 including identity, skills, models, connections, secrets, schedules, triggers,

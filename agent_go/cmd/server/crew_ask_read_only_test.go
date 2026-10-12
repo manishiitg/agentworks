@@ -1,6 +1,7 @@
 package server
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -18,5 +19,16 @@ func TestGuestAskIsReadOnly(t *testing.T) {
 	notice := crewSessionModeNotice("Crew/c-1", "", true)
 	if strings.Contains(notice, "only place you can write") || !strings.Contains(notice, "Change nothing") {
 		t.Fatalf("a read-only ask must be told to change nothing:\n%s", notice)
+	}
+}
+
+// The tool description every MCP client reads states the final model.
+func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
+	if !strings.Contains(crewAskModelSentence, "read-only") || !strings.Contains(crewAskModelSentence, "call one of its functions") {
+		t.Fatal(crewAskModelSentence)
+	}
+	src, err := os.ReadFile("external_tools.go")
+	if err != nil || !strings.Contains(string(src), `add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence`) {
+		t.Fatal("ask_crew description does not carry the sentence")
 	}
 }

@@ -6131,7 +6131,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
-		if codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
+		// A guest's free-text ask mounts no MCP server: guests act only through the functions the owner exposes (856-59).
+		guestAsk := crewGuest != "" && req.CrewAskReadOnly
+		if guestAsk || codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
 			selectedServers = []string{mcpclient.NoServers}
 			agentConfig.RuntimeOverrides = nil
 		}
