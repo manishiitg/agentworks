@@ -88,11 +88,11 @@ func cursorProcessAt(pid int) (cursorProcess, error) {
 		return process, errors.New("Cursor process belongs to another OS user")
 	}
 	command := strings.TrimRight(string(info.Proc.P_comm[:]), "\x00")
-	if command == "node" {
-		return cursorCLIProcessAt(pid, info)
-	}
 	if !strings.Contains(command, "Cursor") {
-		return process, errors.New("not a Cursor app process")
+		// The kernel name of a launcher-run process is not reliable (it can be the
+		// launcher's name rather than "node"), so the launch record and the image
+		// decide, and anything that is not the installed Node entry is refused.
+		return cursorCLIProcessAt(pid, info)
 	}
 	ctxImage, cancelImage := context.WithTimeout(context.Background(), time.Second)
 	defer cancelImage()
