@@ -81,7 +81,7 @@ try {
     await page.getByRole('button', { name: 'Windows', exact: true }).click()
     assert.match(await page.getByLabel('Install AgentWorks', { exact: true }).textContent(), /install-agentworks.ps1/)
     assert.equal(await page.getByRole('link', { name: /Bullpen help/ }).getAttribute('href'), 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md')
-    const headings = ['Requirements and tested versions', 'Install or update the plugin', 'Sign in to this server', 'Connect this chat', 'Commands and menus', 'Try a message', 'Troubleshooting']
+    const headings = ['Requirements', 'Install or update the plugin', 'Sign in to this server', 'Connect this chat', 'Commands and menus', 'Try a message', 'Troubleshooting']
     for (const client of ['Codex', 'Claude Code', 'Pi', 'Cursor', 'agy', 'Muse']) {
       await page.getByRole('button', { name: client, exact: true }).click()
       for (const heading of headings) assert.equal(await page.getByRole('heading', { name: heading, exact: true }).count(), 1, client + ': consistent section ' + heading)
@@ -92,6 +92,7 @@ try {
       if (client === 'Codex') {
         assert.equal(await page.getByRole('button', { name: 'Codex app', exact: true }).getAttribute('aria-pressed'), 'true')
         assert.equal(await page.getByLabel('Install in the Codex app').isVisible(), true)
+        assert.equal(await page.getByText('Needs the Codex desktop app and the AgentWorks CLI. No separate Codex CLI needed.', { exact: true }).isVisible(), true)
         assert.equal(await page.getByLabel('Install Codex plugin', { exact: true }).count(), 0)
         assert.match(await page.getByLabel('Install in the Codex app').textContent(), /Add → Add a marketplace/)
         assert.match(await page.getByLabel('Install in the Codex app').textContent(), /Settings → Hooks/)

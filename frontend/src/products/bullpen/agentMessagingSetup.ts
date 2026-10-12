@@ -32,7 +32,7 @@ export const messagingGuides: MessagingGuide[] = [
     ],
     app: {
       name: 'Codex app',
-      requirements: ['A compatible Codex desktop app and the AgentWorks CLI. A separate Codex CLI on PATH is not required.', 'App installation and native delivery are separate checks. The macOS bundled CLI is verified; other app layouts are used only when the AgentWorks build supports them.'],
+      requirements: ['Needs the Codex desktop app and the AgentWorks CLI. No separate Codex CLI needed.'],
       versions: 'Plugin: agentworks-codex 1.0.7. App installation/configuration inspected on macOS 26.1007.30912. Use an AgentWorks build with Codex app discovery; hook approval remains in the app.',
       install: [],
       installSteps: [

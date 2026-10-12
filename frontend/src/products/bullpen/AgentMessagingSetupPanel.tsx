@@ -64,9 +64,9 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
       <div key={client.id + cursorMode + codexMode} className="min-w-0 rounded-xl border border-border p-5">
         <h3 className="mb-5 font-semibold">{client.name} setup</h3>
         <div className="divide-y divide-border">
-          <Step number={1} title="Requirements and tested versions">
+          <Step number={1} title="Requirements">
             {client.requirements.map(text => <p key={text} className="text-xs leading-5 text-muted-foreground">{text}</p>)}
-            <p className="text-xs leading-5 text-muted-foreground">{client.versions}</p>
+            <details className="text-xs leading-5 text-muted-foreground"><summary className="cursor-pointer text-primary">Tested versions</summary><p className="mt-2">{client.versions}</p></details>
           </Step>
           <Step number={2} title="Install or update the plugin">
             {client.available && <><p className="text-xs leading-5 text-muted-foreground">Install the AgentWorks CLI first, or update it from a server that publishes the required messaging build.</p><div role="group" aria-label="Install platform" className="flex flex-wrap gap-1"><Button variant={platform === 'unix' ? 'secondary' : 'ghost'} size="sm" aria-pressed={platform === 'unix'} onClick={() => setPlatform('unix')}>macOS / Linux</Button><Button variant={platform === 'windows' ? 'secondary' : 'ghost'} size="sm" aria-pressed={platform === 'windows'} onClick={() => setPlatform('windows')}>Windows</Button></div><Command label="Install AgentWorks" text={install} /><Command label="Update AgentWorks CLI" text={`agentworks --server ${quote(origin)} update`} /><p className="text-xs leading-5 text-muted-foreground">The Windows installer does not establish provider IPC compatibility; check the requirements above.</p></>}
