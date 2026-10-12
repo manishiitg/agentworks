@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from '../../components/ui/button'
+import { Button } from '../../components/ui/Button'
 import { bullpenApi, type BullpenAgent, type BullpenUsage, type UsageReading } from '../../services/bullpenApi'
 
 const exact = new Intl.NumberFormat()
