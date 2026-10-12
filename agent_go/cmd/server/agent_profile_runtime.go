@@ -957,8 +957,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
-		if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
-			log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
+		// A guest's free-text ask only reads, so it saves and links nothing.
+		askReadOnly := guest != "" && len(req) > 0 && req[0].CrewAskReadOnly
+		if !askReadOnly {
+			if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
+				log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
+			}
 		}
 		// A reader or guest can reply within its existing conversation. This
 		// does not grant permission to initiate work in another agent.
@@ -966,14 +970,14 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerAgentMessagingTools(agentReplyOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), gate.Declare); err != nil {
 			return err
 		}
-		if guest != "" {
+		if guest != "" && !askReadOnly {
 			// Isolated function guests may report progress on the invocation
 			// they received, while result completion remains platform-owned.
 			gate.Declare("report_function_progress")
 			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
-			// A shared caller's turn (a function call or an ask) uses the Crew with the owner's authority (856-59, owner
+			// A shared caller's turn (a function call; a free-text ask only reads) uses the Crew with the owner's authority (856-59, owner
 			// decision 2026-10-12): it may call the functions of other Crews and workflows. Defining or deleting functions
 			// stays with the owner; the callee's own allowed-caller check and the depth limit still decide what it reaches.
 			for _, name := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call"} {

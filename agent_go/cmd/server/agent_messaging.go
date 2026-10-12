@@ -946,6 +946,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		runMode := crewMessageRunMode(dest, source, guest)
 		if runMode {
 			applyCrewGuestCaller(reqMap, guest)
+			reqMap["crew_ask_read_only"] = true
 		}
 		reqMap["pin_run_mode"] = runMode
 		reqMap["triggered_by"] = "agent_message"
