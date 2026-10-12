@@ -14,7 +14,7 @@ func TestServerProductTokenPathsAreInferenceOnly(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		want         bool
-	}{{"GET", "/api/server-products/llm-gateway/v1/models", true}, {"POST", "/api/server-products/llm-gateway/v1/messages", true}, {"POST", "/api/server-products/llm-gateway/v1/responses", true}, {"POST", "/api/server-products/llm-gateway/admin/model-access", false}, {"GET", "/api/server-products/llm-gateway/ui/", false}, {"DELETE", "/api/server-products/llm-gateway/v1/models", false}, {"POST", "/api/server-products/vault/v1/messages", false}} {
+	}{{"GET", "/api/server-products/llm-gateway/v1/models", true}, {"POST", "/api/server-products/llm-gateway/v1/messages", true}, {"POST", "/api/server-products/llm-gateway/v1/responses", true}, {"POST", "/api/server-products/llm-gateway/admin/model-access", false}, {"POST", "/api/server-products/llm-gateway/session", false}, {"GET", "/api/server-products/llm-gateway/management/tools", false}, {"GET", "/api/server-products/llm-gateway/ui/", false}, {"DELETE", "/api/server-products/llm-gateway/v1/models", false}, {"POST", "/api/server-products/vault/v1/messages", false}} {
 		if got := serverProductTokenPath(httptest.NewRequest(tc.method, tc.path, nil)); got != tc.want {
 			t.Fatal(tc, got)
 		}

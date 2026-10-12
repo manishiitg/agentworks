@@ -26,7 +26,7 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		http.NotFound(w, r)
 		return
 	}
-	if claims == nil || claims.Scope != "" || claims.Provider == "bot_route" || !activeMCPPerson(claims.UserID) || !userAllowedProduct(claims, product) {
+	if claims == nil || (claims.Scope != "" && claims.Scope != serverProductUIScope(product)) || claims.Provider == "bot_route" || !activeMCPPerson(claims.UserID) || !userAllowedProduct(claims, product) {
 		http.Error(w, "product access required", 403)
 		return
 	}
@@ -66,6 +66,10 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "server product unavailable", 503)
 		return
 	}
+	if tail == "session" {
+		issueServerProductUISession(w, r, product, claims)
+		return
+	}
 	// A user's inference token never inherits browser administration authority.
 	admin := claims.AccessToken == nil && currentUserIsAdmin(r)
 	proxy := &httputil.ReverseProxy{Transport: capLayerTransport, FlushInterval: -1, Rewrite: func(pr *httputil.ProxyRequest) {
@@ -90,6 +94,7 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 			pr.Out.Header.Set("X-AgentWorks-Admin", "1")
 		}
 	}, ModifyResponse: func(resp *http.Response) error {
+		resp.Header.Set("Cache-Control", "no-store")
 		resp.Header.Del("Set-Cookie")
 		// Product code cannot grant cross-origin access to platform sessions.
 		for key := range resp.Header {

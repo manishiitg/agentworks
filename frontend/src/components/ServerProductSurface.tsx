@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { getAuthToken } from '../services/api'
+import { useAuthStore } from '../stores/useAuthStore'
 import { ModePresetBar } from './ModePresetBar'
 
 /** Public shell for reviewed first-party code. Same-origin session/API access
@@ -6,15 +8,34 @@ import { ModePresetBar } from './ModePresetBar'
 export function ServerProductSurface({ product, label }: { product: 'llm-gateway'; label: string }) {
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
+  const userID = useAuthStore(state => state.user?.id)
   const prefix = `/api/server-products/${product}`
   useEffect(() => {
     const controller = new AbortController()
     setReady(false); setError('')
-    fetch(`${prefix}/me`, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
-      .then(async response => { if (!response.ok) throw new Error(`${label} is unavailable for this account or is not installed on this server.`); await response.json(); setReady(true) })
-      .catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Server product unavailable') })
-    return () => controller.abort()
-  }, [prefix, label])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const refresh = async () => {
+      try {
+        const token = getAuthToken()
+        if (!token) throw new Error('Sign in to view ' + label + '.')
+        const response = await fetch(`${prefix}/session`, {
+          method: 'POST', credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+          headers: { Authorization: `Bearer ${token}`, 'X-AgentWorks-Product-Session': '1' },
+        })
+        if (!response.ok) throw new Error(`${label} is unavailable for this account or is not installed on this server.`)
+        if (controller.signal.aborted) return
+        setReady(true)
+        timer = setTimeout(() => { void refresh() }, 4 * 60 * 1000)
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setReady(false)
+          setError(err instanceof Error ? err.message : 'Server product unavailable')
+        }
+      }
+    }
+    void refresh()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [prefix, label, userID])
   return <div className="flex h-screen min-h-0 bg-background">
     <ModePresetBar reduced walkthroughPaused />
     <main className="min-w-0 flex-1" aria-label={label}>

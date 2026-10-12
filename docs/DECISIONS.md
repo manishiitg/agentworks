@@ -1091,6 +1091,24 @@ kind. Coalesce admission/completion before status filtering or totals. Preserve
 legacy host envelopes for reads. Completed interrupted estimates contribute to
 provisional cost totals; unmatched admissions cannot establish a final bill.
 
+The product web UI is deliberately read-only: Connect, Models, Requests and
+Costs. A Bearer-authenticated POST bootstraps a short-lived opaque, HttpOnly,
+SameSite=Strict browser cookie scoped to that product. It expires no later than
+the parent app JWT, is revoked on app logout and is revalidated against current
+accounts/roles/product permissions on every request. Cookie requests can only
+read explicitly allowed product routes; inference, management, other products
+and platform APIs reject it. Server deployments require Secure cookies; local
+loopback development may use HTTP. No session token is placed in a URL.
+
+Management uses the generic `server_product` external MCP/CLI tool with current
+administrator authority, installed-product entitlement and `users:manage`
+consent. `action=tools` discovers the private product-owned catalog;
+`action=call` invokes a declared operation through a fixed management endpoint.
+Callers never select upstream URLs, methods, identity headers or credentials.
+The public core holds the transport/auth boundary; product schemas and handlers
+stay in the separate source repository. The minimal UI can show existing
+models, usage and setup; provider configuration remains operator-managed.
+
 SDK v1 is experimental and still includes LLM-specific contracts. Validate a
 second real product before promising a stable general extension API. The public
 proxy registry remains an explicit installation allowlist.

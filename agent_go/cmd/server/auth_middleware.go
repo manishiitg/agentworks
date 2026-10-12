@@ -212,9 +212,15 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Require JWT authentication. EventSource/SSE callers may pass the token as
 		// a query parameter because browsers cannot set custom SSE headers.
 		authHeader := r.Header.Get("Authorization")
+		cookieScope := ""
 		if authHeader == "" {
 			if qToken := r.URL.Query().Get("token"); qToken != "" {
 				authHeader = "Bearer " + qToken
+			}
+		}
+		if authHeader == "" {
+			if token, scope := serverProductUICookie(r); token != "" {
+				authHeader, cookieScope = "Bearer "+token, scope
 			}
 		}
 		if authHeader == "" {
@@ -274,6 +280,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		if !token.Valid {
 			http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
 			return
+		}
+		if strings.HasPrefix(claims.Scope, serverProductUIScopePrefix) ||
+			(cookieScope != "" && (claims.Scope != "" || !serverProductUIRequestAllowed(r))) {
+			http.Error(w, "product browser session not valid for this request", http.StatusForbidden)
+			return
+		}
+		if cookieScope != "" {
+			claims.Scope = cookieScope // Server-held session binding, never accepted from JWT claims.
 		}
 
 		// A linked OAuth identity and its password account are one account.

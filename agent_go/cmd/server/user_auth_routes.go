@@ -534,6 +534,8 @@ func (api *StreamingAPI) handleDesktopConnectExchange(w http.ResponseWriter, r *
 // handleLogout handles user logout
 // Since we use stateless JWTs, logout is handled client-side by clearing the token
 func (api *StreamingAPI) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// Embedded product cookies are stateful and must not survive app logout.
+	revokeServerProductUISessions(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
