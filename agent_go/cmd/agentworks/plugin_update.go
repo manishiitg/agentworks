@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -44,16 +45,185 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 	return out
 }
 
+const (
+	pluginsRepo    = "manishiitg/agentworks-plugins"
+	pluginsRepoURL = "https://github.com/manishiitg/agentworks-plugins.git"
+	oldPluginsRepo = "manishiitg/agentworks"
+)
+
+// onOldPluginsSource reports whether a registered marketplace source is the full
+// product repository rather than the small plugins repository.
+func onOldPluginsSource(source string) bool {
+	source = strings.ToLower(source)
+	return strings.Contains(source, oldPluginsRepo) && !strings.Contains(source, "agentworks-plugins")
+}
+
+// oldMarketplaceProviders lists the providers whose "agentworks" marketplace still
+// points at the full repository (a 400 MB clone) instead of the plugins repository.
+// Only the marketplace named agentworks is looked at.
+func oldMarketplaceProviders(home string, read func(string) string, museList func() string) map[string]bool {
+	old := map[string]bool{}
+	var known map[string]struct {
+		Source struct {
+			Repo string `json:"repo"`
+			URL  string `json:"url"`
+		} `json:"source"`
+	}
+	if json.Unmarshal([]byte(read(filepath.Join(home, ".claude", "plugins", "known_marketplaces.json"))), &known) == nil {
+		if m, ok := known["agentworks"]; ok && onOldPluginsSource(m.Source.Repo+" "+m.Source.URL) {
+			old["claude"] = true
+		}
+	}
+	inSection := false
+	for _, line := range strings.Split(read(filepath.Join(home, ".codex", "config.toml")), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			inSection = line == "[marketplaces.agentworks]"
+			continue
+		}
+		if inSection && strings.HasPrefix(line, "source ") && onOldPluginsSource(line) {
+			old["codex"] = true
+		}
+	}
+	if museList != nil {
+		for _, line := range strings.Split(museList(), "\n") {
+			if strings.HasPrefix(line, "agentworks\t") && onOldPluginsSource(line) {
+				old["muse"] = true
+			}
+		}
+	}
+	return old
+}
+
+// migrateMarketplace moves one provider's agentworks marketplace to the plugins
+// repository, keeping the marketplace name so plugin ids do not change. It returns
+// false when it could not, after trying to put the old source back.
+func migrateMarketplace(ctx context.Context, provider string) bool {
+	run := func(args ...string) bool {
+		step, cancel := context.WithTimeout(ctx, 120*time.Second)
+		defer cancel()
+		return exec.CommandContext(step, provider, args...).Run() == nil
+	}
+	// The plugin's scope and state are recorded before anything is removed, so the
+	// reinstall and the rollback restore the same scope and report a lost enablement.
+	before := pluginListBlock(ctx, provider)
+	var remove, add, restore, reinstall []string
+	switch provider {
+	case "claude":
+		remove, add, restore = []string{"plugin", "marketplace", "remove", "agentworks"}, []string{"plugin", "marketplace", "add", pluginsRepo}, []string{"plugin", "marketplace", "add", oldPluginsRepo}
+		reinstall = []string{"plugin", "install", "agentworks@agentworks"}
+		if scope := pluginListScope(before); scope != "" {
+			reinstall = append(reinstall, "--scope", scope)
+		}
+	case "codex":
+		remove, add, restore = []string{"plugin", "marketplace", "remove", "agentworks"}, []string{"plugin", "marketplace", "add", pluginsRepo}, []string{"plugin", "marketplace", "add", oldPluginsRepo}
+		reinstall = []string{"plugin", "add", "agentworks-codex@agentworks"}
+	case "muse":
+		remove, add, restore = []string{"plugins", "marketplace", "remove", "agentworks"}, []string{"plugins", "marketplace", "add", "agentworks", pluginsRepoURL}, []string{"plugins", "marketplace", "add", "agentworks", "https://github.com/" + oldPluginsRepo + ".git"}
+	default:
+		return false
+	}
+	if !run(remove...) {
+		return false
+	}
+	if !run(add...) {
+		run(restore...)
+		if reinstall != nil {
+			run(reinstall...)
+		}
+		return false
+	}
+	if reinstall != nil && !run(reinstall...) {
+		return false
+	}
+	after := pluginListBlock(ctx, provider)
+	if before != "" && !strings.Contains(strings.ToLower(before), "disabled") && (after == "" || strings.Contains(strings.ToLower(after), "disabled")) {
+		fmt.Fprintf(os.Stderr, "The %s plugin is installed but not enabled after the switch. Run: %s\n", provider, pluginEnableStep(provider))
+	}
+	return true
+}
+
+// pluginListBlock returns the part of "<provider> plugin list" that is about the
+// AgentWorks plugin (empty when the provider has no such listing or no entry).
+func pluginListBlock(ctx context.Context, provider string) string {
+	args := []string{"plugin", "list"}
+	if provider == "muse" {
+		args = []string{"plugins", "list"}
+	}
+	step, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(step, provider, args...).Output()
+	if err != nil {
+		return ""
+	}
+	var block []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "agentworks") {
+			block = append(block, line)
+		}
+	}
+	text := strings.Join(block, "\n")
+	if provider == "claude" {
+		// Claude prints the version, scope and status on the lines after the name.
+		lines := strings.Split(string(out), "\n")
+		for i, line := range lines {
+			if strings.Contains(line, "agentworks@agentworks") {
+				text = strings.Join(lines[i:min(i+4, len(lines))], "\n")
+				break
+			}
+		}
+	}
+	return text
+}
+
+func pluginListScope(block string) string {
+	for _, line := range strings.Split(block, "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "Scope:"); ok {
+			scope := strings.TrimSpace(rest)
+			if scope == "user" || scope == "project" || scope == "local" {
+				return scope
+			}
+		}
+	}
+	return ""
+}
+
+func pluginEnableStep(provider string) string {
+	switch provider {
+	case "claude":
+		return "claude plugin enable agentworks@agentworks, then reload Claude Code"
+	case "codex":
+		return "codex plugin add agentworks-codex@agentworks, then reload Codex"
+	}
+	return "muse plugins approve agentworks-muse, then restart Muse"
+}
+
 // updateInstalledPlugins runs the safe refresh commands and prints one plain
 // line per provider that still needs a step from the person.
-func updateInstalledPlugins(ctx context.Context, o *options) {
+func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return
 	}
 	onPath := func(name string) bool { _, e := exec.LookPath(name); return e == nil }
 	read := func(path string) string { b, _ := os.ReadFile(path); return string(b) }
+	old := oldMarketplaceProviders(home, read, func() string {
+		if !onPath("muse") {
+			return ""
+		}
+		out, _ := exec.CommandContext(ctx, "muse", "plugins", "marketplace", "list").Output()
+		return string(out)
+	})
 	for _, update := range installedPluginUpdates(home, onPath, read) {
+		if old[update.Provider] {
+			if !switchSource {
+				fmt.Fprintf(o.stderr, "Your %s plugin still updates from the large repository. Run agentworks update --switch-plugin-source to move it (about a minute; reload the app afterwards).\n", update.Provider)
+			} else if migrateMarketplace(ctx, update.Provider) {
+				fmt.Fprintf(o.stderr, "Switched the %s plugin source to the small plugins repository (%s).\n", update.Provider, pluginsRepo)
+			} else {
+				fmt.Fprintf(o.stderr, "Could not switch the %s plugin source to %s; it keeps using the full repository for now.\n", update.Provider, pluginsRepo)
+			}
+		}
 		done := len(update.Auto) > 0
 		for _, args := range update.Auto {
 			step, cancel := context.WithTimeout(ctx, 90*time.Second)

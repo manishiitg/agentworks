@@ -59,18 +59,19 @@ type cliRelease struct {
 }
 
 func updateCommand(o *options) *cobra.Command {
-	var check, force bool
+	var check, force, switchSource bool
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Self-update the CLI from the connected server",
 		Long:  "Download the CLI build published by the connected server, verify its checksum, and replace this executable. Uses the saved login server unless --server is given; no access token needed.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runUpdate(o, check, force)
+			return runUpdate(o, check, force, switchSource)
 		},
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "Only report whether an update is available")
 	cmd.Flags().BoolVar(&force, "force", false, "Reinstall even when versions match")
+	cmd.Flags().BoolVar(&switchSource, "switch-plugin-source", false, "Move the AgentWorks coding-CLI plugins from the large repository to the small plugins repository (about a minute; reload the app afterwards)")
 	return cmd
 }
 
@@ -140,7 +141,7 @@ func updateFetch(url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 }
 
-func runUpdate(o *options, check, force bool) error {
+func runUpdate(o *options, check, force, switchSource bool) error {
 	server, err := updateServer(o)
 	if err != nil {
 		return err
@@ -226,6 +227,6 @@ func runUpdate(o *options, check, force bool) error {
 	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
 		return err
 	}
-	updateInstalledPlugins(context.Background(), o)
+	updateInstalledPlugins(context.Background(), o, switchSource)
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
 }

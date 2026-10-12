@@ -270,6 +270,10 @@ func productAccessResponseFields(claims *UserClaims) map[string]interface{} {
 			if products == nil {
 				products = []string{}
 			}
+			// Brain is for every account (see userAllowedProduct), when this server runs it.
+			if productEnabled("knowledgebase") && !containsFold(products, "knowledgebase") {
+				products = append(append([]string(nil), products...), "knowledgebase")
+			}
 			out["allowed_products"] = products
 		}
 	}
