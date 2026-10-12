@@ -1,5 +1,21 @@
 # Decisions and open issues
 
+## 2026-10-12 — Products define tips and onboarding slows their cadence (PLAT-746)
+
+Declare ordered display tips and tab-count conditions in product.yaml `ui.tips`;
+resolve shared definitions on the server and expose only that metadata.
+Show new product viewers tips at a 30-minute minimum gap, widening to one,
+two and four hours after two, four and six shown tips respectively. Track
+cadence per account/product in this browser and seen ids per account; preserve
+anonymous legacy history without attributing it to a signed-in account.
+Long-running work may show another eligible tip; keep the ten-second working
+delay, feature-use suppression and no repeats. Add practical schedule and
+dashboard instructions where those product controls exist.
+Why: product-owned content should use one validated interface, and discovery
+should be more frequent early without staying intrusive as users learn.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 ## 2026-10-12 — Dashboard items can be questioned in their project chat (PLAT-750)
 
 Offer Ask agent on right-clicked dashboard text/numbers or a selection, with an

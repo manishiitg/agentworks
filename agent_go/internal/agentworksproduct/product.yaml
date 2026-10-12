@@ -67,6 +67,11 @@ branding:
   favicon: ""
 
 ui:
+  tips:
+    - id: quick-switcher
+    - id: step-test-mode
+      text: 'Changed a step? Ask to run it in test mode: nothing is sent and the data is a copy.'
+    - id: toolbar-hide
   surface: ""
   files_panel: false
   workflow_panel: false

@@ -2493,6 +2493,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/desktop/exchange", api.handleDesktopConnectExchange).Methods("POST", "OPTIONS")
 
 	apiRouter.HandleFunc("/query", api.handleQuery).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/product-tips", api.handleProductTips).Methods("GET", "OPTIONS")
 	AgentProfileRoutes(apiRouter, api.agentProfiles)
 	apiRouter.HandleFunc("/agent-profiles/{id}/query", api.handleAgentProfileChatQuery).Methods("POST", "OPTIONS")
 	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup", "changes", "diff"} {

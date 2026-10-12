@@ -153,6 +153,14 @@ func ChatDefinitionKey(mode string) (string, error) {
 }
 
 // Builder aliases preserve the product contract used by existing callers.
+// Manifest exposes the same validated metadata used by the Relay Builder.
+func Manifest() (agentprofiles.ProductManifest, error) {
+	if err := loadProduct(); err != nil {
+		return agentprofiles.ProductManifest{}, err
+	}
+	return manifest, nil
+}
+
 func BuilderPrompt() (string, error)     { return ChatPrompt("builder") }
 func BuilderTools() ([]string, error)    { return ChatTools("builder") }
 func BuilderAllowsTool(name string) bool { return ChatAllowsTool("builder", name) }

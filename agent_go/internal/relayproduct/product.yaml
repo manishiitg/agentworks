@@ -122,6 +122,9 @@ branding:
   favicon: ""
 
 ui:
+  tips:
+    - id: quick-switcher
+    - id: toolbar-hide
   surface: "workflow"
   files_panel: false
   workflow_panel: true

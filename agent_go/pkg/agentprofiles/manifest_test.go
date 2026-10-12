@@ -26,6 +26,20 @@ profile:
   built_in: true
 `
 
+func TestWorkingTipManifestRejectsInvalidDefinitions(t *testing.T) {
+	for _, tips := range []string{
+		"    - {id: missing-shared}\n",
+		"    - {id: quick-switcher}\n    - {id: quick-switcher}\n",
+		"    - {id: example, text: Hint, skip_if_used: unknown-feature}\n",
+		"    - {id: example, text: Hint, when: {code_tabs: {min: 3, max: 1}}}\n",
+		"    - {id: example, text: Hint, when: {script: run}}\n",
+	} {
+		if _, err := LoadProductManifest(manifestFS("ui:\n  tips:\n"+tips, nil), "product.yaml"); err == nil {
+			t.Fatalf("invalid working tip accepted: %s", tips)
+		}
+	}
+}
+
 func manifestFS(extra string, files map[string]string) fstest.MapFS {
 	fsys := fstest.MapFS{
 		"product.yaml":      {Data: []byte(baseManifest + extra)},

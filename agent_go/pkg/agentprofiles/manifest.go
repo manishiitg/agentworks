@@ -81,11 +81,12 @@ type ProductManifest struct {
 		Favicon string `yaml:"favicon"`
 	} `yaml:"branding"`
 	UI struct {
-		Surface       string `yaml:"surface"`
-		FilesPanel    bool   `yaml:"files_panel"`
-		WorkflowPanel bool   `yaml:"workflow_panel"`
-		Secrets       bool   `yaml:"secrets"`
-		Streaming     string `yaml:"streaming"`
+		Tips          []WorkingTip `yaml:"tips,omitempty"`
+		Surface       string       `yaml:"surface"`
+		FilesPanel    bool         `yaml:"files_panel"`
+		WorkflowPanel bool         `yaml:"workflow_panel"`
+		Secrets       bool         `yaml:"secrets"`
+		Streaming     string       `yaml:"streaming"`
 	} `yaml:"ui"`
 	Workflows struct {
 		Enabled        []string `yaml:"enabled"`
@@ -111,6 +112,10 @@ func LoadProductManifest(fsys fs.FS, path string) (ProductManifest, error) {
 	}
 	if manifest.SchemaVersion != 2 {
 		return manifest, fmt.Errorf("invalid product manifest: schema_version must be 2")
+	}
+	manifest.UI.Tips, err = resolveWorkingTips(manifest.UI.Tips)
+	if err != nil {
+		return manifest, err
 	}
 	if err := productdeps.Validate(manifest.Dependencies); err != nil {
 		return manifest, fmt.Errorf("invalid dependencies: %w", err)
