@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -106,6 +107,20 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 			return
 		}
 		name := strings.TrimSpace(externalArg(args, "name"))
+		if action != "secrets_list" {
+			// A change is the person's own: not a Brain service-account identity, an agent-bound token, a folder-capped
+			// or access-only connection, and the connection must still be live (as backup_reconcile rechecks).
+			if t := claims.AccessToken; t != nil && (t.KnowledgebaseIdentityID != "" || t.BoundAgentID != "") || principal.AccessOnly || principal.Caps != nil {
+				externalError(w, http.StatusForbidden, "FORBIDDEN", "Changing Brain's secrets needs the person's own connection.")
+				return
+			}
+			if principal.Recheck != nil {
+				if err := principal.Recheck(ctx); err != nil {
+					knowledgebaseHTTPError(w, err)
+					return
+				}
+			}
+		}
 		switch action {
 		case "secrets_set":
 			value, _ := args["value"].(string)
@@ -113,6 +128,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 				externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
 				return
 			}
+			log.Printf("[BRAIN] secret %q set by %s over MCP", name, claims.UserID) // the name only, never the value
 		case "secrets_delete":
 			if name == "" {
 				externalError(w, http.StatusBadRequest, "invalid_arguments", "secrets_delete needs name.")
@@ -122,6 +138,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 				externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
 				return
 			}
+			log.Printf("[BRAIN] secret %q deleted by %s over MCP", name, claims.UserID)
 		}
 		names, err := api.brainSecretNames(ctx)
 		if err != nil {
@@ -147,6 +164,11 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 		knowledgebaseWriteJSON(w, map[string]any{"result": map[string]any{"last_seen": seen, "changes": result}})
 	case "mark_seen":
 		commit := strings.TrimSpace(externalArg(args, "commit"))
+		// The commit must be one of Brain's own (the same check `since` makes), not just a well-formed id.
+		if _, err := service.Call(ctx, principal, "list_knowledgebase_changes", map[string]any{"since": commit, "limit": 1}); err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
 		if err := service.SetSeenCommit(principal.IdentityID, commit); err != nil {
 			knowledgebaseHTTPError(w, err)
 			return
