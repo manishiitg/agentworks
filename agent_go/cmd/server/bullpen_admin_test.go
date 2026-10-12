@@ -12,6 +12,7 @@ import (
 // audited), a repeat reports already closed, a live name cannot be removed, a
 // stale one can, and a change without a reason or past the rate limit is refused.
 func TestBullpenAdminClosesAttachmentAndRemovesStaleName(t *testing.T) {
+	newTriggerLinkEnv(t) // a workspace API for the message store
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"root","username":"root","admin":true,"products":[]}]}`)
 	api := &StreamingAPI{}

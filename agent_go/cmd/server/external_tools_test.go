@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
@@ -249,6 +250,9 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 					}
 				}
 			}
+		}
+		if !productpolicy.Enabled("bullpen") {
+			delete(want, bullpenAdminTool) // listed only where the Bullpen product runs
 		}
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
