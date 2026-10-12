@@ -296,14 +296,18 @@ func FormatSlackTargetList(set SlackTargetSet, where string) string {
 // SlackTargetSettings is one target's Slack settings: its slug and whether
 // its owner turned on "Use the AgentWorks bot".
 type SlackTargetSettings struct {
-	WorkspacePath string    `json:"workspace_path"`
-	ProfileID     string    `json:"profile_id,omitempty"`
-	Slug          string    `json:"slug,omitempty"`
-	Label         string    `json:"label,omitempty"`
-	OwnerID       string    `json:"owner_id,omitempty"`
-	PlatformBot   bool      `json:"platform_bot"`
-	UpdatedBy     string    `json:"updated_by,omitempty"`
-	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+	WorkspacePath string `json:"workspace_path"`
+	ProfileID     string `json:"profile_id,omitempty"`
+	Slug          string `json:"slug,omitempty"`
+	Label         string `json:"label,omitempty"`
+	// DisplayName and Description are what the owner wrote for the Slack picker; they win over the product's name and
+	// description. Empty means "use the product's".
+	DisplayName string    `json:"display_name,omitempty"`
+	Description string    `json:"description,omitempty"`
+	OwnerID     string    `json:"owner_id,omitempty"`
+	PlatformBot bool      `json:"platform_bot"`
+	UpdatedBy   string    `json:"updated_by,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at,omitempty"`
 }
 
 // Ref names the target.
@@ -596,10 +600,10 @@ const slackNudgePrompt = "Pick who should answer first. Your message runs once y
 // slackPickActionPrefix starts the action ID of a target button.
 const slackPickActionPrefix = "slack_pick_"
 
-// slackPickBlocks builds one button per target (Slack allows 25 per block).
+// slackPickBlocks builds one row per target: its name in bold, its description under it, and a Pick button on the
+// right (Slack allows 100 blocks in a message; 50 targets at most).
 func slackPickBlocks(choices []SlackTarget) []MessageBlock {
 	var blocks []MessageBlock
-	var buttons []MessageButton
 	for i, choice := range choices {
 		if i >= 50 {
 			break
@@ -608,14 +612,13 @@ func slackPickBlocks(choices []SlackTarget) []MessageBlock {
 		if len(label) > 70 {
 			label = label[:70]
 		}
-		buttons = append(buttons, MessageButton{Text: label, Value: choice.Ref.Key(), ActionID: fmt.Sprintf("%s%d", slackPickActionPrefix, i)})
-		if len(buttons) == 25 {
-			blocks = append(blocks, MessageBlock{Type: "actions", Buttons: buttons})
-			buttons = nil
+		text := "*" + label + "*"
+		if choice.Description != "" {
+			text += "\n" + choice.Description
 		}
-	}
-	if len(buttons) > 0 {
-		blocks = append(blocks, MessageBlock{Type: "actions", Buttons: buttons})
+		text += "\n`" + choice.Slug + "`"
+		blocks = append(blocks, MessageBlock{Type: "section", Text: text,
+			Buttons: []MessageButton{{Text: label, Value: choice.Ref.Key(), ActionID: fmt.Sprintf("%s%d", slackPickActionPrefix, i)}}})
 	}
 	return blocks
 }
@@ -631,14 +634,5 @@ func slackPickPrompt(choices []SlackTarget, slug string) string {
 	if slug != "" {
 		return fmt.Sprintf("Several targets are called `%s` here. Which one did you mean? Your message runs once you pick, and this thread stays with it.", slug)
 	}
-	var b strings.Builder
-	b.WriteString("Who should answer? Pick one, and this thread stays with it.\n")
-	for _, choice := range choices {
-		b.WriteString("\n• *" + firstNonEmptyString(choice.Label, choice.Slug) + "* (`" + choice.Slug + "`)")
-		if choice.Description != "" {
-			b.WriteString(": " + choice.Description)
-		}
-	}
-	b.WriteString("\n\nNext time you can start your message with the slug in backticks.")
-	return b.String()
+	return "Who should answer? Pick one, and this thread stays with it. Next time you can start your message with the slug shown under a name."
 }

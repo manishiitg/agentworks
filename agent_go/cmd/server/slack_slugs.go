@@ -124,12 +124,17 @@ func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegist
 	target := services.SlackTarget{Ref: ref}
 	if entry, ok := registry.Settings(ref); ok {
 		target.Slug = strings.TrimSpace(entry.Slug)
-		target.Label = strings.TrimSpace(entry.Label)
+		// The owner's own name and description win; otherwise the live product values (the stored Label is an old
+		// snapshot of the product name and is no longer read).
+		target.Label = strings.TrimSpace(entry.DisplayName)
+		target.Description = strings.TrimSpace(entry.Description)
 	}
 	if target.Label == "" {
 		target.Label = slackDestinationLabel(ctx, ref.WorkspacePath, ref.ProfileID)
 	}
-	target.Description = slackDestinationDescription(ctx, ref.WorkspacePath, ref.ProfileID)
+	if target.Description == "" {
+		target.Description = slackDestinationDescription(ctx, ref.WorkspacePath, ref.ProfileID)
+	}
 	if target.Slug == "" {
 		target.Slug = services.SlackSlug(target.Label)
 	}

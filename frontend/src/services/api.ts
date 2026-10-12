@@ -1592,7 +1592,7 @@ export const agentApi = {
     return apiResponse.data
   },
 
-  updateSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }, changes: { platform_bot?: boolean; slug?: string }): Promise<SlackTargetSettings> => {
+  updateSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }, changes: { platform_bot?: boolean; slug?: string; display_name?: string; description?: string }): Promise<SlackTargetSettings> => {
     const apiResponse = await api.put('/api/human-feedback/slack/targets/settings', { ...destination, ...changes })
     return apiResponse.data
   },

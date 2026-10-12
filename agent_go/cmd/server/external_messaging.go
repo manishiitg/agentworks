@@ -16,13 +16,16 @@ import (
 // phone acts as its owner, so pairing stays behind a browser sign-in).
 
 func externalMessagingDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_messaging", "Slack and WhatsApp for a workflow, Relay or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it; a new route is tested with the app's dry run (nothing is posted). test_channel: run that dry run again. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
+	add("manage_messaging", "Slack and WhatsApp for a workflow, Relay or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it; a new route is tested with the app's dry run (nothing is posted). test_channel: run that dry run again. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
 		"workflow_id":   externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
 		"crew_id":       externalString("Crew ID from list_crews. Pass this or workflow_id."),
-		"action":        map[string]any{"type": "string", "enum": []any{"status", "add_channel", "remove_channel", "test_channel", "use_bot", "whatsapp_link"}},
+		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "test_channel", "use_bot", "whatsapp_link"}},
 		"channel_id":    externalString("Exact Slack channel ID, e.g. C0123ABCD."),
 		"connection_id": externalString("For use_bot: a bot id from status, or \"shared\"."),
 		"text":          map[string]any{"type": "string", "maxLength": 500, "description": "Optional message text for the dry run."},
+		"name":          map[string]any{"type": "string", "maxLength": 60, "description": "For set_target: the name shown in Slack's \"who should answer\" picker. Empty goes back to the product's name."},
+		"description":   map[string]any{"type": "string", "maxLength": 75, "description": "For set_target: one short line shown under the name in the picker. Empty goes back to the product's description."},
+		"slug":          map[string]any{"type": "string", "maxLength": 40, "description": "For set_target: the word people type to pick this target (lowercase letters, digits, hyphens)."},
 	}, "action")
 }
 
@@ -83,6 +86,18 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 		out["slack_bot"], out["bots"] = selected, bots
 		out["whatsapp"] = "Pair your own WhatsApp in the app (manage_messaging whatsapp_link says where); it runs as you."
 		externalJSON(w, out)
+	case "set_target":
+		payload := map[string]any{"workspace_path": target.path, "profile_id": target.profile}
+		for arg, key := range map[string]string{"name": "display_name", "description": "description", "slug": "slug"} {
+			if v, ok := args[arg].(string); ok {
+				payload[key] = v
+			}
+		}
+		if len(payload) == 2 {
+			externalError(w, 400, "invalid_arguments", "set_target needs name, description or slug.")
+			return
+		}
+		respond(scheduleHandler(r, slackTargetSettingsHandler(api), http.MethodPut, "/api/human-feedback/slack/targets/settings", nil, nil, payload))
 	case "add_channel":
 		if !needChannel() {
 			return

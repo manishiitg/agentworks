@@ -46,8 +46,13 @@ type SlackTargetChannel struct {
 
 // SlackTargetSettingsResponse is one target's Slack settings.
 type SlackTargetSettingsResponse struct {
-	Slug              string               `json:"slug"`
-	Label             string               `json:"label"`
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+	// Description is the line shown under the name; DisplayName and CustomDescription are what the owner wrote
+	// (empty: the product's name and description are used).
+	Description       string               `json:"description,omitempty"`
+	DisplayName       string               `json:"display_name,omitempty"`
+	CustomDescription string               `json:"custom_description,omitempty"`
 	PlatformBot       bool                 `json:"platform_bot"`
 	PlatformAvailable bool                 `json:"platform_available"`
 	PlatformName      string               `json:"platform_name,omitempty"`
@@ -169,9 +174,13 @@ func (api *StreamingAPI) slackTargetSettings(ctx context.Context, ref services.S
 	legacy := api.slackLegacyPlatformTarget(ctx, ref)
 	named := slackNamedTarget(ctx, registry, ref)
 	_, conn, available := slackPlatformBot()
+	own, _ := registry.Settings(ref)
 	out := SlackTargetSettingsResponse{
+		DisplayName:       own.DisplayName,
+		CustomDescription: own.Description,
 		Slug:              named.Slug,
 		Label:             named.Label,
+		Description:       named.Description,
 		PlatformBot:       available && registry.PlatformOptIn(ref, legacy),
 		PlatformAvailable: available,
 		PlatformName:      conn.DisplayName,
@@ -246,6 +255,9 @@ func slackTargetSettingsHandler(api *StreamingAPI) http.HandlerFunc {
 			ProfileID     string  `json:"profile_id"`
 			PlatformBot   *bool   `json:"platform_bot"`
 			Slug          *string `json:"slug"`
+			// DisplayName and Description are the owner's own words for the Slack picker; "" clears them.
+			DisplayName *string `json:"display_name"`
+			Description *string `json:"description"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
@@ -276,10 +288,30 @@ func slackTargetSettingsHandler(api *StreamingAPI) http.HandlerFunc {
 				}
 			}
 		}
+		clean := func(v *string, max int, what string) (string, error) {
+			if v == nil {
+				return "", nil
+			}
+			text := strings.Join(strings.Fields(*v), " ")
+			if len([]rune(text)) > max {
+				return "", fmt.Errorf("%s is at most %d characters", what, max)
+			}
+			return text, nil
+		}
+		displayName, err := clean(body.DisplayName, 60, "the name")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		description, err := clean(body.Description, 75, "the description")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		legacy := api.slackLegacyPlatformTarget(r.Context(), ref)
 		label := slackDestinationLabel(r.Context(), ref.WorkspacePath, ref.ProfileID)
 		turnedOn := false
-		err := services.ModifySlackTargetsRegistry(r.Context(), func(registry *services.SlackTargetsRegistry) error {
+		err = services.ModifySlackTargetsRegistry(r.Context(), func(registry *services.SlackTargetsRegistry) error {
 			entry, found := registry.Settings(ref)
 			if !found {
 				entry = services.SlackTargetSettings{WorkspacePath: ref.WorkspacePath, ProfileID: ref.ProfileID, PlatformBot: registry.PlatformOptIn(ref, legacy)}
@@ -293,6 +325,12 @@ func slackTargetSettingsHandler(api *StreamingAPI) http.HandlerFunc {
 			}
 			if body.Slug != nil {
 				entry.Slug = slug
+			}
+			if body.DisplayName != nil {
+				entry.DisplayName = displayName
+			}
+			if body.Description != nil {
+				entry.Description = description
 			}
 			entry.Label = label
 			entry.OwnerID = firstNonBlank(entry.OwnerID, GetUserFromContext(r.Context()).UserID)
