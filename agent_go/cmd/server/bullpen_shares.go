@@ -398,7 +398,7 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		return shares[i]["created_at"].(time.Time).After(shares[j]["created_at"].(time.Time))
 	})
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks})
+	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks, "shared_with_me": s.sharedAgentItems(claims.UserID, now)})
 }
 
 func (api *StreamingAPI) handleBullpenShareCreate(w http.ResponseWriter, r *http.Request) {

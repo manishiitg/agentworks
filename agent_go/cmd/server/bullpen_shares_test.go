@@ -59,6 +59,8 @@ func TestPruneSharesDropsOnlyLongEndedGrants(t *testing.T) {
 	s.pruneShares(now)
 	if len(s.Shares) != 2 || s.Shares[0].ID != "live" || s.Shares[1].ID != "revoked-recent" {
 		t.Fatalf("unexpected shares after pruning: %+v", s.Shares)
+	}
+}
 
 // A cross-account conversation works only between the grant's owner and subject
 // agents, stops for a forged or swapped endpoint, and revoking it suppresses
