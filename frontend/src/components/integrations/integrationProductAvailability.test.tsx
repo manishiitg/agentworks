@@ -49,4 +49,4 @@ it.each(['local', 'server', 'account', 'enabled'])('keeps product integrations c
     expect(knowledgebaseApi.project).not.toHaveBeenCalled()
   }
   expect(menu.textContent).toContain('Tools & secrets')
-}))
+})
