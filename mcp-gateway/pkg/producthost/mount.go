@@ -41,7 +41,11 @@ func Mount(mux *http.ServeMux, st *store.MemoryStore, workspace string, serviceT
 			if err := st.EnsurePlatformUser(workspace, actor); err != nil {
 				return api.Identity{}, false
 			}
-			return api.Identity{UserID: actor, WorkspaceID: workspace, ClientID: r.Header.Get("X-AgentWorks-Client")}, true
+			user, exists := st.GetUser(actor)
+			if !exists || user.WorkspaceID != workspace {
+				return api.Identity{}, false
+			}
+			return api.Identity{UserID: actor, Email: user.Email, WorkspaceID: workspace, ClientID: r.Header.Get("X-AgentWorks-Client")}, true
 		}
 		host := api.Host{APIVersion: api.APIVersion, Storage: adapter, Audit: adapter, Authenticate: authenticate, IsAdmin: func(ctx context.Context, _ api.Identity) bool { admin, _ := ctx.Value(roleKey{}).(bool); return admin }}
 		product, err := factory(host)

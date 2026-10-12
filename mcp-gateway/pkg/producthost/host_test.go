@@ -84,6 +84,7 @@ func TestMountedProductRejectsUntrustedActorAndRoleHeaders(t *testing.T) {
 	if err := st.EnsurePlatformGroup("w"); err != nil {
 		t.Fatal(err)
 	}
+	st.AddUser(store.User{ID: "alice", WorkspaceID: "w", Email: "alice@example.test"})
 	mux := http.NewServeMux()
 	secret := "private-test-service-credential-32-chars"
 	f := func(h api.Host) (api.Product, error) {
@@ -92,6 +93,9 @@ func TestMountedProductRejectsUntrustedActorAndRoleHeaders(t *testing.T) {
 			if !ok {
 				w.WriteHeader(401)
 				return
+			}
+			if id.Email != "alice@example.test" {
+				t.Errorf("authenticated identity lost synchronized email: %+v", id)
 			}
 			if !h.IsAdmin(r.Context(), id) {
 				w.WriteHeader(403)

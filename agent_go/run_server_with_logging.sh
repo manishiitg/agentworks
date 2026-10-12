@@ -490,6 +490,23 @@ fi
 
 # Private builds may supply a separately assembled binary. Ordinary public and
 # local runs retain the existing Go command and never need a private checkout.
+prepare_gateway_product_credentials() {
+    [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ] || return 0
+    # Preserve an operator-supplied dedicated credential in either form.
+    if [ -n "${AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN:-}" ] || [ -n "${AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE:-}" ]; then
+        return 0
+    fi
+    local product_state_dir="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
+    local product_token_file="${product_state_dir}/llm-gateway-service-token"
+    mkdir -p "$product_state_dir" || return 1
+    if [ ! -s "$product_token_file" ]; then
+        (umask 077 && openssl rand -hex 32 > "$product_token_file") || return 1
+    fi
+    chmod 600 "$product_token_file" || return 1
+    export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN=""
+    export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE="$product_token_file"
+}
+
 launch_gateway_process() {
     local gateway_binary="${AGENTWORKS_GATEWAY_BINARY:-}"
     if [ -n "$gateway_binary" ]; then
@@ -497,6 +514,7 @@ launch_gateway_process() {
             echo "❌ AGENTWORKS_GATEWAY_BINARY must name an absolute executable file"
             return 1
         fi
+        prepare_gateway_product_credentials || return 1
         if [ "$BACKGROUND_MODE" = true ]; then
             nohup "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
         else
@@ -1227,16 +1245,6 @@ if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
     export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
     export CAPLAYER_SERVICE_TOKEN=""
     export CAPLAYER_SERVICE_TOKEN_FILE="$VAULT_TOKEN_FILE"
-    # Product credentials are independent of Vault administration and other products.
-    if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
-        PRODUCT_TOKEN_FILE="${VAULT_STATE_DIR}/llm-gateway-service-token"
-        if [ ! -s "$PRODUCT_TOKEN_FILE" ]; then
-            (umask 077 && openssl rand -hex 32 > "$PRODUCT_TOKEN_FILE")
-        fi
-        chmod 600 "$PRODUCT_TOKEN_FILE"
-        export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN=""
-        export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE="$PRODUCT_TOKEN_FILE"
-    fi
 fi
 # Keep managed browser cookies and logins across local server restarts. Workflow
 # isolation is added beneath this root by the browser launcher.

@@ -9,6 +9,68 @@ import (
 	"testing"
 )
 
+// Exercise the real launch path with a harmless executable, so gateway-only
+// startup cannot skip product credential provisioning before spawning the host.
+func TestRunServerPrivateProductCredentialsBeforeLaunch(t *testing.T) {
+	script, err := os.ReadFile("run_server_with_logging.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+	start := strings.Index(text, "prepare_gateway_product_credentials() {")
+	end := strings.Index(text, "\nif [ \"$ONLY_GATEWAY\" = true ]; then")
+	if start < 0 || end <= start {
+		t.Fatal("gateway launch helpers missing")
+	}
+	for _, supplied := range []bool{false, true} {
+		t.Run(map[bool]string{false: "generated", true: "operator supplied"}[supplied], func(t *testing.T) {
+			dir := t.TempDir()
+			binary := filepath.Join(dir, "composed-host")
+			if err := os.WriteFile(binary, []byte("#!/bin/sh\n[ -n \"${AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN:-}\" ] || [ -s \"${AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE:-}\" ]\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			body := text[start:end] + `
+AGENTWORKS_GATEWAY_BINARY="$1"
+GATEWAY_STATE_DIR="$2"
+GATEWAY_DIR="$2"
+GATEWAY_LOG_PATH="$2/launch.log"
+BACKGROUND_MODE=false
+export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN="$3"
+export AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE=""
+launch_gateway_process || exit 1
+wait "$GATEWAY_PID" || exit 1
+printf '%s' "$AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE"
+`
+			token := ""
+			if supplied {
+				token = strings.Repeat("s", 32)
+			}
+			output, err := exec.Command("bash", "-c", body, "launch-test", binary, dir, token).CombinedOutput()
+			if err != nil {
+				t.Fatalf("composed host did not receive credentials before launch: %v: %s", err, output)
+			}
+			file := filepath.Join(dir, "llm-gateway-service-token")
+			if supplied {
+				if len(output) != 0 {
+					t.Fatal("operator credential was replaced")
+				}
+				if _, err := os.Stat(file); !os.IsNotExist(err) {
+					t.Fatal("unnecessary credential generated")
+				}
+				return
+			}
+			data, err := os.ReadFile(file)
+			if err != nil || len(strings.TrimSpace(string(data))) < 32 || string(output) != file {
+				t.Fatal("dedicated credential was not exported")
+			}
+			info, err := os.Stat(file)
+			if err != nil || info.Mode().Perm() != 0o600 {
+				t.Fatal("product credential permissions are not private")
+			}
+		})
+	}
+}
+
 // Exercise the launcher's actual profile helper without starting any service.
 // The installed private product is visible only under the explicit local opt-in.
 func TestRunServerPrivateProductSurfaceDefaults(t *testing.T) {
