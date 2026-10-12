@@ -1,5 +1,13 @@
 # Decisions and open issues
 
+## 2026-10-12 — Every account has Brain (PLAT-856)
+
+Brain is not a per-account product: an account limited to Code, Crew or other products still reads and saves Brain
+notes and installs company skills (`install_skill brain:<folder>`) on a server that runs Brain. Folder roles still decide
+what a person can read or write. Why: owner: everyone should have access to Brain, even in Code and Crew.
+
+Ticket: PLAT-856, issue 856-61.
+
 ## 2026-10-12 — Cursor command line on macOS is verified by its kernel launch record (PLAT-861)
 
 A Cursor CLI conversation is recognised on macOS as it is on Linux: the process runs the installed Node image
