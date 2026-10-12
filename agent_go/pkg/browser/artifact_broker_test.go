@@ -114,3 +114,22 @@ func TestPrepareBrowserArtifactCarriesRecordingLeaseToStop(t *testing.T) {
 		t.Fatalf("stop transfer %#v does not match start %#v", stop.Transfer, start.Transfer)
 	}
 }
+
+// A screenshot with no path used to reach agent-browser unchanged and fail writing into a default folder that a deployment never
+// prepares. It is staged like a named one and lands in the project's screenshots folder.
+func TestPrepareBrowserArtifactStagesAScreenshotWithNoPath(t *testing.T) {
+	t.Setenv(browserStagingNamespaceEnv, "pathless-"+t.Name())
+	plan, err := prepareBrowserArtifact("screenshot", []string{"--full"}, "owner", "session")
+	if err != nil || plan == nil {
+		t.Fatalf("no plan for a screenshot with no path: %v", err)
+	}
+	if got := plan.RewrittenArgs; len(got) != 2 || got[0] != "--full" || got[1] != plan.StagedPath {
+		t.Fatalf("args = %v, want the flag then the staged path %s", got, plan.StagedPath)
+	}
+	if !strings.HasPrefix(plan.Transfer.DestinationPath, "screenshots/screenshot-") || !strings.HasSuffix(plan.Transfer.DestinationPath, ".png") || !plan.Transfer.Finalize {
+		t.Fatalf("transfer = %+v", plan.Transfer)
+	}
+	if plan, err := prepareBrowserArtifact("screenshot", []string{"#main"}, "owner", "session"); err != nil || plan != nil {
+		t.Fatalf("a selector-only screenshot must not be rewritten: %v %v", plan, err)
+	}
+}
