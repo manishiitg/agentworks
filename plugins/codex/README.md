@@ -36,6 +36,9 @@ AgentWorks separately and can use the supported app-bundled Codex executable.
 Windows/Linux app fallback is used only when a verified layout exists; otherwise
 use the in-app flow and report the unsupported discovery result.
 
+The [five-step owner test](https://github.com/manishiitg/agentworks/blob/main/docs/codex-app-live-test.md)
+checks a fresh app installation, hook review and exact-chat receipts after deployment.
+
 ## Codex CLI
 
 ```sh

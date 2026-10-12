@@ -146,7 +146,8 @@ After sign-in, `agentworks attach` in your own terminal can use Codex on PATH
 or its supported app-bundled executable to install a missing plugin and select
 a verified live chat. App and bundled CLI share Codex configuration/cache by
 default; a custom `CODEX_HOME` must agree in both. See the
-[app and CLI setup guide](../plugins/codex/README.md).
+[app and CLI setup guide](../plugins/codex/README.md) and the
+[five-step owner test](codex-app-live-test.md).
 
 **Codex CLI.** Add the marketplace with
 `codex plugin marketplace add manishiitg/agentworks-plugins`, then install
