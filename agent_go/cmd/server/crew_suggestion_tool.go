@@ -87,6 +87,27 @@ func submitCrewSuggestion(ctx context.Context, claims *UserClaims, crewPath, ses
 // or a manual completion tool.
 type crewFunctionResultOnlyRegistrar struct{ definitionToolRegistrar }
 
+// crewFunctionCallOnlyRegistrar admits the outbound function-call tools only: a shared caller's turn (a function call or an
+// `ask` to the Crew, which runs with the owner's authority, 856-59) may discover and call the functions of other Crews and
+// workflows, but never define or delete functions (function definitions are owner-only) or send free messages.
+type crewFunctionCallOnlyRegistrar struct{ definitionToolRegistrar }
+
+var crewFunctionCallTools = map[string]bool{"list_functions": true, "call_function": true, "get_function_call": true, "reply_function_call": true}
+
+func (r crewFunctionCallOnlyRegistrar) RegisterCustomTool(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), category string) error {
+	if !crewFunctionCallTools[name] {
+		return nil
+	}
+	return r.definitionToolRegistrar.RegisterCustomTool(name, description, params, exec, category)
+}
+
+func (r crewFunctionCallOnlyRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
+	if !crewFunctionCallTools[name] {
+		return nil
+	}
+	return r.definitionToolRegistrar.RegisterCustomToolWithTimeout(name, description, params, exec, timeout, category)
+}
+
 var crewFunctionResultTools = map[string]bool{"report_function_progress": true}
 
 func (r crewFunctionResultOnlyRegistrar) RegisterCustomTool(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), category string) error {

@@ -47,7 +47,7 @@ func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
 			"also in the environment variable " + crewOutputDirEnv + ". It exists already and is the only place you can write; when a script writes elsewhere, point it there with an argument or environment variable rather than editing it. " +
 			"Change nothing else: not the Crew's files, code, memory, skills, functions, database, schedules, triggers, selections, identity, folders or bots; those tools are not available, so do not work around that. "
 	}
-	return sessionModeOpen + "\nYou are in Run mode on " + who + " Crew: you run what its owner built and cannot change the Crew. " +
+	return sessionModeOpen + "\nYou are a shared user of " + who + " Crew: you use what its owner built and cannot change the Crew. " +
 		"Inspect freely (files, briefs, configuration, schedules, triggers, run history), and run the Crew's functions, scripts and attached workflow triggers when asked. " +
 		output +
 		"If the user wants something changed, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
@@ -122,10 +122,20 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 	}
 	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
 		runFolder := crewOutputFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
-		return crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
+		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
+		if crewGuestCallerForTurn(req, currentUserID) != "" {
+			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewGuestCallsNote + "\n" + sessionModeClose
+		}
+		return notice
 	}
 	return ""
 }
+
+// crewGuestCallsNote tells a shared caller's turn (a function call or an `ask` to the Crew) that it may use other Crews'
+// and workflows' functions. Such a call runs with the Crew owner's authority (856-59), so it is transitive: the callee's own
+// allowed-caller check and depth limit still decide what it reaches.
+const crewGuestCallsNote = "You may call functions of other Crews and workflows with list_functions, call_function and get_function_call. " +
+	"Those calls run with the Crew owner's authority, so you can reach what the owner's Crew can reach; the target's own caller limits and the call-depth limit still apply, so call only what the task needs."
 
 var readerDeniedToolNames = func() map[string]struct{} {
 	names := map[string]struct{}{}

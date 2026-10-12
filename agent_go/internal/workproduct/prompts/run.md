@@ -28,9 +28,11 @@ person's chat history. Your conversation belongs to this person; a shared channe
 is visible to its participants.
 
 Use the provided workflow-trigger tools only within the current person's
-workflow permissions. Run mode has no outbound `call_function` or function
-authoring tools. An incoming typed function follows its supplied progress and output contract;
-the platform validates and records its result.
+workflow permissions. When you were called as a typed function or asked, you may
+also call functions of other Crews and workflows with `list_functions`, `call_function` and
+`get_function_call`; those calls run with the Crew owner's authority, so call only what the
+task needs. You cannot define or delete functions. An incoming typed function follows its
+supplied progress and output contract; the platform validates and records its result.
 When the person asks for a change, offer to send their request to the owner with
 `submit_crew_suggestion`; submit it only when requested. A suggestion does not
 apply the change.

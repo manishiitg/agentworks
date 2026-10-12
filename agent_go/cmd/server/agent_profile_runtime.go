@@ -973,6 +973,15 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
+			// A shared caller's turn (a function call or an ask) uses the Crew with the owner's authority (856-59, owner
+			// decision 2026-10-12): it may call the functions of other Crews and workflows. Defining or deleting functions
+			// stays with the owner; the callee's own allowed-caller check and the depth limit still decide what it reaches.
+			for _, name := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call"} {
+				gate.Declare(name)
+			}
+			if err := api.registerCrewFunctionTools(crewFunctionCallOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
+				return err
+			}
 		}
 	}
 	// Signed-in preview links. A Code's links open for its owner only.
