@@ -57,6 +57,9 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
 	if peer.External {
+		if peer.UserID != claims.UserID && peer.ShareID != "" {
+			return api.externalAuthorizeSharedPeer(ctx, claims, peer, send)
+		}
 		if peer.UserID != claims.UserID || !namedAgentOperationAllowed(claims, send) {
 			return denied
 		}

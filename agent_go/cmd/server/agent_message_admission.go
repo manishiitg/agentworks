@@ -14,6 +14,15 @@ import (
 // continue an account inbox, but cannot revive an old revoked submission.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
+	if source.ShareID != "" || dest.ShareID != "" {
+		store, err := readAgentMessageStore(ctx)
+		if err != nil {
+			return fmt.Errorf("sharing is unavailable")
+		}
+		if err := store.conversationShareErr(c, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
 	if m.SenderConnectionID != "" {
 		claims, err := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
 		if err != nil || claims.UserID != source.UserID {

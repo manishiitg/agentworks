@@ -39,11 +39,15 @@ var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
 	NamedAgentID string // Message-only address; never used for structured functions.
-	Kind         string // triggerCallerCrew or triggerCallerWorkflow
-	Path         string
-	Label        string
-	CrewID       string
-	CrewProfile  string
+	// A named agent shared by another account: the grant that allows sending to it.
+	ShareOwnerUserID string
+	ShareID          string
+	ShareVersion     int
+	Kind             string // triggerCallerCrew or triggerCallerWorkflow
+	Path             string
+	Label            string
+	CrewID           string
+	CrewProfile      string
 	// CrewOwner is the user whose workspace holds a Crew target. Crews are
 	// shared server-wide, so it may differ from the requester.
 	CrewOwner string

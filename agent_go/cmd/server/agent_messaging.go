@@ -40,6 +40,10 @@ type agentMessageEndpoint struct {
 	Mode           string `json:"mode,omitempty"`
 	Guest          string `json:"guest,omitempty"`
 	FunctionCallID string `json:"function_call_id,omitempty"`
+	// ShareID and ShareVersion bind both ends of a cross-account conversation to
+	// the one grant that allowed it; every later operation rechecks that grant.
+	ShareID      string `json:"share_id,omitempty"`
+	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
 	AgentSequence      int       `json:"agent_sequence,omitempty"`
@@ -213,6 +217,9 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
 	if t.NamedAgentID != "" {
+		if t.ShareID != "" {
+			return agentMessageEndpoint{UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID, ShareID: t.ShareID, ShareVersion: t.ShareVersion}
+		}
 		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: userID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
 	}
 	e := agentMessageEndpoint{UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
@@ -327,6 +334,13 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		e := callerMessageEndpoint(userID, caller)
 		e = api.agentMessageCallerRole(e)
 		dest := targetMessageEndpoint(userID, target)
+		if dest.ShareID != "" {
+			if !e.External || e.NamedAgentID == "" {
+				agentMessageMu.Unlock()
+				return nil, fmt.Errorf("send to a shared agent as one of your registered agents")
+			}
+			e.ShareID, e.ShareVersion = dest.ShareID, dest.ShareVersion
+		}
 		if !e.External && e.Session == "" {
 			agentMessageMu.Unlock()
 			return nil, fmt.Errorf("sender must have a trusted conversation session")
@@ -384,6 +398,14 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	c := &s.Conversations[index]
+	if err = s.conversationShareErr(*c, time.Now().UTC()); err != nil {
+		agentMessageMu.Unlock()
+		return nil, err
+	}
+	if err = s.shareQuotaErr(*c, side, time.Now().UTC()); err != nil {
+		agentMessageMu.Unlock()
+		return nil, err
+	}
 	if source := c.Endpoints[side]; source.NamedAgentID != "" {
 		current, lookupErr := namedAgentByID(ctx, userID, source.NamedAgentID)
 		if lookupErr != nil || !namedAgentConnectionAllowed(current, GetUserFromContext(ctx)) {
@@ -441,6 +463,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		m.SenderConnectionID = claims.AccessToken.ID
 	}
 	c.Messages = append(c.Messages, m)
+	if sid := c.Endpoints[side].ShareID; sid != "" {
+		s.auditShare("shared_message", c.Endpoints[side].UserID, c.Endpoints[0].UserID, c.Endpoints[1].UserID, sid, "")
+	}
 	id := c.ID
 	out := agentMessageReceipt(id, m)
 	err = saveAgentMessageStore(ctx, s)
@@ -512,7 +537,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 				if m.Sequence <= after || m.From == side {
 					continue
 				}
-				items = append(items, map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": m.Sequence, "sender": c.Endpoints[m.From].Label, "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error})
+				items = append(items, map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error})
 				next = m.Sequence
 				if len(items) >= limit {
 					break
@@ -537,7 +562,7 @@ func agentMessageText(c agentConversation, m agentMessage) string {
 	if m.Wakeup {
 		return "[Your explicitly requested wakeup. Decide whether to read your inbox, follow up or continue work; no message was automatically resent.]\n\n" + m.Text
 	}
-	return fmt.Sprintf("[Agent message from %s. Conversation/reply address: %s; message: %s. %s]\n\n%s", c.Endpoints[m.From].Label, c.ID, m.ID, agentMessageInstructions(c.ID), m.Text)
+	return fmt.Sprintf("[Agent message from %s. Conversation/reply address: %s; message: %s. %s]\n\n%s", endpointDisplayLabel(c.Endpoints[m.From], c.Endpoints[1-m.From].UserID), c.ID, m.ID, agentMessageInstructions(c.ID), m.Text)
 }
 
 func agentMessageInstructions(inboxID string) string {

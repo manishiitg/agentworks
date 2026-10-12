@@ -109,6 +109,9 @@ func namedAgentForClaims(ctx context.Context, claims *UserClaims, name string) (
 }
 
 func resolveNamedMessageAgent(ctx context.Context, userID, name string) (triggerTarget, error) {
+	if strings.Contains(name, "/") {
+		return resolveSharedMessageAgent(ctx, userID, name)
+	}
 	name, err := normalizeMessageAgentName(name)
 	if err != nil {
 		return triggerTarget{}, err
@@ -151,6 +154,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 			}()})
 		}
 	}
+	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}, nil
 }
@@ -389,7 +393,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					if position >= limit {
 						continue
 					}
-					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": c.Endpoints[m.From].Label, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
 					items = append(items, nil)
 					copy(items[position+1:], items[position:])
 					items[position] = item

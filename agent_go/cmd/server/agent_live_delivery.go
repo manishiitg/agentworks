@@ -152,7 +152,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				if m.ID != externalArg(args, "message_id") || dest.NamedAgentID != a.ID || dest.UserID != claims.UserID {
 					continue
 				}
-				if m.LiveAttachment != a.Attachment.ID || !sameAccountAgentSender(c.Endpoints[m.From], claims.UserID) {
+				if m.LiveAttachment != a.Attachment.ID || !s.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
 					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
 					return
 				}
@@ -301,7 +301,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !sameAccountAgentSender(source, claims.UserID) {
+			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !store.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
 				continue
 			}
 			if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
@@ -319,7 +319,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			if e = recordAgentMessageOffer(r.Context(), a.ID, id, m.ID); e != nil {
 				return
 			}
-			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": source.Label, "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery}
+			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery}
 			if write(frame) != nil {
 				return
 			}
@@ -399,7 +399,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				src := c.Endpoints[m.From]
-				if !sameAccountAgentSender(src, live.UserID) || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
 					continue
 				}
 				permitted = append(permitted, id)

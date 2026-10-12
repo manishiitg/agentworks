@@ -131,6 +131,204 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 	return agentShare{}, denied
 }
 
+// conversationShareErr is the fence for every operation on a cross-account
+// conversation: both ends must carry the same live grant, belong to its owner
+// and subject, and be registered agents. Conversations without a grant pass.
+func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Time) error {
+	a, b := c.Endpoints[0], c.Endpoints[1]
+	if a.ShareID == "" && b.ShareID == "" {
+		return nil
+	}
+	denied := fmt.Errorf("shared agent unavailable or access denied")
+	if a.ShareID != b.ShareID || a.ShareVersion != b.ShareVersion || !a.External || !b.External || a.NamedAgentID == "" || b.NamedAgentID == "" {
+		return denied
+	}
+	sh, err := s.authorizeShare(a.ShareID, a.ShareVersion, now)
+	if err != nil {
+		return err
+	}
+	owner, subject := a, b
+	if a.UserID != sh.OwnerUserID {
+		owner, subject = b, a
+	}
+	if owner.UserID != sh.OwnerUserID || subject.UserID != sh.SubjectUserID || owner.NamedAgentID != sh.AgentID {
+		return denied
+	}
+	for _, ag := range s.Agents {
+		if ag.ID == subject.NamedAgentID && ag.UserID == subject.UserID {
+			return nil
+		}
+	}
+	return denied
+}
+
+// shareSenderAllowed replaces the same-account sender rule: a sender from
+// another account is accepted only inside a conversation with a live grant.
+func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
+	src := c.Endpoints[from]
+	if src.ShareID == "" {
+		return sameAccountAgentSender(src, recipientUserID)
+	}
+	return src.Guest == "" && src.UserID != recipientUserID && c.Endpoints[1-from].UserID == recipientUserID && s.conversationShareErr(c, now) == nil
+}
+
+const (
+	shareSenderHourly  = 60  // messages one person may send through one grant per hour
+	shareSenderPending = 100 // undelivered messages one person may leave for one agent
+	shareOwnerHourly   = 300 // messages other people may send to one owner's agents per hour
+)
+
+// shareQuotaErr limits the shared person's messages, never the owner's replies.
+func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time.Time) error {
+	src := c.Endpoints[side]
+	if src.ShareID == "" {
+		return nil
+	}
+	sh, err := s.authorizeShare(src.ShareID, src.ShareVersion, now)
+	if err != nil || src.UserID != sh.SubjectUserID {
+		return err
+	}
+	hourly, pending, owner := 0, 0, 0
+	for _, o := range s.Conversations {
+		for _, m := range o.Messages {
+			from := o.Endpoints[m.From]
+			if from.ShareID == "" || from.UserID == sh.OwnerUserID || o.Endpoints[1-m.From].UserID != sh.OwnerUserID {
+				continue
+			}
+			recent := now.Sub(m.SentAt) < time.Hour
+			if recent {
+				owner++
+			}
+			if from.ShareID == sh.ID {
+				if recent {
+					hourly++
+				}
+				if m.Delivery == "pending" || m.Delivery == "dispatching" || m.Delivery == "stored" {
+					pending++
+				}
+			}
+		}
+	}
+	if hourly >= shareSenderHourly || pending >= shareSenderPending || owner >= shareOwnerHourly {
+		return fmt.Errorf("shared agent message limit reached; check back later")
+	}
+	return nil
+}
+
+// suppressShare marks undelivered messages of a revoked grant so they are never
+// offered later. Admitted and processed receipts stay as they were.
+func (s *agentMessageStore) suppressShare(shareID string) {
+	for ci := range s.Conversations {
+		c := &s.Conversations[ci]
+		if c.Endpoints[0].ShareID != shareID {
+			continue
+		}
+		for mi := range c.Messages {
+			if m := &c.Messages[mi]; m.Delivery == "stored" || m.Delivery == "pending" || m.Delivery == "dispatching" {
+				m.Delivery = "suppressed"
+			}
+		}
+	}
+}
+
+// endpointDisplayLabel shows another account's agent as owner/name, using the
+// server's own username for the owner and never anything the sender wrote.
+func endpointDisplayLabel(e agentMessageEndpoint, viewerUserID string) string {
+	if e.ShareID != "" && e.UserID != viewerUserID {
+		return shareOwnerLabel(e.UserID) + "/" + e.Label
+	}
+	return e.Label
+}
+
+func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
+	denied := fmt.Errorf("conversation unavailable or access denied")
+	if !namedAgentOperationAllowed(claims, send) || peer.NamedAgentID == "" {
+		return denied
+	}
+	s, err := readAgentMessageStore(ctx)
+	if err != nil {
+		return denied
+	}
+	sh, err := s.authorizeShare(peer.ShareID, peer.ShareVersion, time.Now().UTC())
+	if err != nil || peer.UserID == claims.UserID {
+		return denied
+	}
+	pair := (peer.UserID == sh.OwnerUserID && claims.UserID == sh.SubjectUserID && peer.NamedAgentID == sh.AgentID) ||
+		(peer.UserID == sh.SubjectUserID && claims.UserID == sh.OwnerUserID)
+	if !pair {
+		return denied
+	}
+	for _, a := range s.Agents {
+		if a.ID == peer.NamedAgentID && a.UserID == peer.UserID {
+			return nil
+		}
+	}
+	return denied
+}
+
+// resolveSharedMessageAgent turns agent:<owner>/<name> into a target bound to
+// the owner's account id and the live grant, so a later rename redirects nothing.
+func resolveSharedMessageAgent(ctx context.Context, subjectID, ref string) (triggerTarget, error) {
+	denied := fmt.Errorf("named agent unavailable or access denied")
+	ownerName, agentName, _ := strings.Cut(ref, "/")
+	name, err := normalizeMessageAgentName(agentName)
+	dir, dirErr := loadUserDirectory()
+	if err != nil || dirErr != nil || dir == nil {
+		return triggerTarget{}, denied
+	}
+	owner := dir.byUsername(ownerName)
+	if owner == nil || owner.ID == subjectID {
+		return triggerTarget{}, denied
+	}
+	agentMessageMu.Lock()
+	s, err := readAgentMessageStore(ctx)
+	agentMessageMu.Unlock()
+	if err != nil {
+		return triggerTarget{}, err
+	}
+	now := time.Now().UTC()
+	for _, a := range s.Agents {
+		if a.UserID != owner.ID || a.Name != name {
+			continue
+		}
+		var best *agentShare
+		for i := range s.Shares {
+			sh := &s.Shares[i]
+			if sh.OwnerUserID == owner.ID && sh.SubjectUserID == subjectID && sh.AgentID == a.ID {
+				if _, e := s.authorizeShare(sh.ID, sh.RevocationVersion, now); e == nil && (best == nil || sh.CreatedAt.After(best.CreatedAt)) {
+					best = sh
+				}
+			}
+		}
+		if best != nil {
+			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: best.ID, ShareVersion: best.RevocationVersion}, nil
+		}
+	}
+	return triggerTarget{}, denied
+}
+
+// sharedAgentItems lists the agents other people shared with this person, each
+// labelled with the owner's server username.
+func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[string]interface{} {
+	items := []map[string]interface{}{}
+	for _, sh := range s.Shares {
+		if sh.SubjectUserID != userID {
+			continue
+		}
+		if _, err := s.authorizeShare(sh.ID, sh.RevocationVersion, now); err != nil {
+			continue
+		}
+		for _, a := range s.Agents {
+			if a.ID != sh.AgentID {
+				continue
+			}
+			owner := shareOwnerLabel(sh.OwnerUserID)
+			items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "expires_at": sh.ExpiresAt, "purpose": a.Purpose, "online": namedAgentOnline(a)})
+		}
+	}
+	return items
+}
+
 // shareOwnerLabel is the only owner name shown to a recipient. It is the
 // server's own username for the account id, never an email or sender text.
 func shareOwnerLabel(userID string) string { return shareOwnerLabeler()(userID) }
@@ -314,6 +512,7 @@ func (api *StreamingAPI) handleBullpenShareRevoke(w http.ResponseWriter, r *http
 		if sh.RevokedAt.IsZero() {
 			sh.RevokedAt = time.Now().UTC()
 			sh.RevocationVersion++
+			s.suppressShare(sh.ID)
 			s.auditShare("share_revoked", claims.UserID, sh.OwnerUserID, sh.SubjectUserID, sh.ID, sh.AgentID)
 			if err := saveAgentMessageStore(r.Context(), s); err != nil {
 				externalError(w, http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again.")
@@ -380,6 +579,7 @@ func (api *StreamingAPI) handleBullpenBlock(w http.ResponseWriter, r *http.Reque
 			if sh := &s.Shares[i]; sh.OwnerUserID == claims.UserID && sh.SubjectUserID == subject.ID && sh.RevokedAt.IsZero() {
 				sh.RevokedAt = now
 				sh.RevocationVersion++
+				s.suppressShare(sh.ID)
 			}
 		}
 		s.auditShare("blocked", claims.UserID, claims.UserID, subject.ID, "", "")

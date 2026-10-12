@@ -59,5 +59,41 @@ func TestPruneSharesDropsOnlyLongEndedGrants(t *testing.T) {
 	s.pruneShares(now)
 	if len(s.Shares) != 2 || s.Shares[0].ID != "live" || s.Shares[1].ID != "revoked-recent" {
 		t.Fatalf("unexpected shares after pruning: %+v", s.Shares)
+
+// A cross-account conversation works only between the grant's owner and subject
+// agents, stops for a forged or swapped endpoint, and revoking it suppresses
+// messages that were stored but not yet admitted.
+func TestSharedConversationFenceAndSuppression(t *testing.T) {
+	now := time.Now().UTC()
+	defer func(prev func(string) bool) { shareAccountActive = prev }(shareAccountActive)
+	shareAccountActive = func(string) bool { return true }
+	s := agentMessageStore{
+		Agents: []namedMessageAgent{{ID: "agent-a", UserID: "owner"}, {ID: "agent-b", UserID: "guest"}, {ID: "agent-x", UserID: "other"}},
+		Shares: []agentShare{{ID: "share-1", OwnerUserID: "owner", AgentID: "agent-a", SubjectUserID: "guest", Capability: shareCapabilityChat, ExpiresAt: now.Add(time.Hour), RevocationVersion: 1}},
+	}
+	end := func(user, agent string) agentMessageEndpoint {
+		return agentMessageEndpoint{UserID: user, Kind: triggerCallerUser, ID: user, External: true, NamedAgentID: agent, Label: agent, ShareID: "share-1", ShareVersion: 1}
+	}
+	c := agentConversation{ID: "inbox-1", Endpoints: [2]agentMessageEndpoint{end("guest", "agent-b"), end("owner", "agent-a")}, Messages: []agentMessage{{ID: "m1", From: 0, Delivery: "stored"}, {ID: "m2", From: 0, Delivery: "processed"}}}
+	if err := s.conversationShareErr(c, now); err != nil {
+		t.Fatalf("legitimate shared conversation refused: %v", err)
+	}
+	if !s.shareSenderAllowed(c, 0, "owner", now) || s.shareSenderAllowed(c, 0, "other", now) {
+		t.Fatal("sender fence must admit only the grant's owner as recipient")
+	}
+	forged := c
+	forged.Endpoints[0] = end("other", "agent-x")
+	if err := s.conversationShareErr(forged, now); err == nil {
+		t.Fatal("third account riding the grant was accepted")
+	}
+	wrongAgent := c
+	wrongAgent.Endpoints[1] = end("owner", "agent-z")
+	if err := s.conversationShareErr(wrongAgent, now); err == nil {
+		t.Fatal("a different agent of the owner was reachable through the grant")
+	}
+	s.Conversations = []agentConversation{c}
+	s.suppressShare("share-1")
+	if got := s.Conversations[0].Messages; got[0].Delivery != "suppressed" || got[1].Delivery != "processed" {
+		t.Fatalf("suppression changed the wrong receipts: %+v", got)
 	}
 }
