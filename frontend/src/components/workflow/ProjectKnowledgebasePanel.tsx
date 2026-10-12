@@ -4,11 +4,15 @@ import { Button } from '../ui/Button'
 import { knowledgebaseApi, knowledgebaseError, type BrainAccessMode, type KnowledgeProject } from '../../services/knowledgebaseApi'
 import { AskAIButton } from './AskAIButton'
 import { WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT } from './workflowEvents'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { integrationProductAvailable } from '../integrations/integrationSections'
 
 // The project's Brain access: Off, Read or Read & write. It never grants permission: the owner's and the output
 // audience's folder roles apply. There are no folder bindings (PLAT-628); steps say in their descriptions which
 // Brain folders they read and write.
 export function ProjectKnowledgebasePanel({ workspacePath, disabled = false, onAsk }: { workspacePath: string; disabled?: boolean; onAsk?: (message: string) => void | Promise<void> }) {
+  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const brainAvailable = integrationProductAvailable('knowledgebase', allowedProducts)
   const [project, setProject] = useState<KnowledgeProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -17,6 +21,7 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false, onA
   const refresh = useCallback(async () => {
     const version = ++generation.current
     setLoading(true); setProject(null); setError('')
+    if (!brainAvailable) { setLoading(false); return }
     try {
       await knowledgebaseApi.bootstrap()
       const current = await knowledgebaseApi.project(workspacePath)
@@ -25,11 +30,11 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false, onA
       if (version === generation.current) {
         const status = (cause as { response?: { status?: number } }).response?.status
         setError(status === 404
-          ? 'Brain access could not be loaded for this account or project. Ask an administrator to check Brain access and setup, then refresh.'
+          ? 'Brain could not be loaded for this project. Refresh to try again.'
           : knowledgebaseError(cause))
       }
     } finally { if (version === generation.current) setLoading(false) }
-  }, [workspacePath])
+  }, [workspacePath, brainAvailable])
   useEffect(() => {
     void refresh()
     const changed = (event: Event) => {
@@ -58,6 +63,7 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false, onA
     { value: 'off', label: 'Off', hint: 'Agents here cannot use Brain.' },
   ]
   const noun = 'project'
+  if (!brainAvailable) return null
   return <div className="space-y-4 text-xs">
     <section aria-label="About Brain" className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">

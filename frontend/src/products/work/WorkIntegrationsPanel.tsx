@@ -7,8 +7,8 @@ import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
-import { PROJECT_INTEGRATION_SECTIONS } from '../../components/integrations/integrationSections'
-import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
+import { projectIntegrationSections } from '../../components/integrations/integrationSections'
+import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
@@ -25,8 +25,6 @@ import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../compo
 import { useCodeFilesPreference } from './codeLocalFiles'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
-
-const INTEGRATION_TABS = PROJECT_INTEGRATION_SECTIONS
 
 function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
@@ -110,7 +108,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const filePreference = useCodeFilesPreference(chatSessionId || '')
   const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
-  const visibleTabs = INTEGRATION_TABS.filter(option =>
+  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const visibleTabs = projectIntegrationSections(allowedProducts).filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
@@ -119,7 +118,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const [tabNonce, setTabNonce] = useState(0)
   const [integrationMenu, setIntegrationMenu] = useState(true)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
-  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
+  const pluginTabs = projectPluginTabs(allowedProducts).filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
   // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets…).
   useWorkspaceViewTarget('mcp', target => {

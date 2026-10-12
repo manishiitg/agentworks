@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { knowledgebaseApi } from '../../services/knowledgebaseApi'
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: { user: null }) => unknown) => selector({ user: null }) }))
 vi.mock('../../services/knowledgebaseApi', () => ({
   knowledgebaseApi: { bootstrap: vi.fn(), project: vi.fn(), setProjectAccess: vi.fn() },
   knowledgebaseError: (error: Error) => error.message,
@@ -13,6 +14,8 @@ let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.stubEnv('VITE_DEPLOYMENT_MODE', 'server')
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase'] }
   vi.mocked(knowledgebaseApi.bootstrap).mockResolvedValue({} as never)
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
@@ -24,7 +27,7 @@ it.each(['bootstrap', 'project'] as const)('keeps Brain guidance visible when %s
   await act(async () => root.render(<ProjectKnowledgebasePanel workspacePath="Workflow/payments"/>))
   expect(container.querySelector('[aria-label="About Brain"]')).not.toBeNull()
   expect(container.textContent).toContain('Share knowledge with your team')
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Brain access could not be loaded')
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Brain could not be loaded for this project')
   expect(container.querySelector('[role="radiogroup"]')).toBeNull()
   expect(knowledgebaseApi.setProjectAccess).not.toHaveBeenCalled()
   await act(async () => (container.querySelector('[aria-label="Refresh Brain"]') as HTMLButtonElement).click())
@@ -34,7 +37,7 @@ it.each(['bootstrap', 'project'] as const)('keeps Brain guidance visible when %s
   expect(radios.every(radio => radio.disabled)).toBe(true)
   expect(container.textContent).toContain('Only an owner of this project can change Brain access.')
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove() })
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllEnvs() })
 
 // PLAT-628: one Brain setting per project (Off, Read, Read & write) and no folder bindings; an old project saved
 // with "folders" is shown as Read & write, which is what the server applies.

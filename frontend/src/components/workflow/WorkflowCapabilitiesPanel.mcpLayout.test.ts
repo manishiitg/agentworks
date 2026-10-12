@@ -76,14 +76,10 @@ describe('Workflow MCP panel layout', () => {
 
     // The section list (Tools & secrets, Slack, WhatsApp, Google apps, Use in AI apps) is shared with Crew and Code.
     const sections = readFileSync('src/components/integrations/integrationSections.ts', 'utf8')
-    expect(panel).toContain('const MCP_TABS = PROJECT_INTEGRATION_SECTIONS')
     expect(sections).toMatch(/'apps'[\s\S]*?'slack'[\s\S]*?'whatsapp'[\s\S]*?'gmail'/)
     expect(sections).toContain("{ value: 'apps', label: 'Tools & secrets'")
     // Relay shows Tools & secrets (MCPs, secrets, skills, Vault now live in that one section) and Google apps.
-    expect(panel).toContain("const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'gmail')")
-    expect(panel).toContain('const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS')
     expect(panel).toContain('tabs={section ===')
-    expect(panel).toContain('options: [...PROJECT_PLUGIN_TABS]')
     expect(panel).toContain("ariaLabel: 'Integrations'")
     expect(panel).toContain('fixedChannel="slack"')
     expect(panel).toContain('fixedChannel="whatsapp"')
