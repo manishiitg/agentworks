@@ -40,6 +40,10 @@ type agentMessageEndpoint struct {
 	Mode           string `json:"mode,omitempty"`
 	Guest          string `json:"guest,omitempty"`
 	FunctionCallID string `json:"function_call_id,omitempty"`
+	// OwnerAuthority is set at send time, from the validated connection, only for the person's own unrestricted external
+	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
+	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
+	OwnerAuthority bool `json:"owner_authority,omitempty"`
 	// ShareID and ShareVersion bind both ends of a cross-account conversation to
 	// the one grant that allowed it; every later operation rechecks that grant.
 	ShareID      string `json:"share_id,omitempty"`
@@ -211,6 +215,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
 	e.NamedAgentID = c.NamedAgentID
+	e.OwnerAuthority = c.OwnerAuthority
 	if c.Chat != nil {
 		e.Session = c.Chat.SessionID
 		e.ChatKey = c.Chat.Key
@@ -1100,16 +1105,21 @@ func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
 }
 
 // crewMessageRunMode reports whether a message delivered to a Crew starts a restricted (Run mode) turn. A Crew has no Run
-// mode for its owner (PLAT-856 856-59, owner decision 2026-10-12): the owner asking it, from MCP, the CLI or one of their
-// own agents, is the owner's turn with the owner's tools (outbound function calls, writes). Only a session that is
-// already restricted stays so: the receiving chat is a guest or pinned run, or the sender is itself one. Everyone else
-// keeps the guest limits until the shared-caller change of the same decision lands.
+// mode for its owner (PLAT-856 856-59, owner decision 2026-10-12), but the owner's turn is granted only on positive
+// evidence and everything else stays restricted (fail closed): the sender is the Crew's owner AND is either the owner's
+// own unrestricted external connection (source.OwnerAuthority, verified at send time against the connection's scopes and
+// caps) or one of the owner's Crew builder chats (source.Mode "builder"). A receiving chat that is already restricted
+// (dest.Mode "run", or a recorded guest) stays so; workflow runs, schedules, bots, Code chats, capped or agent-bound
+// connections and Crew sessions with no recorded mode are never granted it.
 func crewMessageRunMode(dest, source agentMessageEndpoint, guest string) bool {
 	if dest.Mode == "builder" {
 		return false
 	}
-	if dest.Mode != "run" && source.Mode != "run" && strings.TrimSpace(guest) != "" &&
-		sanitizeUserIDForPath(guest) == sanitizeUserIDForPath(dest.UserID) {
+	if dest.Mode == "run" || strings.TrimSpace(dest.Guest) != "" {
+		return true
+	}
+	trustedOwner := source.OwnerAuthority || source.Kind == triggerCallerCrew && !source.External && source.Mode == "builder"
+	if trustedOwner && strings.TrimSpace(guest) != "" && strings.TrimSpace(guest) == strings.TrimSpace(dest.UserID) {
 		return false
 	}
 	return true
