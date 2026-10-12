@@ -24,7 +24,9 @@ verified live chat. It does not approve the app's hooks.
 
 The app and its bundled CLI use the same Codex home by default: plugin settings
 in `~/.codex/config.toml`, installed packages in `~/.codex/plugins/cache/`.
-A custom `CODEX_HOME` must match in both. The Mac app's bundled plugin list
+A custom `CODEX_HOME` must match in both. Plugin setup/profile matching does
+not establish native chat discovery from a custom home; that path still needs
+separate acceptance. The existing native proof uses the default home. The Mac app's bundled plugin list
 was checked against the existing enabled AgentWorks package loaded by the app;
 this does not claim a fresh installation or new trust approval.
 [Official marketplace/configuration guidance](https://developers.openai.com/plugins/build/plugins).

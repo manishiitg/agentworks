@@ -17,7 +17,8 @@ Record whether this was a fresh install or an existing package.
    **Install plugin**. Check its enabled state under **Settings → Plugins**.
    It should expose two skills, the messaging MCP and four hook definitions.
    App and bundled CLI must refer to the same Codex home/cache; report a custom
-   `CODEX_HOME` if used. An existing disabled package must stay disabled during
+   `CODEX_HOME` if used. Native attachment from a custom home is a separate
+   pending check; matching plugin configuration alone does not prove it. An existing disabled package must stay disabled during
    an update unless you choose to enable it.
 4. Open **Settings → Hooks → From Plugins → AgentWorks**. Review and trust
    the SessionStart, SessionEnd, UserPromptSubmit and Stop definitions yourself.
