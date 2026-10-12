@@ -1,5 +1,48 @@
 # Decisions and open issues
 
+## 2026-10-12 — Cross-user agent sharing grants chat only, labelled by the server (PLAT-861)
+
+Sharing grants are made in the browser, by the owning user only, and grant chat access to one
+agent. The shared person sees the agent's name, purpose and online state. Every shared message
+carries a server-built owner label; receivers treat it as untrusted content that cannot grant
+permissions. Revoking or blocking fails closed: the shared agent disappears from the person's
+view and its messages stop. Why: one person's agent must be usable by another without becoming
+a confused deputy or an ambient permission.
+
+Superseded for sharing by the Groups entry (2026-10-12): sharing now means joining an open group.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-103.
+
+## 2026-10-12 — Browser queue preserves caller input and keeps failed messages (PLAT-861)
+
+A queued browser message preserves the caller's validated browser input through profile
+enrichment and replay, so a continuation runs where the caller asked. A message that fails stays
+visible in the queue with an owner-only Retry instead of disappearing, and its failure state is
+persisted before it is shown, so a reload never loses or duplicates it. Why: silent drops and
+lost input made queued work untrustworthy on headless browsers.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-107 and 861-108.
+
+## 2026-10-12 — Deployment Pi models are the account's allowed list (PLAT-868)
+
+Where a deployment ships its own Pi model template, the picker lists only those models, the
+first is the default, and no custom entry is offered. A chat whose saved model is not runnable
+there falls back to the template default and logs the substitution instead of failing.
+Deployments without a template keep the built-in catalog. Why: saved models from elsewhere
+failed with missing keys; the deployment's own list is authoritative.
+
+Ticket: [PLAT-868](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-868.md), issue 868-20.
+
+## 2026-10-12 — Product integrations hide unavailable entries, fail neutrally (PLAT-746)
+
+Product-backed integration entries are hidden when their product or account access is
+unavailable, instead of opening a blank panel. When the product is available but its data fails
+to load, the panel shows a neutral error with Refresh rather than details that imply a working
+integration. Why: a blank or half-rendered panel reads as broken product; hiding and neutral
+errors read as state.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md), issue 746-15.
+
 ## 2026-10-12 — Every account has Brain (PLAT-856)
 
 Brain is not a per-account product: an account limited to Code, Crew or other products still reads and saves Brain
