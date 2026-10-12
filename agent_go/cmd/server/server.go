@@ -838,6 +838,8 @@ type QueryRequest struct {
 	EnableBrowserAccess *bool `json:"enable_browser_access,omitempty"` // Enable/disable browser automation tool (nil = inherit default, true/false = explicit override)
 	// Explicit browser mode from frontend: none|auto|headless|cdp
 	BrowserMode string `json:"browser_mode,omitempty"`
+	// Caller input survives in-memory continuation copies, never client JSON.
+	callerBrowserInput *queuedBrowserInput `json:"-"`
 	// CDP port for connecting to an existing Chrome browser (local mode only)
 	CdpPort *int `json:"cdp_port,omitempty"` // When set and > 0, connect to Chrome via CDP on this port instead of launching headless
 	// Explicitly authorized CDP browsers for specialized multi-profile testing.
@@ -3887,6 +3889,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Preserve caller browser input before the profile adds current workspace settings.
 	r = r.WithContext(withQueuedBrowserInput(r.Context(), req))
+	input := r.Context().Value(queuedBrowserInputKey{}).(queuedBrowserInput)
+	req.callerBrowserInput = &input
 
 	// A workflow may keep durable read-only links in workflow.json. Merge those
 	// with one-message # references before the common authorization boundary so

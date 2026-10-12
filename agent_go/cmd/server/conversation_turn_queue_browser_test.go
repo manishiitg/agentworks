@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
@@ -41,6 +42,8 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := withQueuedBrowserInput(context.Background(), incoming)
+	input := ctx.Value(queuedBrowserInputKey{}).(queuedBrowserInput)
+	incoming.callerBrowserInput = &input
 	if _, err := api.resolveAgentProfileForQuery(ctx, &incoming, "owner", "chat"); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +57,17 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if _, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", incoming); err != nil {
 		t.Fatal(err)
 	}
+	// The lightweight live-input path has a fresh context and copies the
+	// stored continuation request. It must still use the original browser input.
+	if _, _, err := api.enqueueConversationTurn(context.Background(), "owner", "chat", incoming); err != nil {
+		t.Fatal(err)
+	}
 	restarted := newConversationTurnQueueTestAPI(files)
+	for _, queued := range restarted.mustReadTurnQueueForTest(t, "owner") {
+		if queued.Request.CdpPort != nil || len(queued.Request.CdpPorts) > 0 || queued.Request.BrowserMode != "" {
+			t.Fatal("live-input continuation persisted runtime browser fields")
+		}
+	}
 	restarted.agentProfiles = registry
 	turn, ok := restarted.claimNextConversationTurn(context.Background(), "owner", "chat")
 	if !ok {
@@ -124,7 +137,16 @@ func TestFailedQueuedMessageSurvivesAndCanRetry(t *testing.T) {
 	if !ok {
 		t.Fatal("not claimed")
 	}
+	api.eventStore.SetEventAddedCallback(func(_ string, event internalevents.Event) {
+		if event.Type == "live_input_confirmed" {
+			stored := api.mustReadTurnQueueForTest(t, "owner")
+			if len(stored) != 1 || stored[0].DeliveryError == "" {
+				t.Error("failure was emitted before its no-replay state persisted")
+			}
+		}
+	})
 	api.executeQueuedConversationTurn(claimed)
+	api.eventStore.SetEventAddedCallback(nil)
 	restarted := newConversationTurnQueueTestAPI(files)
 	pending := restarted.pendingQueuedMessages(ctx, "owner", session)
 	if len(pending) != 1 || pending[0].Content != "Explain gravity" || pending[0].DeliveryError == "" {
@@ -166,12 +188,12 @@ func TestFailedQueuedMessageSurvivesAndCanRetry(t *testing.T) {
 		t.Fatal("explicit retry not claimable")
 	}
 	// The HTTP retry route refuses access-token callers like the existing actions.
-	req := httptest.NewRequest(http.MethodPost, "/retry", nil).WithContext(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/retry", nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{ID: "test-token"}}))
 	req = mux.SetURLVars(req, map[string]string{"session_id": session, "message_id": turn.ID})
 	response := httptest.NewRecorder()
 	restarted.handleRetryQueuedConversationMessage(response, req)
 	if response.Code != http.StatusForbidden {
-		t.Fatalf("unsigned retry=%d", response.Code)
+		t.Fatalf("access-token retry=%d", response.Code)
 	}
 	// Removing the failed queue never erases the persisted chat content.
 	if err := restarted.removeConversationTurn(ctx, retried); err != nil {

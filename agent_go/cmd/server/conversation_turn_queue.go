@@ -55,7 +55,11 @@ func withQueuedBrowserInput(ctx context.Context, req QueryRequest) context.Conte
 func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) QueryRequest {
 	// Runtime enrichment is not caller input. Replay the validated browser
 	// selection, then resolve current workspace settings in handleQuery again.
-	if input, ok := ctx.Value(queuedBrowserInputKey{}).(queuedBrowserInput); ok {
+	input, captured := ctx.Value(queuedBrowserInputKey{}).(queuedBrowserInput)
+	if !captured && req.callerBrowserInput != nil {
+		input, captured = *req.callerBrowserInput, true
+	}
+	if captured {
 		req.BrowserMode, req.CdpPort, req.CdpPorts = input.Mode, input.Port, input.Ports
 	}
 	// Queue documents live in the workspace. Persist selectors and encrypted
@@ -193,7 +197,7 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	}
 	position := 0
 	for _, pending := range turns {
-		if pending.SessionID == sessionID && pending.StartedAt == nil {
+		if pending.SessionID == sessionID && pending.StartedAt == nil && pending.DeliveryError == "" {
 			position++
 		}
 	}
@@ -533,9 +537,12 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 	if err != nil {
 		// A failure may precede the normal user echo, or follow partial work.
 		// Keep its content and explicit owner retry; never replay it automatically.
-		api.recordFailedQueuedConversationUserMessage(turn)
+		// Persist the no-replay state before publishing failure. A crash or
+		// failed queue write must not publish a verdict recovery can contradict.
 		if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
 			logTurnQueue("cannot persist failed turn %s: %v", turn.ID, persistErr)
+		} else {
+			api.recordFailedQueuedConversationUserMessage(turn)
 		}
 	} else if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
 		logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
