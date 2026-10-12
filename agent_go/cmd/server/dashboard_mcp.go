@@ -215,6 +215,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 		}
 	}
 	rows := []map[string]any{}
+	resources := []dashboardQuestionDiscovery{}
 	seen := map[string]bool{}
 	failed := []string{}
 	for _, root := range roots {
@@ -232,10 +233,11 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			viewTarget := target
 			viewTarget.Edit = dashboardAuthoringAllowed(claims, &target)
 			row := dashboardDiscoveryRow(viewTarget, d)
-			addDashboardQuestionResource(r.Context(), viewTarget, d, row)
+			resources = append(resources, dashboardQuestionDiscovery{viewTarget, d, row})
 			rows = append(rows, row)
 		}
 	}
+	addDashboardQuestionResources(r.Context(), resources)
 	sort.Slice(rows, func(i, j int) bool {
 		return strings.Compare(rows[i]["workspace"].(string)+"/"+rows[i]["dashboard_id"].(string), rows[j]["workspace"].(string)+"/"+rows[j]["dashboard_id"].(string)) < 0
 	})

@@ -31,9 +31,10 @@ import (
 )
 
 type externalToolsFixture struct {
-	api           *StreamingAPI
-	docs          string
-	upstreamCalls atomic.Int64
+	api                   *StreamingAPI
+	docs                  string
+	upstreamCalls         atomic.Int64
+	questionRegistryReads atomic.Int64
 }
 
 func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
@@ -79,6 +80,9 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	router.GET("/api/documents/*file", func(c *gin.Context) {
 		rel := strings.TrimPrefix(c.Param("file"), "/")
 		if strings.HasPrefix(rel, "_system/dashboard_questions/") {
+			if rel == dashboardQuestionRegistryPath {
+				f.questionRegistryReads.Add(1)
+			}
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.GetDocument(c)
 			return

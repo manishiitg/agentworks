@@ -18,7 +18,50 @@ const dashboardQuestionRegistryPath = "_system/dashboard_questions/resources.jso
 // As with the messaging store, mutations are serialized by the API process and
 // persisted atomically by the workspace backend. These files are server-owned,
 // never project evidence or a source of access grants.
-var dashboardQuestionMu sync.Mutex
+var dashboardQuestionRegistryMu sync.Mutex
+var dashboardQuestionViewerLocks dashboardQuestionLockSet
+
+// Waiters hold a reference before waiting, so an idle key can be removed
+// without letting a later caller acquire a different lock for the same key.
+type dashboardQuestionLockSet struct {
+	mu    sync.Mutex
+	locks map[string]*dashboardQuestionLock
+}
+
+type dashboardQuestionLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (s *dashboardQuestionLockSet) Lock(key string) func() {
+	s.mu.Lock()
+	if s.locks == nil {
+		s.locks = map[string]*dashboardQuestionLock{}
+	}
+	lock := s.locks[key]
+	if lock == nil {
+		lock = &dashboardQuestionLock{}
+		s.locks[key] = lock
+	}
+	lock.refs++
+	s.mu.Unlock()
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		s.mu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(s.locks, key)
+		}
+		s.mu.Unlock()
+	}
+}
+
+type dashboardQuestionDiscovery struct {
+	Target   dashboardTarget
+	Document dashboards.Dashboard
+	Row      map[string]any
+}
 
 type dashboardQuestionResource struct {
 	ID        string `json:"id"`
@@ -84,24 +127,43 @@ func saveDashboardQuestionJSON(ctx context.Context, p string, value any) error {
 
 // Called only after ordinary dashboard authorization. A stable random resource
 // id names a project/dashboard pair; it never conveys sharing permission.
-func registerDashboardQuestionResource(ctx context.Context, target dashboardTarget, slug string) (string, error) {
-	dashboardQuestionMu.Lock()
-	defer dashboardQuestionMu.Unlock()
+func registerDashboardQuestionResources(ctx context.Context, items []dashboardQuestionDiscovery) ([]string, error) {
+	dashboardQuestionRegistryMu.Lock()
+	defer dashboardQuestionRegistryMu.Unlock()
 	var registry dashboardQuestionRegistry
 	if err := readDashboardQuestionJSON(ctx, dashboardQuestionRegistryPath, &registry); err != nil {
-		return "", err
+		return nil, err
 	}
+	type key struct{ root, project, kind, dashboard string }
+	ids := make(map[key]string, len(registry.Resources))
 	for _, resource := range registry.Resources {
-		if resource.Root == target.Root && resource.ProjectID == target.ID && resource.Kind == target.Kind && resource.Dashboard == slug {
-			return resource.ID, nil
+		ids[key{resource.Root, resource.ProjectID, resource.Kind, resource.Dashboard}] = resource.ID
+	}
+	result := make([]string, len(items))
+	changed := false
+	for i, item := range items {
+		if !item.Document.Managed {
+			continue
+		}
+		target, slug := item.Target, item.Document.ID
+		k := key{target.Root, target.ID, target.Kind, slug}
+		id := ids[k]
+		if id == "" {
+			if len(registry.Resources) >= 10000 {
+				return nil, dashboardFailure(503, "dashboard resource registry is full")
+			}
+			id = uuid.NewString()
+			registry.Resources = append(registry.Resources, dashboardQuestionResource{ID: id, Root: target.Root, ProjectID: target.ID, Kind: target.Kind, Dashboard: slug})
+			ids[k], changed = id, true
+		}
+		result[i] = id
+	}
+	if changed {
+		if err := saveDashboardQuestionJSON(ctx, dashboardQuestionRegistryPath, registry); err != nil {
+			return nil, err
 		}
 	}
-	if len(registry.Resources) >= 10000 {
-		return "", dashboardFailure(503, "dashboard resource registry is full")
-	}
-	id := uuid.NewString()
-	registry.Resources = append(registry.Resources, dashboardQuestionResource{ID: id, Root: target.Root, ProjectID: target.ID, Kind: target.Kind, Dashboard: slug})
-	return id, saveDashboardQuestionJSON(ctx, dashboardQuestionRegistryPath, registry)
+	return result, nil
 }
 
 func addDashboardQuestionResource(ctx context.Context, target dashboardTarget, document dashboards.Dashboard, row map[string]any) {
@@ -110,17 +172,32 @@ func addDashboardQuestionResource(ctx context.Context, target dashboardTarget, d
 	if !document.Managed {
 		return
 	}
-	id, err := registerDashboardQuestionResource(ctx, target, document.ID)
+	addDashboardQuestionResources(ctx, []dashboardQuestionDiscovery{{target, document, row}})
+}
+
+func addDashboardQuestionResources(ctx context.Context, items []dashboardQuestionDiscovery) {
+	managed := false
+	for _, item := range items {
+		managed = managed || item.Document.Managed
+	}
+	if !managed {
+		return
+	}
+	ids, err := registerDashboardQuestionResources(ctx, items)
 	if err != nil {
 		// Question availability must not become a dependency of ordinary
 		// dashboard discovery. No id means the caller cannot offer Ask.
 		log.Printf("[DASHBOARD QUESTIONS] Resource registration unavailable: %v", err)
 		return
 	}
-	row["resource_id"] = id
+	for i, id := range ids {
+		if id != "" {
+			items[i].Row["resource_id"] = id
+		}
+	}
 }
 
-// Caller holds dashboardQuestionMu. An interrupted request is never silently
+// Caller holds this viewer's persistence lock. An interrupted request is never silently
 // re-run after a restart. A retry returns its durable terminal status instead.
 func (api *StreamingAPI) readDashboardQuestions(ctx context.Context, viewer string) (dashboardQuestionStore, error) {
 	store := dashboardQuestionStore{Viewer: viewer}
@@ -131,9 +208,9 @@ func (api *StreamingAPI) readDashboardQuestions(ctx context.Context, viewer stri
 	if store.Viewer != viewer {
 		return store, dashboardFailure(404, "conversation unavailable")
 	}
-	if api.dashboardQuestionRuntime == "" {
+	api.dashboardQuestionRuntimeOnce.Do(func() {
 		api.dashboardQuestionRuntime = uuid.NewString()
-	}
+	})
 	changed := false
 	for i := range store.Turns {
 		turn := &store.Turns[i]

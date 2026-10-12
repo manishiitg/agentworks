@@ -376,11 +376,12 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
-	dashboardQuestionRuntime    string   // guarded by dashboardQuestionMu
-	dashboardQuestionLanes      sync.Map // viewer -> question dispatch mutex
-	localDevices                sync.Map // user/device -> authenticated outbound executor
-	codingAgentClarificationsMu sync.Mutex
-	codingAgentClarifications   map[string]*pendingCodingAgentClarification
+	dashboardQuestionRuntime     string
+	dashboardQuestionRuntimeOnce sync.Once
+	dashboardQuestionLanes       dashboardQuestionLockSet
+	localDevices                 sync.Map // user/device -> authenticated outbound executor
+	codingAgentClarificationsMu  sync.Mutex
+	codingAgentClarifications    map[string]*pendingCodingAgentClarification
 
 	externalBuilderRuntime      externalBuilderRuntime
 	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)

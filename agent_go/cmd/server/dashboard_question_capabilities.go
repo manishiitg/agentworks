@@ -63,10 +63,10 @@ func (api *StreamingAPI) resolveDashboardQuestion(ctx context.Context, claims *U
 	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
-	dashboardQuestionMu.Lock()
+	dashboardQuestionRegistryMu.Lock()
 	var registry dashboardQuestionRegistry
 	err := readDashboardQuestionJSON(ctx, dashboardQuestionRegistryPath, &registry)
-	dashboardQuestionMu.Unlock()
+	dashboardQuestionRegistryMu.Unlock()
 	if err != nil {
 		return out, err
 	}
@@ -77,6 +77,16 @@ func (api *StreamingAPI) resolveDashboardQuestion(ctx context.Context, claims *U
 		}
 	}
 	if out.Resource.ID == "" {
+		return out, dashboardFailure(404, "dashboard unavailable")
+	}
+	return api.resolveDashboardQuestionResource(ctx, claims, out.Resource, revision)
+}
+
+// A conversation already resolved its registry identity. Reuse that immutable
+// identity while checking each distinct captured publication's live access.
+func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, claims *UserClaims, resource dashboardQuestionResource, revision string) (resolvedDashboardQuestion, error) {
+	out := resolvedDashboardQuestion{Resource: resource}
+	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	target, err := api.dashboardTarget(ctx, claims, out.Resource.Root)

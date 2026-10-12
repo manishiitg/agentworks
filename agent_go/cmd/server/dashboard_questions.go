@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -127,8 +126,8 @@ func (api *StreamingAPI) handleDashboardQuestionSubmit(w http.ResponseWriter, r 
 }
 
 func (api *StreamingAPI) submitDashboardQuestion(ctx context.Context, viewer, resource string, args dashboardQuestionSubmission, hash string) (dashboardQuestionTurn, bool, error) {
-	dashboardQuestionMu.Lock()
-	defer dashboardQuestionMu.Unlock()
+	unlock := dashboardQuestionViewerLocks.Lock(viewer)
+	defer unlock()
 	store, err := api.readDashboardQuestions(ctx, viewer)
 	if err != nil {
 		return dashboardQuestionTurn{}, false, err
@@ -172,9 +171,8 @@ func (api *StreamingAPI) submitDashboardQuestion(ctx context.Context, viewer, re
 // Slice one exercises the real turn contract without a model or any execution
 // adapter. In particular, a transport receipt can never mark a turn answered.
 func (api *StreamingAPI) dispatchDashboardQuestion(claims UserClaims, turn dashboardQuestionTurn) {
-	lane, _ := api.dashboardQuestionLanes.LoadOrStore(claims.UserID, &sync.Mutex{})
-	lane.(*sync.Mutex).Lock()
-	defer lane.(*sync.Mutex).Unlock()
+	unlock := api.dashboardQuestionLanes.Lock(claims.UserID)
+	defer unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if !api.transitionDashboardQuestion(ctx, claims.UserID, turn.ID, "queued", "running", "") {
@@ -189,8 +187,8 @@ func (api *StreamingAPI) dispatchDashboardQuestion(claims UserClaims, turn dashb
 }
 
 func (api *StreamingAPI) transitionDashboardQuestion(ctx context.Context, viewer, id, from, to, code string) bool {
-	dashboardQuestionMu.Lock()
-	defer dashboardQuestionMu.Unlock()
+	unlock := dashboardQuestionViewerLocks.Lock(viewer)
+	defer unlock()
 	store, err := api.readDashboardQuestions(ctx, viewer)
 	if err != nil {
 		return false
@@ -211,15 +209,16 @@ func (api *StreamingAPI) handleDashboardQuestionRead(w http.ResponseWriter, r *h
 		return
 	}
 	viewer := GetUserFromContext(r.Context()).UserID
-	dashboardQuestionMu.Lock()
+	unlock := dashboardQuestionViewerLocks.Lock(viewer)
 	store, err := api.readDashboardQuestions(r.Context(), viewer)
-	dashboardQuestionMu.Unlock()
+	unlock()
 	if err != nil {
 		dashboardError(w, err)
 		return
 	}
 	vars := mux.Vars(r)
 	turns := []map[string]any{}
+	evidence := map[string]error{resolved.Document.Published: nil}
 	found := false
 	for _, conversation := range store.Conversations {
 		if conversation.ID == vars["conversation"] && conversation.ResourceID == resolved.Resource.ID {
@@ -231,12 +230,28 @@ func (api *StreamingAPI) handleDashboardQuestionRead(w http.ResponseWriter, r *h
 			continue
 		}
 		// Old captured snapshots are evidence only while still readable now.
-		if _, err := api.resolveDashboardQuestion(r.Context(), GetUserFromContext(r.Context()), turn.ResourceID, turn.Revision); err != nil {
-			dashboardError(w, err)
-			return
+		evidenceErr, checked := evidence[turn.Revision]
+		if !checked {
+			_, evidenceErr = api.resolveDashboardQuestionResource(r.Context(), GetUserFromContext(r.Context()), resolved.Resource, turn.Revision)
+			evidence[turn.Revision] = evidenceErr
 		}
 		found = true
 		response := dashboardQuestionResponse(turn)
+		if evidenceErr != nil {
+			if vars["question"] != "" {
+				dashboardError(w, evidenceErr)
+				return
+			}
+			// Preserve the place in history without returning stale evidence,
+			// questions quoting that evidence, or answers derived from it.
+			response = map[string]any{
+				"question_id": turn.ID, "conversation_id": turn.ConversationID,
+				"resource_id": turn.ResourceID, "state": turn.State,
+				"captured_revision": turn.Revision, "created_at": turn.CreatedAt,
+				"updated_at": turn.UpdatedAt, "error": "captured_evidence_unavailable",
+			}
+		}
+		response["evidence_available"] = evidenceErr == nil
 		response["current_revision"] = resolved.Document.Published
 		response["captured_is_current"] = turn.Revision == resolved.Document.Published
 		turns = append(turns, response)
@@ -258,9 +273,9 @@ func (api *StreamingAPI) handleDashboardQuestionCancel(w http.ResponseWriter, r 
 		return
 	}
 	viewer := GetUserFromContext(r.Context()).UserID
-	dashboardQuestionMu.Lock()
+	unlock := dashboardQuestionViewerLocks.Lock(viewer)
 	store, err := api.readDashboardQuestions(r.Context(), viewer)
-	dashboardQuestionMu.Unlock()
+	unlock()
 	if err != nil {
 		dashboardError(w, err)
 		return
@@ -274,8 +289,8 @@ func (api *StreamingAPI) handleDashboardQuestionCancel(w http.ResponseWriter, r 
 			break
 		}
 	}
-	dashboardQuestionMu.Lock()
-	defer dashboardQuestionMu.Unlock()
+	unlock = dashboardQuestionViewerLocks.Lock(viewer)
+	defer unlock()
 	store, err = api.readDashboardQuestions(r.Context(), viewer)
 	if err != nil {
 		dashboardError(w, err)

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -142,7 +144,13 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	}
 	call("", http.MethodGet, base, nil, 401)
 	call("outsider", http.MethodGet, base, nil, 404)
+	second := op("create", root, "summary", "", "Second dashboard")
+	op("publish", root, "summary", second["dashboard"].(map[string]any)["revision"].(string), "")
+	registryReads := f.questionRegistryReads.Load()
 	listed := call("reader", http.MethodPost, "/api/dashboards", map[string]any{"action": "list", "workspace": root}, 200)
+	if f.questionRegistryReads.Load()-registryReads != 1 || len(listed["dashboards"].([]any)) != 2 {
+		t.Fatal("dashboard listing did not batch resource registration")
+	}
 	if listed["dashboards"].([]any)[0].(map[string]any)["resource_id"] != resource {
 		t.Fatal("discovery did not reuse the resource id")
 	}
@@ -209,6 +217,22 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	}
 	waitFailed("owner", questionPath)
 	waitFailed("reader", base+"/questions/"+readerTurn["question_id"].(string))
+	t.Run("viewer_store_io_is_independent", func(t *testing.T) {
+		unlock := dashboardQuestionViewerLocks.Lock("owner")
+		defer unlock()
+		read := make(chan result, 1)
+		go func() {
+			read <- request("reader", http.MethodGet, base+"/questions/"+readerTurn["question_id"].(string), nil)
+		}()
+		select {
+		case out := <-read:
+			if out.err != nil || out.status != 200 {
+				t.Fatalf("reader store unavailable while owner store is busy: %+v", out)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("one viewer's persistence blocked another viewer")
+		}
+	})
 	// Publishing later does not overwrite the original observed value/revision.
 	op("publish", root, slug, draft, "")
 	history := call("owner", http.MethodGet, questionPath, nil, 200)
@@ -216,12 +240,36 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 		t.Fatalf("lost captured evidence: %v", history)
 	}
 	followup := args
+	followup.Revision = draft
 	followup.SubmissionID, followup.ConversationID, followup.Question = "followup", conversation, "Why did it change?"
 	followupTurn := call("owner", http.MethodPost, base+"/questions", followup, 200)
 	waitFailed("owner", base+"/questions/"+followupTurn["question_id"].(string))
 	if len(call("owner", http.MethodGet, conversationPath, nil, 200)["questions"].([]any)) != 2 {
 		t.Fatal("followup lost its conversation")
 	}
+	t.Run("missing_old_snapshot_preserves_readable_history", func(t *testing.T) {
+		p := filepath.Join(f.docs, root, "db/reports/.dashboard-state", slug, revision+".json")
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		defer f.write(t, root+"/db/reports/.dashboard-state/"+slug+"/"+revision+".json", string(raw))
+		registryReads := f.questionRegistryReads.Load()
+		rows := call("owner", http.MethodGet, conversationPath, nil, 200)["questions"].([]any)
+		if f.questionRegistryReads.Load()-registryReads != 1 {
+			t.Fatal("history reread the resource registry for each turn")
+		}
+		old, current := rows[0].(map[string]any), rows[1].(map[string]any)
+		if old["evidence_available"] != false || old["error"] != "captured_evidence_unavailable" || old["context"] != nil || old["answer"] != nil || old["question"] != nil {
+			t.Fatalf("unavailable evidence leaked or hid its place in history: %v", old)
+		}
+		if current["evidence_available"] != true || current["question_id"] != followupTurn["question_id"] || current["question"] != followup.Question {
+			t.Fatalf("unavailable evidence hid a readable followup: %v", current)
+		}
+	})
 	// Access revocation applies to existing ids, reads, retries, and cancellation.
 	f.write(t, root+"/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"]}}`)
 	call("reader", http.MethodGet, base, nil, 404)
@@ -231,7 +279,7 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	// Seed an in-flight turn at the durable boundary to exercise cancellation
 	// and process recovery deterministically, without a delayed fake adapter.
 	ctx := context.Background()
-	dashboardQuestionMu.Lock()
+	unlockStore := dashboardQuestionViewerLocks.Lock("owner")
 	store, err := api.readDashboardQuestions(ctx, "owner")
 	if err == nil {
 		queued := store.Turns[0]
@@ -239,7 +287,7 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 		store.Turns = append(store.Turns, queued)
 		err = saveDashboardQuestionJSON(ctx, dashboardQuestionStorePath("owner"), store)
 	}
-	dashboardQuestionMu.Unlock()
+	unlockStore()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +296,7 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	if cancelled["state"] != "cancelled" || api.transitionDashboardQuestion(ctx, "owner", queuedID, "queued", "running", "") {
 		t.Fatal("cancelled turn was dispatched")
 	}
-	dashboardQuestionMu.Lock()
+	unlockStore = dashboardQuestionViewerLocks.Lock("owner")
 	store, err = api.readDashboardQuestions(ctx, "owner")
 	if err == nil {
 		interrupted := store.Turns[0]
@@ -256,7 +304,7 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 		store.Turns = append(store.Turns, interrupted)
 		err = saveDashboardQuestionJSON(ctx, dashboardQuestionStorePath("owner"), store)
 	}
-	dashboardQuestionMu.Unlock()
+	unlockStore()
 	if err != nil {
 		t.Fatal(err)
 	}

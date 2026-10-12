@@ -357,13 +357,15 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if args.Action == "list" {
 		rows := []map[string]any{}
+		resources := []dashboardQuestionDiscovery{}
 		for _, d := range result.Dashboards {
 			viewTarget := target
 			viewTarget.Edit = includeDraft
 			row := dashboardDiscoveryRow(viewTarget, d)
-			addDashboardQuestionResource(r.Context(), viewTarget, d, row)
+			resources = append(resources, dashboardQuestionDiscovery{viewTarget, d, row})
 			rows = append(rows, row)
 		}
+		addDashboardQuestionResources(r.Context(), resources)
 		writeDashboardPage(w, rows, args.Limit, args.Offset)
 		return
 	}
