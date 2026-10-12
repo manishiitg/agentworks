@@ -10,6 +10,7 @@ Why: a Relay has no workflow plan to configure, so that request produced an
 irrelevant error and misleading setup instructions.
 
 Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md), issue 825-31.
+
 ## 2026-10-12 — Plugins install from a small generated repository (PLAT-861)
 
 Plugin marketplaces now point at the public repo `manishiitg/agentworks-plugins`, which holds only `plugins/`
