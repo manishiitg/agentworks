@@ -925,7 +925,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		}
 		dest = api.agentMessageCallerRole(dest)
 		guest := firstNonEmptyTrimmed(dest.Guest, source.UserID)
-		runMode := dest.Mode != "builder"
+		runMode := crewMessageRunMode(dest, source, guest)
 		if runMode {
 			applyCrewGuestCaller(reqMap, guest)
 		}
@@ -1097,6 +1097,22 @@ func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
 		return false
 	}
 	return requested.Session == "" || existing.Session == requested.Session
+}
+
+// crewMessageRunMode reports whether a message delivered to a Crew starts a restricted (Run mode) turn. A Crew has no Run
+// mode for its owner (PLAT-856 856-59, owner decision 2026-10-12): the owner asking it, from MCP, the CLI or one of their
+// own agents, is the owner's turn with the owner's tools (outbound function calls, writes). Only a session that is
+// already restricted stays so: the receiving chat is a guest or pinned run, or the sender is itself one. Everyone else
+// keeps the guest limits until the shared-caller change of the same decision lands.
+func crewMessageRunMode(dest, source agentMessageEndpoint, guest string) bool {
+	if dest.Mode == "builder" {
+		return false
+	}
+	if dest.Mode != "run" && source.Mode != "run" && strings.TrimSpace(guest) != "" &&
+		sanitizeUserIDForPath(guest) == sanitizeUserIDForPath(dest.UserID) {
+		return false
+	}
+	return true
 }
 
 func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMessageEndpoint {
