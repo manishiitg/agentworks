@@ -153,10 +153,11 @@ Ticket: PLAT-861, issue 861-90 narrowed to "everyone on the server".
 
 A Crew is an agent its owner builds and shares. It no longer has a reduced "Run mode":
 
-- **Using.** Others use a Crew only through the typed functions its owner exposes and the built-in `ask` (the owner can
-  switch `ask` off, "programs only"). Inside a function or `ask` call the Crew runs the same way as for the owner: full
-  tools, skills, MCPs, memory read, outbound function calls, and the owner's authority. Others never get a free chat with
-  Builder powers.
+- **Using.** Others act on a Crew only through the typed functions its owner exposes, which run with the owner's
+  authority (full tools, skills, MCPs, outbound function calls). A non-owner's free-text `ask` is read-only (owner,
+  2026-10-12): it reads files, memory, skills and functions, writes nothing, mounts no MCP tools and makes no calls; to
+  make the Crew do something, call one of its functions. The owner can switch `ask` off ("programs only"). Others never
+  get a free chat with Builder powers.
 - **Changing.** Changing a Crew (memory, skills, MCPs, secrets, prompts, function definitions, setup, access) is for the
   owner or a co-owner the owner grants. Users never write memory or change configuration; the existing folder guards on
   memory and skills enforce it. A Crew has a single owner today, so the co-owner role is new (step 2 checks what the
