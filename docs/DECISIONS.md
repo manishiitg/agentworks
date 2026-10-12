@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-12 — Bridge shutdown preserves a pending native receiver lease (PLAT-868)
+
+A pending local next request returns a retryable error when the bridge stops.
+Only removal of that exact session reports unattached. Native receivers can then
+reconnect to the restarted bridge with their existing approved lease, without
+confusing daemon availability with person detach or replaying journaled input.
+Why: a live Pi restart check showed that an empty shutdown reply stopped its
+receiver as though the attachment had ended, stranding later stored messages.
+
+Ticket: [PLAT-868](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-868.md), under PLAT-861.
+
 ## 2026-10-12 — Products define tips and onboarding slows their cadence (PLAT-746)
 
 Declare ordered display tips and tab-count conditions in product.yaml `ui.tips`;

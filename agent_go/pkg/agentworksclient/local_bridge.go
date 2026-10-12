@@ -877,8 +877,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 					b.mu.Lock()
 				}
 			}
-			if b.sessions[key] != s || b.closed {
+			if b.sessions[key] != s {
 				return LocalBridgeReply{}
+			}
+			if b.closed {
+				return LocalBridgeReply{Error: "local bridge stopped; retry after restart"}
 			}
 		}
 		if s.SetupPending {
