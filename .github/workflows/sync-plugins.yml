@@ -1,7 +1,7 @@
 name: Sync plugins repo
 
 # Publishes plugins/ and the two marketplace manifests to the small public repo
-# manishiitg/agentworks-plugins as one squashed commit, so installing a plugin
+# manishiitg/agentworks-plugins as an ordinary commit (only when something changed), so installing a plugin
 # does not clone this whole repository. Nothing else leaves this repository.
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 1
       - name: Build the plugins tree
         run: scripts/build-plugins-repo.sh "$RUNNER_TEMP/plugins-repo"
-      - name: Push one commit
+      - name: Push the changes as a normal commit
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_REPO_DEPLOY_KEY }}
           SOURCE_SHA: ${{ github.sha }}
@@ -39,11 +39,20 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy_key
           chmod 600 ~/.ssh/plugins_deploy_key
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          cd "$RUNNER_TEMP/plugins-repo"
-          git init -q -b main
+          # GitHub's published SSH host keys, fetched over HTTPS from its API, not scanned from the network.
+          curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND='ssh -i ~/.ssh/plugins_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes'
+          git clone --depth 1 git@github.com:manishiitg/agentworks-plugins.git "$RUNNER_TEMP/target"
+          # Replace the working tree with the freshly built one; history only grows by real changes,
+          # so users who update their marketplace with a normal fetch keep a fast-forward.
+          find "$RUNNER_TEMP/target" -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
+          cp -R "$RUNNER_TEMP/plugins-repo/." "$RUNNER_TEMP/target/"
+          cd "$RUNNER_TEMP/target"
           git add -A
+          if git diff --cached --quiet; then
+            echo "plugins repository already up to date"
+            exit 0
+          fi
           git -c user.name="AgentWorks plugin sync" -c user.email="noreply@users.noreply.github.com" \
             commit -q -m "Sync from manishiitg/agentworks@${SOURCE_SHA::12}"
-          git remote add origin git@github.com:manishiitg/agentworks-plugins.git
-          GIT_SSH_COMMAND='ssh -i ~/.ssh/plugins_deploy_key -o IdentitiesOnly=yes' git push --force origin main
+          git push origin main
