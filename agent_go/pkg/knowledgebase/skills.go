@@ -24,6 +24,9 @@ const (
 var scriptExtensions = map[string]bool{".py": true, ".sh": true, ".bash": true, ".zsh": true, ".js": true, ".mjs": true, ".cjs": true, ".ts": true, ".rb": true, ".pl": true, ".php": true, ".ps1": true, ".bat": true, ".cmd": true, ".lua": true, ".go": true}
 
 // skillHasScripts reports whether a package carries anything an agent would run.
+// installedSkillRecord is written beside a skill installed from Brain (see the server's brain_skills.go).
+const installedSkillRecord = ".brain-source.json"
+
 func skillHasScripts(paths []string) bool {
 	for _, p := range paths {
 		if strings.HasPrefix(p, "scripts/") || scriptExtensions[strings.ToLower(path.Ext(p))] {
@@ -241,6 +244,9 @@ func (s *Service) publishSkill(ctx context.Context, p Principal, args map[string
 	for _, item := range raw {
 		m := asMap(item)
 		rel := strings.Trim(stringArg(m, "path"), "/")
+		if rel == installedSkillRecord {
+			continue // the record of where an installed copy came from is never part of a published skill
+		}
 		if err := validatePath(folder+"/"+rel, true); err != nil || rel == "" {
 			return nil, badArg("Invalid skill file path %q.", rel)
 		}

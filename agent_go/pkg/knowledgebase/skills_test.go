@@ -25,6 +25,8 @@ func TestBrainSkillsPublishGetListAndRoles(t *testing.T) {
 		map[string]any{"path": "SKILL.md", "content": skillMD},
 		map[string]any{"path": "references/style.md", "content": "Be brief.\n"},
 		map[string]any{"path": "assets/logo.png", "content_base64": base64.StdEncoding.EncodeToString(logo)},
+		// The record an installed copy keeps of its source is never published (the file count below proves it).
+		map[string]any{"path": ".brain-source.json", "content": "{}"},
 	}
 	if _, err := tool(priya, map[string]any{"action": "publish", "folder_path": "Company/Skills/release-notes", "files": files, "request_id": "pub-1"}); err != nil {
 		t.Fatalf("an Editor publishes a skill without scripts: %v", err)
