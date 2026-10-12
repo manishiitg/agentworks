@@ -82,6 +82,28 @@ func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
 		}
 	}
 	cookie := bootstrap(parent)
+	previousCookie := cookie
+	previousKey := sha256.Sum256([]byte(previousCookie.Value))
+	serverProductBrowserSessions.Lock()
+	previousExpiry := serverProductBrowserSessions.entries[previousKey].expires
+	serverProductBrowserSessions.Unlock()
+	cookie = bootstrap(parent)
+	if cookie.Value == previousCookie.Value {
+		t.Fatal("renewal must issue a fresh opaque cookie")
+	}
+	// A request dispatched with the previous cookie must survive a concurrent
+	// renewal; retaining it must not extend its original validity.
+	for _, activeCookie := range []*http.Cookie{previousCookie, cookie} {
+		if w := request("GET", "/api/server-products/llm-gateway/me", "", activeCookie, nil); w.Code != 200 {
+			t.Fatalf("renewal invalidated an active cookie: %d %s", w.Code, w.Body)
+		}
+	}
+	serverProductBrowserSessions.Lock()
+	retainedExpiry := serverProductBrowserSessions.entries[previousKey].expires
+	serverProductBrowserSessions.Unlock()
+	if !retainedExpiry.Equal(previousExpiry) {
+		t.Fatal("renewal extended the previous cookie's expiry")
+	}
 	for _, path := range []string{"ui/", "ui/app.js", "me", "models", "usage", "admin/models", "admin/audit"} {
 		if w := request("GET", "/api/server-products/llm-gateway/"+path, "", cookie, nil); w.Code != 200 {
 			t.Fatalf("read %s: %d %s", path, w.Code, w.Body)
@@ -140,8 +162,10 @@ func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
 	*directory = `{"users":[{"id":"alice","username":"alice","role":"admin","products":["llm-gateway"]}]}`
 	invalidateUserDirectoryCache()
 	request("POST", "/api/auth/logout", parent, nil, nil)
-	if w := request("GET", "/api/server-products/llm-gateway/me", "", cookie, nil); w.Code != 401 {
-		t.Fatal("logout retained cookie")
+	for _, activeCookie := range []*http.Cookie{previousCookie, cookie} {
+		if w := request("GET", "/api/server-products/llm-gateway/me", "", activeCookie, nil); w.Code != 401 {
+			t.Fatal("logout retained cookie")
+		}
 	}
 	cookie = bootstrap(parent)
 	key := sha256.Sum256([]byte(cookie.Value))

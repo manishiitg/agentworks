@@ -127,7 +127,10 @@ func issueServerProductUISession(w http.ResponseWriter, r *http.Request, product
 	token := hex.EncodeToString(random)
 	serverProductBrowserSessions.Lock()
 	for key, session := range serverProductBrowserSessions.entries {
-		if !session.expires.After(now) || (session.product == product && session.parentToken == auth) {
+		// An iframe request may already carry the previous cookie when the
+		// renewal response arrives. Preserve it until its original expiry;
+		// logout still revokes every session bound to the parent JWT.
+		if !session.expires.After(now) {
 			delete(serverProductBrowserSessions.entries, key)
 		}
 	}
