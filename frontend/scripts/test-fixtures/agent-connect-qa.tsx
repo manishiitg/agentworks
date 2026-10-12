@@ -7,6 +7,7 @@ import McpConnectBody from '../../src/components/topbar/McpConnectBody'
 import { useAuthStore } from '../../src/stores/useAuthStore'
 import { useProductSurfaceStore } from '../../src/stores/useProductSurfaceStore'
 import '../../src/index.css'
+console.info("QA fixture module initialized")
 const params = new URLSearchParams(location.search)
 useAuthStore.setState({ user: { id: 'qa-owner', username: 'reviewer', allowed_products: params.has('restricted') ? ['agentworks'] : ['agentworks', 'work', 'bullpen'] }, isAuthenticated: true, isMultiUserMode: false, isMultiUserModeChecked: true })
 useProductSurfaceStore.setState({ productSurface: 'bullpen' })

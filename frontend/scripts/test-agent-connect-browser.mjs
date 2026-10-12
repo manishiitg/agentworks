@@ -14,6 +14,9 @@ try {
   for (const [name, width, theme] of [['desktop', 1200, 'light'], ['mobile', 375, 'light'], ['dark', 1200, 'dark']]) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] })
     const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error('Browser component error:', error.stack) })
+    page.on('console', msg => { if (['error', 'warning'].includes(msg.type()) || msg.text().includes('QA fixture')) console.error('Browser console:', msg.type(), msg.text()) })
+    page.on('requestfailed', request => console.error('Browser failed request:', request.url(), request.failure()?.errorText))
+    page.on('response', response => { if (response.status() >= 400 && !response.url().includes('/api/bullpen/agents')) console.error('Browser HTTP error:', response.status(), response.url()) })
     const purpose = 'Reviews workflow communication, runtime delivery and migration behavior. Coordinates exact-session native receipt checks and reports concrete follow-ups to the platform epic.'
     let directoryStatus = 200
     let agents = [{ agent_id: 'reviewer', agent_name: 'reviewer', target: 'agent:reviewer', provider: 'codex', online: true, purpose }, { agent_id: 'writer', agent_name: 'writer', target: 'agent:writer', provider: 'claude', online: false, purpose: 'Writes documentation.' }]
@@ -28,7 +31,7 @@ try {
     try { await page.getByRole('heading', { name: 'Your agents', exact: true }).waitFor() }
     catch (error) {
       await page.screenshot({ path: path.join(output, 'bullpen-failure-' + name + '.png'), fullPage: true })
-      console.error('Fixture body:', await page.locator('body').innerText(), 'component errors:', errors)
+      console.error('Fixture body:', await page.locator('body').innerText(), 'component errors:', errors, 'scripts:', await page.locator('script').evaluateAll(nodes => nodes.map(node => node.src)))
       throw error
     }
     await page.getByRole('heading', { name: 'reviewer', exact: true }).waitFor()
