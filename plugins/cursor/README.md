@@ -7,8 +7,8 @@ mailbox, type into the app, or claim that writing stdout admits a message.
 The shared bridge on main supports Cursor hook receipts and attachment fencing;
 Cursor-specific narrow MCP/process binding is still pending under PLAT-861.
 Current main requires an exact provider host key for attached operations; this
-candidate does not supply it, and shared hook/MCP commands admit only Claude and
-Codex. The package is not ready for real attachment or delivery against main.
+candidate does not supply it, and shared hook/MCP commands do not yet admit
+Cursor. The package is not ready for real attachment or delivery against main.
 
 ## Prerequisites and installation
 
@@ -138,3 +138,25 @@ Official references:
   component discovery, MCP and CURSOR_PLUGIN_ROOT.
 - [CLI parameters](https://cursor.com/docs/cli/reference/parameters): local
   plugin directory and exact chat resume.
+
+## Native CLI hook probe
+
+With an existing Cursor login or API-key environment, run:
+
+```sh
+python3 plugins/cursor/scripts/check_native_hook.py
+```
+
+The probe creates a temporary project, asks for a baseline response, and checks
+that a completed stop hook causes a second model response containing its unique
+marker. It uses ask mode without force/yolo flags. It does not grant workspace trust by
+default. If trust is required, prepare a fixed workspace with `--prepare PATH`,
+let the person review the script and `.cursor/hooks.json`, then run with
+`--workspace PATH`. Use `--trust-workspace` only when the person has explicitly
+approved that exact prepared workspace and its hooks; it cannot apply to an
+automatically created project. Its report
+contains marker checks, hook session IDs, process ancestry and a redacted CLI
+failure hint; it prints no credentials or raw model output. It does not install a global plugin,
+attach any chat, create a connection, record a delivery receipt or restart a
+service. Passing proves the real Cursor hook/model path, not the AgentWorks
+lease, mailbox, permission, reply or desktop delivery path.
