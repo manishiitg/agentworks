@@ -5,14 +5,17 @@
 A Cursor CLI conversation is recognised on macOS as it is on Linux: the process runs the installed Node image
 with the launcher's `index.js`, and the kernel start time and boot time bind the identity (a recycled PID is a
 different identity). The launch prefix comes from the kernel argument record and only up to the entry script;
-the prompt, API key arguments and environment are not read. The messaging-only tools (`agentworks plugin mcp
+the prompt, API key arguments and environment are not parsed, logged or kept (the kernel returns the whole
+argument record in one call, so the buffer is wiped as soon as the prefix is read). The messaging-only tools (`agentworks plugin mcp
 cursor`) serve exactly one chat, the one that process reported through its verified hooks, and refuse the
 shared Cursor desktop app and any ambiguity; they hold no account credentials and cannot attach or share. The
 Cursor hook supports the common commands (attach with `--on`, detach, agents, share, unshare, groups, group)
 and reconnects an offline chat from its next hook event unless the server closed its lease. Idle delivery
 (typing into a terminal) is not built: `agent persist` runs in a vendor-owned tmux and offers no structured
 input interface, so such a transport needs the owner's live test and its own reviewed design; until then
-messages reach a Cursor chat at its turn boundaries through hooks.
+messages reach a Cursor chat at its turn boundaries through hooks. If it is built later it is opt-in (proposed:
+`AGENTWORKS_CURSOR_PERSIST_INPUT=1` plus a per-session enable in the person's hook), types only into the verified
+Cursor process's own pane when it is idle with an empty composer, and never replays an uncertain admission.
 
 Why: this makes the supported Cursor path usable on the owner's Mac without claiming more than was proved.
 

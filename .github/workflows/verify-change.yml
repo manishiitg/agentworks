@@ -57,6 +57,29 @@ jobs:
           path: agentworks-darwin-live.tar.gz
           retention-days: 3
 
+  # Real macOS proof for the Cursor CLI identity: a copied Node binary run through a
+  # launcher-shaped process, verified by the kernel launch record. Request it with
+  # "Verify-Darwin-Cursor: true" in the commit message.
+  darwin-cursor:
+    if: >-
+      contains(github.event.head_commit.message, 'Verify-Darwin-Cursor: true')
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Cursor CLI identity on macOS
+        working-directory: agent_go
+        run: go test ./cmd/agentworks -run '^(TestCursorNativeProcessAndDiscovery|TestCursorProcArgsPrefixReadsOnlyTheLaunchPrefix)$' -count=1 -v
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 40

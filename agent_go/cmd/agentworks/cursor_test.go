@@ -18,8 +18,8 @@ import (
 const cursorTestSession = "11111111-2222-4333-8444-555555555555"
 
 func TestCursorNativeProcessAndDiscovery(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Linux kernel process/launcher regression")
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("kernel process/launcher regression runs on Linux and macOS")
 	}
 	node, err := exec.LookPath("node")
 	if err != nil {

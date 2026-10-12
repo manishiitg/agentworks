@@ -27,7 +27,10 @@ func cursorCLIProcessAt(pid int, info *unix.KinfoProc) (cursorProcess, error) {
 	if err != nil {
 		return process, errors.New("cannot read the Cursor launch arguments")
 	}
-	_, argv0, entry, err := cursorProcArgsPrefix(raw)
+	// The kernel buffer also holds the prompt and environment; only the launch
+	// prefix is parsed, and the whole buffer is wiped as soon as it is not needed.
+	execPath, argv0, entry, err := cursorProcArgsPrefix(raw)
+	clear(raw)
 	if err != nil {
 		return process, err
 	}
@@ -37,16 +40,27 @@ func cursorCLIProcessAt(pid int, info *unix.KinfoProc) (cursorProcess, error) {
 	if err != nil {
 		return process, errors.New("cannot verify the Cursor executable image")
 	}
-	image := ""
+	// The kernel's executable path must be one of the process's mapped text
+	// images (not merely the first line lsof prints), and it must be the Node
+	// binary next to the launcher.
+	wanted, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return process, errors.New("Cursor executable could not be resolved")
+	}
+	mapped := false
 	for _, line := range strings.Split(string(images), "\n") {
-		if strings.HasPrefix(line, "n") {
-			image = strings.TrimPrefix(line, "n")
-			break // the first text mapping is the executable itself
+		if !strings.HasPrefix(line, "n") {
+			continue
+		}
+		if resolved, e := filepath.EvalSymlinks(strings.TrimPrefix(line, "n")); e == nil && resolved == wanted {
+			mapped = true
+			break
 		}
 	}
-	if image == "" || cursorNodeEntry(argv0, image, entry) != nil {
+	if !mapped || cursorNodeEntry(argv0, wanted, entry) != nil {
 		return process, errors.New("Cursor executable/entry could not be verified")
 	}
+	image := wanted
 	after, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil || after.Proc.P_starttime != info.Proc.P_starttime {
 		return process, errors.New("Cursor process changed during verification")
