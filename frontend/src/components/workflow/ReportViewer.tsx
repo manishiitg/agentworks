@@ -14,7 +14,7 @@ import {
 } from '../../utils/reportPreviewPreference'
 import ModalPortal from '../ui/ModalPortal'
 import { FilePreviewModal } from './reportWidgets/FilePreviewModal'
-import { HtmlReportFrame } from './reportWidgets/HtmlWidgetFrame'
+import { ReportQuestionFrame } from './reportWidgets/ReportQuestionFrame'
 import { ReportEmbedProvider, type ReportDataApi } from './reportWidgets/reportEmbedContext'
 import { createReportQuery } from './reportWidgets/reportQuery'
 import { isStreamableReportMediaPath } from './reportWidgets/reportMedia'
@@ -57,6 +57,8 @@ interface ReportViewProps {
   emptyAction?: React.ReactNode
   emptyIdentity?: { icon?: string; name: string; projectName: string }
   sendChatMessage?: ReportDataApi['sendChatMessage']
+  /** Standalone viewing links have no project chat destination. */
+  allowContentQuestions?: boolean
   headerAction?: React.ReactNode
 }
 
@@ -199,7 +201,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard' }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, allowContentQuestions = true }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -298,7 +300,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
               </div>
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
-            {report?.html && <HtmlReportFrame key={report.path} html={report.html} title={report.label} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />}
+            {report?.html && <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={selectedDocumentPath} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />}
           </div>
         </div>
         <FilePreviewModal />

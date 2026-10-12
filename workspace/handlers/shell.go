@@ -577,9 +577,17 @@ func ExecuteShellCommand(c *gin.Context) {
 	// write guard authorizes the destination.
 	if exitCode == 0 && req.ArtifactTransfer != nil && req.ArtifactTransfer.Finalize {
 		transfer := req.ArtifactTransfer
+		// A relative destination is workspace-relative (the tested rule). An agent in a project writes it the way its shell does,
+		// relative to the project folder; when the workspace-relative reading is not writable but the folder-relative one is, use it.
+		destination := transfer.DestinationPath
+		if !filepath.IsAbs(destination) && !security.ArtifactDestinationWritable(destination, docsDir, req.FolderGuard.WritePaths) {
+			if inFolder := filepath.Join(workingDir, destination); security.ArtifactDestinationWritable(inFolder, docsDir, req.FolderGuard.WritePaths) {
+				destination = inFolder
+			}
+		}
 		if transferErr := security.FinalizeBrowserArtifact(
 			transfer.SourcePath,
-			transfer.DestinationPath,
+			destination,
 			transfer.Kind,
 			docsDir,
 			req.FolderGuard.WritePaths,

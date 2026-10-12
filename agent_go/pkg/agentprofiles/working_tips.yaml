@@ -1,0 +1,17 @@
+# Shared definitions referenced by id from a product.yaml ui.tips list.
+- id: quick-switcher
+  text: '⌘K / Ctrl+K searches products, projects, chats, panels and tabs. Try typing “slack”.'
+  skip_if_used: quick-switcher
+- id: reminders
+  text: 'Ask for a reminder, e.g. “check the deploy in 15 minutes”.'
+- id: toolbar-hide
+  text: 'The icon at the end of the toolbar hides it; ⌘K still opens any panel.'
+  skip_if_used: toolbar-hide
+- id: project-schedules-create
+  text: 'In a project you own, ask “run this report every weekday at 9am”. Open Automation to review the schedule.'
+- id: project-schedules-manage
+  text: 'In a project you own, open Automation to pause or change a schedule and check its recent runs.'
+- id: project-dashboard-create
+  text: 'Ask “build a dashboard from these files” in your own project. Open Dashboard, or find it with Ctrl+K, to view the result.'
+- id: project-dashboard-update
+  text: 'In a project you own, ask “refresh this dashboard with the latest data”. You can also ask to schedule regular updates.'

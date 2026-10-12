@@ -672,3 +672,48 @@ func cliTestServer(handler http.Handler) *httptest.Server {
 		handler.ServeHTTP(w, r)
 	}))
 }
+
+func TestNamedLoginsAreSeparateAndNeverOverwriteAnother(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	tool := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"tools":[]}`)) })
+	first, second := cliTestServer(tool), cliTestServer(tool)
+	defer first.Close()
+	defer second.Close()
+	secret := "aw_pat_" + strings.Repeat("b", 64)
+	env := func(string) string { return "" }
+	login := func(server, name string) (int, string) {
+		var stdout, stderr bytes.Buffer
+		code := run(context.Background(), []string{"--server", server, "login", "--name", name, "--token-stdin"}, strings.NewReader(secret+"\n"), &stdout, &stderr, env)
+		return code, stdout.String() + stderr.String()
+	}
+	if code, out := login(first.URL, "work"); code != 0 {
+		t.Fatalf("first named login: %s", out)
+	}
+	if code, _ := login(second.URL, "work"); code == 0 {
+		t.Fatal("a second server replaced the login that already had this name")
+	}
+	if code, _ := login(first.URL, "work"); code != 0 {
+		t.Fatal("signing in again to the same server under the same name must work")
+	}
+	if code, _ := login(second.URL, "other"); code != 0 {
+		t.Fatal("a different name must be a separate login")
+	}
+	for _, bad := range []string{"default", "Work", "../x", ""} {
+		if bad == "" {
+			continue
+		}
+		if code, _ := login(first.URL, bad); code == 0 {
+			t.Fatalf("login name %q accepted", bad)
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"logins"}, strings.NewReader(""), &stdout, &stderr, env); code != 0 {
+		t.Fatalf("logins: %s", &stderr)
+	}
+	listing := stdout.String()
+	if !strings.Contains(listing, "work\t"+first.URL) || !strings.Contains(listing, "other\t"+second.URL) || strings.Contains(listing, secret) || strings.Contains(listing, home) {
+		t.Fatalf("login listing is wrong or leaks: %q", listing)
+	}
+}

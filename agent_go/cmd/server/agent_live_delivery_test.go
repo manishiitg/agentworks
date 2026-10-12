@@ -208,6 +208,11 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if len(replies) != 1 || replies[0].(map[string]any)["inbox_id"] != receipt["inbox_id"] {
 		t.Fatal("reply split the conversation")
 	}
+	// A simplified person NAME attach cannot displace a live chat, including
+	// when the other computer is absent from the local bridge journal.
+	if _, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{RejectLiveMove: true, AgentName: "reviewer", Provider: "claude", SessionID: "another-computer-session"}); err == nil || !strings.Contains(err.Error(), "detach it there first") {
+		t.Fatal("person attach displaced another computer's live chat", err)
+	}
 	// Moving a stable address revokes the old session lease immediately.
 	replacementAttachment, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "New review session", Provider: "claude", SessionID: "exact-session-two"})
 	if err != nil {

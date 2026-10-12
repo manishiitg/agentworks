@@ -1,5 +1,6 @@
 import type { PollingEvent } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
+import { runToolResultText } from '../../utils/terminalEventTranscript'
 import { readInspectionTarget } from '../../utils/stepInspection'
 import { InspectExecutionButton } from './InspectExecutionButton'
 
@@ -25,15 +26,15 @@ export function RunInspectionButton({event}: {event: PollingEvent}) {
  if (!sessionId || !callId || (event.session_id && event.session_id !== sessionId)) return null
  const end = events.find(candidate => candidate.type === 'tool_call_end' && payload(candidate).tool_call_id === callId)
  if (!end) return null
- const result = payload(end).result
- const executionId = typeof result === 'string' ? result.match(/execution_id:\s*"([^"\n]+)"/)?.[1] : undefined
+ const result = runToolResultText(payload(end).result)
+ const executionId = typeof result === 'string' ? result.match(/\bexecution_id:\s*"([^"\n]+)"/)?.[1] : undefined
  if (!executionId) return null
  for (const candidate of events) {
   if (candidate.type !== 'background_agent_started' && candidate.type !== 'background_agent_completed') continue
   const fields = payload(candidate)
   const metadata = fields.metadata as Record<string, unknown> | undefined
   const target = readInspectionTarget(metadata?.inspection)
-  if (target?.execution_id === executionId && target.session_id === sessionId) return <InspectExecutionButton target={target} />
+  if (target?.execution_id === executionId && target.session_id === sessionId) return <InspectExecutionButton target={target} label="Inspect" />
  }
  return null
 }

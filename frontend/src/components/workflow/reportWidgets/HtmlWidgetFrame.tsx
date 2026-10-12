@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useReportDataApi } from './reportEmbedContext'
 import { readReportTabSelection, restoreReportTabSelection, type ReportTabSelection } from './reportTabSelection'
+import { bindReportContentMenu, type ReportContentMenu } from './reportContentQuestion'
 import {
   applyReportTheme,
   installReportHost,
@@ -102,6 +103,7 @@ function HtmlReportFrameComponent({
   autoHeight = false,
   refreshToken = 0,
   focusTarget,
+  onContentContextMenu,
 }: {
   html: string
   title: string
@@ -114,6 +116,7 @@ function HtmlReportFrameComponent({
    * as `report.focus` + a `report:focus` event; a report that does not listen
    * simply stays where it is. */
   focusTarget?: { value: string; token: number }
+  onContentContextMenu?: (menu: ReportContentMenu) => void
 }) {
   const dataApi = useReportDataApi()
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -125,6 +128,9 @@ function HtmlReportFrameComponent({
   const injectedRefreshTokenRef = useRef<number | null>(null)
   const appliedThemeRef = useRef<{ document: Document; theme: ReportHostTheme } | null>(null)
   const savedTabRef = useRef<ReportTabSelection | null>(null)
+  const contentMenuRef = useRef(onContentContextMenu)
+  contentMenuRef.current = onContentContextMenu
+  const contentMenuCleanupRef = useRef<(() => void) | null>(null)
 
   // Do not pass srcDoc through React's normal DOM-prop reconciliation. A report
   // frame is a live document: when an outer polling update re-renders its
@@ -314,6 +320,7 @@ function HtmlReportFrameComponent({
 
   // Disconnect the observer on unmount.
   useEffect(() => () => observerRef.current?.disconnect(), [])
+  useEffect(() => () => contentMenuCleanupRef.current?.(), [])
 
   return (
     <iframe
@@ -324,6 +331,9 @@ function HtmlReportFrameComponent({
         loadedDocumentRef.current = iframeRef.current?.contentDocument || null
         debugReportFrame('iframe loaded', title)
         inject()
+        contentMenuCleanupRef.current?.()
+        const frame = iframeRef.current
+        if (frame) contentMenuCleanupRef.current = bindReportContentMenu(frame, menu => contentMenuRef.current?.(menu), () => Boolean(contentMenuRef.current))
         const doc = iframeRef.current?.contentDocument
         const selection = savedTabRef.current
         savedTabRef.current = null

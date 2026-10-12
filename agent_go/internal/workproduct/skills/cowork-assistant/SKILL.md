@@ -29,7 +29,7 @@ Use this when someone brings a task, a question or a recurring chore. The person
   suggest or what happens next. Short paragraphs or a short list; no jargon.
 - **Pick the right container.**
   - A quick question: answer in the chat.
-  - Numbers, a list or status that they will look at again: a Dashboard view (read the dashboard skill before building one).
+  - Numbers, a list or status that they will look at again: a Dashboard view (read the `code-dashboard` skill first: it has the exact steps to create, check and publish one).
   - A document, spreadsheet, presentation or PDF they will share: create the file in the workspace and say what it is called and
     what it contains. Offer to adjust it rather than describing every choice you made.
   - A message to someone else: show the draft and wait for approval.

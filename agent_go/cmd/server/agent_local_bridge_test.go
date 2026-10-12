@@ -1,12 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -32,7 +35,31 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 	mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
-	mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
+	var slowMuseValidate atomic.Bool
+	validateStarted, validateRelease := make(chan struct{}, 1), make(chan struct{})
+	mux.HandleFunc("/api/external/v1/agents/attachment", func(w http.ResponseWriter, r *http.Request) {
+		if slowMuseValidate.Load() {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var in struct {
+				Action string `json:"action"`
+				Name   string `json:"agent_name"`
+			}
+			_ = json.Unmarshal(body, &in)
+			if in.Action == "validate" && in.Name == "muse-review" {
+				select {
+				case validateStarted <- struct{}{}:
+				default:
+				}
+				select {
+				case <-validateRelease:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		env.api.handleAgentAttachment(w, r)
+	})
 	srv := httptest.NewServer(AuthMiddleware(mux))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
@@ -81,11 +108,17 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
 	call(freshSender, map[string]any{"action": "register", "agent_name": "fresh-sender"})
 	// Short path avoids the operating system Unix socket filename limit.
-	root, err := os.MkdirTemp("", "aw-bridge-")
+	cache, err := os.MkdirTemp("", "aw-cache-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(root)
+	defer os.RemoveAll(cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	root, err := agentworksclient.DefaultLocalBridgeRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
 	var bridgeOptions agentworksclient.LocalBridgeOptions
 	start := func() (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -116,6 +149,97 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	cancel, done := start()
 	defer cancel()
+	// A non-interactive coding-agent tool call attaches only its own native
+	// UUID, using the existing login and no installed provider plugin. The ps
+	// fixture supplies process routing metadata; HTTP/OAuth/IPC stay real.
+	bin := filepath.Join(cache, "agentworks-cli")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/agentworks")
+	build.Dir = "../.."
+	if output, e := build.CombinedOutput(); e != nil {
+		t.Fatalf("CLI fixture build: %v: %s", e, output)
+	}
+	metadata := filepath.Join(cache, "metadata")
+	if e := os.Mkdir(metadata, 0700); e != nil {
+		t.Fatal(e)
+	}
+	ps := "#!/bin/sh\ncase \"$*\" in *ppid=*) printf '%s\\n' '1 codex /usr/bin/codex Mon Oct 12 01:00:00 2026';; *) printf '%s\\n' 'codex Mon Oct 12 01:00:00 2026';; esac\n"
+	if e := os.WriteFile(filepath.Join(metadata, "ps"), []byte(ps), 0700); e != nil {
+		t.Fatal(e)
+	}
+	cliEnv := func(wantOK bool, extraEnv []string, args ...string) string {
+		t.Helper()
+		command := exec.Command(bin, append([]string{"--config", path}, args...)...)
+		command.Env = append(os.Environ(), "PATH="+metadata+string(os.PathListSeparator)+os.Getenv("PATH"), "CODEX_THREAD_ID=11111111-2222-4333-8444-555555555555", "CODEX_SESSION_ID=11111111-2222-4333-8444-555555555555")
+		command.Env = append(command.Env, extraEnv...)
+		output, e := command.CombinedOutput()
+		if (e == nil) != wantOK {
+			t.Fatalf("CLI %v: %v: %s", args, e, output)
+		}
+		return string(output)
+	}
+	cli := func(wantOK bool, args ...string) string { return cliEnv(wantOK, nil, args...) }
+	if output := cli(true, "attach", "own-cli"); !strings.Contains(output, "No plugin was installed") {
+		t.Fatalf("own attach required plugin or picker: %s", output)
+	}
+	cli(true, "attach", "own-cli")
+	// The agent itself may move its own chat to another saved login and back
+	// (owner choice for an open system): the second account gains the agent, the
+	// first loses it, and the chat keeps its name.
+	moved, movedPath, _ := issue("other")
+	movedConfig, err := agentworksclient.LoadConfig(movedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerConfig, err := agentworksclient.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasAgent := func(c *agentworksclient.Client) bool {
+		raw, e := c.Call(context.Background(), "messages", map[string]any{"action": "list_agents"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		return strings.Contains(string(raw), `"agent_name":"own-cli"`)
+	}
+	for name, cfg := range map[string]agentworksclient.Config{"moved": movedConfig, "back": ownerConfig} {
+		loginFile, e := agentworksclient.LoginPath(name)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = agentworksclient.SaveConfig(loginFile, cfg); e != nil {
+			t.Fatal(e)
+		}
+	}
+	cli(true, "attach", "--on", "moved")
+	if !hasAgent(moved) {
+		t.Fatal("the moved chat's agent is not on the second login")
+	}
+	cli(true, "attach", "--on", "back")
+	cli(true, "attach", "own-cli")
+	cli(false, "attach", "another-chat", "--provider", "claude", "--session", "22222222-2222-4333-8444-555555555555")
+	longPurpose := strings.Repeat("Responsibilities and current scope. ", 5) + strings.Repeat("🤝", 100)
+	if output := cli(true, "bridge", "message", "purpose", "--provider", "codex", "--purpose", longPurpose+"\u202e\x1b"); !strings.Contains(output, strings.TrimSpace(longPurpose)) || strings.Contains(output, "\u202e") || strings.Contains(output, "\\u001b") {
+		t.Fatalf("full purpose was lost: %s", output)
+	}
+	cli(false, "bridge", "message", "purpose", "--provider", "codex", "--purpose", strings.Repeat("x", 513))
+	if output := cli(true, "agent"); !strings.Contains(output, "agent:own-cli") || !strings.Contains(output, "agent:sender") {
+		t.Fatalf("directory alias lost authorized agents: %s", output)
+	}
+	cliEnv(false, []string{"CODEX_THREAD_ID=22222222-2222-4333-8444-555555555555"}, "detach")
+	// A separate existing person lease must not be renamed or detached by
+	// spoofing both same-user routing hints, even under a shared Codex host.
+	person := agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: "22222222-2222-4333-8444-555555555555", HostKey: "person-process", AgentName: "person-created", ConfigPath: path}
+	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, person); e != nil {
+		t.Fatal(e)
+	}
+	spoof := []string{"CODEX_THREAD_ID=" + person.SessionID, "CODEX_SESSION_ID=" + person.SessionID}
+	cliEnv(false, spoof, "attach", "takeover")
+	cliEnv(false, spoof, "detach")
+	person.Action = "detach_person"
+	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, person); e != nil {
+		t.Fatal(e)
+	}
+	cli(true, "detach")
 	base := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "exact-hook-session", HostKey: "exact-parent-process"}
 	plugin, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "claude", base.HostKey, false)
 	if err != nil {
@@ -142,7 +266,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	attach.Action = "attach"
 	attach.ConfigPath = path
 	attach.AgentName = "hook-reviewer"
-	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID {
+	attach.Purpose = longPurpose + "\u202e\x1b"
+	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID || out.Attachment.Purpose != longPurpose {
 		t.Fatal("wrong exact session")
 	}
 	// One parent can manage both names, but a derived child cannot impersonate
@@ -346,6 +471,22 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if len(responses) != 2 || responses[1].(map[string]any)["inbox_id"] != recovered.InboxID {
 		t.Fatal("compacted reply lost its original inbox")
 	}
+	// The CLI's shutdown path retains identities/leases for update and stop/start.
+	leaseBeforeStop := local(agentworksclient.LocalBridgeRequest{Action: "status", Provider: base.Provider, SessionID: base.SessionID, HostKey: base.HostKey}).Attachment.ID
+	_, _ = agentworksclient.CallLocalBridge(context.Background(), root, agentworksclient.LocalBridgeRequest{Action: "shutdown"})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("CLI shutdown did not finish")
+	}
+	cancel()
+	cancel, done = start()
+	if got := local(agentworksclient.LocalBridgeRequest{Action: "status", Provider: base.Provider, SessionID: base.SessionID, HostKey: base.HostKey}); !got.Attached || got.Attachment.ID != leaseBeforeStop {
+		t.Fatal("CLI restart lost the approved attachment", got)
+	}
 	stop(cancel, done)
 	// Simulate a saved pre-upgrade restricted attachment: never widen it silently.
 	savedPath := filepath.Join(root, "sessions.json")
@@ -388,10 +529,34 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, missingHost); e == nil {
 		t.Fatal("resume accepted no provider process key")
 	}
+	offlineMessage := send("stored while offline")
 	resume := base
-	resume.Action = "resume"
+	resume.Action = "attach"
+	resume.AgentName = ""
+	resume.ConfigPath = "/missing/default/login"
+	resume.ReuseIdentity = true
 	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("person-confirmed exact resume failed")
+	}
+	offlineOffer := wait(offlineMessage["message_id"].(string))
+	if len(offlineOffer.Messages) != 1 || offlineOffer.Messages[0].AttachmentID != local(statusOffline).Attachment.ID {
+		t.Fatal("offline catch-up did not use the renewed lease", offlineOffer)
+	}
+	firstLease := local(statusOffline).Attachment.ID
+	if got := local(resume); got.Attachment.ID != firstLease {
+		t.Fatal("repeated person attach rotated an active lease")
+	}
+	setup := resume
+	setup.Setup = true
+	if !local(setup).Attached {
+		t.Fatal("person attach failed")
+	}
+	setupContext := local(drain)
+	if setupContext.SetupContext == "" || !strings.Contains(setupContext.SetupContext, "agent_message_set_purpose") || !strings.Contains(setupContext.SetupContext, "hook-reviewer") {
+		t.Fatal("attach setup omitted purpose/roster", setupContext)
+	}
+	if got := local(drain); got.SetupContext != "" {
+		t.Fatal("setup repeated without another person attach")
 	}
 	channelOffer := send("channel offer on new attachment")
 	drain.Transport = "claude_channel"
@@ -400,8 +565,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	drain.Transport = "claude_hook"
 	resumed := send("offer on a new attachment")
-	if out := wait(resumed["message_id"].(string)); !out.IncludeGuidance {
-		t.Fatal("new attachment inherited old command guidance")
+	if out := wait(resumed["message_id"].(string)); out.IncludeGuidance {
+		t.Fatal("reconnect repeated command guidance within 24 hours")
 	}
 	wrongProcess := base
 	wrongProcess.Action, wrongProcess.HostKey = "status", "another-provider-process"
@@ -410,9 +575,20 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	move := attach
 	move.SessionID, move.HostKey = "moved-exact-session", "moved-exact-process"
-	if !local(move).Attached || !local(attach).Attached {
-		t.Fatal("stable identity move failed")
+	if _, err := agentworksclient.CallLocalBridge(context.Background(), root, move); err == nil || !strings.Contains(err.Error(), "detach it there first") {
+		t.Fatal("live chat name was silently displaced", err)
 	}
+	local(offline)
+	if !local(move).Attached {
+		t.Fatal("explicit move from offline identity failed")
+	}
+	moveOffline := move
+	moveOffline.Action = "offline"
+	local(moveOffline)
+	if !local(attach).Attached {
+		t.Fatal("stable identity did not return from offline session")
+	}
+
 	files, e = filepath.Glob(filepath.Join(root, "connections", "*.json"))
 	if e != nil || len(files) != 1 {
 		t.Fatal("moving retained identities leaked child credentials")
@@ -519,6 +695,155 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("repaired route emitted a fallback notification", notice)
 	default:
 	}
+	approvedLease := local(routeStatus).Attachment.ID
+	stop(cancel, done)
+	// An older approved lease can lack its native route. Recovery changes
+	// transport metadata only, without a new attachment or replaying offers.
+	clearRoute := func() {
+		t.Helper()
+		file := filepath.Join(root, "sessions.json")
+		data, e := os.ReadFile(file)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var saved map[string]map[string]any
+		if e = json.Unmarshal(data, &saved); e != nil {
+			t.Fatal(e)
+		}
+		delete(saved[base.Provider+":"+base.SessionID], "native_remote")
+		data, e = json.Marshal(saved)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(file, data, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	clearRoute()
+	var routeReady atomic.Bool
+	bridgeOptions.HostAlive = func(provider, host string) bool { return provider == base.Provider && host == base.HostKey }
+	bridgeOptions.NativeRoute = func(provider, session, host, remote string) string {
+		if !routeReady.Load() || provider != base.Provider || session != base.SessionID || host != base.HostKey {
+			return ""
+		}
+		return "claude+session:///replacement"
+	}
+	bridgeOptions.NativeOffer = func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
+		nativeOffers <- out
+		return agentworksclient.ErrNativeOfferUnconfirmed
+	}
+	cancel, done = start()
+	defer cancel()
+	if local(routeStatus).NativeDelivery {
+		t.Fatal("unavailable route reported native delivery")
+	}
+	pendingNative := send("stored before approved native route recovery")
+	deadline := time.Now().Add(5 * time.Second)
+	for local(routeStatus).Pending == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if local(routeStatus).Pending == 0 {
+		t.Fatal("missing-route message was not retained")
+	}
+	routeReady.Store(true)
+	wrongHost := routeStatus
+	wrongHost.HostKey = "different-provider-process"
+	if local(wrongHost).Attached {
+		t.Fatal("another host recovered the approved route")
+	}
+	if out := local(drain); !out.NativeDelivery || out.Attachment.ID != approvedLease || len(out.Messages) != 0 {
+		t.Fatal("hook recovery changed lease or released native content through hooks", out)
+	}
+	select {
+	case out := <-nativeOffers:
+		if out.Attachment.ID != approvedLease || len(out.Messages) != 1 || out.Messages[0].MessageID != pendingNative["message_id"] {
+			t.Fatal("recovered native route lost pending body or replayed earlier offers", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("recovered route did not deliver retained message")
+	}
+	// A person attach on that exact native lease starts setup immediately,
+	// without waiting for a peer message; restarting cannot repeat it.
+	setupNative := nativeAttach
+	setupNative.NativeRemote = "claude+session:///replacement"
+	setupNative.Setup = true
+	if out := local(setupNative); out.Attachment.ID != approvedLease {
+		t.Fatal("setup renewed an already-live lease")
+	}
+	select {
+	case out := <-nativeOffers:
+		if out.SetupContext == "" || len(out.Messages) != 0 || !strings.Contains(out.SetupContext, "agent_message_set_purpose") {
+			t.Fatal("Claude native setup did not start without a peer message", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("native setup never offered")
+	}
+	stop(cancel, done)
+	clearRoute()
+	cancel, done = start()
+	defer cancel()
+	if out := local(routeStatus); !out.NativeDelivery || out.Attachment.ID != approvedLease {
+		t.Fatal("restart did not recover existing approved lease")
+	}
+	select {
+	case out := <-nativeOffers:
+		t.Fatal("restart replayed setup or an ambiguous offer", out)
+	case <-time.After(100 * time.Millisecond):
+	}
+	offlineNative := base
+	offlineNative.Action = "offline"
+	local(offlineNative)
+	stop(cancel, done)
+	clearRoute()
+	cancel, done = start()
+	defer cancel()
+	if out := local(routeStatus); !out.Offline || out.NativeDelivery {
+		t.Fatal("native recovery revived an offline identity")
+	}
+	stop(cancel, done)
+	// A legacy empty-host record stays fenced, with a durable once-only notice.
+	statePath = filepath.Join(root, "sessions.json")
+	stateBody, e := os.ReadFile(statePath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	saved = nil
+	if e = json.Unmarshal(stateBody, &saved); e != nil {
+		t.Fatal(e)
+	}
+	legacy := saved[base.Provider+":"+base.SessionID]
+	legacy["host_key"] = ""
+	legacy["offline"] = false
+	delete(legacy, "missing_host_notice")
+	delete(legacy, "offline_explicit")
+	stateBody, e = json.Marshal(saved)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(statePath, stateBody, 0600); e != nil {
+		t.Fatal(e)
+	}
+	legacyNotices := make(chan string, 4)
+	bridgeOptions = agentworksclient.LocalBridgeOptions{Notify: func(_ agentworksclient.AgentAttachment, text string) { legacyNotices <- text }}
+	cancel, done = start()
+	if out := local(routeStatus); !out.Offline || out.NativeDelivery || !strings.Contains(out.LastError, "no verified process binding") {
+		t.Fatal("legacy attachment revived or hid reattach diagnostic", out)
+	}
+	select {
+	case text := <-legacyNotices:
+		if !strings.Contains(text, "agentworks attach") {
+			t.Fatal("legacy notice lacks recovery", text)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("legacy upgrade gave no notice")
+	}
+	stop(cancel, done)
+	cancel, done = start()
+	select {
+	case text := <-legacyNotices:
+		t.Fatal("restart repeated legacy notice", text)
+	case <-time.After(100 * time.Millisecond):
+	}
 	stop(cancel, done)
 	bridgeOptions = agentworksclient.LocalBridgeOptions{}
 	cancel, done = start()
@@ -530,11 +855,272 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if local(wrong).Attached {
 		t.Fatal("another session read attached state")
 	}
+
+	// Muse: real OAuth/SSE + persistent private Unix watch. A wake is metadata,
+	// not a body offer or receipt. Restart never replays an ambiguous wake.
+	_, musePath, _ := issue()
+	museBase := agentworksclient.LocalBridgeRequest{Provider: "muse", SessionID: "11111111-2222-4333-8444-555555555555", HostKey: "muse-birth-key"}
+	museAttach := museBase
+	museAttach.Action, museAttach.AgentName, museAttach.ConfigPath = "attach", "muse-review", musePath
+	museLease := local(museAttach).Attachment.ID
+	museBase.AttachmentID = museLease
+	museContext, museCancel := context.WithCancel(context.Background())
+	defer museCancel()
+	musePlugin, e := agentworksclient.NewMusePluginMCPServer(museContext, root, museBase.HostKey, func() (string, error) { return museBase.SessionID, nil })
+	if e != nil {
+		t.Fatal(e)
+	}
+	tool := func(name string, args map[string]any, wantError bool) *mcp.CallToolResult {
+		t.Helper()
+		result, e := musePlugin.GetTool(name).Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: args}})
+		if e != nil || result.IsError != wantError {
+			t.Fatalf("Muse %s: %+v %v", name, result, e)
+		}
+		return result
+	}
+	config := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	if !strings.Contains(config, "--session") || !strings.Contains(config, museLease) || !strings.Contains(config, `"wake_delay_ms":0`) {
+		t.Fatal("unpinned Monitor config", config)
+	}
+	watch := func(request agentworksclient.LocalBridgeRequest) (context.CancelFunc, <-chan error, <-chan agentworksclient.MuseWatchHint) {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		hints := make(chan agentworksclient.MuseWatchHint, 4)
+		go func() {
+			done <- agentworksclient.WatchMuseBridge(ctx, root, request, func(h agentworksclient.MuseWatchHint) error { hints <- h; return nil })
+		}()
+		return cancel, done, hints
+	}
+	waitActive := func(active bool) {
+		t.Helper()
+		check := museBase
+		check.Action = "status"
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if local(check).MonitorActive == active {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("Muse Monitor activity did not change", active)
+	}
+	slowMuseValidate.Store(true)
+	watchCancel, watchDone, hints := watch(museBase)
+	defer watchCancel()
+	select {
+	case <-validateStarted:
+	case <-time.After(5 * time.Second):
+		close(validateRelease)
+		t.Fatal("watch validation did not start")
+	}
+	responsive := make(chan struct{}, 1)
+	go func() {
+		check := base
+		check.Action = "status"
+		_, _ = agentworksclient.CallLocalBridge(context.Background(), root, check)
+		responsive <- struct{}{}
+	}()
+	select {
+	case <-responsive:
+	case <-time.After(time.Second):
+		close(validateRelease)
+		t.Fatal("slow Muse validation stalled another attached provider")
+	}
+	slowMuseValidate.Store(false)
+	close(validateRelease)
+	waitActive(true)
+	renewMuse := museBase
+	renewMuse.Action = "attach"
+	if out := local(renewMuse); !out.MonitorActive || !out.NativeDelivery || out.Attachment.ID != museLease {
+		t.Fatal("bare Muse reconnect lost its active Monitor or lease", out)
+	}
+	if active := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text; !strings.Contains(active, `"monitor_active":true`) || strings.Contains(active, `"command"`) {
+		t.Fatal("duplicate Monitor startup suggested", active)
+	}
+	for _, bad := range []agentworksclient.LocalBridgeRequest{
+		{Provider: "muse", SessionID: museBase.SessionID, HostKey: "wrong-host", AttachmentID: museLease},
+		{Provider: "muse", SessionID: museBase.SessionID, HostKey: museBase.HostKey, AttachmentID: "old-lease"},
+		museBase, // museSecond reader of the same exact lease
+	} {
+		c, d, _ := watch(bad)
+		select {
+		case err := <-d:
+			if err == nil {
+				t.Fatal("invalid/duplicate watch admitted")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("invalid watch did not fail")
+		}
+		c()
+	}
+	museSend := func(body string) map[string]any {
+		return call(freshSender, map[string]any{"action": "send", "agent_name": "fresh-sender", "target": "agent:muse-review", "message": body, "submission_id": body})
+	}
+	museFirst := museSend("Muse body stays private until receive")
+	select {
+	case hint := <-hints:
+		raw, _ := json.Marshal(hint)
+		if hint.MessageID != museFirst["message_id"] || hint.Source != "agentworks-muse-watch" || hint.Sender != "fresh-sender" || strings.Contains(string(raw), "body stays") {
+			t.Fatal("wrong or overbroad Muse hint", hint)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SSE did not wake the idle Unix watch")
+	}
+	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, true)
+	watchCancel()
+	<-watchDone
+	waitActive(false)
+	stop(cancel, done)
+	cancel, done = start()
+	defer cancel()
+	watchCancel, watchDone, hints = watch(museBase)
+	defer watchCancel()
+	waitActive(true)
+	select {
+	case hint := <-hints:
+		if hint.Kind != "pending" || hint.Pending != 1 || hint.MessageID != "" || hint.InboxID != "" || hint.Sender != "" {
+			t.Fatal("invalid aggregate catch-up hint", hint)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("restart left unread bodies silent")
+	}
+	select {
+	case hint := <-hints:
+		t.Fatal("restart replayed an individual ambiguous hint", hint)
+	case <-time.After(100 * time.Millisecond):
+	}
+	museSecond := museSend("New message wakes the same renewed stream")
+	select {
+	case hint := <-hints:
+		if hint.MessageID != museSecond["message_id"] {
+			t.Fatal("old hint replayed", hint)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("restarted watch did not receive new SSE offer")
+	}
+	received := tool("agent_message_receive", nil, false)
+	var bodies agentworksclient.LocalBridgeReply
+	if e = json.Unmarshal([]byte(received.Content[0].(mcp.TextContent).Text), &bodies); e != nil || len(bodies.Messages) != 2 || bodies.Messages[0].MessageID != museFirst["message_id"] {
+		t.Fatal("Muse bodies unavailable or misrouted", bodies, e)
+	}
+	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, false)
+	tool("agent_message_reply", map[string]any{"message_id": museFirst["message_id"], "message": "Received through Muse Monitor", "submission_id": "muse-monitor-reply"}, false)
+	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "processed"}, false)
+	responses = call(freshSender, map[string]any{"action": "read", "agent_name": "fresh-sender", "inbox_id": museFirst["inbox_id"]})["messages"].([]any)
+	if len(responses) != 1 || responses[0].(map[string]any)["message"] != "Received through Muse Monitor" || responses[0].(map[string]any)["inbox_id"] != museFirst["inbox_id"] {
+		t.Fatal("Muse reply lost its original inbox", responses)
+	}
+	changed := museBase
+	changed.SessionID = "11111111-2222-4333-8444-555555555556"
+	changed.Action = "status"
+	changed.MuseCurrent = true
+	if local(changed).Attached {
+		t.Fatal("chat switch attached another session")
+	}
+	select {
+	case <-watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("chat switch did not stop old Monitor")
+	}
+	waitActive(false)
+	c, d, _ := watch(museBase)
+	select {
+	case err := <-d:
+		if err == nil {
+			t.Fatal("old session watch resumed after switch")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("old-session refusal blocked")
+	}
+	c()
+	changed = museBase
+	changed.Action = "status"
+	changed.MuseCurrent = true
+	local(changed)
+	watchCancel, watchDone, _ = watch(museBase)
+	defer watchCancel()
+	waitActive(true)
+	// The approved MCP brokers a metadata pipe for a sandboxed native reader.
+	watchCancel()
+	<-watchDone
+	waitActive(false)
+	config = tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	var options struct {
+		Monitor struct {
+			Command string `json:"command"`
+		} `json:"monitor"`
+	}
+	if e = json.Unmarshal([]byte(config), &options); e != nil {
+		t.Fatal(e)
+	}
+	parts := strings.Split(options.Monitor.Command, " --subscription-file '")
+	if len(parts) != 2 {
+		t.Fatal("missing private subscription", config)
+	}
+	subscription := strings.TrimSuffix(parts[1], "'")
+	pipeCtx, pipeCancel := context.WithCancel(context.Background())
+	pipeDone := make(chan error, 1)
+	pipeHints := make(chan agentworksclient.MuseWatchHint, 4)
+	go func() {
+		pipeDone <- agentworksclient.ReadMuseMonitorPipe(pipeCtx, subscription, museBase.SessionID, museLease, func(h agentworksclient.MuseWatchHint) error { pipeHints <- h; return nil })
+	}()
+	waitActive(true)
+	if e = agentworksclient.ReadMuseMonitorPipe(context.Background(), subscription, museBase.SessionID, museLease, func(agentworksclient.MuseWatchHint) error { return nil }); e == nil {
+		t.Fatal("duplicate FIFO reader accepted")
+	}
+	third := museSend("Private FIFO carries no body")
+	select {
+	case h := <-pipeHints:
+		if h.MessageID != third["message_id"] {
+			t.Fatal("wrong FIFO metadata", h)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("approved broker did not forward SSE hint to FIFO")
+	}
+	pipeCancel()
+	select {
+	case <-pipeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("FIFO reader cancellation stuck")
+	}
+	waitActive(false) // kernel lock release, no new message or liveness polling
+	// A crashed broker's complete UUID set is cleaned only with its lifetime
+	// lock free. The helper must retain the newly staged live subscription.
+	stale := filepath.Join(filepath.Dir(subscription), "11111111-2222-4333-8444-555555555557.json")
+	record := agentworksclient.MuseMonitorSubscription{Source: "agentworks-muse-watch", SessionID: museBase.SessionID, AttachmentID: museLease, HostKey: museBase.HostKey, DataHome: t.TempDir()}
+	encoded, _ := json.Marshal(record)
+	for _, suffix := range []string{"", ".broker", ".lock", ".fifo"} {
+		if e = os.WriteFile(stale+suffix, encoded, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	config = tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	for _, suffix := range []string{"", ".broker", ".lock", ".fifo"} {
+		if _, e = os.Lstat(stale + suffix); !errors.Is(e, os.ErrNotExist) {
+			t.Fatal("stale Muse subscription retained", suffix, e)
+		}
+	}
+	if again := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text; again != config {
+		t.Fatal("live staged broker was removed or duplicated", again, config)
+	}
+	museCancel()
+	watchCancel, watchDone, _ = watch(museBase)
+	defer watchCancel()
+	waitActive(true)
+	closeMuse := museBase
+	closeMuse.Action = "detach"
+	local(closeMuse)
+	select {
+	case <-watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("detach did not close Monitor")
+	}
+
 	// Revoke after the body was cached but before a hook could release it.
 	_ = send("cached before sender revoke")
 	status := base
 	status.Action = "status"
-	deadline := time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(5 * time.Second)
 	for local(status).Pending == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}

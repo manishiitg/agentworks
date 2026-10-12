@@ -57,16 +57,14 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)
 }
 
-// workflowReviewPreRunRegistrar runs the Workflow Review pre-run check
-// (PLAT-697 phase 0) in front of execute_step and run_full_workflow in every
-// workflow chat: Builder, Run, and Pulse turns. Clean plans start at once; a
-// changed plan starts the review as a background job of the chat and the run
-// tool returns without starting (workflow_review_prerun.go).
+// Individual step tests do not wait for an AI drift review. Interactive full
+// runs offer review when due; scheduled full runs retain their pre-run policy.
 type workflowReviewPreRunRegistrar struct {
 	definitionRegistrar
 	api           *StreamingAPI
 	sessionID     string
 	workspacePath string
+	interactive   bool
 }
 
 func (r workflowReviewPreRunRegistrar) RegisterCustomTool(
@@ -85,14 +83,49 @@ func (r workflowReviewPreRunRegistrar) RegisterCustomToolWithTimeout(
 	timeout time.Duration,
 	group string,
 ) error {
-	if name == "execute_step" || name == "run_full_workflow" {
+	if name == "run_full_workflow" {
+		if r.interactive {
+			// Copy the schema so another surface's saved definition is unchanged.
+			copySchema := make(map[string]interface{}, len(schema))
+			for key, value := range schema {
+				copySchema[key] = value
+			}
+			properties := map[string]interface{}{}
+			if original, ok := schema["properties"].(map[string]interface{}); ok {
+				for key, value := range original {
+					properties[key] = value
+				}
+			}
+			properties["review_plan"] = map[string]interface{}{
+				"type": "boolean", "description": "The user's choice when Plan Drift is due: true reviews before running; false runs without an AI drift review. Omit to receive the review-or-run choice when needed. Do not infer a choice from an ordinary run request. Basic validation and permissions always apply.",
+			}
+			copySchema["properties"] = properties
+			schema = copySchema
+			description += " Individual step tests do not require Plan Drift. For this full run, ask the user whether to review first or run now when the tool offers that choice; pass their choice as review_plan."
+		}
 		original := execute
 		execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
-			stepID := ""
-			if name == "execute_step" {
-				stepID, _ = args["step_id"].(string)
+			interactive := r.interactive
+			if interactive && r.api != nil {
+				// Retained tool callbacks can survive into a background turn of
+				// the same chat. Recheck current provenance before honoring skip.
+				active, _ := r.api.getActiveSession(r.sessionID)
+				interactive = personAttendedWorkflowReview(r.sessionID, "workflow-builder", QueryRequest{}, active, workflowChatPolicy{Origin: "interactive"})
 			}
-			proceed, message := r.api.manualRunWorkflowReview(ctx, r.sessionID, r.workspacePath, stepID, name)
+			if interactive {
+				if raw, supplied := args["review_plan"]; supplied {
+					review, ok := raw.(bool)
+					if !ok {
+						return "", fmt.Errorf("review_plan must be true or false")
+					}
+					if !review {
+						return original(ctx, args)
+					}
+				} else if message := r.api.manualWorkflowReviewChoice(r.workspacePath); message != "" {
+					return message, nil
+				}
+			}
+			proceed, message := r.api.manualRunWorkflowReview(ctx, r.sessionID, r.workspacePath, "", name)
 			if !proceed {
 				if strings.HasPrefix(message, "workflow_review_blocked:") {
 					return "", fmt.Errorf("%s", message)

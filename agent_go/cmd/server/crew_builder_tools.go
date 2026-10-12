@@ -167,64 +167,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		return err
 	}
 
-	if err := reg.RegisterCustomTool("manage_crew_attachment", "Attach a Crew project's workspace to this workflow read-only so downstream steps can read crew files as <alias>/<crew-relative path>. First discover crews with list_accessible_workflows. Attach validates crew access and alias uniqueness, then records the fixed crew workspace path; reads re-resolve through the alias on every access while run-start and per-step checks fail fast on revoked access. Detach removes the alias immediately.", map[string]interface{}{
-		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "attach", "detach"}},
-			"alias":           map[string]interface{}{"type": "string", "description": "Short lowercase alias for crew file reads, for example reviewer-crew."},
-			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
-			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
-		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx, err := authorize(ctx, args["action"] == "list")
-		if err != nil {
-			return "", err
-		}
-		action, _ := args["action"].(string)
-		manifest, exists, err := ReadWorkflowManifest(ctx, workspace)
-		if err != nil || !exists || manifest == nil {
-			return "", fmt.Errorf("Workflow is unavailable or access denied")
-		}
-		switch action {
-		case "list":
-			encoded, err := json.MarshalIndent(map[string]interface{}{"attachments": manifest.CrewAttachments}, "", "  ")
-			return string(encoded), err
-		case "attach":
-			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
-			projectID := strings.TrimSpace(fmt.Sprint(args["crew_project_id"]))
-			profileID := strings.TrimSpace(fmt.Sprint(args["crew_profile_id"]))
-			_, created, err := attachCrewProjectToWorkflow(ctx, api.productSchedules, userID, workspace, profileID, projectID, alias)
-			if err != nil {
-				return "", err
-			}
-			if !created {
-				return "", fmt.Errorf("alias %q is already attached", alias)
-			}
-			return fmt.Sprintf("Crew project %q attached as %q (read-only). Downstream steps read crew files as %s/<path>.", projectID, alias, alias), nil
-		case "detach":
-			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
-			kept := make([]workflowtypes.CrewAttachment, 0, len(manifest.CrewAttachments))
-			found := false
-			for _, attachment := range manifest.CrewAttachments {
-				if attachment.Alias == alias {
-					found = true
-					continue
-				}
-				kept = append(kept, attachment)
-			}
-			if !found {
-				return "", fmt.Errorf("alias %q is not attached", alias)
-			}
-			previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
-			manifest.CrewAttachments = kept
-			if err := writeWorkflowManifest(ctx, workspace, manifest); err != nil {
-				return "", err
-			}
-			live := liveCrewAttachmentBindings(manifest.CrewAttachments)
-			common.ReconcileSessionCrewAttachments(workspace, previousRoots, crewAttachmentStoredRoots(live), workflowtypes.CrewAttachmentEnvKeys(live))
-			return fmt.Sprintf("Alias %q detached. Reads through it stop resolving immediately.", alias), nil
-		default:
-			return "", fmt.Errorf("Unknown crew attachment action")
-		}
-	}, "workflow_webhooks"); err != nil {
+	if err := api.registerCrewAttachmentTool(reg, userID, workspace, authorize); err != nil {
 		return err
 	}
 	return reg.RegisterCustomTool("create_crew", "Create a new Crew for the workflow being built, with trigger, read-only attachment, and step configuration in one call. Propose a Crew only when the responsibility is ongoing and stateful enough to deserve maturing: prefer an agent for fixed flows and an agent step for one-shot agentic work. template_id may select a first-party Website Growth, Finance, or Sales Crew template with a local skill and checklist; this does not grant external access or complete setup. Before calling, list skills, servers, and secrets and propose only available ones; tell the user which integrations need connecting in the Crew UI. Unknown skills, servers, secrets, or globals fail the call; configured-but-disconnected servers are selected and reported as pending. Call only after the user explicitly approves the proposal in chat. Pass a fresh UUID idempotency_key per proposal and reuse it verbatim on retry: the same key with an unchanged proposal returns the existing crew instead of minting a duplicate, while a changed proposal under a claimed key is rejected and needs a new key. Secrets pass as names only; never send values. After success, immediately call add_step(type=crew) with the returned step configuration plus placement and reason; if that step id already exists, verify it matches and continue.", map[string]interface{}{
@@ -481,4 +424,67 @@ func writeWorkflowManifest(ctx context.Context, workspace string, manifest *Work
 		return fmt.Errorf("cannot save workflow manifest: %w", err)
 	}
 	return nil
+}
+
+// registerCrewAttachmentTool is shared by the native Builder and direct MCP.
+// The transport supplies its current, bound workflow authorization.
+func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar, userID, workspace string, authorize func(context.Context, bool) (context.Context, error)) error {
+	return reg.RegisterCustomTool("manage_crew_attachment", "Attach a Crew project's workspace to this workflow read-only so downstream steps can read crew files as <alias>/<crew-relative path>. First discover crews with list_accessible_workflows. Attach validates crew access and alias uniqueness, then records the fixed crew workspace path; reads re-resolve through the alias on every access while run-start and per-step checks fail fast on revoked access. Detach removes the alias immediately.", map[string]interface{}{
+		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
+			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "attach", "detach"}},
+			"alias":           map[string]interface{}{"type": "string", "description": "Short lowercase alias for crew file reads, for example reviewer-crew."},
+			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
+			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
+		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		ctx, err := authorize(ctx, args["action"] == "list")
+		if err != nil {
+			return "", err
+		}
+		action, _ := args["action"].(string)
+		manifest, exists, err := ReadWorkflowManifest(ctx, workspace)
+		if err != nil || !exists || manifest == nil {
+			return "", fmt.Errorf("Workflow is unavailable or access denied")
+		}
+		switch action {
+		case "list":
+			encoded, err := json.MarshalIndent(map[string]interface{}{"attachments": manifest.CrewAttachments}, "", "  ")
+			return string(encoded), err
+		case "attach":
+			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
+			projectID := strings.TrimSpace(fmt.Sprint(args["crew_project_id"]))
+			profileID := strings.TrimSpace(fmt.Sprint(args["crew_profile_id"]))
+			_, created, err := attachCrewProjectToWorkflow(ctx, api.productSchedules, userID, workspace, profileID, projectID, alias)
+			if err != nil {
+				return "", err
+			}
+			if !created {
+				return "", fmt.Errorf("alias %q is already attached", alias)
+			}
+			return fmt.Sprintf("Crew project %q attached as %q (read-only). Downstream steps read crew files as %s/<path>.", projectID, alias, alias), nil
+		case "detach":
+			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
+			kept := make([]workflowtypes.CrewAttachment, 0, len(manifest.CrewAttachments))
+			found := false
+			for _, attachment := range manifest.CrewAttachments {
+				if attachment.Alias == alias {
+					found = true
+					continue
+				}
+				kept = append(kept, attachment)
+			}
+			if !found {
+				return "", fmt.Errorf("alias %q is not attached", alias)
+			}
+			previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
+			manifest.CrewAttachments = kept
+			if err := writeWorkflowManifest(ctx, workspace, manifest); err != nil {
+				return "", err
+			}
+			live := liveCrewAttachmentBindings(manifest.CrewAttachments)
+			common.ReconcileSessionCrewAttachments(workspace, previousRoots, crewAttachmentStoredRoots(live), workflowtypes.CrewAttachmentEnvKeys(live))
+			return fmt.Sprintf("Alias %q detached. Reads through it stop resolving immediately.", alias), nil
+		default:
+			return "", fmt.Errorf("Unknown crew attachment action")
+		}
+	}, "workflow_webhooks")
 }

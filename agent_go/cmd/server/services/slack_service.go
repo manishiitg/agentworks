@@ -2297,6 +2297,17 @@ func (s *SlackService) SendThreadMessageWithBlocks(ctx context.Context, threadID
 
 	// Convert MessageBlocks to Slack blocks
 	for _, block := range blocks {
+		if block.Type == "section" && block.Text != "" && len(block.Buttons) == 1 {
+			// A row: the text on the left, one button on its right (the target picker).
+			btn := block.Buttons[0]
+			btnElement := slack.NewButtonBlockElement(btn.ActionID, btn.Value, slack.NewTextBlockObject(slack.PlainTextType, "Pick", false, false))
+			btnElement.Style = slack.StylePrimary
+			slackBlocks = append(slackBlocks, slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, convertMarkdownToSlackMrkdwn(block.Text), false, false),
+				nil, slack.NewAccessory(btnElement),
+			))
+			continue
+		}
 		if block.Type == "actions" && len(block.Buttons) > 0 {
 			var actionElements []slack.BlockElement
 			for _, btn := range block.Buttons {

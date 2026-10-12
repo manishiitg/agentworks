@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -108,6 +109,60 @@ func (api *StreamingAPI) handleRemoveQueuedConversationMessage(w http.ResponseWr
 
 func (api *StreamingAPI) handleSteerQueuedConversationMessage(w http.ResponseWriter, r *http.Request) {
 	api.queuedMessageAction(w, r, true)
+}
+
+// Retry is explicit because a failed execution may already have done some work.
+// Keep the submission identity, but use a fresh dispatch/receipt identity.
+func (api *StreamingAPI) retryQueuedConversationMessage(ctx context.Context, userID, sessionID, messageID string) (queuedConversationTurn, int, error) {
+	lock := productConversationRegistryMutex(conversationTurnQueuePath(userID))
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, userID)
+	if err != nil {
+		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
+	}
+	for i, turn := range turns {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+			continue
+		}
+		if turn.StartedAt != nil || turn.Steering || turn.DeliveryError == "" {
+			return turn, http.StatusConflict, fmt.Errorf("Only a failed queued message can be retried")
+		}
+		turn.ID, turn.DeliveryError = uuid.NewString(), ""
+		turns[i] = turn
+		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
+			return turn, http.StatusServiceUnavailable, err
+		}
+		return turn, http.StatusOK, nil
+	}
+	return queuedConversationTurn{}, http.StatusNotFound, fmt.Errorf("Queued message not found")
+}
+
+func (api *StreamingAPI) handleRetryQueuedConversationMessage(w http.ResponseWriter, r *http.Request) {
+	userID := GetUserIDFromContext(r.Context())
+	claims := GetUserFromContext(r.Context())
+	if userID == "" || (claims != nil && claims.AccessToken != nil) {
+		http.Error(w, "A signed-in chat owner is required", http.StatusForbidden)
+		return
+	}
+	vars := mux.Vars(r)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Second)
+	defer cancel()
+	turn, status, err := api.retryQueuedConversationMessage(ctx, userID, vars["session_id"], vars["message_id"])
+	if err != nil {
+		http.Error(w, err.Error(), status)
+		return
+	}
+	api.conversationTurnQueueMu.Lock()
+	if api.conversationTurnQueueOwners == nil {
+		api.conversationTurnQueueOwners = make(map[string]string)
+	}
+	api.conversationTurnQueueOwners[turn.SessionID] = userID
+	api.conversationTurnQueueMu.Unlock()
+	api.kickConversationTurnQueue(turn.SessionID)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]any{"message_id": turn.ID, "accepted": true})
 }
 
 // Claim first under the same lock the normal worker uses, then submit through

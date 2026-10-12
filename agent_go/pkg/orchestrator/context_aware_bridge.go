@@ -878,6 +878,9 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 		if writer != nil {
 			if transcriptEvent, ok := orchevents.NormalizeBackgroundTranscriptEvent(event); ok {
 				sessionID := event.SessionID
+				if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
+					sessionID = strings.TrimSpace(owner)
+				}
 				agentID := executionOwnerID
 				c.persistTranscriptAsync("background agent transcript", func(persistCtx context.Context) error {
 					return writer.AppendBackgroundAgentTranscriptEvent(persistCtx, sessionID, agentID, transcriptEvent)

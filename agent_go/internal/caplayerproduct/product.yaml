@@ -52,4 +52,7 @@ profile:
       workflow_execution: disabled
       secrets: disabled
 ui:
+  tips:
+    - id: quick-switcher
+    - id: toolbar-hide
   surface: mcp-gateway

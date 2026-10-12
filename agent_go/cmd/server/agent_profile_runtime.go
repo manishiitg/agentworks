@@ -19,6 +19,7 @@ import (
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
@@ -616,9 +617,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			return nil, fmt.Errorf("read project browser settings: %w", err)
 		}
 		req.BrowserMode = settings.Mode
-		port := settings.Port
-		req.CdpPort = &port
-		req.CdpPorts = []int{port}
+		req.CdpPort, req.CdpPorts = nil, nil
+		if browser.CDPEnabled() && (settings.Mode == "cdp" || settings.Mode == "auto") {
+			port := settings.Port
+			req.CdpPort = &port
+			req.CdpPorts = []int{port}
+		}
 	}
 	if browserRequirement == agentprofiles.CapabilityRequired || browserRequirement == agentprofiles.CapabilityPreferred || browserRequirement == agentprofiles.CapabilityOptional {
 		// Agent profiles declare browser capability once. The generic chat
@@ -967,6 +971,15 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			// they received, while result completion remains platform-owned.
 			gate.Declare("report_function_progress")
 			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
+				return err
+			}
+			// A shared caller's turn (a function call or an ask) uses the Crew with the owner's authority (856-59, owner
+			// decision 2026-10-12): it may call the functions of other Crews and workflows. Defining or deleting functions
+			// stays with the owner; the callee's own allowed-caller check and the depth limit still decide what it reaches.
+			for _, name := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call"} {
+				gate.Declare(name)
+			}
+			if err := api.registerCrewFunctionTools(crewFunctionCallOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
 		}

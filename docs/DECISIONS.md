@@ -1,5 +1,422 @@
 # Decisions and open issues
 
+## 2026-10-12 — Chat moves are open to agents (owner choice for an open system, PLAT-861)
+
+The owner chose, for now and to be revisited, that moving chats between logins has no person-only limits:
+an agent may run `agentworks attach --on LOGIN` for its own chat, `--on LOGIN --provider P --session ID` for
+another attached chat, and `--all --on LOGIN` without the retype prompt (a person terminal keeps the prompt
+unless `--yes`). A login can be any saved login, including one an agent just added with `agentworks login
+--server URL --name NAME`, whose browser approval still happens wherever the link is opened. The skill and
+docs no longer forbid an agent from acting on another agent's request to move; the CLI cannot see where a
+request came from. The earlier guards (saved logins only, nothing triggered by a cross-person message) are
+dropped.
+
+Limits to know: the Codex desktop fallback trusts matching CODEX_THREAD_ID and CODEX_SESSION_ID plus the
+desktop app-server\'s answer for that thread, so another process of the same operating-system user whose ps
+walk fails could claim a live thread by setting those variables (the same-user limit already accepted for host
+hints); and from inside that sandbox, `--all` and `--provider` moves find no Codex chats because finding the
+desktop owner still needs ps. Its liveness check is only that the desktop socket answers.
+
+Also in this change: Codex desktop own-session attach no longer needs ps (it verifies the exact thread with
+the desktop app-server when ps is blocked, with a process key derived from that connection), and `--all`
+discovery probes only chats that already have a lease and skips per-thread errors (861-121).
+
+Ticket: PLAT-861.
+
+## 2026-10-12 — Bullpen usage is separate, optional and owner-only (PLAT-861)
+
+Native usage collection defaults off and requires the person's separate
+`agentworks usage on/off` terminal command. Attach, agents and MCP cannot enable
+it. Read only recorded numeric usage for the exact attached CLI session, prefer
+native totals, and sample immediately at enable then hourly. Never tokenize
+content or estimate tokens. Missing or capped data remains unavailable.
+
+Store owner-only current numbers and bounded 90-day hourly readings outside
+workspace files; sharing and administrator views do not include usage. Stamp
+readings UTC and display/group by viewer local date, counting a cross-midnight
+interval on its reading date. Baseline at enable; no retroactive hourly charge.
+Off clears current/local reporting while history persists until person deletion
+or expiry; generations and deletion watermarks fence delayed writes. Native
+model-at-reading metadata is separate from precise model attribution, and native
+turn counts are nullable rather than inferred from model calls.
+
+Why: the person wants to see recorded CLI usage over time without enabling
+collection automatically or sharing private usage with message recipients.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-113.
+## 2026-10-12 — Sharing is agentic; one Agents page; open limits (PLAT-861)
+
+Owner choices for an open system, to revisit later. Sharing is done by asking an agent ("share yourself
+with everyone", "make yourself private") or with `/agentworks share|unshare`; the web Sharing page, the
+per-person share form, the block form and the Administration action buttons are removed. The Bullpen page
+is one read-only Agents view (your agents with a shared badge and admin notices, agents shared with everyone
+by others, who you blocked, and for administrators everyone on the server and recent admin changes) plus
+Connect an agent. Administrators make changes through the `bullpen_admin` tool (close_attachment,
+remove_agent, unshare_agent), each with a reason and an audit row. Per-person grants and blocks stay in the
+server API but have no UI or CLI. The per-owner combined hourly cap on shared agents is removed (the owner
+confirmed it directly); the per-sender cap (60 messages per hour and 100 undelivered per share) stays.
+
+Why: simple for people and agents; actions belong with the agent or the CLI, not buttons.
+
+Ticket: PLAT-861.
+
+## 2026-10-12 — Agents can be shared with everyone on the server, from the person's CLI (PLAT-861)
+
+`/agentworks share` (in the chat) and `agentworks share AGENT` (terminal) make one agent visible to every
+signed-in person on its server, with no expiry; `unshare` makes it private again. It is one share record per
+agent with scope=server (subject `*`), checked in the same access path as a one-person grant: the owner and the
+sender must be active accounts with Bullpen, the owner can block a sender, and revoking ends open
+conversations. Cross-person messages stay marked untrusted and fenced, and an administrator can make a shared
+agent private with a reason (audited, the owner is told).
+
+This is the one exception to "grants are made only in the owner's browser": scope=server shares can be made
+through the person's own CLI login, on a person-only endpoint (`/api/external/v1/agents/sharing`) that refuses
+MCP tools and agent-bound connections. A coding agent may share or unshare its own exact chat when the person
+asks in plain language, like its own attach; it cannot share another agent, and a peer message never triggers
+it. Sharing with one named person, with an expiry, stays browser-only.
+
+Why: the owner wants sharing doable from the native CLI and simple enough to use without choosing people.
+
+Ticket: PLAT-861, issue 861-90 narrowed to "everyone on the server".
+
+## 2026-10-12 — Crews have no Run mode: others use, only the owner or a co-owner changes (PLAT-856)
+
+A Crew is an agent its owner builds and shares. It no longer has a reduced "Run mode":
+
+- **Using.** Others use a Crew only through the typed functions its owner exposes and the built-in `ask` (the owner can
+  switch `ask` off, "programs only"). Inside a function or `ask` call the Crew runs the same way as for the owner: full
+  tools, skills, MCPs, memory read, outbound function calls, and the owner's authority. Others never get a free chat with
+  Builder powers.
+- **Changing.** Changing a Crew (memory, skills, MCPs, secrets, prompts, function definitions, setup, access) is for the
+  owner or a co-owner the owner grants. Users never write memory or change configuration; the existing folder guards on
+  memory and skills enforce it. A Crew has a single owner today, so the co-owner role is new (step 2 checks what the
+  Workflow editor role already gives and reuses its shape).
+- **Personal things** (memory read or write by users, personal folders, connected accounts) are the owner's choice, set
+  per Crew; defaults stay as they are until the owner opens them.
+- **Secrets.** Raw secret values are never handed to a caller: the agent uses a secret by name and its system prompt
+  forbids printing it (behavioural protection, accepted 2026-10-10).
+- **The owner's own turn.** The owner's own conversations (the app, their unrestricted MCP/CLI connection, their own
+  Crew builder chats) are the owner's turn. It is granted only on positive evidence, never to a sender whose mode is
+  merely unknown (workflow runs, schedules, bots, Code chats, capped or agent-bound connections stay restricted).
+  Each caller keeps their own conversation. `run_mode: true` stays as an owner test pin.
+
+Replaces "free-text `ask` and every chat stay Run mode" (PLAT-812); typed functions already ran with the owner's
+authority. Why: the owner chooses to share, and a restricted mode kept an owner's own `ask_crew` from MCP from calling
+other functions or writing files, which blocked building, testing and orchestrating a Crew over MCP.
+
+Ticket: PLAT-856, issue 856-59 (step 1 landed on main in 44eadc1fc; step 2 is the shared-caller change).
+
+## 2026-10-12 — Relay readers see only their own recorded runs (PLAT-847)
+
+Relay owners and editors see every caller's recorded run. Every other reader sees only the runs
+they started; a run with no recorded caller is hidden from them. The rule applies to the
+dashboard run data and to the relay tool's list action (`list_relay_runs`), and matches
+`relay action=get_run`, which already returned only the caller's own run. A published dashboard
+shown to a reader therefore shows only that reader's runs, not everyone's results. A reader who
+has more than 500 recorded runs sees `truncated: true` and only the newest ones are examined.
+
+Why: run results can hold other people's inputs; the owner decided readers get their own.
+
+Ticket: PLAT-847, issues 847-1 and 847-4.
+
+## 2026-10-12 — Step tests run directly; full manual runs offer Plan Drift (PLAT-825)
+
+Remove the automatic AI drift prerequisite from `execute_step`. When Plan Drift
+is due in a person-attended Builder or Run chat's `run_full_workflow`, offer review first or run now;
+`review_plan` carries the user's choice. A clean plan starts directly. Opting out
+does not clear review debt or waive validation/permissions. Schedules, functions,
+bot/external requests and Pulse turns keep automatic full-run checks. Opting in
+uses the existing review job and completion notification; agents must not choose
+run now for the person.
+Why: iterative design and targeted testing should not wait for a whole-plan
+review; the owner can choose that review before a full manual run. Supersedes
+the October 7 automatic-review rule for interactive runs.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md), issue 825-26.
+
+## 2026-10-12 — Inspection follows the execution type and the chat renderer (PLAT-861)
+
+Record agent/script/validation type with its execution, rather than looking up a
+later plan revision. Agent inspection reuses ChatArea's chronological transcript
+and expandable tool controls, with the saved system prompt above it. Script
+inspection shows the per-dispatch source snapshot, stdout/stderr, exit code and
+final output; agent-authored completion snapshots are labeled separately. Keep
+source/output with the chat's durable transcript, its redaction and deletion
+fence. Never substitute today's script or another run's logs for missing records.
+Why: users need to identify the execution type immediately and debug the actual
+conversation or code that belonged to that attempt.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-119.
+
+## 2026-10-12 — Agent item inspection uses its chat and task identity (PLAT-861)
+
+Bind provider event capture to the registered item execution and owning chat,
+separately from the reused provider/MCP runtime. Drain transcript writes before
+publishing item completion. Keep task selection inside one step inspector; open
+the work task when its delegating parent has no conversation. Expose System
+prompt, User message, Tools and Result directly, with internal identifiers and
+saved attempts under technical details. Missing historical records stay explicit;
+never substitute a later attempt's prompts for an earlier execution. Why: a
+successful model turn can otherwise leave an empty inspector, and users should
+not need to decode internal names or open extra tabs to see the recorded work.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-119.
+
+## 2026-10-12 — Inspection stays reachable from compact workflow chat (PLAT-861)
+
+Keep a compact inspection action for server-identified root background work in
+normal chat, including pre-run Workflow Review jobs. Keep child prompts/tools
+behind the inspector. A launch request says Starting until its matching receipt
+arrives; a review gate says Reviewing workflow and step waiting, rather than
+claiming the requested step started. Decode native JSON text envelopes when
+resolving execution receipts. Why: users must see what actually launched and
+inspect a prerequisite review without opening a diagnostics rail or guessing
+an execution from its step name.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+## 2026-10-12 — Moving a chat to another login is the person's command (PLAT-861)
+
+`agentworks attach --on LOGIN` (or `/agentworks attach [NAME] --on LOGIN` typed in the chat, or
+`attach --all --on LOGIN` in a terminal) moves one exact chat to another saved login. A coding agent's
+own-session attach refuses it, delivered message text cannot trigger it, and a bare attach or a restart keeps
+the chat on the login it already uses. The new login is attached first and the old lease and child connection
+are released afterwards, so a failed move leaves the chat where it was. Unread mail on the old login does not
+move; the person is told once and repeats the command to move anyway. Residual: another process of the same
+operating-system user can still ask the local bridge for a switch over its socket (tracked with 861-90).
+
+Why: one binding per chat keeps delivery unambiguous, and choosing a network is the person's decision.
+
+Ticket: PLAT-861, issue 861-104.
+
+## 2026-10-12 — Bullpen administrators see metadata, never messages (PLAT-861)
+
+The Bullpen administrator view and `bullpen_admin` tool (admin account plus
+`users:manage`, never an agent-bound token) show names, purposes, provider,
+connection state and an opaque attachment handle, and can disconnect one
+attachment or remove a stale name. They cannot read messages or see session ids,
+lease ids, host keys or configuration. Each change needs a reason, is audited and
+shown to the owner, and is written in the same store save as its audit row so a
+failed audit means no change. Audit and notices are kept 180 days.
+
+Why: operators must be able to recover a stuck or abandoned agent, but reading
+other people's conversations is a separate, unrequested power.
+
+Ticket: PLAT-861, issue 861-105.
+
+## 2026-10-12 — Muse idle wake uses an exact-session native Monitor (PLAT-866)
+
+After the literal person attach succeeds in the Muse hook, trusted setup context
+continues a model turn to start its native Monitor. The hook has already granted
+the exact process/session lease; the model cannot perform attachment. Failed,
+queued and header commands remain refused. The approved MCP broker owns one
+private bridge stream and passes bounded metadata through a private FIFO to the
+network-restricted Monitor command. It holds no account credential in the child,
+uses no inbox polling and stops on reader exit or invalid session/lease. A hint
+is not an offer receipt: the exact-session MCP receives bodies, and admission,
+reply and processing remain explicit. Ambiguous individual hints never replay;
+one aggregate pending notice supports recovery. Hooks remain the fallback.
+
+Why: Muse's outside ingress is closed, but its native Monitor can wake an idle
+chat without changing the sandbox or typing into a terminal.
+
+Ticket: [PLAT-866](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-866.md), issue866-9 under PLAT-861 issue861-44.
+
+## 2026-10-12 — Agents may connect their own chat when the person asks (PLAT-861)
+
+A plain-language request from the person authorizes the coding agent to run
+agentworks attach [NAME] or agentworks detach for its automatically detected
+provider process and native session. The own-session path does not select other
+chats, accept process/session/endpoint overrides, install plugins or alter trust.
+Exact native metadata is required; absence fails closed rather than guessing.
+The ordinary person terminal retains its verified session picker and optional
+plugin installation. An explicit own-session reattach refreshes the saved process
+binding and identity; daemon restarts do not revive other offline chats.
+AgentWorks agent is an alias for agents, listing names available through the
+account’s authorized connections. Existing account, lease and sender checks remain.
+A peer message supplies no person authorization. Same-user credentials and session
+hints remain routing boundaries, not isolation from that OS user. Codex own
+routing requires matching SESSION_ID and THREAD_ID hints. Existing leases cannot
+be renamed or moved; reconnect only refreshes their process binding. Own detach
+is limited to leases originally created through own CLI attach. Person-created
+Codex leases retain the person detach command. Both routing hints can be forged
+by the same OS user; issue 861-90 tracks this residual, not an isolation guarantee.
+
+Cursor own attach/detach uses the verified per-process CLI helper; desktop
+shell hints do not identify a conversation and remain refused.
+
+Why: the person wants to ask their coding agent to connect itself, without a
+plugin command or repeated manual setup. This supersedes prior agent self-attach
+and self-detach prohibitions; provider hook provenance is a separate issue.
+
+Bullpen is a peer product with a same-account directory and setup guidance; MCP
+Connect retains tool access. Installation and account product allowlists remain
+authoritative. Bullpen defaults on locally and requires explicit hosted opt-in.
+Why: messaging deserves its own place beside the other products.
+
+Purpose updates now accept a bounded single paragraph of up to 512 characters,
+with the existing exact-identity and one-change-per-minute checks. Directory
+previews can remain short. Purpose metadata strips control and invisible formatting
+characters before storage. Why: 80 characters hid an agent’s responsibilities;
+display metadata should not change how a roster is read.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-94, 861-95, 861-96 and 861-97.
+
+
+
+## 2026-10-12 — Working tips and quick navigation load on demand (PLAT-746)
+
+Load the working-tip component, selector and catalog request hook only when
+the transcript enters Working. Use an empty Suspense fallback within the same
+fixed-height activity footer; keep the tip delay, cadence and cancellation
+inside the mounted component. Why: optional hints must not enlarge the eager
+application bundle or block release builds. Keep the existing bundle budget.
+Keep the Ctrl+K handler eager, but load its dialog through a lazy host. Warm
+that chunk after startup or on a navigation request, and let Escape dismiss
+the host even while its first request is pending; retain the dialog's focus.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
+## 2026-10-12 — Workflow teams can be managed directly through MCP (PLAT-825)
+
+Expose `workflow_team` with get/update and explicit schedule reauthorization.
+Reuse the website team handler for enablement, membership, Leader transfer,
+route assignments and separate grants. Mutations need existing Builder consent,
+current editable owner/Leader authority, manifest file access and the saved team
+revision; queued calls recheck authority under the shared lock. Member discovery
+uses the UI directory, limited to IDs/names for authorized managers. Schedule
+reauthorization reuses current route/action grants and the manifest writer,
+preserving timing and enabled state. No model turn or new permission scope.
+Why: owners should manage their workflow through MCP with the same rules as the UI.
+
+Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md).
+
+## 2026-10-12 — Bridge shutdown preserves a pending native receiver lease (PLAT-868)
+
+A pending local next request returns a retryable error when the bridge stops.
+Only removal of that exact session reports unattached. Native receivers can then
+reconnect to the restarted bridge with their existing approved lease, without
+confusing daemon availability with person detach or replaying journaled input.
+Why: a live Pi restart check showed that an empty shutdown reply stopped its
+receiver as though the attachment had ended, stranding later stored messages.
+
+Ticket: [PLAT-868](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-868.md), under PLAT-861.
+
+## 2026-10-12 — Products define tips and onboarding slows their cadence (PLAT-746)
+
+Declare ordered display tips and tab-count conditions in product.yaml `ui.tips`;
+resolve shared definitions on the server and expose only that metadata.
+Show new product viewers tips at a 30-minute minimum gap, widening to one,
+two and four hours after two, four and six shown tips respectively. Track
+cadence per account/product in this browser and seen ids per account; preserve
+anonymous legacy history without attributing it to a signed-in account.
+Long-running work may show another eligible tip; keep the ten-second working
+delay, feature-use suppression and no repeats. Add practical schedule and
+dashboard instructions where those product controls exist.
+Why: product-owned content should use one validated interface, and discovery
+should be more frequent early without staying intrusive as users learn.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
+
+## 2026-10-12 — Dashboard items can be questioned in their project chat (PLAT-750)
+
+Offer Ask agent on right-clicked dashboard text/numbers or a selection, with an
+editable question before sending. Snapshot the item, nearby label/row, document
+and capture time so later refreshes cannot silently change what was asked.
+Deliver through the existing project chat callback and queue, preserving its
+permissions and busy-turn behavior. Existing HTML dashboards need no author
+changes; source provenance is verified by the agent rather than inferred from
+the visible value. Standalone viewing links keep this action disabled because
+they have no project chat destination; touch long-press keeps native selection.
+Why: users should be able to ask where a displayed figure came from or why it is
+unchanged without manually copying context into chat.
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md).
+
+## 2026-10-12 — Workflow Crew detachment is explicit over MCP (PLAT-856)
+
+Expose the native Builder's workflow-to-Crew attachment list/detach operations as
+`workflow_crews`, using existing Builder consent, current workflow owner/editor
+roles, workflow bounds and file guards. Reuse native manifest validation and live
+read-grant reconciliation. Do not silently detach other workflows during Crew
+delete; saved attachments and plan Crew steps still block deletion. New attachments
+remain in the native Builder until their Crew consent is exposed directly.
+Why: external owners must remove an unused read binding before deleting a Crew,
+without adopting a model chat or introducing a permission level.
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
+## 2026-10-12 — New files use server-enforced creation and selected folders (PLAT-746/771)
+
+The Files panel creates an empty file with a single create-only request instead
+of inferring existence from a read response. The server publishes the complete
+file without replacing an existing file, directory or symlink, and returns a
+conflict when the name is occupied. Explicit empty text is valid; absent content
+is refused. Editable folders expose New file in their action menu and retain
+their full project path. Empty text files can be opened for editing.
+Why: missing-file reads return HTTP 200, and a separate existence check cannot
+prevent a concurrent writer from losing content.
+
+Ticket: [PLAT-771](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/workspace/plat-771.md), under PLAT-746 issue 746-5.
+
+## 2026-10-12 — Pi attachment follows SDK identity and explicit receiver receipts (PLAT-868)
+
+Pi person commands run through the SDK interactive input hook, since registered
+slash commands execute before the source check. A one-use in-memory nonce binds
+the literal command/session and is confirmed through the private SDK socket before
+the hook acts. Kernel socket peer PID and current Pi birth identity must match
+the discovery record before a request is sent; a same-user model shell can
+replace that record or exec the CLI directly. The root environment setting
+selects routing and supplies no person authority. Terminal attach selects a private
+SDK record bound to the live PID/start and native session UUID; lease-only local
+activation checks the already authorized bridge attachment before starting one
+consumer. Native frame display is local evidence; admission and processing require
+explicit receiver tools. New processes require person attach, and session end
+retains the identity offline. A recent fenced SDK next request supplies route
+observation without granting authority or claiming admission.
+
+Why: exact process/session binding and truthful receipts must survive queued input,
+reattachment and crashes without letting sender text control attachment.
+
+The nonce proof is Pi-only; Claude/Codex forged-hook origins are tracked separately
+in PLAT-861 issue861-90. Same-OS-user filesystem/credential access remains outside
+this prompt-provenance guarantee; this is not isolation against modifying the
+Pi runtime itself or using the person's bridge credentials.
+
+Ticket: [PLAT-868](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-868.md), under PLAT-861 issue861-44.
+
+
+## 2026-10-12 — Recover native routes within an existing approved lease (PLAT-861)
+
+On listener restart or an exact-host hook boundary, discover a missing native route for an existing still-live approved attachment. Preserve the identity, lease, parent connection, pending bodies, offer watermark and guidance cadence. Discovery verifies the saved provider PID/start-time and exact session; Codex also requires its desktop owner to support untrusted input. Offline identities and changed processes still require person attach. Why: attachments created before native discovery was fixed should acquire live delivery without repeating attachment or widening authority.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue861-87.
+
+## 2026-10-11 — Three messaging person commands, reconnect through attach (PLAT-861)
+
+The messaging person surface is attach [NAME], detach and agents, with matching in-chat commands. In-chat attach is immediate person approval; terminal attach discovers exact live sessions for person selection and installs a missing supported plugin. Attach preserves the saved identity and parent connection, verifies the new process and supplies purpose/roster setup context. It supersedes the earlier proposed-name confirmation and separate resume UX. CLI update and stop/start restore only existing still-live approved processes. Provider process restart still requires person attach. Cleanup is automatic; ambiguous offers do not replay. Full AgentWorks guidance is refreshed after 24 hours and retained through bridge/lease restarts; the provider may independently add its own notice. Local coding and folder-sharing authority are unchanged.
+
+Why: connecting or reconnecting should be one operation, without technical flags or duplicate setup instructions on every message.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues861-56,861-76.
+
+
+## 2026-10-11 — Native CLI and MCP authoring uses existing consent and roles (PLAT-856)
+
+Always expose authorized native workflow/Relay authoring through CLI and MCP;
+remove the additional deployment opt-in switch on local and multi-user servers.
+Legacy true/false settings are ignored; there is no separate authoring off switch.
+Local full-access token issuance
+includes existing Builder consent and does not revoke other local clients.
+Limit active local presets to 32 per account within the existing 100-token cap;
+revoke unused presets explicitly so they cannot exhaust every connection slot. Older
+grants without that consent require explicit renewal; read-only and bounded
+grants keep their limits. Live account,
+product, workflow and team permissions remain authoritative on every operation.
+Why: the owner wants plan editing available whenever they use the CLI, with the
+same role rules as the website and no extra environment setting.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-47.
+
+
 ## 2026-10-11 — People choose attachment names; agents describe their purpose (PLAT-861)
 
 The person attaches with `/agentworks attach NAME` or confirms a proposed name.
@@ -622,8 +1039,8 @@ this requires no workflow migration. Older checks retain their historical text.
 Keep product implementation source separate from the public core and from
 production deployment configuration. Compose optional factories at build time
 against an immutable core commit. Public builds contain no private factories or
-private dependencies. Ordinary local installations retain Goals and Crew; source
-development can explicitly opt into installed server products.
+private dependencies. Ordinary local installations retain the enabled public
+local products; source development can explicitly opt into installed server products.
 
 The embedded product UI is reviewed **trusted first-party code**, served on the
 platform origin. It intentionally has the person's session/API authority and
@@ -632,7 +1049,9 @@ popups, external resources and framing; they do **not** isolate malicious code
 from the platform account. Do not load unreviewed/third-party assets this way.
 The response CSP sandbox remains effective if a script removes the iframe's
 sandbox attribute. A future untrusted extension needs a separate origin and an
-explicit message/API boundary.
+explicit message/API boundary. **No third-party server products may be installed
+until the UI is cross-origin and has an explicit API boundary.** Product responses
+cannot supply `Access-Control-*` headers through the platform proxy.
 
 Use a distinct service credential for each installed product, independent of the
 Vault admin credential. Credentials are server-only, at least 32 characters,
@@ -646,7 +1065,8 @@ shadow-user binding does not authorize a browser or CLI request. Existing Vault
 admin synchronization remains a separate privileged platform operation.
 
 The `llm:use` user-token scope permits model discovery and inference only. It
-cannot reach product management or UI routes. Current account status, product
+cannot reach product management or UI routes or assert the user's administrator
+role to the product. Current account status, product
 entitlement and per-user model access remain required; a token is not a snapshot
 of permissions. Browser administration uses the person's current platform role. LLM-only
 installations do not require the Vault surface. The platform's fixed internal

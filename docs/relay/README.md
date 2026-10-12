@@ -113,7 +113,7 @@ Relay tools are admitted by `agent_go/internal/relayproduct/product.yaml` under
 | `run_relay` | Execute an explicit published version, or the active version when omitted |
 | `get_relay_run` | Poll the durable run ID and retrieve status, final JSON, and step outputs |
 
-Deployment must enable `AGENTWORKS_MCP_BUILDER_ENABLED=true` to expose authoring.
+CLI and MCP authoring require existing connection consent and current roles; no deployment switch is needed.
 An OAuth client must explicitly request `relays:write workflows:read files:read
 runs:execute`; Relay authoring is **not** included in default connection scopes.
 PATs use the same scopes and workflow bounds. To create new Relays, the grant

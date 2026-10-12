@@ -47,7 +47,7 @@ func TestRuntimeFrontendLocalProfileCannotRestoreServerProducts(t *testing.T) {
 	}
 	for _, configured := range []string{"", "code", "relays,mcp-gateway"} {
 		t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", configured)
-		if got := runtimeFrontendConfigJS(45678, ""); !strings.Contains(got, `enabledProductSurfaces: ["agentworks", "work"]`) {
+		if got := runtimeFrontendConfigJS(45678, ""); !strings.Contains(got, `enabledProductSurfaces: ["agentworks", "work", "bullpen"]`) {
 			t.Fatalf("local fallback includes unavailable products: %s", got)
 		}
 	}

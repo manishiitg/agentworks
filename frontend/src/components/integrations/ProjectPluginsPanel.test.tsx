@@ -1,16 +1,21 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ProjectPluginsPanel } from './ProjectPluginsPanel'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
 import { TooltipProvider } from '../ui/tooltip'
 const get = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: { get } }))
 vi.mock('./OpenVaultButton', () => ({ OpenVaultButton: () => null }))
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: { user: null }) => unknown) => selector({ user: null }) }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let cleanup = () => {}
-afterEach(() => { cleanup(); window.localStorage?.clear(); vi.clearAllMocks() })
+beforeEach(() => {
+  vi.stubEnv('VITE_DEPLOYMENT_MODE', 'server')
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
+})
+afterEach(() => { cleanup(); window.localStorage?.clear(); vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllEnvs() })
 const inventory = {
   groups: [{ id: 'eng', name: 'Engineering', description: 'Product team', servers: [{ id: 'n', label: 'Notion · Engineering', provider: 'notion', tools: [] }], secrets: [{ name: 'TEAM_KEY' }] }],
   servers: [{ id: 'n', label: 'Notion · Engineering', provider: 'notion', tools: [] }], secrets: [{ name: 'TEAM_KEY' }],

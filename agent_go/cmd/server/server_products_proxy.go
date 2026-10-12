@@ -66,7 +66,8 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "server product unavailable", 503)
 		return
 	}
-	admin := currentUserIsAdmin(r)
+	// A user's inference token never inherits browser administration authority.
+	admin := claims.AccessToken == nil && currentUserIsAdmin(r)
 	proxy := &httputil.ReverseProxy{Transport: capLayerTransport, FlushInterval: -1, Rewrite: func(pr *httputil.ProxyRequest) {
 		pr.SetURL(target)
 		pr.Out.URL.Path = strings.TrimRight(target.Path, "/") + "/api/admin/products/" + product + "/" + tail
@@ -90,6 +91,12 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		}
 	}, ModifyResponse: func(resp *http.Response) error {
 		resp.Header.Del("Set-Cookie")
+		// Product code cannot grant cross-origin access to platform sessions.
+		for key := range resp.Header {
+			if strings.HasPrefix(strings.ToLower(key), "access-control-") {
+				delete(resp.Header, key)
+			}
+		}
 		if strings.HasPrefix(tail, "ui/") {
 			// Reviewed first-party UI, intentionally using the person's session.
 			// CSP sandbox cannot be removed by scripts inside the child document.

@@ -25,8 +25,11 @@ reviewer has not yet re-verified.
 
 The PLAT-417 retry retyped the message whenever the pane showed "Message not sent -- another run is still starting", and a notice left on screen made every later submit
 look refused: one message ran three or more times on server B (seven copies in the pane). That violated this document (attempt once, observe-only, pane never decides).
-Now `museSendPrompt` only logs the notice and `museWaitIntake` decides from `runtime.user_intent.accepted`. Ticket: PLAT-422. Open: a Muse that truly refuses while a resume
-is starting leaves its text in the input and ends the turn as unconfirmed; a structured readiness record to wait on before submitting is not identified yet.
+Now `museSendPrompt` only logs the notice and `museWaitIntake` decides from `runtime.user_intent.accepted`. Ticket: PLAT-422. Follow-up (2026-10-12): a Muse that truly refuses while a resume
+is starting leaves its text in the input; the turn path now confirms each submit in a short window and, on a refusal notice with no intake, waits bounded for a run-`started`
+record, re-checks intake, and resubmits at most twice — never when an intake record exists, so the pane still never decides alone and stale-notice duplicates stay
+impossible. A refusal that never starts a run fails fast with a clear error instead of the long wait. No pre-submit readiness record was found (pane and log are silent
+in the still-starting state), so typing additionally waits out the resume "Initializing runtime" marker first.
 
 ### AGY onboarding extension (2026-09-27)
 

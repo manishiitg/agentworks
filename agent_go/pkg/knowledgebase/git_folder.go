@@ -35,12 +35,24 @@ func (s *Service) GitFolder() (GitFolder, error) {
 	return GitFolder{Path: s.live, Remote: d.Remote, Branch: branch, Username: d.Username, PATSecret: d.PATSecret}, nil
 }
 
-// GitToken resolves the backup token through the server's secret resolver; empty when none is configured.
+// GitToken resolves the backup token: through the server's secret resolver when the backup names a secret, otherwise
+// the token an administrator saved with the backup setup (stored encrypted). Empty when none is configured.
 func (s *Service) GitToken(f GitFolder) string {
-	if f.PATSecret == "" || s.cfg.SecretResolver == nil {
+	if f.PATSecret != "" {
+		if s.cfg.SecretResolver == nil {
+			return ""
+		}
+		token, _ := s.cfg.SecretResolver(f.PATSecret)
+		return token
+	}
+	d, err := s.configuredBackupDestination()
+	if err != nil || d.EncryptedPAT == "" {
 		return ""
 	}
-	token, _ := s.cfg.SecretResolver(f.PATSecret)
+	token, err := s.decryptBackupPAT(d)
+	if err != nil {
+		return ""
+	}
 	return token
 }
 

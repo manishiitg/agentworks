@@ -553,7 +553,7 @@ describe('buildTranscriptItems', () => {
     ])
     expect(items.map(i => i.kind)).toEqual(['event', 'event', 'event'])
     expect(runActivity(items[1].kind === 'event' ? items[1].event : evt({ id: 'x', session_id: 's1' }))).toEqual({
-      label: 'Running step', target: 'step-fetch · default', state: 'started',
+      label: 'Starting step', target: 'step-fetch · default', state: 'starting',
     })
   })
 
@@ -926,6 +926,45 @@ describe('toolErrorContextByEventID', () => {
       server: undefined,
       args: '{"command":"/bin/ps"}',
     })
+  })
+})
+
+describe('tool grouping across repeated assistant updates', () => {
+  function update(id: string, content: string, execution = 'main:s1', turn = 'turn-1'): PollingEvent {
+    return evt({ id, session_id: 's1', execution_id: execution, type: 'streaming_chunk', data: {
+      data: { source: 'transcript', content, metadata: { turn_id: turn } },
+    } as never })
+  }
+  function call(id: string): PollingEvent[] {
+    return ['tool_call_start', 'tool_call_end'].map(type => evt({
+      id: `${id}-${type}`, session_id: 's1', type,
+      data: { data: { tool_call_id: id, tool_name: 'execute_shell_command' } } as never,
+    }))
+  }
+
+  it('groups six calls when identical replayed updates arrive between them', () => {
+    const events = Array.from({ length: 6 }, (_, index) => [
+      update(`update-${index}`, 'The download finished. The full run is still in progress.'),
+      ...call(`call-${index}`),
+    ]).flat()
+    const items = buildTranscriptItems(events)
+    expect(items.map(item => item.kind)).toEqual(['event', 'tools'])
+    expect(items[1]).toMatchObject({ toolCount: 6 })
+    if (items[1].kind === 'tools') expect(pairToolCalls(items[1].events)).toHaveLength(6)
+    // Replayed chunk carriers must give the same grouping.
+    expect(buildTranscriptItems(events.flatMap(event => event.type === 'streaming_chunk' ? [event, event] : [event]))).toEqual(items)
+  })
+
+  it('keeps real new updates, user turns, and execution/turn identities as boundaries', () => {
+    for (const boundary of [
+      update('new-text', 'Parsing has now finished.'),
+      update('new-execution', 'Still running.', 'child:s1'),
+      update('new-turn', 'Still running.', 'main:s1', 'turn-2'),
+      evt({ id: 'user', session_id: 's1', type: 'user_message', data: { content: 'Check again.' } as never }),
+    ]) {
+      const items = buildTranscriptItems([update('first', 'Still running.'), ...call('a'), boundary, ...call('b')])
+      expect(items.map(item => item.kind)).toEqual(['event', 'tools', 'event', 'tools'])
+    }
   })
 })
 

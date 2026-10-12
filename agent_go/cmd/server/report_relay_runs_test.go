@@ -14,7 +14,7 @@ func TestReportRelayRunsUsesProjectAccessAndDoesNotExposePrivateTrace(t *testing
 	t.Setenv("MULTI_USER_MODE", "true")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":[]},{"id":"other","products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":[]},{"id":"other","products":[]}]}`)
 	ws := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/relay/workflow.json": `{"id":"relay","kind":"relay","access":{"owners":["owner"]}}`}})
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
@@ -59,5 +59,60 @@ func TestReportRelayRunsUsesProjectAccessAndDoesNotExposePrivateTrace(t *testing
 	}
 	if w := read(&UserClaims{UserID: "owner"}, "workspace=Workflow/relay"); strings.Contains(w.Body.String(), "PRIVATE") {
 		t.Fatal("summary followed a private-file symlink")
+	}
+}
+
+// Owners and editors see every caller's recorded run; any other reader sees only
+// the runs they started, and a run with no recorded caller stays hidden from them.
+func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":[]},{"id":"editor","can_edit":true,"products":[]},{"id":"reader-a","products":[]},{"id":"reader-b","products":[]}]}`)
+	ws := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
+		"Workflow/relay/workflow.json":                  `{"id":"relay","kind":"relay","access":{"owners":["owner"],"editors":["editor"],"readers":["reader-a","reader-b"]}}`,
+		"Workflow/relay/webhooks/deliveries/run-1.json": `{"run_id":"run-1","payload":{"relay_caller":"reader-a"}}`,
+		"Workflow/relay/webhooks/deliveries/run-2.json": `{"run_id":"run-2","payload":{"relay_caller":"reader-b"}}`,
+	}})
+	t.Cleanup(ws.Close)
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	for number, id := range map[string]string{"1": "run-1", "2": "run-2", "3": "run-3"} {
+		dir := filepath.Join(root, "Workflow/relay/runs/iteration-"+number+"-hook")
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		trace := `{"workflow_id":"` + id + `","status":"completed","attempt_number":1,"calls":[]}`
+		if err := os.WriteFile(filepath.Join(dir, "relay_trace.json"), []byte(trace), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "relay_result.json"), []byte(`{"owner_of":"`+id+`"}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	api := &StreamingAPI{}
+	seen := func(user string) string {
+		r := httptest.NewRequest(http.MethodGet, reportPreviewAPIPrefix+"relay-runs?workspace=Workflow/relay", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user}))
+		w := httptest.NewRecorder()
+		api.handleReportRelayRuns(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", user, w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	for _, user := range []string{"owner", "editor"} {
+		body := seen(user)
+		for _, id := range []string{"run-1", "run-2", "run-3"} {
+			if !strings.Contains(body, `"run_id":"`+id+`"`) {
+				t.Fatalf("%s should see every run, missing %s: %s", user, id, body)
+			}
+		}
+	}
+	a, b := seen("reader-a"), seen("reader-b")
+	if !strings.Contains(a, `"run-1"`) || strings.Contains(a, "run-2") || strings.Contains(a, "run-3") || !strings.Contains(a, `"scope":"own"`) {
+		t.Fatalf("reader-a must see only run-1: %s", a)
+	}
+	if !strings.Contains(b, `"run-2"`) || strings.Contains(b, "run-1") || strings.Contains(b, "run-3") {
+		t.Fatalf("reader-b must see only run-2: %s", b)
 	}
 }

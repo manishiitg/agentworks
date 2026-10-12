@@ -110,6 +110,11 @@ func slackLoadTargetsRegistry(ctx context.Context) *services.SlackTargetsRegistr
 func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegistry, refs []services.SlackTargetRef) []services.SlackTarget {
 	out := make([]services.SlackTarget, 0, len(refs))
 	for _, ref := range refs {
+		// A target whose workflow or Crew was deleted is not offered; its stale registry entry must not show up as a
+		// button named after a folder.
+		if !slackTargetExists(ctx, ref) {
+			continue
+		}
 		out = append(out, slackNamedTarget(ctx, registry, ref))
 	}
 	return out
@@ -119,18 +124,40 @@ func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegist
 	target := services.SlackTarget{Ref: ref}
 	if entry, ok := registry.Settings(ref); ok {
 		target.Slug = strings.TrimSpace(entry.Slug)
-		target.Label = strings.TrimSpace(entry.Label)
+		// The owner's own name and description win; otherwise the live product values (the stored Label is an old
+		// snapshot of the product name and is no longer read).
+		target.Label = strings.TrimSpace(entry.DisplayName)
+		target.Description = strings.TrimSpace(entry.Description)
 	}
 	if target.Label == "" {
 		target.Label = slackDestinationLabel(ctx, ref.WorkspacePath, ref.ProfileID)
 	}
+	if target.Description == "" {
+		target.Description = slackDestinationDescription(ctx, ref.WorkspacePath, ref.ProfileID)
+	}
 	if target.Slug == "" {
-		target.Slug = services.SlackSlug(target.Label)
+		// The typed word follows the product's own name, never the display name an owner wrote for the picker: writing
+		// a friendlier name must not change what people have to type.
+		target.Slug = services.SlackSlug(slackDestinationLabel(ctx, ref.WorkspacePath, ref.ProfileID))
 	}
 	if target.Slug == "" {
 		target.Slug = services.SlackSlug(path.Base(strings.TrimSpace(ref.WorkspacePath)))
 	}
 	return target
+}
+
+// slackTargetExists reports whether a target's workflow or Crew still exists. Codes are always kept: their manifest is
+// not read here. A read error counts as existing so a storage hiccup never empties the picker.
+func slackTargetExists(ctx context.Context, ref services.SlackTargetRef) bool {
+	if ref.IsCode() {
+		return true
+	}
+	if strings.TrimSpace(ref.ProfileID) != "" {
+		_, found, err := readProjectRuntimeManifest(ctx, ref.ProfileID, ref.WorkspacePath)
+		return err != nil || found
+	}
+	_, found, err := ReadWorkflowManifest(ctx, ref.WorkspacePath)
+	return err != nil || found
 }
 
 func appendSlackRef(refs []services.SlackTargetRef, ref services.SlackTargetRef) []services.SlackTargetRef {

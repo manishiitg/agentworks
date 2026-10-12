@@ -1,11 +1,13 @@
 package server
 
 import (
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 func TestServerProductTokenPathsAreInferenceOnly(t *testing.T) {
@@ -88,6 +90,10 @@ func TestServerProductProxyRequiresDedicatedTokenAndSecuresUI(t *testing.T) {
 			t.Error("wrong service credential")
 		}
 		w.Header().Set("Set-Cookie", "private=secret")
+		w.Header().Set("Access-Control-Allow-Origin", "https://untrusted.example")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Expose-Headers", "*")
+		w.Header().Set("Access-Control-Max-Age", "86400")
 		w.Header().Set("Content-Security-Policy", "default-src *")
 		w.WriteHeader(200)
 	}))
@@ -120,6 +126,11 @@ func TestServerProductProxyRequiresDedicatedTokenAndSecuresUI(t *testing.T) {
 	if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("UI response policy missing")
 	}
+	for key := range w.Header() {
+		if strings.HasPrefix(strings.ToLower(key), "access-control-") {
+			t.Fatalf("product CORS header escaped: %s", key)
+		}
+	}
 }
 
 func TestServerProductLLMOnlyDeploymentAndTokenClientIdentity(t *testing.T) {
@@ -138,6 +149,13 @@ func TestServerProductLLMOnlyDeploymentAndTokenClientIdentity(t *testing.T) {
 			}
 		} else {
 			clients = append(clients, r.Header.Get("X-AgentWorks-Client"))
+			wantAdmin := ""
+			if r.Header.Get("X-AgentWorks-Client") == "platform" {
+				wantAdmin = "1"
+			}
+			if r.Header.Get("X-AgentWorks-Admin") != wantAdmin {
+				t.Error("inference token inherited browser administration authority")
+			}
 			if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("p", 32) {
 				t.Error("product request did not use its product credential")
 			}
@@ -173,5 +191,67 @@ func TestServerProductLLMOnlyDeploymentAndTokenClientIdentity(t *testing.T) {
 	}
 	if _, _, err := capLayerServiceConfig(); err == nil {
 		t.Fatal("LLM-only deployment enabled Vault access")
+	}
+}
+
+func TestServerProductPATUsesUnscopedClaimsWithoutAdminAuthority(t *testing.T) {
+	api := tokenTestSetup(t)
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENT_PRODUCTS", "llm-gateway")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "llm-gateway")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"admin","products":["llm-gateway"]}]}`)
+	store, err := openAccessTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Now()
+	issued, raw, err := store.Issue(t.Context(), accesstokens.Token{Name: "Inference", UserID: "alice", Scopes: []string{"llm:use"}, ExpiresAt: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("X-AgentWorks-Admin") != "" || r.Header.Get("X-AgentWorks-Actor") != "alice" || r.Header.Get("X-AgentWorks-Client") != "access-token:"+issued.ID {
+			t.Error("PAT forwarded excessive authority or lost its identity", r.Header)
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[]}`))
+	}))
+	defer upstream.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", upstream.URL)
+	t.Setenv("AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN", strings.Repeat("p", 32))
+	t.Setenv("AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE", "")
+	authenticated := false
+	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := GetUserFromContext(r.Context())
+		if claims == nil || claims.Scope != "" || claims.AccessToken == nil || claims.AccessToken.ID != issued.ID {
+			t.Fatalf("authenticated PAT did not produce unscoped user claims: %+v", claims)
+		}
+		authenticated = true
+		api.handleServerProduct(w, r)
+	}))
+	request := func(path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set("Authorization", "Bearer "+raw)
+		r.Header.Set("X-AgentWorks-Admin", "1")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	if w := request("/api/server-products/llm-gateway/v1/models"); w.Code != 200 || !authenticated || calls != 1 || w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("PAT discovery failed or leaked product CORS", w.Code, authenticated, calls, w.Body)
+	}
+	if w := request("/api/server-products/llm-gateway/admin/models"); w.Code != 403 || calls != 1 {
+		t.Fatal("inference PAT reached management", w.Code, calls)
+	}
+	if err := store.Revoke(t.Context(), issued.ID, "alice", now); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("/api/server-products/llm-gateway/v1/models"); w.Code != 401 || calls != 1 {
+		t.Fatal("revoked inference PAT retained access", w.Code, calls)
 	}
 }

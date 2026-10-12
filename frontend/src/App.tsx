@@ -20,7 +20,7 @@ import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
-import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
+import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface, loadBullpenSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { useWorkflowTabRestore } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
@@ -40,7 +40,7 @@ declare global {
 
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
-import QuickSwitcher from './components/QuickSwitcher'
+import QuickSwitcher, { preloadQuickSwitcher } from './components/QuickSwitcherHost'
 import { WelcomeHome } from './components/WelcomeHome'
 import { setPendingLocalLink } from './products/work/codeLocalFiles'
 import { markFeatureUsed } from './utils/featureUsage'
@@ -55,6 +55,7 @@ const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ d
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
 const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
 const KnowledgebaseSurface = lazy(() => loadKnowledgebaseSurface().then(module => ({ default: module.KnowledgebaseSurface })))
+const BullpenSurface = lazy(() => loadBullpenSurface().then(module => ({ default: module.BullpenSurface })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
@@ -103,6 +104,16 @@ function App() {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const mcpAccount = useAuthStore(state => state.isAuthenticated ? state.user?.id : undefined)
   useEffect(() => { if (mcpAccount) void useMCPStore.getState().refreshTools() }, [mcpAccount])
+
+  useEffect(() => {
+    const warm = () => { void preloadQuickSwitcher().catch(() => {}) }
+    if (typeof window.requestIdleCallback === 'function') {
+      const idle = window.requestIdleCallback(warm, { timeout: 1500 })
+      return () => window.cancelIdleCallback(idle)
+    }
+    const timer = window.setTimeout(warm, 1500)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Code and remember the link; the
   // workspace screen applies it to the workspace with that name. Read before sign-in so a login redirect cannot lose it.
@@ -570,6 +581,7 @@ function App() {
 
   useEffect(() => {
     const handleOpenQuickSwitcher = (event: Event) => {
+      void preloadQuickSwitcher().catch(() => {})
       const detail = (event as CustomEvent<{ query?: string }>).detail
       setQuickSwitcherInitialQuery(detail?.query || '')
       setShowQuickSwitcher(true)
@@ -704,6 +716,7 @@ function App() {
       // Cmd/Ctrl+K searches work, products, toolbar panels and nested tabs. (PLAT-746)
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
+        void preloadQuickSwitcher().catch(() => {})
         setQuickSwitcherInitialQuery('')
         markFeatureUsed('quick-switcher')
         setShowQuickSwitcher(prev => !prev)
@@ -777,7 +790,9 @@ function App() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
-        {productSurface === 'video-studio' ? (
+        {productSurface === 'bullpen' ? (
+          <Suspense fallback={<ProductSurfaceFallback label="Bullpen" />}><BullpenSurface /></Suspense>
+        ) : productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>

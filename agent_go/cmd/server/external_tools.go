@@ -242,11 +242,18 @@ func externalTools() ([]externalTool, error) {
 		externalCodeRunDefinitions(add)
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
+		externalBullpenAdminDefinition(add)
+		externalBrainAdminDefinition(add)
 		externalBuilderDefinitions(add)
 		externalPlanMutationDefinition(add)
+		if err := externalWorkflowCrewDefinition(add); err != nil {
+			externalCatalogErr = err
+			return
+		}
 		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
+		externalWorkflowTeamDefinition(add)
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalNeedsYouDefinitions(add)
@@ -628,6 +635,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	if tool.Name == brainAdminTool {
+		api.externalBrainAdminCall(w, r, call.Arguments)
+		return
+	}
 	if isExternalKnowledgebaseTool(tool.Name) {
 		api.externalKnowledgebaseCall(w, r, tool.Name, call.Arguments)
 		return
@@ -642,6 +653,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalTokenLimitTool(tool.Name) {
 		api.externalTokenLimitCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == bullpenAdminTool {
+		api.externalBullpenAdminCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "create_workflow" {
@@ -731,6 +746,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	access := workflowAccessForManifest(GetUserFromContext(r.Context()), selected.Manifest)
+	if tool.Name == "workflow_team" {
+		api.externalWorkflowTeamCall(w, r, args, *selected)
+		return
+	}
 	if tool.Name == "manage_triggers" {
 		api.externalWorkflowTriggerCall(w, r, args, *selected, access)
 		return
@@ -803,6 +822,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	// chat with its existing read-only tool policy, and control their own turns.
 	if strings.HasPrefix(tool.Name, "builder_") {
 		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	if tool.Name == "workflow_crews" {
+		api.externalWorkflowCrewCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "plan" {

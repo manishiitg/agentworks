@@ -1,4 +1,3 @@
-import { useRareWorkingTip } from './chat/useRareWorkingTip'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
@@ -7,6 +6,8 @@ import React, { memo, createContext, useContext, useCallback, useEffect, useMemo
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
 import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, XCircle } from 'lucide-react'
+import { InspectExecutionButton } from './chat/InspectExecutionButton'
+import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
 import { EventDispatcher } from './events/EventDispatcher'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
@@ -20,6 +21,7 @@ import {
   isInternalTranscriptMessage,
   pairToolCalls,
   runActivity,
+  isInspectableBackgroundActivity,
   shouldCollapseTranscriptUserMessage,
   type PairedToolCall,
   selectTerminalEvents,
@@ -42,6 +44,9 @@ import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './C
 import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
+
+// Tip selection and catalog loading are needed only while a turn is Working.
+const WorkingTip = React.lazy(() => import('./chat/WorkingTip'))
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
 // a bigger reading size (SparkQuill's Child Mode "T" button sets it on the
@@ -87,13 +92,12 @@ const ACTIVITY_TEXT: Record<string, string> = {
 const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryContext }) => {
   const activity = context?.activity
   const working = activity !== undefined && activity.state !== 'ready'
-  const tip = useRareWorkingTip(working && activity?.label === 'running')
   const usage = context?.usage
   return <div data-testid="transcript-activity-footer" className="flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
     {working && <>
       <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
       <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
-      {tip && <span data-testid="working-tip" className="truncate text-[11px] text-muted-foreground/70 animate-in fade-in duration-700">· Tip: {tip}</span>}
+      {activity.label === 'running' && <React.Suspense fallback={null}><WorkingTip /></React.Suspense>}
     </>}
     {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
       {usage.warning && <span data-testid="transcript-usage-warning" className="truncate font-medium text-amber-500" title="Plan usage is high">
@@ -201,28 +205,6 @@ function presentationActivity(event: PollingEvent): { label: string; title: stri
 	return { label, title, destination, detail }
 }
 
-// A final response can be represented by two different protocol events during
-// a restore (for example `llm_generation_end` plus `unified_completion`). The
-// event selector normally removes that pair, but a mixed live/history tail can
-// still carry both. The conversation should never make the reader see the
-// identical reply twice, so retain just the first adjacent response card.
-function removeAdjacentDuplicateAssistantResponses(items: TranscriptItem[]): TranscriptItem[] {
-  let previousAnswer = ''
-  return items.filter((item) => {
-    if (item.kind !== 'event') return true
-    if (item.event.type === 'user_message') {
-      previousAnswer = ''
-      return true
-    }
-    const answer = assistantResponseText(item.event)
-    if (!answer) return true
-    const comparable = answer.replace(/\s+/g, ' ').trim().toLowerCase()
-    if (comparable && comparable === previousAnswer) return false
-    previousAnswer = comparable
-    return true
-  })
-}
-
 function transcriptTimestamp(event: PollingEvent): string {
   const payload = transcriptEventPayload(event)
   const rawTimestamp = event.timestamp || (typeof payload.timestamp === 'string' ? payload.timestamp : '')
@@ -261,6 +243,18 @@ const TranscriptEvent: React.FC<{
 
   const run = runActivity(event)
   if (run) return <RunActivityEvent {...run} timestamp={timestamp} event={event} />
+
+  if (isInspectableBackgroundActivity(event)) {
+    const target = readInspectionTarget((payload.metadata as Record<string, unknown> | undefined)?.inspection)
+    if (target) return <div data-testid="terminal-inspectable-background-activity" className="my-3 rounded-lg border border-border/60 bg-muted/40 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+        <CircleDashed className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" />
+        <span className="min-w-0 truncate font-medium text-foreground/85">{target.name || 'Background work'}</span>
+        <span className="shrink-0">{event.type === 'background_agent_started' ? 'Running' : event.type === 'background_agent_terminated' ? 'Stopped' : String(payload.status || 'Completed')}</span>
+        <InspectExecutionButton target={target} label={target.name === 'Workflow Review' ? 'Inspect review' : 'Inspect'} />
+      </div>
+    </div>
+  }
 
   // A failed turn: one card, in plain words, with the raw error behind a
   // disclosure. collapseTurnFailures already reduced the server's three
@@ -653,7 +647,7 @@ const PresentationActivityEvent: React.FC<{ label: string; title: string; destin
 // Running a step, the workflow, or an evaluation is the headline action of a
 // workflow turn, so it gets the same compact activity row a presentation gets
 // rather than disappearing into a collapsed "N tool calls" chip.
-const RunActivityEvent: React.FC<{ label: string; target: string; state: 'started' | 'failed'; timestamp: string; event: PollingEvent }> = ({ label, target, state, timestamp, event }) => (
+const RunActivityEvent: React.FC<{ label: string; target: string; state: 'starting' | 'started' | 'reviewing' | 'failed'; timestamp: string; event: PollingEvent }> = ({ label, target, state, timestamp, event }) => (
   <div data-testid="terminal-clear-run-activity" className="my-3 rounded-lg border border-border/60 bg-muted/40 px-3 py-2">
     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
       {state === 'failed'
@@ -664,7 +658,7 @@ const RunActivityEvent: React.FC<{ label: string; target: string; state: 'starte
         {target && <> · <span className="text-foreground">{target}</span></>}
       </span>
       <span className="hidden shrink-0 sm:inline">
-        {state === 'failed' ? 'could not start' : 'started'}
+        {state === 'failed' ? 'could not start' : state === 'reviewing' ? 'step waiting' : state === 'starting' ? 'requested' : 'started'}
       </span>
       {timestamp && <span className="ml-auto shrink-0 tabular-nums">{timestamp}</span>}
       <RunInspectionButton event={event} />
@@ -1020,7 +1014,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const items = useMemo<TranscriptRenderItem[]>(
-    () => withToolCallVisibility(removeAdjacentDuplicateAssistantResponses(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
+    () => withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))),
     [scoped, questions],
   )
   // Retry belongs to the latest human turn, never an older failed message

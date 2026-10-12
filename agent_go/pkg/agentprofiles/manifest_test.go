@@ -26,6 +26,20 @@ profile:
   built_in: true
 `
 
+func TestWorkingTipManifestRejectsInvalidDefinitions(t *testing.T) {
+	for _, tips := range []string{
+		"    - {id: missing-shared}\n",
+		"    - {id: quick-switcher}\n    - {id: quick-switcher}\n",
+		"    - {id: example, text: Hint, skip_if_used: unknown-feature}\n",
+		"    - {id: example, text: Hint, when: {code_tabs: {min: 3, max: 1}}}\n",
+		"    - {id: example, text: Hint, when: {script: run}}\n",
+	} {
+		if _, err := LoadProductManifest(manifestFS("ui:\n  tips:\n"+tips, nil), "product.yaml"); err == nil {
+			t.Fatalf("invalid working tip accepted: %s", tips)
+		}
+	}
+}
+
 func manifestFS(extra string, files map[string]string) fstest.MapFS {
 	fsys := fstest.MapFS{
 		"product.yaml":      {Data: []byte(baseManifest + extra)},
@@ -55,6 +69,37 @@ func TestLoadProductManifestSingleProfile(t *testing.T) {
 	}
 	if err := Validate(profiles[0]); err != nil {
 		t.Fatalf("rendered profile should validate: %v", err)
+	}
+}
+
+func TestLoadProductManifestExecutionFunctionTools(t *testing.T) {
+	for name, extra := range map[string]string{
+		"omitted":  "",
+		"disabled": "execution:\n  function_tools:\n    tools: []\n",
+		"enabled":  "execution:\n  function_tools:\n    category: workflow_calls\n    tools: [list_functions, get_function_call]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := LoadProductManifest(manifestFS(extra, nil), "product.yaml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name == "enabled" && (m.Execution.FunctionTools.Category != "workflow_calls" || len(m.Execution.FunctionTools.Tools) != 2) {
+				t.Fatalf("lost execution admission: %+v", m.Execution.FunctionTools)
+			}
+		})
+	}
+	for name, extra := range map[string]string{
+		"missing category": "tools: [list_functions]",
+		"duplicate":        "category: functions\n    tools: [list_functions, list_functions]",
+		"empty name":       "category: functions\n    tools: ['']",
+		"untrimmed name":   "category: functions\n    tools: [' list_functions']",
+		"unknown field":    "category: functions\n    toolz: [list_functions]",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := LoadProductManifest(manifestFS("execution:\n  function_tools:\n    "+extra+"\n", nil), "product.yaml"); err == nil {
+				t.Fatal("invalid execution function declaration was accepted")
+			}
+		})
 	}
 }
 

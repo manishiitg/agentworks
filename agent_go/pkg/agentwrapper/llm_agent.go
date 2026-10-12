@@ -453,6 +453,10 @@ func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tra
 		secretNames = append(secretNames, name)
 	}
 	sort.Strings(secretNames)
+	if model, changed := deploymentPiModel(string(config.Provider), config.ModelID); changed {
+		logger.Info(fmt.Sprintf("Pi model %q has no key on this deployment; using %q", config.ModelID, model))
+		config.ModelID = model
+	}
 	logger.Info(fmt.Sprintf("NewLLMAgentWrapper config: name=%s provider=%s model=%s code_execution=%t coding_agent_tools=%s approvals=%s secret_names=%v session=%s", config.Name, config.Provider, config.ModelID, config.UseCodeExecutionMode, config.CodingAgentToolsMode, config.CodingAgentApprovalsMode, secretNames, config.SessionID))
 	if config.Name == "" {
 		config.Name = "mcp-agent"

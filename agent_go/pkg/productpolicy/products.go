@@ -34,7 +34,7 @@ func ServerOnly(product string) bool {
 	}
 }
 func InstallationAvailable(product string) bool {
-	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work")
+	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work" || Canonical(product) == "bullpen")
 }
 func Contains(list, product string) bool {
 	for _, candidate := range strings.Split(list, ",") {
@@ -53,6 +53,9 @@ func Enabled(product string) bool {
 	if product == "" {
 		return true
 	}
+	if product == "bullpen" && !Local() && !Contains(os.Getenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES"), product) && !Contains(os.Getenv("AGENT_PRODUCTS"), product) {
+		return false
+	}
 	if !InstallationAvailable(product) {
 		return false
 	}
@@ -66,7 +69,7 @@ func Enabled(product string) bool {
 				available = available || InstallationAvailable(candidate)
 			}
 			if !available {
-				surfaces = "agentworks,work"
+				surfaces = "agentworks,work,bullpen"
 			}
 		}
 		if !Contains(surfaces, product) {
@@ -109,13 +112,13 @@ func FromContext(ctx context.Context) Selection {
 // are not classified by a name substring and keep their existing authorization.
 func ToolProduct(name string) string {
 	switch name {
-	case "brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access", "brain_schedule", "brain_secrets", "brain_backup", "manage_brain_schedule", "manage_brain_secrets", "browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "knowledgebase_skills", "manage_knowledgebase_access":
+	case "brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access", "brain_schedule", "brain_secrets", "brain_backup", "brain_admin", "manage_brain_schedule", "manage_brain_secrets", "browse_knowledgebase", "read_knowledgebase", "update_knowledgebase", "backup_knowledgebase", "knowledgebase_skills", "manage_knowledgebase_access":
 		return "knowledgebase"
 	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "query_vault_db", "mutate_vault_db", "list_vault_mcp_servers", "call_vault_mcp_tool", "manage_vault_tools", "read_vault_audit", "manage_my_vaults", "manage_global_secret", "manage_vault_secret", "share_mcp_to_vault":
 		return "mcp-gateway"
 	case "create_code_workspace", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit":
 		return "code"
-	case "create_relay", "update_relay", "test_relay", "publish_relay", "run_relay", "get_relay_run", "get_relay_releases", "inspect_relay_graph":
+	case "create_relay", "update_relay", "test_relay", "publish_relay", "run_relay", "get_relay_run", "list_relay_runs", "get_relay_releases", "inspect_relay_graph":
 		return "relays"
 	default:
 		return ""

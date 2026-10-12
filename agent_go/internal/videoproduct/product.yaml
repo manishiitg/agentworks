@@ -305,6 +305,9 @@ branding:
   favicon: /video-studio-favicon.svg
 
 ui:
+  tips:
+    - id: quick-switcher
+    - id: toolbar-hide
   surface: video-studio
   files_panel: true
   workflow_panel: true

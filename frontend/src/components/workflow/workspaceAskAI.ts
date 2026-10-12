@@ -45,11 +45,11 @@ export type IntegrationTabId = 'apps' | 'brain' | 'folders' | 'secrets' | 'skill
 const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; summary: string; instructions?: string }> = {
   brain: {
     label: 'Integrations · Brain',
-    summary: "Help me set up Brain for this workflow: read & write (the default: agents organize folders themselves wherever the owner may write), read only, only chosen folders, or off. Explain what each choice lets its agents do before changing it.",
+    summary: "Explain how Brain stores shared knowledge for this workflow and how its agents can use notes, reference files and reusable skills. Check the current access: read & write (the default, within existing folder permissions), read only, or off. Explain team sharing through Brain folder roles. Ask what I want before changing settings or permissions.",
   },
   folders: {
     label: 'Integrations · Folders & workflows',
-    summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, set up Brain under Tools & secrets instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
+    summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, use Integrations → Brain instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
   },
   secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Never ask me to paste secret values in chat.' },
   apps: {

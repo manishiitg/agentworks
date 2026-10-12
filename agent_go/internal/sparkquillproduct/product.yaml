@@ -306,6 +306,9 @@ branding:
   favicon: sparkles
 
 ui:
+  tips:
+    - id: quick-switcher
+    - id: toolbar-hide
   surface: sparkquill
   files_panel: true
   workflow_panel: false

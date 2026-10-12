@@ -239,6 +239,34 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
     }
   })
 
+  it('marks Pi as the selected provider in the one-row layout whatever model is saved', async () => {
+    storeState.getProviderDynamicModels.mockResolvedValue({ models: [], groups: [] })
+    storeState.providerManifest = [
+      provider({}),
+      provider({ id: 'pi-cli', display_name: 'Pi CLI', supports_dynamic_models: true, model_selection_mode: 'dynamic' }),
+    ]
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(
+        <WorkflowLLMConfigurationPanel
+          workspacePath="/work-project"
+          onChange={vi.fn()}
+          allowedProviderIds={['claude-code', 'pi-cli']}
+          splitPiProviders={false}
+          llmConfig={{ mode: 'provider_profile', provider: 'pi-cli' } as never}
+        />,
+      ))
+      await act(async () => Promise.resolve())
+      expect(host.textContent).not.toContain('No provider selected')
+      expect(host.textContent).toContain('runs on')
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
   it('keeps a project profile selection editable under the global workflow lock', async () => {
     storeState.llmConfigLocked = true
     storeState.savedLLMs = [{ id: 'default', name: 'Cursor', provider: 'cursor-cli', model_id: 'auto' }]

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/executioninspection"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
@@ -92,7 +93,16 @@ func (api *StreamingAPI) handleInspectSessionExecution(w http.ResponseWriter, r 
 			}
 		}
 	}
+	mode, scripts := executioninspection.Records(transcript)
+	if mode == "" && transcript.Kind == "workflow_step" {
+		for _, child := range children {
+			if child.Kind == "agent_item" {
+				mode = "agent"
+				break
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts})
 }

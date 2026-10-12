@@ -838,6 +838,8 @@ type QueryRequest struct {
 	EnableBrowserAccess *bool `json:"enable_browser_access,omitempty"` // Enable/disable browser automation tool (nil = inherit default, true/false = explicit override)
 	// Explicit browser mode from frontend: none|auto|headless|cdp
 	BrowserMode string `json:"browser_mode,omitempty"`
+	// Caller input survives in-memory continuation copies, never client JSON.
+	callerBrowserInput *queuedBrowserInput `json:"-"`
 	// CDP port for connecting to an existing Chrome browser (local mode only)
 	CdpPort *int `json:"cdp_port,omitempty"` // When set and > 0, connect to Chrome via CDP on this port instead of launching headless
 	// Explicitly authorized CDP browsers for specialized multi-profile testing.
@@ -2443,6 +2445,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	// API routes
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(api.apiRequestLogMiddleware)
+	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/usage", api.handleBullpenUsage).Methods("GET", "DELETE")
+	apiRouter.HandleFunc("/external/v1/agents/usage", api.handleAgentUsageReport).Methods("POST")
+	apiRouter.HandleFunc("/bullpen/shares", api.handleBullpenShares).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/shares", api.handleBullpenShareCreate).Methods("POST")
+	apiRouter.HandleFunc("/bullpen/shares/{id}", api.handleBullpenShareRevoke).Methods("DELETE")
+	apiRouter.HandleFunc("/bullpen/blocks", api.handleBullpenBlock).Methods("POST")
+	apiRouter.HandleFunc("/bullpen/notices", api.handleBullpenNotices).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/notices/{id}", api.handleBullpenNoticeDismiss).Methods("DELETE")
+	apiRouter.HandleFunc("/bullpen/admin/agents", api.handleBullpenAdmin).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/admin/audit", api.handleBullpenAdmin).Methods("GET")
 	// A browser connection changed: wake that user's open tabs so the toolbar refetches the status instead of polling it.
 	browserrelay.SetChangeHook(func(user, _ string) { livefeed.Default.PublishToUser(livefeed.Browser, user, "") })
 	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)
@@ -2494,6 +2507,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/desktop/exchange", api.handleDesktopConnectExchange).Methods("POST", "OPTIONS")
 
 	apiRouter.HandleFunc("/query", api.handleQuery).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/product-tips", api.handleProductTips).Methods("GET", "OPTIONS")
 	AgentProfileRoutes(apiRouter, api.agentProfiles)
 	apiRouter.HandleFunc("/agent-profiles/{id}/query", api.handleAgentProfileChatQuery).Methods("POST", "OPTIONS")
 	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "backup", "changes", "diff"} {
@@ -2803,6 +2817,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages", api.handleQueuedConversationMessages).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}", api.handleRemoveQueuedConversationMessage).Methods("DELETE")
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}/steer", api.handleSteerQueuedConversationMessage).Methods("POST")
+	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}/retry", api.handleRetryQueuedConversationMessage).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/inspect", api.handleInspectSessionExecution).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
@@ -3096,6 +3111,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/agents/sharing", api.handleAgentSharing).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/brain/secret", api.handleBrainSecretSet).Methods("POST")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
@@ -3882,6 +3899,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid CDP configuration: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Preserve caller browser input before the profile adds current workspace settings.
+	r = r.WithContext(withQueuedBrowserInput(r.Context(), req))
+	input := r.Context().Value(queuedBrowserInputKey{}).(queuedBrowserInput)
+	req.callerBrowserInput = &input
 
 	// A workflow may keep durable read-only links in workflow.json. Merge those
 	// with one-message # references before the common authorization boundary so
@@ -5943,17 +5965,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// The Pulse conversation reads and talks to the Builder chat; it changes
 		// nothing itself (pulseTools).
-		if isWorkflowPhase && !relayChat && isGoalLeadSessionID(sessionID) {
-			toolGate = newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
-		}
-		// Goals workflow chats have no profile, so nothing enforced their product.yaml lists; measure them first
-		// (PLAT-608 step 4): the gate logs what each Builder/Run session registers and what the list would drop.
-		if isWorkflowPhase && !relayChat && resolvedProfile == nil {
-			mode := "run"
-			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
-				mode = "builder"
-			}
-			toolGate.Shadow("goals-"+mode, agentworksproduct.ChatTools(mode))
+		// Goals chats enforce product.yaml before the immutable definition and
+		// CLI catalog are built. Pulse retains its own narrower declaration.
+		if isWorkflowPhase && !relayChat && (resolvedProfile == nil || isGoalLeadSessionID(sessionID)) {
+			toolGate = newWorkflowConversationToolGate(sessionID, req, currentUserIsReadOnly)
 		}
 		toolGate.DenyWhere(func(name string) bool {
 			return !builderProductSelection(GetUserFromContext(r.Context())).AllowsTool(name)
@@ -11744,6 +11759,10 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 		"provider":        provider,
 		"message_id":      messageID,
 		"delivery_status": deliveryStatus,
+	}
+	if deliveryStatus == "failed" {
+		eventData.Metadata["confirmation"] = "failed"
+		eventData.Metadata["delivery_error"] = queuedTurnFailureMessage
 	}
 	eventID := messageID
 	if clientMessageID != "" {

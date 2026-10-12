@@ -261,11 +261,44 @@ func productProjectLabel(ctx context.Context, profileID, workspacePath string) s
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 		return ""
 	}
+	// A Crew shows its identity name (what the Crew screen calls it); the title is the older internal name.
+	if identity, ok := manifest["identity"].(map[string]interface{}); ok {
+		if name, _ := identity["name"].(string); strings.TrimSpace(name) != "" {
+			return strings.TrimSpace(name)
+		}
+	}
 	label, _ := manifest["label"].(string)
 	if strings.TrimSpace(label) == "" {
 		label, _ = manifest["title"].(string)
 	}
 	return strings.TrimSpace(label)
+}
+
+// productProjectDescription returns a product project's one-line description, or "". A Crew's description lives in its
+// product.json; the runtime manifest read first does not carry it.
+func productProjectDescription(ctx context.Context, profileID, workspacePath string) string {
+	read := func(raw string) string {
+		var manifest struct {
+			Description string `json:"description"`
+		}
+		if json.Unmarshal([]byte(raw), &manifest) != nil {
+			return ""
+		}
+		return strings.Join(strings.Fields(manifest.Description), " ")
+	}
+	description := ""
+	if raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath); err == nil && found {
+		description = read(raw)
+	}
+	if description == "" {
+		if raw, found, err := readFileFromWorkspace(ctx, filepath.ToSlash(filepath.Join(workspacePath, "product.json"))); err == nil && found {
+			description = read(raw)
+		}
+	}
+	if r := []rune(description); len(r) > 160 {
+		description = string(r[:157]) + "..."
+	}
+	return description
 }
 
 func (api *StreamingAPI) slackRoutes(ctx context.Context) (*chathistory.BotConnectorConfig, map[string]ChannelRoute, error) {

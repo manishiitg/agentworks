@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
@@ -83,7 +84,26 @@ func prepareBrowserArtifact(command string, args []string, ownerID, session stri
 	case "screenshot":
 		idx := screenshotOutputIndex(args)
 		if idx < 0 {
-			return nil, nil
+			if !screenshotHasNoPositional(args) {
+				return nil, nil
+			}
+			// A screenshot with no path would go to agent-browser's own default folder under the service's home, which a
+			// deployment never prepares ("Failed to save screenshot ... No such file or directory"). Stage it like a named one and
+			// keep it in the project's screenshots folder.
+			requested := fmt.Sprintf("screenshots/screenshot-%d.png", time.Now().UnixMilli())
+			staged, err := newBrowserArtifactStagingPath(".png", ".png", stagingSession...)
+			if err != nil {
+				return nil, err
+			}
+			rewritten := append(append([]string(nil), args...), staged)
+			return &browserArtifactPlan{
+				Transfer:       &ArtifactTransfer{SourcePath: staged, DestinationPath: requested, Kind: "screenshot", Finalize: true},
+				RewrittenArgs:  rewritten,
+				RequestedPath:  requested,
+				StagedPath:     staged,
+				FinalizeOnCall: true,
+				CleanupOnError: true,
+			}, nil
 		}
 		requested := args[idx]
 		staged, err := newBrowserArtifactStagingPath(filepath.Ext(requested), ".png", stagingSession...)
@@ -238,6 +258,21 @@ func cleanupBrowserUploadPlan(plan *browserUploadPlan) {
 	for _, dir := range plan.StagedDirs {
 		_ = os.RemoveAll(dir)
 	}
+}
+
+// screenshotHasNoPositional: only flags (and their values), no selector and no path.
+func screenshotHasNoPositional(args []string) bool {
+	valueFlags := map[string]bool{"--screenshot-dir": true, "--screenshot-quality": true, "--screenshot-format": true, "--selector": true, "-s": true}
+	for i := 0; i < len(args); i++ {
+		if valueFlags[args[i]] {
+			i++
+			continue
+		}
+		if !strings.HasPrefix(args[i], "-") {
+			return false
+		}
+	}
+	return true
 }
 
 func screenshotOutputIndex(args []string) int {

@@ -18,6 +18,12 @@ import (
 // error through WaitForBackgroundTranscriptPersistence rather than swallowing
 // it silently.
 func (bo *BaseOrchestrator) AppendBackgroundAgentTranscriptEvent(ctx context.Context, sessionID, agentID string, evt orchevents.BackgroundAgentTranscriptEvent) error {
+	return bo.AppendBackgroundAgentTranscriptEvents(ctx, sessionID, agentID, []orchevents.BackgroundAgentTranscriptEvent{evt})
+}
+
+// AppendBackgroundAgentTranscriptEvents stores a snapshot atomically under the
+// same header requirement and chat-deletion fence as live provider events.
+func (bo *BaseOrchestrator) AppendBackgroundAgentTranscriptEvents(ctx context.Context, sessionID, agentID string, evts []orchevents.BackgroundAgentTranscriptEvent) error {
 	workspacePath := bo.GetWorkspacePath()
 	if workspacePath == "" || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(agentID) == "" {
 		return nil
@@ -73,7 +79,9 @@ func (bo *BaseOrchestrator) AppendBackgroundAgentTranscriptEvent(ctx context.Con
 		// should not happen in practice. Nothing to append to yet.
 		return nil
 	}
-	transcript.AppendEvent(evt)
+	for _, evt := range evts {
+		transcript.AppendEvent(evt)
+	}
 
 	content, err := transcript.Marshal()
 	if err != nil {

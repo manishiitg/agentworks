@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net/http"
@@ -9,6 +11,8 @@ import (
 	"path"
 	"sort"
 	"strconv"
+
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Reports read bounded, recorded results through the caller's project grant.
@@ -50,42 +54,101 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
-	version := r.URL.Query().Get("version")
+	out, status, message := relayRecordedRuns(r.Context(), claims, workspace, manifest, guard, limit, r.URL.Query().Get("version"))
+	if message != "" {
+		http.Error(w, message, status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// relayRunSeesAll says whether the reader may see every caller's recorded run:
+// Relay owners and editors do, everyone else only sees runs they made. A server
+// without accounts has one reader, who owns everything.
+func relayRunSeesAll(claims *UserClaims, manifest *WorkflowManifest) bool {
+	if claims == nil {
+		return !IsMultiUserMode()
+	}
+	access := workflowAccessForManifest(claims, manifest)
+	return access == WorkflowAccessOwner || access == WorkflowAccessWrite
+}
+
+// relayRunCaller reads who started a run from its saved delivery. Empty when the
+// record is missing, so a reader without full access never sees an unattributed run.
+func relayRunCaller(ctx context.Context, scopeWorkspace, runID string) string {
+	if runID == "" {
+		return ""
+	}
+	content, exists, err := readFileFromWorkspace(ctx, webhookInputPath(scopeWorkspace, runID))
+	if err != nil || !exists {
+		return ""
+	}
+	var delivery WorkflowWebhookDelivery
+	var payload struct {
+		Caller string `json:"relay_caller"`
+	}
+	if json.Unmarshal([]byte(content), &delivery) != nil || json.Unmarshal(delivery.Payload, &payload) != nil {
+		return ""
+	}
+	return payload.Caller
+}
+
+const relayRunScanLimit = 500 // recorded runs examined per request for a reader who sees only their own
+
+// relayRecordedRuns lists bounded recorded run summaries, newest first. It is the
+// one reader behind the dashboard data path and the relay tool's list action.
+func relayRecordedRuns(ctx context.Context, claims *UserClaims, workspace string, manifest *WorkflowManifest, guard *wf.FolderGuard, limit int, version string) (map[string]any, int, string) {
 	if version == "" {
 		version = "draft"
 	}
 	rootWorkspace := workspace
 	if version != "draft" {
-		_, rootWorkspace, err = readRelayRelease(r.Context(), workspace, version)
+		var err error
+		_, rootWorkspace, err = readRelayRelease(ctx, workspace, version)
 		if err != nil {
-			http.Error(w, "Relay version not found", http.StatusNotFound)
-			return
+			return nil, http.StatusNotFound, "Relay version not found"
 		}
 	}
+	seeAll := relayRunSeesAll(claims, manifest)
+	scope := map[bool]string{true: "all", false: "own"}[seeAll]
 	root, err := webhookWorkspaceRoot(rootWorkspace)
+	if errors.Is(err, fs.ErrNotExist) {
+		// Nothing has run here yet: no recorded runs, not an error.
+		return map[string]any{"version": version, "runs": []map[string]any{}, "scope": scope}, 0, ""
+	}
 	if err != nil {
-		http.Error(w, "Relay workspace unavailable", http.StatusNotFound)
-		return
+		return nil, http.StatusNotFound, "Relay workspace unavailable"
 	}
 	defer root.Close()
 	entries, err := fs.ReadDir(root.FS(), "runs")
 	if err != nil && !os.IsNotExist(err) {
-		http.Error(w, "Relay runs unavailable", http.StatusInternalServerError)
-		return
+		return nil, http.StatusInternalServerError, "Relay runs unavailable"
 	}
 	// Allocation numbers establish newest-first order without reading every
 	// run's transcript, agent prompt, or private journal.
 	sort.Slice(entries, func(i, j int) bool {
 		return reportRelayRunNumber(entries[i].Name()) > reportRelayRunNumber(entries[j].Name())
 	})
+	viewer := ""
+	if claims != nil {
+		viewer = claims.UserID
+	}
 	runs := []map[string]any{}
+	scanned, truncated := 0, false
 	for _, entry := range entries {
-		if len(runs) == limit || r.Context().Err() != nil {
+		if len(runs) == limit || ctx.Err() != nil {
+			break
+		}
+		if !seeAll && scanned >= relayRunScanLimit {
+			truncated = true // older runs were not examined
 			break
 		}
 		if !entry.IsDir() || reportRelayRunNumber(entry.Name()) == 0 {
 			continue
 		}
+		scanned++
 		if guard != nil && !guard.Allows(path.Join("runs", entry.Name(), "relay_trace.json"), false) {
 			continue
 		}
@@ -103,6 +166,11 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 		}
 		if !readReportRelayJSON(root, path.Join("runs", entry.Name(), "relay_trace.json"), &trace) {
 			continue
+		}
+		if !seeAll {
+			if caller := relayRunCaller(ctx, rootWorkspace, trace.WorkflowID); caller == "" || viewer == "" || caller != viewer {
+				continue
+			}
 		}
 		steps := []map[string]any{}
 		var started, completed float64
@@ -126,9 +194,11 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 		}
 		runs = append(runs, map[string]any{"run": entry.Name(), "run_id": trace.WorkflowID, "version": version, "status": trace.Status, "attempt": trace.Attempt, "started_at": started, "duration_s": duration, "steps": steps, "result": result})
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "runs": runs})
+	out := map[string]any{"version": version, "runs": runs, "scope": scope}
+	if truncated {
+		out["truncated"] = true
+	}
+	return out, 0, ""
 }
 
 func reportRelayRunNumber(name string) int {

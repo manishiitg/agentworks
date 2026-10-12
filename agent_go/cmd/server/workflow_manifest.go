@@ -143,10 +143,13 @@ type WorkflowManifest struct {
 	Version                string                                `json:"version,omitempty"`
 	ContractUpgradeHistory []WorkflowContractUpgradeHistoryEntry `json:"contract_upgrade_history,omitempty"`
 	Label                  string                                `json:"label"`
-	Icon                   string                                `json:"icon,omitempty"`
-	Capabilities           WorkflowCapabilities                  `json:"capabilities"`
-	ExecutionDefs          WorkflowExecutionDefaults             `json:"execution_defaults"`
-	Schedules              []WorkflowSchedule                    `json:"schedules"`
+	// Description is one short line about what the workflow is for. Shown next to the name in Slack's "who should answer"
+	// picker, MCP lists and the Slack target list. Optional.
+	Description   string                    `json:"description,omitempty"`
+	Icon          string                    `json:"icon,omitempty"`
+	Capabilities  WorkflowCapabilities      `json:"capabilities"`
+	ExecutionDefs WorkflowExecutionDefaults `json:"execution_defaults"`
+	Schedules     []WorkflowSchedule        `json:"schedules"`
 	// CreatedBy is the user ID that created this workflow, stamped once at
 	// creation time (handleCreateWorkflowManifest) from the authenticated
 	// request. Scheduled/cron runs have no logged-in user of their own --

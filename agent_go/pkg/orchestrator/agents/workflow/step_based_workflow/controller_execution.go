@@ -1357,6 +1357,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 	if execCtx != nil && execCtx.SavedScriptOnly && !isScriptedMode {
 		return "", updatedContextFiles, fmt.Errorf("step %q is not in scripted code mode", step.GetID())
 	}
+	if isScriptedMode {
+		var finishInspection func(string, error)
+		ctx, finishInspection = hcpo.beginScriptInspection(ctx, step)
+		defer func() { finishInspection(executionResult, err) }()
+		hcpo.recordInspectionMode(ctx, "script")
+	}
+
 	learnCodePriorScript := ""          // old script content when saved script failed (LLM relearn context)
 	learnCodePriorError := ""           // error from failed saved script (LLM relearn context)
 	learnCodeScriptNeedsSaving := false // set after LLM writes main.py and pre-validation passes

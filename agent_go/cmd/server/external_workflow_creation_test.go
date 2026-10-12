@@ -126,15 +126,27 @@ func TestExternalWorkflowCreationAuthorityAndValidation(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(encoded)))
 	f.api.handleExternalCall(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
 	externalTestBody(t, w, 403)
-	_, raw = f.token(t, "owner", builderConsentScopes, true)
-	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "false")
-	f.relayCall(t, raw, "create_workflow", workflowCreationArgs("disabled"), 403)
 }
 
 func TestLocalOwnerTokenCanCreateWorkflow(t *testing.T) {
 	f := newExternalRelayFixture(t)
+	f.api.stoppedSessions = map[string]bool{}
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "")
 	t.Setenv("MULTI_USER_MODE", "false")
 	owner := GetDefaultUserID()
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work")
+	previousStore, err := openAccessTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous, previousRaw, err := previousStore.Issue(t.Context(), accesstokens.Token{Name: "Existing reader", UserID: owner, Scopes: []string{"workflows:read"}, AllWorkflows: true, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	previousStore.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.api.accessTokenSessions.sessions = map[string]accessTokenSession{"prior-reader": {previous.ID, "prior-reader", "Workflow/invoices", WorkflowAccessRead}}
 	r := httptest.NewRequest(http.MethodPost, "/api/auth/access-tokens", strings.NewReader(`{"local_full_access":true}`))
 	w := httptest.NewRecorder()
 	f.api.handleAccessTokens(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: owner})))
@@ -148,6 +160,9 @@ func TestLocalOwnerTokenCanCreateWorkflow(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &issued); err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := f.api.accessTokenSessions.sessions["prior-reader"]; !ok {
+		t.Fatal("creating the local preset canceled another client session")
+	}
 	if issued.AccessToken.Name != "agentworks-local" || !issued.AccessToken.NonExpiring {
 		t.Fatal("wrong local token policy")
 	}
@@ -157,9 +172,32 @@ func TestLocalOwnerTokenCanCreateWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
+	stillReadOnly, err := store.Authenticate(t.Context(), previousRaw, time.Now())
+	if err != nil || stillReadOnly.ID != previous.ID || stillReadOnly.Allows("builder:chat") {
+		t.Fatalf("renewing full local access revoked or broadened another client: %v", err)
+	}
 	token, err := store.Authenticate(t.Context(), issued.Token, time.Now())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !token.LocalPreset {
+		t.Fatal("local preset marker was not persisted")
+	}
+	f.api.accessTokenSessions.sessions["local-owner"] = accessTokenSession{token.ID, "local-owner", "Workflow/invoices", WorkflowAccessOwner}
+	another := httptest.NewRequest(http.MethodPost, "/api/auth/access-tokens", strings.NewReader(`{"name":"Another client login","scopes":["workflows:read"],"all_workflows":true,"expires_in_days":7}`))
+	otherResponse := httptest.NewRecorder()
+	f.api.handleAccessTokens(otherResponse, another.WithContext(context.WithValue(another.Context(), UserContextKey, &UserClaims{UserID: owner})))
+	if otherResponse.Code != http.StatusCreated {
+		t.Fatalf("another local client: %d", otherResponse.Code)
+	}
+	if _, ok := f.api.accessTokenSessions.sessions["local-owner"]; !ok {
+		t.Fatal("another client login canceled the independent local session")
+	}
+	if _, err = store.Authenticate(t.Context(), previousRaw, time.Now()); err == nil {
+		t.Fatal("ordinary client replacement stopped revoking prior ordinary grants")
+	}
+	if _, err = store.Authenticate(t.Context(), issued.Token, time.Now()); err != nil {
+		t.Fatalf("another client login revoked the full local grant: %v", err)
 	}
 	claims, err := accessTokenClaims(token)
 	if err != nil {

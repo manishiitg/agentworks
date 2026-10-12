@@ -19,7 +19,7 @@ client actor/admin headers alone cannot establish identity. Browser/CLI traffic
 must go through the authenticated platform proxy. Never publish the host's service
 credential in a client configuration.
 
-Ordinary local installations remain Goals/Crew. Optional server products require
+Ordinary local installations retain enabled public local products. Optional server products require
 explicit installation enablement and a composed server binary.
 
 ## Trust and installation
@@ -28,7 +28,9 @@ Product code and embedded UI are reviewed first-party code. The UI runs on the
 platform origin with the person's existing session/API authority and DOM access.
 The iframe and response CSP sandbox restrict browser capabilities; they do not
 provide account isolation from malicious same-origin code. Never install
-unreviewed assets under this boundary. See the PLAT-869 entry in
+unreviewed assets under this boundary. Third-party server products are prohibited
+until their UI uses a separate origin and explicit API boundary. Product responses
+cannot grant cross-origin access with `Access-Control-*` headers. See the PLAT-869 entry in
 [Decisions](../../docs/DECISIONS.md).
 
 Configure the same product-specific secret in the platform proxy and composed
@@ -49,7 +51,8 @@ The trusted platform hop can assert any actor/admin role within the named
 product. Protect its credential accordingly. Client traffic must first pass
 current account, product entitlement and role checks at the platform. User tokens
 with `llm:use` can only discover models and invoke inference; management and UI
-require the browser session. Per-user model permissions still apply.
+require the browser session. User tokens never assert administrator authority to
+the product, even for an administrator's own token. Per-user model permissions still apply.
 
 Audit readers return host-stamped `Kind` (`llm` or `mcp`). Logical event IDs are
 opaque and preserved independently of host storage namespaces. Admission and

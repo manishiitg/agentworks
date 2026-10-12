@@ -3,14 +3,99 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/observability"
 )
+
+type functionToolsInitializationProbe struct {
+	agents.OrchestratorAgent
+	stop error
+}
+
+func (a *functionToolsInitializationProbe) Initialize(context.Context) error { return a.stop }
+func (a *functionToolsInitializationProbe) Close() error                     { return nil }
+
+func TestWorkflowAgentFunctionToolsReachAgentInitialization(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	scope := stepworkflow.AgentFunctionScope{WorkspacePath: "Workflow/reports", ExecutionID: "run-one", StepID: "orchestrate-icici-bank-login", Group: "default", SessionID: "agent-login"}
+	tools, executors, err := env.api.workflowAgentFunctionToolsForRun(ctx)(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := agents.NewOrchestratorAgentConfig(scope.StepID)
+	config.MCPSessionID = scope.SessionID
+	stop := errors.New("agent initialization reached")
+	var definitions []mcpagent.ToolDefinition
+	// Exercise the real construction-time tool assembly, then stop before any
+	// model or step code runs. A category error must never prevent initialization.
+	_, err = base.CreateAndSetupStandardAgentWithConfig(ctx, config, "execution", 0, 0, scope.StepID,
+		func(config *agents.OrchestratorAgentConfig, _ loggerv2.Logger, _ observability.Tracer, _ mcpagent.AgentEventListener) agents.OrchestratorAgent {
+			definitions = config.DirectTools
+			return &functionToolsInitializationProbe{stop: stop}
+		}, tools, executors, false)
+	if !errors.Is(err, stop) {
+		t.Fatalf("function tools blocked agent initialization: %v", err)
+	}
+	if len(definitions) != 4 {
+		t.Fatalf("prepared %d function tools, want 4", len(definitions))
+	}
+	for _, definition := range definitions {
+		if definition.DisplayGroup != agentworksproduct.ExecutionFunctionTools().Category || definition.Execute == nil {
+			t.Fatalf("function tool lost category or executor: %+v", definition)
+		}
+	}
+}
+
+func TestWorkflowAgentFunctionAdmissionReadsProductYAML(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	for _, toolList := range []string{"[list_functions, get_function_call]", "[]"} {
+		t.Run(toolList, func(t *testing.T) {
+			// A narrowed/disabled declaration must change the actual registered
+			// surface, without editing the Go implementation inventory.
+			manifest, err := agentprofiles.LoadProductManifest(fstest.MapFS{
+				"product.yaml": {Data: []byte("schema_version: 2\nprofile: {id: test}\nprompt: {file: prompt.md}\nexecution:\n  function_tools:\n    category: workflow_calls\n    tools: " + toolList + "\n")},
+				"prompt.md":    {Data: []byte("Test")},
+			}, "product.yaml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			reg := &recordingRegistrar{}
+			def := *manifest.Execution.FunctionTools
+			err = env.api.registerCrewFunctionToolSet(reg, "owner", "policy-test", QueryRequest{}, workflowTriggerLinkCaller("Workflow/reports"), nil, crewFunctionToolOptions{ExecutionScope: "policy-test", FunctionTools: def})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(reg.tools) != len(def.Tools) {
+				t.Fatalf("registered tools %v differ from product admission %v", reg.tools, def.Tools)
+			}
+			for _, name := range def.Tools {
+				if _, ok := reg.tools[name]; !ok {
+					t.Fatalf("declared tool %s was not registered", name)
+				}
+			}
+		})
+	}
+}
 
 func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	env := newCrewFunctionEnv(t)

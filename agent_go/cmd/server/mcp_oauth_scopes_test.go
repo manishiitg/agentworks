@@ -5,26 +5,19 @@ import (
 	"testing"
 )
 
-// A connection never offers or grants Builder editing or Relay authoring on a server that has them off
-// (AGENTWORKS_MCP_BUILDER_ENABLED), so a client that requests every advertised scope can still be approved.
-func TestMCPOAuthScopesDropBuilderAndRelaysWhereTheServerHasThemOff(t *testing.T) {
-	all := slices.Clone(mcpOAuthScopes)
-	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "")
-	got := mcpOAuthScopesFor(&UserClaims{}, all)
-	for _, scope := range []string{"builder:chat", "relays:write"} {
-		if slices.Contains(got, scope) {
-			t.Errorf("%s offered on a server with Builder off: %v", scope, got)
+// Native CLI/MCP authoring is available even when a legacy deployment flag is off.
+// Explicitly narrow grants stay narrow; every call still checks live roles.
+func TestMCPOAuthAuthoringDoesNotNeedDeploymentSwitch(t *testing.T) {
+	for _, setting := range []string{"", "false", "true"} {
+		t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", setting)
+		got := mcpOAuthScopesFor(&UserClaims{}, slices.Clone(mcpOAuthScopes))
+		if !slices.Contains(got, "builder:chat") {
+			t.Fatalf("authoring consent hidden by legacy setting %q: %v", setting, got)
 		}
-	}
-	for _, scope := range []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write"} {
-		if !slices.Contains(got, scope) {
-			t.Errorf("%s was dropped although the server allows it: %v", scope, got)
+		narrow := mcpOAuthScopesFor(&UserClaims{}, []string{"workflows:read"})
+		if !slices.Equal(narrow, []string{"workflows:read"}) {
+			t.Fatalf("read-only request broadened: %v", narrow)
 		}
-	}
-	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
-	on := mcpOAuthScopesFor(&UserClaims{}, all)
-	if !slices.Contains(on, "builder:chat") || !slices.Contains(on, "relays:write") {
-		t.Errorf("Builder and Relay scopes must stay where the server enables them: %v", on)
 	}
 }
 

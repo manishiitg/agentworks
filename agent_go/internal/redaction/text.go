@@ -3,7 +3,11 @@ package redaction
 
 import "regexp"
 
+const sensitiveAssignment = `(?i)\b((?:[A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD)|SECRET_[A-Z0-9_]+)\s*[=:]\s*)`
+
 var (
+	quotedDouble  = regexp.MustCompile(sensitiveAssignment + `"(?:\\.|[^"\\\r\n])*"`)
+	quotedSingle  = regexp.MustCompile(sensitiveAssignment + `'(?:\\.|[^'\\\r\n])*'`)
 	mcpToken      = regexp.MustCompile(`(?i)(MCP_API_TOKEN=)[^\s"'\\]+`)
 	sensitiveEnv  = regexp.MustCompile(`(?i)\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD)\s*[=:]\s*)[^\s"'\\]+`)
 	bearerToken   = regexp.MustCompile(`(?i)(\bBearer\s+)[^\s"'\\]+`)
@@ -17,6 +21,8 @@ var (
 // without parsing or changing ordinary prose, ANSI sequences or tool structure.
 func Text(value string) string {
 	value = jsonSecret.ReplaceAllString(value, `${1}"[redacted]"`)
+	value = quotedDouble.ReplaceAllString(value, `${1}"[redacted]"`)
+	value = quotedSingle.ReplaceAllString(value, `${1}'[redacted]'`)
 	value = mcpToken.ReplaceAllString(value, "$1[redacted]")
 	value = sensitiveEnv.ReplaceAllString(value, "$1[redacted]")
 	value = bearerToken.ReplaceAllString(value, "$1[redacted]")

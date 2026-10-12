@@ -26,6 +26,10 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
+
+const MaxLocalPresets = 32
+
+var ErrLocalPresetLimit = errors.New("maximum 32 active local access tokens; revoke an unused local token before creating another")
 var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "code:run", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
@@ -33,6 +37,9 @@ var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:rea
 var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}
 
 type Token struct {
+	// LocalPreset is set only by the authenticated single-user preset route.
+	// Persist it so later client logins also keep this independent grant.
+	LocalPreset bool `json:"-"`
 	// OAuth-derived messaging connections are fenced to one registered agent.
 	// These fields are server-owned, never accepted in a personal-token request.
 	BoundAgentName string          `json:"-"`
@@ -311,7 +318,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	// Crew bounds arrived after the table; add them to existing databases.
-	for _, column := range []string{`file_guard TEXT DEFAULT NULL`, `crew_ids TEXT NOT NULL DEFAULT '[]'`, `all_crews INTEGER NOT NULL DEFAULT 0`, `knowledgebase_folders TEXT DEFAULT NULL`, `knowledgebase_identity_id TEXT NOT NULL DEFAULT ''`} {
+	for _, column := range []string{`file_guard TEXT DEFAULT NULL`, `crew_ids TEXT NOT NULL DEFAULT '[]'`, `all_crews INTEGER NOT NULL DEFAULT 0`, `knowledgebase_folders TEXT DEFAULT NULL`, `knowledgebase_identity_id TEXT NOT NULL DEFAULT ''`, `local_preset INTEGER NOT NULL DEFAULT 0`} {
 		if _, alterErr := db.Exec(`ALTER TABLE access_tokens ADD COLUMN ` + column); alterErr != nil && !strings.Contains(alterErr.Error(), "duplicate column") {
 			db.Close()
 			return nil, alterErr
@@ -367,20 +374,30 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	}
 	defer tx.Rollback()
 	// Preserve replacement semantics for existing workflow/Crew callers,
-	// while knowledge-base connections remain independently revocable.
-	if !t.KnowledgebaseAccess() && !t.Allows("devices:connect") {
-		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write','devices:connect'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
+	// while local presets and knowledge-base connections coexist.
+	if !t.LocalPreset && !t.KnowledgebaseAccess() && !t.Allows("devices:connect") {
+		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND local_preset=0 AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write','devices:connect'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
 			return Token{}, "", err
 		}
 	}
 	// Cap issuance in the same statement, including concurrent requests.
-	result, err := tx.ExecContext(ctx, `INSERT INTO access_tokens (id,hash,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,file_guard,created_at,expires_at)
-	 SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND revoked_at IS NULL AND expires_at>?)<100`, t.ID, hash(raw), t.UserID, t.Username, t.Email, t.Provider, t.Name, string(scopes), string(ids), t.AllWorkflows, string(crewIDs), t.AllCrews, kbFolders, t.KnowledgebaseIdentityID, fileGuard, now.Unix(), t.ExpiresAt.Unix(), t.UserID, now.Unix())
+	result, err := tx.ExecContext(ctx, `INSERT INTO access_tokens (id,hash,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,file_guard,created_at,expires_at,local_preset)
+	 SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND revoked_at IS NULL AND expires_at>?)<100
+	 AND (?=0 OR (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND local_preset=1 AND revoked_at IS NULL AND expires_at>?)<?)`, t.ID, hash(raw), t.UserID, t.Username, t.Email, t.Provider, t.Name, string(scopes), string(ids), t.AllWorkflows, string(crewIDs), t.AllCrews, kbFolders, t.KnowledgebaseIdentityID, fileGuard, now.Unix(), t.ExpiresAt.Unix(), t.LocalPreset, t.UserID, now.Unix(), t.LocalPreset, t.UserID, now.Unix(), MaxLocalPresets)
 	if err != nil {
 		return Token{}, "", err
 	}
 	n, _ := result.RowsAffected()
 	if n != 1 {
+		if t.LocalPreset {
+			var activeLocal int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND local_preset=1 AND revoked_at IS NULL AND expires_at>?`, t.UserID, now.Unix()).Scan(&activeLocal); err != nil {
+				return Token{}, "", err
+			}
+			if activeLocal >= MaxLocalPresets {
+				return Token{}, "", ErrLocalPresetLimit
+			}
+		}
 		return Token{}, "", errors.New("maximum 100 active tokens; revoke an existing token first")
 	}
 	if err := tx.Commit(); err != nil {
@@ -389,7 +406,7 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	return t, raw, nil
 }
 
-const columns = `id,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,file_guard,created_at,expires_at,last_used_at,revoked_at`
+const columns = `id,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,file_guard,created_at,expires_at,last_used_at,revoked_at,local_preset`
 
 func scan(row interface{ Scan(...any) error }) (Token, error) {
 	var t Token
@@ -397,7 +414,7 @@ func scan(row interface{ Scan(...any) error }) (Token, error) {
 	var kbFolders, fileGuard sql.NullString
 	var created, expires int64
 	var used, revoked sql.NullInt64
-	err := row.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Provider, &t.Name, &scopes, &ids, &t.AllWorkflows, &crewIDs, &t.AllCrews, &kbFolders, &t.KnowledgebaseIdentityID, &fileGuard, &created, &expires, &used, &revoked)
+	err := row.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Provider, &t.Name, &scopes, &ids, &t.AllWorkflows, &crewIDs, &t.AllCrews, &kbFolders, &t.KnowledgebaseIdentityID, &fileGuard, &created, &expires, &used, &revoked, &t.LocalPreset)
 	if err != nil {
 		return t, err
 	}

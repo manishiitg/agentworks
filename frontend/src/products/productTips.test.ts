@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { claimWorkingTip, type ProductTip } from './productTips'
+import { claimWorkingTip, workingTipIntervalMs, type ProductTip } from './productTips'
 import { markFeatureUsed } from '../utils/featureUsage'
 
 vi.hoisted(() => {
@@ -10,23 +10,50 @@ vi.hoisted(() => {
   Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
 })
 
-// Owner, 2026-10-09: tips are occasional (one every four hours), fit the product and the
-// moment, and never cover a feature the person already uses.
+// YAML supplies the current product's definitions; cadence slows with exposure.
 describe('claimWorkingTip', () => {
   beforeEach(() => localStorage.clear())
   const tips: ProductTip[] = [
-    { id: 'panel', text: 'panel tip', skipIfUsed: 'panel-switcher' },
-    { id: 'code-only', text: 'code tip', products: ['code'], when: c => c.codeTabs >= 2 },
+    { id: 'panel', text: 'panel tip', skip_if_used: 'panel-switcher' },
+    { id: 'code-only', text: 'code tip', when: { code_tabs: { min: 2 } } },
     { id: 'any', text: 'any tip' },
   ]
-  it('shows at most one tip every four hours, skips used features, and fits the product', () => {
+  it('slows cadence with exposure and keeps account/product history separate without repeats', () => {
     markFeatureUsed('panel-switcher')
     const now = 1_000_000
-    const fourHours = 4 * 60 * 60 * 1000
-    expect(claimWorkingTip({ surface: 'code', codeTabs: 2 }, now, tips)).toBe('code tip')
-    expect(claimWorkingTip({ surface: 'code', codeTabs: 2 }, now + 60_000, tips)).toBeNull()
-    expect(claimWorkingTip({ surface: 'agentworks', codeTabs: 1 }, now + fourHours - 1, tips)).toBeNull()
-    expect(claimWorkingTip({ surface: 'agentworks', codeTabs: 1 }, now + fourHours, tips)).toBe('any tip')
-    expect(claimWorkingTip({ surface: 'agentworks', codeTabs: 1 }, now + 2 * fourHours, tips)).toBeNull()
+    const minute = 60_000
+    const code = { surface: 'code' as const, codeTabs: 2, userId: 'viewer-a' }
+    expect(claimWorkingTip(code, now, tips)).toBe('code tip')
+    expect(claimWorkingTip(code, now + 30 * minute - 1, tips)).toBeNull()
+    expect(claimWorkingTip(code, now + 30 * minute, tips)).toBe('any tip')
+    expect(workingTipIntervalMs(2)).toBe(60 * minute)
+    const extra = Array.from({ length: 5 }, (_, index) => ({ id: `new-${index}`, text: `New ${index}` }))
+    let time = now + 30 * minute
+    for (let shown = 2; shown < 7; shown++) {
+      const gap = workingTipIntervalMs(shown)
+      expect(claimWorkingTip(code, time + gap - 1, extra)).toBeNull()
+      time += gap
+      expect(claimWorkingTip(code, time, extra)).toBe(`New ${shown - 2}`)
+    }
+    expect(workingTipIntervalMs(4)).toBe(120 * minute)
+    expect(workingTipIntervalMs(6)).toBe(240 * minute)
+    expect(claimWorkingTip(code, time + 240 * minute, [...tips, ...extra])).toBeNull()
+    // Shared ids already seen in Code don't repeat in Crew, but a new product
+    // gets its own initial cadence and product-specific definitions.
+    expect(claimWorkingTip({ ...code, surface: 'work' }, now, [...tips, { id: 'crew', text: 'Crew tip' }])).toBe('Crew tip')
+    expect(claimWorkingTip({ ...code, userId: 'viewer-b', codeTabs: 1 }, now, tips)).toBe('any tip')
+  })
+  it('retires the legacy anonymous key after the first anonymous v2 write, never on signed-in writes', () => {
+    const simple: ProductTip[] = [{ id: 'a', text: 'A tip' }, { id: 'b', text: 'B tip' }]
+    localStorage.setItem('agentworks.working-tip', JSON.stringify({ seen: ['a'] }))
+    // Signed-in accounts start fresh and leave anonymous browser history alone.
+    expect(claimWorkingTip({ surface: 'code', codeTabs: 1, userId: 'viewer-a' }, 1_000_000, simple)).toBe('A tip')
+    expect(localStorage.getItem('agentworks.working-tip')).not.toBeNull()
+    // Anonymous history migrates, then the first v2 write retires the legacy key.
+    localStorage.clear()
+    localStorage.setItem('agentworks.working-tip', JSON.stringify({ seen: ['a'] }))
+    expect(claimWorkingTip({ surface: 'code', codeTabs: 1 }, 1_000_000, simple)).toBe('B tip')
+    expect(localStorage.getItem('agentworks.working-tip')).toBeNull()
+    expect(localStorage.getItem('agentworks.working-tip:v2:local')).not.toBeNull()
   })
 })

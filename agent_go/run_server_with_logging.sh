@@ -192,14 +192,14 @@ configure_local_product_profile() {
     if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=1
         export VITE_DEPLOYMENT_MODE=local-full
-        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\"]}"
+        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\", \"mcp-gateway\", \"knowledgebase\", \"bullpen\"]}"
     else
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
         export VITE_DEPLOYMENT_MODE=local
-        export AGENT_PRODUCTS="agentworks,work"
-        export AGENTWORKS_ENABLED_PRODUCT_SURFACES="agentworks,work"
+        export AGENT_PRODUCTS="agentworks,work,bullpen"
+        export AGENTWORKS_ENABLED_PRODUCT_SURFACES="agentworks,work,bullpen"
         export AGENTWORKS_DEFAULT_PRODUCT_SURFACE="agentworks"
-        ENABLED_PRODUCT_SURFACES_JSON='["agentworks", "work"]'
+        ENABLED_PRODUCT_SURFACES_JSON='["agentworks", "work", "bullpen"]'
         # Empty values prevent godotenv from reviving old service configuration.
         export CAPLAYER_SERVICE_URL=""
         export CAPLAYER_SERVICE_TOKEN=""

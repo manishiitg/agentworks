@@ -1199,6 +1199,10 @@ export const agentApi = {
     await api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`, { headers: { 'X-Session-ID': sessionId } })
   },
 
+  retryQueuedMessage: async (sessionId: string, messageId: string) => {
+    await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/retry`, {}, { headers: { 'X-Session-ID': sessionId } })
+  },
+
   steerQueuedMessage: async (sessionId: string, messageId: string) => {
     await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/steer`, {}, { headers: { 'X-Session-ID': sessionId } })
   },
@@ -1592,7 +1596,7 @@ export const agentApi = {
     return apiResponse.data
   },
 
-  updateSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }, changes: { platform_bot?: boolean; slug?: string }): Promise<SlackTargetSettings> => {
+  updateSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }, changes: { platform_bot?: boolean; slug?: string; display_name?: string; description?: string }): Promise<SlackTargetSettings> => {
     const apiResponse = await api.put('/api/human-feedback/slack/targets/settings', { ...destination, ...changes })
     return apiResponse.data
   },
@@ -2172,8 +2176,9 @@ export const agentApi = {
     return response.data as ReportHumanInputResponse
   },
 
-  updatePlannerFile: async (filepath: string, content: string, commitMessage?: string) => {
-    const requestBody: { content: string; commit_message?: string } = { content }
+  updatePlannerFile: async (filepath: string, content: string, commitMessage?: string, options?: { createOnly?: boolean }) => {
+    const requestBody: { content: string; commit_message?: string; create_only?: boolean } = { content }
+    if (options?.createOnly) requestBody.create_only = true
     if (commitMessage) {
       requestBody.commit_message = commitMessage
     }

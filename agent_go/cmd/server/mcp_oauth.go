@@ -145,12 +145,9 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	if user != nil && claimsIsAdmin(user) && sameMCPOAuthScopeSet(scopes, mcpOAuthDefaultScopes) {
 		scopes = mcpOAuthScopes
 	}
-	canReview, builderOn := claimsCanReviewCode(user), externalBuilderEnabled()
-	// Relay authoring needs the server switch AND an account that may edit and has the Relays product (the same rule
-	// validateMCPOAuthBuilderSelection enforces); Builder editing needs the server switch. A connection never asks for,
-	// shows or grants what the server or the account would refuse: a client that requests every advertised scope used
-	// to get a 404 on Allow (server B 2026-10-05).
-	canRelays := builderOn && userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
+	canReview := claimsCanReviewCode(user)
+	// Installation products and current account roles narrow authoring consent.
+	canRelays := userAccessForClaims(user).CanEdit && userAllowedProduct(user, "relays")
 	return slices.DeleteFunc(accesstokens.CurrentScopes(scopes), func(scope string) bool {
 		switch scope {
 		case "knowledgebase:read", "knowledgebase:write":
@@ -168,8 +165,6 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return !canReview
 		case "users:manage":
 			return !claimsIsAdmin(user)
-		case "builder:chat":
-			return !builderOn
 		case "relays:write":
 			return !canRelays
 		}
@@ -265,7 +260,7 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 // builderConsentWorkflows applies the same live account and workflow ACL as
 // workflow discovery. Selection is revalidated when consent is submitted.
 func validateMCPOAuthBuilderSelection(ctx context.Context, claims *UserClaims, scopes, ids []string) error {
-	if slices.Contains(scopes, "relays:write") && (!externalBuilderEnabled() || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "relays")) {
+	if slices.Contains(scopes, "relays:write") && (!userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "relays")) {
 		return errors.New("Relay authoring is not available to this account or deployment")
 	}
 	if !slices.Contains(scopes, "builder:chat") {

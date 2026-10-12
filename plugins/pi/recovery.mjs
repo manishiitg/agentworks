@@ -5,7 +5,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 const processStart = pid => {
   try { return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 1000 }).trim() || undefined; }
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 1000,
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' } }).trim().split(/\s+/).join(' ') || undefined; }
   catch { return undefined; }
 };
 const started = processStart(process.pid);
@@ -33,21 +34,25 @@ export class Recovery {
     try { await parent.sync(); } finally { await parent.close(); }
     let uncertain = false;
     for (const name of await readdir(this.root)) {
-      if (!name.endsWith('.json')) continue;
+      // Only our UUID-named artifacts are eligible for housekeeping. A fresh
+      // temporary file may belong to a concurrent writer.
+      if (!/^[a-f0-9]{64}-[a-f0-9-]{36}\.json(?:\.[a-f0-9-]{36}\.tmp)?$/.test(name)) continue;
       const file = path.join(this.root, name);
       let handle;
       try { handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW); }
       catch (error) { if (error.code === 'ENOENT') continue; throw error; }
-      let state, recentMalformed = false;
+      let state, recentMalformed = false, staleMalformed = false, temporary = name.endsWith('.tmp');
       try {
         const stat = await handle.stat();
+        if (temporary && Date.now() - stat.mtimeMs < 60000) continue;
         try { state = JSON.parse(await handle.readFile('utf8')); }
-        catch { state = {}; recentMalformed = Date.now() - stat.mtimeMs < 3000; }
+        catch { state = {}; recentMalformed = Date.now() - stat.mtimeMs < 3000;
+          staleMalformed = Date.now() - stat.mtimeMs >= 60000; }
         if (!state || typeof state !== 'object') state = {};
       } finally { await handle.close(); }
       if (recentMalformed) continue; // A legacy writer may still be filling its file.
       const currentLease = name.startsWith(this.prefix);
-      if (!currentLease && state.session !== this.session) continue;
+      if (!currentLease && state.session !== this.session && !staleMalformed && !temporary) continue;
       if (state.pid && state.pid !== process.pid) {
         try {
           process.kill(state.pid, 0);
@@ -56,6 +61,7 @@ export class Recovery {
         }
         catch (error) { if (error.code !== 'ESRCH') continue; }
       }
+      if (temporary || !currentLease && staleMalformed) { await this.remove(file); continue; }
       if (!currentLease || !state.request && Array.isArray(state.ids) && state.ids.every(id => accepted.has(id))) {
         await this.remove(file);
       } else {
@@ -74,6 +80,7 @@ export class Recovery {
   }
 
   async save(ids = [], request = true) {
+    if (!started) throw new Error('AgentWorks cannot identify this Pi process safely');
     const body = JSON.stringify({ request, ids, session: this.session, lease: this.lease, pid: process.pid, started });
     if (body === this.lastBody) return;
     const temp = this.file + '.' + randomUUID() + '.tmp';

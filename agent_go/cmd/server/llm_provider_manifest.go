@@ -770,7 +770,7 @@ func fetchPiCLIModels(full bool) *dynamicModelsResponse {
 		ModelSelectionMode: "dynamic",
 		Models:             models,
 		Groups:             dynamicModelGroups(models),
-		SupportsCustom:     true,
+		SupportsCustom:     len(deploymentPiModels(false)) == 0, // a deployment's own models are the only ones with a key
 		CustomModelHint:    "Enter any Pi model as provider/model, e.g. google/gemini-3.8-flash, zai/glm-5.3, or openrouter/minimax/minimax-m3-20260531",
 		Source:             source,
 		CacheTTLSeconds:    300,

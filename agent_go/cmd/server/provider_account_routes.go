@@ -182,7 +182,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 				usable = usable || availability.AvailableTo.admits(userID, product)
 			}
 		}
-		defaultModels := accountSettings.AllowedModels[provider]
+		defaultModels := serverAccountModels(accountSettings, provider)
 		view := providerAccountView{
 			ProviderConnection:   ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server", AllowedModels: effectiveAllowedModels(accountSettings.AllowedModels[provider], personAccountAllowedModels(userID, provider))},
 			DefaultAllowedModels: &defaultModels,

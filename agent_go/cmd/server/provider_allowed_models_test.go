@@ -3,9 +3,13 @@ package server
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 
@@ -39,6 +43,31 @@ func TestAllowedModelsListLogic(t *testing.T) {
 	err := disallowedModelError("gpt-5.5", "Team Codex", []string{"gpt-5.3-codex", "gpt-5.4"})
 	if err.Error() != "gpt-5.5 is not allowed on Team Codex; allowed: gpt-5.3-codex, gpt-5.4" {
 		t.Fatalf("message: %v", err)
+	}
+}
+
+// A deployment that supplies its own Pi models has a key for those only, so they are the server account's list: a chat
+// saved on another Pi model is settled on the deployment's model before its runtime is bound. Settled later (the
+// running CLI on one model, the request still naming another), live input was refused as a runtime change and a
+// steered message sat in the queue.
+func TestDeploymentPiModelsAreTheServerAccountsAllowedList(t *testing.T) {
+	newProviderAccountsEnv(t, "")
+	dir := t.TempDir()
+	models := `{"providers":{"gateway":{"baseUrl":"https://gateway.example.com/v1","api":"openai-completions","apiKey":"$GATEWAY_API_KEY","models":[{"id":"model-a","name":"Model A"}]}}}`
+	if err := os.WriteFile(filepath.Join(dir, "models.json"), []byte(models), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(picli.EnvPiAgentTemplateDir, dir)
+	ctx := context.Background()
+	if model, changed, err := resolveAccountModel(ctx, "pi-cli", "", "google/gemini-3.8-flash"); err != nil || !changed || model != "gateway/model-a" {
+		t.Fatalf("a Pi model the deployment has no key for: %q changed=%v err=%v", model, changed, err)
+	}
+	if model, changed, _ := resolveAccountModel(ctx, "pi-cli", "", "gateway/model-a"); changed || model != "gateway/model-a" {
+		t.Fatalf("the deployment's model must stay: %q %v", model, changed)
+	}
+	query := QueryRequest{Provider: "pi-cli", ModelID: "google/gemini-3.8-flash"}
+	if err := constrainProductChatModel(ctx, &query); err != nil || query.ModelID != "gateway/model-a" {
+		t.Fatalf("the chat's request must name the deployment's model: %q %v", query.ModelID, err)
 	}
 }
 

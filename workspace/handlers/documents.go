@@ -1109,8 +1109,18 @@ func UpdateDocument(c *gin.Context) {
 	// Write content (create or update). A chat conversation goes to its
 	// header and history log, appending when only new messages were added.
 	var writeErr error
-	if chatlog.IsConversationPath(filePath) {
-		writeErr = chatlog.Save(filePath, []byte(req.Content))
+	if req.CreateOnly {
+		writeErr = createFileAtomic(filePath, []byte(*req.Content), 0644)
+		if errors.Is(writeErr, os.ErrExist) {
+			c.JSON(http.StatusConflict, models.APIResponse[any]{
+				Success: false,
+				Message: "A file with that name already exists here",
+			})
+			return
+		}
+		fileExists = false
+	} else if chatlog.IsConversationPath(filePath) {
+		writeErr = chatlog.Save(filePath, []byte(*req.Content))
 		if errors.Is(writeErr, chatlog.ErrPartialRecord) {
 			c.JSON(http.StatusConflict, models.APIResponse[any]{
 				Success: false,
@@ -1120,7 +1130,7 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 	} else {
-		writeErr = writeFileAtomic(filePath, []byte(req.Content), 0644)
+		writeErr = writeFileAtomic(filePath, []byte(*req.Content), 0644)
 	}
 	if err := writeErr; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{

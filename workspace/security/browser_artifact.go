@@ -62,6 +62,17 @@ func browserArtifactSourceRoot(source string, browserSession []string) (string, 
 	return "", fmt.Errorf("browser artifact source must be in managed staging for this browser session")
 }
 
+// ArtifactDestinationWritable reports whether a destination (absolute, or relative to baseDir) is inside baseDir and covered by the
+// request's write paths, the first test FinalizeBrowserArtifact applies.
+func ArtifactDestinationWritable(destination, baseDir string, writePaths []string) bool {
+	base := canonicalPath(baseDir)
+	if !filepath.IsAbs(destination) {
+		destination = filepath.Join(base, destination)
+	}
+	destination = canonicalPath(filepath.Clean(destination))
+	return pathWithin(destination, base) && pathAllowedForArtifactWrite(destination, base, writePaths)
+}
+
 // PrepareBrowserArtifactStaging creates and validates the one shared staging
 // directory before a sandboxed browser command runs. It is used for both
 // immediate screenshots and the start half of a start/stop recording lease.

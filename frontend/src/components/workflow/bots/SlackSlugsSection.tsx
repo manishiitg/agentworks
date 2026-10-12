@@ -34,6 +34,8 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
   const [error, setError] = useState<string | null>(null)
   const [channel, setChannel] = useState('')
   const [tests, setTests] = useState<Record<string, string>>({})
+  const [shownName, setShownName] = useState<string | null>(null)
+  const [shownDescription, setShownDescription] = useState<string | null>(null)
 
   if (!settings.platform_available) return null
 
@@ -76,6 +78,48 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
         disabled={!canManage || !!busy || (!settings.platform_bot && !settings.product_allowed)}
         disabledTitle={title}
       />
+      <div className="space-y-2 rounded-md border border-border bg-background p-2">
+        <p className="text-xs font-medium text-foreground">How it appears in Slack's "who should answer" list</p>
+        <Input
+          aria-label="Name shown in Slack"
+          value={shownName ?? settings.display_name ?? ''}
+          onChange={e => setShownName(e.target.value)}
+          placeholder={settings.label}
+          maxLength={60}
+          disabled={!canManage || !!busy}
+          className="h-8 text-xs"
+        />
+        <Input
+          aria-label="Description shown in Slack"
+          value={shownDescription ?? settings.custom_description ?? ''}
+          onChange={e => setShownDescription(e.target.value)}
+          placeholder={settings.description || 'One short line about what it is for'}
+          maxLength={75}
+          disabled={!canManage || !!busy}
+          className="h-8 text-xs"
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void run('shown', async () => {
+              const next = await agentApi.updateSlackTargetSettings(destination, {
+                display_name: shownName ?? settings.display_name ?? '',
+                description: shownDescription ?? settings.custom_description ?? '',
+              })
+              setShownName(null)
+              setShownDescription(null)
+              return next
+            })}
+            disabled={!canManage || !!busy || (shownName === null && shownDescription === null)}
+            title={title}
+          >
+            {busy === 'shown' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Save
+          </Button>
+          <span className="text-[11px] text-muted-foreground">Leave a box empty to use the {noun}'s own name or description.</span>
+        </div>
+      </div>
       {!settings.product_allowed && <p className="text-xs text-amber-700 dark:text-amber-300">An admin has not allowed this product to use @{botName}.</p>}
 
       {!dmOnly && settings.platform_bot && (

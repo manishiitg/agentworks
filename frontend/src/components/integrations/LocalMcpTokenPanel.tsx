@@ -24,10 +24,15 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
     try {
       const result = await authApi.createAccessToken({ name: 'agentworks-local', local_full_access: access === 'full', local_read_only: access === 'read', expires_in_days: expiry, scopes: [], workflow_ids: [], all_workflows: true })
       setIssued({ id: result.access_token.id, token: result.token })
-      // The server may replace a previous legacy (non-KB) token.
+      // Local preset tokens coexist with the other agents on this account.
       try { setTokens((await authApi.listAccessTokens()).tokens) }
       catch { setError('Token created, but the token list could not refresh. Copy your new token and reopen Connect to reload the list.') }
-    } catch { setError('Could not create the access token. Try again.') }
+    } catch (cause) {
+      const failure = cause as { response?: { data?: { error?: { code?: string; message?: string } } } }
+      setError(failure.response?.data?.error?.code === 'local_token_limit'
+        ? 'You have 32 active local access tokens. Revoke an unused token below before creating another.'
+        : 'Could not create the access token. Try again.')
+    }
     finally { setBusy(false) }
   }
   async function revoke(id: string) {

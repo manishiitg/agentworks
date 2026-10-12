@@ -339,7 +339,9 @@ export default function WorkflowLLMConfigurationPanel({
   const piRowFor = useCallback((group: string | null, modelId?: string | null): string | null => {
     if (!group) return null
     const inGroup = rows.filter(row => row.groupFilter === group)
-    if (inGroup.length === 0) return null
+    // The saved model's backend is not offered here (a deployment that lists only its own Pi models): the turn runs on
+    // the first offered one, so that row is the selected one, not "No provider selected".
+    if (inGroup.length === 0) return rows.find(row => row.groupFilter)?.id ?? null
     return (inGroup.find(row => row.modelId === modelId) ?? inGroup[0]).id
   }, [rows])
 
@@ -358,6 +360,8 @@ export default function WorkflowLLMConfigurationPanel({
     if (!llmConfig) return null
     if (llmConfig.mode === 'provider_profile') {
       if (llmConfig.provider === 'pi-cli') {
+        // One Pi row (the project panels): Pi is the selected provider whatever its model.
+        if (!splitPiProviders) return 'pi-cli'
         // A bare `{mode: provider_profile, provider: "pi-cli"}` config (no
         // per-role override) is fully valid and actively resolved on the
         // backend: ResolveProviderProfileConfig reads it straight from
@@ -380,6 +384,7 @@ export default function WorkflowLLMConfigurationPanel({
     if (providers.size !== 1) return null
     const [provider] = Array.from(providers)
     if (provider === 'pi-cli') {
+      if (!splitPiProviders) return 'pi-cli'
       const groups = new Set(roles.map(role => resolvePiModelGroup(role!.model_id)))
       if (groups.size !== 1) return null
       const [group] = Array.from(groups)
@@ -393,7 +398,7 @@ export default function WorkflowLLMConfigurationPanel({
     // that provider: match its row so the compact status line and the
     // Models per role section show instead of "custom per-role setup".
     return manifestEntries.some(entry => entry.id === provider && entry.integration_kind === 'coding_agent') ? provider : null
-  }, [globalLockApplies, llmConfig, manifestEntries, piRowFor, publishedLLMs])
+  }, [globalLockApplies, llmConfig, manifestEntries, piRowFor, publishedLLMs, splitPiProviders])
 
   const visibleRows = useMemo(() => {
     const readyRows = rows.filter(providerIsReadyForUse)

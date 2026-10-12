@@ -42,16 +42,17 @@ export function DurableChatQueue({ sessionId, tabId, busy, canSteer }: {
       const events = store.getTabEvents(sessionId)
       // A removed/started queue row can no longer remain a queued provisional
       // bubble. A durable user echo is always retained.
-      store.setTabEvents(sessionId, events.filter(event => !removedIds.has(event.id) || !isProvisionalUserMessage(event) || userMessageMetadata(event).delivery_status !== 'queued_for_turn'))
+      store.setTabEvents(sessionId, events.filter(event => !removedIds.has(event.id) || !isProvisionalUserMessage(event) || userMessageMetadata(event).delivery_status !== 'queued_for_turn' || userMessageMetadata(event).confirmation === 'failed'))
     }
   }, [query.data, sessionId, owns])
 
-  const change = async (message: PendingQueuedMessage, steer: boolean) => {
+  const change = async (message: PendingQueuedMessage, steer: boolean, retry = false) => {
     if (!message.message_id || action || !owns()) return
     setAction(message.message_id)
     setError('')
     try {
-      if (steer) await agentApi.steerQueuedMessage(sessionId, message.message_id)
+      if (retry) await agentApi.retryQueuedMessage(sessionId, message.message_id)
+      else if (steer) await agentApi.steerQueuedMessage(sessionId, message.message_id)
       else await agentApi.removeQueuedMessage(sessionId, message.message_id)
       if (!owns()) return
       if (steer) {
@@ -63,7 +64,7 @@ export function DurableChatQueue({ sessionId, tabId, busy, canSteer }: {
           const inner = (outer.data ?? {}) as Record<string, unknown>
           return { ...event, data: { ...outer, data: { ...inner, metadata: { ...userMessageMetadata(event), confirmation: undefined, delivery_status: 'delivering' } } } } as typeof event
         }))
-      } else {
+      } else if (!retry) {
         const store = useChatStore.getState()
         const id = clientMessageEventId(message.client_message_id)
         store.setTabEvents(sessionId, store.getTabEvents(sessionId).filter(event => event.id !== id || !isProvisionalUserMessage(event)))
@@ -99,6 +100,7 @@ export function DurableChatQueue({ sessionId, tabId, busy, canSteer }: {
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
           </details>
           {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
+            {message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false, true)} className="text-primary hover:underline disabled:opacity-40">Retry</button>}
             {canSteer && !message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
             <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Remove</button>
           </div>}

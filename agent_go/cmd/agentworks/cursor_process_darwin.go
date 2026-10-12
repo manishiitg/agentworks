@@ -1,0 +1,70 @@
+//go:build darwin
+
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/sys/unix"
+)
+
+// Desktop hooks and shell tools share the verified app ancestor, but every
+// request still needs its own native UUID. No shared MCP child is enabled.
+func cursorProcessAt(pid int) (cursorProcess, error) {
+	process := cursorProcess{PID: pid}
+	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || info.Proc.P_pid != int32(pid) {
+		return process, errors.New("unavailable Cursor process metadata")
+	}
+	process.Parent = int(info.Eproc.Ppid)
+	if info.Eproc.Ucred.Uid != uint32(os.Geteuid()) {
+		return process, errors.New("Cursor process belongs to another OS user")
+	}
+	command := string(info.Proc.P_comm[:])
+	if !strings.Contains(command, "Cursor") {
+		return process, errors.New("not a Cursor app process")
+	}
+	ctxImage, cancelImage := context.WithTimeout(context.Background(), time.Second)
+	defer cancelImage()
+	// Kernel text-image records avoid reading prompt arguments or environment.
+	images, err := exec.CommandContext(ctxImage, "/usr/sbin/lsof", "-a", "-p", strconv.Itoa(pid), "-d", "txt", "-Fn").Output()
+	if err != nil {
+		return process, errors.New("cannot verify Cursor app image")
+	}
+	for _, line := range strings.Split(string(images), "\n") {
+		if !strings.HasPrefix(line, "n") {
+			continue
+		}
+		image, e := filepath.EvalSymlinks(strings.TrimPrefix(line, "n"))
+		if e != nil || !strings.HasSuffix(image, "/Cursor.app/Contents/MacOS/Cursor") {
+			continue
+		}
+		file, e := os.Stat(image)
+		if e != nil || !file.Mode().IsRegular() || file.Mode().Perm()&0022 != 0 {
+			continue
+		}
+		after, e := unix.SysctlKinfoProc("kern.proc.pid", pid)
+		if e != nil || after.Proc.P_starttime != info.Proc.P_starttime {
+			return process, errors.New("Cursor process changed during verification")
+		}
+		birth := strconv.FormatInt(info.Proc.P_starttime.Sec, 10) + "." + strconv.FormatInt(int64(info.Proc.P_starttime.Usec), 10)
+		h := sha256.Sum256([]byte(strconv.Itoa(pid) + ":" + birth + ":" + image))
+		process.Host, process.Kind = cursorHostKey(pid, hex.EncodeToString(h[:])), "desktop"
+		return process, nil
+	}
+	return process, errors.New("not a verified Cursor app image")
+}
+
+func cursorPIDDefinitelyGone(pid int) bool {
+	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	return errors.Is(err, unix.ESRCH) || err == nil && info.Proc.P_pid != int32(pid)
+}

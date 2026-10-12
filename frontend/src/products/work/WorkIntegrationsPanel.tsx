@@ -7,8 +7,8 @@ import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
-import { PROJECT_INTEGRATION_SECTIONS } from '../../components/integrations/integrationSections'
-import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
+import { projectIntegrationSections } from '../../components/integrations/integrationSections'
+import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
@@ -26,13 +26,11 @@ import { useCodeFilesPreference } from './codeLocalFiles'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
-const INTEGRATION_TABS = PROJECT_INTEGRATION_SECTIONS
-
 function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
-    brain: `Help me set up Brain for this ${noun} project: read & write (the default: agents organize folders themselves wherever the owner may write), read only, only chosen folders, or off. Explain what each choice lets its agents do before changing it.`,
-    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, set up Brain under Tools & secrets instead.`,
+    brain: `Explain how Brain stores shared knowledge for this ${noun} project and how its agents can use notes, reference files and reusable skills. Check the current project access: read & write (the default, within existing folder permissions), read only, or off. Explain team sharing through Brain folder roles. Ask what I want before changing settings or permissions.`,
+    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, use Integrations → Brain instead.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
@@ -110,7 +108,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const filePreference = useCodeFilesPreference(chatSessionId || '')
   const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
-  const visibleTabs = INTEGRATION_TABS.filter(option =>
+  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const visibleTabs = projectIntegrationSections(allowedProducts).filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
@@ -119,8 +118,8 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const [tabNonce, setTabNonce] = useState(0)
   const [integrationMenu, setIntegrationMenu] = useState(true)
   const [pluginTab, setPluginTab] = useProjectPluginTab()
-  const pluginTabs = PROJECT_PLUGIN_TABS.filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
-  const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0].value
+  const pluginTabs = projectPluginTabs(allowedProducts).filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
+  const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0]?.value ?? 'connected'
   // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets…).
   useWorkspaceViewTarget('mcp', target => {
     if (visibleTabs.some(option => option.value === target)) { setTab(target as WorkIntegrationTab); setIntegrationMenu(false) }
@@ -215,7 +214,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         />) : undefined}
           vault={<WorkMCPTabBody vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
         />}
-        {activeTab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
+        {activeTab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} onAsk={onAsk} />}
         {activeTab === 'folders' && <WorkFoldersSection
           workspacePath={workspacePath}
           workflowContextPaths={workflowContextPaths}

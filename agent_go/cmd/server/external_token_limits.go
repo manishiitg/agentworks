@@ -152,7 +152,7 @@ func personAllowedModelsOf(rec *UserRecord, settings providerAccountSettings, ac
 	out := map[string]personAllowedModels{}
 	add := func(provider string) {
 		override := rec.AccountAllowedModels[provider]
-		entry := personAllowedModels{Models: effectiveAllowedModels(settings.AllowedModels[provider], override), Source: "account"}
+		entry := personAllowedModels{Models: effectiveAllowedModels(serverAccountModels(settings, provider), override), Source: "account"}
 		if len(override) > 0 {
 			entry.Source = "person"
 		}
@@ -178,11 +178,11 @@ func accountAllowedModelsView(settings providerAccountSettings, account string) 
 	out := map[string][]string{}
 	for _, provider := range serverAccountProviders() {
 		if account == "" || provider == account {
-			out[provider] = settings.AllowedModels[provider]
+			out[provider] = serverAccountModels(settings, provider)
 		}
 	}
 	if account != "" {
-		out[account] = settings.AllowedModels[account]
+		out[account] = serverAccountModels(settings, account)
 	}
 	return out
 }

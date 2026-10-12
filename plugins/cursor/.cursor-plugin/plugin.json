@@ -1,0 +1,14 @@
+{
+  "name": "agentworks",
+  "version": "0.1.2",
+  "description": "Opt-in AgentWorks messaging for an exact Cursor conversation",
+  "author": {
+    "name": "AgentWorks"
+  },
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./mcp.json",
+  "skills": [
+    "./skills/agent-messages",
+    "./skills/agentworks-messaging"
+  ]
+}

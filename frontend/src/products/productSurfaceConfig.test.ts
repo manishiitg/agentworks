@@ -33,7 +33,7 @@ describe('product surface deployment configuration', () => {
   it('uses local defaults and cannot opt into server products in a local build', () => {
     vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['mcp-gateway', 'knowledgebase', 'relays'], gatewayUrl: 'http://127.0.0.1:18745' } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'bullpen'])
     expect(gatewayBaseUrl()).toBeNull()
   })
 
@@ -74,6 +74,7 @@ describe('product surface deployment configuration', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
+    expect(enabledProductSurfaces()).not.toContain('bullpen')
     expect(hasGatewaySSO()).toBe(false)
   })
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -219,5 +220,12 @@ func runUpdate(o *options, check, force bool) error {
 		return fmt.Errorf("new binary failed to run; previous version restored")
 	}
 	os.Remove(backup)
+	if err = stopAgentBridge(context.Background()); err != nil {
+		return err
+	}
+	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
+		return err
+	}
+	updateInstalledPlugins(context.Background(), o)
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
 }

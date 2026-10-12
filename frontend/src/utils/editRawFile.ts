@@ -2,12 +2,17 @@ import { responseContent } from './plannerFiles'
 
 interface RawFileApi {
   getPlannerFileContent: (path: string) => Promise<unknown>
-  updatePlannerFile: (path: string, content: string, commitMessage?: string) => Promise<{ success?: boolean; message?: string }>
+  updatePlannerFile: (path: string, content: string, commitMessage?: string, options?: { createOnly?: boolean }) => Promise<{ success?: boolean; message?: string }>
 }
 
 /** The file's raw text as stored: what an edit starts from (the viewer's copy is unescaped and reformatted). */
 export async function readRawFile(api: Pick<RawFileApi, 'getPlannerFileContent'>, path: string): Promise<string> {
-  const raw = responseContent(await api.getPlannerFileContent(path))
+  const response = await api.getPlannerFileContent(path)
+  const raw = responseContent(response)
+  // The document API omits content for a real empty text file. A missing file
+  // also returns 200, but has no filepath or encoding and must not be editable.
+  const document = (response as { data?: { filepath?: string; encoding?: string; content?: unknown } })?.data
+  if (!raw && document?.filepath && document.encoding === 'utf-8' && document.content === undefined) return ''
   if (!raw) throw new Error('empty response')
   return raw.content
 }
@@ -38,12 +43,11 @@ export function newFileNameProblem(name: string): string | null {
 export async function createNewFile(api: RawFileApi, folder: string, name: string): Promise<'created' | 'exists'> {
   const path = `${folder.replace(/\/+$/, '')}/${name}`
   try {
-    await api.getPlannerFileContent(path)
-    return 'exists'
+    const result = await api.updatePlannerFile(path, '', `Create ${name}`, { createOnly: true })
+    if (!result?.success) throw new Error(result?.message || 'create failed')
+    return 'created'
   } catch (cause) {
-    if ((cause as { response?: { status?: number } })?.response?.status !== 404) throw cause
+    if ((cause as { response?: { status?: number } })?.response?.status === 409) return 'exists'
+    throw cause
   }
-  const result = await api.updatePlannerFile(path, '', `Create ${name}`)
-  if (!result?.success) throw new Error(result?.message || 'create failed')
-  return 'created'
 }

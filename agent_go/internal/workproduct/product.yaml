@@ -202,6 +202,14 @@ branding:
   favicon: ""
 
 ui:
+  tips:
+    - id: quick-switcher
+    - id: reminders
+    - id: project-schedules-create
+    - id: project-schedules-manage
+    - id: project-dashboard-create
+    - id: project-dashboard-update
+    - id: toolbar-hide
   surface: work
   files_panel: true
   workflow_panel: false

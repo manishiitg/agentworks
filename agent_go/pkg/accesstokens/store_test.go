@@ -475,6 +475,48 @@ func TestCrewFileGuardsDoNotNeedDashboardConsent(t *testing.T) {
 	}
 }
 
+// Independent local clients must remain revocable and leave capacity for
+// ordinary connections instead of filling the global 100-grant ceiling.
+func TestLocalPresetsAreBoundedAndExplicitlyRevocable(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "tokens.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	now := time.Now().Truncate(time.Second)
+	preset := Token{Name: "agentworks-local", UserID: "owner", Scopes: []string{"workflows:read"}, AllWorkflows: true, NonExpiring: true, ExpiresAt: PermanentExpiry(), LocalPreset: true}
+	var first Token
+	var firstRaw string
+	for i := 0; i < MaxLocalPresets; i++ {
+		issued, raw, err := s.Issue(t.Context(), preset, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			first, firstRaw = issued, raw
+		}
+	}
+	if _, _, err := s.Issue(t.Context(), preset, now); !errors.Is(err, ErrLocalPresetLimit) {
+		t.Fatalf("local cap: %v", err)
+	}
+	if _, err := s.Authenticate(t.Context(), firstRaw, now); err != nil {
+		t.Fatal("cap revoked an existing client", err)
+	}
+	legacy := Token{Name: "Other client", UserID: "owner", Scopes: []string{"workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}
+	if _, _, err := s.Issue(t.Context(), legacy, now); err != nil {
+		t.Fatal("local cap consumed ordinary connection capacity", err)
+	}
+	if err := s.Revoke(t.Context(), first.ID, "owner", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Authenticate(t.Context(), firstRaw, now); !errors.Is(err, ErrInvalid) {
+		t.Fatal("exempt preset bypassed explicit revocation", err)
+	}
+	if _, _, err := s.Issue(t.Context(), preset, now); err != nil {
+		t.Fatal("revoke did not free preset capacity", err)
+	}
+}
+
 func TestGatewayTokenDoesNotRequireWorkflowAttachment(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "tokens.sqlite"))
 	if err != nil {

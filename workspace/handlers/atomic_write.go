@@ -60,3 +60,27 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	}
 	return nil
 }
+
+// createFileAtomic publishes a complete new file without replacing an existing
+// file, directory or symlink, including one created by a writer outside our lock.
+func createFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Link(tmp.Name(), path)
+}

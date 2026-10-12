@@ -84,3 +84,41 @@ func TestWorkshopCancelAllSettlesEveryEntryBeforeUnwinding(t *testing.T) {
 		t.Fatalf("stopped=%d, notifications=%d", len(stopped), notifications)
 	}
 }
+
+func TestAgentItemCaptureUsesRegisteredOwnerWithoutChangingParent(t *testing.T) {
+	controller := &StepBasedWorkflowOrchestrator{httpSessionID: "owning-chat"}
+	parent := virtualtools.WithBackgroundAgentID(context.Background(), "step-parent")
+	first := controller.agentItemExecutionContext(parent, "item-first")
+	second := controller.agentItemExecutionContext(parent, "item-second")
+	if currentWorkshopParentExecutionID(parent) != "step-parent" || currentWorkshopParentExecutionID(first) != "item-first" || currentWorkshopParentExecutionID(second) != "item-second" {
+		t.Fatal("item scope changed its parent or another item's execution owner")
+	}
+	if controller.agentItemExecutionContext(parent, "") != parent {
+		t.Fatal("unregistered item changed execution scope")
+	}
+}
+
+func TestScriptFullRunOwnsOneLifecycleBeforeDispatch(t *testing.T) {
+	notifier := &recordingExecutionNotifier{}
+	registry := NewWorkshopStepRegistry()
+	controller := &StepBasedWorkflowOrchestrator{httpSessionID: "chat", workshopExecutionNotifier: notifier, workshopStepRegistry: registry}
+	root := virtualtools.WithBackgroundAgentID(context.Background(), "workflow-full-example")
+	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "script", Title: "Script"}}
+	ctx, finish := controller.beginScriptInspection(root, step)
+	if len(notifier.starts) != 1 || notifier.starts[0].ParentExecutionID != "workflow-full-example" {
+		t.Fatal("script was not registered under its full run")
+	}
+	owner := currentWorkshopParentExecutionID(ctx)
+	if ctx.Value(scriptInspectionOwnerKey{}) != owner || owner == "workflow-full-example" {
+		t.Fatal("script scope did not bind the registered step")
+	}
+	again, secondFinish := controller.beginScriptInspection(ctx, step)
+	secondFinish("", nil)
+	if currentWorkshopParentExecutionID(again) != owner || len(notifier.starts) != 1 {
+		t.Fatal("an already-owned script acquired a duplicate lifecycle")
+	}
+	finish("done", nil)
+	if len(notifier.completes) != 1 || registry.Get(owner).Snapshot().Status != WorkshopStepDone {
+		t.Fatal("script lifecycle did not finish once")
+	}
+}

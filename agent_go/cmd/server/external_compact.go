@@ -138,6 +138,9 @@ func externalCompactWorkflow(item DiscoveredWorkflow) map[string]any {
 			}
 		}
 		view["id"], view["label"] = m.ID, m.Label
+		if m.Description != "" {
+			view["description"] = m.Description
+		}
 		if m.Icon != "" {
 			view["icon"] = m.Icon
 		}

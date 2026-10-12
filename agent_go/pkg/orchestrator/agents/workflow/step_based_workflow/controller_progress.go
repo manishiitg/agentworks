@@ -562,6 +562,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitScriptedExecutionEvent(
 		}
 	}
 
+	hcpo.recordScriptCompletionSnapshot(ctx, scriptPath, scriptContent, output, errMsg)
 	ev := &events.ScriptedExecutionEvent{
 		BaseEventData: baseevents.BaseEventData{
 			Timestamp: time.Now(),

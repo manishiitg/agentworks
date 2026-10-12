@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
 )
@@ -250,6 +251,9 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 				}
 			}
 		}
+		if !productpolicy.Enabled("bullpen") {
+			delete(want, bullpenAdminTool) // listed only where the Bullpen product runs
+		}
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
@@ -387,7 +391,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && !isExternalCodeRunTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
+		if tool.mutates && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && !isExternalCodeRunTool(tool.Name) && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != brainAdminTool && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -433,7 +437,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	// Golden pin: changing the exposed surface means editing product.yaml and
 	// these lists together, deliberately.
-	wantExternal := []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "list_workflows", "get_workflow", "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_needs_you", "answer_needs_you", "manage_pulse", "manage_project", "manage_crew_chats", "query_database", "run_after_run", "manage_messaging", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_guidance_skills", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "messages", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "get_crew_costs", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "write_crew_file", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "get_token_usage", "set_token_limits", "set_allowed_models"}
+	wantExternal := []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "list_workflows", "get_workflow", "get_settings", "update_settings", "manage_schedules", "workflow_team", "manage_triggers", "list_needs_you", "answer_needs_you", "manage_pulse", "manage_project", "manage_crew_chats", "query_database", "run_after_run", "manage_messaging", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_guidance_skills", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "messages", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "get_crew", "get_crew_costs", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "write_crew_file", "export_crew", "import_crew", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "get_token_usage", "set_token_limits", "set_allowed_models", "bullpen_admin", "brain_admin"}
 	if len(admitted) != len(wantExternal) {
 		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
 	}
@@ -444,6 +448,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	}
 	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "preview_step_runtime", "send_message", "read_agent_messages", "list_message_agents", "schedule_message_wakeup", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_workflow_team", "read_team_source", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "notify_user", "send_email", "record_summary", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
 	wantRun = append([]string{"brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access"}, wantRun...)
+	wantRun = append([]string{"execute_shell_command", "diff_patch_workspace_file", "read_image", "list_llm_capabilities", "get_goal_metrics", "get_pulse_state", "query_workflow_db", "query_workflow_costs", "read_crew_calls"}, wantRun...)
 	if len(run) != len(wantRun) {
 		t.Fatalf("run.tools has %d tools, want %d", len(run), len(wantRun))
 	}
@@ -456,12 +461,13 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 
 func TestExternalRunAuthorityBoundary(t *testing.T) {
 	// Pins the runs:execute authority statement in product.yaml: only
-	// account-scoped tools are withheld; workflow-bound side effects stay
+	// account-scoped tools and internal chat/bridge tools are withheld; workflow-bound side effects stay
 	// because they are the workflow running as configured, not the token
 	// acting beyond it. Changing either list is a deliberate API change.
 	denied := agentworksproduct.RunExternalDenylist()
-	if len(denied) != 3 || denied[0] != "google_workspace_cli" || denied[1] != "list_mcp_servers" || denied[2] != "send_email" {
-		t.Fatalf("external denylist = %v, want exactly [google_workspace_cli list_mcp_servers send_email]", denied)
+	wantDenied := []string{"execute_shell_command", "diff_patch_workspace_file", "read_image", "list_llm_capabilities", "get_goal_metrics", "get_pulse_state", "query_workflow_db", "query_workflow_costs", "read_crew_calls", "google_workspace_cli", "list_mcp_servers", "send_email"}
+	if strings.Join(denied, ",") != strings.Join(wantDenied, ",") {
+		t.Fatalf("external denylist = %v, want %v", denied, wantDenied)
 	}
 	catalog, err := externalTools()
 	if err != nil {
@@ -470,6 +476,11 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 	byName := map[string]externalTool{}
 	for _, tool := range catalog {
 		byName[tool.Name] = tool
+	}
+	for _, name := range denied {
+		if _, exposed := byName[name]; exposed {
+			t.Fatalf("internal tool %s leaked into the external API", name)
+		}
 	}
 	for _, name := range []string{"send_slack_message", "notify_user", "trigger_schedule"} {
 		tool, ok := byName[name]

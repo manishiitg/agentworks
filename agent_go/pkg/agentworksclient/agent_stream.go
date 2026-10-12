@@ -35,10 +35,11 @@ type AgentLiveMessage struct {
 }
 
 type AgentAttachmentOptions struct {
-	AgentName string `json:"agent_name"`
-	Purpose   string `json:"purpose"`
-	Provider  string `json:"provider"`
-	SessionID string `json:"native_session_id"`
+	RejectLiveMove bool   `json:"reject_live_move,omitempty"`
+	AgentName      string `json:"agent_name"`
+	Purpose        string `json:"purpose"`
+	Provider       string `json:"provider"`
+	SessionID      string `json:"native_session_id"`
 }
 
 // AttachAgent is deliberately outside the MCP tool catalog. Its arguments
@@ -136,4 +137,11 @@ func (c *Client) CreateAgentConnection(ctx context.Context, name string) (Config
 		return Config{}, errors.New("invalid agent connection response")
 	}
 	return Config{Server: c.baseURL, Token: v.Access, RefreshToken: v.Refresh, ExpiresAt: time.Now().Add(time.Duration(v.Expires) * time.Second)}, nil
+}
+
+// ShareAgent shares one of the person's own agents with everyone on the server
+// (action share), makes it private again (unshare) or lists what is shared
+// (list). It needs the person's own CLI login; an agent connection is refused.
+func (c *Client) ShareAgent(ctx context.Context, action, agentName string) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodPost, "/api/external/v1/agents/sharing", map[string]any{"action": action, "agent_name": agentName}, true)
 }

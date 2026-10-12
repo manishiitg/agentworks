@@ -112,7 +112,7 @@ func TestIsActiveWorkProjectWorkspaceAnyOwner(t *testing.T) {
 func TestCrewSessionModeNotice(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
 	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha", "", false)
-	for _, marker := range []string{"Run mode", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
+	for _, marker := range []string{"shared user", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
 		if !strings.Contains(notice, marker) {
 			t.Fatalf("session notice missing %q:\n%s", marker, notice)
 		}
@@ -1088,6 +1088,46 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 	_ = fx
 }
 
+// A shared caller's turn (a function call or an ask, which runs as the owner for the guest) may call other functions; the
+// owner's definitions stay owner-only, and an ordinary reader's app chat gets no outbound calls (856-59).
+func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
+	newCrewRunModeFixture(t)
+	registry := agentprofiles.NewRegistry()
+	if err := workproduct.RegisterAgentProfileRuntime(registry, "http://127.0.0.1:0"); err != nil {
+		t.Fatalf("register Work runtime: %v", err)
+	}
+	resolved := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile()}
+	api := &StreamingAPI{agentProfiles: registry, productSchedules: &ProductScheduleService{}}
+	api.scheduler = NewSchedulerService(api)
+	outbound := []string{"list_functions", "call_function", "get_function_call", "reply_function_call"}
+
+	guest := &recordingRegistrar{}
+	guestReq := QueryRequest{AgentProfileID: "work", SelectedFolder: crewRunModeOwnerRoot, CrewGuestCaller: "stranger", PinRunMode: true}
+	if err := api.registerAgentProfileTools(guest, newProductToolGate(resolved), resolved, "owner", "session-g", crewRunModeOwnerRoot, true, guestReq); err != nil {
+		t.Fatalf("guest register: %v", err)
+	}
+	for _, want := range append([]string{"report_function_progress"}, outbound...) {
+		if _, ok := guest.tools[want]; !ok {
+			t.Fatalf("a shared caller's turn is missing %q: %v", want, keysOf(guest.tools))
+		}
+	}
+	for _, denied := range []string{"define_function", "delete_function", "ask_function_update", "create_project_schedule", "update_project_skill_selection", "set_work_identity"} {
+		if _, ok := guest.tools[denied]; ok {
+			t.Fatalf("a shared caller's turn registered %q", denied)
+		}
+	}
+
+	reader := &recordingRegistrar{}
+	if err := api.registerAgentProfileTools(reader, newProductToolGate(resolved), resolved, "reader", "session-r", crewRunModeOwnerRoot, true, QueryRequest{AgentProfileID: "work", SelectedFolder: crewRunModeOwnerRoot}); err != nil {
+		t.Fatalf("reader register: %v", err)
+	}
+	for _, name := range outbound {
+		if _, ok := reader.tools[name]; ok {
+			t.Fatalf("an ordinary reader chat registered outbound %q", name)
+		}
+	}
+}
+
 func keysOf(tools map[string]recordedTool) []string {
 	out := make([]string, 0, len(tools))
 	for name := range tools {
@@ -1297,11 +1337,19 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	slack := req
 	slack.BotPlatform = "slack"
 	got := crewSessionModeForTurn(slack, "owner", "", profile, true)
-	if !strings.Contains(got, "Run mode") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
+	if !strings.Contains(got, "shared user") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
 		t.Fatalf("read-only channel turn (running as the owner) notice = %q", got)
 	}
-	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") {
+	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") || strings.Contains(got, "call_function") {
 		t.Fatalf("read-only web turn notice = %q", got)
+	}
+	// A shared caller's function call or ask (it runs as the owner for the guest) is told it may call other functions, with the
+	// owner's authority, and the notice still closes properly.
+	guestReq := req
+	guestReq.CrewGuestCaller = "someone"
+	got = crewSessionModeForTurn(guestReq, "owner", "", profile, true)
+	if !strings.Contains(got, "call_function") || !strings.Contains(got, "owner's authority") || !strings.HasSuffix(got, sessionModeClose) {
+		t.Fatalf("shared caller notice = %q", got)
 	}
 	code := &resolvedAgentProfile{}
 	code.Definition.ID = "code"

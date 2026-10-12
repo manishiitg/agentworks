@@ -11,8 +11,8 @@ import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
 import { WorkspaceViewBreadcrumbs } from './WorkspaceViewBreadcrumbs'
 import { IntegrationSectionPicker } from '../integrations/IntegrationSectionPicker'
-import { PROJECT_INTEGRATION_SECTIONS } from '../integrations/integrationSections'
-import { ProjectPluginsPanel, PROJECT_PLUGIN_TABS, useProjectPluginTab } from '../integrations/ProjectPluginsPanel'
+import { projectIntegrationSections } from '../integrations/integrationSections'
+import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectVaultPanel } from '../integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
@@ -26,6 +26,7 @@ import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useChatStore } from '../../stores/useChatStore'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { AskAIButton } from './AskAIButton'
 import type { Skill } from '../../types/skills'
 import { getWorkspaceView, type CapabilityViewId } from './workspaceViews'
@@ -44,9 +45,6 @@ import { useGmailInboundUIEnabled } from './bots/gmailAskAI'
 export type WorkflowCapabilitySection = CapabilityViewId
 
 type McpTab = IntegrationTabId
-
-const MCP_TABS = PROJECT_INTEGRATION_SECTIONS
-const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'gmail')
 
 type IdentityTab = IdentityTabId
 
@@ -119,18 +117,21 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const [cdpChecking, setCdpChecking] = useState(false)
   const refreshTools = useMCPStore(state => state.refreshTools)
   const [refreshingServers, setRefreshingServers] = useState(false)
-  const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS
+  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const mcpTabs = projectIntegrationSections(allowedProducts, relayMode)
   const [tab, setTab] = useState<McpTab>('apps')
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
   const [integrationMenu, setIntegrationMenu] = useState(true)
-  const [pluginTab, setPluginTab] = useProjectPluginTab()
+  const [preferredPluginTab, setPluginTab] = useProjectPluginTab()
+  const pluginTabs = projectPluginTabs(allowedProducts)
+  const pluginTab = pluginTabs.some(option => option.value === preferredPluginTab) ? preferredPluginTab : pluginTabs[0].value
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
   const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets, Models…).
   useWorkspaceViewTarget('mcp', target => {
     if (mcpTabs.some(option => option.value === target)) { setTab(target as McpTab); setIntegrationMenu(false) }
-    else if (PROJECT_PLUGIN_TABS.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
+    else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
   }, section === 'mcp')
   useWorkspaceViewTarget('identity', target => {
     if (identityTabs.some(option => option.value === target)) setIdentityTab(target as IdentityTab)
@@ -334,7 +335,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             />
           )}
           tabs={section === 'mcp'
-            ? (!integrationMenu && activeMcpTab === 'apps' ? { value: pluginTab, onChange: (value: string) => setPluginTab(value as typeof pluginTab), options: [...PROJECT_PLUGIN_TABS], ariaLabel: 'Integrations' } : undefined)
+            ? (!integrationMenu && activeMcpTab === 'apps' ? { value: pluginTab, onChange: (value: string) => setPluginTab(value as typeof pluginTab), options: pluginTabs, ariaLabel: 'Integrations' } : undefined)
             : section === 'identity'
               ? { value: activeIdentityTab, onChange: (value: string) => setIdentityTab(value as IdentityTab), options: identityTabs, ariaLabel: 'Identity' }
               : undefined}

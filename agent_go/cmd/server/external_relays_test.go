@@ -98,9 +98,6 @@ func TestExternalRelayCreationRetryAndConsent(t *testing.T) {
 	f.relayCall(t, reader, "create_relay", map[string]any{"label": "Reader", "submission_id": "reader"}, 403)
 	_, runner := f.token(t, "owner", []string{"runs:execute"}, true)
 	f.relayCall(t, runner, "create_relay", args, 403)
-	_, writer = f.token(t, "owner", relayConsentScopes, true)
-	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "false")
-	f.relayCall(t, writer, "create_relay", args, 403)
 }
 func findWorkflowFunctionTriggerFromTest(ctx context.Context, id string) (*WorkflowSchedule, error) {
 	_, m, err := findWorkflowManifestByID(ctx, id)
@@ -284,6 +281,14 @@ func TestExternalRelayDraftAndPublishedIngress(t *testing.T) {
 	}
 	f.relayCall(t, runner, "get_relay_run", map[string]any{"workflow_id": "invoices", "run_id": runID}, 200)
 	f.relayCall(t, writer, "get_relay_run", map[string]any{"workflow_id": "invoices", "run_id": runID}, 404)
+	// Recorded runs: editors see every caller's, a plain runner only their own.
+	if own := f.relayCall(t, runner, "list_relay_runs", map[string]any{"workflow_id": "invoices"}, 200); own["scope"] != "own" {
+		t.Fatalf("runner must be limited to their own runs: %v", own)
+	}
+	if all := f.relayCall(t, writer, "list_relay_runs", map[string]any{"workflow_id": "invoices", "version": "v1"}, 200); all["scope"] != "all" {
+		t.Fatalf("editor must see every run: %v", all)
+	}
+	f.relayCall(t, runner, "list_relay_runs", map[string]any{"workflow_id": "invoices", "version": "v9"}, 404)
 	f.relayCall(t, runner, "test_relay", map[string]any{"workflow_id": "invoices", "function": "process", "input": map[string]any{}, "idempotency_key": "denied"}, 403)
 	runArgs["input"] = map[string]any{"name": "changed"}
 	f.relayCall(t, runner, "run_relay", runArgs, 409)

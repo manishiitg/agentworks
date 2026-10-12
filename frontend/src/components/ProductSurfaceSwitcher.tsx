@@ -1,6 +1,6 @@
 import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { Check, ChevronDown, Waypoints, Network } from 'lucide-react'
+import { Check, ChevronDown, MessagesSquare, Network, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
@@ -40,6 +40,7 @@ const products: Array<{
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
   { id: 'llm-gateway', label: 'LLM Gateway', description: 'Shared models and request costs', icon: Network },
   { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
+  { id: 'bullpen', label: 'Bullpen', description: 'Connect your agents and coordinate their work', icon: MessagesSquare },
 ]
 
 /** The product list with labels, descriptions and marks, shared with the welcome page. */

@@ -6,7 +6,7 @@ This release provides managed plan and source-file editing. It does not expose n
 
 ## Enable and authorize
 
-Set `AGENTWORKS_MCP_BUILDER_ENABLED=true` on the server. The default is disabled. The endpoint remains `/api/external/v1/mcp`, with the existing outer tools `get_api_spec` and `call_tool`.
+CLI and MCP authoring are always available within the enabled products. The legacy `AGENTWORKS_MCP_BUILDER_ENABLED` deployment switch is ignored; existing connection consent and current roles remain required. The endpoint remains `/api/external/v1/mcp`, with the existing outer tools `get_api_spec` and `call_tool`.
 
 For OAuth, explicitly request all four scopes:
 
@@ -16,11 +16,33 @@ workflows:read files:read runs:execute builder:chat
 
 OAuth Builder consent follows the account: no workflow selection is requested. Each call resolves the current account, project and team permissions. Existing bounded grants keep their workflow limits. A compatible OAuth client must explicitly request Builder scopes; omitted scopes and the ordinary CLI device-login flow retain their previous defaults.
 
-The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Typed `plan` operations reuse the same consent; the unused `plan:write` permission is retired. Existing Builder-chat consent also authorizes these direct edits, explained in the consent details and Connect notice. Old plan:write-only grants lose that unused permission without receiving Builder consent. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent.
+The access-token API also accepts the same four scopes with `workflow_ids` and `all_workflows: false`. Direct source/documentation writes reuse this authoring consent and current owner/editor roles; no separate file-write scope is issued. Typed `plan` operations reuse the same consent; the unused `plan:write` permission is retired. Existing Builder-chat consent also authorizes these direct edits, explained in the consent details and Connect notice. Old plan:write-only grants lose that unused permission without receiving Builder consent. Knowing a workflow ID or owning a workflow does not bypass missing Builder consent. Local full-access tokens include Builder consent; recreate an older local token that lacks it and update the client connection. Local preset tokens coexist with other clients, up to 32 active presets per account; revoke unused tokens in Connect to free capacity. Read-only and explicitly scoped tokens retain their limits.
 
 Managed source-file writes require the workflow documents to be mounted locally on the server. Remote-only workspace deployments fail those writes closed. A shared, server-owned auth state directory outside workflow documents is required for the durable operation records.
 
 ## Direct plan and file edits
+
+Team administration uses `workflow_team` directly. Call `action=get` with the
+workflow ID to read the policy, stable route IDs and schedule revisions. Authorized
+managers with Builder consent also receive IDs/usernames for the complete enabled
+user directory, as in the website member picker; emails are omitted. Read-only
+workflow connections can discover and use `get`, but cannot read that management
+directory or mutate the policy. Call `action=update` with the complete `team` policy and
+`expected_revision` (`0` for initial enablement). The policy has one `leader_id`,
+`contributors`, `routes`, and optional `read_only_step_ids`. Each Contributor's
+`run`, `manage_schedules`, `approve`, `approval_ids`, `backup`, `publish` and
+`notify` grants are independent; route entries identify `step_id`, `route_id`
+and `contributor_id`. Copy the current policy to preserve intended grants.
+
+The website backend enforces owner-only enablement, current Leader/admin
+management, valid members/routes, reassignment and ownership transfer. Updates
+use the shared lock and revision check, current Builder consent and manifest
+file guard. They do not start a model turn. After a permission change, inspect
+schedules with `manage_schedules`, then use `workflow_team` with
+`action=reauthorize_schedule`, `schedule_id`, current `expected_revision` and
+`expected_schedule_revision` from `get`. This checks standing route/action grants
+and the exact schedule while retaining its timing and enabled state. If an update
+has an uncertain response, read the saved policy before retrying.
 
 Read `get_plan` for the combined plan/configuration revision. Discover the
 current native operations with `plan action=list`; there are 20 operations,
@@ -102,3 +124,14 @@ go test -race ./cmd/server -run '^TestExternalBuilderOperations' -count=1
 ```
 
 The automated lifecycle tests use a deterministic model hook. Before enabling this on a deployment, smoke-test with its configured model and an actual external AI client against a throwaway workflow: submit a small edit, confirm it appears in the same browser chat, answer a question, cancel a second operation, and inspect the resulting plan/files. Record live checks against the deployment revision in PLAT-856; remote regression tests alone do not establish hosted model or deployment validation.
+
+## Workflow Crew attachments
+
+Use `workflow_crews` with `workflow_id` and `action=list` to inspect a workflow's
+read-only Crew attachments. Detach an alias explicitly with `action=detach` and
+`alias` from that list. Existing Builder consent and the current workflow
+owner/editor role apply, including connection bounds and file guards.
+This removes the read binding and its live grants; it leaves plan steps unchanged.
+Crew deletion still refuses remaining attachments and Crew steps. `crew_references`
+handles Crew-to-workflow references instead. New workflow Crew attachments continue
+through the native Builder's `manage_crew_attachment` tool.

@@ -1,0 +1,45 @@
+name: Muse plugin
+
+on:
+  push:
+    branches: [main, 'verify/**']
+    paths: ['plugins/muse/**', 'agent_go/cmd/agentworks/muse*', 'agent_go/cmd/agentworks/plugins.go', 'agent_go/cmd/agentworks/agent_commands.go', 'agent_go/pkg/agentworksclient/plugin_mcp.go', '.agents/plugins/marketplace.json', '.github/workflows/verify-muse-plugin.yml']
+  pull_request:
+    paths: ['plugins/muse/**', 'agent_go/cmd/agentworks/muse*', 'agent_go/cmd/agentworks/plugins.go', 'agent_go/cmd/agentworks/agent_commands.go', 'agent_go/pkg/agentworksclient/plugin_mcp.go', '.agents/plugins/marketplace.json', '.github/workflows/verify-muse-plugin.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  macos-process:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - name: Real macOS versioned process and chat-switch fencing
+        working-directory: agent_go
+        run: go test ./cmd/agentworks -run '^(TestMusePluginExactProcessBoundary|TestAgentPluginUnattachedHookAndPersonCommand|TestCodexDesktopHostDiscovery|TestAgentPersonCommandsAndLocalCodingRemainAvailable)$' -count=1
+  hooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Executable lifecycle guards
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 plugins/muse/tests/check_hooks.py
+      - name: Install pinned native Codex CLI for catalog compatibility
+        run: |
+          mkdir -p "$RUNNER_TEMP/muse-codex-regression"
+          curl --fail --silent --show-error --location https://github.com/openai/codex/releases/download/rust-v0.162.1/codex-x86_64-unknown-linux-musl.tar.gz | tar -xz -C "$RUNNER_TEMP/muse-codex-regression"
+      - name: Real Codex marketplace discovery and unchanged package install
+        run: python3 plugins/muse/tests/prove_codex_marketplace.py "$RUNNER_TEMP/muse-codex-regression/codex-x86_64-unknown-linux-musl"

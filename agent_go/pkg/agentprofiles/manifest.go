@@ -55,10 +55,19 @@ type PulseDefinition struct {
 	WritePaths []string `yaml:"write_paths"`
 }
 
+// ExecutionFunctionTools admits server-owned function tools to workflow agents.
+// Omission or an empty tool list exposes no function tools.
+type ExecutionFunctionTools struct {
+	Category string   `yaml:"category"`
+	Tools    []string `yaml:"tools"`
+}
+
 type ProductManifest struct {
-	// Execution owns shared workflow-runtime capabilities; omitted preserves workflow defaults.
+	// Execution owns shared workflow-runtime capabilities. Omitted platform stores
+	// preserve workflow defaults; omitted function tools admit no function calls.
 	Execution struct {
-		PlatformStores *bool `yaml:"platform_stores,omitempty"`
+		PlatformStores *bool                   `yaml:"platform_stores,omitempty"`
+		FunctionTools  *ExecutionFunctionTools `yaml:"function_tools,omitempty"`
 	} `yaml:"execution,omitempty"`
 	// InstructionSections declares the shared server prompt-section registry for
 	// integration checks; each section still decides when it applies at runtime.
@@ -81,11 +90,12 @@ type ProductManifest struct {
 		Favicon string `yaml:"favicon"`
 	} `yaml:"branding"`
 	UI struct {
-		Surface       string `yaml:"surface"`
-		FilesPanel    bool   `yaml:"files_panel"`
-		WorkflowPanel bool   `yaml:"workflow_panel"`
-		Secrets       bool   `yaml:"secrets"`
-		Streaming     string `yaml:"streaming"`
+		Tips          []WorkingTip `yaml:"tips,omitempty"`
+		Surface       string       `yaml:"surface"`
+		FilesPanel    bool         `yaml:"files_panel"`
+		WorkflowPanel bool         `yaml:"workflow_panel"`
+		Secrets       bool         `yaml:"secrets"`
+		Streaming     string       `yaml:"streaming"`
 	} `yaml:"ui"`
 	Workflows struct {
 		Enabled        []string `yaml:"enabled"`
@@ -112,8 +122,24 @@ func LoadProductManifest(fsys fs.FS, path string) (ProductManifest, error) {
 	if manifest.SchemaVersion != 2 {
 		return manifest, fmt.Errorf("invalid product manifest: schema_version must be 2")
 	}
+	manifest.UI.Tips, err = resolveWorkingTips(manifest.UI.Tips)
+	if err != nil {
+		return manifest, err
+	}
 	if err := productdeps.Validate(manifest.Dependencies); err != nil {
 		return manifest, fmt.Errorf("invalid dependencies: %w", err)
+	}
+	if def := manifest.Execution.FunctionTools; def != nil {
+		if len(def.Tools) > 0 && strings.TrimSpace(def.Category) == "" {
+			return manifest, fmt.Errorf("execution.function_tools.category is required when tools are enabled")
+		}
+		seen := map[string]bool{}
+		for _, name := range def.Tools {
+			if name == "" || strings.TrimSpace(name) != name || seen[name] {
+				return manifest, fmt.Errorf("execution.function_tools.tools: empty, untrimmed or duplicate name %q", name)
+			}
+			seen[name] = true
+		}
 	}
 	if strings.TrimSpace(manifest.Profile.ID) == "" {
 		return manifest, fmt.Errorf("invalid product manifest: profile.id is required")

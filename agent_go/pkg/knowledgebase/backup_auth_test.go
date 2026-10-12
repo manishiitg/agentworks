@@ -31,6 +31,10 @@ func TestBackupPATEncryptionRotationAndRemoval(t *testing.T) {
 	if value, err := s.decryptBackupPAT(d); err != nil || value != pat {
 		t.Fatal("PAT cannot be used", err)
 	}
+	// The automatic push reads its token through GitToken: a token saved with the setup must reach it (it did not).
+	if f, err := s.GitFolder(); err != nil || s.GitToken(f) != pat {
+		t.Fatal("automatic push cannot use the saved token", err)
+	}
 	if err := filepath.WalkDir(s.private, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err

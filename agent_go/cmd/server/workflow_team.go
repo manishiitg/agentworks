@@ -413,6 +413,9 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 		} else if level != WorkflowAccessOwner {
 			writeUsersError(w, 403, "only an owner can enable team collaboration")
 			return
+		} else if body.ExpectedRevision != 0 {
+			writeUsersError(w, 409, "team policy changed; reload before enabling")
+			return
 		}
 		if m.Team != nil && body.Team != nil && body.Team.LeaderID != m.Team.LeaderID && body.Team.member(m.Team.LeaderID) == nil {
 			writeUsersError(w, 400, "ownership transfer must retain the outgoing Leader as a Contributor with reviewed permissions")
@@ -1029,6 +1032,45 @@ func stampTeamScheduleChanges(ctx context.Context, prior, next *WorkflowManifest
 			next.Schedules[i].TeamPolicyRevision = next.Team.Revision
 		}
 	}
+}
+
+// Explicit reauthorization preserves the reviewed schedule itself. It uses
+// the same current grants and manifest writer as ordinary schedule edits.
+func workflowTeamScheduleRevision(s WorkflowSchedule) (string, error) {
+	raw, err := json.Marshal(s)
+	return teamRevision(string(raw)), err
+}
+
+func reauthorizeWorkflowTeamSchedule(ctx context.Context, root string, m *WorkflowManifest, id string, revision int, expectedSchedule string) error {
+	if held, _ := ctx.Value(teamLockHeldKey{}).(string); held != root {
+		return fmt.Errorf("team authorization requires the workspace lock")
+	}
+	if m.Team == nil || m.Team.Revision != revision {
+		return fmt.Errorf("team policy changed; read the current revision before authorizing")
+	}
+	if access := userAccessForClaims(GetUserFromContext(ctx)); access.Disabled || !access.CanEdit {
+		return fmt.Errorf("account does not allow edits")
+	}
+	actor := teamActor(ctx)
+	for i := range m.Schedules {
+		if m.Schedules[i].ID != id {
+			continue
+		}
+		current, err := workflowTeamScheduleRevision(m.Schedules[i])
+		if err != nil {
+			return err
+		}
+		if current != expectedSchedule {
+			return fmt.Errorf("schedule changed; reread before authorizing")
+		}
+		if err := teamScheduleAuthority(m.Team, actor, m.Schedules[i]); err != nil {
+			return err
+		}
+		m.Schedules[i].TeamAuthorizedBy = actor
+		m.Schedules[i].TeamPolicyRevision = m.Team.Revision
+		return WriteWorkflowManifest(ctx, root, m)
+	}
+	return fmt.Errorf("schedule not found in this workflow")
 }
 func validateTeamScheduleFire(ctx context.Context, root string, s WorkflowSchedule) error {
 	m, ok, e := ReadWorkflowManifest(ctx, root)

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -108,6 +109,9 @@ func namedAgentForClaims(ctx context.Context, claims *UserClaims, name string) (
 }
 
 func resolveNamedMessageAgent(ctx context.Context, userID, name string) (triggerTarget, error) {
+	if strings.Contains(name, "/") {
+		return resolveSharedMessageAgent(ctx, userID, name)
+	}
 	name, err := normalizeMessageAgentName(name)
 	if err != nil {
 		return triggerTarget{}, err
@@ -142,7 +146,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "provider": func() string {
+			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "shared_with_everyone": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -150,6 +154,8 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 			}()})
 		}
 	}
+	hydrateOwnerUsage(ctx, userID, items, s.Agents)
+	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}, nil
 }
@@ -240,11 +246,11 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		s.Agents[index].Connections = connections
 		if purpose, present := args["purpose"]; present {
 			text, ok := purpose.(string)
-			if !ok || len(strings.TrimSpace(text)) > 512 {
-				externalError(w, 400, "invalid_arguments", "purpose must be a string of at most 512 bytes")
+			if !ok || utf8.RuneCountInString(strings.TrimSpace(text)) > 512 || strings.ContainsAny(text, "\r\n") {
+				externalError(w, 400, "invalid_arguments", "purpose must be a string of at most 512 characters")
 				return
 			}
-			s.Agents[index].Purpose = strings.TrimSpace(text)
+			s.Agents[index].Purpose = cleanAgentPurpose(text)
 		}
 	}
 	if err = saveAgentMessageStore(r.Context(), s); err != nil {
@@ -262,13 +268,29 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	externalJSON(w, out)
 }
 
+// Purpose is display metadata; controls and invisible formatting must not
+// alter a roster or appear as terminal input. Length/line validation is separate.
+func cleanAgentPurpose(text string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, text))
+}
+
 // Updating purpose cannot create a name, move an attachment or widen its connections.
 func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	purpose, ok := args["purpose"].(string)
 	purpose = strings.TrimSpace(purpose)
-	if !ok || purpose == "" || utf8.RuneCountInString(purpose) > 80 || strings.ContainsAny(purpose, "\r\n") {
-		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 80 characters")
+	if !ok || purpose == "" || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
+		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 512 characters")
+		return
+	}
+	purpose = cleanAgentPurpose(purpose)
+	if purpose == "" {
+		externalError(w, 400, "invalid_arguments", "purpose must contain visible text")
 		return
 	}
 	if !namedAgentOperationAllowed(claims, true) {
@@ -372,7 +394,10 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					if position >= limit {
 						continue
 					}
-					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": c.Endpoints[m.From].Label, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					if person := crossPersonOwner(c.Endpoints[m.From], claims.UserID); person != "" {
+						item["from_person"], item["untrusted"] = person, true
+					}
 					items = append(items, nil)
 					copy(items[position+1:], items[position:])
 					items[position] = item

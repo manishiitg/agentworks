@@ -17,6 +17,7 @@ import (
 // policy. No model turn and no mocked file writer stand in for the commit.
 func TestExternalPlanEditsOverMCP(t *testing.T) {
 	f := newBuilderOperationFixture(t)
+	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "false")
 	router := gin.New()
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)

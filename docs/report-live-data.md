@@ -1,5 +1,22 @@
 # Live report data from scripts (`window.report.run`)
 
+## Ask about a dashboard item
+
+In a project's dashboard pane, right-click a visible number or text and choose
+**Ask agent about this**. You can
+also select a passage before right-clicking. The question includes the clicked
+value or selection, its nearby label or table row, the dashboard document and
+the time it was captured. Existing dashboards get this action automatically.
+
+Choose **Where did this come from?**, **Why hasn't this changed?**, or write your
+own question, then select **Send to agent**. This uses the project's existing
+chat, including its queue if the agent is already working. The agent can inspect
+the dashboard's source and project data to explain the value; the menu itself
+does not establish its provenance. Copy text is also available; Shift-right-click
+keeps the browser's own context menu. Touch long-press keeps native selection
+and copying. Standalone viewing links have no question action; open the project
+to ask its agent.
+
 A workflow Dashboard normally reads what runs stored in `db/db.sqlite`
 (`window.report.query`). When it needs the **current** state of an outside
 system (Notion, a CRM, an API), it can run one of the workflow's own scripts

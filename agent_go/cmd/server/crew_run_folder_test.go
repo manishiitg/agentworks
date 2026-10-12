@@ -35,7 +35,7 @@ func TestCrewRunModeWritesOnlyTheOutputFolder(t *testing.T) {
 		}
 	}
 
-	if notice := crewSessionModeNotice("Crew/c-1", folder, true); !strings.Contains(notice, "Run mode") || !strings.Contains(notice, folder) || !strings.Contains(notice, crewOutputDirEnv) {
+	if notice := crewSessionModeNotice("Crew/c-1", folder, true); !strings.Contains(notice, "shared user") || !strings.Contains(notice, folder) || !strings.Contains(notice, crewOutputDirEnv) {
 		t.Fatalf("notice does not name the run folder: %s", notice)
 	}
 }

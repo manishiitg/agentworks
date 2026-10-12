@@ -1,59 +1,94 @@
-// Tiny hints about product features, shown very rarely beside "Working…"
-// (owner, 2026-10-07: very rare, non-intrusive, intelligent). One place to add,
-// edit or remove a tip. A tip only names features that exist today.
+// Display definitions come from product.yaml through /api/product-tips.
 import type { ProductSurface } from './productSurfaceConfig'
 import { featureUsed, type UsedFeature } from '../utils/featureUsage'
 
 export interface TipContext {
   surface: ProductSurface
-  /** Chat tabs open in the current Code project (1 = only the main chat). */
   codeTabs: number
+  userId?: string
 }
 
 export interface ProductTip {
   id: string
   text: string
-  /** Products where it applies; none = every product. */
-  products?: ProductSurface[]
-  /** Never shown to someone who already uses this feature. */
-  skipIfUsed?: UsedFeature
-  /** Only when it fits the moment. */
-  when?: (context: TipContext) => boolean
+  skip_if_used?: UsedFeature
+  when?: { code_tabs?: { min?: number; max?: number } }
 }
 
-export const PRODUCT_TIPS: ProductTip[] = [
-  { id: 'quick-switcher', text: '⌘K / Ctrl+K searches products, projects, chats, panels and tabs. Try typing “slack”.', skipIfUsed: 'quick-switcher' },
-  { id: 'code-new-tab', text: '⌥⇧T / Alt+Shift+T opens another chat tab, so two tasks run side by side.', products: ['code'], skipIfUsed: 'chat-tab-new', when: c => c.codeTabs <= 1 },
-  { id: 'code-tab-keys', text: 'Switch chat tabs with ⌘1–5 in the desktop app, or ⌥1–5 in a browser.', products: ['code'], skipIfUsed: 'chat-tab-keys', when: c => c.codeTabs >= 2 },
-  { id: 'code-ask-chat', text: 'Chats in a Code can ask each other, e.g. “ask Chat 2 to review this”.', products: ['code'], when: c => c.codeTabs >= 2 },
-  { id: 'reminders', text: 'Ask for a reminder, e.g. “check the deploy in 15 minutes”.', products: ['code', 'work'] },
-  { id: 'step-test-mode', text: 'Changed a step? Ask to run it in test mode: nothing is sent and the data is a copy.', products: ['agentworks'] },
-  { id: 'toolbar-hide', text: 'The icon at the end of the toolbar hides it; ⌘K still opens any panel.', skipIfUsed: 'toolbar-hide' },
-]
-
+export type ProductTipCatalog = Partial<Record<ProductSurface, ProductTip[]>>
 const STATE_KEY = 'agentworks.working-tip'
-export const TIP_INTERVAL_MS = 4 * 60 * 60 * 1000
+const MINUTE = 60 * 1000
+interface ProductHistory { lastShownAt?: number; shownCount?: number }
+interface TipState { seen: string[]; products: Partial<Record<ProductSurface, ProductHistory>> }
 
-interface TipState { lastShownAt?: number; seen?: string[] }
-
-function readState(): TipState {
-  try { return JSON.parse(localStorage.getItem(STATE_KEY) || '{}') as TipState } catch { return {} }
+function stateKey(context: TipContext): string {
+  return `${STATE_KEY}:v2:${encodeURIComponent(context.userId || 'local')}`
 }
 
-/** Picks at most one tip every four hours: relevant here, for a feature not yet used, not
- * shown before. Records the pick. Returns null when nothing is due. */
-export function claimWorkingTip(context: TipContext, now = Date.now(), tips = PRODUCT_TIPS): string | null {
-  const state = readState()
-  if (state.lastShownAt && now - state.lastShownAt < TIP_INTERVAL_MS) return null
-  const seen = new Set(state.seen ?? [])
-  const fitting = tips.filter(tip =>
-    (!tip.products || tip.products.includes(context.surface)) &&
-    !(tip.skipIfUsed && featureUsed(tip.skipIfUsed)) &&
-    (!tip.when || tip.when(context)))
-  const pick = fitting.find(tip => !seen.has(tip.id))
+function readState(context: TipContext): TipState {
+  try {
+    const stored = localStorage.getItem(stateKey(context))
+    const raw = JSON.parse(stored || '{}')
+    const seen = Array.isArray(raw?.seen) ? raw.seen.filter((id: unknown) => typeof id === 'string') : []
+    const products = raw?.products && typeof raw.products === 'object' && !Array.isArray(raw.products) ? raw.products : {}
+    // Preserve unknown previous viewer history only for local/anonymous use.
+    if (!stored && !context.userId) {
+      const legacy = JSON.parse(localStorage.getItem(STATE_KEY) || '{}')
+      return { seen: Array.isArray(legacy?.seen) ? legacy.seen.filter((id: unknown) => typeof id === 'string') : [], products: { [context.surface]: { lastShownAt: legacy?.lastShownAt, shownCount: 0 } } }
+    }
+    return { seen, products }
+  } catch { return { seen: [], products: {} } }
+}
+
+function history(context: TipContext, state: TipState): Required<ProductHistory> {
+  const entry = state.products[context.surface]
+  return {
+    lastShownAt: typeof entry?.lastShownAt === 'number' && Number.isFinite(entry.lastShownAt) ? entry.lastShownAt : 0,
+    shownCount: typeof entry?.shownCount === 'number' && Number.isFinite(entry.shownCount) ? Math.max(0, entry.shownCount) : 0,
+  }
+}
+
+// New product: first two tips 30 minutes apart, then two at each slower tier.
+export function workingTipIntervalMs(shownCount: number): number {
+  return (shownCount < 2 ? 30 : shownCount < 4 ? 60 : shownCount < 6 ? 120 : 240) * MINUTE
+}
+
+export function workingTipDelayMs(context: TipContext, now = Date.now()): number {
+  const previous = history(context, readState(context))
+  return previous.lastShownAt ? Math.max(0, previous.lastShownAt + workingTipIntervalMs(previous.shownCount) - now) : 0
+}
+
+function isEligible(tip: ProductTip, context: TipContext, seen: string[]): boolean {
+  const tabs = tip.when?.code_tabs
+  return !seen.includes(tip.id) && !(tip.skip_if_used && featureUsed(tip.skip_if_used)) &&
+    (tabs?.min === undefined || context.codeTabs >= tabs.min) &&
+    (tabs?.max === undefined || context.codeTabs <= tabs.max)
+}
+
+// Whether an unseen eligible definition exists, ignoring the due check: after
+// another chat claims this slot, the caller retries at the next due time.
+export function hasUnseenEligibleTip(context: TipContext, tips: ProductTip[] = []): boolean {
+  const seen = readState(context).seen
+  return tips.some(tip => isEligible(tip, context, seen))
+}
+
+// The caller supplies only the current product's resolved YAML definitions.
+export function claimWorkingTip(context: TipContext, now = Date.now(), tips: ProductTip[] = []): string | null {
+  const state = readState(context)
+  const previous = history(context, state)
+  if (previous.lastShownAt && now - previous.lastShownAt < workingTipIntervalMs(previous.shownCount)) return null
+  const pick = tips.find(tip => isEligible(tip, context, state.seen))
   if (!pick) return null
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify({ lastShownAt: now, seen: [...seen, pick.id] }))
+    state.seen.push(pick.id)
+    state.products[context.surface] = { lastShownAt: now, shownCount: previous.shownCount + 1 }
+    localStorage.setItem(stateKey(context), JSON.stringify(state))
+    // The anonymous v2 state was migrated from the legacy key, so the first
+    // successful anonymous write retires it. Signed-in writes never touch it:
+    // that browser history belongs to no account.
+    if (!context.userId) {
+      try { localStorage.removeItem(STATE_KEY) } catch { /* legacy cleanup is best-effort */ }
+    }
   } catch { return null }
   return pick.text
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
@@ -172,7 +173,7 @@ func NewBaseOrchestrator(
 	}
 
 	// Tool categories are immutable after construction. Copy the caller's map
-	// and pre-register the built-in delegation tools so parallel nested
+	// and pre-register the built-in delegation and function-call tools so parallel nested
 	// orchestrators never write to a shared map during agent creation.
 	immutableToolCategories := make(map[string]string, len(toolCategories)+4)
 	for name, category := range toolCategories {
@@ -182,6 +183,10 @@ func NewBaseOrchestrator(
 		if tool.Function != nil {
 			immutableToolCategories[tool.Function.Name] = virtualtools.GetSubAgentToolCategory()
 		}
+	}
+	functionTools := agentworksproduct.ExecutionFunctionTools()
+	for _, name := range functionTools.Tools {
+		immutableToolCategories[name] = functionTools.Category
 	}
 
 	// Create orchestrator instance

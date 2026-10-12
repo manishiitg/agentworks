@@ -81,8 +81,10 @@ Connect the server to the agent (Claude Code: `claude mcp add --transport http a
 then sign in as the test user). Then tell it:
 
 > Read `deploy/acceptance/catalog.json`. Find or create the Crew named in `crew` (tool `crew`, action list/create). For every case:
-> if it has `tool`, call that tool with `args`; if it has `message`, send it with `ask_crew` to that Crew (wait_seconds 25, then poll
-> `functions` action=status with the call_id until it finishes); for `burst`, send that many `ask_crew` calls at the same time.
+> if it has `tool`, call that tool with `args`; if it has `message`, send it with `ask_crew` to that Crew. An ask returns an `inbox_id` at once and the Crew's chat answer is not
+> forwarded, so add to the message: "send your answer with send_message into this inbox_id (shell: curl --json ... -H \"$MCP_AUTH\"
+> \"$MCP_CUSTOM/send_message\")", then read the inbox (`agentworks messages read --inbox ID --wait 20`, not `tools call messages`, which
+> overwrites the action) until a message arrives; for `burst`, send that many `ask_crew` calls at the same time.
 > Check each answer against the case's `expect` (must match) and `forbid` (must not match) regular expressions. Skip cases with
 > `needs: slots` unless I said the server has slots, and `needs: admin` unless I am an administrator. Report one line per case,
 > PASS / FAIL / SKIP, with the answer text on a FAIL. Do not change anything else on the server.

@@ -52,19 +52,15 @@ func deploymentPiModels(keyedOnly bool) []dynamicModelEntry {
 	return entries
 }
 
-// withDeploymentPiModels puts the template's models first; with a template
-// they are the default instead of Pi's built-in default.
+// withDeploymentPiModels: a deployment that supplies its own Pi models offers
+// only those (the first is the default). Pi's built-in catalog (Gemini, GLM,
+// OpenRouter and the rest) has no key on such a deployment, so listing it only
+// lets a project save a model that fails with "No API key found".
 func withDeploymentPiModels(models []dynamicModelEntry, keyedOnly bool) []dynamicModelEntry {
-	deployment := deploymentPiModels(keyedOnly)
-	if len(deployment) == 0 {
-		return models
+	if deployment := deploymentPiModels(keyedOnly); len(deployment) > 0 {
+		return deployment
 	}
-	rest := make([]dynamicModelEntry, 0, len(models))
-	for _, model := range models {
-		model.IsDefault = false
-		rest = append(rest, model)
-	}
-	return mergePiModelEntries(deployment, rest)
+	return models
 }
 
 // deploymentPiKeyConfigured: the server holds the key of a template provider.

@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
+	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -372,6 +373,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	_ = progress
 	_ = allSteps
 	ctx = withParentStepIndex(ctx, stepIndex)
+	hcpo.recordInspectionMode(ctx, "agent")
 
 	sequenceStep, ok := step.(*AgentPlanStep)
 	if !ok {
@@ -572,7 +574,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		}
 		started := time.Now()
 		notificationID, notificationName, notificationMeta, notifyItem := hcpo.startAgentItemNotification(ctx, sequenceStep, item, stepIndex, stepPath, source, started)
-		summary, err := hcpo.executeAgentItem(ctx, sequenceStep, item, stepIndex, stepPath, session, isRoute)
+		itemCtx := hcpo.agentItemExecutionContext(ctx, notificationID)
+		if notifyItem {
+			hcpo.recordInspectionMode(itemCtx, agentItemInspectionMode(item))
+		}
+		summary, err := hcpo.executeAgentItem(itemCtx, sequenceStep, item, stepIndex, stepPath, session, isRoute)
 		if err == nil && sequenceStep.AuthoredPrompt && itemIndex == len(plannedItems)-1 {
 			_, err = normalizeAuthoredJSONResult(summary)
 		}
@@ -656,6 +662,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		hcpo.recordRunPersistenceError(context.Background(), sequenceStep.GetID(), err)
 	}
 	return finalSummary, session.ConversationHistory, nil
+}
+
+// Keep provider runtime identity separate from the registered item and chat.
+// This scope is immutable, so a reused runtime or parallel task cannot redirect
+// another item's messages/tools into its transcript.
+func (hcpo *StepBasedWorkflowOrchestrator) agentItemExecutionContext(ctx context.Context, executionID string) context.Context {
+	if executionID == "" {
+		return ctx
+	}
+	ctx = virtualtools.WithBackgroundAgentID(ctx, executionID)
+	ctx = context.WithValue(ctx, orchevents.ParentExecutionIDKey, executionID)
+	if sessionID := strings.TrimSpace(hcpo.httpSessionID); sessionID != "" {
+		ctx = orchestrator.WithBackgroundTranscriptSession(ctx, sessionID)
+	}
+	return ctx
 }
 
 // appendAgentFinalValidation makes a agent obey the same
@@ -749,6 +770,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) startAgentItemNotification(ctx contex
 func (hcpo *StepBasedWorkflowOrchestrator) completeAgentItemNotification(_ context.Context, execID string, name string, summary string, meta map[string]string, active bool, err error) {
 	if hcpo == nil || hcpo.workshopExecutionNotifier == nil || !active {
 		return
+	}
+	// Publish completion only after emitted records have reached durable storage.
+	// Observability failure must not change the execution's result.
+	if hcpo.BaseOrchestrator != nil {
+		if bridge, ok := hcpo.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge); ok {
+			persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if persistErr := bridge.WaitForBackgroundTranscriptPersistence(persistCtx); persistErr != nil {
+				hcpo.GetLogger().Warn(fmt.Sprintf("Agent item %s transcript persistence: %v", execID, persistErr))
+			}
+			cancel()
+		}
 	}
 	result := strings.TrimSpace(summary)
 	if result == "" && err != nil {
