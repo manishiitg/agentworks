@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { claimWorkingTip, workingTipDelayMs, type ProductTipCatalog } from '../../products/productTips'
+import { claimWorkingTip, hasUnseenEligibleTip, workingTipDelayMs, type ProductTipCatalog } from '../../products/productTips'
 import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -37,8 +37,15 @@ export function useRareWorkingTip(working: boolean): string | null {
       try {
         const response = await api.get<{ tips: ProductTipCatalog }>('/api/product-tips', { skipSessionContext: true, timeout: 5000, signal: controller.signal })
         if (stopped) return
-        const next = claimWorkingTip(context(), Date.now(), response.data.tips[surface] || [])
-        if (!next) return
+        const definitions = response.data.tips[surface] || []
+        const next = claimWorkingTip(context(), Date.now(), definitions)
+        if (!next) {
+          // Another chat may have claimed this slot, moving our due time
+          // forward: retry then while unseen eligible tips remain. Two tabs
+          // can still claim at once; localStorage is not atomic.
+          if (hasUnseenEligibleTip(context(), definitions)) schedule()
+          return
+        }
         setTip(next)
         schedule()
       } catch {

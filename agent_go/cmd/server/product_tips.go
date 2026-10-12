@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
@@ -15,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
 // Expose only display metadata; prompts, tool policies and dependencies stay server-side.
@@ -47,12 +49,35 @@ func productWorkingTips() (map[string][]agentprofiles.WorkingTip, error) {
 	return result, nil
 }
 
+// The manifests are embedded and static, so assemble and conflict-check the
+// catalog once and filter it per request instead of re-reading every manifest.
+var (
+	cachedTipsCatalog     map[string][]agentprofiles.WorkingTip
+	cachedTipsCatalogErr  error
+	cachedTipsCatalogOnce sync.Once
+)
+
+func cachedProductTips() (map[string][]agentprofiles.WorkingTip, error) {
+	cachedTipsCatalogOnce.Do(func() {
+		cachedTipsCatalog, cachedTipsCatalogErr = productWorkingTips()
+	})
+	return cachedTipsCatalog, cachedTipsCatalogErr
+}
+
 func (api *StreamingAPI) handleProductTips(w http.ResponseWriter, r *http.Request) {
-	tips, err := productWorkingTips()
+	tips, err := cachedProductTips()
 	if err != nil {
 		http.Error(w, "Product tips are unavailable", http.StatusInternalServerError)
 		return
 	}
+	claims := GetUserFromContext(r.Context())
+	filtered := make(map[string][]agentprofiles.WorkingTip, len(tips))
+	for surface, list := range tips {
+		if !productpolicy.Enabled(surface) || !userAllowedProduct(claims, surface) {
+			continue
+		}
+		filtered[surface] = list
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"tips": tips})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"tips": filtered})
 }

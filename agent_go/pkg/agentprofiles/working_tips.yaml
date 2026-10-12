@@ -10,8 +10,8 @@
 - id: project-schedules-create
   text: 'In a project you own, ask “run this report every weekday at 9am”. Open Automation to review the schedule.'
 - id: project-schedules-manage
-  text: 'Open Automation to pause or change a schedule and check its recent runs.'
+  text: 'In a project you own, open Automation to pause or change a schedule and check its recent runs.'
 - id: project-dashboard-create
   text: 'Ask “build a dashboard from these files” in your own project. Open Dashboard, or find it with Ctrl+K, to view the result.'
 - id: project-dashboard-update
-  text: 'Ask “refresh this dashboard with the latest data”. You can also ask to schedule regular updates.'
+  text: 'In a project you own, ask “refresh this dashboard with the latest data”. You can also ask to schedule regular updates.'

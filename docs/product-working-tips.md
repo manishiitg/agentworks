@@ -3,6 +3,8 @@
 Each product owns its ordered `ui.tips` list in
 `agent_go/internal/<product>/product.yaml`. The shared manifest loader validates
 it, and `GET /api/product-tips` returns only the resolved display definitions.
+The endpoint serves only products enabled on the installation and allowed for
+the caller, from a catalog assembled and conflict-checked once per process.
 No frontend tip text or executable eligibility callbacks are needed.
 
 ```yaml
