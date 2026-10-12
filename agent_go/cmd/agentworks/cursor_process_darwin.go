@@ -127,5 +127,7 @@ func cursorProcessAt(pid int) (cursorProcess, error) {
 
 func cursorPIDDefinitelyGone(pid int) bool {
 	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
-	return errors.Is(err, unix.ESRCH) || err == nil && info.Proc.P_pid != int32(pid)
+	// For a PID with no process the kernel returns an empty record, which the
+	// unix package reports as EIO rather than ESRCH.
+	return errors.Is(err, unix.ESRCH) || errors.Is(err, unix.EIO) || err == nil && info.Proc.P_pid != int32(pid)
 }
