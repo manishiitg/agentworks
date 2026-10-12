@@ -25,7 +25,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share makes this chat's agent visible to everyone on the server, /agentworks unshare makes it private again; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share GROUP [--purpose TEXT] puts this chat's agent into a group (members see and message each other), /agentworks unshare [GROUP] takes it out, /agentworks groups lists groups, /agentworks group NAME shows its members; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -119,12 +119,12 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name     string `json:"agent_name"`
-			ID       string `json:"agent_id"`
-			Provider string `json:"provider"`
-			Purpose  string `json:"purpose"`
-			Online   bool   `json:"online"`
-			Shared   bool   `json:"shared_with_everyone"`
+			Name     string   `json:"agent_name"`
+			ID       string   `json:"agent_id"`
+			Provider string   `json:"provider"`
+			Purpose  string   `json:"purpose"`
+			Online   bool     `json:"online"`
+			Groups   []string `json:"groups"`
 		} `json:"agents"`
 	}
 	if json.Unmarshal(raw, &data) != nil {
@@ -158,7 +158,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		}
 		presence, route := "offline", "stored"
 		if a.Online {
-			presence, route = "online", "server stream; local route unknown"
+			presence, route = "online", "on another computer"
 		}
 		detail := ""
 		for _, s := range local.AgentStates {
@@ -175,8 +175,8 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 			}
 		}
 		shared := ""
-		if a.Shared {
-			shared = " | shared with everyone"
+		if len(a.Groups) > 0 {
+			shared = " | in groups: " + clean(strings.Join(a.Groups, ", "))
 		}
 		fmt.Fprintf(&b, "agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
 	}
@@ -998,17 +998,29 @@ func loginLabel(server string) string {
 	return " (login: " + strings.Join(names, ", ") + ")"
 }
 
-// shareCommand and unshareCommand make an agent visible to everyone on its
-// server, or private again. With an AGENT name it is the person's terminal
-// command. Without one it acts on this chat's own attached agent, which a coding
-// agent may do for its own exact session when the person asked in plain language.
+// shareCommand and the unshare form put an agent into a group (sharing means
+// joining one) and take it out. With --agent it is the person's terminal command
+// for one of their agents; without it, it acts on this chat's own attached agent,
+// which a coding agent may do for its own exact session when the person asked.
 func shareCommand(o *options, unshare bool) *cobra.Command {
-	verb, past := "share", "shared with everyone on this server"
+	var agent, purpose string
+	use, short := "share GROUP", "Share an agent into a group (it joins the group, created when you give a purpose)"
 	if unshare {
-		verb, past = "unshare", "private again"
+		use, short = "unshare [GROUP]", "Take an agent out of a group, or out of all of them"
 	}
-	return &cobra.Command{Use: verb + " [AGENT]", Args: cobra.MaximumNArgs(1), Short: map[bool]string{false: "Share an agent with everyone on its server", true: "Make a shared agent private again"}[unshare], Long: "Everyone signed in to the server sees the agent in their agent list, with your name and its purpose, and their agents can message it. Messages from other people reach your agent marked as untrusted. An administrator can make a shared agent private (with a reason, and you are told). " + verb + " with no AGENT acts on this chat's own agent.", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "A group is an open list of agents. Members of a group see each other, message each other directly, or message the whole group (target group:NAME). Any agent on the server can list groups and join. Messages from other people's agents reach your agent marked as untrusted. Without --agent this acts on this chat's own agent.", RunE: func(cmd *cobra.Command, args []string) error {
+		group := ""
 		if len(args) == 1 {
+			group = args[0]
+		}
+		verb := "share"
+		if unshare {
+			verb = "unshare"
+		}
+		if !unshare && group == "" {
+			return errors.New("name the group: agentworks share GROUP (add --purpose TEXT to create a new one)")
+		}
+		if agent != "" {
 			if err := personAgentTerminal(); err != nil {
 				return err
 			}
@@ -1016,14 +1028,11 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err = client.ShareAgent(cmd.Context(), verb, args[0]); err != nil {
+			raw, err := client.ShareAgent(cmd.Context(), verb, agent, group, purpose)
+			if err != nil {
 				return err
 			}
-			if o.jsonOutput {
-				return o.output(map[string]any{"agent_name": args[0], "action": verb})
-			}
-			_, err = fmt.Fprintf(o.stdout, "agent:%s is %s.\n", args[0], past)
-			return err
+			return printGroupResult(o, raw)
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -1034,18 +1043,122 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 			return err
 		}
 		if !fromAgent {
-			return fmt.Errorf("name the agent: agentworks %s AGENT, or type /agentworks %s in the chat", verb, verb)
+			return fmt.Errorf("name the agent: agentworks %s%s --agent AGENT, or type /agentworks %s in the chat", verb, map[bool]string{true: " GROUP", false: ""}[!unshare], verb)
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host})
+		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host, Group: group, Purpose: purpose})
 		if err != nil {
 			return err
 		}
 		if o.jsonOutput {
 			return o.output(out)
 		}
-		_, err = fmt.Fprintf(o.stdout, "agent:%s is %s.\n", out.Attachment.AgentName, past)
-		return err
+		return printGroupResult(o, out.Result)
 	}}
+	cmd.Flags().StringVar(&agent, "agent", "", "One of your registered agents (a person's terminal); omit to act on this chat's own agent")
+	if !unshare {
+		cmd.Flags().StringVar(&purpose, "purpose", "", "What the group is for; creates the group when it does not exist yet")
+	}
+	return cmd
+}
+
+// groupsCommand lists every group on the server, or the members of one.
+func groupsCommand(o *options, one bool) *cobra.Command {
+	use, short := "groups", "List the groups on this server"
+	if one {
+		use, short = "group NAME", "Show one group's purpose and members"
+	}
+	return &cobra.Command{Use: use, Args: map[bool]cobra.PositionalArgs{true: cobra.ExactArgs(1), false: cobra.NoArgs}[one], Short: short, RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := o.client()
+		if err != nil {
+			return err
+		}
+		action, group := "groups", ""
+		if one {
+			action, group = "group", args[0]
+		}
+		raw, err := client.ShareAgent(cmd.Context(), action, "", group, "")
+		if err != nil {
+			return err
+		}
+		return printGroupResult(o, raw)
+	}}
+}
+
+// printGroupResult shows a group action's result in plain words.
+func printGroupResult(o *options, raw json.RawMessage) error {
+	if o.jsonOutput {
+		_, err := fmt.Fprintln(o.stdout, string(raw))
+		return err
+	}
+	_, err := fmt.Fprintln(o.stdout, groupResultText(raw))
+	return err
+}
+
+func groupResultText(raw json.RawMessage) string {
+	var data struct {
+		Groups []groupSummary `json:"groups"`
+		groupSummary
+		State string   `json:"state"`
+		Agent string   `json:"agent_name"`
+		Left  []string `json:"left"`
+		New   bool     `json:"created"`
+	}
+	if json.Unmarshal(raw, &data) != nil {
+		return "Done."
+	}
+	switch {
+	case data.State == "joined":
+		created := ""
+		if data.New {
+			created = " (new group)"
+		}
+		return fmt.Sprintf("agent:%s is now in group:%s%s. Its members can message it and it can message them; others' messages arrive marked as untrusted.", data.Agent, data.Name, created)
+	case data.State == "left":
+		if len(data.Left) == 0 {
+			return fmt.Sprintf("agent:%s was not in that group.", data.Agent)
+		}
+		return fmt.Sprintf("agent:%s left %s.", data.Agent, strings.Join(data.Left, ", "))
+	case data.Name != "":
+		return groupSummaryText(data.groupSummary, true)
+	}
+	if len(data.Groups) == 0 {
+		return "No groups yet. Share an agent into a new group with a purpose to create one."
+	}
+	var b strings.Builder
+	b.WriteString("Groups on this server:\n")
+	for _, g := range data.Groups {
+		b.WriteString(groupSummaryText(g, false) + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+type groupSummary struct {
+	Name        string   `json:"name"`
+	Purpose     string   `json:"purpose"`
+	MemberCount int      `json:"member_count"`
+	JoinedWith  []string `json:"joined_with"`
+	Members     []struct {
+		Agent   string `json:"agent_name"`
+		Purpose string `json:"purpose"`
+		Online  bool   `json:"online"`
+	} `json:"members"`
+}
+
+func groupSummaryText(g groupSummary, members bool) string {
+	line := fmt.Sprintf("group:%s | %d member%s | %s", g.Name, g.MemberCount, map[bool]string{true: "", false: "s"}[g.MemberCount == 1], g.Purpose)
+	if len(g.JoinedWith) > 0 {
+		line += " | you: " + strings.Join(g.JoinedWith, ", ")
+	}
+	if members {
+		for _, m := range g.Members {
+			state := "offline"
+			if m.Online {
+				state = "online"
+			}
+			line += fmt.Sprintf("\n  %s | %s | %s", m.Agent, state, m.Purpose)
+		}
+	}
+	return line
 }
 
 // codexProbeCandidates are the Codex threads the bridge already has a lease for.
@@ -1069,4 +1182,39 @@ func mergeCodexCatalog(candidates, catalog map[string]string, attachedOnly bool)
 			candidates[id] = cwd
 		}
 	}
+}
+
+// parseGroupWords fills a bridge request from the words after share, unshare,
+// groups or group, and returns a one-line usage message when they are wrong.
+func parseGroupWords(action string, rest []string, req *agentworksclient.LocalBridgeRequest) string {
+	switch action {
+	case "groups":
+		if len(rest) != 0 {
+			return "groups takes no arguments"
+		}
+	case "group":
+		if len(rest) != 1 {
+			return "Use /agentworks group NAME"
+		}
+		req.Group = rest[0]
+	case "unshare":
+		if len(rest) > 1 {
+			return "Use /agentworks unshare [GROUP]"
+		}
+		if len(rest) == 1 {
+			req.Group = rest[0]
+		}
+	case "share":
+		if len(rest) == 0 || strings.HasPrefix(rest[0], "--") {
+			return "Use /agentworks share GROUP [--purpose TEXT]"
+		}
+		req.Group, rest = rest[0], rest[1:]
+		if len(rest) > 0 {
+			if rest[0] != "--purpose" || len(rest) < 2 {
+				return "Use /agentworks share GROUP [--purpose TEXT]"
+			}
+			req.Purpose = strings.Join(rest[1:], " ")
+		}
+	}
+	return ""
 }

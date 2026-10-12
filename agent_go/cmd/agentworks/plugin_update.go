@@ -35,6 +35,9 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 	if onPath("muse") {
 		out = append(out, pluginUpdate{Provider: "muse", Manual: "muse plugins marketplace update agentworks && muse plugins remove agentworks-muse && muse plugins install agentworks-muse@agentworks, then approve it and restart Muse (skip this if you do not use the AgentWorks plugin in Muse)"})
 	}
+	if onPath("cursor-agent") {
+		out = append(out, pluginUpdate{Provider: "cursor", Manual: "nothing for projects that already use the stable hook command; they run the updated CLI. For an older project registration, review the plugin and run python3 /path/to/plugins/cursor/scripts/setup_project.py --project /path/to/project once (skip this if you do not use AgentWorks in Cursor)"})
+	}
 	if onPath("pi") {
 		out = append(out, pluginUpdate{Provider: "pi", Manual: "agentworks attach in a terminal and approve the Pi package, then reload Pi (skip this if you do not use AgentWorks in Pi)"})
 	}

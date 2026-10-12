@@ -1,13 +1,13 @@
 ---
 description: Attach, detach, share or inspect this Muse conversation through the person's AgentWorks command.
-argument-hint: attach [NAME] [--on LOGIN] | detach | agents | share | unshare
+argument-hint: attach [NAME] [--on LOGIN] | detach | agents | share GROUP | unshare | groups | group NAME
 ---
 
 The person requested `/agentworks $ARGUMENTS`.
 
 `/agentworks attach [NAME]` attaches or reconnects this exact conversation in one
 step. The person typing it supplies approval. `/agentworks detach` stops delivery;
-`/agentworks agents` shows available agents; `/agentworks share` makes this chat's agent visible to everyone on the server and `/agentworks unshare` makes it private again; `/agentworks attach --on LOGIN` moves this chat to another saved login. Attachment accepts all senders in the
+`/agentworks agents` shows available agents; `/agentworks share GROUP [--purpose TEXT]` puts this chat's agent into a group (members see and message each other), `/agentworks unshare [GROUP]` takes it out, `/agentworks groups` lists groups and `/agentworks group NAME` shows its members; `/agentworks attach --on LOGIN` moves this chat to another saved login. Attachment accepts all senders in the
 person's AgentWorks account. Sender allow flags are no longer supported. Muse's native
 namespaced spelling is `/agentworks-muse:agentworks`.
 

@@ -59,26 +59,26 @@ func observeCursor(root string, process cursorProcess, input pluginHookInput) er
 	return writeMuseObservation(dir, name, raw)
 }
 
-func cursorObservedSession(root string, process cursorProcess, session string) (liveAgentSession, error) {
+// cursorLiveObservations returns the hook observations whose kernel process
+// identity still verifies, pruning confirmed-dead ones. The scan is bounded and
+// never silently truncates.
+func cursorLiveObservations(root string) ([]cursorObservation, error) {
 	dir, err := openMuseObservationDirectory(cursorObservationDirectory(root), false)
 	if err != nil {
-		return liveAgentSession{}, errors.New("Cursor has no verified native hook observation")
+		return nil, errors.New("Cursor has no verified native hook observation")
 	}
 	defer dir.Close()
-	var found []cursorObservation
-	live := 0
-	// Read at most 4096 owned records per call; prune dead kernel identities
-	// before applying the live-record bound. Never silently truncate ambiguity.
+	var live []cursorObservation
 	scanned := 0
 	for {
 		files, readErr := dir.ReadDir(256)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return liveAgentSession{}, readErr
+			return nil, readErr
 		}
 		for _, file := range files {
 			scanned++
 			if scanned > 4096 {
-				return liveAgentSession{}, errors.New("Cursor discovery exceeds its bounded scan; clean stale observations before retrying")
+				return nil, errors.New("Cursor discovery exceeds its bounded scan; clean stale observations before retrying")
 			}
 			raw, e := readMuseObservation(dir, file.Name())
 			var record cursorObservation
@@ -99,22 +99,57 @@ func cursorObservedSession(root string, process cursorProcess, session string) (
 				}
 				continue
 			}
-			live++
-			if live > 256 {
-				return liveAgentSession{}, errors.New("Cursor discovery exceeds its live record limit")
+			if len(live) >= 256 {
+				return nil, errors.New("Cursor discovery exceeds its live record limit")
 			}
-			if record.Session == session {
-				found = append(found, record)
-			}
+			live = append(live, record)
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
+		}
+	}
+	return live, nil
+}
+
+func cursorObservedSession(root string, process cursorProcess, session string) (liveAgentSession, error) {
+	live, err := cursorLiveObservations(root)
+	if err != nil {
+		return liveAgentSession{}, err
+	}
+	var found []cursorObservation
+	for _, record := range live {
+		if record.Session == session {
+			found = append(found, record)
 		}
 	}
 	if len(found) != 1 || found[0].Host != process.Host {
 		return liveAgentSession{}, errors.New("Cursor native UUID is stale or ambiguous for this exact process")
 	}
 	return liveAgentSession{provider: "cursor", session: session, host: process.Host, cwd: found[0].Cwd}, nil
+}
+
+// cursorSessionForProcess is the one conversation a Cursor CLI process has
+// reported through its verified hooks. Several, or none, is refused: a tool call
+// never guesses which chat it belongs to.
+func cursorSessionForProcess(root string, process cursorProcess) (string, error) {
+	live, err := cursorLiveObservations(root)
+	if err != nil {
+		return "", err
+	}
+	session := ""
+	for _, record := range live {
+		if record.Host != process.Host {
+			continue
+		}
+		if session != "" && session != record.Session {
+			return "", errors.New("This Cursor process reported more than one chat, so AgentWorks cannot tell which one is asking.")
+		}
+		session = record.Session
+	}
+	if session == "" {
+		return "", errors.New("Cursor has not told AgentWorks about this chat yet. Send a message in the chat first, then try again.")
+	}
+	return session, nil
 }
 
 // Root PLAT-861 can wire this into its own-session command without provider,

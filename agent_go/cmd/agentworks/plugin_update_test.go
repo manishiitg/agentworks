@@ -13,7 +13,7 @@ func TestInstalledPluginUpdatesFollowWhatIsInstalled(t *testing.T) {
 	files := map[string]string{
 		filepath.Join(home, ".claude", "plugins", "installed_plugins.json"): `{"agentworks@agentworks":{}}`,
 	}
-	present := map[string]bool{"claude": true, "codex": true, "muse": true}
+	present := map[string]bool{"claude": true, "codex": true, "muse": true, "cursor-agent": true}
 	got := installedPluginUpdates(home, func(n string) bool { return present[n] }, func(p string) string { return files[p] })
 	names := map[string]pluginUpdate{}
 	for _, u := range got {
@@ -27,6 +27,9 @@ func TestInstalledPluginUpdatesFollowWhatIsInstalled(t *testing.T) {
 	}
 	if u, ok := names["muse"]; !ok || len(u.Auto) != 0 || !strings.Contains(u.Manual, "muse plugins install") {
 		t.Fatalf("Muse is updated by the person, with the exact line printed: %+v", u)
+	}
+	if u, ok := names["cursor"]; !ok || len(u.Auto) != 0 || !strings.Contains(u.Manual, "setup_project.py") {
+		t.Fatalf("Cursor project hooks are repaired by the person, never automatically: %+v", u)
 	}
 	if _, ok := names["pi"]; ok {
 		t.Fatal("pi is not on PATH and must not appear")

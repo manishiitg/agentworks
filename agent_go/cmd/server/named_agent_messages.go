@@ -108,9 +108,9 @@ func namedAgentForClaims(ctx context.Context, claims *UserClaims, name string) (
 	return namedMessageAgent{}, fmt.Errorf("named agent unavailable or access denied")
 }
 
-func resolveNamedMessageAgent(ctx context.Context, userID, name string) (triggerTarget, error) {
+func resolveNamedMessageAgent(ctx context.Context, userID, name, senderAgentID string) (triggerTarget, error) {
 	if strings.Contains(name, "/") {
-		return resolveSharedMessageAgent(ctx, userID, name)
+		return resolveSharedMessageAgent(ctx, userID, senderAgentID, name)
 	}
 	name, err := normalizeMessageAgentName(name)
 	if err != nil {
@@ -146,7 +146,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "shared_with_everyone": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
+			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -156,8 +156,9 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	}
 	hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
+	items = append(items, s.groupAgentItems(userID)...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
-	return map[string]interface{}{"agents": items}, nil
+	return map[string]interface{}{"agents": items, "groups": s.groupsView(userID, false)}, nil
 }
 
 func (api *StreamingAPI) externalMessageCaller(ctx context.Context, claims *UserClaims, args map[string]any) (triggerLinkCaller, error) {
@@ -231,7 +232,9 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 			externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
 			return
 		}
+		gone := s.Agents[index]
 		s.Agents = append(s.Agents[:index], s.Agents[index+1:]...)
+		s.removeFromAllGroups(gone.ID, gone.UserID, claims.UserID)
 	} else {
 		if index < 0 {
 			if own >= 100 || len(s.Agents) >= agentConversationKeep {
@@ -398,6 +401,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					if person := crossPersonOwner(c.Endpoints[m.From], claims.UserID); person != "" {
 						item["from_person"], item["untrusted"] = person, true
 					}
+					if m.Group != "" {
+						item["group"] = m.Group
+					}
 					items = append(items, nil)
 					copy(items[position+1:], items[position:])
 					items[position] = item
@@ -452,7 +458,29 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			if len(items) > 0 {
 				next = items[len(items)-1]["sequence"].(int)
 			}
-			return map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}, nil
+			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
+			// What this agent sent recently, and where each message stands.
+			agentMessageMu.Lock()
+			fresh, readErr := readAgentMessageStore(ctx)
+			agentMessageMu.Unlock()
+			if readErr == nil {
+				sent := []map[string]interface{}{}
+				for _, c := range fresh.Conversations {
+					for side, end := range c.Endpoints {
+						if end.NamedAgentID == a.ID && end.UserID == claims.UserID {
+							sent = append(sent, fresh.sentReceipts(c, side, 10)...)
+						}
+					}
+				}
+				sort.Slice(sent, func(i, j int) bool { return sent[i]["sent_at"].(time.Time).After(sent[j]["sent_at"].(time.Time)) })
+				if len(sent) > 20 {
+					sent = sent[:20]
+				}
+				if len(sent) > 0 {
+					out["sent"] = sent
+				}
+			}
+			return out, nil
 		}
 		select {
 		case <-ctx.Done():

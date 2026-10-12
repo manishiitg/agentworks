@@ -108,7 +108,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	control := input.Event == "beforeSubmitPrompt" && pluginPersonPrompt("cursor", strings.TrimSpace(input.Prompt))
 	if err := normalizeCursorHook(&input); err != nil {
 		if control {
-			return cursorBlock(o, "AgentWorks cannot verify this exact Cursor conversation.")
+			return cursorBlock(o, "AgentWorks cannot tell which Cursor chat this is. Start a new chat and try again.")
 		}
 		return nil
 	}
@@ -125,7 +125,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	process, err := cursorAncestor()
 	if err != nil {
 		if control {
-			return cursorBlock(o, "Cannot verify this exact Cursor process. Check the supported native installation.")
+			return cursorBlock(o, "AgentWorks cannot tell which Cursor chat this is. Use the Cursor command line, and check that the AgentWorks hooks are installed.")
 		}
 		return nil
 	}
@@ -149,22 +149,52 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
 		defer cancel()
 		if req.Action == "attach" {
-			if len(words) > 3 || len(words) == 3 && strings.HasPrefix(words[2], "--") {
+			// attach [NAME] [--on LOGIN]; nothing else.
+			rest, on := words[2:], ""
+			if n := len(rest); n >= 2 && rest[n-2] == "--on" {
+				on, rest = rest[n-1], rest[:n-2]
+			}
+			if len(rest) > 1 || len(rest) == 1 && strings.HasPrefix(rest[0], "--") || strings.HasPrefix(on, "--") {
 				return cursorBlock(o, personCommandHelp)
 			}
-			if len(words) == 3 {
-				req.AgentName = words[2]
+			if len(rest) == 1 {
+				req.AgentName = rest[0]
+			}
+			if on != "" {
+				path, e := o.loginPath(on)
+				if e != nil {
+					return cursorBlock(o, e.Error())
+				}
+				o.switchPath = path
 			}
 			if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {
 				return cursorBlock(o, "AgentWorks attachment was not completed. Check the existing login and bridge.")
 			}
+		} else if req.Action == "share" || req.Action == "unshare" || req.Action == "groups" || req.Action == "group" {
+			if msg := reconnectOffline(ctx, root, req); msg != "" {
+				return cursorBlock(o, msg)
+			}
+			if usage := parseGroupWords(req.Action, words[2:], &req); usage != "" {
+				return cursorBlock(o, usage)
+			}
+			req.Action += "_person"
+			done, e := agentworksclient.CallLocalBridge(ctx, root, req)
+			if e != nil {
+				return cursorBlock(o, e.Error())
+			}
+			return cursorBlock(o, groupResultText(done.Result))
 		} else {
+			if req.Action == "agents" {
+				if msg := reconnectOffline(ctx, root, req); msg != "" {
+					return cursorBlock(o, msg)
+				}
+			}
 			if len(words) != 2 || req.Action != "detach" && req.Action != "agents" && req.Action != "status" {
 				return cursorBlock(o, personCommandHelp)
 			}
 			state, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
 			if e != nil || !cursorAttached(state, req.SessionID, "") {
-				return cursorBlock(o, "This exact Cursor conversation is not attached.")
+				return cursorBlock(o, "This Cursor chat is not connected. Type /agentworks attach in it.")
 			}
 			req.AttachmentID = state.Attachment.ID
 			if req.Action == "agents" {
@@ -193,8 +223,19 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	ctxStatus, cancelStatus := context.WithTimeout(cmd.Context(), 3*time.Second)
 	state, err := agentworksclient.CallLocalBridge(ctxStatus, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
 	cancelStatus()
-	if input.Event == "SessionStart" && err == nil && state.Offline && state.Attachment.Provider == "cursor" && state.Attachment.SessionID == req.SessionID {
-		return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": "AgentWorks identity is offline. The person can reconnect this exact chat."})
+	if err == nil && state.Offline && state.Attachment.Provider == "cursor" && state.Attachment.SessionID == req.SessionID {
+		// After an update or restart the chat comes back by itself, as itself, unless
+		// the server closed its lease.
+		ctxBack, cancelBack := context.WithTimeout(cmd.Context(), 6*time.Second)
+		failed := reconnectOffline(ctxBack, root, req)
+		cancelBack()
+		if failed == "" {
+			ctxAgain, cancelAgain := context.WithTimeout(cmd.Context(), 3*time.Second)
+			state, err = agentworksclient.CallLocalBridge(ctxAgain, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
+			cancelAgain()
+		} else if input.Event == "SessionStart" {
+			return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": "AgentWorks identity is offline. Type /agentworks attach in this chat to reconnect it."})
+		}
 	}
 	if err != nil || !cursorAttached(state, req.SessionID, "") {
 		return nil

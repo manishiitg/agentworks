@@ -125,7 +125,9 @@ func userAllowedProduct(claims *UserClaims, product string) bool {
 	if adminOnlyProduct(product) && !userAccessForClaims(claims).Admin {
 		return false
 	}
-	if productAvailableToAll(product) {
+	// Brain is for every account (owner, 2026-10-12): an account limited to Code or Crew still reads and saves Brain
+	// notes and installs company skills. What a person can read or write is decided by folder roles, not by this list.
+	if strings.EqualFold(product, "knowledgebase") || productAvailableToAll(product) {
 		return true
 	}
 	products, restricted := userProductPolicy(claims.UserID, claims.Username, claims.Email)

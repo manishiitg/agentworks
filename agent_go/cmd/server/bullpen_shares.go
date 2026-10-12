@@ -159,6 +159,9 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 	if a.ShareID == "" && b.ShareID == "" {
 		return nil
 	}
+	if isGroupShareID(a.ShareID) || isGroupShareID(b.ShareID) {
+		return s.groupConversationErr(c)
+	}
 	denied := fmt.Errorf("shared agent unavailable or access denied")
 	if a.ShareID != b.ShareID || a.ShareVersion != b.ShareVersion || !a.External || !b.External || a.NamedAgentID == "" || b.NamedAgentID == "" {
 		return denied
@@ -202,6 +205,9 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 	src := c.Endpoints[side]
 	if src.ShareID == "" {
 		return nil
+	}
+	if isGroupShareID(src.ShareID) {
+		return s.groupQuotaErr(c, side, now)
 	}
 	sh, err := s.authorizeShare(src.ShareID, src.ShareVersion, now)
 	if err != nil || src.UserID == sh.OwnerUserID {
@@ -292,6 +298,18 @@ func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims
 	if err != nil {
 		return denied
 	}
+	if isGroupShareID(peer.ShareID) {
+		g := s.groupByID(groupIDFromShare(peer.ShareID))
+		if g == nil || peer.UserID == claims.UserID || !g.hasMember(peer.NamedAgentID, peer.UserID) || !s.registeredAgent(peer.NamedAgentID, peer.UserID) || !shareAccountActive(peer.UserID) || !shareAccountActive(claims.UserID) {
+			return denied
+		}
+		for _, m := range g.Members {
+			if m.UserID == claims.UserID && s.registeredAgent(m.AgentID, m.UserID) {
+				return nil // the exact pair is checked again wherever a conversation is used
+			}
+		}
+		return denied
+	}
 	sh, err := s.authorizeShare(peer.ShareID, peer.ShareVersion, time.Now().UTC())
 	if err != nil || peer.UserID == claims.UserID {
 		return denied
@@ -311,7 +329,7 @@ func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims
 
 // resolveSharedMessageAgent turns agent:<owner>/<name> into a target bound to
 // the owner's account id and the live grant, so a later rename redirects nothing.
-func resolveSharedMessageAgent(ctx context.Context, subjectID, ref string) (triggerTarget, error) {
+func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, ref string) (triggerTarget, error) {
 	denied := fmt.Errorf("named agent unavailable or access denied")
 	ownerName, agentName, _ := strings.Cut(ref, "/")
 	name, err := normalizeMessageAgentName(agentName)
@@ -345,6 +363,12 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, ref string) (trig
 		}
 		if best != nil {
 			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: best.ID, ShareVersion: best.RevocationVersion}, nil
+		}
+		// Two agents in the same group may message each other directly.
+		if senderAgentID != "" {
+			if g := s.commonGroup(senderAgentID, subjectID, a.ID, owner.ID); g != nil && shareAccountActive(owner.ID) {
+				return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: groupShareID(g.ID), ShareVersion: 1}, nil
+			}
 		}
 	}
 	return triggerTarget{}, denied

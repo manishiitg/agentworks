@@ -132,7 +132,13 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		if !namedAgentOperationAllowed(claims, send) {
 			return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
 		}
-		return resolveNamedMessageAgent(ctx, claims.UserID, name[len("agent:"):])
+		senderAgentID := ""
+		if sender := externalArg(args, "agent_name"); sender != "" {
+			if a, err := namedAgentForClaims(ctx, claims, sender); err == nil {
+				senderAgentID = a.ID
+			}
+		}
+		return resolveNamedMessageAgent(ctx, claims.UserID, name[len("agent:"):], senderAgentID)
 	}
 	targets := []triggerTarget{}
 	if workflowID == "" {
@@ -248,7 +254,13 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
+	case "join_group", "leave_group", "list_groups", "group_members":
+		api.externalGroupAction(w, r, args)
 	case "send":
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(externalArg(args, "target"))), "group:") {
+			api.externalSendGroup(w, r, args)
+			return
+		}
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
 			var err error
@@ -322,7 +334,8 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("messages", "Register an account-owned agent_name with action=register; list_agents discovers agent:<name> addresses and unregister removes a name. Registration defaults to this connection; explicitly allowed_connection_ids can use the same name. Re-register without that field preserves the reader list. Names are addresses, not authenticated device identities. Send conversational agent messages or read explicit replies from your authenticated inbox. Read with agent_name and no inbox_id to discover first contacts across conversations; each reply_address is an inbox_id for a later send. Named reads use a mailbox cursor; conversation reads use their own cursor. Mailbox storage alone does not wake a client. An opt-in exact session attachment receives all same-account senders through the authenticated event stream; agentworks mcp serve --claude-channel exposes official native Claude notifications. Stored, admitted and processed are different: admission and processing require explicit receiver acknowledgements. Only the person configures live attachment through the signed-in CLI bridge, supplying its name and exact native session; the agent can update its own purpose with action=update_purpose; agents cannot attach through this tool. Moving the name fences its old attachment. Registration and named sends require existing run consent; read-only connections cannot register or send. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose"}},
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "join_group", "leave_group", "list_groups", "group_members"}},
+		"group":                  externalString("Group name for join_group, leave_group (omit to leave all) and group_members; a group is an open list of agents anyone on the server can see and join."),
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
 		"message_id":             externalString("Incoming message ID being explicitly acknowledged."),
@@ -332,7 +345,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
 		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":                 externalString("Accessible Crew or workflow name/ID, or agent:<name> from this account's directory, for an initial send."),
+		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, agent:<owner>/<name> for an agent in a group you share, or group:<name> to send to every other agent in a group your agent belongs to, for an initial send."),
 		"message":                externalString("Message to send; required for action send."),
 		"inbox_id":               externalString("Inbox returned by send; required for action read, reusable for later sends."),
 		"submission_id":          map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Unique ID for this message. Reuse on uncertain delivery."},

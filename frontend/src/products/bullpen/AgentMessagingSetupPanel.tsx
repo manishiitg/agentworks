@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { getApiBaseUrl } from '../../services/api'
 
 import { messagingGuides, type MessagingClient } from './agentMessagingSetup'
+import { HowBullpenWorks } from './HowBullpenWorks'
 
 function Command({ label, text }: { label: string; text: string }) {
   const [copied, setCopied] = useState(false)
@@ -33,7 +34,9 @@ function Step({ number, title, children }: { number: number; title: string; chil
 export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void }) {
   const [clientID, setClientID] = useState<MessagingClient>('codex')
   const [platform, setPlatform] = useState<'unix' | 'windows'>('unix')
-  const client = messagingGuides.find(item => item.id === clientID)!
+  const [cursorMode, setCursorMode] = useState<'cli' | 'desktop'>('cli')
+  const guide = messagingGuides.find(item => item.id === clientID)!
+  const client = clientID === 'cursor' && cursorMode === 'desktop' ? { ...guide, ...guide.desktop } : guide
   const origin = (getApiBaseUrl() || window.location.origin).replace(/\/+$/, '')
   const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
   const local = (() => { try { return ['localhost', '127.0.0.1', '::1'].includes(new URL(origin).hostname.replace(/^\[|\]$/g, '')) } catch { return false } })()
@@ -54,8 +57,9 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
         <span className="flex items-center justify-between gap-2 text-sm font-medium"><span>{item.name}</span>{clientID === item.id && <Check className="h-3.5 w-3.5 text-primary" />}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.status}</span>
       </button>)}
     </div></div>
+    {clientID === 'cursor' && <div role="group" aria-label="Cursor mode" className="flex flex-wrap gap-2"><Button variant={cursorMode === 'cli' ? 'secondary' : 'outline'} size="sm" aria-pressed={cursorMode === 'cli'} onClick={() => setCursorMode('cli')}>Cursor CLI</Button><Button variant={cursorMode === 'desktop' ? 'secondary' : 'outline'} size="sm" aria-pressed={cursorMode === 'desktop'} onClick={() => setCursorMode('desktop')}>Cursor desktop</Button></div>}
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
-      <div key={client.id} className="min-w-0 rounded-xl border border-border p-5">
+      <div key={client.id + cursorMode} className="min-w-0 rounded-xl border border-border p-5">
         <h3 className="mb-5 font-semibold">{client.name} setup</h3>
         <div className="divide-y divide-border">
           <Step number={1} title="Requirements and tested versions">
@@ -87,6 +91,7 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
             {client.troubleshooting.map(item => <details key={item.title} className="space-y-2"><summary className="cursor-pointer text-sm font-medium">{item.title}</summary><p className="pt-2 text-xs leading-5 text-muted-foreground">{item.text}</p></details>)}
           </Step>
         </div>
+        <HowBullpenWorks />
       </div>
       <aside className="space-y-4 text-xs leading-5">
         <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="font-semibold">Optional token usage</h3><p className="text-muted-foreground">Off by default. In your own terminal, run <code>agentworks usage on</code>, <code>agentworks usage off</code>, or <code>agentworks usage status</code>. Attach does not enable it. Supported CLIs report their recorded numbers hourly to your account only; shared recipients cannot see them. Bullpen keeps hourly history for up to 90 days, with a Delete saved history control beside the off command.</p></div>

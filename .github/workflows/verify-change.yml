@@ -57,6 +57,29 @@ jobs:
           path: agentworks-darwin-live.tar.gz
           retention-days: 3
 
+  # Real macOS proof for the Cursor CLI identity: a copied Node binary run through a
+  # launcher-shaped process, verified by the kernel launch record. Request it with
+  # "Verify-Darwin-Cursor: true" in the commit message.
+  darwin-cursor:
+    if: >-
+      contains(github.event.head_commit.message, 'Verify-Darwin-Cursor: true')
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Cursor CLI identity on macOS
+        working-directory: agent_go
+        run: go test ./cmd/agentworks -run '^(TestCursorNativeProcessAndDiscovery|TestCursorProcArgsPrefixReadsOnlyTheLaunchPrefix)$' -count=1 -v
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -97,6 +120,22 @@ jobs:
             if [ -d "$pkg" ]; then existing_pkgs="$existing_pkgs $pkg"; fi
           done
           if [ -n "$existing_pkgs" ]; then go vet $existing_pkgs; fi
+
+      # The macOS CLI files carry build tags, so the Linux build above never
+      # compiles them. Cross-compile and vet the CLI for both Mac architectures so a
+      # darwin-only mistake fails here and not on the owner's laptop.
+      - name: Cross-build and vet the CLI for macOS
+        if: steps.changed.outputs.go == 'true'
+        working-directory: agent_go
+        env:
+          GOWORK: "off"
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          for arch in arm64 amd64; do
+            GOOS=darwin GOARCH="$arch" go build -o /dev/null ./cmd/agentworks
+            GOOS=darwin GOARCH="$arch" go vet ./cmd/agentworks ./pkg/agentworksclient
+          done
 
       # Lint only what this change adds (unused code, vet, ineffassign,
       # errorlint per agent_go/.golangci.yml); main's existing issues are

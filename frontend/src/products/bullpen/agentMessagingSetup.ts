@@ -2,6 +2,7 @@ export type MessagingClient = 'codex' | 'claude' | 'muse' | 'pi' | 'cursor' | 'a
 type SetupCommand = { label: string; text: string }
 export type MessagingGuide = {
   id: MessagingClient; name: string; status: string; available: boolean
+  desktop?: Partial<MessagingGuide>
   requirements: string[]; versions: string; install: SetupCommand[]; update: SetupCommand[]
   installNote: string; approval: string; attach: string; ownRequest: string; delivery: string
   menus: { entry: string; who: string; description: string }[]
@@ -19,7 +20,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach codex-review', ownRequest: 'Attach this chat to AgentWorks as codex-review.',
     delivery: 'Desktop native delivery reaches the attached chat, including while it is idle. Hooks deliver at turn boundaries. A notification or a queue write alone is not a processed receipt.',
     menus: [
-      { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
+      { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
       { entry: '/ menu → Agentworks Codex: Agentworks', who: 'You', description: 'Person-command skill shown in the slash picker. Selecting it explains commands; type /agentworks attach to connect.' },
       { entry: '/ menu → Agentworks Codex: Agent Messages', who: 'The agent', description: 'Messaging skill shown in the slash picker; you do not run it to attach. The hooks accept /agentworks, not an invented namespaced attach spelling.' },
     ],
@@ -40,7 +41,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach claude-review', ownRequest: 'Attach this chat to AgentWorks as claude-review.',
     delivery: 'Native session messaging wakes an idle chat and offers messages to a running session. Hooks deliver at turn boundaries when that route is unavailable. Claude may add its own permission notice to each message.',
     menus: [
-      { entry: '/agentworks:agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Namespaced person command. The short /agentworks spelling is also accepted by the hooks.' },
+      { entry: '/agentworks:agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Namespaced person command. The short /agentworks spelling is also accepted by the hooks.' },
       { entry: 'Agent Messages', who: 'The agent', description: 'Messaging skill and restricted tools; you do not run it to attach.' },
     ],
     troubleshooting: [
@@ -64,7 +65,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks-muse:agentworks attach muse-review', ownRequest: 'Attach this chat to AgentWorks as muse-review.',
     delivery: 'The native Monitor wakes this attached chat without polling. Wait until Muse reports that its Monitor is listening, then leave the chat idle. Hooks deliver at turn boundaries if the Monitor is unavailable. A wake hint is not a receipt.',
     menus: [
-      { entry: '/agentworks-muse:agentworks', who: 'You', description: 'Person command: attach [NAME], detach, agents, share, unshare. This is the entry to use.' },
+      { entry: '/agentworks-muse:agentworks', who: 'You', description: 'Person command: attach [NAME], detach, agents, share GROUP, unshare, groups, group NAME. This is the entry to use.' },
       { entry: '/agentworks-muse:messaging', who: 'The agent', description: 'Skill for finding peers, reading, sending, replying and acknowledging messages.' },
       { entry: '/agentworks-muse:monitor', who: 'The agent', description: 'Skill for starting idle wake. You do not run it manually.' },
       { entry: '/agentworks (if a user skill is installed)', who: 'Other tools', description: 'The general AgentWorks tools guide can have this name. It is not the namespaced attach command.' },
@@ -85,7 +86,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach pi-review', ownRequest: 'Attach this chat to AgentWorks as pi-review.',
     delivery: 'The native extension offers messages to this session; busy tools finish before queued follow-ups. The agent explicitly acknowledges admitted and processed. Native display alone is not admission.',
     menus: [
-      { entry: '/agentworks attach, detach, agents, share, unshare, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
+      { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
       { entry: '/reload', who: 'You', description: 'Pi’s built-in command reloads extensions.' },
       { entry: 'Six agent_message_* tools', who: 'The agent', description: 'Peers, send, read, reply, ack and purpose. There is no attach/detach model tool.' },
     ],
@@ -96,13 +97,40 @@ export const messagingGuides: MessagingGuide[] = [
     ],
   },
   {
-    id: 'cursor', name: 'Cursor', status: 'Preview · attach not available yet', available: false,
-    requirements: ['The messaging adapter is a preview. Research checked Cursor CLI 2026.10.01-e373342 and desktop 3.21.18.', 'The Linux CLI process path is bound, but the complete live attachment and receipt flow is not validated. Desktop messaging MCP and own-session helpers remain unavailable.'],
-    versions: 'Preview implementation only; no end-to-end messaging release is claimed for these Cursor versions.',
-    install: [], update: [], installNote: 'Do not install the preview expecting a working chat attachment. The shared messaging installer does not offer a ready Cursor setup.', approval: 'AgentWorks workflow and Crew tools can be configured separately through HTTP MCP. That tools connection does not attach Cursor for messaging.',
-    attach: '', ownRequest: '', delivery: 'No supported idle wake or complete live attachment is claimed. The preview hook code is for turn-boundary delivery research.',
-    menus: [{ entry: 'Preview AgentWorks command and skills', who: 'Preview only', description: 'Source definitions are not proof of a working messaging connection. HTTP MCP tools are a separate setup.' }],
-    troubleshooting: [{ title: 'MCP works but Cursor is not in Bullpen', text: 'A workflow/Crew tools connection is not a coding-chat messaging attachment. Cursor messaging remains preview; reconfiguring HTTP MCP does not complete it.' }],
+    id: 'cursor', name: 'Cursor', status: 'CLI preview · desktop later', available: true,
+    requirements: ['Cursor CLI on macOS or Linux, Python 3, and an AgentWorks CLI build with Cursor messaging support.', 'Start in the exact project whose hooks you reviewed. This setup is for cursor-agent; choose Cursor desktop below for its current limits.'],
+    versions: 'Package: agentworks 0.2.0. Investigated CLI: 2026.10.01-e373342; desktop: 3.21.18. Kernel/session checks passed on macOS. Real Cursor acceptance remains pending; this preview delivers at completed-turn boundaries and has no idle input route.',
+    install: [
+      { label: 'Get Cursor plugin', text: 'git clone --depth 1 https://github.com/manishiitg/agentworks-plugins.git "$HOME/.local/share/agentworks-plugins"' },
+      { label: 'Configure Cursor project hooks', text: 'python3 "$HOME/.local/share/agentworks-plugins/plugins/cursor/scripts/setup_project.py" --project "/absolute/project/path"' },
+      { label: 'Start Cursor CLI', text: 'cursor-agent --plugin-dir "$HOME/.local/share/agentworks-plugins/plugins/cursor" --workspace "/absolute/project/path"' },
+    ],
+    update: [{ label: 'Update Cursor plugin', text: 'git -C "$HOME/.local/share/agentworks-plugins" pull --ff-only\npython3 "$HOME/.local/share/agentworks-plugins/plugins/cursor/scripts/setup_project.py" --project "/absolute/project/path"' }],
+    installNote: 'Use the same retained plugin directory when updating. Project setup preserves other hooks, migrates recognized old package paths to the CLI on PATH and refuses duplicates or unknown paths. The package registers project hooks once; its plugin hook set is empty so the CLI cannot deliver twice.',
+    approval: 'Review the project hook file and messaging MCP yourself in Cursor. Setup does not approve workspace/MCP trust, sign in, attach a chat, or enable terminal delivery. Existing stable project hooks use the updated CLI automatically; rerun project setup once for older package-path registrations.',
+    attach: '/agentworks attach cursor-review', ownRequest: 'Attach this Cursor CLI chat to AgentWorks as cursor-review.',
+    delivery: 'Completed-turn hooks offer messages after busy tools finish. Idle persist/tmux delivery is not built in this milestone; an idle CLI receives pending messages on its next completed turn. A stored message or terminal write is not admission.',
+    menus: [
+      { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type in this Cursor CLI conversation after reviewing the project hooks.' },
+      { entry: 'AgentWorks messaging MCP tools', who: 'The agent', description: 'Restricted to this verified CLI session; a separate HTTP MCP connection supplies workflow and Crew tools.' },
+    ],
+    troubleshooting: [
+      { title: 'The attach command reaches the model', text: 'Check the selected project and its .cursor/hooks.json. This CLI version may skip plugin-only prompt and stop hooks; rerun the reviewed project setup, then restart Cursor CLI.' },
+      { title: 'Messaging MCP cannot start', text: 'Update AgentWorks from a server publishing the Cursor-capable CLI. A preview-era CLI does not expose plugin mcp cursor. Keep workspace and MCP approval as your own choices.' },
+      { title: 'No idle receipt', text: 'This milestone has no idle input route. Complete a turn to receive pending messages through its hook. Explicit mailbox recovery is last; do not start an inbox polling loop.' },
+    ],
+    desktop: {
+      status: 'Desktop · not supported yet', available: false,
+      requirements: ['Cursor desktop 3.21.18 was inspected. This release does not claim end-to-end desktop messaging.', 'A shared desktop MCP process needs an exact per-call conversation fence and an idle input route before messaging helpers can be enabled.'],
+      versions: 'Desktop remains a separate development stage; CLI results do not prove desktop delivery.',
+      install: [], update: [],
+      installNote: 'Use the supported Cursor CLI setup. Do not install or reconfigure a desktop messaging MCP expecting it to create a live attachment.',
+      approval: 'Workflow/Crew HTTP MCP tools can be configured separately; their access does not attach this desktop chat.',
+      attach: '', ownRequest: '',
+      delivery: 'Native hooks can continue a completed turn. No supported exact-chat idle wake or desktop typing path is claimed.',
+      menus: [{ entry: 'Cursor desktop messaging', who: 'Later stage', description: 'Per-call identity and native delivery still need proof.' }],
+      troubleshooting: [{ title: 'HTTP MCP works but the chat is absent', text: 'Tool access is separate from Bullpen chat attachment. Use Cursor CLI for this setup; desktop support remains pending.' }],
+    },
   },
   {
     id: 'agy', name: 'agy', status: 'Tools only · no live messaging setup', available: false,

@@ -32,6 +32,6 @@ test('private Pi IPC consumes only the exact one-use in-memory person command', 
   assert.equal(await claim(token, { host_key: 'other-host' }), 409);
   assert.equal(await claim(token), 200);
   assert.equal(await claim(token), 409, 'proof cannot replay after its first valid use');
-  for (const ok of ['/agentworks share', '/agentworks unshare', '/agentworks attach reviewer --on work', '/agentworks attach --on work', '/agentworks attach --on default']) assert.doesNotThrow(() => host.personToken(ok, ctx), ok);
-  for (const bad of ['/agentworks share everyone', '/agentworks share --days 3', '/agentworks attach reviewer --on', '/agentworks attach --force x', '/agentworks attach a --on Work', '/agentworks attach a b --on work', '/agentworks attach a --on work b']) assert.throws(() => host.personToken(bad, ctx), bad);
+  for (const ok of ['/agentworks share docs', '/agentworks share docs --purpose Docs help', '/agentworks unshare', '/agentworks unshare docs', '/agentworks groups', '/agentworks group docs', '/agentworks attach reviewer --on work', '/agentworks attach --on work', '/agentworks attach --on default']) assert.doesNotThrow(() => host.personToken(ok, ctx), ok);
+  for (const bad of ['/agentworks share', '/agentworks share --days 3', '/agentworks share docs extra', '/agentworks group', '/agentworks groups x', '/agentworks attach reviewer --on', '/agentworks attach --force x', '/agentworks attach a --on Work', '/agentworks attach a b --on work', '/agentworks attach a --on work b']) assert.throws(() => host.personToken(bad, ctx), bad);
 });

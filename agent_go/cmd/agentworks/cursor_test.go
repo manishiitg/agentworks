@@ -18,8 +18,8 @@ import (
 const cursorTestSession = "11111111-2222-4333-8444-555555555555"
 
 func TestCursorNativeProcessAndDiscovery(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Linux kernel process/launcher regression")
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("kernel process/launcher regression runs on Linux and macOS")
 	}
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -78,7 +78,8 @@ func TestCursorNativeChild(t *testing.T) {
 	}
 	process, err := cursorAncestor()
 	if err != nil || process.Kind != "cli" || !cursorProcessForHost(process.Host) {
-		t.Fatal("native kernel identity failed", err)
+		_, detail := cursorProcessAt(os.Getppid())
+		t.Fatal("native kernel identity failed", err, "| parent check:", detail)
 	}
 	root, err := agentworksclient.DefaultLocalBridgeRoot()
 	if err != nil {

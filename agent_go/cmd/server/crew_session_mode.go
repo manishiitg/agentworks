@@ -122,8 +122,14 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 	}
 	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
 		runFolder := crewOutputFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
+		if req.CrewAskReadOnly && crewGuestCallerForTurn(req, currentUserID) != "" {
+			runFolder = ""
+		}
 		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
-		if crewGuestCallerForTurn(req, currentUserID) != "" {
+		if crewGuestCallerForTurn(req, currentUserID) != "" && req.CrewAskReadOnly {
+			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewAskModelSentence + "\n" + sessionModeClose
+		}
+		if crewGuestCallerForTurn(req, currentUserID) != "" && !req.CrewAskReadOnly {
 			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewGuestCallsNote + "\n" + sessionModeClose
 		}
 		return notice

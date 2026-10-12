@@ -1,5 +1,34 @@
 # Decisions and open issues
 
+## 2026-10-12 — Every account has Brain (PLAT-856)
+
+Brain is not a per-account product: an account limited to Code, Crew or other products still reads and saves Brain
+notes and installs company skills (`install_skill brain:<folder>`) on a server that runs Brain. Folder roles still decide
+what a person can read or write. Why: owner: everyone should have access to Brain, even in Code and Crew.
+
+Ticket: PLAT-856, issue 856-61.
+
+## 2026-10-12 — Cursor command line on macOS is verified by its kernel launch record (PLAT-861)
+
+A Cursor CLI conversation is recognised on macOS as it is on Linux: the process runs the installed Node image
+with the launcher's `index.js`, and the kernel start time and boot time bind the identity (a recycled PID is a
+different identity). The launch prefix comes from the kernel argument record and only up to the entry script;
+the prompt, API key arguments and environment are not parsed, logged or kept (the kernel returns the whole
+argument record in one call, so the buffer is wiped as soon as the prefix is read). The messaging-only tools (`agentworks plugin mcp
+cursor`) serve exactly one chat, the one that process reported through its verified hooks, and refuse the
+shared Cursor desktop app and any ambiguity; they hold no account credentials and cannot attach or share. The
+Cursor hook supports the common commands (attach with `--on`, detach, agents, share, unshare, groups, group)
+and reconnects an offline chat from its next hook event unless the server closed its lease. Idle delivery
+(typing into a terminal) is not built: `agent persist` runs in a vendor-owned tmux and offers no structured
+input interface, so such a transport needs the owner's live test and its own reviewed design; until then
+messages reach a Cursor chat at its turn boundaries through hooks. If it is built later it is opt-in (proposed:
+`AGENTWORKS_CURSOR_PERSIST_INPUT=1` plus a per-session enable in the person's hook), types only into the verified
+Cursor process's own pane when it is idle with an empty composer, and never replays an uncertain admission.
+
+Why: this makes the supported Cursor path usable on the owner's Mac without claiming more than was proved.
+
+Ticket: PLAT-861, row 861-131.
+
 ## 2026-10-12 — Brain is MCP first; the Brain page is a viewer (PLAT-856)
 
 Brain is used through people's own agents over MCP and the CLI. Every Brain operation that exists must be available
@@ -16,6 +45,31 @@ version conflicts (a stale write is refused, then re-read and retried) and answe
 Why: the owner expects almost nobody to use the Brain page or its chat.
 
 Ticket: PLAT-856, issues 856 and 856-57.
+## 2026-10-12 — Sharing means joining an open group; the everyone scope is retired (PLAT-861)
+
+Owner choice. An agent is shared by joining a group: `/agentworks share GROUP [--purpose TEXT]` (the purpose
+creates a missing group), `/agentworks unshare [GROUP]` (no group leaves all), `/agentworks groups`,
+`/agentworks group NAME`, the terminal equivalents (with `--agent` for a person's terminal; no `--agent` acts
+on the chat's own agent) and the messages tool actions `join_group`, `leave_group`, `list_groups`,
+`group_members` with `send` target `group:NAME`. Groups are open: any agent on the server can list groups and
+members and join, and there are no closed groups for now. Members message each other directly, even across
+people, or the whole group (one copy per member). A group is a grant checked where a one-person grant is
+checked (the conversation carries `group:<id>`; both agents must still be members and registered, accounts
+enabled); leaving ends access and drops undelivered mail. Cross-person messages keep the untrusted marking and
+fence; each sender is capped at 300 messages and 300 undelivered per group per hour. Earlier everyone-shares
+were migrated into a `general` group at server start. The server-wide everyone scope is no longer offered by
+the CLI or UI; per-person grants stay in the server API, unused. Joining and leaving a group (which creates a group when a purpose is given) is open to the agent itself by
+choice of the owner for an open system, to be revisited: through the messages tool for the caller's own
+registered agent, with the person's own CLI login on a person-only endpoint that refuses MCP tools and
+agent-bound connections, or by the person in the chat. Bot routes, Crew, workflow and schedule principals and
+read-only tokens are refused. A coding agent may do it for its own exact chat when the person asks. A
+cross-person conversation binds to the first group two agents have in common; leaving that group ends it even
+if another shared group remains, and the next message starts a conversation in the other one. Administrators see groups and members and can take an agent out of its
+groups with a reason (audited, owner told).
+
+Why: the owner wants sharing to be simple, open and agentic, and groups give it a purpose and a place.
+
+Ticket: PLAT-861, issue 861-90 reshaped.
 
 ## 2026-10-12 — Relay Access uses sharing without workflow goal teams (PLAT-825)
 
@@ -128,10 +182,11 @@ Ticket: PLAT-861, issue 861-90 narrowed to "everyone on the server".
 
 A Crew is an agent its owner builds and shares. It no longer has a reduced "Run mode":
 
-- **Using.** Others use a Crew only through the typed functions its owner exposes and the built-in `ask` (the owner can
-  switch `ask` off, "programs only"). Inside a function or `ask` call the Crew runs the same way as for the owner: full
-  tools, skills, MCPs, memory read, outbound function calls, and the owner's authority. Others never get a free chat with
-  Builder powers.
+- **Using.** Others act on a Crew only through the typed functions its owner exposes, which run with the owner's
+  authority (full tools, skills, MCPs, outbound function calls). A non-owner's free-text `ask` is read-only (owner,
+  2026-10-12): it reads files, memory, skills and functions, writes nothing, mounts no MCP tools and makes no calls; to
+  make the Crew do something, call one of its functions. The owner can switch `ask` off ("programs only"). Others never
+  get a free chat with Builder powers.
 - **Changing.** Changing a Crew (memory, skills, MCPs, secrets, prompts, function definitions, setup, access) is for the
   owner or a co-owner the owner grants. Users never write memory or change configuration; the existing folder guards on
   memory and skills enforce it. A Crew has a single owner today, so the co-owner role is new (step 2 checks what the

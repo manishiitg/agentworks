@@ -830,6 +830,9 @@ type QueryRequest struct {
 	// as a guest (read-only, may answer and suggest). Honoured only on the
 	// owner's own Crew turn, where it can only narrow access.
 	CrewGuestCaller string `json:"crew_guest_caller,omitempty"`
+	// CrewAskReadOnly marks a guest's free-text `ask` to a Crew: the turn only reads (files, memory, skills, functions,
+	// MCPs); typed functions are how a guest acts (856-59, owner decision 2026-10-12). It only narrows access.
+	CrewAskReadOnly bool `json:"crew_ask_read_only,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
 	// Workspace access configuration (legacy field, ignored — workspace is always enabled)
@@ -2453,6 +2456,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/bullpen/shares/{id}", api.handleBullpenShareRevoke).Methods("DELETE")
 	apiRouter.HandleFunc("/bullpen/blocks", api.handleBullpenBlock).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/notices", api.handleBullpenNotices).Methods("GET")
+	apiRouter.HandleFunc("/bullpen/groups", api.handleBullpenGroups).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/notices/{id}", api.handleBullpenNoticeDismiss).Methods("DELETE")
 	apiRouter.HandleFunc("/bullpen/admin/agents", api.handleBullpenAdmin).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/admin/audit", api.handleBullpenAdmin).Methods("GET")
@@ -6129,7 +6133,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
-		if codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
+		// A guest's free-text ask mounts no MCP server: guests act only through the functions the owner exposes (856-59).
+		guestAsk := crewGuest != "" && req.CrewAskReadOnly
+		if guestAsk || codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
 			selectedServers = []string{mcpclient.NoServers}
 			agentConfig.RuntimeOverrides = nil
 		}
@@ -6425,6 +6431,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					outputFolder := crewOutputFolder(profileRoot)
+					if crewGuest != "" && req.CrewAskReadOnly {
+						outputFolder = ""
+					}
 					if functionOutput != "" {
 						outputFolder = functionOutput
 					}

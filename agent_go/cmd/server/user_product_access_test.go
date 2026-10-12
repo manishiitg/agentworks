@@ -163,3 +163,19 @@ func TestProductAccessResponseFieldsOmitsWhenUnrestricted(t *testing.T) {
 		t.Fatalf("allowed_workflow_ids = %v, want nil for unrestricted user", fields["allowed_workflow_ids"])
 	}
 }
+
+func TestBrainIsAvailableToAccountsLimitedToOtherProducts(t *testing.T) {
+	withUserProductAccessFile(t, `{ "coder": { "products": ["code"] } }`)
+	coder := &UserClaims{UserID: "u-coder", Username: "coder"}
+	if !userAllowedProduct(coder, "knowledgebase") {
+		t.Fatal("an account limited to Code should still have Brain")
+	}
+	if userAllowedProduct(coder, "video-studio") {
+		t.Fatal("the Brain rule must not widen other products")
+	}
+	// The widening alone never turns Brain on: a server that does not run it still refuses the account.
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,code")
+	if knowledgebaseProductAllowed(coder) || knowledgebaseMCPAllowed(coder) {
+		t.Fatal("a server without Brain must refuse every account")
+	}
+}

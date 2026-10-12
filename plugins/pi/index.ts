@@ -49,11 +49,18 @@ export default function (pi: ExtensionAPI) {
         }
         shapeOk = shapeOk && rest.length <= 1 && !rest[0]?.startsWith('--');
       }
-      if (!['attach', 'detach', 'agents', 'help', 'share', 'unshare'].includes(action) || !shapeOk) {
+      if (action === 'share') {
+        shapeOk = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rest[0] ?? '') && (rest.length === 1 || (rest[1] === '--purpose' && rest.length >= 3));
+      } else if (action === 'unshare') {
+        shapeOk = rest.length === 0 || (rest.length === 1 && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rest[0]));
+      } else if (action === 'group') {
+        shapeOk = rest.length === 1 && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rest[0]);
+      }
+      if (!['attach', 'detach', 'agents', 'help', 'share', 'unshare', 'groups', 'group'].includes(action) || !shapeOk) {
         ctx.ui.notify(help, 'info'); return { action: 'handled' };
       }
       if (action === 'help') { ctx.ui.notify(help, 'info'); return { action: 'handled' }; }
-      if (action === 'share' || action === 'unshare') {
+      if (['share', 'unshare', 'groups', 'group'].includes(action)) {
         const result: any = await personCommand(event.text, ctx, host);
         ctx.ui.notify(result.reason || 'AgentWorks command completed.', 'info');
       } else if (action === 'attach') {
