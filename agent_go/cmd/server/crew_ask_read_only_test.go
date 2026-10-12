@@ -39,7 +39,7 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 // A guest's ask has exactly this tool surface: a new tool fails here until it is classified (reviewer rule, 856-59).
 func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 	want := []string{
-		"EndConversation", "WebSearch", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
+		"EndConversation", "WebSearch", "execute_shell_command", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
 		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_work_folders", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
@@ -64,7 +64,7 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 		t.Fatalf("a function guest turn keeps its outward tools: %q", msg)
 	}
 	common.SetSessionCrewAskReadOnly(sid, true)
-	for _, tool := range []string{"execute_shell_command", "send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "call_function", "slack"} {
+	for _, tool := range []string{"send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "call_function", "slack"} {
 		if msg := readerDeniedToolRefusal(ctx, tool); msg == "" {
 			t.Errorf("%s must be refused in a read-only ask", tool)
 		}

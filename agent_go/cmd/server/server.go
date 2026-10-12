@@ -5910,8 +5910,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
-		if req.ExternalBuilderOperationID != "" {
-			codingAgentSecretEnvironment = map[string]string{}
+		if req.ExternalBuilderOperationID != "" || (crewGuest != "" && req.CrewAskReadOnly) {
+			// A guest's free-text ask reads only and gets no secrets in its environment (856-59).
+			for name := range codingAgentSecretEnvironment {
+				if strings.HasPrefix(name, "SECRET_") || req.ExternalBuilderOperationID != "" {
+					delete(codingAgentSecretEnvironment, name)
+				}
+			}
 		}
 		nativeShellAPITransport := false
 		if resolvedProfile != nil && strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.APITransport.Mode), "native_shell") {
@@ -6284,7 +6289,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
 			}
-			if req.ExternalBuilderOperationID != "" {
+			if req.ExternalBuilderOperationID != "" || (crewGuest != "" && req.CrewAskReadOnly) {
 				chatAgentSecretEnv = map[string]string{}
 			}
 			workspaceRegistry := virtualtools.CreateWorkspaceToolRegistry(virtualtools.WorkspaceToolRegistryConfig{
