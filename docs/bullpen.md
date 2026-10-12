@@ -111,11 +111,11 @@ own exact session on your request. This needs current CLI and plugin
 versions; older installed skills may only support the typed command. Use it after
 loading the matching plugin or extension.
 
-Own-session CLI support first shipped in build `3a413c342`, which contains
-the `fd797fd47` change. Current packages are Codex `1.0.7`, Claude `1.0.5`,
-Muse `0.1.6` and Pi `0.1.2`. Older installed skills may only permit the
-typed command. Update the CLI and plugin and reload the provider first.
-Muse's Monitor additionally needs CLI build `8c5e776f7` or later. Own-session
+Own-session attachment needs the current CLI and plugin versions. Current
+packages are Codex `1.0.7`, Claude `1.0.5`, Muse `0.1.6` and Pi `0.1.2`.
+Older installed skills may only permit the typed command. Update the CLI and
+plugin and reload the provider first. Muse's Monitor additionally needs a
+current CLI with Muse watch support. Own-session
 attachment requires exact session metadata and may be refused by the provider
 sandbox; it cannot install a plugin, approve trust or guess another chat.
 
@@ -313,10 +313,6 @@ version with Muse support, then inspect, approve and restart.
 hooks. Rerun the project setup and restart Cursor CLI. An older AgentWorks build
 may not expose the messaging MCP. Do not replace it with full-account tools to
 bypass session checks. Desktop messaging remains a separate development stage.
-
-## Coming next
-
-Groups of agents that can message each other come later.
 
 ## Setup and updates
 
