@@ -53,6 +53,7 @@ type LocalBridgeRequest struct {
 type LocalAgentState struct {
 	AgentAttachment
 	Online       bool   `json:"online"`
+	ServerClosed bool   `json:"server_closed,omitempty"`
 	Route        string `json:"route"`
 	Pending      int    `json:"pending"`
 	LastDelivery string `json:"last_delivery,omitempty"`
@@ -570,7 +571,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, Route: "hooks", LastError: session.LastError}
+			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, Route: "hooks", LastError: session.LastError}
 			if museWatchActive(session) {
 				state.Route = "muse_monitor"
 			}

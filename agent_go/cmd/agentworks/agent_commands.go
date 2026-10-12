@@ -27,7 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share GROUP [--purpose TEXT] puts this chat's agent into a group (members see and message each other), /agentworks unshare [GROUP] takes it out, /agentworks groups lists groups, /agentworks group NAME shows its members; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share GROUP [--purpose TEXT] puts this chat's agent into a group (members see and message each other), /agentworks unshare [GROUP] takes it out, /agentworks groups lists groups, /agentworks group NAME shows its members; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.

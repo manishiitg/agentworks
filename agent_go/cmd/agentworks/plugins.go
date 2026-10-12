@@ -165,6 +165,12 @@ func pluginCommand(o *options) *cobra.Command {
 				if req.Action == "agents" {
 					return pluginAgents(ctx, root, o, req)
 				}
+			case "auto":
+				on, ok := autoAttachCommand(words)
+				if !ok {
+					return pluginBlock(o, "Use /agentworks auto on or /agentworks auto off.")
+				}
+				return pluginBlock(o, setAutoAttach(root, req.Provider, input.Cwd, on))
 			case "help":
 				return pluginBlock(o, personCommandHelp)
 			default:
@@ -173,6 +179,12 @@ func pluginCommand(o *options) *cobra.Command {
 			out, err = bridgeCall(ctx, root, o, req)
 			if err != nil {
 				return pluginBlock(o, err.Error())
+			}
+			if words[1] == "attach" && out.Attached && !out.Offline {
+				rememberAutoAttach(root, req.Provider, input.Cwd, out.Attachment, req.ConfigPath)
+			}
+			if words[1] == "detach" && !out.Attached {
+				forgetAutoAttach(root, req.Provider, input.Cwd, "")
 			}
 			if out.Offline {
 				return pluginBlock(o, "agent:"+out.Attachment.AgentName+" is offline. Type /agentworks attach in this chat to reconnect it.")
@@ -209,6 +221,11 @@ func pluginCommand(o *options) *cobra.Command {
 					return nil // back online on its own
 				}
 				return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": "AgentWorks identity agent:" + out.Attachment.AgentName + " is offline. The person can type /agentworks attach to reconnect this exact session."}})
+			}
+			if e == nil && !out.Attached && !out.Offline && req.Provider != "pi" {
+				if line := autoAttachOnStart(ctx, root, o, req, input.Cwd); line != "" {
+					return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": line}})
+				}
 			}
 			return nil
 		}

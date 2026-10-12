@@ -175,6 +175,12 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {
 				return cursorBlock(o, "AgentWorks attachment was not completed. Check the existing login and bridge.")
 			}
+		} else if req.Action == "auto" {
+			on, ok := autoAttachCommand(words)
+			if !ok {
+				return cursorBlock(o, "Use /agentworks auto on or /agentworks auto off.")
+			}
+			return cursorBlock(o, setAutoAttach(root, "cursor", cursorFolder(input), on))
 		} else if req.Action == "share" || req.Action == "unshare" || req.Action == "groups" || req.Action == "group" {
 			if msg := reconnectOffline(ctx, root, req); msg != "" {
 				return cursorBlock(o, msg)
@@ -210,7 +216,11 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		if e != nil {
 			return cursorBlock(o, "AgentWorks command was not completed. Check the local bridge and attachment.")
 		}
+		if req.Action == "attach" && cursorAttached(out, req.SessionID, "") {
+			rememberAutoAttach(root, "cursor", cursorFolder(input), out.Attachment, req.ConfigPath)
+		}
 		if req.Action == "detach" {
+			forgetAutoAttach(root, "cursor", cursorFolder(input), "")
 			return cursorBlock(o, "Handled by AgentWorks. An attachment-fenced detach request was handled; recheck status if the chat was reattached concurrently.")
 		}
 		if !cursorAttached(out, req.SessionID, req.AttachmentID) {
@@ -240,6 +250,14 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			cancelAgain()
 		} else if input.Event == "SessionStart" {
 			return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": "AgentWorks identity is offline. Type /agentworks attach in this chat to reconnect it."})
+		}
+	}
+	if err == nil && input.Event == "SessionStart" && !state.Offline && !cursorAttached(state, req.SessionID, "") {
+		ctxAuto, cancelAuto := context.WithTimeout(cmd.Context(), 8*time.Second)
+		line := autoAttachOnStart(ctxAuto, root, o, req, cursorFolder(input))
+		cancelAuto()
+		if line != "" {
+			return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": line})
 		}
 	}
 	if err != nil || !cursorAttached(state, req.SessionID, "") {
@@ -278,4 +296,15 @@ func cursorPinSession(pin string, context liveAgentSession) error {
 		}
 	}
 	return nil
+}
+
+// cursorFolder is the project folder Cursor reported for this chat.
+func cursorFolder(input pluginHookInput) string {
+	if input.Cwd != "" {
+		return input.Cwd
+	}
+	if len(input.CursorRoots) > 0 {
+		return input.CursorRoots[0]
+	}
+	return ""
 }
