@@ -131,8 +131,10 @@ def interactive_run(cli_args, root, env, followup):
             second_done = any(event.get("hook_event_name") == "stop" and
                               event.get("status") == "completed" and
                               event.get("loop_count") == 1 for event in events)
-            if second_done and followup in transcript_text(root, events):
-                verified = True
+            if second_done:
+                # A second completed native turn is narrower evidence than a
+                # verified reply marker. Stop this owned process and report both.
+                verified = followup in transcript_text(root, events)
                 break
         timed_out = time.monotonic() >= deadline and not verified
         if process.poll() is None:

@@ -25,13 +25,17 @@ import (
 )
 
 type pluginHookInput struct {
-	PiPersonToken string `json:"pi_person_token,omitempty"`
-	SessionID     string `json:"session_id"`
-	Event         string `json:"hook_event_name"`
-	Prompt        string `json:"prompt"`
-	StopActive    bool   `json:"stop_hook_active"`
-	Queued        bool   `json:"queued,omitempty"`
-	Cwd           string `json:"cwd"`
+	CursorConversation string          `json:"conversation_id,omitempty"`
+	CursorRoots        []string        `json:"workspace_roots,omitempty"`
+	CursorStatus       string          `json:"status,omitempty"`
+	CursorLoop         json.RawMessage `json:"loop_count,omitempty"`
+	PiPersonToken      string          `json:"pi_person_token,omitempty"`
+	SessionID          string          `json:"session_id"`
+	Event              string          `json:"hook_event_name"`
+	Prompt             string          `json:"prompt"`
+	StopActive         bool            `json:"stop_hook_active"`
+	Queued             bool            `json:"queued,omitempty"`
+	Cwd                string          `json:"cwd"`
 }
 
 // Hooks receive the session ID from the CLI itself. Only a literal person
@@ -39,12 +43,15 @@ type pluginHookInput struct {
 func pluginCommand(o *options) *cobra.Command {
 	root := &cobra.Command{Use: "plugin", Short: "Local coding-agent hooks and MCP delivery"}
 	hook := &cobra.Command{Use: "hook PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if !messagingPluginProvider(args[0]) && args[0] != "pi" {
+		if !messagingPluginProvider(args[0]) && args[0] != "pi" && args[0] != "cursor" {
 			return errors.New("unsupported hook provider")
 		}
 		var input pluginHookInput
 		if err := json.NewDecoder(io.LimitReader(o.stdin, 64<<10)).Decode(&input); err != nil {
 			return err
+		}
+		if args[0] == "cursor" {
+			return cursorHookCommand(cmd, o, input)
 		}
 		if input.SessionID == "" {
 			return nil
@@ -529,6 +536,10 @@ func providerHostKey(provider string) (string, error) {
 }
 
 func providerHostProcess(provider string) (int, string, error) {
+	if provider == "cursor" {
+		process, err := cursorAncestor()
+		return process.PID, process.Host, err
+	}
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -569,12 +580,12 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Notify: notifyAgentWaiting, HostAlive: providerHostAlive})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Notify: notifyAgentWaiting, HostAlive: cursorAwareHostAlive})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
 	cmd.AddCommand(serve)
-	var provider, session, messageID, delivery, message, submission, target, inbox, purpose string
+	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment string
 	var cursor int
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
@@ -591,6 +602,19 @@ func bridgeCommand(o *options) *cobra.Command {
 				return e
 			}
 			session = record.Session
+		}
+		if provider == "cursor" {
+			own, e := cursorCallingContext()
+			if e != nil {
+				return e
+			}
+			if e = cursorPinSession(session, own); e != nil {
+				return e
+			}
+			session, host = own.session, own.host
+			if (args[0] == "ack" || args[0] == "reply" || args[0] == "read") && cursorAttachment == "" {
+				return errors.New("Cursor receipt/reply/recovery requires the original --attachment-id")
+			}
 		}
 		if provider == "codex" {
 			if os.Getenv("CODEX_THREAD_ID") == "" {
@@ -615,6 +639,9 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 		}
 		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor}
+		if provider == "cursor" {
+			request.AttachmentID = cursorAttachment
+		}
 		if provider == "pi" {
 			status, e := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: provider, SessionID: session, HostKey: host})
 			if e != nil {
@@ -629,13 +656,14 @@ func bridgeCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if !out.Attached {
+		if !out.Attached || provider == "cursor" && !cursorAttached(out, session, cursorAttachment) {
 			return errors.New("this exact provider session is not attached")
 		}
 		return o.output(out)
 	}}
 	call.Flags().StringVar(&provider, "provider", "", "Attached provider")
 	call.Flags().StringVar(&session, "session", "", "Exact session; Codex uses its host thread environment")
+	call.Flags().StringVar(&cursorAttachment, "attachment-id", "", "Cursor original offer attachment fence")
 	call.Flags().StringVar(&messageID, "message-id", "", "Offered message ID")
 	call.Flags().StringVar(&delivery, "delivery", "", "admitted or processed")
 	call.Flags().StringVar(&message, "message", "", "Explicit reply or message")
@@ -806,6 +834,10 @@ func agentSessionStatus(o *options, ctx context.Context) error {
 }
 
 func providerPIDHostKey(provider string, pid int) (string, error) {
+	if provider == "cursor" {
+		process, err := cursorProcessAt(pid)
+		return process.Host, err
+	}
 	if provider == "pi" {
 		return piPIDHostKey(pid)
 	}

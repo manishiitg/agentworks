@@ -5,6 +5,8 @@ on:
     branches: ['verify/**']
     paths:
       - 'plugins/cursor/**'
+      - 'agent_go/cmd/agentworks/cursor*.go'
+      - 'agent_go/cmd/agentworks/plugins.go'
       - 'plugins/shared/skills/agent-messages/**'
       - 'scripts/sync-agent-messaging-skills.py'
       - '.github/workflows/verify-cursor-plugin.yml'
@@ -23,5 +25,36 @@ jobs:
           python-version: '3.13'
       - name: Check shared Cursor messaging skill
         run: python3 scripts/sync-agent-messaging-skills.py --check cursor
-      - name: Check Cursor package and process/socket behavior
+      - name: Check Cursor package and shared CLI delegation
         run: python3 plugins/cursor/scripts/check_adapter.py
+
+  cursor-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent_go/go.mod
+          cache-dependency-path: agent_go/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify native process, conversation and attachment fences
+        working-directory: agent_go
+        run: go test ./cmd/agentworks -run '^TestCursor' -count=1
+      - name: Build standalone probe CLI and compile desktop binding
+        working-directory: agent_go
+        run: |
+          mkdir -p ../cursor-artifacts
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.cliVersion=$GITHUB_SHA" -o ../cursor-artifacts/agentworks ./cmd/agentworks
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /tmp/agentworks-darwin ./cmd/agentworks
+          printf '%s\n' "$GITHUB_SHA" > ../cursor-artifacts/revision.txt
+          (cd ../cursor-artifacts && sha256sum agentworks > SHA256SUMS)
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cursor-probe-cli
+          path: cursor-artifacts/
+          retention-days: 3

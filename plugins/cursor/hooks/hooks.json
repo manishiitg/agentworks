@@ -19,6 +19,12 @@
         "command": "python3 \"${CURSOR_PLUGIN_ROOT}/scripts/cursor_hook.py\"",
         "timeout": 20
       }
+    ],
+    "sessionStart": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/scripts/cursor_hook.py\"",
+        "timeout": 20
+      }
     ]
   }
 }

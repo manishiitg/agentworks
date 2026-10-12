@@ -4,11 +4,12 @@ This package formats turn-boundary messages for one explicitly attached Cursor
 conversation. It requires the shared PLAT-861 local bridge and its `cursor_hook`
 transport. It does not implement a daemon, sign in, hold credentials, poll a
 mailbox, type into the app, or claim that writing stdout admits a message.
-The shared bridge on main supports Cursor hook receipts and attachment fencing;
-Cursor-specific narrow MCP/process binding is still pending under PLAT-861.
-Current main requires an exact provider host key for attached operations; this
-candidate does not supply it, and shared hook/MCP commands do not yet admit
-Cursor. The package is not ready for real attachment or delivery against main.
+The shared CLI accepts native Cursor hooks and derives helpers from the installed
+process and CURSOR_CONVERSATION_ID. Linux CLI identity includes the actual bundled
+Node/index.js and kernel birth data. macOS desktop identity uses the native app
+image and kernel birth data, with a separate UUID for every conversation; live
+GUI delivery remains unverified. macOS CLI is unsupported. Desktop MCP remains
+disabled because a shared MCP child does not prove the calling conversation.
 
 ## Prerequisites and installation
 
@@ -33,7 +34,7 @@ cursor-agent --plugin-dir /absolute/path/to/plugins/cursor --workspace /absolute
 
 CLI 2026.10.01-e373342 has call-site guards that check user/project hooks before
 invoking `stop` and `beforeSubmitPrompt`; plugin-only hooks may be skipped. If the
-hooks do not run, the person should add these three project hook entries to
+hooks do not run, the person should add these project hook entries to
 `.cursor/hooks.json`, preserving all other entries (do not install globally by
 default). Replace the script path with the actual absolute plugin path:
 
@@ -43,6 +44,7 @@ default). Replace the script path with the actual absolute plugin path:
   "hooks": {
     "beforeSubmitPrompt": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20}],
     "stop": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20, "loop_limit": 5}],
+    "sessionStart": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20}],
     "sessionEnd": [{"command": "python3 /absolute/plugin/path/scripts/cursor_hook.py", "timeout": 20}]
   }
 }
@@ -54,15 +56,12 @@ responses with the last follow-up winning; a returned offer is not acceptance.
 
 ## Person-controlled attachment
 
-Shared person commands are `/agentworks attach [NAME]`, `/agentworks detach`
-and `/agentworks agents`. Cursor support for that shared command handler and
-exact process binding is pending. Do not use another provider to bypass it.
-
-This preview refuses `/agentworks attach` with a message explaining the missing
-shared Cursor binding. It cannot create an attachment, connection or sender rule.
-The prompt-submit hook consumes controls before model input. `/agentworks status`
-and `/agentworks agents` query only a verified attachment; `/agentworks detach`
-first snapshots that attachment and includes its ID in the detach request.
+The person submits `/agentworks attach [NAME]`, `/agentworks detach`,
+`/agentworks agents` or `/agentworks status` directly. The shared hook handler
+consumes these controls before model input and verifies the native UUID and
+installed process. Attach uses existing login and bridge configuration; it does
+not grant sender rules. Status/agents query only this attachment. Detach first
+snapshots its ID and sends that exact fence. Loading the plugin never attaches.
 Queued messages and controls containing an agent-delivery header are refused.
 Ordinary prompts pass through unchanged. Bridge failures block control submission
 with a generic message, without printing credentials or raw errors.
@@ -70,7 +69,7 @@ with a generic message, without printing credentials or raw errors.
 Unattached conversations return no output and make no network request. Hook
 queries use only the private Unix socket. `stop` drains only on `completed` with
 integer `loop_count` 0–4. Aborts, errors and exhausted loops leave offers pending.
-`sessionEnd` asks the bridge to detach the exact conversation. If the daemon is
+`sessionEnd` marks the exact attachment offline, fencing old operations while preserving its name. If the daemon is
 unavailable during close, revoke the connection in AgentWorks; do not claim the
 close was fenced until the server confirms it. Hook input is a same-user local
 boundary, not protection against another program running under your OS account.
@@ -124,7 +123,7 @@ Research on 2026-10-11: desktop 3.21.18 (installed Info.plist), CLI
 CURSOR_PLUGIN_ROOT, skips stop at loop_limit, and queues followup_message as a
 userMessageAction. These establish implementation contracts, not a successful
 live delivery. Run `python3 plugins/cursor/scripts/check_adapter.py` for the
-adapter's socket/formatting regression check. Live acceptance must additionally
+package and shared-CLI delegation check. The remote Go `TestCursor` suite covers real Node ancestry, UUID ambiguity, mixed batches and original-lease recovery. Live acceptance must additionally
 prove busy-turn delivery, idle notification, draft preservation, project and
 conversation isolation, permission revocation and restart behavior with the real
 shared bridge. Keep the ticket open until that evidence exists.
