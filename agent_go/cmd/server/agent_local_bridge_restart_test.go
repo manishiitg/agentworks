@@ -18,7 +18,7 @@ import (
 func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"root","username":"root","admin":true,"products":[]}]}`)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AUTH_SECRET", "restart-fixture-secret")
 	store, err := openMCPOAuthStore()
@@ -98,6 +98,32 @@ func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 			t.Fatalf("%s did not attach: %+v", chat.Provider, out)
 		}
 	}
+	// An administrator disconnects the Claude chat. It must not come back by itself.
+	listing, _, _, _ := env.api.bullpenAdminAct(context.Background(), "root", "list", map[string]any{})
+	closedAgent, handle := "", ""
+	for _, person := range listing["people"].([]map[string]interface{}) {
+		for _, agent := range person["agents"].([]map[string]interface{}) {
+			if agent["agent_name"] == "claude-chat" {
+				closedAgent, _ = agent["agent_id"].(string)
+				handle, _ = agent["attachment_handle"].(string)
+			}
+		}
+	}
+	if handle == "" {
+		t.Fatalf("no handle for the Claude chat: %v", listing)
+	}
+	if out, _, code, msg := env.api.bullpenAdminAct(context.Background(), "root", "close_attachment", map[string]any{"handle": handle, "reason": "test disconnect"}); code != "" || out["state"] != "closed" {
+		t.Fatalf("close: %v %s %s", out, code, msg)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		agentLiveEvents.Lock()
+		_, streaming := agentLiveEvents.online[closedAgent]
+		agentLiveEvents.Unlock()
+		if !streaming || time.Now().After(deadline) {
+			break
+		}
+	}
+	time.Sleep(500 * time.Millisecond) // the bridge reads the closed frame and records it
 	cancel()
 	<-done
 	// The update restarted the bridge and the old provider processes are gone.
@@ -114,6 +140,12 @@ func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 	for _, chat := range chats {
 		resume := chat
 		resume.Action, resume.HostKey, resume.AgentName = "resume", chat.HostKey+"-new", ""
+		if chat.Provider == "claude" {
+			if _, e := agentworksclient.CallLocalBridge(context.Background(), root, resume); e == nil {
+				t.Fatal("a chat whose lease an administrator closed came back on its own")
+			}
+			continue
+		}
 		out := call(resume)
 		if !out.Attached || out.Attachment.AgentName != chat.AgentName {
 			t.Fatalf("%s did not come back as itself: %+v", chat.Provider, out)

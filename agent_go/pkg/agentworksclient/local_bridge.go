@@ -117,6 +117,7 @@ type localSession struct {
 	nativeStarted     bool
 	nativeCalls       int
 	piNextAt          time.Time // Observed SDK consumer, not persisted authority.
+	ServerClosed      bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
 	switchWarned      string    // Target login the person was already warned about (unread mail does not follow a move).
 }
 
@@ -466,6 +467,10 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			if errors.As(err, &watchErr) && (watchErr.Status == 401 || watchErr.Status == 403 || watchErr.Status == 404 || watchErr.Code == "agent_attachment_closed") {
 				stopMuseWatch(s)
 			}
+			if errors.As(err, &watchErr) && watchErr.Code == "agent_attachment_closed" && !s.ServerClosed {
+				s.ServerClosed = true
+				_ = b.save()
+			}
 			b.wake()
 			b.mu.Unlock()
 			var apiErr *APIError
@@ -615,6 +620,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "resume" {
 		if s == nil || !s.Offline {
 			return LocalBridgeReply{Error: "This chat is already connected, or was never attached. Type /agentworks attach in it."}
+		}
+		if s.ServerClosed {
+			// An administrator closed this lease (or another chat took the name): never
+			// come back on its own. The person's attach in the chat is what restores it.
+			return LocalBridgeReply{Error: "This chat was disconnected. Type /agentworks attach in it to connect again."}
 		}
 		in.Action = "attach"
 		in.ConfigPath = s.ParentConfigPath
