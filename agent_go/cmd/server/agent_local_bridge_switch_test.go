@@ -114,8 +114,8 @@ func TestAgentLocalBridgeSwitchesConnectionAndKeepsItOtherwise(t *testing.T) {
 	// A failed move leaves the chat attached where it was.
 	failing := base
 	failing.Action, failing.ConfigPath, failing.ReuseIdentity, failing.SwitchConnection = "attach", deadPath, true, true
-	if out := call(failing); out.Error == "" {
-		t.Fatal("a move to an unreachable login reported success")
+	if out, e := agentworksclient.CallLocalBridge(context.Background(), root, failing); e == nil && out.Error == "" {
+		t.Fatalf("a move to an unreachable login reported success: %+v", out)
 	}
 	if st := call(agentworksclient.LocalBridgeRequest{Action: "status", Provider: base.Provider, SessionID: base.SessionID, HostKey: base.HostKey}); !st.Attached || !attachedTo("alice") {
 		t.Fatalf("failed move disturbed the source: %+v", st)
