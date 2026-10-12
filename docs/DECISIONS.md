@@ -21,6 +21,22 @@ Why: the person wants to see recorded CLI usage over time without enabling
 collection automatically or sharing private usage with message recipients.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-113.
+## 2026-10-12 — Sharing is agentic; one Agents page; open limits (PLAT-861)
+
+Owner choices for an open system, to revisit later. Sharing is done by asking an agent ("share yourself
+with everyone", "make yourself private") or with `/agentworks share|unshare`; the web Sharing page, the
+per-person share form, the block form and the Administration action buttons are removed. The Bullpen page
+is one read-only Agents view (your agents with a shared badge and admin notices, agents shared with everyone
+by others, who you blocked, and for administrators everyone on the server and recent admin changes) plus
+Connect an agent. Administrators make changes through the `bullpen_admin` tool (close_attachment,
+remove_agent, unshare_agent), each with a reason and an audit row. Per-person grants and blocks stay in the
+server API but have no UI or CLI. The per-sender cap (60 messages per hour and 100 undelivered per share)
+stays.
+
+Why: simple for people and agents; actions belong with the agent or the CLI, not buttons.
+
+Ticket: PLAT-861.
+
 ## 2026-10-12 — Agents can be shared with everyone on the server, from the person's CLI (PLAT-861)
 
 `/agentworks share` (in the chat) and `agentworks share AGENT` (terminal) make one agent visible to every

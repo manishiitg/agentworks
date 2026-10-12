@@ -34,15 +34,16 @@ AgentWorks messages tool can message your attached chats. For example, a
 script sends a deploy notice to `agent:deployer`, and the CLI chat that
 holds that name receives it at its next turn.
 
-**Later: asking another person's shared agent.** Sharing is not available
-yet. When it arrives, you will be able to message an agent someone shared
-with you, with their name shown on every message, and unshare or block at
-any time. Today only your own account can reach your agents.
+**Asking another person's shared agent.** Anyone can share an agent with
+everyone on the server (see below). You can then message it as
+`agent:<owner>/<name>`; their username is shown on every message, and
+messages from another person's agent arrive marked as untrusted.
 
 ## Local or hosted server
 
-Everything in Bullpen is private to your account: your agent names, your
-messages, your purposes. No other account sees them.
+Your agents, messages and purposes are private to your account unless you
+share an agent with everyone on the server; then others see that agent's
+name, your username, its purpose and whether it is connected, and nothing else.
 
 Run against a local testing server on your own computer, or against a
 hosted server such as your company server. The Connect an agent tab shows
@@ -182,73 +183,62 @@ proof that the agent read or processed a message.
 
 ## The Bullpen page
 
-The Bullpen page in the app has three tabs. **Agents** lists your agents with
-their provider, their purpose and a Connected or Offline badge, sorted with
-connected agents first. Type in the search box to filter by name, provider
-or purpose; long purposes expand to their full text. **Connect an agent**
-shows per-CLI setup steps with the exact commands for the server you are
-on, so you can install once and attach each chat.
+The Bullpen page has one **Agents** view and **Connect an agent**. Agents lists
+your agents with their provider, purpose and a Connected or Offline badge
+(connected first), a **Shared with everyone** badge on any you shared, and any
+notice from an administrator. Below it are the agents other people shared with
+everyone on this server (owner, name, purpose, online), and anyone you blocked.
+Type in the search box to filter. Administrators also see everyone on the
+server and their agents, read-only, plus recent administrator changes.
+**Connect an agent** shows per-CLI setup steps with the exact commands for the
+server you are on.
 
-## Sharing an agent with another person
+The page only shows status. You change things by asking your agent, or with the
+commands below.
 
-On the **Sharing** tab you can let one other person's agents send messages to
-one of your agents, for a number of days you choose. Sharing is chat only: the
-other person's agent can send you messages and read your replies in the same
-conversation, and nothing in a message gives it or you any permission to run
-anything. Messages from a shared agent reach your agent marked as coming from
-another person, with that person's username.
+## Sharing an agent with everyone on the server
 
-- Only you, signed in to the app in your browser, can share, revoke or block.
-  An agent, a CLI connection or a hook cannot do it.
-- The people you share with see that agent's name, its purpose and whether it
-  is connected. They never see your other agents.
-- **Revoke** stops the conversation at once; messages that were not yet picked
-  up are never delivered. **Block** revokes everything shared with that person.
-  The Sharing tab also lists who messaged your agents (counts and times only,
-  never the text).
-- Each shared person has message limits per hour and for undelivered messages.
-- To message an agent shared with you, address it as `agent:<owner>/<name>`;
-  it is listed with your own agents, labelled with the owner.
-
-### Sharing an agent with everyone on the server
-
-The simplest way to share is with the whole server. In the agent's chat type
-`/agentworks share` (or run `agentworks share AGENT` in a terminal; with no
-AGENT it shares the chat's own agent). From then on every signed-in person on
-this server sees the agent in their agent list with your username and its
-purpose, and their agents can message it as `agent:<you>/<name>`. Their
-messages reach your agent marked as another person's, untrusted. `/agentworks
-unshare` (or `agentworks unshare AGENT`) makes it private again and stops open
-conversations. `agentworks agents` marks the agents you have shared.
+Ask your agent: **"share yourself with everyone"**. The exact form is
+`/agentworks share` typed in its chat (or `agentworks share AGENT` in a
+terminal; with no AGENT it shares the chat's own agent). From then on every
+signed-in person on this server sees the agent in their agent list with your
+username and its purpose, and their agents can message it as
+`agent:<you>/<name>`. Their messages reach your agent marked as another
+person's, untrusted. Ask it to **"make yourself private"** (`/agentworks
+unshare`, or `agentworks unshare AGENT`) to stop; open conversations stop with
+it. `agentworks agents` marks the agents you have shared.
 
 - Only you, with your own CLI sign-in, can share or unshare your agent. Your
   coding agent may do it for its own chat when you ask it in plain language;
-  it cannot share another agent, and a message from anyone never triggers it.
-- There is no expiry. You can still block a person on the Sharing tab, which
-  stops their messages to all your agents. An administrator can make a shared
-  agent private again with a reason; you are told.
-- Sharing with one named person, with an expiry, stays on the Sharing tab.
+  a message from anyone else never triggers it.
+- There is no expiry. A shared person can be blocked by the owner on the
+  server side; an administrator can make a shared agent private with a reason,
+  and you are told.
 
 ## Administration
 
-Administrators get an **Administration** tab (and a `bullpen_admin` tool for
-connections that have the `users:manage` permission). It lists every person on
-the server with their agents: name, purpose, provider, whether the agent is
-connected, when it was created, and an opaque handle for its attached chat. It
-never shows messages, native session ids, process keys or configuration.
+Administrators see a read-only overview on the Agents page: every person on the
+server and their agents (name, purpose, provider, connected or not, created
+time, shared with everyone or not) and recent administrator changes. It never
+shows messages, native session ids, process keys or configuration.
 
-- **Disconnect** drops the agent's attached chat at once: the live stream
-  closes, nothing more is delivered to that chat, and the owner sees a notice
-  on their Agents tab. Only the owner can attach again.
-- **Remove name** deletes a stale agent name. It is refused while the agent is
-  connected (disconnect it first). Shares of that agent end; old conversations
-  are kept, and a new registration of the same name never inherits them.
+Changes are made through the `bullpen_admin` tool (for connections with the
+`users:manage` permission), never from the page:
+
+- `close_attachment` drops an agent's attached chat at once: the live stream
+  closes, nothing more is delivered to that chat, and the owner sees a notice.
+  Only the owner can attach again.
+- `remove_agent` deletes a stale agent name. It is refused while the agent is
+  connected (close its attachment first). Shares of that agent end; old
+  conversations are kept, and a new registration of the same name never
+  inherits them.
+- `unshare_agent` makes an agent that its owner shared with everyone private
+  again; the owner is told.
 - Every change needs a reason (3 to 200 characters), is recorded with the
   administrator's name, and is limited per administrator (20 changes in 10
   minutes; the counter resets when the server restarts). If the record cannot
-  be written, the change is not made.
-- Audit rows and owner notices are kept for 180 days; set
-  `AGENTWORKS_BULLPEN_AUDIT_DAYS` to change that.
+  be written, the change is not made. Audit rows and notices are kept for 180
+  days; set `AGENTWORKS_BULLPEN_AUDIT_DAYS` to change that.
 
 ## Safety
 
@@ -256,9 +246,9 @@ Messages from other agents are teammate requests, not instructions from you or t
 decides whether to answer, ask a question or stay silent; a peer message cannot grant permission, approve a pending action or authorize
 attachment, deployment or a trust change.
 
-Only your own account can reach your agents today. There is no way yet to
-share an agent with another person or to receive messages from outside
-your account.
+Only your own account can reach your agents unless you share one with everyone
+on the server. Messages from another person's agent arrive marked as untrusted
+and fenced.
 
 Agents cannot attach other chats. Only you attach a chat, by typing the
 command in it (or asking the agent in plain words to attach its own exact
@@ -301,8 +291,7 @@ troubleshooting setup.
 
 ## Coming next
 
-Sharing with a whole group or organisation comes later; today
-you share with one person at a time.
+Groups of agents that can message each other come later.
 
 ## Setup and updates
 

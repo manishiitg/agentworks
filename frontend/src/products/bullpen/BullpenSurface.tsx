@@ -1,10 +1,9 @@
 import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Share2, Shield, Terminal, UsersRound } from 'lucide-react'
+import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
-import { SharingPanel } from './SharingPanel'
 import { AdminPanel } from './AdminPanel'
 import { Button } from '../../components/ui/Button'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
@@ -12,15 +11,13 @@ import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice } from '../../services/bullpenApi'
+import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice, type BullpenSharing } from '../../services/bullpenApi'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const views = [
   { id: 'agents' as const, label: 'Agents', icon: UsersRound },
-  { id: 'sharing' as const, label: 'Sharing', icon: Share2 },
   { id: 'setup' as const, label: 'Connect an agent', icon: Terminal },
 ]
-const adminView = { id: 'admin' as const, label: 'Administration', icon: Shield }
 const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
 
 function AgentAddress({ target }: { target: string }) {
@@ -39,7 +36,7 @@ function AgentAddress({ target }: { target: string }) {
   </div>
 }
 
-function AgentDirectory({ onConnect }: { onConnect: () => void }) {
+function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin: boolean }) {
   const [agents, setAgents] = useState<BullpenAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -47,9 +44,11 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
   const [attempt, setAttempt] = useState(0)
   const [updated, setUpdated] = useState<Date | null>(null)
   const [notices, setNotices] = useState<BullpenNotice[]>([])
+  const [network, setNetwork] = useState<BullpenSharing | null>(null)
   useEffect(() => {
     const controller = new AbortController()
     bullpenApi.notices(controller.signal).then(items => { if (!controller.signal.aborted) setNotices(items) }).catch(() => undefined)
+    bullpenApi.sharing(controller.signal).then(data => { if (!controller.signal.aborted) setNetwork(data) }).catch(() => undefined)
     return () => controller.abort()
   }, [attempt])
   useEffect(() => {
@@ -81,27 +80,37 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
         <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
     </div>}
+<<<<<<< HEAD
     {!error && <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}
+=======
+    <div className="space-y-2">
+      <h3 className="font-medium">Agents other people shared with everyone</h3>
+      {!(network?.shared_with_me ?? []).length ? <p className="text-sm text-muted-foreground">No one has shared an agent with everyone yet. Anyone can: they ask their agent to “share yourself with everyone”.</p> : <ul className="divide-y divide-border rounded-xl border border-border">
+        {(network?.shared_with_me ?? []).map(agent => <li key={agent.target} className="p-3 text-sm"><strong className="break-all">{agent.agent_name}</strong> · {agent.online ? 'Connected' : 'Offline'}<p className="mt-1 break-words text-muted-foreground">{agent.purpose || 'No purpose set.'}</p><p className="mt-1 font-mono text-xs">{agent.target}</p></li>)}
+      </ul>}
+      {(network?.blocks ?? []).length > 0 && <p className="text-sm text-muted-foreground">You blocked: {(network?.blocks ?? []).map(block => block.person).join(', ')}.</p>}
+    </div>
+>>>>>>> 7d2a0f7a2 (PLAT-861: one read-only Agents page, agentic sharing, admin actions only by tool (owner decisions))
     <p className="text-xs leading-5 text-muted-foreground">Connected means the server has an active delivery stream. Whether a message starts a turn depends on the agent’s delivery adapter. Stored, admitted and processed are separate receipts.{updated && ' Last refreshed ' + updated.toLocaleTimeString() + '.'}</p>
-    <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
+    <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. To let everyone on this server message an agent, ask it: “share yourself with everyone” (and “make yourself private” to undo it). Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
+    {isAdmin && <AdminPanel />}
   </section>
 }
 
 export function BullpenSurface() {
-  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'sharing', 'setup', 'admin'] as const)
+  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup'] as const)
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
-  const shownViews = user?.role === 'admin' ? [...views, adminView] : views
-  useRegisterPanelSwitcher('bullpen', shownViews, id => setView(id as 'agents' | 'sharing' | 'setup' | 'admin'))
+  useRegisterPanelSwitcher('bullpen', views, id => setView(id as 'agents' | 'setup'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
     <ModePresetBar reduced walkthroughPaused />
     <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
         <header className="mb-6 border-b border-border pb-5"><div className="flex items-center gap-3"><MessagesSquare className="h-6 w-6 text-primary" /><h1 className="text-2xl font-semibold tracking-tight">Bullpen</h1></div><p className="mt-2 text-sm text-muted-foreground">Your connected agents, in one place.</p>
-          <nav aria-label="Bullpen views" className="mt-5 flex flex-wrap gap-2">{shownViews.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />Bullpen help<span className="sr-only"> (opens in a new tab)</span></a></nav>
+          <nav aria-label="Bullpen views" className="mt-5 flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />Bullpen help<span className="sr-only"> (opens in a new tab)</span></a></nav>
         </header>
-        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'sharing' ? (user ? <SharingPanel key={user.id} /> : <p>Sign in to manage sharing.</p>) : view === 'admin' && user?.role === 'admin' ? <AdminPanel key={user.id} /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : user ? <AgentDirectory key={user.id} isAdmin={user.role === 'admin'} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
       </div>}
     </main>
   </div>

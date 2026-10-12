@@ -85,15 +85,6 @@ export const bullpenApi = {
     (await api.get<{ agents: BullpenAgent[] | null }>('/api/bullpen/agents', { signal, params: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } })).data.agents ?? [],
   sharing: async (signal?: AbortSignal): Promise<BullpenSharing> =>
     ((data: BullpenSharing) => ({ shares: data.shares ?? [], blocks: data.blocks ?? [], shared_with_me: data.shared_with_me ?? [], incoming: data.incoming ?? [] }))((await api.get<BullpenSharing>('/api/bullpen/shares', { signal })).data),
-  share: async (agentName: string, person: string, expiresInHours: number): Promise<void> => {
-    await api.post('/api/bullpen/shares', { agent_name: agentName, person, expires_in_hours: expiresInHours })
-  },
-  revoke: async (shareId: string): Promise<void> => {
-    await api.delete('/api/bullpen/shares/' + encodeURIComponent(shareId))
-  },
-  block: async (person: string, unblock = false): Promise<void> => {
-    await api.post('/api/bullpen/blocks', { person, unblock })
-  },
   notices: async (signal?: AbortSignal): Promise<BullpenNotice[]> =>
     (await api.get<{ notices: BullpenNotice[] | null }>('/api/bullpen/notices', { signal })).data.notices ?? [],
   dismissNotice: async (id: string): Promise<void> => {
@@ -103,15 +94,6 @@ export const bullpenApi = {
     ((data: BullpenAdminPage) => ({ ...data, people: (data.people ?? []).map(person => ({ ...person, agents: person.agents ?? [] })) }))((await api.get<BullpenAdminPage>('/api/bullpen/admin/agents', { params: { q, cursor }, signal })).data),
   adminAudit: async (signal?: AbortSignal): Promise<BullpenAdminAuditRow[]> =>
     (await api.get<{ audit: BullpenAdminAuditRow[] | null }>('/api/bullpen/admin/audit', { signal })).data.audit ?? [],
-  adminCloseAttachment: async (handle: string, reason: string): Promise<void> => {
-    await api.post('/api/bullpen/admin/attachments/close', { handle, reason })
-  },
-  adminUnshareAgent: async (agentId: string, reason: string): Promise<void> => {
-    await api.post('/api/bullpen/admin/agents/unshare', { agent_id: agentId, reason })
-  },
-  adminRemoveAgent: async (agentId: string, reason: string): Promise<void> => {
-    await api.post('/api/bullpen/admin/agents/remove', { agent_id: agentId, reason })
-  },
 }
 
 export function bullpenError(error: unknown): string {
