@@ -7,7 +7,6 @@ import { inspectionChat, inspectionRecords, inspectionTaskLabel } from '../../ut
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 
 const ChatTranscript = lazy(() => import('../TerminalEventTranscript').then(module => ({default:module.TerminalEventTranscript})))
-const ExecutionLogsPopup = lazy(() => import('../workflow/ExecutionLogsPopup'))
 const modeLabels: Record<string,string> = {agent:'Agent',script:'Script',validation:'Validation'}
 function ExecutionType({mode}: {mode?: string}) {
  return <span className="shrink-0 rounded border border-border px-2 py-0.5 text-[11px] font-medium" data-testid="inspection-execution-type">{modeLabels[mode || ''] || 'Type not recorded'}</span>
@@ -37,7 +36,7 @@ function useExecutionRecords(target: ExecutionInspectionTarget | null, reload = 
     if (disposed || !isChatIdentityCurrent(identity)) return
     const status = (failure as {response?: {status?: number}}).response?.status
     if (status === 404) setData(null)
-    if (status === 404 && ++missingReads >= 3) {setError('No saved records are available for this execution. Try Refresh or Saved logs.'); return}
+    if (status === 404 && ++missingReads >= 3) {setError('No saved records are available for this execution. Try Refresh.'); return}
     if (status === 401 || status === 403) {setData(null); setError('Access to this execution is no longer available'); return}
     setError('Execution records are temporarily unavailable. Retrying…')
    }
@@ -66,7 +65,7 @@ function ScriptExecution({data}: {data: ExecutionInspectionResponse}) {
  const scripts = data.scripts || []
  const hasAgent = data.transcript.events.some(event => ['system','user','assistant'].includes(event.role || ''))
  return <div className="h-full min-h-0 overflow-auto px-3 pb-3">
-  {!scripts.length && <p className="mb-3 text-xs text-muted-foreground">{data.transcript.status==='running' ? 'The script will appear when it is dispatched.' : 'No script snapshot was recorded for this execution. Saved logs may contain evidence.'}</p>}
+  {!scripts.length && <p className="mb-3 text-xs text-muted-foreground">{data.transcript.status==='running' ? 'The script will appear when it is dispatched.' : 'No script snapshot was recorded for this execution.'}</p>}
   {scripts.map((script,index)=><section key={script.started_at} className="mb-4">
    {(scripts.length>1 || script.origin==='completion_snapshot') && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">{scripts.length>1 && <span className="font-medium">Script attempt {index+1}</span>}<span className="text-muted-foreground">{script.origin==='completion_snapshot' ? 'Source saved after the agent turn' : script.status}</span></div>}
    <details open={scripts.length===1} className="mb-3 text-xs"><summary className="cursor-pointer font-medium">Full script <span className="ml-1 break-all font-normal text-muted-foreground">{script.path}</span></summary>{script.source ? <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{script.source}</pre> : <p className="mt-2 text-muted-foreground">Source could not be captured at dispatch.</p>}</details>
@@ -88,10 +87,14 @@ function ExecutionRecords({data}: {data: ExecutionInspectionResponse}) {
  </div>
 }
 
+function SavedExecutionLog({data, label}: {data: ExecutionInspectionResponse; label: string}) {
+ const [open, setOpen] = useState(false)
+ return <details data-testid="inspection-saved-log" onToggle={event=>setOpen(event.currentTarget.open)} className="border-t border-border pt-3"><summary className="cursor-pointer text-muted-foreground">Saved execution log</summary>{open && <><p className="my-2 text-[11px] text-muted-foreground">Saved records for {label}.</p><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-3 text-[11px]">{JSON.stringify({execution_mode:data.execution_mode,transcript:data.transcript,scripts:data.scripts,result:data.result},null,2)}</pre></>}</details>
+}
+
 export default function StepInspectionPanel({target}: {target: ExecutionInspectionTarget}) {
  const {data, error, refresh} = useExecutionRecords(target)
  const [chosen, setChosen] = useState<string | null>(null)
- const [logsOpen, setLogsOpen] = useState(false)
  const [reload, setReload] = useState(0)
  const transcript = data?.transcript
  const actual = transcript?.inspection ?? target
@@ -105,6 +108,7 @@ export default function StepInspectionPanel({target}: {target: ExecutionInspecti
  const child = children.find(item => item.agent_id === selectedID)
  const childTarget = useMemo(() => child ? {workspace_path: target.workspace_path, session_id: target.session_id, execution_id: child.agent_id, name: child.name, started_at: child.started_at || target.started_at} : null, [target, child?.agent_id, child?.name, child?.started_at])
  const {data: selectedData, error: selectedError} = useExecutionRecords(childTarget, reload)
+ const viewedData = childTarget ? selectedData : data
  const labelsId = useId()
  return <div className="flex h-full min-h-0 flex-col">
   <div className="shrink-0 border-b border-border px-3 py-2">
@@ -118,7 +122,7 @@ export default function StepInspectionPanel({target}: {target: ExecutionInspecti
    <details data-testid="inspection-technical-details" className="mt-2 max-h-[28rem] shrink-0 overflow-auto border-t border-border p-3 text-xs"><summary className="cursor-pointer text-muted-foreground">Run details</summary>
     {children.length>0 && <div className="mt-3 flex items-center gap-2"><label htmlFor={`${labelsId}-task`} className="shrink-0 text-xs text-muted-foreground">Inspect task</label><select id={`${labelsId}-task`} value={selectedID} onChange={event=>setChosen(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs"><option value={target.execution_id}>Step result</option>{children.map(item=><option key={item.agent_id} value={item.agent_id}>{inspectionTaskLabel(item.name)}</option>)}</select></div>}
     <dl className="my-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">{finalValidation && <><dt>Final validation</dt><dd>{finalValidation.status==='completed' ? 'Passed' : finalValidation.status==='failed' ? 'Failed' : finalValidation.status}</dd></>}<dt>Viewing</dt><dd>{child ? inspectionTaskLabel(child.name) : 'Step result'}</dd><dt>Execution</dt><dd className="break-all">{selectedID}</dd>{actual.step_id && <><dt>Step</dt><dd>{actual.step_id}</dd></>}{actual.run_folder && <><dt>Run folder</dt><dd>{actual.run_folder}</dd></>}<dt>Started</dt><dd>{new Date(childTarget?.started_at || transcript?.started_at || target.started_at).toLocaleString()}</dd></dl>
-    {actual.run_folder && actual.step_id && <><button type="button" onClick={() => setLogsOpen(value => !value)} className="rounded border border-border px-2 py-1.5">{logsOpen ? 'Hide saved logs' : 'Open saved logs'}</button>{logsOpen && <div className="mt-3 h-96 min-h-0"><p className="mb-2 text-[11px] text-muted-foreground">Saved attempts for this step. These may include other executions; check their timestamps.</p><Suspense fallback={<p>Loading saved logs…</p>}><ExecutionLogsPopup workspacePath={target.workspace_path} runFolder={actual.run_folder} runFolders={[actual.run_folder]} initialStepId={actual.step_id} allowDefaultRunFolder={false} /></Suspense></div>}</>}
+    {viewedData && <SavedExecutionLog key={selectedID} data={viewedData} label={child ? inspectionTaskLabel(child.name) : 'this step'} />}
    </details>
   </div>
  </div>

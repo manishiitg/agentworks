@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { RunInspectionButton } from './RunInspectionButton'
 import { StepInspectionTabs } from './StepInspectionTabs'
+import StepInspectionPanel from './StepInspectionPanel'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { openStepInspection } from '../../utils/stepInspection'
 import { inspectionChat, inspectionRecords } from '../../utils/inspectionConversation'
@@ -16,6 +17,41 @@ const original = useChatStore.getState()
 afterEach(() => {useChatStore.setState(original, true); vi.restoreAllMocks(); vi.unstubAllGlobals()})
 const target: ExecutionInspectionTarget = {session_id:'parent', execution_id:'first', workspace_path:'Workflow/example', name:'Research', step_id:'research', run_folder:'iteration-1/default', started_at:'2026-10-11T00:00:00Z'}
 const response = (id: string, text: string): ExecutionInspectionResponse => ({transcript:{session_id:'parent', agent_id:id, status:'completed', started_at:target.started_at, events:[{timestamp:target.started_at, type:'user_message', role:'user', text}]}, children:[]})
+
+it('shows only the selected saved execution record without loading workflow history or retaining the previous task', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+ const parent = response('first',''); parent.transcript.events=[]
+ parent.execution_mode='agent'
+ parent.children=[{agent_id:'task',name:'Task work',status:'completed'},{agent_id:'validation',name:'Final validation (prevalidation)',status:'completed'}]
+ const task=response('task','Actual task instruction')
+ task.transcript.events.push({...task.transcript.events[0]}) // Raw carriers stay available for debugging.
+ let finishValidation!: (data:ExecutionInspectionResponse) => void
+ vi.spyOn(agentApi,'inspectSessionExecution').mockImplementation(item => item.execution_id==='first' ? Promise.resolve(parent) : item.execution_id==='task' ? Promise.resolve(task) : new Promise(resolve=>{finishValidation=resolve}))
+ const history=vi.spyOn(agentApi,'getExecutionLogs')
+ const file=vi.spyOn(agentApi,'getLogFile')
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+ try {
+  await act(async()=>{root.render(<StepInspectionPanel target={target} />)})
+  await vi.waitFor(async()=>{await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});expect(host.querySelector('[data-testid="inspection-saved-log"]')).not.toBeNull()})
+  const saved=()=>host.querySelector('[data-testid="inspection-saved-log"] pre')
+  const openSaved=async()=>{await act(async()=>{const disclosure=host.querySelector<HTMLDetailsElement>('[data-testid="inspection-saved-log"]')!;disclosure.open=true;disclosure.dispatchEvent(new Event('toggle'))})}
+  expect(saved()).toBeNull()
+  await openSaved()
+  expect(JSON.parse(saved()!.textContent!).transcript).toEqual(task.transcript)
+  expect(JSON.parse(saved()!.textContent!)).not.toHaveProperty('children')
+  expect(host.textContent).not.toContain('Open saved logs')
+  const select=host.querySelector<HTMLSelectElement>('select')!
+  await act(async()=>{select.value='validation';select.dispatchEvent(new Event('change',{bubbles:true}))})
+  expect(saved()).toBeNull()
+  await act(async()=>{finishValidation(response('validation','Validation evidence'))})
+  expect(saved()).toBeNull()
+  expect(host.querySelector<HTMLDetailsElement>('[data-testid="inspection-saved-log"]')!.open).toBe(false)
+  await openSaved()
+  expect(JSON.parse(saved()!.textContent!).transcript.agent_id).toBe('validation')
+  expect(saved()!.textContent).not.toContain('Actual task instruction')
+  expect(history).not.toHaveBeenCalled();expect(file).not.toHaveBeenCalled()
+ } finally {await act(async()=>root.unmount());host.remove()}
+})
 
 it('keeps the parent draft mounted, reuses exact tabs, restores targets and ignores an old request after closing', async () => {
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)

@@ -20,6 +20,9 @@ task.transcript.events.push({...task.transcript.events.at(-1)!,source_type:'orch
 if (new URLSearchParams(location.search).get('legacy')==='1') task.transcript.events.forEach(event=>{delete event.source_type})
 const script: ExecutionInspectionResponse = {execution_mode:'script',transcript:{session_id:target.session_id,agent_id:'script-run',name:'Write status with Python',status:'completed',started_at:started,events:[]},children:[],scripts:[{started_at:started,path:'code/status/main.py',source:'import json\nprint(json.dumps({"status":"INITIALIZED"}))\n',stdout:'{"status":"INITIALIZED"}',stderr:'',exit_code:0,status:'completed'}],result:'Created status.json and validation passed.'}
 agentApi.inspectSessionExecution = async selected => selected.execution_id === 'script-run' ? script : selected.execution_id === target.execution_id ? root : selected.execution_id === 'work-task' ? task : {execution_mode:'validation',transcript:{session_id:target.session_id,agent_id:'validation-task',status:'completed',started_at:started,events:[]},children:[],result:'Validation passed.'}
+// Opening a saved record must not fall back to the reused folder's history.
+document.body.dataset.workflowLogReads='0'
+agentApi.getExecutionLogs=async()=>{document.body.dataset.workflowLogReads=String(Number(document.body.dataset.workflowLogReads)+1);throw new Error('Workflow history is unrelated to this execution')}
 const params = new URLSearchParams(location.search)
 const nativeLaunch = params.get('mode')==='launch'
 const parentID = params.get('parent')==='steer' ? 'synthetic-turn:steer-message-1791824440777049000' : 'query_1791824440777049000'

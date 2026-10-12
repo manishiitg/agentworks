@@ -260,6 +260,12 @@ Inspector tool rows expose input/output in one disclosure, without a batch
 disclosure. Keep validation under Run details; single-script source is visible
 by default and can be collapsed, with its output and exit code alongside it.
 
+Run details exposes the selected execution's saved record from the same
+authorized inspection response. Do not embed the workflow-wide log browser:
+reused run folders can contain other attempts and cannot identify that record.
+Keep broader history in the separate Execution Logs view; changing tasks resets
+the saved-record disclosure and uses only the newly selected execution.
+
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-119.
 
 ## 2026-10-12 — Agent item inspection uses its chat and task identity (PLAT-861)
