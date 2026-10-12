@@ -21,25 +21,26 @@ beforeEach(() => {
   mocks.read.mockResolvedValue({ entry, content: '# Procedure\n\nRead-only instructions.\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))\n\n![remote](https://tracker.example/image)', version: 'v1' })
   mocks.access.mockResolvedValue({ folder_path: 'Payments', effective_role: 'owner', grants: [{ identity_id: 'priya', role: 'reader', folder_path: '', inherited: true }], identities: [{ id: 'priya', name: 'Priya', type: 'user' }], acl_version: 'v1' })
 })
-async function mount() {
+async function mount(initialProps: Partial<React.ComponentProps<typeof KnowledgebaseWorkspacePane>> = {}) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); cleanups.push(() => act(() => root.unmount()))
   const onAsk = vi.fn(); const onFolder = vi.fn()
   const render = async (props: Partial<React.ComponentProps<typeof KnowledgebaseWorkspacePane>> = {}) => { await act(async () => { root.render(<KnowledgebaseWorkspacePane view="library" folder="Payments" onFolder={onFolder} onAsk={onAsk} revision={0} {...props} />) }) }
-  await render()
+  await render(initialProps)
   return { host, render, onAsk, onFolder }
 }
 async function openEntry(host: HTMLElement) {
-  await act(async () => { [...host.querySelectorAll('[data-filepath]')].find(item => item.textContent?.includes('Payments'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await act(async () => { [...host.querySelectorAll('[data-filepath]')].find(item => item.textContent?.includes('checkout.md'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 }
 describe('Brain shared Files view', () => {
   it('uses the shared explorer and viewer while fetching only permission-checked KB content', async () => {
-    const { host } = await mount()
+    const { host } = await mount({ folder: '' })
     expect(host.textContent).toContain('Explorer')
     expect(host.querySelector('[aria-label="Search files"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Filter knowledge tag"]')).toBeNull()
     expect(host.textContent).not.toContain('Knowledge library')
+    expect(host.textContent).not.toContain('checkout.md')
+    await act(async () => { [...host.querySelectorAll('[data-filepath]')].find(item => item.textContent?.includes('Payments'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
     await openEntry(host)
     expect(host.querySelector('[aria-label="Open files"]')?.textContent).toContain('checkout.md')
     expect(host.textContent).toContain('Read-only instructions.')
@@ -55,7 +56,11 @@ describe('Brain shared Files view', () => {
     expect(host.textContent).not.toContain('Backup not configured')
   })
   it('removes displayed content and its tab when a refresh discovers revoked access', async () => {
-    const { host, render } = await mount(); await openEntry(host)
+    const { host, render } = await mount()
+    // An explicit folder from a product link reveals its files without another folder toggle.
+    expect(host.textContent).toContain('checkout.md')
+    expect(mocks.read).not.toHaveBeenCalled()
+    await openEntry(host)
     mocks.read.mockRejectedValue(new Error('Resource not found.'))
     await render({ revision: 1 })
     expect(host.textContent).not.toContain('Read-only instructions.')

@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   resolve: vi.fn(), startNew: vi.fn(), activate: vi.fn(), hydrate: vi.fn(),
 }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
+// History integration is covered by ProductRouteBoundary and the product URL browser checks.
+vi.mock('../../hooks/useProductUrlView', () => ({ useProductUrlView: vi.fn() }))
 vi.mock('../../services/api', () => ({ agentApi: { resolveAgentProfileConversation: mocks.resolve, startNewAgentProfileConversation: mocks.startNew } }))
 vi.mock('../../services/knowledgebaseApi', () => ({ knowledgebaseApi: { bootstrap: async () => ({ chat_workspace: 'Chats/Knowledgebase', backup_configured: mocks.backupConfigured, is_admin: mocks.isAdmin }), proposals: async () => ({ proposals: [] }) }, knowledgebaseError: (error: Error) => error.message }))
 vi.mock('../../components/ChatArea', () => ({ default: React.forwardRef((_props: any, ref) => { React.useImperativeHandle(ref, () => ({ submitQuery: mocks.submit })); mocks.chatProps = _props; return <div data-testid="shared-chat">{_props.landingContent}</div> }) }))
