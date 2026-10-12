@@ -259,6 +259,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 				"crew_id": crew["id"], "name": crew["name"], "identity": crew["identity"],
 				"owner": crew["owner"], "access": externalCrewAccessLabel(crew["access"]),
 			})
+			if description := strings.TrimSpace(fmt.Sprint(crew["description"])); description != "" && description != "<nil>" {
+				items[len(items)-1]["description"] = description
+			}
 		}
 		externalJSON(w, map[string]any{"crews": items})
 		return

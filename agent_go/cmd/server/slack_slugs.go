@@ -110,6 +110,11 @@ func slackLoadTargetsRegistry(ctx context.Context) *services.SlackTargetsRegistr
 func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegistry, refs []services.SlackTargetRef) []services.SlackTarget {
 	out := make([]services.SlackTarget, 0, len(refs))
 	for _, ref := range refs {
+		// A target whose workflow or Crew was deleted is not offered; its stale registry entry must not show up as a
+		// button named after a folder.
+		if !slackTargetExists(ctx, ref) {
+			continue
+		}
 		out = append(out, slackNamedTarget(ctx, registry, ref))
 	}
 	return out
@@ -124,6 +129,7 @@ func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegist
 	if target.Label == "" {
 		target.Label = slackDestinationLabel(ctx, ref.WorkspacePath, ref.ProfileID)
 	}
+	target.Description = slackDestinationDescription(ctx, ref.WorkspacePath, ref.ProfileID)
 	if target.Slug == "" {
 		target.Slug = services.SlackSlug(target.Label)
 	}
@@ -131,6 +137,20 @@ func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegist
 		target.Slug = services.SlackSlug(path.Base(strings.TrimSpace(ref.WorkspacePath)))
 	}
 	return target
+}
+
+// slackTargetExists reports whether a target's workflow or Crew still exists. Codes are always kept: their manifest is
+// not read here. A read error counts as existing so a storage hiccup never empties the picker.
+func slackTargetExists(ctx context.Context, ref services.SlackTargetRef) bool {
+	if ref.IsCode() {
+		return true
+	}
+	if strings.TrimSpace(ref.ProfileID) != "" {
+		_, found, err := readProjectRuntimeManifest(ctx, ref.ProfileID, ref.WorkspacePath)
+		return err != nil || found
+	}
+	_, found, err := ReadWorkflowManifest(ctx, ref.WorkspacePath)
+	return err != nil || found
 }
 
 func appendSlackRef(refs []services.SlackTargetRef, ref services.SlackTargetRef) []services.SlackTargetRef {

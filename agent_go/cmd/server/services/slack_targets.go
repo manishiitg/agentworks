@@ -86,6 +86,8 @@ type SlackTarget struct {
 	Ref   SlackTargetRef
 	Slug  string
 	Label string
+	// Description is one short line about the target, taken from the product (a workflow's or Crew's description).
+	Description string
 	// Legacy marks the shared bot's admin channel route (bot-connectors.json
 	// allowed_channels); its route is the stored one, with its trigger and
 	// email exclusions.
@@ -279,6 +281,9 @@ func FormatSlackTargetList(set SlackTargetSet, where string) string {
 		line := fmt.Sprintf("- `%s` %s", target.Slug, label)
 		if i == set.Default {
 			line += " (default)"
+		}
+		if target.Description != "" {
+			line += ": " + target.Description
 		}
 		b.WriteString(line + "\n")
 	}
@@ -626,9 +631,14 @@ func slackPickPrompt(choices []SlackTarget, slug string) string {
 	if slug != "" {
 		return fmt.Sprintf("Several targets are called `%s` here. Which one did you mean? Your message runs once you pick, and this thread stays with it.", slug)
 	}
-	names := make([]string, 0, len(choices))
+	var b strings.Builder
+	b.WriteString("Who should answer? Pick one, and this thread stays with it.\n")
 	for _, choice := range choices {
-		names = append(names, "`"+choice.Slug+"`")
+		b.WriteString("\n• *" + firstNonEmptyString(choice.Label, choice.Slug) + "* (`" + choice.Slug + "`)")
+		if choice.Description != "" {
+			b.WriteString(": " + choice.Description)
+		}
 	}
-	return "Who should answer? Pick one, and this thread stays with it. Next time you can start with a slug: " + strings.Join(names, ", ") + "."
+	b.WriteString("\n\nNext time you can start your message with the slug in backticks.")
+	return b.String()
 }

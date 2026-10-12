@@ -16,11 +16,12 @@ import (
 
 func externalProjectDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	names := map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": "User ids, usernames or emails."}
-	add("manage_project", "Rename, duplicate, delete or share a workflow, Relay or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Relays; Crews use update_crew): label, icon. duplicate (workflows and Relays): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows and Relays list owners, editors and readers (set_access changes only the lists you send; owners only); Crews use private true/false (owner only). install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
+	add("manage_project", "Rename, duplicate, delete or share a workflow, Relay or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Relays; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Relays): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows and Relays list owners, editors and readers (set_access changes only the lists you send; owners only); Crews use private true/false (owner only). install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
 		"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access", "install_template"}},
 		"label":       map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
+		"description": map[string]any{"type": "string", "maxLength": 300, "description": "For rename: one short line about what the workflow is for."},
 		"icon":        map[string]any{"type": "string", "maxLength": 16},
 		"new_label":   map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
 		"confirm":     externalString("For delete: the same workflow_id or crew_id."),
@@ -53,8 +54,11 @@ func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *h
 		if v, ok := args["icon"].(string); ok {
 			req.Icon = &v
 		}
-		if req.Label == nil && req.Icon == nil {
-			externalError(w, 400, "invalid_arguments", "rename needs label or icon.")
+		if v, ok := args["description"].(string); ok {
+			req.Description = &v
+		}
+		if req.Label == nil && req.Icon == nil && req.Description == nil {
+			externalError(w, 400, "invalid_arguments", "rename needs label, description or icon.")
 			return
 		}
 		respond(scheduleHandler(r, requireWorkflowWriteAccess(api.handleUpdateWorkflowManifest), http.MethodPut, "/api/workflows/manifest", nil, nil, req))

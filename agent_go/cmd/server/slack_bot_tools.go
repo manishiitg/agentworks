@@ -261,11 +261,36 @@ func productProjectLabel(ctx context.Context, profileID, workspacePath string) s
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 		return ""
 	}
+	// A Crew shows its identity name (what the Crew screen calls it); the title is the older internal name.
+	if identity, ok := manifest["identity"].(map[string]interface{}); ok {
+		if name, _ := identity["name"].(string); strings.TrimSpace(name) != "" {
+			return strings.TrimSpace(name)
+		}
+	}
 	label, _ := manifest["label"].(string)
 	if strings.TrimSpace(label) == "" {
 		label, _ = manifest["title"].(string)
 	}
 	return strings.TrimSpace(label)
+}
+
+// productProjectDescription returns a product project's one-line description, or "".
+func productProjectDescription(ctx context.Context, profileID, workspacePath string) string {
+	raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath)
+	if err != nil || !found {
+		return ""
+	}
+	var manifest struct {
+		Description string `json:"description"`
+	}
+	if json.Unmarshal([]byte(raw), &manifest) != nil {
+		return ""
+	}
+	description := strings.Join(strings.Fields(manifest.Description), " ")
+	if r := []rune(description); len(r) > 160 {
+		description = string(r[:157]) + "..."
+	}
+	return description
 }
 
 func (api *StreamingAPI) slackRoutes(ctx context.Context) (*chathistory.BotConnectorConfig, map[string]ChannelRoute, error) {

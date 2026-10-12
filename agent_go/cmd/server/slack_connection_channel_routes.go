@@ -203,6 +203,17 @@ func slackDestinationLabel(ctx context.Context, workspacePath, profileID string)
 	return workspacePath
 }
 
+// slackDestinationDescription is the one-line description the product shows for a workflow or Crew; "" when it has none.
+func slackDestinationDescription(ctx context.Context, workspacePath, profileID string) string {
+	if strings.TrimSpace(profileID) != "" {
+		return productProjectDescription(ctx, profileID, workspacePath)
+	}
+	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found && manifest != nil {
+		return strings.TrimSpace(manifest.Description)
+	}
+	return ""
+}
+
 func projectUsableSlackBot(ctx context.Context, conn services.SlackConnection) SlackUsableBotResponse {
 	registry := slackLoadTargetsRegistry(ctx)
 	own := slackNamedTarget(ctx, registry, services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID})

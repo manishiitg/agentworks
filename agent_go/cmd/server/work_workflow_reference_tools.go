@@ -127,6 +127,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 				Name: identityName,
 				Icon: identityIcon,
 			},
+			"description":    strings.TrimSpace(manifest.Description),
 			"workspace_path": workspacePath,
 			"access":         access,
 			"owner":          ownerLabel,

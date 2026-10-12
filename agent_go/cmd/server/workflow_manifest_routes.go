@@ -242,6 +242,7 @@ type UpdateWorkflowManifestRequest struct {
 	KBWriteGrants              *[]string                                    `json:"kb_write_grants,omitempty"`
 	WorkspacePath              string                                       `json:"workspace_path"`
 	Label                      *string                                      `json:"label,omitempty"`
+	Description                *string                                      `json:"description,omitempty"`
 	RelayOutputStepID          *string                                      `json:"relay_output_step_id,omitempty"`
 	RelayDurability            *string                                      `json:"relay_durability,omitempty"`
 	Icon                       *string                                      `json:"icon,omitempty"`
@@ -418,6 +419,14 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	// Apply partial updates
 	if req.Label != nil {
 		manifest.Label = strings.TrimSpace(*req.Label)
+	}
+	if req.Description != nil {
+		description := strings.Join(strings.Fields(*req.Description), " ")
+		if len([]rune(description)) > 300 {
+			http.Error(w, "description is at most 300 characters", http.StatusBadRequest)
+			return
+		}
+		manifest.Description = description
 	}
 	if req.RelayOutputStepID != nil {
 		if isPythonRelay(manifest) && strings.TrimSpace(*req.RelayOutputStepID) != "" {
