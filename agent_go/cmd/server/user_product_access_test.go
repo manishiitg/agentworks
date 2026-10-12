@@ -173,9 +173,16 @@ func TestBrainIsAvailableToAccountsLimitedToOtherProducts(t *testing.T) {
 	if userAllowedProduct(coder, "video-studio") {
 		t.Fatal("the Brain rule must not widen other products")
 	}
+	fields := productAccessResponseFields(coder)
+	if got, _ := fields["allowed_products"].([]string); !containsFold(got, "knowledgebase") || !containsFold(got, "code") || containsFold(got, "video-studio") {
+		t.Fatalf("a Code-only account's projected products should be code plus Brain, got %v", fields["allowed_products"])
+	}
 	// The widening alone never turns Brain on: a server that does not run it still refuses the account.
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,code")
 	if knowledgebaseProductAllowed(coder) || knowledgebaseMCPAllowed(coder) {
 		t.Fatal("a server without Brain must refuse every account")
+	}
+	if got, _ := productAccessResponseFields(coder)["allowed_products"].([]string); containsFold(got, "knowledgebase") {
+		t.Fatalf("a server without Brain must not list it, got %v", got)
 	}
 }
