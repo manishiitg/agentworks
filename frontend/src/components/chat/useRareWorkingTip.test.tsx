@@ -47,3 +47,32 @@ it('loads product metadata after working, rotates during long work, and resets f
     state.get.mockReset()
   }
 })
+
+it('keeps rotating in a second chat after the first chat claims the slot', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(1_000_000)
+  state.userId = 'viewer-a'
+  localStorage.clear()
+  state.get.mockResolvedValue({ data: { tips: { code: [{ id: 'schedule', text: 'Schedule a report' }, { id: 'dashboard', text: 'Build a dashboard' }] } } })
+  function View({ working }: { working: boolean }) { return <div>{useRareWorkingTip(working)}</div> }
+  const first = document.createElement('div')
+  const second = document.createElement('div')
+  const rootA = createRoot(first)
+  const rootB = createRoot(second)
+  try {
+    await act(async () => rootA.render(<View working />))
+    await act(async () => rootB.render(<View working />))
+    // Both timers fire together: the first chat claims the tip while the
+    // second finds the slot taken and must retry at the next due time.
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(first.textContent).toBe('Schedule a report')
+    expect(second.textContent).toBe('')
+    await act(async () => { rootA.unmount() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(30 * 60_000) })
+    expect(second.textContent).toBe('Build a dashboard')
+  } finally {
+    act(() => rootB.unmount())
+    vi.useRealTimers()
+    state.get.mockReset()
+  }
+})

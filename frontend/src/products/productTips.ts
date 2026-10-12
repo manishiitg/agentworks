@@ -58,22 +58,37 @@ export function workingTipDelayMs(context: TipContext, now = Date.now()): number
   return previous.lastShownAt ? Math.max(0, previous.lastShownAt + workingTipIntervalMs(previous.shownCount) - now) : 0
 }
 
+function isEligible(tip: ProductTip, context: TipContext, seen: string[]): boolean {
+  const tabs = tip.when?.code_tabs
+  return !seen.includes(tip.id) && !(tip.skip_if_used && featureUsed(tip.skip_if_used)) &&
+    (tabs?.min === undefined || context.codeTabs >= tabs.min) &&
+    (tabs?.max === undefined || context.codeTabs <= tabs.max)
+}
+
+// Whether an unseen eligible definition exists, ignoring the due check: after
+// another chat claims this slot, the caller retries at the next due time.
+export function hasUnseenEligibleTip(context: TipContext, tips: ProductTip[] = []): boolean {
+  const seen = readState(context).seen
+  return tips.some(tip => isEligible(tip, context, seen))
+}
+
 // The caller supplies only the current product's resolved YAML definitions.
 export function claimWorkingTip(context: TipContext, now = Date.now(), tips: ProductTip[] = []): string | null {
   const state = readState(context)
   const previous = history(context, state)
   if (previous.lastShownAt && now - previous.lastShownAt < workingTipIntervalMs(previous.shownCount)) return null
-  const pick = tips.find(tip => {
-    const tabs = tip.when?.code_tabs
-    return !state.seen.includes(tip.id) && !(tip.skip_if_used && featureUsed(tip.skip_if_used)) &&
-      (tabs?.min === undefined || context.codeTabs >= tabs.min) &&
-      (tabs?.max === undefined || context.codeTabs <= tabs.max)
-  })
+  const pick = tips.find(tip => isEligible(tip, context, state.seen))
   if (!pick) return null
   try {
     state.seen.push(pick.id)
     state.products[context.surface] = { lastShownAt: now, shownCount: previous.shownCount + 1 }
     localStorage.setItem(stateKey(context), JSON.stringify(state))
+    // The anonymous v2 state was migrated from the legacy key, so the first
+    // successful anonymous write retires it. Signed-in writes never touch it:
+    // that browser history belongs to no account.
+    if (!context.userId) {
+      try { localStorage.removeItem(STATE_KEY) } catch { /* legacy cleanup is best-effort */ }
+    }
   } catch { return null }
   return pick.text
 }

@@ -43,4 +43,17 @@ describe('claimWorkingTip', () => {
     expect(claimWorkingTip({ ...code, surface: 'work' }, now, [...tips, { id: 'crew', text: 'Crew tip' }])).toBe('Crew tip')
     expect(claimWorkingTip({ ...code, userId: 'viewer-b', codeTabs: 1 }, now, tips)).toBe('any tip')
   })
+  it('retires the legacy anonymous key after the first anonymous v2 write, never on signed-in writes', () => {
+    const simple: ProductTip[] = [{ id: 'a', text: 'A tip' }, { id: 'b', text: 'B tip' }]
+    localStorage.setItem('agentworks.working-tip', JSON.stringify({ seen: ['a'] }))
+    // Signed-in accounts start fresh and leave anonymous browser history alone.
+    expect(claimWorkingTip({ surface: 'code', codeTabs: 1, userId: 'viewer-a' }, 1_000_000, simple)).toBe('A tip')
+    expect(localStorage.getItem('agentworks.working-tip')).not.toBeNull()
+    // Anonymous history migrates, then the first v2 write retires the legacy key.
+    localStorage.clear()
+    localStorage.setItem('agentworks.working-tip', JSON.stringify({ seen: ['a'] }))
+    expect(claimWorkingTip({ surface: 'code', codeTabs: 1 }, 1_000_000, simple)).toBe('B tip')
+    expect(localStorage.getItem('agentworks.working-tip')).toBeNull()
+    expect(localStorage.getItem('agentworks.working-tip:v2:local')).not.toBeNull()
+  })
 })
