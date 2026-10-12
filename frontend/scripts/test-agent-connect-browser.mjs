@@ -26,6 +26,7 @@ try {
       if (!new URL(route.request().url()).pathname.startsWith('/api/')) return route.continue()
       const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS' }
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+      if (route.request().url().includes('/api/bullpen/notices')) return route.fulfill({ headers, contentType: 'application/json', body: '{"notices":[]}' })
       if (route.request().url().includes('/api/bullpen/usage')) {
         if (route.request().method() === 'DELETE') { readings = []; deleted = true; return route.fulfill({ headers, contentType: 'application/json', body: '{"deleted":true}' }) }
         return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ readings, before: 1, has_more: false, retention_days: 90, row_cap: 250000 }) })
