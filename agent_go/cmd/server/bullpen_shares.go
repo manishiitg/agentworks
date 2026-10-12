@@ -329,6 +329,45 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 	return items
 }
 
+// incomingShareActivity tells an owner which people's agents messaged their
+// agents through a grant: counts and times only, never message text.
+func (s agentMessageStore) incomingShareActivity(ownerID string, label func(string) string) []map[string]interface{} {
+	type key struct{ person, sender, agent string }
+	type tally struct {
+		count int
+		last  time.Time
+	}
+	tallies := map[key]*tally{}
+	for _, c := range s.Conversations {
+		for side, e := range c.Endpoints {
+			if e.ShareID == "" || e.UserID != ownerID || c.Endpoints[1-side].UserID == ownerID {
+				continue
+			}
+			other := c.Endpoints[1-side]
+			k := key{label(other.UserID), other.Label, e.Label}
+			t := tallies[k]
+			if t == nil {
+				t = &tally{}
+				tallies[k] = t
+			}
+			for _, m := range c.Messages {
+				if m.From == 1-side {
+					t.count++
+					if m.SentAt.After(t.last) {
+						t.last = m.SentAt
+					}
+				}
+			}
+		}
+	}
+	out := []map[string]interface{}{}
+	for k, t := range tallies {
+		out = append(out, map[string]interface{}{"person": k.person, "sender_agent": k.sender, "agent_name": k.agent, "messages": t.count, "last_at": t.last})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["last_at"].(time.Time).After(out[j]["last_at"].(time.Time)) })
+	return out
+}
+
 // shareOwnerLabel is the only owner name shown to a recipient. It is the
 // server's own username for the account id, never an email or sender text.
 func shareOwnerLabel(userID string) string { return shareOwnerLabeler()(userID) }
@@ -398,7 +437,7 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		return shares[i]["created_at"].(time.Time).After(shares[j]["created_at"].(time.Time))
 	})
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks, "shared_with_me": s.sharedAgentItems(claims.UserID, now)})
+	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks, "shared_with_me": s.sharedAgentItems(claims.UserID, now), "incoming": s.incomingShareActivity(claims.UserID, label)})
 }
 
 func (api *StreamingAPI) handleBullpenShareCreate(w http.ResponseWriter, r *http.Request) {

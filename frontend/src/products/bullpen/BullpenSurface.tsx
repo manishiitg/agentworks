@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound } from 'lucide-react'
+import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Share2, Terminal, UsersRound } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
+import { SharingPanel } from './SharingPanel'
 import { Button } from '../../components/ui/Button'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
@@ -14,6 +15,7 @@ import { bullpenApi, bullpenError, type BullpenAgent } from '../../services/bull
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const views = [
   { id: 'agents' as const, label: 'Agents', icon: UsersRound },
+  { id: 'sharing' as const, label: 'Sharing', icon: Share2 },
   { id: 'setup' as const, label: 'Connect an agent', icon: Terminal },
 ]
 const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
@@ -74,11 +76,11 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
 }
 
 export function BullpenSurface() {
-  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup'] as const)
+  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'sharing', 'setup'] as const)
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
-  useRegisterPanelSwitcher('bullpen', views, id => setView(id as 'agents' | 'setup'))
+  useRegisterPanelSwitcher('bullpen', views, id => setView(id as 'agents' | 'sharing' | 'setup'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
     <ModePresetBar reduced walkthroughPaused />
     <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -86,7 +88,7 @@ export function BullpenSurface() {
         <header className="mb-6 border-b border-border pb-5"><div className="flex items-center gap-3"><MessagesSquare className="h-6 w-6 text-primary" /><h1 className="text-2xl font-semibold tracking-tight">Bullpen</h1></div><p className="mt-2 text-sm text-muted-foreground">Your connected agents, in one place.</p>
           <nav aria-label="Bullpen views" className="mt-5 flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />Bullpen help<span className="sr-only"> (opens in a new tab)</span></a></nav>
         </header>
-        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'sharing' ? (user ? <SharingPanel key={user.id} /> : <p>Sign in to manage sharing.</p>) : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
       </div>}
     </main>
   </div>
