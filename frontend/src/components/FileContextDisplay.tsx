@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { File, Folder, Image, X } from 'lucide-react'
 
 interface FileContextItem {
   name: string
@@ -7,7 +7,6 @@ interface FileContextItem {
 }
 
 interface FileContextDisplayProps {
-  attachmentMode?: boolean
   files: FileContextItem[]
   onRemoveFile: (path: string) => void
   onClearAll: () => void
@@ -15,49 +14,46 @@ interface FileContextDisplayProps {
   isRequiredFolderSelected: boolean
 }
 
-export default function FileContextDisplay({ files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected, attachmentMode = false }: FileContextDisplayProps) {
+export default function FileContextDisplay({ files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected }: FileContextDisplayProps) {
   if (files.length === 0) {
     return null
   }
 
   return (
-    <div className={`border rounded px-1.5 py-0.5 mb-1 ${
-      agentMode === 'workflow' && !isRequiredFolderSelected
-        ? 'bg-amber-500/10 border-amber-500/20'
-        : 'bg-muted border-border'
-    }`}>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className={`text-xs font-medium ${
-          agentMode === 'workflow' && !isRequiredFolderSelected
-            ? 'text-amber-700 dark:text-amber-400'
-            : 'text-muted-foreground'
-        }`}>
-          {attachmentMode ? 'Attachments:' : agentMode === 'workflow' && !isRequiredFolderSelected ? 'Context (Select Automation folder):' : 'Context:'}
-        </span>
-        {files.map((file, index) => (
-          <div key={file.path} className="flex items-center gap-0.5">
-            <span className="text-xs text-foreground font-mono">
-              {attachmentMode ? file.name : file.path}
-            </span>
+    <div className="mb-1 flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Attached files">
+      {agentMode === 'workflow' && !isRequiredFolderSelected && (
+        <span className="text-xs text-amber-700 dark:text-amber-400">Select an automation folder</span>
+      )}
+      {files.map(file => {
+        const filename = (file.name || file.path).replace(/\\/g, '/').split('/').filter(Boolean).pop() || file.path
+        const isImage = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(filename)
+        const label = isImage && /^pasted-image-\d/i.test(filename) ? 'Pasted image' : filename
+        const Icon = file.type === 'folder' ? Folder : isImage ? Image : File
+        return (
+          <div key={file.path} title={file.path} className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+            <Icon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="max-w-48 truncate">{label}</span>
             <button
+              type="button"
               onClick={() => onRemoveFile(file.path)}
-              className="p-0.5 hover:bg-destructive/10 rounded text-destructive"
-              title={`Remove ${file.type} from context`}
+              className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+              aria-label={`Remove ${filename}`}
+              title={`Remove ${filename}`}
             >
-              <X className="w-2 h-2" />
+              <X className="h-3 w-3" aria-hidden="true" />
             </button>
-            {index < files.length - 1 && (
-              <span className="text-xs text-muted-foreground">•</span>
-            )}
           </div>
-        ))}
+        )
+      })}
+      {files.length > 1 && (
         <button
+          type="button"
           onClick={onClearAll}
-          className="text-xs text-muted-foreground hover:text-foreground hover:underline ml-0.5"
+          className="text-xs text-muted-foreground hover:text-foreground hover:underline"
         >
-          Clear
+          Clear all
         </button>
-      </div>
+      )}
     </div>
   )
 }

@@ -1,183 +1,36 @@
-## HTML-only Dashboard policy
+## Workflow/Goals Dashboard rules
 
-The Dashboard tab renders workflow-owned HTML documents under `db/reports/`.
-`index.html` remains the default. Additional `.html` documents become views in
-the shared top toolbar. Auto-discovery uses each document's `<title>`; an optional
-`db/reports/views.json` can set stable IDs, titles, order, and default:
-`{"schema_version":1,"default":"overview","views":[{"id":"overview","title":"Overview","path":"db/reports/index.html","order":0}]}`.
-There is no Dashboard generation step or widget-layout registry.
-Layout, typography, colors, charts and navigation follow the user's preferences
-and supplied references. This policy describes platform usage and data contracts.
+<!-- dashboard:shared -->
 
-For requested animations or MP4 explainers, load
+### Workflow-specific authoring and access
+
+Workshop owns Dashboard authoring under `db/reports/`; keep Dashboard-only changes
+presentational unless workflow behavior or evaluation changes were requested.
+Run mode never authors Dashboard pages; it produces their durable data/assets.
+Workflow viewers, including read-only readers, may run read-only Dashboard scripts
+under the viewer's current MCP/Vault permissions. Dashboard access grants no
+credentials. External dashboard authoring requires `dashboards:read` and
+`builder:chat` consent with its companion read/run scopes and Builder enablement.
+
+For requested animation or MP4 explainers, read
 `read_skill(skills=[{"name":"builder-reference","path":"references/motion-guide.md"}])`.
-The reference covers both paths using available capabilities; it prescribes no visual style.
 
-### Page contract
+### Workflow activity and route identity
 
-- Write one or more complete `.html` documents under
-  `db/reports/`. Use separate documents for genuinely distinct destinations;
-  keep closely related sections inside one document.
-- Include a non-empty `<title>` and accessible internal navigation when the
-  Dashboard has multiple views or sections.
-- Keep CSS and JavaScript inline. Do not pin body height or create a nested
-  scroll container.
-- CSS and component-library choice belongs to the Dashboard author. HTTPS CDN
-  stylesheets and browser scripts are supported, including Tailwind's browser
-  build. Pin library versions rather than using floating `latest` URLs, and
-  use `preview_report` to prove the chosen stack works in the Dashboard sandbox.
-  Keep Dashboard-specific CSS/JS inline when that is the simpler choice.
-  daisyUI is CDN-only. To use it, add `data-report-ui="daisyui"` to the
-  document's `<html>` element, and include the pinned stylesheet
-  `https://cdn.jsdelivr.net/npm/daisyui@5.7.38/daisyui.css`. The host supplies
-  that same CDN link for opted-in Dashboards that omit it. Use inline CSS
-  for layout when Tailwind utilities are not loaded.
-- Choose any suitable charting approach: Chart.js, another browser library,
-  SVG/canvas, or HTML/CSS are all valid. Match the implementation to the
-  visualization, make it responsive and theme-aware, and render a readable
-  fallback when an external dependency fails to load.
-- Read durable live data with `window.report.query(sql, params)` (positional `?`
-  bindings; never interpolate viewer input), `get`, `getText`,
-  `getHtml`, `renderMarkdown`, `fileUrl`, `mediaUrl`, and `openFile`. Write a business
-  field on an already-existing row with `window.report.updateField`/
-  `updateFields` (see below). Do not bake changing run results into the
-  document or add a step that regenerates it each run.
-- For data that lives outside the workflow (Notion, a CRM, an API), a
-  Dashboard can run a script from `code/` on each load or Refresh with
-  `window.report.run(path, args)` — see "Live data from a script" below.
-  Prefer `db/` for anything a run already stores.
-- A user action button can offer a contextual workflow-agent request through
-  `window.report.sendChatMessage`. The app sends it directly to an existing automation chat,
-  creating one only if none exists. For Dashboard-owned approvals, save first and then offer the request;
-  see "Sending a Dashboard request to the workflow agent" below.
-- A markdown file under `db/` renders inline with
-  `el.innerHTML = await window.report.getHtml('db/notes/brief.md')`; a
-  markdown string from a query row with `window.report.renderMarkdown(text)`.
-  Both come back themed (`.report-markdown`), and links/images inside them
-  that point at workspace files (`db/...`, or paths relative to the .md
-  file) load and open the in-Dashboard preview. Never show markdown as raw text.
-- For audio or video under `db/assets/`, persist the workspace-relative path
-  in the database and obtain a fresh playback URL with
-  `await window.report.mediaUrl(path)` only when the user opens the media.
-  Assign that URL to a native `<audio controls preload="metadata">` or
-  `<video controls playsinline preload="metadata">` element. The platform
-  owns authentication, expiring URLs, byte ranges, and streaming: never call
-  an internal report-preview/report-media HTTP endpoint directly, persist the
-  returned URL, embed media as base64/data URLs, or eagerly load every media
-  row with `fileUrl`. `fileUrl` remains appropriate for ordinary downloadable
-  files and backward-compatible Dashboards, but `mediaUrl` is the explicit
-  contract for new audio/video Dashboard code. Show playback errors and let a
-  retry request a fresh URL. Preserve the existing media element and its source
-  during data refresh when the recording has not changed. Compare the workspace
-  path plus a run/version identifier, not the expiring signed URL; repeated
-  `innerHTML` replacement or `src` assignment resets playback. Initialize the
-  player once after data is ready, and ignore stale asynchronous media responses.
-- Theme off the app, not the OS: dark styles under `:root.dark` /
-  `[data-theme="dark"]` (or the injected `hsl(var(--token))` palette), with
-  `report:theme` for live re-styling. `prefers-color-scheme` alone follows
-  the viewer's OS and ignores the in-app toggle.
-- After editing, call `validate_report_html` for every changed document. Beyond the document shape it
-  runs every literal `window.report.query` SQL against the live
-  `db/db.sqlite`, confirms every referenced `db/` file exists, checks local
-  stylesheet/script references, and warns on OS-only dark mode. HTTPS CDN
-  stylesheets and scripts are valid Dashboard dependencies.
-- `validate_report_html` is static and fast; it cannot tell you the page
-  actually renders. Call `preview_report` for each changed document after it passes, or whenever
-  visual review is requested: it opens the Dashboard in a real headless browser
-  through the same runtime the Dashboard tab uses, waits for it to settle, and
-  returns whether it errored, its script/data-fetch errors, its tab labels,
-  any `Loading…` placeholder still on screen, and screenshots at tablet, mobile,
-  and desktop widths in both themes
-  under `db/reports/preview/` — open them with `read_image`. Prefer it over
-  asking the user to open the Dashboard tab for you.
-- To display recent runs and actions, use the existing summaries in
-  `org_dashboard_notifications`. `record_summary(kind="run_summary")` writes
-  title, status, message, structured fields and timestamp to this database.
-  `window.report.renderActivity(target)` is an optional renderer; custom
-  rendering can query `notification_kind = 'run_summary'` and render markdown
-  messages with `window.report.renderMarkdown`. No additional step, table or
-  collector is needed. Presentation and navigation follow the user's request.
+When displaying route-specific activity, identify runs
+by `(routing_step_id, route_id)`
+from `route_summaries_json` in the same notification row. Parse that JSON
+array and render each entry's label, title, status, message, fields, and
+sections; do not merge same-named routes or attribute shared facts to a
+specific route. `branch` choices are not separate
+sub-workflows. Use the same grouping for any Pulse-summary history.
+Check the real schema first: absent table/column or older rows use the old
+message and explicit legacy Route field, with scope shown as not recorded
+when absent. Never backfill route identity from prose, show an unreviewed
+route as clean, or copy a workflow total into each route. No extra plan step
+or workflow-owned activity table is needed.
 
-  **Route identity.** When displaying route-specific activity, identify runs
-  by `(routing_step_id, route_id)`
-  from `route_summaries_json` in the same notification row. Parse that JSON
-  array and render each entry's label, title, status, message, fields, and
-  sections; do not merge same-named routes or attribute shared facts to a
-  specific route. `branch` choices are not separate
-  sub-workflows. Use the same grouping for any Pulse-summary history.
-  Check the real schema first: absent table/column or older rows use the old
-  message and explicit legacy Route field, with scope shown as not recorded
-  when absent. Never backfill route identity from prose, show an unreviewed
-  route as clean, or copy a workflow total into each route. No extra plan step
-  or workflow-owned activity table is needed.
-
-### Responding to `report:focus` (tabbed Dashboards)
-
-A Dashboard with top-level tabs should let the agent point the reader at one:
-
-```js
-window.addEventListener('report:focus', function () {
-  // window.report.focus is the tab name the agent asked for.
-  switchToTab(window.report.focus);
-});
-```
-
-`perform_ui_action(action="open", view="report", target="<tab>")` sets `report.focus` and
-fires this event. It is optional — a Dashboard that ignores it simply stays on
-its current tab — but a tabbed Dashboard that honors it lets the agent say
-"here is the answer" and land the reader on the right tab.
-
-### Data lifecycle: always gate on `window.report.ready(fn)`
-
-`window.report` is injected into the page AFTER the Dashboard's own `<script>`
-has already parsed and started running — it does not exist on the page's
-first line. Wrap every use of `window.report.*` in:
-
-```js
-window.report.ready(function () {
-  // window.report.query/get/getText/getHtml/fileUrl/mediaUrl are live here.
-  // Runs once on load, and again on every later data refresh.
-});
-```
-
-Do NOT gate data calls on `DOMContentLoaded`, `window.onload`, or a bare
-top-level `(async () => { await window.report.query(...) })()`. All three can
-run before injection, before `window.report.query` is truly live — the single
-most common cause of a Dashboard that shows a "data loading error" or is stuck on
-"Loading…" the first time it is opened. `validate_report_html()` cannot catch
-this: it parses the markup, it does not execute the page. `.ready()` is the
-only pattern that is safe regardless of when it runs.
-
-### Writing back: `window.report.updateField`/`updateFields`
-
-A Dashboard may write a plain business field on a row it already reads via
-`query` — for example an inline Approve/Reject button that flips a
-`status` column, or a bulk list where each row edits independently. This
-is a narrow, structured write, not a general database API:
-
-```js
-// One cell:
-await window.report.updateField('emails', row.id, 'status', 'approved')
-// Several columns on the same row, applied atomically (all or none) — a
-// form submit:
-await window.report.updateFields('emails', row.id, { status: 'approved', note: 'looks good' })
-```
-
-Both resolve `{ oldValue(s), newValue(s) }` once committed, or reject with
-a clear error. The backend validates every call against the table's own
-live schema before writing — there is no way to pass raw SQL through
-either function, and no declaration step is needed first:
-
-- the target table must exist, have exactly one primary-key column (the
-  row is matched on it), and must not be a platform-owned table
-  (`report_human_inputs`, `report_human_input_events`,
-  `schema_migration_log`);
-- every named column must exist on that table, and must not be the
-  primary key, end in `_id`, or be named `created_at`/`updated_at` — a
-  column that identifies or timestamps the row is never a legitimate
-  write target;
-- every value must be a plain string, number, boolean, or null — no
-  objects/arrays.
+### Platform decisions
 
 Dashboard-owned approval buttons are supported: update an existing business row
 (an email's `status`, an audit finding's approval), then optionally offer a
@@ -186,86 +39,6 @@ platform's human-decision lifecycle. Platform decisions created through
 `create_human_input_request` retain their options, answers, consumption, and
 audit trail in the Pulse panel/chat; do not edit `report_human_inputs` through
 the business-field write API or invent a duplicate platform decision store.
-
-### Live data from a script: `window.report.run`
-
-`await window.report.run('code/reports/open_deals.py', { days: 7 })` runs
-that script on the server and resolves the one JSON value it printed. Use it
-when the Dashboard must show the latest state of an outside system (the
-workflow's MCP servers or an API behind its secrets) rather than what the last
-run stored. Anyone who can open the workflow — owner or read-only — can
-trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
-variables (`$VAR_*`); the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions
-still govern access. Viewing a workspace does not grant credentials.
-The same runner supports Workflow/Goals, <!-- product:relays -->Relays, <!-- /product -->Crew and owner-only Code
-project roots. Published static copies cannot run scripts.
-
-The script contract:
-
-- Lives under `code/` (`.py` → `python3`, `.js`/`.mjs` → `node`); the
-  convention is `code/reports/<name>.py`. The validator rejects any other
-  path and a script that does not exist.
-- Args arrive as JSON in `$REPORT_ARGS` (`{}` when none); treat them as
-  untrusted input from any viewer: validate, bound, and never interpolate
-  them into SQL, shell commands, or MCP filters without checking.
-- Print exactly **one JSON value** to stdout; send logs to stderr. Non-JSON
-  stdout, a non-zero exit, more than 2 MB of output, or more than 60 s fails
-  the call, and the Dashboard receives the error plus the stderr tail.
-- Calls MCP tools the same way a scripted step does:
-  `POST $MCP_MCP/<server>/<tool>` with the `$MCP_AUTH` header. Only servers
-  and tools selected for the workflow are reachable.
-- Reads `db/db.sqlite` through `$DB_PATH`, which is a **read-only snapshot**
-  for this call (absent if the workflow has no DB yet). A script never
-  writes the store; a Dashboard writes only through `updateField(s)`.
-- The only writable folder is `$REPORT_CACHE_DIR` (shared by every viewer and
-  every script of this workflow). The workflow folder is readable.
-
-Best practices:
-
-- **Cache in the script, not the page.** Every call runs the script again and
-  the platform keeps no cache. When the source is slow, paid, or
-  rate-limited, keep a file per query in `$REPORT_CACHE_DIR` (named by the
-  script and its normalized args), return it while it is younger than a
-  sensible TTL, and include `fetched_at` in the output so the page can show
-  "as of". Write the cache atomically (temp file, then rename) because two
-  viewers can refresh at once. Let an explicit `{"refresh": true}` arg skip
-  the cache for a Refresh button.
-- **Return what the page renders.** Aggregate, filter, and trim in the script;
-  never ship whole upstream payloads to the browser.
-- **Degrade, don't fail.** If the upstream call fails and a cached copy
-  exists, return it with `stale: true` and the error message instead of
-  exiting non-zero; the page shows the stale notice.
-- **Keep it fast and read-only.** Aim well under the 60 s cap: bounded page
-  sizes, a timeout on every HTTP/MCP call, and no side effects on the
-  outside system — a report view must never create, update, or send
-  anything upstream.
-- **Never print secrets.** Output reaches every viewer; errors are redacted
-  of known secret values, but stdout is returned as written.
-- In the page, call it inside `window.report.ready`, show a loading state
-  (the call can take seconds), catch the error into a visible message, and
-  wire a Refresh button that calls it again with `{ refresh: true }`.
-
-```js
-window.report.ready(async function () {
-  const el = document.getElementById('deals');
-  async function load(refresh) {
-    el.textContent = 'Loading…';
-    try {
-      const out = await window.report.run('code/reports/open_deals.py', { days: 7, refresh });
-      renderDeals(el, out.deals, out.fetched_at, out.stale);
-    } catch (err) {
-      el.textContent = 'Could not load live deals: ' + err.message;
-    }
-  }
-  document.getElementById('refresh-deals').onclick = () => load(true);
-  await load(false);
-});
-```
-
-Test the script before wiring it: run it once from the shell with
-`REPORT_ARGS='{"days":7}'` set, confirm one JSON value on stdout, then
-`validate_report_html()` and `preview_report()` (the preview runs the script
-for real).
 
 ### Sending a Dashboard request to the workflow agent
 
@@ -325,41 +98,9 @@ for the same message in the current Dashboard view (up to 100 receipts). Reloads
 different views, and later sessions still require the consumer's durable
 already-applied check. This API does not provide atomic approval-and-execution.
 
-### Referenced files must live under `db/`
-
-A Dashboard may only reference paths under `db/`. That is the durable store the
-Dashboard tab reads; anything else is invisible to it.
-
-A step's own execution folder (`runs/iteration-N/<group>/execution/...`) is
-per-run scratch, not a referenceable location. A screenshot, PDF, or export
-captured there is not reachable from the Dashboard just because it exists on disk
-— the step must copy it into `db/` (for example `db/reports/<key>/proof.png`)
-for the Dashboard to show it.
-
-Referencing a path that was never published produces a broken-image icon and
-nothing else at runtime: no error, no log line, no failed run. Verify the file
-exists at its `db/` path, not only at the path the step wrote.
-
-`validate_report_html()` checks every literal path the document references
-(`window.report.get/getText/getHtml/fileUrl/mediaUrl/openFile('db/...')`, `src="db/..."`,
-`href="db/..."`) and reports the missing ones. A path assembled at runtime from
-variables is invisible to it — prefer literal paths, or verify those yourself.
-
-### Workshop and Run boundaries
-
-Workshop owns Dashboard authoring and may create or edit `db/reports/index.html`.
-Keep Dashboard-only changes presentational unless the user also asked to change
-workflow behavior or evaluation. Run mode never authors Dashboard pages; it only
-produces the durable data those pages read.
-
-Platform human-decision lifecycles stay in the Pulse panel and chat. A Dashboard
-can expose its own business approval buttons using `updateField`/`updateFields`
-and hand a specific request to the workflow agent using `sendChatMessage`.
-See "Writing back" and "Sending a Dashboard request" above.
-
-For typed route rows, `summary_text` contains only the shared lead; `message`
-remains the complete rendered digest for older Dashboards. Render the lead plus
-route entries once, or the complete message as a fallback, never both.
+For typed route rows, `summary_text` is the shared lead and `message` the complete
+legacy digest. Render lead plus route entries once, or the complete message as a
+fallback, never both.
 
 ### Goal progress: shared data and an optional ready-made widget
 
@@ -397,70 +138,3 @@ when definitions or collection are missing. Do not invent targets or samples.
 Adding this section is optional and does not replace the Dashboard's own navigation
 or layout. Offer it when a user wants goal tracking in their dashboard. Validate
 and preview the Dashboard using the normal Dashboard tools after adding it.
-
-### Costs: matching Dashboard helper
-
-Use the canonical cost ledger without creating Dashboard-owned copies. The
-helper works in the app and `preview_report`:
-
-```html
-<section id="costs"></section>
-<script>
-window.report.ready(async function () {
-  await window.report.renderCosts('#costs', { days: 30 });
-});
-</script>
-```
-
-The widget includes its own responsive styling and expandable details. No chart
-library or design work is required. Add it only when useful to the user's Dashboard.
-
-For custom layouts, call `getCosts({ days: 30 })`:
-- Costs returns `{ summary, history, window_total_usd, state }`. `summary.total` and `summary.by_scope` are **all-time** recorded amounts.
-  `summary.by_model`, `summary.by_date`, and `window_total_usd` cover only the requested UTC date window.
-  `summary` is null and `state` is `unavailable` if the ledger is unavailable.
-  Options support `days` (1–90, default 30) and `before` (exclusive YYYY-MM-DD).
-  Read older daily pages using `history.next_before` when `history.has_more` is true.
-  Do not add the repeated all-time total across pages. USD costs are recorded ledger
-  amounts and do not prove every call was priced. No model prices are guessed.
-
-Continue using `window.report.ready` for loading and refresh. Returned promises
-reject on read failures, which the host exposes in the Dashboard's error surface.
-
-### Composition widgets: tables and activity (optional)
-
-These helpers provide ready-made tables and activity feeds when desired.
-Custom rendering can use the same data APIs. The widgets inherit
-the Dashboard's theme and include responsive styling, loading/empty states,
-and touch-safe controls. Use empty `div`/`section` containers; each renderer
-replaces its own contents on refresh, returns its data, and rejects on load
-failure. The app and `preview_report` share the runtime.
-
-```html
-<section id="leads"></section>
-<section id="activity"></section>
-<script>
-window.report.ready(async function () {
-  await Promise.all([
-    window.report.renderTable('#leads', {
-      query: 'SELECT name, status, value FROM leads ORDER BY value DESC',
-      searchable: true,
-      sortable: true
-    }),
-    window.report.renderActivity('#activity')
-  ]);
-});
-</script>
-```
-
-- `renderTable(target, { query, params, searchable, sortable })` runs read-only SQL
-  and renders a themed, responsive table with an empty state. Columns come
-  from the returned rows; numeric columns align right. `searchable` adds a
-  filter box matching every cell; `sortable` makes headers toggle
-  ascending/descending sort. `query` is required.
-- `renderActivity(target, { limit })` renders the policy-required activity
-  section from the run and Pulse summaries already in
-  `org_dashboard_notifications`, route-grouped via `route_summaries_json`
-  and markdown-rendered, with the execution-log fallback built in. Zero
-  config: `limit` (1–100, default 30) is the only option. Missing history
-  tables render a "no activity yet" setup message, not an error.

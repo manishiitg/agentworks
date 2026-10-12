@@ -44,6 +44,11 @@ For a tagged Crew:
 
 ## Share an active {{product}} project file or folder
 
+For files displayed or previewed **inside a Dashboard**, use the `work-dashboard`
+skill's `window.report.fileUrl` / `window.report.openFile` contract with full
+project-root-relative paths. `get_file_link` below creates a separate sharing
+link; do not use it as the Dashboard's attachment renderer.
+
 For the project's live Dashboard, call `get_report_link` with no arguments and
 use its returned `url`. Do not pass `db/reports/index.html` to `get_file_link`:
 that would open a restricted generic HTML preview instead of the full Dashboard
