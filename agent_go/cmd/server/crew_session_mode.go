@@ -126,6 +126,9 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 			runFolder = ""
 		}
 		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
+		if crewGuestCallerForTurn(req, currentUserID) != "" && req.CrewAskReadOnly {
+			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewAskModelSentence + "\n" + sessionModeClose
+		}
 		if crewGuestCallerForTurn(req, currentUserID) != "" && !req.CrewAskReadOnly {
 			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewGuestCallsNote + "\n" + sessionModeClose
 		}
