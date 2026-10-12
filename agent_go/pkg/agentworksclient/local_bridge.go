@@ -1119,7 +1119,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return out
 		}
 		for _, m := range s.Offers {
-			if !m.Offered && !m.Suppressed {
+			if !m.Offered && !m.Suppressed || museRedelivery(s, m, in.Transport) {
 				out.Messages = append(out.Messages, m.AgentLiveMessage)
 			}
 		}
@@ -1182,7 +1182,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			v := s.Offers[m.MessageID]
 			v.Offered = true
 			v.OfferedAt = time.Now()
-			v.Message = ""
+			if s.Attachment.Provider != "muse" {
+				v.Message = ""
+			}
 			v.Transport = in.Transport
 			s.Offers[m.MessageID] = v
 		}
@@ -1229,6 +1231,24 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	default:
 		return LocalBridgeReply{Error: "unknown local bridge action"}
 	}
+}
+
+// A Muse chat reads its messages by calling receive. If the chat was interrupted
+// (Ctrl+C, resume, a lost tool result) before it acknowledged, the same message
+// is handed out again after a quiet period instead of staying "sent" forever.
+// The body is kept only until the chat acknowledges it as admitted.
+func museRedelivery(s *localSession, m localOffer, transport string) bool {
+	if s.Attachment.Provider != "muse" || !strings.HasPrefix(transport, "muse_") || !m.Offered || m.Suppressed || m.Message == "" {
+		return false
+	}
+	if m.Delivery == "admitted" || m.Delivery == "processed" {
+		return false
+	}
+	after := 2 * time.Minute
+	if v, err := time.ParseDuration(os.Getenv("AGENTWORKS_MUSE_REDELIVER_AFTER")); err == nil && v > 0 {
+		after = v
+	}
+	return time.Since(m.OfferedAt) >= after
 }
 
 func localPending(s *localSession) bool {

@@ -79,6 +79,9 @@ jobs:
       - name: Cursor CLI identity on macOS
         working-directory: agent_go
         run: go test ./cmd/agentworks -run '^(TestCursorNativeProcessAndDiscovery|TestCursorProcArgsPrefixReadsOnlyTheLaunchPrefix)$' -count=1 -v
+      - name: Muse Monitor reader on macOS
+        working-directory: agent_go
+        run: go test ./pkg/agentworksclient -run '^TestMuseMonitorReaderEndsWithItsBroker$' -count=1 -v
 
   verify:
     runs-on: ubuntu-latest

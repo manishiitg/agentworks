@@ -143,4 +143,28 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 		t.Fatalf("waiting messages were lost across the restart: %v", got)
 	}
 	_ = sawSetup
+
+	// A message the chat never acknowledged (interrupted, lost tool result) is
+	// handed out again after the quiet period; an admitted one is not.
+	t.Setenv("AGENTWORKS_MUSE_REDELIVER_AFTER", "1s")
+	time.Sleep(1200 * time.Millisecond)
+	again := map[string]string{}
+	drain := chat
+	drain.Action, drain.Transport, drain.HostKey = "drain", "muse_hook", "muse-process-new"
+	for _, m := range call(drain).Messages {
+		again[m.Message] = m.MessageID
+	}
+	if len(again) != 2 {
+		t.Fatalf("unacknowledged messages were not offered again: %v", again)
+	}
+	ack := chat
+	ack.Action, ack.Delivery, ack.HostKey, ack.MessageID = "ack", "admitted", "muse-process-new", again["first waiting message"]
+	if out := call(ack); out.Error != "" {
+		t.Fatalf("ack failed: %s", out.Error)
+	}
+	time.Sleep(1200 * time.Millisecond)
+	left := call(drain).Messages
+	if len(left) != 1 || left[0].Message != "second waiting message" {
+		t.Fatalf("only the unacknowledged message may come back: %+v", left)
+	}
 }

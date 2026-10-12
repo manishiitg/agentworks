@@ -188,6 +188,18 @@ func ReadMuseMonitorPipe(ctx context.Context, path, session, lease string, offer
 	}
 	defer file.Close()
 	go func() { <-ctx.Done(); _ = file.Close() }()
+	// macOS never reports end-of-file on a non-blocking FIFO after its writer
+	// closes, so a reader of a finished broker generation would linger forever
+	// (and Muse would keep listing it as a live Monitor). The broker holds an
+	// exclusive lock for exactly its lifetime: wait for the kernel to release it.
+	if broker, e := openMuseMonitorPrivate(path+".broker", false); e == nil {
+		go func() {
+			defer broker.Close()
+			if syscall.Flock(int(broker.Fd()), syscall.LOCK_SH) == nil {
+				cancel()
+			}
+		}()
+	}
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 4096), 4096)
 	for scanner.Scan() {
@@ -202,7 +214,10 @@ func ReadMuseMonitorPipe(ctx context.Context, path, session, lease string, offer
 			return err
 		}
 	}
-	return scanner.Err()
+	if err = scanner.Err(); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
 }
 
 // A held private kernel lock is live-process evidence, not metadata authority.
