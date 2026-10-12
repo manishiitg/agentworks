@@ -201,7 +201,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 			if a.ID != agentID {
 				continue
 			}
-			if s.revokeServerShares(a.ID, adminID, now) == 0 {
+			if s.revokeServerShares(a.ID, adminID, now)+s.removeFromAllGroups(a.ID, a.UserID, adminID) == 0 {
 				return save(map[string]interface{}{"state": "not_shared", "agent_name": a.Name, "owner": label(a.UserID)})
 			}
 			s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "agent_unshared", TargetUser: a.UserID, TargetAgent: a.ID, Reason: reason, Result: "done"})
@@ -278,7 +278,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			if query != "" && strings.Contains(strings.ToLower(a.Name), query) {
 				match = true
 			}
-			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "shared_with_everyone": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
+			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "groups": s.groupNamesOf(a.ID, a.UserID)}
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
 				item["attachment_handle"] = attachmentHandle(a.ID, a.Attachment.ID)
@@ -292,7 +292,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 		people = append(people, map[string]interface{}{"username": u.Username, "role": roleForRecord(&u), "disabled": u.Disabled, "agents": agents})
 	}
 	sort.Slice(people, func(i, j int) bool { return people[i]["username"].(string) < people[j]["username"].(string) })
-	out := map[string]interface{}{"total": len(people)}
+	out := map[string]interface{}{"total": len(people), "groups": s.groupsView("", true)}
 	if offset > len(people) {
 		offset = len(people)
 	}
@@ -349,7 +349,7 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 }
 
 func externalBullpenAdminDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(bullpenAdminTool, "Bullpen administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) makes an agent that its owner shared with everyone private again (list shows shared_with_everyone). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
+	add(bullpenAdminTool, "Bullpen administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, the groups it belongs to, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) takes an agent out of every group it joined, making it private again (list shows its groups). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
 		"action":   map[string]any{"type": "string", "enum": []any{"list", "audit", "close_attachment", "remove_agent", "unshare_agent"}},
 		"q":        map[string]any{"type": "string", "maxLength": 64},
 		"cursor":   map[string]any{"type": "string", "maxLength": 12},

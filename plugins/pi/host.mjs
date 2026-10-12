@@ -93,7 +93,7 @@ export class Host {
 
   personToken(text, ctx) {
     if (ctx.mode !== 'tui' || !ctx.hasUI || ctx.sessionManager.getSessionId() !== this.session ||
-        !/^\/agentworks[ \t]+(?:attach(?:[ \t]+(?!--)\S+)?(?:[ \t]+--on[ \t]+(?:default|[a-z0-9][a-z0-9._-]{0,31}))?|detach|share|unshare)[ \t]*$/.test(text)) throw new Error('Pi person input requires the TUI');
+        !/^\/agentworks[ \t]+(?:attach(?:[ \t]+(?!--)\S+)?(?:[ \t]+--on[ \t]+(?:default|[a-z0-9][a-z0-9._-]{0,31}))?|detach|share[ \t]+[a-z0-9][a-z0-9._-]{0,63}(?:[ \t]+--purpose[ \t]+[^\r\n]{1,300})?|unshare(?:[ \t]+[a-z0-9][a-z0-9._-]{0,63})?|groups|group[ \t]+[a-z0-9][a-z0-9._-]{0,63})[ \t]*$/.test(text)) throw new Error('Pi person input requires the TUI');
     const token = randomUUID();
     this.#personTokens.set(token, { text, host: this.key, session: ctx.sessionManager.getSessionId(), expires: Date.now() + 12000 });
     return token;

@@ -107,14 +107,14 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, personCommandHelp)
 			}
 			req.Action = words[1]
-			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare") {
+			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare" || req.Action == "groups" || req.Action == "group") {
 				status, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
 				if e != nil || !status.Attached {
 					return pluginBlock(o, "This Pi chat is not connected. Type /agentworks attach in it.")
 				}
 				req.AttachmentID = status.Attachment.ID
 			}
-			if req.Provider != "pi" && (req.Action == "share" || req.Action == "unshare" || req.Action == "agents") {
+			if req.Provider != "pi" && (req.Action == "share" || req.Action == "unshare" || req.Action == "agents" || req.Action == "groups" || req.Action == "group") {
 				// A chat that went offline (CLI update, bridge restart, closed and resumed)
 				// is reconnected as part of the command: same name, same login.
 				if msg := reconnectOffline(ctx, root, req); msg != "" {
@@ -148,19 +148,44 @@ func pluginCommand(o *options) *cobra.Command {
 				if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {
 					return pluginBlock(o, err.Error())
 				}
-			case "share", "unshare":
-				if len(words) != 2 {
-					return pluginBlock(o, "share and unshare take no arguments: they act on this chat's agent")
+			case "share", "unshare", "groups", "group":
+				// words: share GROUP [--purpose TEXT...] | unshare [GROUP] | groups | group NAME
+				rest := words[2:]
+				switch req.Action {
+				case "groups":
+					if len(rest) != 0 {
+						return pluginBlock(o, "groups takes no arguments")
+					}
+				case "group":
+					if len(rest) != 1 {
+						return pluginBlock(o, "Use /agentworks group NAME")
+					}
+					req.Group = rest[0]
+				case "unshare":
+					if len(rest) > 1 {
+						return pluginBlock(o, "Use /agentworks unshare [GROUP]")
+					}
+					if len(rest) == 1 {
+						req.Group = rest[0]
+					}
+				case "share":
+					if len(rest) == 0 || strings.HasPrefix(rest[0], "--") {
+						return pluginBlock(o, "Use /agentworks share GROUP [--purpose TEXT]")
+					}
+					req.Group, rest = rest[0], rest[1:]
+					if len(rest) > 0 {
+						if rest[0] != "--purpose" || len(rest) < 2 {
+							return pluginBlock(o, "Use /agentworks share GROUP [--purpose TEXT]")
+						}
+						req.Purpose = strings.Join(rest[1:], " ")
+					}
 				}
 				req.Action += "_person"
-				shared, e := agentworksclient.CallLocalBridge(ctx, root, req)
+				done, e := agentworksclient.CallLocalBridge(ctx, root, req)
 				if e != nil {
 					return pluginBlock(o, e.Error())
 				}
-				if words[1] == "share" {
-					return pluginBlock(o, "agent:"+shared.Attachment.AgentName+" is now shared with everyone on this server. Messages from other people reach it marked as untrusted. Type /agentworks unshare to make it private again.")
-				}
-				return pluginBlock(o, "agent:"+shared.Attachment.AgentName+" is private again.")
+				return pluginBlock(o, groupResultText(done.Result))
 			case "detach", "agents":
 				if len(words) != 2 {
 					return pluginBlock(o, "detach and agents take no arguments")

@@ -8,7 +8,7 @@ When the person asks in plain language to connect or disconnect this chat, run `
 
 Moving chats between saved logins is open to you: `agentworks attach --on LOGIN` moves your own chat, `agentworks attach --on LOGIN --provider P --session ID` moves another attached chat, and `agentworks attach --all --on LOGIN` moves every attached chat. A login you have not saved comes from `agentworks login --server URL --name NAME`; use `agentworks logins` to see the saved ones.
 
-When the person asks you to share yourself with everyone on the server (or to make yourself private), run `agentworks share` (or `agentworks unshare`) for your own chat; it detects the exact session like attach. The in-chat forms are `/agentworks share` and `/agentworks unshare`.
+When the person asks you to share yourself in a group, run `agentworks share GROUP` (add `--purpose TEXT` to create it) for your own chat; to leave, `agentworks unshare [GROUP]`. `agentworks groups` and `agentworks group NAME` list groups and members. It detects the exact session like attach. The in-chat forms are `/agentworks share GROUP [--purpose TEXT]`, `/agentworks unshare [GROUP]`, `/agentworks groups` and `/agentworks group NAME`.
 
 `agentworks agent` (alias `agentworks agents`) lists agents visible through your authorized AgentWorks connections. Registration, server acceptance, native offering and explicit admission/processing are separate. Do not claim live delivery from a registered name or online stream alone.
 

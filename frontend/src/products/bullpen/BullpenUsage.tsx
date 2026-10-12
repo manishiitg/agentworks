@@ -7,7 +7,7 @@ const total = (c: { input_tokens: number; output_tokens: number }) => c.input_to
 
 export function AgentUsage({ usage, unavailable, provider }: { usage?: BullpenUsage; unavailable?: boolean; provider?: string }) {
   if (unavailable) return <p className="text-xs text-muted-foreground">Usage could not be loaded.</p>
-  if (!usage) return <p className="text-xs text-muted-foreground">{provider === 'cursor' || provider === 'agy' ? 'Native usage is unavailable for this CLI.' : 'Optional usage reporting is off or has no reading yet.'}</p>
+  if (!usage) return provider === 'cursor' || provider === 'agy' ? <p className="text-xs text-muted-foreground">Native usage is unavailable for this CLI.</p> : null
   const stale = Date.now() - new Date(usage.observed_at).getTime() > 2 * 60 * 60 * 1000
   return <div className="space-y-1 border-t border-border pt-3 text-xs">
     <p>Today’s hourly readings: <strong>{usage.available || total(usage.today) > 0 ? exact.format(total(usage.today)) : 'Not collected'}</strong> tokens</p>

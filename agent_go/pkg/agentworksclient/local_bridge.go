@@ -39,6 +39,7 @@ type LocalBridgeRequest struct {
 	ConfigPath       string `json:"config_path,omitempty"`
 	AgentName        string `json:"agent_name,omitempty"`
 	Purpose          string `json:"purpose,omitempty"`
+	Group            string `json:"group,omitempty"`
 	MessageID        string `json:"message_id,omitempty"`
 	Delivery         string `json:"delivery,omitempty"`
 	Transport        string `json:"transport,omitempty"`
@@ -865,7 +866,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{}
 	}
 	switch in.Action {
-	case "share_person", "unshare_person", "share_own", "unshare_own":
+	case "share_person", "unshare_person", "share_own", "unshare_own", "groups_person", "group_person", "groups_own", "group_own":
 		// Sharing the chat's agent with everyone on its server. The person types it
 		// in the chat (_person), or the agent does it for its own exact session when
 		// the person asked in plain language (_own).
@@ -881,7 +882,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], s.Attachment.AgentName)
+		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], s.Attachment.AgentName, in.Group, in.Purpose)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}

@@ -12,15 +12,15 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
-// An agent shared with everyone on the server through its owner's CLI login: every
-// other person's agent can message it, a blocked person cannot, unsharing ends the
-// conversation, and an administrator can make it private again.
-func TestShareWithEveryoneThroughTheOwnersCLILogin(t *testing.T) {
+// Sharing an agent means joining a group. Members of a group see each other,
+// message each other directly or the whole group, outsiders cannot, leaving ends
+// access, and an administrator can take an agent out of every group.
+func TestShareIntoAGroupBetweenAccounts(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]},{"id":"carol","username":"carol","can_create":true,"products":[]},{"id":"root","username":"root","admin":true,"products":[]}]}`)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AUTH_SECRET", "network-share-fixture-secret")
+	t.Setenv("AUTH_SECRET", "group-share-fixture-secret")
 	t.Setenv("AGENT_PRODUCTS", "")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
@@ -72,88 +72,117 @@ func TestShareWithEveryoneThroughTheOwnersCLILogin(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	send := func(c *agentworksclient.Client, name, text string) error {
-		_, e := try(c, map[string]any{"action": "send", "agent_name": name, "target": "agent:alice/helper", "message": text, "submission_id": text})
+	dm := func(c *agentworksclient.Client, from, text string) error {
+		_, e := try(c, map[string]any{"action": "send", "agent_name": from, "target": "agent:alice/helper", "message": text, "submission_id": text})
 		return e
 	}
-	if send(bob, "scout", "before sharing") == nil {
+	toGroup := func(c *agentworksclient.Client, from, group, text string) (map[string]any, error) {
+		return try(c, map[string]any{"action": "send", "agent_name": from, "target": "group:" + group, "message": text, "submission_id": text})
+	}
+	ctx := context.Background()
+	if dm(bob, "scout", "before any group") == nil {
 		t.Fatal("a private agent accepted a message from another person")
 	}
-	if _, err = bob.ShareAgent(context.Background(), "share", "helper"); err == nil {
-		t.Fatal("a person shared someone else's agent")
+	if _, err = bob.ShareAgent(ctx, "share", "scout", "docs", ""); err == nil {
+		t.Fatal("joined a group that does not exist without giving it a purpose")
 	}
-	if _, err = alice.ShareAgent(context.Background(), "share", "helper"); err != nil {
-		t.Fatalf("owner could not share: %v", err)
+	if _, err = alice.ShareAgent(ctx, "share", "helper", "docs", "Questions about the docs"); err != nil {
+		t.Fatalf("creating a group by sharing into it: %v", err)
 	}
-	if _, err = alice.ShareAgent(context.Background(), "share", "helper"); err != nil {
+	if _, err = alice.ShareAgent(ctx, "share", "helper", "docs", ""); err != nil {
 		t.Fatalf("sharing twice must be harmless: %v", err)
 	}
-	if err = send(bob, "scout", "hello everyone"); err != nil {
-		t.Fatalf("shared agent refused a signed-in person: %v", err)
+	if _, err = bob.ShareAgent(ctx, "share", "helper", "docs", ""); err == nil {
+		t.Fatal("a person put someone else's agent into a group")
 	}
-	if err = send(carol, "snoop", "hello from carol"); err != nil {
-		t.Fatalf("shared agent refused a second person: %v", err)
+	// Anyone can see the group before joining it.
+	seen, err := carol.ShareAgent(ctx, "group", "", "docs", "")
+	if err != nil || !strings.Contains(string(seen), `"alice/helper"`) || !strings.Contains(string(seen), `"member_count":1`) {
+		t.Fatalf("an outsider cannot see the group's members: %s %v", seen, err)
 	}
-	seen, err := try(alice, map[string]any{"action": "read", "agent_name": "helper"})
-	if err != nil || len(seen["messages"].([]any)) != 2 {
-		t.Fatalf("owner should have both messages: %v %v", seen, err)
+	if dm(bob, "scout", "not a member yet") == nil {
+		t.Fatal("a non-member reached a group member directly")
 	}
-	listed, _ := try(bob, map[string]any{"action": "list_agents"})
-	foundShared := false
-	for _, a := range listed["agents"].([]any) {
-		if m := a.(map[string]any); m["agent_name"] == "alice/helper" && m["scope"] == "everyone" {
-			foundShared = true
+	if _, err = try(bob, map[string]any{"action": "join_group", "agent_name": "scout", "group": "docs"}); err != nil {
+		t.Fatalf("join through the messages tool: %v", err)
+	}
+	if err = dm(bob, "scout", "hello member"); err != nil {
+		t.Fatalf("members could not message each other: %v", err)
+	}
+	got, _ := try(alice, map[string]any{"action": "read", "agent_name": "helper"})
+	first := got["messages"].([]any)[0].(map[string]any)
+	if first["sender"] != "bob/scout" || first["untrusted"] != true || first["from_person"] != "bob" {
+		t.Fatalf("a message from a group member must be marked as another person's: %v", first)
+	}
+	if _, err = toGroup(carol, "snoop", "docs", "outsider to the group"); err == nil {
+		t.Fatal("a non-member sent to the group")
+	}
+	if _, err = try(carol, map[string]any{"action": "join_group", "agent_name": "snoop", "group": "docs"}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := toGroup(bob, "scout", "docs", "to everyone in docs")
+	if err != nil || len(result["sent_to"].([]any)) != 2 {
+		t.Fatalf("group message must reach both other members: %v %v", result, err)
+	}
+	carolGot, _ := try(carol, map[string]any{"action": "read", "agent_name": "snoop"})
+	var sawGroup bool
+	for _, item := range carolGot["messages"].([]any) {
+		if m := item.(map[string]any); m["group"] == "docs" && m["sender"] == "bob/scout" {
+			sawGroup = true
 		}
 	}
-	if !foundShared {
-		t.Fatalf("the shared agent is not in another person's list: %v", listed)
+	if !sawGroup {
+		t.Fatalf("the group message did not reach another member with its group name: %v", carolGot)
 	}
-	own, _ := try(alice, map[string]any{"action": "list_agents"})
-	if raw, _ := json.Marshal(own); !strings.Contains(string(raw), `"shared_with_everyone":true`) {
-		t.Fatalf("the owner's list does not mark the agent as shared: %s", raw)
+	listed, _ := try(bob, map[string]any{"action": "list_agents"})
+	found := false
+	for _, a := range listed["agents"].([]any) {
+		if m := a.(map[string]any); m["agent_name"] == "alice/helper" && m["scope"] == "group" {
+			found = true
+		}
 	}
-	// The owner blocks carol: carol's messages stop, bob's do not.
-	agentMessageMu.Lock()
-	s, _ := readAgentMessageStore(context.Background())
-	s.Blocks = append(s.Blocks, agentShareBlock{OwnerUserID: "alice", BlockedUserID: "carol", At: time.Now().UTC()})
-	_ = saveAgentMessageStore(context.Background(), s)
-	agentMessageMu.Unlock()
-	if send(carol, "snoop", "after the block") == nil {
-		t.Fatal("a blocked person still reached the shared agent")
+	if !found || len(listed["groups"].([]any)) != 1 {
+		t.Fatalf("list_agents must show group co-members and the groups: %v", listed)
 	}
-	if err = send(bob, "scout", "bob still fine"); err != nil {
-		t.Fatalf("blocking one person stopped another: %v", err)
+	// Leaving ends access at once.
+	if _, err = bob.ShareAgent(ctx, "unshare", "scout", "docs", ""); err != nil {
+		t.Fatal(err)
 	}
-	// An administrator can make it private again; the owner is told.
-	listing, _, code, _ := env.api.bullpenAdminAct(context.Background(), "root", "list", map[string]any{})
+	if dm(bob, "scout", "after leaving") == nil {
+		t.Fatal("a member who left could still message the group's agents")
+	}
+	if _, err = try(alice, map[string]any{"action": "send", "agent_name": "helper", "target": "agent:bob/scout", "message": "reply after leaving", "submission_id": "reply-after-leaving"}); err == nil {
+		t.Fatal("a group member could still message someone who left")
+	}
+	// An administrator takes an agent out of every group.
+	listing, _, code, _ := env.api.bullpenAdminAct(ctx, "root", "list", map[string]any{})
 	agentID := ""
 	for _, person := range listing["people"].([]map[string]interface{}) {
 		for _, agent := range person["agents"].([]map[string]interface{}) {
-			if agent["agent_name"] == "helper" && agent["shared_with_everyone"] == true {
+			if agent["agent_name"] == "helper" {
 				agentID, _ = agent["agent_id"].(string)
 			}
 		}
 	}
-	if code != "" || agentID == "" {
-		t.Fatalf("admin list does not show the shared agent: %v %s", listing, code)
+	if code != "" || agentID == "" || len(listing["groups"].([]map[string]interface{})) != 1 {
+		t.Fatalf("the admin list must show agents and groups: %v %s", listing, code)
 	}
-	if out, _, code, msg := env.api.bullpenAdminAct(context.Background(), "root", "unshare_agent", map[string]any{"agent_id": agentID, "reason": "test of admin unshare"}); code != "" || out["state"] != "unshared" {
+	if out, _, code, msg := env.api.bullpenAdminAct(ctx, "root", "unshare_agent", map[string]any{"agent_id": agentID, "reason": "test of admin unshare"}); code != "" || out["state"] != "unshared" {
 		t.Fatalf("admin unshare: %v %s %s", out, code, msg)
 	}
-	if send(bob, "scout", "after admin unshare") == nil {
-		t.Fatal("the agent stayed reachable after an administrator made it private")
+	// Earlier everyone-shares move into the default group, so nothing breaks.
+	agentMessageMu.Lock()
+	s, _ := readAgentMessageStore(ctx)
+	for _, a := range s.Agents {
+		if a.Name == "scout" {
+			s.Shares = append(s.Shares, agentShare{ID: "share-old", OwnerUserID: a.UserID, AgentID: a.ID, SubjectUserID: shareScopeServer, Capability: shareCapabilityChat, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(serverShareLifetime), RevocationVersion: 1})
+		}
 	}
-	// Share again, then the owner unshares: open conversations stop too.
-	if _, err = alice.ShareAgent(context.Background(), "share", "helper"); err != nil {
-		t.Fatal(err)
-	}
-	if err = send(bob, "scout", "shared again"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = alice.ShareAgent(context.Background(), "unshare", "helper"); err != nil {
-		t.Fatal(err)
-	}
-	if send(bob, "scout", "after owner unshare") == nil {
-		t.Fatal("the agent stayed reachable after its owner made it private")
+	_ = saveAgentMessageStore(ctx, s)
+	agentMessageMu.Unlock()
+	env.api.migrateEveryoneShares(ctx)
+	general, err := carol.ShareAgent(ctx, "group", "", defaultGroupName, "")
+	if err != nil || !strings.Contains(string(general), `"bob/scout"`) {
+		t.Fatalf("an old everyone-share must become a member of the default group: %s %v", general, err)
 	}
 }

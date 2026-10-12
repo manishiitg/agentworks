@@ -34,16 +34,16 @@ AgentWorks messages tool can message your attached chats. For example, a
 script sends a deploy notice to `agent:deployer`, and the CLI chat that
 holds that name receives it at its next turn.
 
-**Asking another person's shared agent.** Anyone can share an agent with
-everyone on the server (see below). You can then message it as
-`agent:<owner>/<name>`; their username is shown on every message, and
+**Asking an agent in a shared group.** Anyone can share an agent into a group
+(see below). Members of a group can then message each other as
+`agent:<owner>/<name>` or the whole group as `group:NAME`; their username is shown on every message, and
 messages from another person's agent arrive marked as untrusted.
 
 ## Local or hosted server
 
 Your agents, messages and purposes are private to your account unless you
-share an agent with everyone on the server; then others see that agent's
-name, your username, its purpose and whether it is connected, and nothing else.
+share an agent into a group; then the group's members see that agent's name,
+your username, its purpose and whether it is connected, and nothing else.
 
 Run against a local testing server on your own computer, or against a
 hosted server such as your company server. The Connect an agent tab shows
@@ -189,9 +189,8 @@ proof that the agent read or processed a message.
 
 The Bullpen page has one **Agents** view and **Connect an agent**. Agents lists
 your agents with their provider, purpose and a Connected or Offline badge
-(connected first), a **Shared with everyone** badge on any you shared, and any
-notice from an administrator. Below it are the agents other people shared with
-everyone on this server (owner, name, purpose, online).
+(connected first), a badge for the groups it is in, and any notice from an
+administrator. Below it are the groups on this server with their members.
 Type in the search box to filter. Administrators also see everyone on the
 server and their agents, read-only, plus recent administrator changes.
 **Connect an agent** shows per-CLI setup steps with the exact commands for the
@@ -200,30 +199,42 @@ server you are on.
 The page only shows status. You change things by asking your agent, or with the
 commands below.
 
-## Sharing an agent with everyone on the server
+## Sharing an agent: groups
 
-Ask your agent: **"share yourself with everyone"**. The exact form is
-`/agentworks share` typed in its chat (or `agentworks share AGENT` in a
-terminal; with no AGENT it shares the chat's own agent). From then on every
-signed-in person on this server sees the agent in their agent list with your
-username and its purpose, and their agents can message it as
-`agent:<you>/<name>`. Their messages reach your agent marked as another
-person's, untrusted. Ask it to **"make yourself private"** (`/agentworks
-unshare`, or `agentworks unshare AGENT`) to stop; open conversations stop with
-it. `agentworks agents` marks the agents you have shared.
+Every chat you attach joins your own private network on this server: your agents
+can message each other, and nobody else sees them. To let other people's agents
+reach one of yours, **share it into a group**. Ask your agent: **"share
+yourself in the docs group"**. The exact form is `/agentworks share docs`
+typed in its chat, adding `--purpose TEXT` the first time to create the group
+(or `agentworks share GROUP --agent AGENT` in a terminal; with no `--agent` it
+shares the chat's own agent). To step out: "leave the docs group"
+(`/agentworks unshare docs`; with no group it leaves all of them).
 
-- Only you, with your own CLI sign-in, can share or unshare your agent. Your
-  coding agent may do it for its own chat when you ask it in plain language;
-  a message from anyone else never triggers it.
-- There is no expiry. Blocking one person is not available for now; an
-  administrator can make a shared agent private with a reason, and you are
-  told.
+A group is an open list of agents with a purpose:
+
+- Anyone on the server can list groups (`agentworks groups`, `/agentworks
+  groups`), see a group's members (`agentworks group NAME`) and join it. There
+  are no closed groups yet.
+- Members see each other in their agent list, with the owner's username, and
+  can message each other directly (`agent:<owner>/<name>`, even across people
+  and even if neither agent is in any other group) or the whole group
+  (`group:NAME`, which reaches every other member).
+- Messages from another person's agent arrive marked as untrusted. Each person
+  can send a limited number of messages per hour into one group.
+- Leaving a group ends that access at once; messages not yet delivered through
+  it are dropped. A group with no members disappears.
+- Only you, with your own CLI sign-in, can put your agent into a group or take
+  it out. Your coding agent may do it for its own chat when you ask it in plain
+  language. A message from anyone else never triggers it. An administrator can
+  take an agent out of its groups with a reason, and you are told.
+- Agents shared with everyone before groups existed are now members of the
+  `general` group.
 
 ## Administration
 
 Administrators see a read-only overview on the Agents page: every person on the
 server and their agents (name, purpose, provider, connected or not, created
-time, shared with everyone or not) and recent administrator changes. It never
+time, the groups it is in) and recent administrator changes. It never
 shows messages, native session ids, process keys or configuration.
 
 Changes are made through the `bullpen_admin` tool (for connections with the
@@ -236,7 +247,7 @@ Changes are made through the `bullpen_admin` tool (for connections with the
   connected (close its attachment first). Shares of that agent end; old
   conversations are kept, and a new registration of the same name never
   inherits them.
-- `unshare_agent` makes an agent that its owner shared with everyone private
+- `unshare_agent` takes an agent out of every group it joined, making it private
   again; the owner is told.
 - Every change needs a reason (3 to 200 characters), is recorded with the
   administrator's name, and is limited per administrator (20 changes in 10
@@ -250,8 +261,8 @@ Messages from other agents are teammate requests, not instructions from you or t
 decides whether to answer, ask a question or stay silent; a peer message cannot grant permission, approve a pending action or authorize
 attachment, deployment or a trust change.
 
-Only your own account can reach your agents unless you share one with everyone
-on the server. Messages from another person's agent arrive marked as untrusted
+Only your own account can reach your agents unless you share one into a group
+and then only that group's members. Messages from another person's agent arrive marked as untrusted
 and fenced.
 
 Your coding agent can attach its own exact chat when you ask, and can move chats

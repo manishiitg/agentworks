@@ -57,71 +57,22 @@ func (api *StreamingAPI) handleAgentSharing(w http.ResponseWriter, r *http.Reque
 	var in struct {
 		Action    string `json:"action"`
 		AgentName string `json:"agent_name"`
+		Group     string `json:"group"`
+		Purpose   string `json:"purpose"`
 	}
 	if json.NewDecoder(r.Body).Decode(&in) != nil {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Send action and agent_name.")
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Send action, agent_name and group.")
 		return
 	}
-	if in.Action == "list" {
-		agentMessageMu.Lock()
-		s, err := readAgentMessageStore(r.Context())
-		agentMessageMu.Unlock()
-		if err != nil {
-			externalError(w, http.StatusServiceUnavailable, "unavailable", "Sharing is unavailable. Try again.")
-			return
-		}
-		names := []string{}
-		for _, a := range s.Agents {
-			if a.UserID == claims.UserID && len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0 {
-				names = append(names, a.Name)
-			}
-		}
-		externalJSON(w, map[string]interface{}{"shared_with_everyone": names})
+	// Sharing an agent means joining a group, so share and unshare are join and leave.
+	if (in.Action == "share" || in.Action == "unshare") && in.AgentName == "" {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Name one of your agents.")
 		return
 	}
-	name, err := normalizeMessageAgentName(in.AgentName)
-	if err != nil || (in.Action != "share" && in.Action != "unshare") {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "action is share, unshare or list; agent_name is one of your registered agents.")
-		return
-	}
-	var out map[string]interface{}
-	var status int
-	var code, msg string
-	if in.Action == "share" {
-		out, status, code, msg = api.createShare(r.Context(), claims.UserID, name, shareScopeServer, serverShareLifetime)
-		if code == "already_shared" {
-			out, code = map[string]interface{}{"agent_name": name, "scope": "everyone", "state": "active"}, ""
-		}
-	} else {
-		out, status, code, msg = api.unshareEveryone(r.Context(), claims.UserID, name)
-	}
+	out, status, code, msg := api.groupAction(r.Context(), claims.UserID, in.Action, in.AgentName, in.Group, in.Purpose)
 	if code != "" {
 		externalError(w, status, code, msg)
 		return
 	}
-	out["scope"] = "everyone"
 	externalJSON(w, out)
-}
-
-// unshareEveryone makes an agent private again. Existing conversations through
-// the share stop at their next check.
-func (api *StreamingAPI) unshareEveryone(ctx context.Context, owner, agentName string) (map[string]interface{}, int, string, string) {
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
-	s, err := readAgentMessageStore(ctx)
-	if err != nil {
-		return nil, http.StatusServiceUnavailable, "unavailable", "Sharing is unavailable. Try again."
-	}
-	for _, a := range s.Agents {
-		if a.UserID != owner || a.Name != agentName {
-			continue
-		}
-		if s.revokeServerShares(a.ID, owner, time.Now().UTC()) > 0 {
-			if err := saveAgentMessageStore(ctx, s); err != nil {
-				return nil, http.StatusServiceUnavailable, "unavailable", "Sharing is unavailable. Try again."
-			}
-		}
-		return map[string]interface{}{"agent_name": a.Name, "state": "private"}, 0, "", ""
-	}
-	return nil, http.StatusNotFound, "unknown_agent", "You have no agent with that name."
 }

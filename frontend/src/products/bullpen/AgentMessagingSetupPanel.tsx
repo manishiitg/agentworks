@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { getApiBaseUrl } from '../../services/api'
 
 import { messagingGuides, type MessagingClient } from './agentMessagingSetup'
+import { HowBullpenWorks } from './HowBullpenWorks'
 
 function Command({ label, text }: { label: string; text: string }) {
   const [copied, setCopied] = useState(false)
@@ -87,6 +88,7 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
             {client.troubleshooting.map(item => <details key={item.title} className="space-y-2"><summary className="cursor-pointer text-sm font-medium">{item.title}</summary><p className="pt-2 text-xs leading-5 text-muted-foreground">{item.text}</p></details>)}
           </Step>
         </div>
+        <HowBullpenWorks />
       </div>
       <aside className="space-y-4 text-xs leading-5">
         <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="font-semibold">Optional token usage</h3><p className="text-muted-foreground">Off by default. In your own terminal, run <code>agentworks usage on</code>, <code>agentworks usage off</code>, or <code>agentworks usage status</code>. Attach does not enable it. Supported CLIs report their recorded numbers hourly to your account only; shared recipients cannot see them. Bullpen keeps hourly history for up to 90 days, with a Delete saved history control beside the off command.</p></div>

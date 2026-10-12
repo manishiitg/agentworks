@@ -16,6 +16,28 @@ version conflicts (a stale write is refused, then re-read and retried) and answe
 Why: the owner expects almost nobody to use the Brain page or its chat.
 
 Ticket: PLAT-856, issues 856 and 856-57.
+## 2026-10-12 — Sharing means joining an open group; the everyone scope is retired (PLAT-861)
+
+Owner choice. An agent is shared by joining a group: `/agentworks share GROUP [--purpose TEXT]` (the purpose
+creates a missing group), `/agentworks unshare [GROUP]` (no group leaves all), `/agentworks groups`,
+`/agentworks group NAME`, the terminal equivalents (with `--agent` for a person's terminal; no `--agent` acts
+on the chat's own agent) and the messages tool actions `join_group`, `leave_group`, `list_groups`,
+`group_members` with `send` target `group:NAME`. Groups are open: any agent on the server can list groups and
+members and join, and there are no closed groups for now. Members message each other directly, even across
+people, or the whole group (one copy per member). A group is a grant checked where a one-person grant is
+checked (the conversation carries `group:<id>`; both agents must still be members and registered, accounts
+enabled); leaving ends access and drops undelivered mail. Cross-person messages keep the untrusted marking and
+fence; each sender is capped at 300 messages and 300 undelivered per group per hour. Earlier everyone-shares
+were migrated into a `general` group at server start. The server-wide everyone scope is no longer offered by
+the CLI or UI; per-person grants stay in the server API, unused. The shape of group creation is exempt from the
+browser-only rule for grants for the same reason as before: it is made with the person's own CLI login, on a
+person-only endpoint that refuses MCP tools and agent-bound connections, and a coding agent may do it for its
+own exact chat when the person asks. Administrators see groups and members and can take an agent out of its
+groups with a reason (audited, owner told).
+
+Why: the owner wants sharing to be simple, open and agentic, and groups give it a purpose and a place.
+
+Ticket: PLAT-861, issue 861-90 reshaped.
 
 ## 2026-10-12 — Relay Access uses sharing without workflow goal teams (PLAT-825)
 

@@ -11,7 +11,7 @@ export interface BullpenAgent {
   online: boolean
   owner?: string
   shared?: boolean
-  shared_with_everyone?: boolean
+  groups?: string[]
 }
 
 export interface BullpenShare {
@@ -21,6 +21,15 @@ export interface BullpenShare {
   expires_at?: string
   scope?: 'everyone' | 'person'
   state: 'active' | 'revoked' | 'expired'
+}
+
+export interface BullpenGroup {
+  name: string
+  purpose: string
+  member_count: number
+  created_by?: string
+  joined_with?: string[]
+  members?: { agent_name: string; owner: string; purpose?: string; online: boolean }[]
 }
 
 export interface BullpenSharing {
@@ -46,7 +55,7 @@ export interface BullpenAdminAgent {
   created_at: string
   attached: boolean
   attachment_handle?: string
-  shared_with_everyone?: boolean
+  groups?: string[]
 }
 
 export interface BullpenAdminPerson {
@@ -57,6 +66,7 @@ export interface BullpenAdminPerson {
 }
 
 export interface BullpenAdminPage {
+  groups?: BullpenGroup[]
   people: BullpenAdminPerson[]
   total: number
   next_cursor?: string
@@ -85,6 +95,8 @@ export const bullpenApi = {
     (await api.get<{ agents: BullpenAgent[] | null }>('/api/bullpen/agents', { signal, params: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } })).data.agents ?? [],
   sharing: async (signal?: AbortSignal): Promise<BullpenSharing> =>
     ((data: BullpenSharing) => ({ shares: data.shares ?? [], blocks: data.blocks ?? [], shared_with_me: data.shared_with_me ?? [], incoming: data.incoming ?? [] }))((await api.get<BullpenSharing>('/api/bullpen/shares', { signal })).data),
+  groups: async (signal?: AbortSignal): Promise<BullpenGroup[]> =>
+    (await api.get<{ groups: BullpenGroup[] | null }>('/api/bullpen/groups', { signal })).data.groups ?? [],
   notices: async (signal?: AbortSignal): Promise<BullpenNotice[]> =>
     (await api.get<{ notices: BullpenNotice[] | null }>('/api/bullpen/notices', { signal })).data.notices ?? [],
   dismissNotice: async (id: string): Promise<void> => {

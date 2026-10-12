@@ -108,9 +108,9 @@ func namedAgentForClaims(ctx context.Context, claims *UserClaims, name string) (
 	return namedMessageAgent{}, fmt.Errorf("named agent unavailable or access denied")
 }
 
-func resolveNamedMessageAgent(ctx context.Context, userID, name string) (triggerTarget, error) {
+func resolveNamedMessageAgent(ctx context.Context, userID, name, senderAgentID string) (triggerTarget, error) {
 	if strings.Contains(name, "/") {
-		return resolveSharedMessageAgent(ctx, userID, name)
+		return resolveSharedMessageAgent(ctx, userID, senderAgentID, name)
 	}
 	name, err := normalizeMessageAgentName(name)
 	if err != nil {
@@ -146,7 +146,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "shared_with_everyone": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
+			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -156,8 +156,9 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	}
 	hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
+	items = append(items, s.groupAgentItems(userID)...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
-	return map[string]interface{}{"agents": items}, nil
+	return map[string]interface{}{"agents": items, "groups": s.groupsView(userID, false)}, nil
 }
 
 func (api *StreamingAPI) externalMessageCaller(ctx context.Context, claims *UserClaims, args map[string]any) (triggerLinkCaller, error) {
@@ -397,6 +398,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
 					if person := crossPersonOwner(c.Endpoints[m.From], claims.UserID); person != "" {
 						item["from_person"], item["untrusted"] = person, true
+					}
+					if m.Group != "" {
+						item["group"] = m.Group
 					}
 					items = append(items, nil)
 					copy(items[position+1:], items[position:])
