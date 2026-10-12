@@ -211,6 +211,15 @@ func (c *Client) Call(ctx context.Context, name string, arguments map[string]any
 	}{name, arguments}, true)
 }
 
+// BrainSecretSet sets one of Brain's own secrets over the person's own sign-in. It is not a tool, so an agent cannot reach it
+// through the tool catalog; the CLI reads the value with hidden input first.
+func (c *Client) BrainSecretSet(ctx context.Context, name, value string) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodPost, "/api/external/v1/brain/secret", struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{name, value}, true)
+}
+
 func (c *Client) Login(ctx context.Context, provider, username, password string) (string, error) {
 	data, err := c.request(ctx, http.MethodPost, "/api/auth/login", struct {
 		Provider string `json:"provider,omitempty"`

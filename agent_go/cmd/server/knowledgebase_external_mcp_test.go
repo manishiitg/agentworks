@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -92,6 +94,12 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	requireRemoteError(t, grantAttempt, "content connection cannot grant", "insufficient_scope")
 	news := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "whats_new"}})
 	requireRemoteSuccess(t, news, "what's new over MCP")
+	// A secret's value is set only from the person's own CLI sign-in, never through a tool or a connection an agent holds.
+	refuse := httptest.NewRecorder()
+	api.handleBrainSecretSet(refuse, httptest.NewRequest(http.MethodPost, "/api/external/v1/brain/secret", strings.NewReader(`{"name":"BRAIN_TEST","value":"v"}`)).WithContext(context.WithValue(t.Context(), UserContextKey, claims)))
+	if refuse.Code != http.StatusForbidden || !strings.Contains(refuse.Body.String(), "secret_refused") {
+		t.Fatalf("a secret value was accepted without the person's CLI sign-in: %d %s", refuse.Code, refuse.Body.String())
+	}
 	secrets := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "secrets_list"}})
 	requireRemoteError(t, secrets, "a folder-capped connection cannot manage Brain's secrets", "FORBIDDEN")
 

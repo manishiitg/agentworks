@@ -128,6 +128,7 @@ func newCommand(o *options) *cobra.Command {
 	}
 	toolsCmd.AddCommand(call)
 	root.AddCommand(toolsCmd)
+	root.AddCommand(brainCommand(o))
 	for _, group := range cliOperationGroups {
 		groupCmd := &cobra.Command{Use: group.name, Short: group.description}
 		for _, op := range group.operations {

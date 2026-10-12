@@ -879,8 +879,14 @@ func restoreAgentBridge(ctx context.Context, o *options, executable string) erro
 // A PTY alone is not person approval. Reject model-launched terminals even if
 // the model allocates a PTY; approval comes from the person's in-chat hook.
 func personAgentTerminal() error {
+	return personTerminal("attach/detach", "attach or detach chats", "type /agentworks attach or /agentworks detach yourself in the chat")
+}
+
+// personTerminal refuses unless this is a real terminal with no coding agent among its ancestors: what is the command,
+// verb says what it would do, instead says what to do instead.
+func personTerminal(command, verb, instead string) error {
 	if !stdinIsTerminal() {
-		return errors.New("attach/detach is a person command; type /agentworks attach or /agentworks detach yourself in the chat")
+		return errors.New(command + " is a person command; " + instead)
 	}
 	pid := os.Getppid()
 	for i := 0; i < 32 && pid > 1; i++ {
@@ -888,7 +894,7 @@ func personAgentTerminal() error {
 		out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", "comm=", "-o", "args=").Output()
 		cancel()
 		if err != nil {
-			return errors.New("cannot verify the terminal process; type the person command in the chat instead")
+			return errors.New("cannot verify the terminal process; " + instead)
 		}
 		fields := strings.Fields(string(out))
 		if len(fields) < 2 {
@@ -896,7 +902,7 @@ func personAgentTerminal() error {
 		}
 		for _, f := range fields[1:] {
 			if isCodingAgentProcess(f) {
-				return errors.New("coding-agent context cannot attach or detach chats through this terminal, including a PTY. Use another terminal or type /agentworks attach or /agentworks detach yourself in the chat")
+				return errors.New("coding-agent context cannot " + verb + " through this terminal, including a PTY. Use another terminal, or " + instead)
 			}
 		}
 		pid, err = strconv.Atoi(fields[0])
@@ -905,7 +911,7 @@ func personAgentTerminal() error {
 		}
 	}
 	if pid > 1 {
-		return errors.New("cannot verify the terminal ancestry; type the person command in the chat instead")
+		return errors.New("cannot verify the terminal ancestry; " + instead)
 	}
 	return nil
 }

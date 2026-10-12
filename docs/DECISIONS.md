@@ -22,20 +22,23 @@ Why: the owner chose to share, and a restricted mode made an owner's own `ask_cr
 functions or write files, which blocked building, testing and orchestrating a Crew over MCP.
 
 Ticket: PLAT-856, issue 856-59.
-## 2026-10-12 — Brain administration is available over MCP and the CLI (PLAT-856)
+## 2026-10-12 — Brain administration is available over MCP and the CLI; secret values never go through an agent (PLAT-856)
 
-People use their own agents for Brain, not the Brain page or the Brain chat, so what only the app could do is now
-the `brain_admin` tool: backup status and reconcile, Brain's own secrets (list, set, delete), the person's own
-Organize Brain schedule, and what's new since the person last marked Brain as seen. Reads need `knowledgebase:read`;
-every change needs `knowledgebase:write`. Secret changes and reconcile also need the person's own connection
-(a whole-Brain Owner, not a Brain service-account identity, an agent-bound or folder-capped connection) and a live
-recheck. The app's REST handlers for secrets and reconcile still refuse access tokens; this tool accepts them under
-those rules. Secret values are never returned and never logged; changes are logged by name only.
+People use their own agents for Brain, not the Brain page or the Brain chat, so what only the app could do is now the
+`brain_admin` tool: backup status and reconcile, Brain's own secrets (list, delete by name, and a request that returns
+the command to set one), the person's own Organize Brain schedule, and what's new since the person last marked Brain as
+seen. Reads need `knowledgebase:read`; every change needs `knowledgebase:write`. Reconcile and secret deletion also need
+the person's own live connection: a whole-Brain Owner, not a Brain service-account identity, an agent-bound or
+folder-capped connection, and a connection recheck on each call. The app's REST handlers for secrets and reconcile
+still refuse access tokens; this tool accepts them under those rules. Changes are logged by name, never by value.
 
-Why: the owner expects almost nobody to use the Brain UI or chat; a feature that exists only there cannot be used.
+A secret's value never passes through an agent conversation. It is typed by the person with
+`agentworks brain secret set NAME` (hidden input, a real terminal, refused under a coding agent) and sent over the
+person's own CLI sign-in to a route that is not a tool. Agents refer to the secret by name, for example
+`pat_secret=NAME` in the backup setup.
 
-Open: whether a secret value should pass through an agent conversation at all, or be entered by the person directly
-with the agent only naming the secret.
+Why: the owner expects almost nobody to use the Brain UI or chat, so a feature that exists only there cannot be used;
+and a value an agent sees is kept in that conversation's history.
 
 Ticket: PLAT-856, issue 856-57.
 
