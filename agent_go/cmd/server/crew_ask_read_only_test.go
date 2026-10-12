@@ -87,3 +87,18 @@ func TestGuestAskFilesToolRefusesPrivateAreas(t *testing.T) {
 		t.Error("the tool has no write action")
 	}
 }
+
+// Every non-core tool on the allow list is a native bridge tool for a guest's ask (no shell to curl them).
+func TestGuestAskNativeBridgeToolsAreTheAllowListMinusCore(t *testing.T) {
+	got := crewAskNativeBridgeTools()
+	for _, must := range []string{crewAskFilesToolName, "send_message", "read_skill", "list_functions", crewSuggestionToolName, "read_image"} {
+		if !slices.Contains(got, must) {
+			t.Errorf("%s must be a native bridge tool for a guest's ask: %v", must, got)
+		}
+	}
+	for _, never := range []string{"execute_shell_command", "search_tools", "get_api_spec", "WebSearch", "EndConversation"} {
+		if slices.Contains(got, never) {
+			t.Errorf("%s is core or built in, not an additional bridge tool", never)
+		}
+	}
+}

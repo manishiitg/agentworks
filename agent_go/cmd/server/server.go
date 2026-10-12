@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -6024,8 +6025,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
 		// two tools it needs are native bridge tools: reading project files and replying (856-59).
 		if crewGuest != "" && req.CrewAskReadOnly {
-			for _, name := range []string{crewAskFilesToolName, "send_message"} {
-				if toolGate.Admit(name) {
+			for _, name := range crewAskNativeBridgeTools() {
+				if toolGate.Admit(name) && !slices.Contains(platformBridgeTools, name) {
 					platformBridgeTools = append(platformBridgeTools, name)
 				}
 			}
