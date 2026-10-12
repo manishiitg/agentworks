@@ -11,7 +11,7 @@ export const messagingGuides: MessagingGuide[] = [
   {
     id: 'codex', name: 'Codex', status: 'Live messaging · desktop idle wake', available: true,
     requirements: ['A compatible Codex desktop app or a Codex CLI with plugin hooks, and the AgentWorks CLI on PATH.', 'Desktop native delivery can wake an idle chat. A normal CLI session uses turn-boundary hooks unless its exact shared-daemon queue route is verified.'],
-    versions: 'Current plugin: agentworks-codex 1.0.7. Desktop native replies and the plugin loader have been checked; no universal minimum desktop version is pinned. Own-session CLI support first shipped in AgentWorks build 3a413c342 (contains fd797fd47).',
+    versions: 'Current plugin: agentworks-codex 1.0.7. Use the updated AgentWorks CLI with own-session support, available from 12 Oct 2026. A compatible desktop version is required; no universal minimum is pinned.',
     install: [{ label: 'Install Codex plugin', text: 'codex plugin marketplace add manishiitg/agentworks\ncodex plugin add agentworks-codex@agentworks' }],
     update: [{ label: 'Update Codex plugin', text: 'codex plugin marketplace upgrade agentworks\ncodex plugin add agentworks-codex@agentworks' }],
     installNote: 'The marketplace supplies updates; the installed plugin is a separate entry. Enable AgentWorks and reload Codex after installation or update.',
@@ -20,8 +20,8 @@ export const messagingGuides: MessagingGuide[] = [
     delivery: 'Desktop native delivery reaches the attached chat, including while it is idle. Hooks deliver at turn boundaries. A notification or a queue write alone is not a processed receipt.',
     menus: [
       { entry: '/agentworks attach, detach, agents', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
-      { entry: 'Agentworks', who: 'You', description: 'Person-command skill; it explains attachment and the three commands.' },
-      { entry: 'Agent Messages', who: 'The agent', description: 'Restricted messaging tools and instructions for replies, receipts and purpose.' },
+      { entry: '/ menu → Agentworks Codex: Agentworks', who: 'You', description: 'Person-command skill shown in the slash picker. Selecting it explains commands; type /agentworks attach to connect.' },
+      { entry: '/ menu → Agentworks Codex: Agent Messages', who: 'The agent', description: 'Messaging skill shown in the slash picker; you do not run it to attach. The hooks accept /agentworks, not an invented namespaced attach spelling.' },
     ],
     troubleshooting: [
       { title: 'Only two skills are visible', text: 'Two skills are expected, together with the messaging MCP and four hooks. Check plugin loading and hook trust; a skills-only installation is incomplete.' },
@@ -32,7 +32,7 @@ export const messagingGuides: MessagingGuide[] = [
   {
     id: 'claude', name: 'Claude Code', status: 'Live messaging · idle wake', available: true,
     requirements: ['Claude Code with native session messaging enabled, the AgentWorks CLI on PATH, and Python 3 for plugin hooks.', 'Without native session messaging, the plugin hooks deliver at turn boundaries. The optional development MCP channel has separate provider approval requirements.'],
-    versions: 'Current plugin: agentworks 1.0.5. Claude Code 2.1.296 was used for channel research; native session replies were checked separately. Own-session CLI support first shipped in AgentWorks build 3a413c342 (contains fd797fd47).',
+    versions: 'Current plugin: agentworks 1.0.5. The optional channel was tested with Claude Code 2.1.296. Use the updated AgentWorks CLI with own-session support, available from 12 Oct 2026.',
     install: [{ label: 'Install Claude plugin', text: 'claude plugin marketplace add manishiitg/agentworks --scope project\nclaude plugin install agentworks@agentworks --scope project' }],
     update: [{ label: 'Update Claude plugin', text: 'claude plugin marketplace update agentworks\nclaude plugin update agentworks@agentworks' }],
     installNote: 'Run project-scoped installation in the project your Claude chat uses. Update the existing installation rather than adding a second scope, then restart Claude as prompted.',
@@ -51,7 +51,7 @@ export const messagingGuides: MessagingGuide[] = [
   {
     id: 'muse', name: 'Muse', status: 'Live messaging · Monitor idle wake', available: true,
     requirements: ['Muse 1.4.6 or a compatible release, Python 3, and a current AgentWorks CLI on PATH.', 'The CLI must support Muse hooks, agentworks plugin mcp muse and agentworks watch. Approve the plugin MCP and the native Monitor tool when Muse asks.'],
-    versions: 'Tested idle Monitor: Muse 1.4.6-R6000.1 and plugin 0.1.6; plugin/hook setup was also tested on 1.4.4-R5419.1. The Monitor requires AgentWorks build 8c5e776f7 or a later build containing that feature. Older plugins use turn-boundary hooks only.',
+    versions: 'Tested idle Monitor: Muse 1.4.6-R6000.1 and plugin 0.1.6; plugin/hook setup was also tested on 1.4.4-R5419.1. The Monitor requires the current AgentWorks CLI with Muse watch support, available from 12 Oct 2026. Older plugins use turn-boundary hooks only.',
     install: [
       { label: 'Add Muse marketplace', text: 'muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks.git' },
       { label: 'Install Muse plugin', text: 'muse plugins install agentworks-muse@agentworks' },
@@ -78,8 +78,8 @@ export const messagingGuides: MessagingGuide[] = [
   {
     id: 'pi', name: 'Pi', status: 'Live messaging', available: true,
     requirements: ['Pi 1.1.0 interactive TUI and the AgentWorks Pi extension. Use the native AgentWorks binary on PATH.', 'The loaded extension must publish its exact session. RPC/print mode is not the interactive attachment path; unsupported Windows IPC fails closed.'],
-    versions: 'Live checks used Pi 1.1.0, extension 0.1.1 and CLI abc45862f. Current package: @agentworks/pi 0.1.2. New own-session support requires the updated CLI (3a413c342 or later) and current skill; this is distinct from the older live-test installation.',
-    install: [], update: [{ label: 'Inspect Pi packages', text: 'pi list' }],
+    versions: 'Tested: Pi 1.1.0 with extension 0.1.1. Current package: @agentworks/pi 0.1.2. Asking the agent to attach itself needs the current CLI and skill, available from 12 Oct 2026; older installations use the typed command.',
+    install: [], update: [{ label: 'Check installed Pi packages', text: 'pi list' }],
     installNote: 'After signing in, run agentworks attach in a terminal and accept the Pi extension install if it is missing. It uses the CLI’s bundled package or a clone pinned to the CLI build, then asks you to reload Pi and attach again. @agentworks/pi is not advertised as a published npm package.',
     approval: 'For an older package, inspect its source with pi list, refresh that same retained package directory, then /reload. If moving directories, remove and install the package at the original scope. Installing the repository root is not supported; retain a referenced local package directory.',
     attach: '/agentworks attach pi-review', ownRequest: 'Attach this chat to AgentWorks as pi-review.',

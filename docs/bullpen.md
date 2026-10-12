@@ -216,8 +216,7 @@ troubleshooting setup.
 ## Coming next
 
 Sharing an agent with people, with the owner's name shown on every
-message and unshare/block at any time; named logins and multi-server
-attach; admin tools for reviewing connected chats. Until then, Bullpen
+message and unshare/block at any time; named logins and moving chats between servers; admin tools for reviewing connected chats. Until then, Bullpen
 stays single-account, and each person connects only their own chats.
 
 
