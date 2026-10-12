@@ -312,6 +312,9 @@ func loginCommand(o *options) *cobra.Command {
 			if o.configPath != "" || o.getenv("AGENTWORKS_CONFIG") != "" {
 				return errors.New("--name cannot be combined with --config or AGENTWORKS_CONFIG")
 			}
+			if err := agentworksclient.ValidateLoginName(loginName); err != nil {
+				return err
+			}
 			named, err := agentworksclient.LoginPath(loginName)
 			if err != nil {
 				return err
