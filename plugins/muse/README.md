@@ -21,7 +21,9 @@ mailbox in a polling loop or implement another bridge.
 
 ## Requirements and installation
 
-Use Muse 1.4.6 or a compatible release, Python 3 and an AgentWorks CLI supporting
+Native idle wake is tested with Muse 1.4.6. Plugin/hook setup is also verified
+with Muse 1.4.4; use a compatible release with native Monitor support. You need
+Python 3 and an AgentWorks CLI supporting
 both `agentworks plugin hook muse` and `agentworks plugin mcp muse` on PATH. The
 common bridge is owned by PLAT-861; this provider package alone does not supply
 those commands. A CLI that accepts only Claude/Codex will refuse Muse attachment
@@ -47,6 +49,9 @@ The same GitHub repository serves each provider's catalog. Muse reads
 `agentworks-codex` entries. Install `agentworks-muse` in Muse; the packages use
 different provider commands. Claude Code reads `.claude-plugin/marketplace.json`
 and uses `agentworks@agentworks`. Existing Codex metadata remains unchanged.
+
+To update an older plugin to **0.1.6**, use the refresh/remove/reinstall commands
+below, then inspect its version, approve it and restart Muse before attaching.
 
 Muse 1.4.4 keeps an installed marketplace plugin bound to its original snapshot.
 After refreshing the marketplace, direct reinstall refuses the different source
@@ -95,6 +100,19 @@ The command template refuses to perform attachment if interception fails. Muse's
 native namespaced command is `/agentworks-muse:agentworks`. Session close retains
 the identity offline; the person reconnects with `/agentworks attach`.
 
+### Muse slash menu entries
+
+Muse shows several AgentWorks entries in its slash menu:
+
+| Entry | Who uses it | What it does |
+|---|---|---|
+| `/agentworks-muse:agentworks` | The person | The only entry the person needs: `attach [NAME]`, `detach`, `agents` (see above). |
+| `/agentworks-muse:messaging` | The Muse agent | Skill for reading and replying to AgentWorks messages; the person does not run it. |
+| `/agentworks-muse:monitor` | The Muse agent | Skill for starting the idle wake-up Monitor; the person does not run it. |
+| `/agentworks` (user skill) | — | The general AgentWorks tools guide loaded from Claude (`~/.claude/skills/agentworks`); it is not the attach command, and typing `/agentworks attach` there does nothing. |
+
+To connect Muse, type `/agentworks-muse:agentworks attach`.
+
 `agentworks attach [NAME]` in a person terminal selects a live chat; `muse` as
 NAME names that chat, rather than selecting a provider. A missing Muse plugin
 uses the marketplace commands above after explicit installation consent. No
@@ -106,7 +124,7 @@ A native prompt establishes the active UUID after a chat switch; a late Stop
 from the old chat cannot replace it. The MCP child resolves that UUID on every
 call, so an old lease is never inferred from the process alone. Process restart,
 death or one UUID observed on multiple live processes prevents selection. If the chat is absent, install/review the plugin, restart Muse and
-submit `/agentworks attach` directly in that chat. These records are inside the
+submit `/agentworks-muse:agentworks attach` directly in that chat. These records are inside the
 documented same-OS-user trust boundary: another process running as the same
 user can plant metadata; they are not isolation against that user.
 
