@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("./ProductRouteBoundary", () => ({ ProductRouteBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../stores/useAuthStore", () => ({ useAuthStore: vi.fn() }));
 vi.mock("../pages/Login", () => ({ Login: () => <div>App sign in</div> }));
 vi.mock("../pages/AuthCallback", () => ({
@@ -26,6 +27,7 @@ vi.mock("./WorkspaceConnectionSwitcher", () => ({
 vi.mock("./DesktopAppOnlyGate", () => ({ DesktopAppOnlyGate: () => null }));
 vi.mock("../services/api", () => ({ isDesktopAppOnlyMode: () => false }));
 import { useAuthStore } from "../stores/useAuthStore";
+import "./ProductRouteBoundary";
 import { AuthWrapper } from "./AuthWrapper";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 describe("Shared asset sign in", () => {

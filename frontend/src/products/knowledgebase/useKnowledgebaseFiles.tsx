@@ -4,7 +4,9 @@ import { knowledgebaseApi, knowledgebaseError, type KnowledgeEntry, type Knowled
 import type { ReadOnlyFileWorkspaceSource } from '../../components/workspace/fileWorkspaceSource'
 import { BinaryFilePreview } from './BinaryFilePreview'
 
-export function useKnowledgebaseFiles(revision: number, active: boolean, onFolder: (path: string) => void): ReadOnlyFileWorkspaceSource {
+export function useKnowledgebaseFiles(revision: number, active: boolean, onFolder: (path: string) => void, folder = ''): ReadOnlyFileWorkspaceSource {
+  const reportedFolder = useRef<string | null>(null)
+  const reportFolder = (path: string) => { reportedFolder.current = path; onFolder(path) }
   const [files, setFiles] = useState<PlannerFile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +31,7 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
     readController.current?.abort()
     const controller = new AbortController(); readController.current = controller
     setRead(null); setSelectedPath(path); selectedRef.current = path; setShowFileContent(true); setLoadingFileContent(true); setError(null)
-    onFolder(entry?.folder_path ?? path.split('/').slice(0, -1).join('/'))
+    reportFolder(entry?.folder_path ?? path.split('/').slice(0, -1).join('/'))
     try {
       const result = entry ? await knowledgebaseApi.read(entry.entry_id, controller.signal) : await knowledgebaseApi.readPath(path, controller.signal)
       if (controller.signal.aborted) return
@@ -137,13 +139,16 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
   useEffect(() => () => readController.current?.abort(), [])
 
   function revealFolder(path: string) {
-    onFolder(path)
+    reportFolder(path)
     setShowFileContent(false)
     const next = new Set(expandedRef.current); const parts = path.split('/')
     for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'))
     expandedRef.current = next; setExpandedFolders(next)
     void loadMissing([...next])
   }
+  useEffect(() => {
+    if (active && folder && folder !== reportedFolder.current) revealFolder(folder)
+  }, [folder, active])
   return {
     files, loading, error, expandedFolders,
     selectedFile: selectedPath ? { name: selectedPath.split('/').pop() || selectedPath, path: selectedPath } : null,
@@ -154,7 +159,7 @@ export function useKnowledgebaseFiles(revision: number, active: boolean, onFolde
       if (selectedPath === path) { readController.current?.abort(); setSelectedPath(null); selectedRef.current = null; setRead(null); setShowFileContent(false) }
     },
     toggleFolder: path => {
-      onFolder(path)
+      reportFolder(path)
       const next = new Set(expandedRef.current)
       if (next.has(path)) next.delete(path); else next.add(path)
       expandedRef.current = next; setExpandedFolders(next)

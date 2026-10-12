@@ -11,8 +11,8 @@ import { useKnowledgebaseFiles } from './useKnowledgebaseFiles'
 import { KnowledgebaseSchedules } from './KnowledgebaseSchedules'
 
 export type KnowledgebaseView = 'library' | 'access' | 'models' | 'secrets' | 'schedules'
-function KnowledgebaseFiles({ onFolder, onAsk, onGitAsk, revision, active }: { onGitAsk?: (message: string) => void | Promise<unknown>; active: boolean; onFolder: (path: string) => void; onAsk?: () => void; revision: number }) {
-  const source = useKnowledgebaseFiles(revision, active, onFolder)
+function KnowledgebaseFiles({ folder, onFolder, onAsk, onGitAsk, revision, active }: { folder: string; onGitAsk?: (message: string) => void | Promise<unknown>; active: boolean; onFolder: (path: string) => void; onAsk?: () => void; revision: number }) {
+  const source = useKnowledgebaseFiles(revision, active, onFolder, folder)
   // Git backup runs with plain git in Brain's folder, from the Brain chat (PLAT-633), not a panel here.
   return <TooltipProvider><FileWorkspacePane title="Brain" source={source} testId="knowledgebase-files" onAsk={onGitAsk} hideAddToChat hideRootActions
     headerAction={onAsk && <AskAIButton workspacePath={null} onAsk={onAsk} message="Inspect the selected folder's access." label="Folder access" />} /></TooltipProvider>
@@ -28,7 +28,7 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
     return () => controller.abort()
   }, [view, folder, revision])
   return <div className="flex h-full min-h-0 flex-col">
-    <div className="min-h-0 flex-1" hidden={view !== 'library'}><KnowledgebaseFiles active={view === 'library'} onFolder={onFolder} onAsk={onAsk} onGitAsk={onGitAsk} revision={revision} /></div>
+    <div className="min-h-0 flex-1" hidden={view !== 'library'}><KnowledgebaseFiles folder={folder} active={view === 'library'} onFolder={onFolder} onAsk={onAsk} onGitAsk={onGitAsk} revision={revision} /></div>
     {/* Brain's own secrets, not Vault's platform secrets; backup names one with pat_secret. */}
     {view === 'secrets' && <div className="min-h-0 flex-1 overflow-y-auto"><KnowledgebaseSecrets /></div>}
     {view === 'schedules' && <div className="min-h-0 flex-1 overflow-y-auto"><KnowledgebaseSchedules /></div>}

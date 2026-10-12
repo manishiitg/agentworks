@@ -25,8 +25,9 @@ type LoginRequest struct {
 
 // AuthResponse represents the response for login/register operations
 type AuthResponse struct {
-	Token string   `json:"token"`
-	User  UserInfo `json:"user"`
+	Token    string   `json:"token"`
+	User     UserInfo `json:"user"`
+	ReturnTo string   `json:"return_to,omitempty"`
 }
 
 // UserInfo represents public user information
@@ -59,6 +60,7 @@ type AuthModeResponse struct {
 type MultiProviderOAuthStartRequest struct {
 	Provider    string `json:"provider"`
 	RedirectURI string `json:"redirect_uri"`
+	ReturnTo    string `json:"return_to,omitempty"`
 }
 
 // MultiProviderOAuthStartResponse represents the response for starting OAuth flow
@@ -89,6 +91,7 @@ var (
 )
 
 type oauthStateEntry struct {
+	ReturnTo    string
 	Provider    string
 	RedirectURI string
 	CreatedAt   time.Time
@@ -148,10 +151,15 @@ func generateDesktopConnectCode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func storeState(state, provider, redirectURI string) {
+func storeState(state, provider, redirectURI string, returnTo ...string) {
+	destination := ""
+	if len(returnTo) > 0 {
+		destination = safeProductAuthReturn(returnTo[0])
+	}
 	oauthStatesMu.Lock()
 	defer oauthStatesMu.Unlock()
 	oauthStates[state] = &oauthStateEntry{
+		ReturnTo:    destination,
 		Provider:    provider,
 		RedirectURI: redirectURI,
 		CreatedAt:   time.Now(),
@@ -352,9 +360,14 @@ func (api *StreamingAPI) handleAuthStart(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if req.ReturnTo != "" && safeProductAuthReturn(req.ReturnTo) == "" {
+		http.Error(w, `{"error":"Invalid return path"}`, http.StatusBadRequest)
+		return
+	}
+
 	// Generate and store state for CSRF protection
 	state := generateState()
-	storeState(state, req.Provider, req.RedirectURI)
+	storeState(state, req.Provider, req.RedirectURI, req.ReturnTo)
 
 	// Get the OAuth authorization URL
 	authURL := provider.GetAuthURL(state, req.RedirectURI)
@@ -457,7 +470,8 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 
 	log.Printf("[AUTH] User %s authenticated via OAuth provider %s", extUser.Username, extUser.Provider)
 	json.NewEncoder(w).Encode(AuthResponse{
-		Token: token,
+		Token:    token,
+		ReturnTo: stateEntry.ReturnTo,
 		User: userInfoWithWorkflowPermissions(UserInfo{
 			ID:       userID,
 			Username: extUser.Username,

@@ -1,3 +1,6 @@
+import { CopyProductLink } from '../../components/CopyProductLink'
+import { currentProductRoute, routeView } from '../../utils/productRoutes'
+import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
@@ -95,9 +98,9 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // dashboard stay owner-only because they edit state or read owner-private
 // data (transcripts, run databases, usage) the proxy will not serve
 // cross-user.
-const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
+export const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
 
-function normalizeWorkWorkspaceView(saved: unknown): WorkWorkspaceView | null {
+export function normalizeWorkWorkspaceView(saved: unknown): WorkWorkspaceView | null {
   if (saved === 'history') return 'schedules'
   if (typeof saved !== 'string') return null
   if (Object.hasOwn(WORK_UI_PRESENTATION_VIEWS, saved)) return WORK_UI_PRESENTATION_VIEWS[saved as WorkUIPresentationView]
@@ -208,7 +211,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     const listed = await loadWorkSessionsIncludingShared(product)
     updateSessions(listed, true)
     const current = selectedProjectIdFor(product)
-    setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
+    setSelectedId(current && listed.some(item => item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed[0]?.id ?? null))
     return listed
   }, [product, setSelectedId, updateSessions])
 
@@ -220,7 +223,7 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (cancelled || mutationRevision.current !== revisionAtStart) return
         updateSessions(listed, true)
         const current = selectedProjectIdFor(product)
-        setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
+        setSelectedId(current && listed.some(item => item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed[0]?.id ?? null))
       })
       .catch((cause) => {
         if (!cancelled && mutationRevision.current === revisionAtStart) {
@@ -1052,7 +1055,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
+  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
+  useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined })
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -1221,7 +1225,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [product])
 
   useLayoutEffect(() => {
-    const savedView = readWorkWorkspaceView(selected?.id, product.profileId)
+    const savedView = routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId)
     setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? (product.profileId === 'code' && selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
@@ -1478,7 +1482,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !selected.shared} /> : <div className="min-w-0 flex-1" />}
-              toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
+              toolbar={<><CopyProductLink /><WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView, localCodeSession) } as React.HTMLAttributes<HTMLElement>}
               chat={<>

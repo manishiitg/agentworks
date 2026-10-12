@@ -1,3 +1,4 @@
+import { productReturnPath } from '../utils/productRoutes'
 import { consumeSharedReturnPath } from '../utils/sharedLinks'
 import { consumeMcpConsentReturnPath } from '../utils/mcpOAuthReturn'
 import { useEffect, useState } from 'react'
@@ -6,6 +7,7 @@ import { useAuthStore, peekStoredOAuthState } from '../stores/useAuthStore'
 export function AuthCallback() {
   const { handleOAuthCallback, error, isAuthenticated } = useAuthStore()
   const [callbackError, setCallbackError] = useState<string | null>(null)
+  const [callbackReturn, setCallbackReturn] = useState<string | null | undefined>(undefined)
   const [callbackState, setCallbackState] = useState<string | null>(null)
 
   useEffect(() => {
@@ -32,6 +34,7 @@ export function AuthCallback() {
     // Process the callback
     setCallbackState(state)
     handleOAuthCallback(code, state)
+      .then(target => setCallbackReturn(target ?? null))
       .catch((err) => {
         console.error('OAuth callback failed:', err)
         setCallbackError(err.message || 'Authentication failed')
@@ -40,11 +43,11 @@ export function AuthCallback() {
 
   // Redirect on successful authentication
   useEffect(() => {
-    if (isAuthenticated && callbackState) {
-      const returnTo = consumeMcpConsentReturnPath(callbackState) || consumeSharedReturnPath(callbackState)
+    if (isAuthenticated && callbackState && callbackReturn !== undefined) {
+      const returnTo = productReturnPath(callbackReturn) || consumeMcpConsentReturnPath(callbackState) || consumeSharedReturnPath(callbackState)
       window.location.href = returnTo || '/'
     }
-  }, [isAuthenticated, callbackState])
+  }, [isAuthenticated, callbackState, callbackReturn])
 
   const displayError = callbackError || error
 

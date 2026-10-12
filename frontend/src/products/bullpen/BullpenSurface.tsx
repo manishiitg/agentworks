@@ -1,3 +1,6 @@
+import { CopyProductLink } from '../../components/CopyProductLink'
+import { currentProductRoute } from '../../utils/productRoutes'
+import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound } from 'lucide-react'
@@ -96,7 +99,8 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
 }
 
 export function BullpenSurface() {
-  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup'] as const)
+  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup'] as const, currentProductRoute()?.surface === 'bullpen' ? (currentProductRoute()?.view === 'setup' ? 'setup' : 'agents') : undefined)
+  useProductUrlView('bullpen', { view: view === 'setup' ? 'setup' : undefined })
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
@@ -105,7 +109,7 @@ export function BullpenSurface() {
     <ModePresetBar reduced walkthroughPaused />
     <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
-        <header className="mb-6 border-b border-border pb-5"><div className="flex items-center gap-3"><MessagesSquare className="h-6 w-6 text-primary" /><h1 className="text-2xl font-semibold tracking-tight">Bullpen</h1></div><p className="mt-2 text-sm text-muted-foreground">Your connected agents, in one place.</p>
+        <header className="mb-6 border-b border-border pb-5"><div className="flex items-center gap-3"><MessagesSquare className="h-6 w-6 text-primary" /><h1 className="text-2xl font-semibold tracking-tight">Bullpen</h1><CopyProductLink /></div><p className="mt-2 text-sm text-muted-foreground">Your connected agents, in one place.</p>
           <nav aria-label="Bullpen views" className="mt-5 flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />Bullpen help<span className="sr-only"> (opens in a new tab)</span></a></nav>
         </header>
         {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : user ? <AgentDirectory key={user.id} isAdmin={user.role === 'admin'} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}

@@ -14,8 +14,7 @@ import { useSecretsStore } from './useSecretsStore'
 import { useWorkflowManifestStore } from './useWorkflowManifestStore'
 
 // Build workflow presets from manifests
-function buildWorkflowPresetsFromManifests(): CustomPreset[] {
-  const workflows = useWorkflowManifestStore.getState().workflows || []
+export function buildWorkflowPresetsFromManifests(workflows = useWorkflowManifestStore.getState().workflows || []): CustomPreset[] {
   return workflows.map(wf => {
     const caps = wf.manifest.capabilities
     return {

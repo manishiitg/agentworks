@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useAuthStore } from "../stores/useAuthStore";
 import { Login } from "../pages/Login";
 import { AuthCallback } from "../pages/AuthCallback";
@@ -11,6 +11,8 @@ import { Loader2 } from "lucide-react";
 import { WorkspaceConnectionSwitcher } from "./WorkspaceConnectionSwitcher";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
+
+const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 
 interface AuthWrapperProps {
   children: React.ReactNode;
@@ -233,7 +235,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         />
       );
     }
-    return <>{children}</>;
+    return <Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense>;
   }
 
   // Multi-user mode: require authentication (login only, no registration)
@@ -266,5 +268,5 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  return <>{children}</>;
+  return <Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense>;
 }

@@ -8,8 +8,10 @@ export function usePersistentTab<T extends string>(
   storageKey: string,
   defaultValue: T,
   validValues: readonly T[],
+  explicitValue?: T,
 ): [T, (value: T) => void] {
   const [value, setValue] = useState<T>(() => {
+    if (explicitValue !== undefined) return explicitValue
     if (typeof window === 'undefined') return defaultValue
     try {
       const stored = window.localStorage.getItem(storageKey)

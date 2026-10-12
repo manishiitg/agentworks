@@ -1,5 +1,24 @@
 # Decisions and open issues
 
+## 2026-10-12 — Product and resource links project the existing navigation state (PLAT-746)
+
+Products have stable public paths, including /goals, /crew, /code, /brain,
+/vault, /relays and /bullpen. Resource ids and selected views are shareable;
+internal surface ids remain compatible aliases. One history adapter uses the
+existing surface and resource navigation actions, with explicit links taking
+precedence over remembered selections. Back/forward hydrates that state without
+adding conditions to workflow tab restoration. Missing and forbidden resources
+share a neutral unavailable page; disabled products keep their requested URL
+and explain the installation restriction. A link never grants access. Safe legacy
+paths open the default product; malformed paths remain unavailable. Expired
+sessions return through sign-in at the requested URL. OAuth return destinations are validated relative app paths held with server-side,
+one-use OAuth state, and password sign-in retains the requested product URL.
+
+Why: people need to share the product or resource they are viewing and return to
+it after reload or sign-in, without weakening existing account/resource gates.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md), issue 746-21.
+
 ## 2026-10-12 — Cross-user agent sharing grants chat only, labelled by the server (PLAT-861)
 
 Sharing grants are made in the browser, by the owning user only, and grant chat access to one

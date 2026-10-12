@@ -1,3 +1,5 @@
+import { currentProductRoute } from '../../utils/productRoutes'
+import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
@@ -76,7 +78,8 @@ export function KnowledgebaseSurface() {
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [view, setView] = useWorkspaceViewPreference<KnowledgebaseView>('knowledgebase', 'main', 'library', normalizeBrainView)
-  const [folder, setFolder] = useState('')
+  const [folder, setFolder] = useState(() => currentProductRoute()?.surface === 'knowledgebase' ? currentProductRoute()?.folder ?? '' : '')
+  useProductUrlView('knowledgebase', { view, folder })
   const [revision, setRevision] = useState(0)
   const [ratio, setRatio] = useState(readRatio)
   const [collapsed, setCollapsed] = useState<'chat' | 'workspace' | null>(null)

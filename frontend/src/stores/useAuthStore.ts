@@ -1,3 +1,4 @@
+import { productReturnPath } from '../utils/productRoutes'
 import { rememberSharedReturnPath, sharedReturnPath } from '../utils/sharedLinks'
 import { connectionConsentReturnPath, rememberMcpConsentReturnPath } from '../utils/mcpOAuthReturn'
 import { create } from 'zustand'
@@ -31,9 +32,9 @@ interface AuthState {
   checkAuthMode: () => Promise<void>
   login: (username: string, password: string, provider?: string) => Promise<void>
   loginWithOAuth: (provider: string) => Promise<void>
-  handleOAuthCallback: (code: string, state: string) => Promise<void>
+  handleOAuthCallback: (code: string, state: string) => Promise<string | null | undefined>
   logout: () => Promise<void>
-  checkAuth: () => Promise<void>
+  checkAuth: (options?: { background?: boolean }) => Promise<void>
   clearError: () => void
 }
 
@@ -141,7 +142,7 @@ export const useAuthStore = create<AuthState>()(
             const returnTo = sharedReturnPath(window.location.pathname + window.location.search)
               || sharedReturnPath(new URLSearchParams(window.location.search).get('next'))
             const redirectUri = getOAuthRedirectUri()
-            const response = await authApi.startOAuth(provider, redirectUri)
+            const response = await authApi.startOAuth(provider, redirectUri, productReturnPath(window.location.pathname + window.location.search) || productReturnPath(new URLSearchParams(window.location.search).get('next')))
 
             rememberSharedReturnPath(returnTo, response.state)
             rememberMcpConsentReturnPath(connectionConsentReturnPath(window.location.pathname + window.location.search)
@@ -181,6 +182,7 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
               error: null
             })
+            return productReturnPath(response.return_to ?? null)
           } catch (error: unknown) {
             if (operation !== authOperation) return
             const message = error instanceof Error ? error.message : 'OAuth callback failed'
@@ -204,7 +206,7 @@ export const useAuthStore = create<AuthState>()(
         },
 
         // Check current authentication status
-        checkAuth: async () => {
+        checkAuth: async (options) => {
           const operation = ++authOperation
           const token = getAuthToken()
           if (!token) {
@@ -213,7 +215,7 @@ export const useAuthStore = create<AuthState>()(
             return
           }
 
-          set({ isLoading: true })
+          if (!options?.background) set({ isLoading: true })
           try {
             const user = await authApi.getCurrentUser()
             if (operation !== authOperation) return

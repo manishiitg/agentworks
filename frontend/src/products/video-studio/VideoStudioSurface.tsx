@@ -1,3 +1,5 @@
+import { useProductUrlView } from '../../hooks/useProductUrlView'
+import { CopyProductLink } from '../../components/CopyProductLink'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
@@ -723,6 +725,7 @@ function ProjectWorkspace({ project, onBack }: { project: VideoProject; onBack: 
   const [liveProject, setLiveProject] = useState(project)
   const [tabId, setTabId] = useState<string | null>(null)
   const [panel, setPanel] = useWorkspaceViewPreference<WorkspacePanel>('video-studio', project.id, 'production', normalizeVideoPanel)
+  useProductUrlView('video-studio', { id: project.id, view: panel })
   const [videos, setVideos] = useState<VideoPresentation[]>([])
   const [characters, setCharacters] = useState<CharacterPresentation[]>([])
   const [references, setReferences] = useState<ReferencePresentation[]>([])
@@ -928,7 +931,7 @@ function ProjectWorkspace({ project, onBack }: { project: VideoProject; onBack: 
 
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <VideoStudioHeader project={liveProject} projectTabId={tabId} onProjectChange={setLiveProject}>
+      <VideoStudioHeader project={liveProject} projectTabId={tabId} onProjectChange={setLiveProject}><CopyProductLink />
         <div className="hidden h-7 w-px bg-slate-200 sm:block dark:bg-slate-800" />
         <button type="button" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800" aria-label="Back to projects"><ArrowLeft className="h-4 w-4" /></button>
         <div className="min-w-0"><span className="block text-[10px] font-medium text-slate-400">Projects /</span><h1 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{project.title}</h1></div>
@@ -1031,6 +1034,7 @@ export function VideoStudioSurface() {
   const [openProjectId, setOpenProjectId] = useState<string | null>(lastProjectId)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
 
   const refreshProjects = useCallback(async () => {
     setError('')

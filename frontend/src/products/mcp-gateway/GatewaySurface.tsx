@@ -1,3 +1,4 @@
+import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
@@ -106,6 +107,7 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     return chatBusy ? undefined : events?.at(-1)?.id
   })
   const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'access', normalizeVaultPanel)
+  useProductUrlView('mcp-gateway', { view: panel })
   const [peopleTabRequest, setPeopleTabRequest] = useState<{ tab: 'users' | 'groups'; token: number }>()
   useRegisterPanelSwitcher('mcp-gateway', gatewayPanels.map(({ id, label }) => ({ id, label, sections: VAULT_PANEL_SECTIONS[id] })), (id, section) => {
     setPanel(id as GatewayPanel)
@@ -217,6 +219,7 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
   const adminPage = useAppStore(state => state.adminPage)
   const [savedPage, selectPage] = useWorkspaceViewPreference('mcp-gateway', `${base ?? 'main'}:page`, 'workspace', normalizeVaultPage)
   const page = savedPage === 'workspace' ? null : savedPage
+  useProductUrlView('mcp-gateway', page ? { view: page } : {})
   const setPage = useCallback((next: VaultPage | null) => selectPage(next ?? 'workspace'), [selectPage])
   useEffect(() => {
     try {

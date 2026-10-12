@@ -1,3 +1,4 @@
+import { productReturnPath, safeRelativeAppPath } from '../utils/productRoutes'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { Button } from '../components/ui/Button'
@@ -104,7 +105,7 @@ function cleanUpLoginUrl() {
   if (typeof window === 'undefined') return
   if (['/file', '/folder', '/report', '/oauth/consent', '/oauth/vault', '/oauth/cli'].includes(window.location.pathname)) return
   const next = new URLSearchParams(window.location.search).get('next')
-  const target = next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : '/'
+  const target = safeRelativeAppPath(next) || productReturnPath(window.location.pathname + window.location.search) || '/'
   window.history.replaceState(null, '', target)
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
@@ -196,8 +197,7 @@ export function Login() {
     const requestedNext = window.location.pathname === '/login'
       ? new URLSearchParams(window.location.search).get('next') || '/'
       : window.location.pathname + window.location.search
-    const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') && !requestedNext.includes('\\')
-      ? requestedNext : '/'
+    const next = safeRelativeAppPath(requestedNext) || '/'
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
         <Card className="w-full max-w-md">

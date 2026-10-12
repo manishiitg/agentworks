@@ -2920,6 +2920,7 @@ export interface AdminUserWrite {
 }
 
 export interface AuthResponse {
+  return_to?: string
   token: string
   user: AuthUser
 }
@@ -3021,8 +3022,8 @@ export const authApi = {
   },
 
   // Start OAuth flow for a provider (for "cognito" and "supabase" OAuth)
-  startOAuth: async (provider: string, redirectUri: string): Promise<OAuthStartResponse> => {
-    const response = await api.post('/api/auth/start', { provider, redirect_uri: redirectUri })
+  startOAuth: async (provider: string, redirectUri: string, returnTo?: string | null): Promise<OAuthStartResponse> => {
+    const response = await api.post('/api/auth/start', { provider, redirect_uri: redirectUri, ...(returnTo ? { return_to: returnTo } : {}) })
     return response.data
   },
 

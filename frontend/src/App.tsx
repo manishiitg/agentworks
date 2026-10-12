@@ -98,7 +98,7 @@ const hasOpenWorkspaceCollapsingPopup = () => {
 }
 
 
-function App() {
+function AppWorkspace() {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
@@ -114,21 +114,6 @@ function App() {
     const timer = window.setTimeout(warm, 1500)
     return () => window.clearTimeout(timer)
   }, [])
-
-  // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Code and remember the link; the
-  // workspace screen applies it to the workspace with that name. Read before sign-in so a login redirect cannot lose it.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const device = params.get('local_device')
-    const folder = params.get('local_folder')
-    const workspace = params.get('local_workspace')
-    if (!device || !folder || !workspace) return
-    setPendingLocalLink({ target: { device_id: device, resource_id: folder }, workspace })
-    setProductSurface('code')
-    params.delete('local_device'); params.delete('local_folder'); params.delete('local_workspace')
-    const rest = params.toString()
-    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
-  }, [setProductSurface])
 
   // A dedicated deployment is an allowlist, not a visual preference. Correct
   // persisted desktop selections before rendering so a stale product
@@ -623,7 +608,7 @@ function App() {
     }
   }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview])
 
-  useWorkflowTabRestore(hasCompletedInitialSetup, productSurface, selectedModeCategory)
+  useWorkflowTabRestore(hasCompletedInitialSetup && !showWorkflowsOverview, productSurface, selectedModeCategory)
 
   // Restore active presets after stores are initialized
   const hasRestoredPresetRef = useRef(false)
@@ -774,9 +759,6 @@ function App() {
   }, [setWorkspaceMinimizedForLayout])
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthWrapper>
         <TooltipProvider>
         {/* Mounted above the surface switch so toasts raised from the top bar
             render on every surface, not only the ones that mount a chat. */}
@@ -853,10 +835,28 @@ function App() {
         </>
         )}
         </TooltipProvider>
-        </AuthWrapper>
-      </ThemeProvider>
-    </QueryClientProvider>
+
   );
+}
+
+function App() {
+  const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
+  // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Code and remember the link; the
+  // workspace screen applies it to the workspace with that name. Read before sign-in so a login redirect cannot lose it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const device = params.get('local_device')
+    const folder = params.get('local_folder')
+    const workspace = params.get('local_workspace')
+    if (!device || !folder || !workspace) return
+    setPendingLocalLink({ target: { device_id: device, resource_id: folder }, workspace })
+    setProductSurface('code')
+    params.delete('local_device'); params.delete('local_folder'); params.delete('local_workspace')
+    const rest = params.toString()
+    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
+  }, [setProductSurface])
+
+  return <QueryClientProvider client={queryClient}><ThemeProvider><AuthWrapper><AppWorkspace /></AuthWrapper></ThemeProvider></QueryClientProvider>
 }
 
 export default App;

@@ -1,3 +1,4 @@
+import { routeView } from '../utils/productRoutes'
 import { useCallback, useLayoutEffect, useState } from 'react'
 import type { ProductSurface } from '../products/productSurfaceConfig'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
@@ -10,7 +11,7 @@ export function useWorkspaceViewPreference<T extends string>(
 ): readonly [T, (view: T) => void] {
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const key = workspaceViewPreferenceKey(product, entity)
-  const load = () => readWorkspaceViewPreference(product, entity, normalize) ?? defaultView
+  const load = () => routeView(product, entity, normalize, defaultView) ?? readWorkspaceViewPreference(product, entity, normalize) ?? defaultView
   const [selection, setSelection] = useState(() => ({ key, view: load() }))
   const view = selection.key === key ? selection.view : load()
   useLayoutEffect(() => {
