@@ -65,6 +65,31 @@ it('renders the recorded system/user prompt and merges tool start/result without
  expect(JSON.stringify(chat.events)).toContain('User instruction'); expect(JSON.stringify(chat.events)).toContain('sources.txt'); expect(JSON.stringify(chat.events)).toContain('Facts')
 })
 
+it('joins lifecycle/provider message carriers while retaining repeated instructions and raw evidence', () => {
+ const data=response('first','Repeat this instruction')
+ data.transcript.events[0].source_type='orchestrator_agent_start'
+ data.transcript.events.push(
+  {...data.transcript.events[0],source_type:'user_message',timestamp:'2026-10-11T00:00:00.012Z'},
+  {timestamp:'2026-10-11T00:00:01Z',type:'tool_call',tool_call:{tool_call_id:'tool',tool_name:'read_file',status:'running'}},
+  {timestamp:'2026-10-11T00:00:02Z',type:'assistant_message',role:'assistant',source_type:'llm_generation_end',text:'Finished'},
+  {timestamp:'2026-10-11T00:00:02.006Z',type:'assistant_message',role:'assistant',source_type:'orchestrator_agent_end',text:'Finished'},
+  {timestamp:'2026-10-11T00:00:03Z',type:'user_message',role:'user',source_type:'user_message',text:'Repeat this instruction'},
+ )
+ const original=JSON.stringify(data)
+ const chat=inspectionChat(data)
+ expect(chat.events.filter(e=>e.type==='user_message')).toHaveLength(2)
+ expect(chat.events.filter(e=>e.type==='llm_generation_end')).toHaveLength(1)
+ expect(JSON.stringify(data)).toBe(original)
+ // Two provider messages are two instructions, even when identical/adjacent.
+ data.transcript.events[0].source_type='user_message'
+ expect(inspectionChat(data).events.filter(e=>e.type==='user_message')).toHaveLength(3)
+ // Compatibility for the recorded 12 ms kickoff echo has no source field.
+ delete data.transcript.events[0].source_type;delete data.transcript.events[1].source_type
+ expect(inspectionChat(data).events.filter(e=>e.type==='user_message')).toHaveLength(2)
+ data.transcript.events[1].timestamp='2026-10-11T00:00:00.500Z'
+ expect(inspectionChat(data).events.filter(e=>e.type==='user_message')).toHaveLength(3)
+})
+
 it('opens the exact dispatch from the compact run row launch receipt', async () => {
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
  const event = (id: string, type: string, data: Record<string, unknown>): PollingEvent => ({id,type,timestamp:target.started_at,session_id:'parent',data:{type,data}} as PollingEvent)

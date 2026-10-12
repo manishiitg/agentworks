@@ -134,7 +134,7 @@ func TestNormalizeBackgroundTranscriptEventOrchestratorStartCarriesPrompt(t *tes
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
-	if normalized.Role != "user" || normalized.Text != "review the last three runs" {
+	if normalized.Role != "user" || normalized.Text != "review the last three runs" || normalized.SourceType != string(OrchestratorAgentStart) {
 		t.Fatalf("normalized = %+v", normalized)
 	}
 }
@@ -149,7 +149,7 @@ func TestNormalizeBackgroundTranscriptEventOrchestratorEndCarriesResultOrError(t
 		},
 	}
 	normalized, ok := NormalizeBackgroundTranscriptEvent(okEvt)
-	if !ok || normalized.Text != "3 findings recorded" || normalized.Role != "assistant" {
+	if !ok || normalized.Text != "3 findings recorded" || normalized.Role != "assistant" || normalized.SourceType != string(OrchestratorAgentEnd) {
 		t.Fatalf("success case: normalized=%+v ok=%v", normalized, ok)
 	}
 

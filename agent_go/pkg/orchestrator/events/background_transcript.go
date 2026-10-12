@@ -60,6 +60,9 @@ type BackgroundAgentTranscriptEvent struct {
 	Type      string    `json:"type"` // "user_message" | "assistant_message" | "tool_call"
 	Role      string    `json:"role,omitempty"`
 	Text      string    `json:"text,omitempty"`
+	// Preserve carrier identity so the view can join a lifecycle prompt/result
+	// with its provider message without removing intentional repeated messages.
+	SourceType string `json:"source_type,omitempty"`
 	// ToolCall reuses mcpagent/events' own ToolCallRecord contract — the same
 	// one every other tool-call consumer in this codebase already reads —
 	// rather than inventing a second shape for tool calls.
@@ -193,10 +196,15 @@ func (t *BackgroundAgentTranscript) MarkTerminal(status, errMsg string, complete
 // transcript intentionally does not record (token usage, streaming deltas,
 // MCP connection chatter, etc.) — the transcript is a forensic record of
 // what was said and done, not a full replay of every internal signal.
-func NormalizeBackgroundTranscriptEvent(evt *events.AgentEvent) (BackgroundAgentTranscriptEvent, bool) {
+func NormalizeBackgroundTranscriptEvent(evt *events.AgentEvent) (normalized BackgroundAgentTranscriptEvent, ok bool) {
 	if evt == nil || evt.Data == nil {
 		return BackgroundAgentTranscriptEvent{}, false
 	}
+	defer func() {
+		if ok {
+			normalized.SourceType = string(evt.Type)
+		}
+	}()
 	switch data := evt.Data.(type) {
 	case *events.SystemPromptEvent:
 		if strings.TrimSpace(data.Content) == "" {
