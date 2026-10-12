@@ -26,8 +26,15 @@ func NewMusePluginMCPServer(ctx context.Context, root, hostKey string, session f
 	return newPluginMCPServer(ctx, root, "muse", hostKey, false, nil, session)
 }
 
+// Cursor runs one conversation per CLI process. The caller resolves the native
+// UUID of that exact process on each call from its verified hook observation, so
+// the child never infers a session and never serves a shared desktop process.
+func NewCursorPluginMCPServer(ctx context.Context, root, hostKey string, session func() (string, error)) (*server.MCPServer, error) {
+	return newPluginMCPServer(ctx, root, "cursor", hostKey, false, nil, session)
+}
+
 func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs []string, museSession func() (string, error)) (*server.MCPServer, error) {
-	if provider != "claude" && provider != "codex" && provider != "muse" || native && provider != "claude" {
+	if provider != "claude" && provider != "codex" && provider != "muse" && provider != "cursor" || native && provider != "claude" {
 		return nil, errors.New("unsupported plugin provider")
 	}
 	if hostKey == "" {
@@ -41,9 +48,10 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 	broker := &museMonitorBroker{ctx: ctx, root: root, host: hostKey, current: museSession}
 	call := func(callCtx context.Context, in LocalBridgeRequest, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		in.Provider, in.HostKey = provider, hostKey
-		if provider == "muse" {
+		if provider == "muse" || provider == "cursor" {
+			name := map[string]string{"muse": "Muse", "cursor": "Cursor"}[provider]
 			if museSession == nil {
-				return mcp.NewToolResultError("Muse messaging requires its exact native-hook session UUID"), nil
+				return mcp.NewToolResultError(name + " messaging requires its exact native-hook session UUID"), nil
 			}
 			var err error
 			in.SessionID, err = museSession()
@@ -51,7 +59,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			if _, err = uuid.Parse(in.SessionID); err != nil {
-				return mcp.NewToolResultError("Muse did not supply a valid exact session UUID"), nil
+				return mcp.NewToolResultError(name + " did not supply a valid exact session UUID"), nil
 			}
 		}
 		if provider == "codex" {

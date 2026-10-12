@@ -1183,3 +1183,38 @@ func mergeCodexCatalog(candidates, catalog map[string]string, attachedOnly bool)
 		}
 	}
 }
+
+// parseGroupWords fills a bridge request from the words after share, unshare,
+// groups or group, and returns a one-line usage message when they are wrong.
+func parseGroupWords(action string, rest []string, req *agentworksclient.LocalBridgeRequest) string {
+	switch action {
+	case "groups":
+		if len(rest) != 0 {
+			return "groups takes no arguments"
+		}
+	case "group":
+		if len(rest) != 1 {
+			return "Use /agentworks group NAME"
+		}
+		req.Group = rest[0]
+	case "unshare":
+		if len(rest) > 1 {
+			return "Use /agentworks unshare [GROUP]"
+		}
+		if len(rest) == 1 {
+			req.Group = rest[0]
+		}
+	case "share":
+		if len(rest) == 0 || strings.HasPrefix(rest[0], "--") {
+			return "Use /agentworks share GROUP [--purpose TEXT]"
+		}
+		req.Group, rest = rest[0], rest[1:]
+		if len(rest) > 0 {
+			if rest[0] != "--purpose" || len(rest) < 2 {
+				return "Use /agentworks share GROUP [--purpose TEXT]"
+			}
+			req.Purpose = strings.Join(rest[1:], " ")
+		}
+	}
+	return ""
+}

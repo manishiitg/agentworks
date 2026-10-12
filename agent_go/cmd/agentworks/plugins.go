@@ -149,36 +149,8 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, err.Error())
 				}
 			case "share", "unshare", "groups", "group":
-				// words: share GROUP [--purpose TEXT...] | unshare [GROUP] | groups | group NAME
-				rest := words[2:]
-				switch req.Action {
-				case "groups":
-					if len(rest) != 0 {
-						return pluginBlock(o, "groups takes no arguments")
-					}
-				case "group":
-					if len(rest) != 1 {
-						return pluginBlock(o, "Use /agentworks group NAME")
-					}
-					req.Group = rest[0]
-				case "unshare":
-					if len(rest) > 1 {
-						return pluginBlock(o, "Use /agentworks unshare [GROUP]")
-					}
-					if len(rest) == 1 {
-						req.Group = rest[0]
-					}
-				case "share":
-					if len(rest) == 0 || strings.HasPrefix(rest[0], "--") {
-						return pluginBlock(o, "Use /agentworks share GROUP [--purpose TEXT]")
-					}
-					req.Group, rest = rest[0], rest[1:]
-					if len(rest) > 0 {
-						if rest[0] != "--purpose" || len(rest) < 2 {
-							return pluginBlock(o, "Use /agentworks share GROUP [--purpose TEXT]")
-						}
-						req.Purpose = strings.Join(rest[1:], " ")
-					}
+				if usage := parseGroupWords(req.Action, words[2:], &req); usage != "" {
+					return pluginBlock(o, usage)
 				}
 				req.Action += "_person"
 				done, e := agentworksclient.CallLocalBridge(ctx, root, req)
@@ -278,8 +250,11 @@ func pluginCommand(o *options) *cobra.Command {
 	}}
 	root.AddCommand(hook)
 	root.AddCommand(&cobra.Command{Use: "mcp PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if args[0] == "cursor" {
+			return cursorMessagingChild(cmd.Context(), o)
+		}
 		if !messagingPluginProvider(args[0]) {
-			return errors.New("local messaging child supports Claude, Codex and Muse")
+			return errors.New("local messaging child supports Claude, Codex, Muse and Cursor")
 		}
 		host, err := providerHostKey(args[0])
 		if err != nil {

@@ -17,6 +17,50 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// A Cursor CLI conversation runs as the installed Node binary executing the
+// launcher's index.js. The kernel image, the leading arguments and the launcher
+// must all agree; the process name alone proves nothing. Identity includes the
+// kernel start time and this boot, so a reused PID is a different identity.
+func cursorCLIProcessAt(pid int, info *unix.KinfoProc) (cursorProcess, error) {
+	process := cursorProcess{PID: pid, Parent: int(info.Eproc.Ppid)}
+	raw, err := unix.SysctlRaw("kern.procargs2", pid)
+	if err != nil {
+		return process, errors.New("cannot read the Cursor launch arguments")
+	}
+	_, argv0, entry, err := cursorProcArgsPrefix(raw)
+	if err != nil {
+		return process, err
+	}
+	ctxImage, cancelImage := context.WithTimeout(context.Background(), time.Second)
+	defer cancelImage()
+	images, err := exec.CommandContext(ctxImage, "/usr/sbin/lsof", "-a", "-p", strconv.Itoa(pid), "-d", "txt", "-Fn").Output()
+	if err != nil {
+		return process, errors.New("cannot verify the Cursor executable image")
+	}
+	image := ""
+	for _, line := range strings.Split(string(images), "\n") {
+		if strings.HasPrefix(line, "n") {
+			image = strings.TrimPrefix(line, "n")
+			break // the first text mapping is the executable itself
+		}
+	}
+	if image == "" || cursorNodeEntry(argv0, image, entry) != nil {
+		return process, errors.New("Cursor executable/entry could not be verified")
+	}
+	after, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || after.Proc.P_starttime != info.Proc.P_starttime {
+		return process, errors.New("Cursor process changed during verification")
+	}
+	boot, err := unix.SysctlTimeval("kern.boottime")
+	if err != nil {
+		return process, err
+	}
+	birth := strconv.FormatInt(info.Proc.P_starttime.Sec, 10) + "." + strconv.FormatInt(int64(info.Proc.P_starttime.Usec), 10)
+	h := sha256.Sum256([]byte(strconv.Itoa(pid) + ":" + birth + ":" + strconv.FormatInt(boot.Sec, 10) + ":" + image))
+	process.Host, process.Kind = cursorHostKey(pid, hex.EncodeToString(h[:])), "cli"
+	return process, nil
+}
+
 // Desktop hooks and shell tools share the verified app ancestor, but every
 // request still needs its own native UUID. No shared MCP child is enabled.
 func cursorProcessAt(pid int) (cursorProcess, error) {
@@ -29,7 +73,10 @@ func cursorProcessAt(pid int) (cursorProcess, error) {
 	if info.Eproc.Ucred.Uid != uint32(os.Geteuid()) {
 		return process, errors.New("Cursor process belongs to another OS user")
 	}
-	command := string(info.Proc.P_comm[:])
+	command := strings.TrimRight(string(info.Proc.P_comm[:]), "\x00")
+	if command == "node" {
+		return cursorCLIProcessAt(pid, info)
+	}
 	if !strings.Contains(command, "Cursor") {
 		return process, errors.New("not a Cursor app process")
 	}
