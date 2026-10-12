@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-12 — New files use server-enforced creation and selected folders (PLAT-746/771)
+
+The Files panel creates an empty file with a single create-only request instead
+of inferring existence from a read response. The server publishes the complete
+file without replacing an existing file, directory or symlink, and returns a
+conflict when the name is occupied. Explicit empty text is valid; absent content
+is refused. Editable folders expose New file in their action menu and retain
+their full project path. Empty text files can be opened for editing.
+Why: missing-file reads return HTTP 200, and a separate existence check cannot
+prevent a concurrent writer from losing content.
+
+Ticket: [PLAT-771](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/workspace/plat-771.md), under PLAT-746 issue 746-5.
+
 ## 2026-10-12 — Pi attachment follows SDK identity and explicit receiver receipts (PLAT-868)
 
 Pi person commands run through the SDK interactive input hook, since registered

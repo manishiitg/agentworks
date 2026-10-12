@@ -24,7 +24,8 @@ type CreateDocumentRequest struct {
 
 // UpdateDocumentRequest represents the request to update a document
 type UpdateDocumentRequest struct {
-	Content string `json:"content" binding:"required"`
+	Content    *string `json:"content" binding:"required"`
+	CreateOnly bool    `json:"create_only,omitempty"`
 }
 
 // APIResponse represents a standard API response

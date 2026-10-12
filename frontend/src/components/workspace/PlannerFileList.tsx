@@ -1,6 +1,6 @@
 import { sharedLink } from '../../utils/sharedLinks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, MoreHorizontal, Move, Download, CheckSquare, Edit2, Link, Check } from 'lucide-react'
+import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, FilePlus, MoreHorizontal, Move, Download, CheckSquare, Edit2, Link, Check } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { isProtectedWorkspaceEntry } from '../../utils/workspaceSelection'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip'
@@ -35,6 +35,7 @@ interface PlannerFileListProps {
   highlightedFile?: string | null
   onFolderUpload?: (folderPath: string) => void
   onCreateFolder?: (parentFolder?: PlannerFile | string) => void
+  onCreateFile?: (parentFolder: PlannerFile) => void
   onFileMove?: (file: PlannerFile) => void
   onFolderMove?: (folder: PlannerFile) => void
   onFileRename?: (file: PlannerFile) => void
@@ -87,6 +88,7 @@ export default function PlannerFileList({
   highlightedFile,
   onFolderUpload,
   onCreateFolder,
+  onCreateFile,
   onFileMove,
   onFolderMove,
   onFileRename,
@@ -226,7 +228,7 @@ export default function PlannerFileList({
     const gitFolderStatus = gitDecorations && file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
     const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : gitFolderStatus ? GIT_MARKS[gitFolderStatus] : undefined
     const hasActionMenu = file.type === 'folder'
-      ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)
+      ? (!hideRootActions || depth > 0) && !!(onCreateFile || onCreateFolder || onFolderUpload || onFolderMove)
       : !!(onFileMove || onFileDownload)
 
     return (
@@ -334,7 +336,7 @@ export default function PlannerFileList({
             )}
 
             {/* More actions dropdown for folders */}
-            {file.type === 'folder' && (!hideRootActions || depth > 0) && (onCreateFolder || onFolderUpload || onFolderMove) && (
+            {file.type === 'folder' && (!hideRootActions || depth > 0) && (onCreateFile || onCreateFolder || onFolderUpload || onFolderMove) && (
               <div className="relative">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -362,6 +364,19 @@ export default function PlannerFileList({
                   className={`absolute right-0 top-full mt-1 w-32 bg-card border border-border rounded-md shadow-md z-50 ${isActionMenuOpen ? 'block' : 'hidden'}`}
                 >
                   <div className="py-1">
+                    {onCreateFile && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenActionsPath(null)
+                          onCreateFile(file)
+                        }}
+                        className="w-full px-3 py-1 text-left text-xs text-foreground hover:bg-muted flex items-center gap-2"
+                      >
+                        <FilePlus className="w-3 h-3" />
+                        New file
+                      </button>
+                    )}
                     {onCreateFolder && (
                       <button
                         onClick={(e) => {

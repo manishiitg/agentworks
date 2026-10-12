@@ -61,6 +61,34 @@ describe('flattenVisiblePlannerFiles', () => {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('PlannerFileList Work controls', () => {
+  it('creates a file in the selected nested folder and omits the action without edit access', async () => {
+    const folder = { ...file('project/functions', 'folder'), originalFilepath: 'Chats/Code/projects/project/functions' }
+    const files = [file('project', 'folder', [folder])]
+    const create = vi.fn()
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    const render = async (onCreateFile?: typeof create) => {
+      await act(async () => root.render(<TooltipProvider><PlannerFileList
+        files={files} loading={false} error={null}
+        onFolderClick={() => undefined} onFileClick={() => undefined}
+        onFileDelete={() => undefined} onFolderDelete={() => undefined}
+        onRetry={() => undefined} expandedFolders={new Set(['project'])}
+        chatFileContext={[]} addFileToContext={() => undefined}
+        hideRootActions onCreateFile={onCreateFile}
+      /></TooltipProvider>))
+    }
+    try {
+      await render(create)
+      await act(async () => (host.querySelector('[aria-label="More actions for functions"]') as HTMLElement).click())
+      const menu = host.querySelector('[role="menu"]')!
+      const button = Array.from(menu.querySelectorAll('button')).find(b => b.textContent?.includes('New file'))!
+      await act(async () => button.click())
+      expect(create).toHaveBeenCalledWith(folder)
+      await render()
+      expect(host.querySelector('[aria-label="More actions for functions"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('keeps the project root and identity metadata out of bulk selection', async () => {
     const toggle = vi.fn()
     const files = [file('project', 'folder', [file('project/app.ts'), file('project/product.json')])]

@@ -1674,7 +1674,7 @@ export default function Workspace({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [uploadDialog.isOpen, uploadDialog.isLoading, cancelUpload])
 
-  // New file: an empty file in the workspace root, opened afterwards (Edit fills it).
+  // New file: an empty file in the root or a selected folder, opened for editing.
   const [newFileFolder, setNewFileFolder] = useState<string | null>(null)
   const handleNewFileSubmit = async (name: string) => {
     const folder = newFileFolder
@@ -1904,6 +1904,7 @@ export default function Workspace({
                 highlightedFile={highlightedFile}
                 onFolderUpload={handleFolderUploadClick}
                 onCreateFolder={handleCreateFolder}
+                onCreateFile={editable ? folder => setNewFileFolder(getOriginalFilePath(folder)) : undefined}
                 onFileMove={handleFileMove}
                 onFolderMove={handleFolderMove}
                 onFileRename={handleFileRename}

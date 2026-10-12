@@ -2172,8 +2172,9 @@ export const agentApi = {
     return response.data as ReportHumanInputResponse
   },
 
-  updatePlannerFile: async (filepath: string, content: string, commitMessage?: string) => {
-    const requestBody: { content: string; commit_message?: string } = { content }
+  updatePlannerFile: async (filepath: string, content: string, commitMessage?: string, options?: { createOnly?: boolean }) => {
+    const requestBody: { content: string; commit_message?: string; create_only?: boolean } = { content }
+    if (options?.createOnly) requestBody.create_only = true
     if (commitMessage) {
       requestBody.commit_message = commitMessage
     }
