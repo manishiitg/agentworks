@@ -78,7 +78,8 @@ func TestCursorNativeChild(t *testing.T) {
 	}
 	process, err := cursorAncestor()
 	if err != nil || process.Kind != "cli" || !cursorProcessForHost(process.Host) {
-		t.Fatal("native kernel identity failed", err)
+		_, detail := cursorProcessAt(os.Getppid())
+		t.Fatal("native kernel identity failed", err, "| parent check:", detail)
 	}
 	root, err := agentworksclient.DefaultLocalBridgeRoot()
 	if err != nil {
