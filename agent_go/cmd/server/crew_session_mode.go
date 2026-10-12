@@ -124,6 +124,8 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 		runFolder := crewOutputFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
 		if req.CrewAskReadOnly && crewGuestCallerForTurn(req, currentUserID) != "" {
 			runFolder = ""
+		} else if fn := crewFunctionOutputFolder(sessionID, currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)); fn != "" {
+			runFolder = fn
 		}
 		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
 		if crewGuestCallerForTurn(req, currentUserID) != "" && req.CrewAskReadOnly {

@@ -1,6 +1,10 @@
 package server
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+)
 
 // crewOutputDirEnv names a Crew's output folder in a turn's shell: the same variable and the same folder for the owner
 // and for everyone running the Crew. crewRunDirEnv is its earlier name, kept so scripts written for it keep working.
@@ -18,6 +22,26 @@ func crewOutputFolder(crewRoot string) string {
 		return ""
 	}
 	return root + "/outputs/"
+}
+
+// crewFunctionOutputFolder is the one output folder of a trusted isolated function call running in this session
+// (<crew>/.calls/<id>/), or "" for any other turn. The turn's notice and its folder guard must name the same folder:
+// the notice named <crew>/outputs/ while only the call's folder was writable, so models wrote to outputs/ first and failed.
+func crewFunctionOutputFolder(sessionID, userID, profileRoot string) string {
+	id := common.GetSessionShellEnv(sessionID)["FUNCTION_CALL_ID"]
+	if id == "" {
+		return ""
+	}
+	call := lookupCrewFunctionCall(id)
+	if call == nil {
+		return ""
+	}
+	call.mu.Lock()
+	defer call.mu.Unlock()
+	if call.IsolatedExecution && call.SessionID == sessionID && workspacePathsMatchForUser(userID, call.TargetPath, profileRoot) {
+		return call.outputFolder() + "/"
+	}
+	return ""
 }
 
 // crewOutputFolderEnv is the shell environment naming the output folder, empty when the turn has none.

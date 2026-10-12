@@ -130,3 +130,22 @@ func TestCallerPrivateCrewAreas(t *testing.T) {
 		t.Fatalf("private areas must be dropped from a listing: %+v", listed.Entries)
 	}
 }
+
+// A function-call turn's notice names the call's own output folder (the only one it can write), not <crew>/outputs/.
+func TestFunctionCallTurnNamesItsOwnOutputFolder(t *testing.T) {
+	call := &crewFunctionCall{ID: "call-notice-1", IsolatedExecution: true, SessionID: "sess-notice-1", TargetPath: "Crew/alpha"}
+	crewFunctionCalls.Lock()
+	if crewFunctionCalls.m == nil {
+		crewFunctionCalls.m = map[string]*crewFunctionCall{}
+	}
+	crewFunctionCalls.m[call.ID] = call
+	crewFunctionCalls.Unlock()
+	defer func() { crewFunctionCalls.Lock(); delete(crewFunctionCalls.m, call.ID); crewFunctionCalls.Unlock() }()
+	common.SetSessionShellEnv("sess-notice-1", map[string]string{"FUNCTION_CALL_ID": call.ID})
+	if got := crewFunctionOutputFolder("sess-notice-1", "alice", "Crew/alpha"); got != "Crew/alpha/.calls/call-notice-1/" {
+		t.Fatalf("a function call's turn must name its own output folder: %q", got)
+	}
+	if got := crewFunctionOutputFolder("another-session", "alice", "Crew/alpha"); got != "" {
+		t.Fatalf("another session must not get it: %q", got)
+	}
+}

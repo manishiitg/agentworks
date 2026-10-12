@@ -6443,16 +6443,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					crewRunOutput, ownerOutput := "", ""
 					// A trusted isolated function has one output folder. Run
 					// mode can write that folder without widening project access.
-					functionOutput := ""
-					if id := common.GetSessionShellEnv(sessionID)["FUNCTION_CALL_ID"]; id != "" {
-						if call := lookupCrewFunctionCall(id); call != nil {
-							call.mu.Lock()
-							if call.IsolatedExecution && call.SessionID == sessionID && workspacePathsMatchForUser(currentUserID, call.TargetPath, profileRoot) {
-								functionOutput = call.outputFolder() + "/"
-							}
-							call.mu.Unlock()
-						}
-					}
+					functionOutput := crewFunctionOutputFolder(sessionID, currentUserID, profileRoot)
 					outputFolder := crewOutputFolder(profileRoot)
 					if crewGuest != "" && req.CrewAskReadOnly {
 						outputFolder = ""
