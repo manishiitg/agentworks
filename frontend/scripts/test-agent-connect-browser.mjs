@@ -28,7 +28,7 @@ try {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
       if (route.request().url().includes('/api/bullpen/notices')) return route.fulfill({ headers, contentType: 'application/json', body: '{"notices":[]}' })
       if (route.request().url().includes('/api/bullpen/usage')) {
-        if (route.request().method() === 'DELETE') { readings = []; deleted = true; return route.fulfill({ headers, contentType: 'application/json', body: '{"deleted":true}' }) }
+        if (route.request().method() === 'DELETE') { readings = []; agents = agents.map(({ usage: _usage, ...agent }) => agent); deleted = true; return route.fulfill({ headers, contentType: 'application/json', body: '{"deleted":true}' }) }
         return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ readings, before: 1, has_more: false, retention_days: 90, row_cap: 250000 }) })
       }
       if (route.request().url().includes('/api/bullpen/agents')) return route.fulfill({ headers, status: directoryStatus, contentType: 'application/json', body: JSON.stringify({ agents }) })
@@ -50,15 +50,17 @@ try {
     await page.getByText('Hourly usage history', { exact: true }).click()
     await page.getByRole('button', { name: 'Load history', exact: true }).click()
     const localDate = await page.evaluate(value => new Date(value).toLocaleDateString(), sample.observed_at)
+    await page.getByLabel('Usage over time').getByText(localDate, { exact: true }).waitFor()
     assert.equal(await page.getByLabel('Usage over time').getByText(localDate, { exact: true }).count(), 1, 'UTC reading grouped by viewer local date')
+    await page.screenshot({ path: path.join(output, 'bullpen-usage-' + name + '.png') })
     await page.getByRole('button', { name: 'Copy off command', exact: true }).click()
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'agentworks usage off')
     await page.getByRole('button', { name: 'Delete saved history', exact: true }).click()
     await page.getByRole('button', { name: 'Delete history', exact: true }).click()
-    await page.waitForTimeout(100)
+    await page.getByLabel('Usage over time').getByText(localDate, { exact: true }).waitFor({ state: 'hidden' })
+    await page.getByText('This session:', { exact: false }).waitFor({ state: 'hidden' })
     assert.equal(deleted, true)
     assert.equal(await page.getByLabel('Usage over time').locator('div').count(), 0)
-    await page.screenshot({ path: path.join(output, 'bullpen-usage-' + name + '.png') })
     await page.getByLabel('Find an agent').fill('documentation')
     assert.equal(await page.getByRole('heading', { name: 'reviewer', exact: true }).count(), 0)
     assert.equal(await page.getByRole('heading', { name: 'writer', exact: true }).isVisible(), true)
