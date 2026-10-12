@@ -6021,6 +6021,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if toolGate.Admit("read_image") {
 			platformBridgeTools = append(platformBridgeTools, "read_image")
 		}
+		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
+		// two tools it needs are native bridge tools: reading project files and replying (856-59).
+		if crewGuest != "" && req.CrewAskReadOnly {
+			for _, name := range []string{crewAskFilesToolName, "send_message"} {
+				if toolGate.Admit(name) {
+					platformBridgeTools = append(platformBridgeTools, name)
+				}
+			}
+		}
 
 		resolvedConnectionID := req.ConnectionID
 		if req.LLMConfig != nil && req.LLMConfig.Primary.ConnectionID != "" {
