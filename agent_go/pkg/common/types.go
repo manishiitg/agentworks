@@ -216,6 +216,11 @@ type SessionShellConfig struct {
 	WorkflowPath     string // Owning workflow for live capability reconciliation
 	WorkflowReadOnly bool   // Current workflow turn cannot receive attached-folder write grants
 	CrewReader       bool   // Current turn is a Crew Run-mode turn (a reader or a guest call): mutating Crew tools are refused
+	// CrewSharedWrites marks a shared caller's turn (an ask or function call run as the Crew's owner for a guest, 856-59):
+	// it may write the Crew's working files like the owner's turn, except the protected paths (memory, skills, definitions,
+	// setup), which the folder guard blocks. It lifts only the Run-mode write restriction of the CLI sandbox and the
+	// generic file tools; the setup tools stay refused.
+	CrewSharedWrites bool
 	// RunOutputPath is a Run-mode Crew turn's run folder (workspace-relative, trailing slash): the one place it may
 	// write, created by the platform. Empty on every other turn.
 	RunOutputPath     string
@@ -270,6 +275,14 @@ func SetSessionReadOnlyAccess(sessionID string, readOnly bool) {
 func SetSessionCrewReader(sessionID string, crewReader bool) {
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
 		cfg.CrewReader = crewReader
+	})
+}
+
+// SetSessionCrewSharedWrites marks whether the session's current turn is a shared caller's turn that may write the Crew's
+// working files (everything but the protected paths). It is refreshed on every turn.
+func SetSessionCrewSharedWrites(sessionID string, shared bool) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.CrewSharedWrites = shared
 	})
 }
 

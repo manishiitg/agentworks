@@ -25,6 +25,12 @@ const (
 // channel route. shared is true for a chat channel, where several people write to one
 // conversation, so the "this conversation is yours alone" line is left out.
 func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
+	return crewSessionNoticeBlock(crewRoot, runFolder, shared, false)
+}
+
+// crewSessionNoticeBlock builds the notice; sharedWrites is a shared caller's turn that may write the Crew's working files
+// (856-59) and so is told which paths stay read-only instead of that only the output folder is writable.
+func crewSessionNoticeBlock(crewRoot, runFolder string, shared, sharedWrites bool) string {
 	owner := ""
 	if ownerID, ok := crewProjectOwnerID(crewRoot); ok {
 		owner = crewOwnerDisplayName(ownerID)
@@ -46,6 +52,15 @@ func crewSessionModeNotice(crewRoot, runFolder string, shared bool) string {
 		output = "Save everything a run produces (evidence, recordings, reports, results, scratch files) in the Crew's output folder " + where + ", " +
 			"also in the environment variable " + crewOutputDirEnv + ". It exists already and is the only place you can write; when a script writes elsewhere, point it there with an argument or environment variable rather than editing it. " +
 			"Change nothing else: not the Crew's files, code, memory, skills, functions, database, schedules, triggers, selections, identity, folders or bots; those tools are not available, so do not work around that. "
+	}
+	if sharedWrites {
+		where := "the Crew's output folder"
+		if runFolder != "" {
+			where = "the Crew's output folder `" + runFolder + "`, also in the environment variable " + crewOutputDirEnv
+		}
+		output = "You may create and change the Crew's working files, code and data as its owner would; keep what a run produces (evidence, reports, results) in " + where + ". " +
+			"The Crew's memory (MEMORY.md), instruction files (CLAUDE.md, AGENTS.md), skills, function definitions, manifests and the owner's chats are read-only to you: read and use them, but a write, move or delete there fails, so do not work around it. " +
+			"You cannot change schedules, triggers, MCP or secret selections, identity, folders or bots; those tools are not available. "
 	}
 	return sessionModeOpen + "\nYou are a shared user of " + who + " Crew: you use what its owner built and cannot change the Crew. " +
 		"Inspect freely (files, briefs, configuration, schedules, triggers, run history), and run the Crew's functions, scripts and attached workflow triggers when asked. " +
@@ -122,8 +137,9 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 	}
 	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
 		runFolder := crewOutputFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
-		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
-		if crewGuestCallerForTurn(req, currentUserID) != "" {
+		guestTurn := crewGuestCallerForTurn(req, currentUserID) != ""
+		notice := crewSessionNoticeBlock(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "", guestTurn)
+		if guestTurn {
 			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewGuestCallsNote + "\n" + sessionModeClose
 		}
 		return notice
@@ -158,6 +174,10 @@ func readerDeniedToolRefusal(ctx context.Context, tool string) string {
 	// legitimate in other read-only sessions such as a workflow Run chat.
 	cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx))
 	if cfg == nil || !cfg.CrewReader {
+		return ""
+	}
+	// A shared caller's turn may use the generic file tools; the folder guard still blocks the protected paths (856-59).
+	if cfg.CrewSharedWrites && crewSharedWriteAllowedTools[strings.TrimSpace(tool)] {
 		return ""
 	}
 	return "The tool `" + strings.TrimSpace(tool) + "` is not available: it changes the project" + readOnlyRefusalHint(ctx)

@@ -4066,6 +4066,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
+	// A shared caller's turn (an ask run as the Crew's owner for a guest) writes the Crew's working files like the owner,
+	// except the protected paths; an ordinary reader's chat stays read-only (856-59, owner decision 2026-10-12).
+	crewSharedWrites := crewGuest != "" && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
+	common.SetSessionCrewSharedWrites(sessionID, crewSharedWrites)
 	common.SetSessionReadOnlyAccess(sessionID, access == WorkflowAccessRead)
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
@@ -5827,7 +5831,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
-		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
+		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID && !crewSharedWrites
 		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
 			cliWritePaths = nil
 		}
@@ -5842,7 +5846,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
 			cliReadPaths = appendUniqueStrings(cliReadPaths, grantRead...)
-			if !crewReaderCLI {
+			// The owner's attached external folders stay closed to a shared caller (a per-Crew owner switch later).
+			if !crewReaderCLI && !crewSharedWrites {
 				cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
 			}
 		}
@@ -5978,7 +5983,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
 		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
+			toolGate.DenyReaderTools(crewReaderDeniedToolsFor(crewSharedWrites)...)
 		}
 		defer toolGate.logSurface(sessionID)
 		_, platformBridgeTools := externalBuilderTransport(GetUserFromContext(r.Context()))
@@ -6428,7 +6433,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						outputFolder = functionOutput
 					}
 
-					if crewReadOnlyTurn {
+					if crewReadOnlyTurn && !crewSharedWrites {
 						guardWriteRoot = ""
 						guardReadOnly = append([]string{profileWrite}, profileReadOnly...)
 						guardWrite = nil
@@ -6445,6 +6450,21 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 						if crewRunOutput == "" {
 							guardBlocked = append(guardBlocked, profileWrite)
+						}
+					} else if crewSharedWrites {
+						// A shared caller's turn (an ask run as the owner for a guest, 856-59) writes the Crew's working
+						// files like the owner's turn, except the files that define the Crew: its memory, instruction
+						// files, skills, function definitions, manifests and the owner's chats. Those are blocked-write
+						// entries (a read-only mount in the kernel sandbox, so moving or replacing them fails too); the
+						// ones that do not exist yet are created first, since a blocked path must exist.
+						ensureCrewSharedProtectedPaths(r.Context(), profileRoot)
+						guardBlocked = append(guardBlocked, crewSharedProtectedPaths(profileRoot)...)
+						if folder := outputFolder; folder != "" {
+							if err := createWorkspaceFolder(r.Context(), strings.TrimSuffix(folder, "/")); err != nil {
+								log.Printf("[AGENT PROFILE FOLDER GUARD] Output folder %s not created: %v", folder, err)
+							} else {
+								crewRunOutput = folder
+							}
 						}
 					} else if isCrewProjectPath(profileRoot) {
 						// The owner's turn names the same folder, so a function saves its output in one place for everyone.
@@ -6535,7 +6555,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// Work uses the shared managed database boundary: migrations and
 						// row tools are allowed, while raw SQLite/WAL/SHM access is denied.
 						// Readers get the read side of that boundary.
-						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, profileRoot, !crewReadOnlyTurn)
+						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, profileRoot, !crewReadOnlyTurn || crewSharedWrites)
 					}
 					if sandbox.IsStrict() {
 						// The profile asked for the deny-by-default shell: only the

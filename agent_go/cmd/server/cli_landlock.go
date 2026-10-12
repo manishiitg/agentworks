@@ -167,7 +167,9 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 		policy = base.Clone()
 	}
 	cfg := common.GetSessionShellConfig(sessionID)
-	readOnly := cfg != nil && (cfg.CrewReader || cfg.WorkflowReadOnly)
+	// A shared caller's turn (856-59) writes the Crew's working files like the owner; the protected paths are blocked-write
+	// entries of the folder guard, applied below.
+	readOnly := cfg != nil && (cfg.CrewReader || cfg.WorkflowReadOnly) && !cfg.CrewSharedWrites
 	if readOnly {
 		policy.WorkspaceWritePaths = nil
 		// A Crew Run-mode turn may write its run folder, and nothing else of the project (PLAT-756).

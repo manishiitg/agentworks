@@ -426,3 +426,64 @@ func crewResourceProjectID(conversationKey string) string {
 	}
 	return key
 }
+
+// A shared caller's turn (an ask run as the Crew's owner for a guest, 856-59) writes the Crew's working files like the
+// owner, but never the files that define what the Crew is and does. Those are read-only to it: the folder guard blocks
+// writes (a read-only mount in the kernel sandbox, which also refuses moving, deleting or replacing them), and the
+// agent can still read and use them. A path must exist to be blocked, so the missing ones are created first.
+var (
+	crewSharedProtectedFiles = []string{"MEMORY.md", "CLAUDE.md", "AGENTS.md", "functions.json", "workflow.json", "product.json"}
+	crewSharedProtectedDirs  = []string{"skills", ".claude", "builder"}
+	// crewSharedEnsureFiles are created empty when absent; the others only exist when the platform made them.
+	crewSharedEnsureFiles = []string{"MEMORY.md", "CLAUDE.md", "AGENTS.md"}
+)
+
+// crewSharedProtectedPaths lists the blocked-write entries of a shared caller's turn for the Crew rooted at root.
+func crewSharedProtectedPaths(root string) []string {
+	root = strings.TrimSuffix(strings.TrimSpace(root), "/")
+	out := make([]string, 0, len(crewSharedProtectedFiles)+len(crewSharedProtectedDirs))
+	for _, name := range crewSharedProtectedFiles {
+		out = append(out, root+"/"+name)
+	}
+	for _, name := range crewSharedProtectedDirs {
+		out = append(out, root+"/"+name+"/")
+	}
+	return out
+}
+
+// ensureCrewSharedProtectedPaths creates the protected folders and the empty instruction and memory files that are missing.
+func ensureCrewSharedProtectedPaths(ctx context.Context, root string) {
+	root = strings.TrimSuffix(strings.TrimSpace(root), "/")
+	for _, name := range crewSharedProtectedDirs {
+		if err := createWorkspaceFolder(ctx, root+"/"+name); err != nil {
+			log.Printf("[CREW SHARED] protected folder %s/%s not created: %v", root, name, err)
+		}
+	}
+	for _, name := range crewSharedEnsureFiles {
+		if _, found, err := readFileFromWorkspace(ctx, root+"/"+name); err == nil && !found {
+			if err := writeRawFileToWorkspace(ctx, root+"/"+name, ""); err != nil {
+				log.Printf("[CREW SHARED] protected file %s/%s not created: %v", root, name, err)
+			}
+		}
+	}
+}
+
+// crewSharedWriteAllowedTools are the generic file tools a shared caller's turn may use (the folder guard still decides
+// which paths they can write); every other tool of crewReaderDeniedTools stays refused.
+var crewSharedWriteAllowedTools = map[string]bool{"diff_patch_workspace_file": true, "image_gen": true, "image_edit": true}
+
+// crewReaderDeniedToolsFor is the deny list of a Crew turn: the full list for a reader, minus the generic file tools for a
+// shared caller's turn that may write.
+func crewReaderDeniedToolsFor(sharedWrites bool) []string {
+	all := crewReaderDeniedTools()
+	if !sharedWrites {
+		return all
+	}
+	out := make([]string, 0, len(all))
+	for _, name := range all {
+		if !crewSharedWriteAllowedTools[name] {
+			out = append(out, name)
+		}
+	}
+	return out
+}
