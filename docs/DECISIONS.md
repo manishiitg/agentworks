@@ -56,47 +56,32 @@ Why: the owner wants sharing doable from the native CLI and simple enough to use
 
 Ticket: PLAT-861, issue 861-90 narrowed to "everyone on the server".
 
-## 2026-10-12 — Crews have no Run mode: sharing is the consent (PLAT-856)
+## 2026-10-12 — Crews have no Run mode: others use, only the owner or a co-owner changes (PLAT-856)
 
-A Crew no longer has a restricted "Run mode". Its owner creates it knowing it is shareable, so everyone it is
-shared with, in typed functions, free-text `ask` and chats (the app, Slack, WhatsApp, MCP, the owner's own tools),
-gets the Crew acting with the owner's authority: its tools, outbound function calls (`call_function`), shell and
-writes to its working files. This replaces "the built-in free-text `ask` and every chat stay Run mode" (PLAT-812);
-typed functions already worked this way.
+A Crew is an agent its owner builds and shares. It no longer has a reduced "Run mode":
 
-What stays, as permissions rather than a mode:
-- Only the owner changes the Crew's memory (`MEMORY.md`), skill files, instructions, functions and setup. The
-  existing folder guards on memory and skills enforce it for every other caller, so one caller cannot change what the
-  agent does for everyone else; nothing about this needs a mode.
-- Raw secret values are never handed to a caller: the agent uses a secret by name and its system prompt forbids
-  printing it (behavioural protection, accepted 2026-10-10).
-- Each caller keeps their own conversation and cannot read another person's chat.
-- An owner can still make a call behave like an ordinary shared caller with `run_mode: true` on a call, for testing.
-Sharing also lets the owner choose the entry points: functions only (programs only), or functions plus free text.
+- **Using.** Others use a Crew only through the typed functions its owner exposes and the built-in `ask` (the owner can
+  switch `ask` off, "programs only"). Inside a function or `ask` call the Crew runs the same way as for the owner: full
+  tools, skills, MCPs, memory read, outbound function calls, and the owner's authority. Others never get a free chat with
+  Builder powers.
+- **Changing.** Changing a Crew (memory, skills, MCPs, secrets, prompts, function definitions, setup, access) is for the
+  owner or a co-owner the owner grants. Users never write memory or change configuration; the existing folder guards on
+  memory and skills enforce it. A Crew has a single owner today, so the co-owner role is new (step 2 checks what the
+  Workflow editor role already gives and reuses its shape).
+- **Personal things** (memory read or write by users, personal folders, connected accounts) are the owner's choice, set
+  per Crew; defaults stay as they are until the owner opens them.
+- **Secrets.** Raw secret values are never handed to a caller: the agent uses a secret by name and its system prompt
+  forbids printing it (behavioural protection, accepted 2026-10-10).
+- **The owner's own turn.** The owner's own conversations (the app, their unrestricted MCP/CLI connection, their own
+  Crew builder chats) are the owner's turn. It is granted only on positive evidence, never to a sender whose mode is
+  merely unknown (workflow runs, schedules, bots, Code chats, capped or agent-bound connections stay restricted).
+  Each caller keeps their own conversation. `run_mode: true` stays as an owner test pin.
 
-Why: the owner chose to share, and a restricted mode made an owner's own `ask_crew` from MCP unable to call other
-functions or write files, which blocked building, testing and orchestrating a Crew over MCP.
+Replaces "free-text `ask` and every chat stay Run mode" (PLAT-812); typed functions already ran with the owner's
+authority. Why: the owner chooses to share, and a restricted mode kept an owner's own `ask_crew` from MCP from calling
+other functions or writing files, which blocked building, testing and orchestrating a Crew over MCP.
 
-Ticket: PLAT-856, issue 856-59.
-## 2026-10-12 — Brain administration is available over MCP and the CLI; secret values never go through an agent (PLAT-856)
-
-People use their own agents for Brain, not the Brain page or the Brain chat, so what only the app could do is now the
-`brain_admin` tool: backup status and reconcile, Brain's own secrets (list, delete by name, and a request that returns
-the command to set one), the person's own Organize Brain schedule, and what's new since the person last marked Brain as
-seen. Reads need `knowledgebase:read`; every change needs `knowledgebase:write`. Reconcile and secret deletion also need
-the person's own live connection: a whole-Brain Owner, not a Brain service-account identity, an agent-bound or
-folder-capped connection, and a connection recheck on each call. The app's REST handlers for secrets and reconcile
-still refuse access tokens; this tool accepts them under those rules. Changes are logged by name, never by value.
-
-A secret's value never passes through an agent conversation. It is typed by the person with
-`agentworks brain secret set NAME` (hidden input, a real terminal, refused under a coding agent) and sent over the
-person's own CLI sign-in to a route that is not a tool. Agents refer to the secret by name, for example
-`pat_secret=NAME` in the backup setup.
-
-Why: the owner expects almost nobody to use the Brain UI or chat, so a feature that exists only there cannot be used;
-and a value an agent sees is kept in that conversation's history.
-
-Ticket: PLAT-856, issue 856-57.
+Ticket: PLAT-856, issue 856-59 (step 1 landed on main in 44eadc1fc; step 2 is the shared-caller change).
 
 ## 2026-10-12 — Relay readers see only their own recorded runs (PLAT-847)
 
