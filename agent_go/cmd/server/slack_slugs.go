@@ -136,7 +136,9 @@ func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegist
 		target.Description = slackDestinationDescription(ctx, ref.WorkspacePath, ref.ProfileID)
 	}
 	if target.Slug == "" {
-		target.Slug = services.SlackSlug(target.Label)
+		// The typed word follows the product's own name, never the display name an owner wrote for the picker: writing
+		// a friendlier name must not change what people have to type.
+		target.Slug = services.SlackSlug(slackDestinationLabel(ctx, ref.WorkspacePath, ref.ProfileID))
 	}
 	if target.Slug == "" {
 		target.Slug = services.SlackSlug(path.Base(strings.TrimSpace(ref.WorkspacePath)))
