@@ -1,6 +1,6 @@
 {
   "name": "agentworks-codex",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "AgentWorks live messaging and person-controlled session attachment for Codex",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",

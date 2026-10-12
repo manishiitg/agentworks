@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { ArrowRight, Check, Copy, Laptop, MessageSquare, Terminal } from 'lucide-react'
-import { Button } from '../ui/Button'
+import { Button } from '../../components/ui/Button'
 import { getApiBaseUrl } from '../../services/api'
 
 const clients = [
@@ -8,7 +8,7 @@ const clients = [
   { id: 'claude', name: 'Claude Code', live: true, detail: 'Session messaging and delivery hooks' },
   { id: 'cursor', name: 'Cursor', live: false, detail: 'HTTP MCP setup below' },
   { id: 'muse', name: 'Muse', live: false, detail: 'GitHub marketplace plugin and session hooks' },
-  { id: 'pi', name: 'Pi', live: false, detail: 'Provider extension setup required' },
+  { id: 'pi', name: 'Pi', live: false, detail: 'Native extension delivery with explicit receipts' },
   { id: 'agy', name: 'agy', live: false, detail: 'Provider-specific setup required' },
 ] as const
 
@@ -36,7 +36,7 @@ function Step({ number, title, children }: { number: number; title: string; chil
   </section>
 }
 
-/** The person installs and attaches; these instructions never attach a chat automatically. */
+/** Instructions only; a person request authorizes own-session attachment. */
 export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void }) {
   const [clientID, setClientID] = useState<string>('codex')
   const [platform, setPlatform] = useState<'unix' | 'windows'>('unix')
@@ -51,7 +51,7 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Coding agents</span><span className="text-xs text-muted-foreground">Install once. Attach each chat.</span></div>
       <h2 className="text-2xl font-semibold tracking-tight text-foreground">Connect your AI agent</h2>
-      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Give a chat an AgentWorks name so your other agents can find it, send messages and reply. You choose which chats are attached.</p>
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Ask your agent to connect its own chat so your other agents can find it, send messages and reply. You choose when it joins or leaves.</p>
     </div>
     <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
       <Laptop className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-medium text-foreground">{local ? 'This local server' : 'This AgentWorks server'}</p><code aria-label="Selected AgentWorks server" className="break-all text-xs text-muted-foreground">{origin}</code><p className="mt-1 text-xs text-muted-foreground">{local ? 'For agents on this computer. ' : ''}{client.id === 'muse' ? 'Muse plugin installation uses GitHub. Sign in to this server before attaching your chat.' : 'The commands below sign in to this server. A previous login to another server is a separate connection.'}</p></div>
@@ -80,6 +80,15 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
         <details className="space-y-2 rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium text-foreground">Muse fails to start after approval</summary><p className="pt-2 text-muted-foreground">An older AgentWorks CLI can cause “Required MCP server agentworks failed during startup: the transport closed unexpectedly”. Disable the plugin, update the CLI to a version with Muse support, then inspect and approve the plugin again before restarting Muse.</p><Command label="Disable Muse plugin" text="muse plugins disable agentworks-muse" /></details>
         <Button variant="outline" size="sm" className="w-full justify-between" onClick={onOpenMcp}>Use workflow and Crew tools<ArrowRight className="h-3.5 w-3.5" /></Button>
       </aside>
+    </div> : client.id === 'pi' ? <div className="space-y-4 rounded-xl border border-border p-5">
+      <h3 className="font-semibold text-foreground">Connect Pi</h3>
+      <p className="text-sm text-muted-foreground">Pi uses its AgentWorks extension for exact SDK session identity and native message delivery. Review the package before installation, then reload Pi yourself.</p>
+      <Command label="Sign in to this server" text={`agentworks --server ${quote(origin)} login`} />
+      <Command label="Install Pi extension" text="pi install /path/to/reviewed/agentworks/plugins/pi" />
+      <p className="text-xs text-muted-foreground">Use a retained checkout of the AgentWorks GitHub repository for this path. Keep the extension installed while the chat is attached.</p>
+      <Command label="Connect this chat" text="Attach this chat to AgentWorks as pi-review." />
+      <p className="text-xs leading-5 text-muted-foreground">After the extension loads, your agent can run agentworks attach for its own exact session on your request. You can also type /agentworks attach yourself. Native delivery supports idle and busy chats; stored, admitted and processed remain separate receipts.</p>
+      <Button variant="outline" size="sm" onClick={onOpenMcp}>Add workflow and Crew tools<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button>
     </div> : client.live ? <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
       <div className="min-w-0 divide-y divide-border rounded-xl border border-border p-5">
         <Step number={1} title="Install the AgentWorks CLI">
@@ -90,12 +99,12 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
         <Step number={2} title="Sign in to this server">
           <Command label="Sign in to this server" text={`agentworks --server ${quote(origin)} login`} /><p className="text-xs leading-5 text-muted-foreground">Approve the CLI in your browser, then return to Terminal. This login is shared by the AgentWorks bridge on your computer.</p>
         </Step>
-        <Step number={3} title="Set up or reconnect AgentWorks">
-          <Command label="Install coding agent plugin" text="agentworks attach" /><p className="text-xs leading-5 text-muted-foreground">Run in your terminal. Attach detects supported live chats and lets you choose one. It installs the plugin if needed. Review the hooks and reload {client.name} when prompted.{client.id === 'codex' ? ' In Codex, use /hooks to check hook trust.' : ' Enable Claude session messaging for native delivery; otherwise messages arrive through hooks.'}</p>
+        <Step number={3} title="Connect this chat">
+          <Command label="Connect this chat" text={`Attach this chat to AgentWorks as ${client.id}-review.`} /><p className="text-xs leading-5 text-muted-foreground">You can ask the agent in plain language to run agentworks attach for its own detected session. It will not install a plugin or select another chat. Optional plugins provide hooks and messaging tools; review their hooks and reload {client.name} when prompted.{client.id === 'codex' ? ' In Codex, use /hooks to check hook trust.' : ' Enable Claude session messaging for native delivery; otherwise messages arrive through hooks.'}</p>
         </Step>
-        <Step number={4} title="Attach the chat you want to use">
-          <p className="text-xs leading-5 text-muted-foreground">Type this yourself in the coding-agent chat. Replace the example name with a unique name you want other agents to use.</p>
-          <Command label="Attach this chat" text={`/agentworks attach ${client.id}-review`} /><p className="text-xs leading-5 text-muted-foreground">Or type <code>/agentworks attach</code> to choose a short name automatically. The same command reconnects your saved identity after a restart. Your agent sets its purpose afterward. Every sender in your AgentWorks account can message this chat.</p>
+        <Step number={4} title="Reconnect or use an optional plugin">
+          <p className="text-xs leading-5 text-muted-foreground">Ask your coding agent to attach its own chat with a name you want other agents to use. Codex desktop and Claude native session messaging do not require the plugin for this CLI path.</p>
+          <Command label="Attach this chat" text={`agentworks attach ${client.id}-review`} /><p className="text-xs leading-5 text-muted-foreground">Your agent runs this CLI command for its own chat. With a trusted plugin, you can also type <code>/agentworks attach</code> yourself for an automatic name. A plain-language request to reconnect also works for the same detected session. Your agent describes its responsibilities afterward. Every sender in your AgentWorks account can message this chat.</p>
         </Step>
         <Step number={5} title="Try a message">
           <Command label="Ask an agent to send a message" text={`Send a message through AgentWorks to agent:${client.id}-review: “Hello — please reply here.”`} /><p className="text-xs leading-5 text-muted-foreground">Ask another connected agent to send it. Stored means accepted by the server; admitted means the receiving agent saw it; processed means it handled it.</p>
@@ -103,8 +112,8 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
       </div>
       <aside className="space-y-4 text-xs leading-5">
         <div className="rounded-lg border border-border p-4"><MessageSquare className="mb-2 h-4 w-4 text-primary" /><h3 className="font-semibold text-foreground">How messages arrive</h3><p className="mt-2 text-muted-foreground">{client.detail}. Native delivery can reach a running chat. Hooks deliver at turn boundaries. Mailbox reads are recovery when a live route is unavailable.</p></div>
-        <div className="space-y-2 rounded-lg bg-muted/30 p-4"><h3 className="font-semibold text-foreground">Manage this chat</h3>{['/agentworks attach', '/agentworks detach', '/agentworks agents'].map(command => <code key={command} className="block break-all text-foreground">{command}</code>)}<p className="text-muted-foreground">Attach also reconnects. Agents shows who is online and how delivery works. Detach stops delivery and revokes its connection.</p></div>
-        <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium text-foreground">Setup troubleshooting</summary><div className="mt-3 space-y-3 text-muted-foreground"><p>If attach returns unknown_tool, check which server you signed in to. The server must support agent messaging; update it before the CLI.</p><p>If the command reaches the model, reload the plugin and review its hooks. The agent cannot attach on your behalf.</p><p>Already-attached chats from before the sender-policy update need <code>/agentworks attach</code>.</p><p>For clickable macOS fallback notifications, install <code>brew install terminal-notifier</code> and allow its notifications in macOS settings. Native delivery remains the primary route.</p></div></details>
+        <div className="space-y-2 rounded-lg bg-muted/30 p-4"><h3 className="font-semibold text-foreground">Manage this chat</h3>{['agentworks attach', 'agentworks detach', 'agentworks agent'].map(command => <code key={command} className="block break-all text-foreground">{command}</code>)}<p className="text-muted-foreground">Attach also reconnects. Agents shows who is online and how delivery works. Detach stops delivery and revokes its connection.</p></div>
+        <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium text-foreground">Setup troubleshooting</summary><div className="mt-3 space-y-3 text-muted-foreground"><p>If attach returns unknown_tool, check which server you signed in to. The server must support agent messaging; update it before the CLI.</p><p>If the command reaches the model, reload the plugin and review its hooks. You can instead ask the agent to run agentworks attach for its own detected session.</p><p>Already-attached chats from before the sender-policy update need <code>/agentworks attach</code>.</p><p>For clickable macOS fallback notifications, install <code>brew install terminal-notifier</code> and allow its notifications in macOS settings. Native delivery remains the primary route.</p></div></details>
         <Button variant="outline" size="sm" className="w-full justify-between" onClick={onOpenMcp}>Add workflow and Crew tools<ArrowRight className="h-3.5 w-3.5" /></Button>
       </aside>
     </div> : <div className="space-y-3 rounded-xl border border-border p-5"><Terminal className="h-5 w-5 text-primary" /><h3 className="font-semibold text-foreground">{client.name} connection options</h3><p className="text-sm text-muted-foreground">{client.detail}. The shared installer is not available in this release for this provider.</p><p className="text-xs leading-5 text-muted-foreground">{client.id === 'cursor' ? 'Connect Cursor over HTTP MCP for workflow and Crew tools. Its live messaging adapter has separate setup; idle desktop push is not available.' : 'Use the provider’s AgentWorks adapter when available. A registered mailbox alone does not push messages into a running session.'}</p><Button variant="outline" size="sm" onClick={onOpenMcp}>Open MCP setup<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></div>}

@@ -23,6 +23,7 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks())
 
 async function renderPanel(host: HTMLElement) {
+  await import('./CliMcpSetupContent')
   const root = createRoot(host)
   await act(async () => root.render(<CliMcpSetupPanel />))
   return root

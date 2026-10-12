@@ -64,3 +64,5 @@ claude plugin update agentworks@agentworks
 ```
 
 Plugin updates do not update the AgentWorks CLI or server, attach chats, or approve hook trust.
+
+On a direct person request, the agent may run `agentworks attach [NAME]` for its own detected chat without installing a plugin. It may also run own detach; Codex limits this to leases originally created through own CLI attach. Person-created Codex leases retain the person detach command. No session overrides, other-chat selection or trust changes are permitted. `agentworks agent` aliases `agents`; purpose may describe responsibilities in up to 512 characters. Routing hints do not isolate same-user credentials.

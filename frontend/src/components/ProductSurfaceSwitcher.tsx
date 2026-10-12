@@ -1,6 +1,6 @@
 import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { Check, ChevronDown, Waypoints } from 'lucide-react'
+import { Check, ChevronDown, MessagesSquare, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
@@ -39,6 +39,7 @@ const products: Array<{
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
   { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
+  { id: 'bullpen', label: 'Bullpen', description: 'Connect your agents and coordinate their work', icon: MessagesSquare },
 ]
 
 /** The product list with labels, descriptions and marks, shared with the welcome page. */

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -240,11 +241,11 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		s.Agents[index].Connections = connections
 		if purpose, present := args["purpose"]; present {
 			text, ok := purpose.(string)
-			if !ok || len(strings.TrimSpace(text)) > 512 {
-				externalError(w, 400, "invalid_arguments", "purpose must be a string of at most 512 bytes")
+			if !ok || utf8.RuneCountInString(strings.TrimSpace(text)) > 512 || strings.ContainsAny(text, "\r\n") {
+				externalError(w, 400, "invalid_arguments", "purpose must be a string of at most 512 characters")
 				return
 			}
-			s.Agents[index].Purpose = strings.TrimSpace(text)
+			s.Agents[index].Purpose = cleanAgentPurpose(text)
 		}
 	}
 	if err = saveAgentMessageStore(r.Context(), s); err != nil {
@@ -262,13 +263,29 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	externalJSON(w, out)
 }
 
+// Purpose is display metadata; controls and invisible formatting must not
+// alter a roster or appear as terminal input. Length/line validation is separate.
+func cleanAgentPurpose(text string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, text))
+}
+
 // Updating purpose cannot create a name, move an attachment or widen its connections.
 func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	purpose, ok := args["purpose"].(string)
 	purpose = strings.TrimSpace(purpose)
-	if !ok || purpose == "" || utf8.RuneCountInString(purpose) > 80 || strings.ContainsAny(purpose, "\r\n") {
-		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 80 characters")
+	if !ok || purpose == "" || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
+		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 512 characters")
+		return
+	}
+	purpose = cleanAgentPurpose(purpose)
+	if purpose == "" {
+		externalError(w, 400, "invalid_arguments", "purpose must contain visible text")
 		return
 	}
 	if !namedAgentOperationAllowed(claims, true) {

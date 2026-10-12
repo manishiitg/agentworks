@@ -74,8 +74,8 @@ export default function (pi: ExtensionAPI) {
     args => delivery.action('reply', args.message_id, { message: args.message, submission_id: args.submission_id }));
   register('agent_message_peers', 'Discover authorized named agents for this attached identity.', Type.Object({}),
     () => delivery.control('peers'));
-  register('agent_message_set_purpose', 'Set your own one-line purpose (up to 80 characters); at most once per minute. Does not attach or grant permission.',
-    Type.Object({ purpose: Type.String({ maxLength: 80 }) }), args => delivery.control('purpose', args));
+  register('agent_message_set_purpose', 'Set your own one-line purpose (up to 512 characters); at most once per minute. Does not attach or grant permission.',
+    Type.Object({ purpose: Type.String({ maxLength: 512 }) }), args => delivery.control('purpose', args));
   register('agent_message_send', 'Explicitly send from this attached identity to a named agent the person authorized contacting. Reuse submission_id after an uncertain retry.',
     Type.Object({ target: Type.String(), message: Type.String(), submission_id: Type.String() }),
     args => delivery.control('send', args));

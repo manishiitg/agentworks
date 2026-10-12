@@ -91,7 +91,7 @@ receipt. The receiving agent explicitly uses the registered schemas:
 - `agent_message_reply(message_id, message, submission_id)`: optional reply in
   the original inbox; keep the same submission ID after uncertain results.
 - `agent_message_peers()`: discover authorized names for this attached identity.
-- `agent_message_set_purpose(purpose)`: one line, up to 80 characters, at most
+- `agent_message_set_purpose(purpose)`: one line, up to 512 characters, at most
   once per minute. Set once after setup, then update when the person asks.
 - `agent_message_send(target, message, submission_id)`: contact only a peer the
   person authorized; acceptance means stored, not admitted.

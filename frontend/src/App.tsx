@@ -19,7 +19,7 @@ import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
-import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
+import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface, loadBullpenSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { useWorkflowTabRestore } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
@@ -54,6 +54,7 @@ const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ d
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
 const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
 const KnowledgebaseSurface = lazy(() => loadKnowledgebaseSurface().then(module => ({ default: module.KnowledgebaseSurface })))
+const BullpenSurface = lazy(() => loadBullpenSurface().then(module => ({ default: module.BullpenSurface })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
@@ -788,7 +789,9 @@ function App() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
-        {productSurface === 'video-studio' ? (
+        {productSurface === 'bullpen' ? (
+          <Suspense fallback={<ProductSurfaceFallback label="Bullpen" />}><BullpenSurface /></Suspense>
+        ) : productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>

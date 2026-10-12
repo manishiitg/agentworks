@@ -1,5 +1,47 @@
 # Decisions and open issues
 
+## 2026-10-12 — Agents may connect their own chat when the person asks (PLAT-861)
+
+A plain-language request from the person authorizes the coding agent to run
+agentworks attach [NAME] or agentworks detach for its automatically detected
+provider process and native session. The own-session path does not select other
+chats, accept process/session/endpoint overrides, install plugins or alter trust.
+Exact native metadata is required; absence fails closed rather than guessing.
+The ordinary person terminal retains its verified session picker and optional
+plugin installation. An explicit own-session reattach refreshes the saved process
+binding and identity; daemon restarts do not revive other offline chats.
+AgentWorks agent is an alias for agents, listing names available through the
+account’s authorized connections. Existing account, lease and sender checks remain.
+A peer message supplies no person authorization. Same-user credentials and session
+hints remain routing boundaries, not isolation from that OS user. Codex own
+routing requires matching SESSION_ID and THREAD_ID hints. Existing leases cannot
+be renamed or moved; reconnect only refreshes their process binding. Own detach
+is limited to leases originally created through own CLI attach. Person-created
+Codex leases retain the person detach command. Both routing hints can be forged
+by the same OS user; issue 861-90 tracks this residual, not an isolation guarantee.
+
+Cursor own attach/detach uses the verified per-process CLI helper; desktop
+shell hints do not identify a conversation and remain refused.
+
+Why: the person wants to ask their coding agent to connect itself, without a
+plugin command or repeated manual setup. This supersedes prior agent self-attach
+and self-detach prohibitions; provider hook provenance is a separate issue.
+
+Bullpen is a peer product with a same-account directory and setup guidance; MCP
+Connect retains tool access. Installation and account product allowlists remain
+authoritative. Bullpen defaults on locally and requires explicit hosted opt-in.
+Why: messaging deserves its own place beside the other products.
+
+Purpose updates now accept a bounded single paragraph of up to 512 characters,
+with the existing exact-identity and one-change-per-minute checks. Directory
+previews can remain short. Purpose metadata strips control and invisible formatting
+characters before storage. Why: 80 characters hid an agent’s responsibilities;
+display metadata should not change how a roster is read.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issues 861-94, 861-95, 861-96 and 861-97.
+
+
+
 ## 2026-10-12 — Working tips and quick navigation load on demand (PLAT-746)
 
 Load the working-tip component, selector and catalog request hook only when

@@ -40,11 +40,14 @@ func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
 	surfaces := splitAndTrimCommaList(os.Getenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES"))
 	if len(surfaces) == 0 {
 		if local && !localOptIn {
-			surfaces = []string{"agentworks", "work"}
+			surfaces = []string{"agentworks", "work", "bullpen"}
 		} else if localOptIn {
-			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase"}
+			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen"}
 		} else {
 			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase"}
+			if productEnabled("bullpen") {
+				surfaces = append(surfaces, "bullpen")
+			}
 		}
 	} else if local {
 		available := make([]string, 0, len(surfaces))
@@ -55,7 +58,7 @@ func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
 		}
 		surfaces = available
 		if len(surfaces) == 0 {
-			surfaces = []string{"agentworks", "work"}
+			surfaces = []string{"agentworks", "work", "bullpen"}
 		}
 	}
 	available := make([]string, 0, len(surfaces))

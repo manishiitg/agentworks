@@ -123,7 +123,10 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	if err = os.Chmod(path, 0600); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", sqliteopen.DSN(path))
+	// These transactions read a nonce before rotating/revoking it. Reserve the
+	// writer before that read: separate live-event handlers must not invalidate
+	// its WAL snapshot between SELECT and UPDATE. No token write is retried.
+	db, err := sql.Open("sqlite", sqliteopen.DSN(path)+"&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -112,10 +113,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
-		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || len(purpose) > 512 {
-			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and an optional purpose (at most 512 bytes).")
+		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
+			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and an optional purpose (at most 512 characters).")
 			return
 		}
+		purpose = cleanAgentPurpose(purpose)
 		rejectMove, _ := args["reject_live_move"].(bool)
 		if rejectMove && a.Attachment != nil && (a.Attachment.Provider != provider || a.Attachment.SessionID != session) && namedAgentOnline(*a) {
 			externalError(w, 409, "agent_attached_elsewhere", "agent:"+name+" is attached to another chat; detach it there first")

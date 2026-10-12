@@ -73,7 +73,7 @@ func pluginAgents(ctx context.Context, root string, o *options, req agentworkscl
 }
 
 func agentsCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "agents", Args: cobra.NoArgs, Short: "Show available agents, presence and delivery routes", RunE: func(cmd *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "agents", Aliases: []string{"agent"}, Args: cobra.NoArgs, Short: "Show agents visible through your authorized connections", RunE: func(cmd *cobra.Command, _ []string) error {
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
 			return err
@@ -131,7 +131,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	})
 	clean := func(s string) string {
 		s = strings.Map(func(r rune) rune {
-			if unicode.IsControl(r) {
+			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 				return ' '
 			}
 			return r
@@ -181,14 +181,24 @@ func attachPluginCommand(o *options) *cobra.Command {
 	var provider, session, remote, name string
 	var pid int
 	cmd := &cobra.Command{Use: "attach [NAME]", Args: cobra.MaximumNArgs(1), Short: "Install, attach or reconnect a live coding-agent chat", RunE: func(cmd *cobra.Command, args []string) error {
-		if err := personAgentTerminal(); err != nil {
-			return err
-		}
 		if len(args) > 0 {
 			name = args[0]
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
+			return err
+		}
+		own, fromAgent, err := ownAgentSession(cmd.Context(), root, o)
+		if err != nil {
+			return err
+		}
+		if fromAgent {
+			if provider != "" || session != "" || remote != "" || pid != 0 {
+				return errors.New("own-session attach does not accept provider, session, process or endpoint overrides")
+			}
+			return attachLiveAgentWithSetup(cmd.Context(), o, root, own, name, false)
+		}
+		if err := personAgentTerminal(); err != nil {
 			return err
 		}
 		// Explicit technical overrides remain hidden for adapter diagnostics.
@@ -237,9 +247,10 @@ func attachPluginCommand(o *options) *cobra.Command {
 			}
 			fmt.Fprintf(o.stderr, "Choose a chat number, or type all %d to attach the listed chats (cancel to stop): ", len(sessions))
 			var answer, count string
-			scanned, scanErr := fmt.Fscanln(o.stdin, &answer, &count)
+			scanned, _ := fmt.Fscanln(o.stdin, &answer, &count)
 			if scanned == 0 {
-				return scanErr
+				fmt.Fprintln(o.stdout, "Attachment cancelled. No chat was changed.")
+				return nil
 			}
 			if answer == "all" {
 				if count != strconv.Itoa(len(sessions)) {
@@ -282,6 +293,10 @@ func attachPluginCommand(o *options) *cobra.Command {
 }
 
 func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAgentSession, name string) error {
+	return attachLiveAgentWithSetup(ctx, o, root, chosen, name, true)
+}
+
+func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chosen liveAgentSession, name string, installPlugin bool) error {
 	var err error
 	if chosen.provider == "pi" {
 		root, err = piBridgeRoot()
@@ -300,7 +315,7 @@ func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAg
 	if chosen.host == "" {
 		return errors.New("cannot verify the provider process")
 	}
-	if chosen.provider != "pi" {
+	if installPlugin && chosen.provider != "pi" {
 		if err = installAgentPlugin(ctx, o, chosen.provider); err != nil {
 			return err
 		}
@@ -311,6 +326,12 @@ func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAg
 	req := agentworksclient.LocalBridgeRequest{Action: "attach", Provider: chosen.provider, SessionID: chosen.session, HostKey: chosen.host, NativeRemote: chosen.remote, AgentName: name}
 	if err = prepareAttachment(ctx, root, o, &req, chosen.cwd); err != nil {
 		return err
+	}
+	// The calling agent receives the roster in this command's output. A native
+	// setup turn is only needed for a person command consumed by an adapter.
+	if !installPlugin {
+		req.Setup = false
+		req.OwnAttach = chosen.provider == "codex"
 	}
 	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
 	if err != nil {
@@ -329,21 +350,25 @@ func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAg
 	if o.jsonOutput {
 		return o.output(out)
 	}
-	fmt.Fprintln(o.stdout, pluginAttachmentStatus(out))
+	if !installPlugin && !out.NativeDelivery {
+		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
+	} else {
+		fmt.Fprintln(o.stdout, pluginAttachmentStatus(out))
+	}
 	req.Action = "peers"
 	peers, e := agentworksclient.CallLocalBridge(ctx, root, req)
 	if e == nil {
 		local, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
 		fmt.Fprintln(o.stdout, agentRoster(peers.Result, local))
 	}
+	if !installPlugin {
+		fmt.Fprintf(o.stdout, "Describe your responsibilities with agentworks bridge message purpose --provider %s --purpose TEXT.\n", chosen.provider)
+	}
 	return nil
 }
 
 func detachAgentCommand(o *options) *cobra.Command {
 	return &cobra.Command{Use: "detach", Args: cobra.NoArgs, Short: "Stop delivery to an attached local chat", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := personAgentTerminal(); err != nil {
-			return err
-		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
 			return err
@@ -353,6 +378,31 @@ func detachAgentCommand(o *options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+		}
+		own, fromAgent, err := ownAgentSession(cmd.Context(), root, o)
+		if err != nil {
+			return err
+		}
+		if fromAgent {
+			request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: own.provider, SessionID: own.session, HostKey: own.host}
+			if own.provider == "codex" {
+				request.Action = "detach_own"
+			}
+			if own.provider == "pi" || own.provider == "codex" || own.provider == "cursor" {
+				current, e := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: own.provider, SessionID: own.session, HostKey: own.host})
+				if e != nil {
+					return e
+				}
+				request.AttachmentID = current.Attachment.ID
+			}
+			if _, err = agentworksclient.CallLocalBridge(cmd.Context(), root, request); err != nil {
+				return err
+			}
+			fmt.Fprintln(o.stdout, "Detached this chat from AgentWorks.")
+			return nil
+		}
+		if err := personAgentTerminal(); err != nil {
+			return err
 		}
 		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "list"})
 		if err != nil {

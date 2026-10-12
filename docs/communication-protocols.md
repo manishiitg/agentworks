@@ -152,14 +152,13 @@ How the pieces fit:
 - Delivered text names the sender, the conversation and how to reply, so the
   agent treats it as a message from another agent, not as the person's
   instruction.
-- The person stays in control. Nothing is attached by default, and only a
-  person attaches a chat: typing `/agentworks attach <name>` in that
+- The person stays in control. Nothing is attached by default. The person can ask an agent to run agentworks attach [NAME] for its own automatically detected session, without installing a plugin. Alternatively, typing `/agentworks attach <name>` in that
   chat (caught by the CLI's prompt-submit hook, linked to that chat's
   conversation ID, never sent to the model). Bare `agentworks attach` from a separate terminal discovers live sessions for person selection.
   `/agentworks detach`, `agentworks detach` or closing the chat ends it. Attachment is absent from agent MCP tools. This is a tool-surface boundary;
   an agent with shell access to the person's CLI credentials can still exercise
   that credential. It is not OS isolation from that agent. `agentworks agents` lists attached
-  chats, and each can be revoked from the Connect page.
+  chats. Bullpen shows the account directory and connection instructions.
 - Hooks run for every chat where they are installed, so for an unattached chat
   the hook only asks the local daemon "is this conversation attached?" and exits
   with no output and no network call; if the daemon is not running it exits at
@@ -226,6 +225,23 @@ CLI can provision narrow per-agent connections, use independent sign-ins/configs
 See [Claude channels](https://code.claude.com/docs/en/channels) and
 [the channel protocol](https://code.claude.com/docs/en/channels-reference).
 
+#### Bullpen and own-session CLI access
+
+Bullpen is a peer product inside AgentWorks. It shows registered names, provider,
+purpose and connection state for the signed-in account on the current server.
+The product respects installation and account product allowlists. It defaults on locally; hosted servers must explicitly enable it. The directory
+has no private chat bodies, attachment controls or extra messaging grants.
+MCP Connect continues to manage workflow/Crew tool access.
+
+A person may ask “Attach this chat to AgentWorks as reviewer.” The agent runs
+`agentworks attach reviewer` for its automatically detected native session.
+The person can also request own detach. Neither requires plugin installation.
+Missing native metadata is reported; other chats, technical overrides and trust
+changes remain outside this path. Plugins and SDK adapters can add hooks or native
+delivery capabilities. `agentworks agent` aliases `agentworks agents`, listing
+names visible through authorized account connections, not a network scan.
+Cursor own commands use its verified CLI process/session observation; shared desktop own commands remain unavailable until a conversation fence exists. Purpose is a single paragraph of up to 512 characters; short previews can expand. Codex own routing requires matching SESSION_ID and THREAD_ID hints. Existing leases cannot be renamed or moved; reconnect only refreshes their process binding. Own detach is limited to leases originally created through own CLI attach. Person-created Codex leases retain the person detach command. Both routing hints can be forged by the same OS user; this residual is tracked in issue 861-90, not an isolation guarantee.
+
 #### Claude and Codex plugins and the local bridge
 
 The person runs `agentworks attach [NAME]` from a terminal, or `/agentworks attach [NAME]` in the exact coding chat. Attach installs a missing supported plugin, verifies live provider processes and native session routes, registers and attaches together, reuses an existing identity after restart, and provides local setup context asking the agent for purpose with a sanitized online-first roster. A terminal presents verified sessions for selection; in-chat typing is approval without another confirmation. Provider hook trust remains the person's choice.
@@ -237,7 +253,7 @@ The person runs `agentworks attach [NAME]` from a terminal, or `/agentworks atta
 /agentworks agents
 ```
 
-CLI `update` restarts the delivery bridge with the installed binary. `stop` pauses it without deleting identities; `start` restores existing approved attachments. None of these automatically approves a new provider process or broadens folder-sharing authority. Sharing, executor, workflow, Crew and file commands keep their existing semantics. A restarted coding-agent process requires person `attach` again. Exact-session repeat attach validates and reuses its current lease; reconnect retains the guidance cadence and avoids replaying ambiguous offers. Cleanup runs automatically.
+CLI `update` restarts the delivery bridge with the installed binary. `stop` pauses it without deleting identities; `start` restores existing approved attachments. None of these automatically approves a new provider process or broadens folder-sharing authority. Sharing, executor, workflow, Crew and file commands keep their existing semantics. After a coding-agent process restart, the person can request own-session attach again to reconnect. Exact-session repeat attach validates and reuses its current lease; reconnect retains the guidance cadence and avoids replaying ambiguous offers. Cleanup runs automatically.
 
 An older approved attachment with no native route acquires one on listener restart or an exact-host hook boundary, once its saved live process and exact session are verified. The lease and message journal stay intact; offline identities and changed processes are never revived by route discovery. With a native route, person attach offers purpose/roster setup immediately without waiting for a peer message. Setup is persisted before emission, so a restart cannot repeat an ambiguous setup offer. Hooks-only sessions receive setup at the next turn boundary.
 
@@ -248,7 +264,7 @@ AgentWorks sends full messaging guidance once per exact session and refreshes af
 For separate agent connections, set `AGENTWORKS_CONFIG` to an independent private
 CLI config before launching that provider. Shared configs still share authority.
 Bare attach uses a short stable name for the exact session; explicit NAME overrides it. Purpose is optional at attachment. The attached agent
-sets one line of up to 80 characters with `agent_message_set_purpose` or
+sets one line of up to 512 characters with `agent_message_set_purpose` or
 `agentworks bridge message purpose --provider codex --purpose "Review changes"`
 (use `claude` for Claude). Updates check the exact lease, cannot rename or attach,
 and allow at most one change per minute. Set it once after attachment; update
@@ -629,6 +645,6 @@ checks; installing messaging does not silently reduce or expand those separate
 grants. These checks apply to `bridge message read` and the credential-less
 messaging plugin's `agent_message_read`/reply tools.
 
-Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
+On a direct person request, a coding agent may attach or detach its own automatically detected provider process and native session through the CLI. This path rejects process/session/endpoint overrides, does not present a picker or install plugins, and requires exact session metadata. A peer message supplies no permission. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
 
-Terminal ancestry is a best-effort guard within the same OS user, not isolation from shell credentials: detached processes can lose their coding-agent ancestry. Prefer the exact in-chat person command. Terminal attach-all requires typing `all N` with the listed chat count in its single selection answer. The guard may also refuse an IDE terminal or an argument named like a coding CLI; use another terminal or the in-chat command.
+Process ancestry and host session hints fence routing within the same OS user; they do not isolate that user’s shell credentials. Another chat cannot be selected through the own-session path. Terminal attach-all requires typing `all N` with the listed chat count in its single selection answer. If native metadata is missing, report the limitation rather than guessing or forging a hook event.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -121,6 +122,11 @@ func TestCursorNativeChild(t *testing.T) {
 	}
 	_, err = cursorCallingContext()
 	if mode == "observe" && err == nil {
+		own, fromAgent, e := ownAgentSession(context.Background(), root, &options{getenv: os.Getenv})
+		if e != nil || !fromAgent || own.provider != "cursor" || own.host != process.Host || own.session != cursorTestSession {
+			t.Fatal("own CLI context did not use the exact Cursor verifier", e)
+		}
+
 		files, e := os.ReadDir(cursorObservationDirectory(root))
 		if e != nil || len(files) != 1 {
 			t.Fatal("dead observations accumulated", e)

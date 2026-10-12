@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -81,11 +82,17 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
 	call(freshSender, map[string]any{"action": "register", "agent_name": "fresh-sender"})
 	// Short path avoids the operating system Unix socket filename limit.
-	root, err := os.MkdirTemp("", "aw-bridge-")
+	cache, err := os.MkdirTemp("", "aw-cache-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(root)
+	defer os.RemoveAll(cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	root, err := agentworksclient.DefaultLocalBridgeRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
 	var bridgeOptions agentworksclient.LocalBridgeOptions
 	start := func() (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -116,6 +123,63 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	cancel, done := start()
 	defer cancel()
+	// A non-interactive coding-agent tool call attaches only its own native
+	// UUID, using the existing login and no installed provider plugin. The ps
+	// fixture supplies process routing metadata; HTTP/OAuth/IPC stay real.
+	bin := filepath.Join(cache, "agentworks-cli")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/agentworks")
+	build.Dir = "../.."
+	if output, e := build.CombinedOutput(); e != nil {
+		t.Fatalf("CLI fixture build: %v: %s", e, output)
+	}
+	metadata := filepath.Join(cache, "metadata")
+	if e := os.Mkdir(metadata, 0700); e != nil {
+		t.Fatal(e)
+	}
+	ps := "#!/bin/sh\ncase \"$*\" in *ppid=*) printf '%s\\n' '1 codex /usr/bin/codex Mon Oct 12 01:00:00 2026';; *) printf '%s\\n' 'codex Mon Oct 12 01:00:00 2026';; esac\n"
+	if e := os.WriteFile(filepath.Join(metadata, "ps"), []byte(ps), 0700); e != nil {
+		t.Fatal(e)
+	}
+	cliEnv := func(wantOK bool, extraEnv []string, args ...string) string {
+		t.Helper()
+		command := exec.Command(bin, append([]string{"--config", path}, args...)...)
+		command.Env = append(os.Environ(), "PATH="+metadata+string(os.PathListSeparator)+os.Getenv("PATH"), "CODEX_THREAD_ID=11111111-2222-4333-8444-555555555555", "CODEX_SESSION_ID=11111111-2222-4333-8444-555555555555")
+		command.Env = append(command.Env, extraEnv...)
+		output, e := command.CombinedOutput()
+		if (e == nil) != wantOK {
+			t.Fatalf("CLI %v: %v: %s", args, e, output)
+		}
+		return string(output)
+	}
+	cli := func(wantOK bool, args ...string) string { return cliEnv(wantOK, nil, args...) }
+	if output := cli(true, "attach", "own-cli"); !strings.Contains(output, "No plugin was installed") {
+		t.Fatalf("own attach required plugin or picker: %s", output)
+	}
+	cli(true, "attach", "own-cli")
+	cli(false, "attach", "another-chat", "--provider", "claude", "--session", "22222222-2222-4333-8444-555555555555")
+	longPurpose := strings.Repeat("Responsibilities and current scope. ", 5) + strings.Repeat("🤝", 100)
+	if output := cli(true, "bridge", "message", "purpose", "--provider", "codex", "--purpose", longPurpose+"\u202e\x1b"); !strings.Contains(output, strings.TrimSpace(longPurpose)) || strings.Contains(output, "\u202e") || strings.Contains(output, "\\u001b") {
+		t.Fatalf("full purpose was lost: %s", output)
+	}
+	cli(false, "bridge", "message", "purpose", "--provider", "codex", "--purpose", strings.Repeat("x", 513))
+	if output := cli(true, "agent"); !strings.Contains(output, "agent:own-cli") || !strings.Contains(output, "agent:sender") {
+		t.Fatalf("directory alias lost authorized agents: %s", output)
+	}
+	cliEnv(false, []string{"CODEX_THREAD_ID=22222222-2222-4333-8444-555555555555"}, "detach")
+	// A separate existing person lease must not be renamed or detached by
+	// spoofing both same-user routing hints, even under a shared Codex host.
+	person := agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: "22222222-2222-4333-8444-555555555555", HostKey: "person-process", AgentName: "person-created", ConfigPath: path}
+	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, person); e != nil {
+		t.Fatal(e)
+	}
+	spoof := []string{"CODEX_THREAD_ID=" + person.SessionID, "CODEX_SESSION_ID=" + person.SessionID}
+	cliEnv(false, spoof, "attach", "takeover")
+	cliEnv(false, spoof, "detach")
+	person.Action = "detach_person"
+	if _, e := agentworksclient.CallLocalBridge(context.Background(), root, person); e != nil {
+		t.Fatal(e)
+	}
+	cli(true, "detach")
 	base := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "exact-hook-session", HostKey: "exact-parent-process"}
 	plugin, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "claude", base.HostKey, false)
 	if err != nil {
@@ -142,7 +206,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	attach.Action = "attach"
 	attach.ConfigPath = path
 	attach.AgentName = "hook-reviewer"
-	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID {
+	attach.Purpose = longPurpose + "\u202e\x1b"
+	if out := local(attach); !out.Attached || out.Attachment.SessionID != base.SessionID || out.Attachment.Purpose != longPurpose {
 		t.Fatal("wrong exact session")
 	}
 	// One parent can manage both names, but a derived child cannot impersonate
@@ -674,6 +739,50 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	defer cancel()
 	if out := local(routeStatus); !out.Offline || out.NativeDelivery {
 		t.Fatal("native recovery revived an offline identity")
+	}
+	stop(cancel, done)
+	// A legacy empty-host record stays fenced, with a durable once-only notice.
+	statePath = filepath.Join(root, "sessions.json")
+	stateBody, e := os.ReadFile(statePath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	saved = nil
+	if e = json.Unmarshal(stateBody, &saved); e != nil {
+		t.Fatal(e)
+	}
+	legacy := saved[base.Provider+":"+base.SessionID]
+	legacy["host_key"] = ""
+	legacy["offline"] = false
+	delete(legacy, "missing_host_notice")
+	delete(legacy, "offline_explicit")
+	stateBody, e = json.Marshal(saved)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(statePath, stateBody, 0600); e != nil {
+		t.Fatal(e)
+	}
+	legacyNotices := make(chan string, 4)
+	bridgeOptions = agentworksclient.LocalBridgeOptions{Notify: func(_ agentworksclient.AgentAttachment, text string) { legacyNotices <- text }}
+	cancel, done = start()
+	if out := local(routeStatus); !out.Offline || out.NativeDelivery || !strings.Contains(out.LastError, "no verified process binding") {
+		t.Fatal("legacy attachment revived or hid reattach diagnostic", out)
+	}
+	select {
+	case text := <-legacyNotices:
+		if !strings.Contains(text, "agentworks attach") {
+			t.Fatal("legacy notice lacks recovery", text)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("legacy upgrade gave no notice")
+	}
+	stop(cancel, done)
+	cancel, done = start()
+	select {
+	case text := <-legacyNotices:
+		t.Fatal("restart repeated legacy notice", text)
+	case <-time.After(100 * time.Millisecond):
 	}
 	stop(cancel, done)
 	bridgeOptions = agentworksclient.LocalBridgeOptions{}

@@ -2443,6 +2443,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// API routes
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(api.apiRequestLogMiddleware)
+	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	// A browser connection changed: wake that user's open tabs so the toolbar refetches the status instead of polling it.
 	browserrelay.SetChangeHook(func(user, _ string) { livefeed.Default.PublishToUser(livefeed.Browser, user, "") })
 	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)

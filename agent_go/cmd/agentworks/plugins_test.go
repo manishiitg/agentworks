@@ -129,7 +129,7 @@ func TestAgentPersonCommandsAndLocalCodingRemainAvailable(t *testing.T) {
 	if isCodingAgentProcess("/bin/zsh") {
 		t.Fatal("normal person shell refused")
 	}
-	for _, name := range []string{"attach", "detach", "agents", "start", "stop", "status", "executor", "files", "workflows", "crews"} {
+	for _, name := range []string{"attach", "detach", "agents", "agent", "start", "stop", "status", "executor", "files", "workflows", "crews"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd == root {
 			t.Fatal("missing command", name)

@@ -29,7 +29,7 @@ const CREATION_LABELS: Record<ProductCreateSurface, string> = {
   code: 'Create new Code workspace', 'video-studio': 'Create new video project',
 }
 
-const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway']
+const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway', 'bullpen']
 
 /** The same deployment/account product list and role gates as the sidebar. */
 export function quickNavigationItems(

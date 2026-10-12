@@ -34,7 +34,7 @@ func ServerOnly(product string) bool {
 	}
 }
 func InstallationAvailable(product string) bool {
-	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work")
+	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work" || Canonical(product) == "bullpen")
 }
 func Contains(list, product string) bool {
 	for _, candidate := range strings.Split(list, ",") {
@@ -53,6 +53,9 @@ func Enabled(product string) bool {
 	if product == "" {
 		return true
 	}
+	if product == "bullpen" && !Local() && !Contains(os.Getenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES"), product) && !Contains(os.Getenv("AGENT_PRODUCTS"), product) {
+		return false
+	}
 	if !InstallationAvailable(product) {
 		return false
 	}
@@ -66,7 +69,7 @@ func Enabled(product string) bool {
 				available = available || InstallationAvailable(candidate)
 			}
 			if !available {
-				surfaces = "agentworks,work"
+				surfaces = "agentworks,work,bullpen"
 			}
 		}
 		if !Contains(surfaces, product) {
