@@ -248,7 +248,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
       case 'notify':
         return <WorkflowNotificationView workspacePath={workspacePath} headerAction={askAI('notify')} />
       case 'access':
-        return <WorkflowAccessView workspacePath={workspacePath} />
+        return <WorkflowAccessView workspacePath={workspacePath} relayMode={relayMode} />
       case 'identity':
       case 'playbooks':
       case 'mcp':
