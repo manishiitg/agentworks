@@ -118,7 +118,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const refreshTools = useMCPStore(state => state.refreshTools)
   const [refreshingServers, setRefreshingServers] = useState(false)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const mcpTabs = projectIntegrationSections(allowedProducts).filter(option => !relayMode || option.value === 'apps' || option.value === 'gmail')
+  const mcpTabs = projectIntegrationSections(allowedProducts, relayMode)
   const [tab, setTab] = useState<McpTab>('apps')
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
   const [integrationMenu, setIntegrationMenu] = useState(true)

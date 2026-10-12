@@ -26,20 +26,28 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllEnvs() })
 
-it.each(['local', 'server', 'account', 'enabled'])('keeps product integrations consistent with %s availability, including a saved Vault tab', async scenario => {
+it.each(['local', 'server', 'account', 'enabled', 'relay'])('keeps product integrations consistent with %s availability, including a saved Vault tab', async scenario => {
   if (scenario === 'local') vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
   if (scenario === 'server') window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
   if (scenario === 'account') access.allowed_products = ['work']
   await act(async () => root.render(<>
-    <IntegrationSectionPicker options={projectIntegrationSections(access.allowed_products)} onSelect={() => {}} />
+    <IntegrationSectionPicker options={projectIntegrationSections(access.allowed_products, scenario === 'relay')} onSelect={() => {}} />
     <ProjectPluginsPanel tab="vault" connections={view => <p>{view} MCPs</p>} skills={<p>Project skills</p>} vault={<p>Vault groups</p>} />
-    <ProjectKnowledgebasePanel workspacePath="Workflow/example" />
+    {scenario !== 'relay' && <ProjectKnowledgebasePanel workspacePath="Workflow/example" />}
   </>))
   const menu = host.querySelector('[aria-label="Integration sections"]')!
   if (scenario === 'enabled') {
     expect(menu.textContent).toContain('Brain')
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toBe('Vault groups')
     expect(host.querySelector('[aria-label="About Brain"]')).not.toBeNull()
+  } else if (scenario === 'relay') {
+    expect(menu.querySelectorAll('button')).toHaveLength(2)
+    expect(menu.textContent).toContain('Tools & secrets')
+    expect(menu.textContent).toContain('Google apps')
+    expect(menu.textContent).not.toContain('Brain')
+    expect(menu.textContent).not.toContain('Slack')
+    expect(host.querySelector('[role="tabpanel"]')?.textContent).toBe('Vault groups')
+    expect(knowledgebaseApi.bootstrap).not.toHaveBeenCalled()
   } else {
     expect(menu.textContent).not.toContain('Brain')
     expect(menu.textContent).not.toContain('Vault')
