@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 // A company skill published to Brain is found by search_skills and installed into a workspace by
@@ -63,5 +64,19 @@ func TestBrainSkillSearchAndInstallIntoWorkspace(t *testing.T) {
 	}
 	if source, ok := brainSkillFolder("brain:/Company/Skills/release-notes/"); !ok || source != "Company/Skills/release-notes" {
 		t.Fatalf("brain source = %q %v", source, ok)
+	}
+}
+
+func TestBrainSkillUpdateNote(t *testing.T) {
+	installed := skills.Skill{BrainSource: `{"folder":"Shared/Skills/x","version":"v_aaaaaaaa11"}`}
+	if got := brainSkillUpdateNote(installed, map[string]string{"Shared/Skills/x": "v_bbbbbbbb22"}); !strings.Contains(got, "UPDATE AVAILABLE") {
+		t.Fatalf("a newer Brain version must be flagged: %q", got)
+	}
+	installed.BrainEdited = true
+	if got := brainSkillUpdateNote(installed, map[string]string{"Shared/Skills/x": "v_aaaaaaaa11"}); !strings.Contains(got, "up to date") || !strings.Contains(got, "edited in this workspace") {
+		t.Fatalf("current but edited copy: %q", got)
+	}
+	if got := brainSkillUpdateNote(skills.Skill{}, nil); got != "" {
+		t.Fatalf("a skill not from Brain gets no note: %q", got)
 	}
 }

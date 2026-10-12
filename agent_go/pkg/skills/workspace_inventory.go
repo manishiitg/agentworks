@@ -57,11 +57,13 @@ type WorkspaceInventory struct {
 func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventory, error) {
 	var raw struct {
 		Documents []struct {
-			Name     string   `json:"folder_name"`
-			FilePath string   `json:"file_path"`
-			Document string   `json:"document"`
-			Managed  bool     `json:"managed"`
-			UsedBy   []string `json:"used_by"`
+			Name        string   `json:"folder_name"`
+			FilePath    string   `json:"file_path"`
+			Document    string   `json:"document"`
+			Managed     bool     `json:"managed"`
+			UsedBy      []string `json:"used_by"`
+			BrainSource string   `json:"brain_source"`
+			BrainEdited bool     `json:"brain_edited"`
 		} `json:"documents"`
 		Usage map[string][]string `json:"usage"`
 	}
@@ -83,6 +85,7 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 		}
 		parsed.Managed = doc.Managed || IsBuiltinSkill(doc.Name)
 		parsed.UsedBy = doc.UsedBy
+		parsed.BrainSource, parsed.BrainEdited = doc.BrainSource, doc.BrainEdited
 		result.Skills = append(result.Skills, *parsed)
 	}
 	for name, usedBy := range raw.Usage {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +34,10 @@ type workspaceSkillDocument struct {
 	Content  string   `json:"document"`
 	Managed  bool     `json:"managed"`
 	UsedBy   []string `json:"used_by"`
+	// A skill installed from Brain records where it came from (.brain-source.json). BrainSource is that record; BrainEdited
+	// says a file in the folder differs from what was installed.
+	BrainSource string `json:"brain_source,omitempty"`
+	BrainEdited bool   `json:"brain_edited,omitempty"`
 }
 
 func skillWorkspaceDir(docs, workspace string) (string, error) {
@@ -259,7 +265,9 @@ func handleWorkspaceSkillList(c *gin.Context) {
 		}
 		rel, _ := filepath.Rel(dir, file)
 		_, markerErr := os.Lstat(filepath.Join(folder, ".agentworks-managed"))
-		documents = append(documents, workspaceSkillDocument{Name: name, FilePath: filepath.ToSlash(rel), Content: string(content), Managed: markerErr == nil, UsedBy: used[name]})
+		doc := workspaceSkillDocument{Name: name, FilePath: filepath.ToSlash(rel), Content: string(content), Managed: markerErr == nil, UsedBy: used[name]}
+		doc.BrainSource, doc.BrainEdited = brainSkillSource(folder)
+		documents = append(documents, doc)
 	}
 	sort.Slice(documents, func(i, j int) bool { return documents[i].Name < documents[j].Name })
 	c.JSON(http.StatusOK, gin.H{"documents": documents, "usage": used})
@@ -493,4 +501,46 @@ func handleWorkspaceSkillFiles(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"files": files})
+}
+
+const brainSkillMarker = ".brain-source.json"
+
+// brainSkillSource reads the record written when a skill was installed from Brain and reports whether any installed file
+// has changed since (a changed, added or missing file counts).
+func brainSkillSource(folder string) (string, bool) {
+	raw, err := os.ReadFile(filepath.Join(folder, brainSkillMarker))
+	if err != nil || len(raw) > 64*1024 {
+		return "", false
+	}
+	var marker struct {
+		Files map[string]string `json:"files"`
+	}
+	if json.Unmarshal(raw, &marker) != nil {
+		return "", false
+	}
+	edited := false
+	seen := map[string]bool{}
+	_ = filepath.WalkDir(folder, func(file string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || entry.Name() == brainSkillMarker || entry.Name() == ".agentworks-managed" {
+			return nil
+		}
+		rel, _ := filepath.Rel(folder, file)
+		rel = filepath.ToSlash(rel)
+		seen[rel] = true
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil
+		}
+		sum := sha256.Sum256(data)
+		if marker.Files[rel] != hex.EncodeToString(sum[:]) {
+			edited = true
+		}
+		return nil
+	})
+	for rel := range marker.Files {
+		if !seen[rel] {
+			edited = true
+		}
+	}
+	return string(raw), edited
 }

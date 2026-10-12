@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -228,5 +230,27 @@ func TestWorkspaceSkillMigrationSkipsALinkedLegacySkill(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(docs, "Workflow/w/.workspace-skills-v1")); err != nil {
 		t.Fatalf("the migration must complete: %v", err)
+	}
+}
+
+func TestBrainSkillSourceReportsEditsSinceInstall(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("# skill\n")
+	sum := sha256.Sum256(body)
+	marker := `{"folder":"Shared/Skills/x","version":"v_1","files":{"SKILL.md":"` + hex.EncodeToString(sum[:]) + `"}}`
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), body, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, brainSkillMarker), []byte(marker), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got, edited := brainSkillSource(dir); got == "" || edited {
+		t.Fatalf("untouched install: source %q edited %v", got, edited)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# changed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, edited := brainSkillSource(dir); !edited {
+		t.Fatal("a changed file must count as edited")
 	}
 }

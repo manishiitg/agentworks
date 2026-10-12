@@ -24,6 +24,10 @@ type Skill struct {
 	FilePath    string           `json:"file_path"`            // Relative path in workspace
 	SourceURL   string           `json:"source_url,omitempty"` // Source URL (populated from lock file)
 	LockInfo    *CLILockEntry    `json:"lock_info,omitempty"`  // Version tracking from skills-lock.json
+	// BrainSource is the record written when the skill was installed from Brain; BrainEdited says the installed files
+	// have changed since.
+	BrainSource string `json:"brain_source,omitempty"`
+	BrainEdited bool   `json:"brain_edited,omitempty"`
 }
 
 // ImportSkillRequest represents a request to import a skill from GitHub

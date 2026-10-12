@@ -12835,8 +12835,10 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 		}
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "## Skills in this workspace (%d)\n", len(inventory.Skills))
+		brainVersions := brainSkillCurrentVersions(ctx, inventory.Skills)
 		for _, skill := range inventory.Skills {
 			fmt.Fprintf(&sb, "- **%s** (folder %s, path %s): %s", skill.Frontmatter.Name, skill.FolderName, skill.FilePath, skill.Frontmatter.Description)
+			sb.WriteString(brainSkillUpdateNote(skill, brainVersions))
 			if len(skill.UsedBy) > 0 {
 				fmt.Fprintf(&sb, " — %s", strings.Join(skill.UsedBy, ", "))
 			}
