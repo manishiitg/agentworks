@@ -26,10 +26,12 @@ import (
 
 type options struct {
 	serverURL, configPath string
-	jsonOutput            bool
-	stdin                 io.Reader
-	stdout, stderr        io.Writer
-	getenv                func(string) string
+	// switchPath is the person's chosen login for an attach that moves the chat.
+	switchPath     string
+	jsonOutput     bool
+	stdin          io.Reader
+	stdout, stderr io.Writer
+	getenv         func(string) string
 }
 
 // cliOperationGroups maps CLI subcommands to external tools. Every tool named
@@ -101,7 +103,7 @@ func newCommand(o *options) *cobra.Command {
 	root.PersistentFlags().StringVar(&o.serverURL, "server", "", "Hosted AgentWorks HTTPS URL (or AGENTWORKS_SERVER)")
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
 	root.PersistentFlags().BoolVar(&o.jsonOutput, "json", false, "Emit compact JSON results and structured errors")
-	root.AddCommand(loginCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), watchCommand(o), debugCommand(o), serveShareCommand(o), pluginCommand(o), bridgeCommand(o), attachPluginCommand(o), claudeLauncherCommand(o), detachAgentCommand(o), agentsCommand(o))
+	root.AddCommand(loginCommand(o), loginsCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), watchCommand(o), debugCommand(o), serveShareCommand(o), pluginCommand(o), bridgeCommand(o), attachPluginCommand(o), claudeLauncherCommand(o), detachAgentCommand(o), agentsCommand(o))
 	toolsCmd := &cobra.Command{Use: "tools", Short: "Discover and call the server's current tools"}
 	toolsCmd.AddCommand(&cobra.Command{Use: "list", Args: cobra.NoArgs, Short: "List tools with authoritative JSON schemas", RunE: func(cmd *cobra.Command, _ []string) error {
 		client, err := o.client()
@@ -283,11 +285,49 @@ func (o *options) client() (*agentworksclient.Client, error) {
 	return client, nil
 }
 
+// loginPath resolves a login name (or "default") to its saved connection file and
+// refuses names that have no saved login.
+func (o *options) loginPath(name string) (string, error) {
+	path, err := agentworksclient.LoginPath(name)
+	if err != nil {
+		return "", err
+	}
+	cfg, err := agentworksclient.LoadConfig(path)
+	if err != nil {
+		return "", err
+	}
+	if cfg.Server == "" {
+		return "", fmt.Errorf("no login named %q; run agentworks login --server URL --name %s first", name, name)
+	}
+	return filepath.Abs(path)
+}
+
 func loginCommand(o *options) *cobra.Command {
 	var tokenStdin bool
+	var loginName string
 	var noBrowser bool
 	var scopes []string
-	cmd := &cobra.Command{Use: "login", Args: cobra.NoArgs, Short: "Sign in through your browser", Long: "Open AgentWorks in your browser, approve this CLI, and save a private renewable connection. Use --no-browser on a remote terminal and open the printed URL yourself.", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "login", Args: cobra.NoArgs, Short: "Sign in through your browser", Long: "Open AgentWorks in your browser, approve this CLI, and save a private renewable connection. Use --no-browser on a remote terminal and open the printed URL yourself. With --name the connection is saved under that name and never replaces the default login or another named login.", RunE: func(cmd *cobra.Command, _ []string) error {
+		if loginName != "" {
+			if o.configPath != "" || o.getenv("AGENTWORKS_CONFIG") != "" {
+				return errors.New("--name cannot be combined with --config or AGENTWORKS_CONFIG")
+			}
+			named, err := agentworksclient.LoginPath(loginName)
+			if err != nil {
+				return err
+			}
+			// A name that already signs in to another server is another login: never replace it.
+			if existing, e := agentworksclient.LoadConfig(named); e != nil {
+				return e
+			} else if requested := firstNonEmpty(o.serverURL, o.getenv("AGENTWORKS_SERVER")); existing.Server != "" && requested != "" {
+				want, e1 := agentworksclient.ValidateServer(requested)
+				have, e2 := agentworksclient.ValidateServer(existing.Server)
+				if e1 != nil || e2 != nil || want != have {
+					return fmt.Errorf("the login name %q already signs in to %s; choose another name", loginName, existing.Server)
+				}
+			}
+			o.configPath = named
+		}
 		cfg, path, err := o.connection(true)
 		if err != nil {
 			return err
@@ -296,7 +336,7 @@ func loginCommand(o *options) *cobra.Command {
 			if err := o.browserLogin(cmd.Context(), cfg, path, scopes, noBrowser); err != nil {
 				return err
 			}
-			return o.output(map[string]any{"server": cfg.Server, "logged_in": true})
+			return o.output(map[string]any{"server": cfg.Server, "logged_in": true, "name": firstNonEmpty(loginName, agentworksclient.DefaultLoginName)})
 		}
 		secret, err := io.ReadAll(io.LimitReader(o.stdin, 1025))
 		if err != nil {
@@ -321,6 +361,7 @@ func loginCommand(o *options) *cobra.Command {
 		}
 		return o.output(map[string]any{"server": cfg.Server, "logged_in": true})
 	}}
+	cmd.Flags().StringVar(&loginName, "name", "", "Save this login under a name (for example work) instead of replacing the default login")
 	cmd.Flags().BoolVar(&tokenStdin, "token-stdin", false, "Read a legacy personal access token from stdin")
 	cmd.Flags().StringSliceVar(&scopes, "scopes", nil, "Explicit permissions for this connection (e.g. devices:connect for the local executor)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the approval link without opening a browser")
@@ -408,7 +449,18 @@ func skillsCommand(o *options) *cobra.Command {
 }
 
 func logoutCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "logout", Args: cobra.NoArgs, Short: "Revoke the browser connection and remove saved credentials", RunE: func(cmd *cobra.Command, _ []string) error {
+	var name string
+	cmd := &cobra.Command{Use: "logout", Args: cobra.NoArgs, Short: "Revoke the browser connection and remove saved credentials", RunE: func(cmd *cobra.Command, _ []string) error {
+		if name != "" {
+			if o.configPath != "" || o.getenv("AGENTWORKS_CONFIG") != "" {
+				return errors.New("--name cannot be combined with --config or AGENTWORKS_CONFIG")
+			}
+			named, err := agentworksclient.LoginPath(name)
+			if err != nil {
+				return err
+			}
+			o.configPath = named
+		}
 		path, err := o.path()
 		if err != nil {
 			return err
@@ -435,6 +487,8 @@ func logoutCommand(o *options) *cobra.Command {
 		}
 		return o.output(map[string]any{"logged_out": true, "environment_token_active": o.getenv("AGENTWORKS_TOKEN") != ""})
 	}}
+	cmd.Flags().StringVar(&name, "name", "", "Sign out of this named login instead of the default login")
+	return cmd
 }
 
 func addOperationFlags(cmd *cobra.Command, tool string) {
@@ -728,4 +782,21 @@ func (o *options) output(value any) error {
 		encoder.SetIndent("", "  ")
 	}
 	return encoder.Encode(value)
+}
+
+func loginsCommand(o *options) *cobra.Command {
+	return &cobra.Command{Use: "logins", Args: cobra.NoArgs, Short: "List saved logins by name", Long: "Lists the default login and each named login with the server it signs in to. It never shows credentials or file paths.", RunE: func(cmd *cobra.Command, _ []string) error {
+		logins := agentworksclient.ListLogins()
+		if o.jsonOutput {
+			return o.output(map[string]any{"logins": logins})
+		}
+		if len(logins) == 0 {
+			_, err := fmt.Fprintln(o.stdout, "No saved logins. Run agentworks login --server URL [--name NAME].")
+			return err
+		}
+		for _, l := range logins {
+			fmt.Fprintf(o.stdout, "%s\t%s\n", l.Name, l.Server)
+		}
+		return nil
+	}}
 }

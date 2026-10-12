@@ -116,14 +116,26 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 			switch req.Action {
 			case "attach":
-				if len(words) > 3 || len(words) == 3 && strings.HasPrefix(words[2], "--") {
-					return pluginBlock(o, "Use /agentworks attach [NAME]. No confirmation or resume command is needed.")
+				// Strict grammar: attach [NAME] [--on LOGIN]; nothing else.
+				rest, on := words[2:], ""
+				if n := len(rest); n >= 2 && rest[n-2] == "--on" {
+					on, rest = rest[n-1], rest[:n-2]
+				}
+				if len(rest) > 1 || len(rest) == 1 && strings.HasPrefix(rest[0], "--") || on != "" && strings.HasPrefix(on, "--") {
+					return pluginBlock(o, "Use /agentworks attach [NAME] [--on LOGIN]. No confirmation or resume command is needed.")
 				}
 				if req.HostKey == "" {
 					return pluginBlock(o, "Cannot identify this exact provider process. Run agentworks attach in your terminal to select a live session.")
 				}
-				if len(words) == 3 {
-					req.AgentName = words[2]
+				if len(rest) == 1 {
+					req.AgentName = rest[0]
+				}
+				if on != "" {
+					path, e := o.loginPath(on)
+					if e != nil {
+						return pluginBlock(o, e.Error())
+					}
+					o.switchPath = path
 				}
 				req.NativeRemote = discoverNativeRemote(req.Provider, req.SessionID, req.HostKey)
 				if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {

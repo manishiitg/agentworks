@@ -53,14 +53,34 @@ the server you are connected to. To point your CLI at a server, sign in with:
 agentworks login --server https://agentworks.example.com
 ```
 
-The current CLI saves one default login configuration. Signing in to another
-server changes that saved default for future attaches; it does not move chats
-that are already attached. Each chat has one server binding. Named connections
-that preserve several logins are not shipped yet.
+A plain `login` saves the default login. To keep several servers (or accounts)
+signed in side by side, give each a name:
 
-Coming soon: named logins, so you can keep several servers signed in and
-pick between them, and `attach --on` / `attach --all --on` to attach chats
-across your logins.
+```sh
+agentworks login --server https://agentworks.example.com --name work
+agentworks logins              # names and servers, never credentials
+```
+
+A named login is a separate private file: it never replaces the default login
+or another named login (a name that already signs in to a different server is
+refused). `agentworks logout --name work` signs one out.
+
+Each chat is attached to one login at a time. A bare `/agentworks attach`
+always reconnects the chat on the login it already uses, even if the default
+login has changed since. To move a chat to another login, name it:
+
+```text
+/agentworks attach [NAME] --on work
+```
+
+or, from your own terminal, `agentworks attach --on work`. The chat keeps its
+name unless you give NAME. If the new login cannot be reached or refuses the
+attachment, the chat stays exactly where it was; when the move succeeds, the old
+login releases the chat. To move every attached live chat at once, run
+`agentworks attach --all --on work` in your terminal: it lists the chats, asks
+you to retype the count, reports each chat separately and skips chats that are
+offline or ended. A coding agent cannot move a chat by itself: moving is always
+your own command.
 
 ## Connect a chat
 
@@ -257,8 +277,7 @@ troubleshooting setup.
 
 ## Coming next
 
-Named logins and moving chats between servers; admin tools for reviewing
-connected chats. Sharing with a whole group or organisation comes later; today
+Sharing with a whole group or organisation comes later; today
 you share with one person at a time.
 
 ## Setup and updates

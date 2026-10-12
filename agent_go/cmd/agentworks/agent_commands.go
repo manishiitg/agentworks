@@ -24,7 +24,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks attach [NAME] connects or reconnects this chat; /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -50,6 +50,11 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 		if err != nil {
 			return err
 		}
+	}
+	if o.switchPath != "" {
+		// The person chose another saved login for this exact chat.
+		req.ConfigPath, req.SwitchConnection = o.switchPath, true
+		return nil
 	}
 	req.ConfigPath, err = o.path()
 	if err != nil {
@@ -86,7 +91,7 @@ func agentsCommand(o *options) *cobra.Command {
 					return o.output(map[string]any{"directories": dirs.Directories, "local": local.AgentStates})
 				}
 				for _, d := range dirs.Directories {
-					fmt.Fprintln(o.stdout, d.Server)
+					fmt.Fprintln(o.stdout, d.Server+loginLabel(d.Server))
 					fmt.Fprintln(o.stdout, agentRoster(d.Agents, local))
 				}
 				return nil
@@ -178,11 +183,25 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 type liveAgentSession struct{ provider, session, host, remote, cwd, name string }
 
 func attachPluginCommand(o *options) *cobra.Command {
-	var provider, session, remote, name string
+	var provider, session, remote, name, on string
+	var all bool
 	var pid int
-	cmd := &cobra.Command{Use: "attach [NAME]", Args: cobra.MaximumNArgs(1), Short: "Install, attach or reconnect a live coding-agent chat", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "attach [NAME]", Args: cobra.MaximumNArgs(1), Short: "Install, attach or reconnect a live coding-agent chat", Long: "Attach this chat, or reconnect it on the login it already uses. With --on LOGIN the chat moves to that saved login (see agentworks logins); the move keeps the chat's name unless you give NAME, and if the new login cannot be reached the chat stays where it was. With --all --on LOGIN every attached live chat is moved after you retype the listed count.", RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
 			name = args[0]
+		}
+		if all && on == "" {
+			return errors.New("--all moves chats to another login: add --on LOGIN")
+		}
+		if all && name != "" {
+			return errors.New("NAME selects one identity; use --all without NAME")
+		}
+		if on != "" {
+			path, e := o.loginPath(on)
+			if e != nil {
+				return e
+			}
+			o.switchPath = path
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -193,6 +212,9 @@ func attachPluginCommand(o *options) *cobra.Command {
 			return err
 		}
 		if fromAgent {
+			if on != "" || all {
+				return errors.New("moving a chat to another login is the person's action: type /agentworks attach --on LOGIN in the chat, or run agentworks attach --on LOGIN in your terminal")
+			}
 			if provider != "" || session != "" || remote != "" || pid != 0 {
 				return errors.New("own-session attach does not accept provider, session, process or endpoint overrides")
 			}
@@ -242,6 +264,9 @@ func attachPluginCommand(o *options) *cobra.Command {
 				fmt.Fprintln(o.stdout, "AgentWorks plugin ready. Reload your coding chat, review its hooks, then type /agentworks attach. No chat has been attached.")
 				return nil
 			}
+			if all {
+				return moveAttachedChats(cmd.Context(), o, root, sessions, on)
+			}
 			for i, s := range sessions {
 				fmt.Fprintf(o.stderr, "%d. %s %s (%s)\n", i+1, s.provider, s.session, s.name)
 			}
@@ -285,11 +310,60 @@ func attachPluginCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVar(&session, "session", "", "Exact session override")
 	cmd.Flags().StringVar(&remote, "native-remote", "", "Exact native endpoint override")
 	cmd.Flags().IntVar(&pid, "native-pid", 0, "Exact process override")
+	cmd.Flags().StringVar(&on, "on", "", "Move this chat to a saved login (see agentworks logins)")
+	cmd.Flags().BoolVar(&all, "all", false, "With --on, move every attached live chat after a counted confirmation")
 	cmd.Flags().StringVar(&name, "name", "", "Name override")
 	for _, flag := range []string{"provider", "session", "native-remote", "native-pid", "name"} {
 		_ = cmd.Flags().MarkHidden(flag)
 	}
 	return cmd
+}
+
+// moveAttachedChats moves every live chat that is already attached to the login
+// the person named. It lists the chats first and asks the person to retype the
+// count, reports each chat on its own, and never stops at the first failure.
+func moveAttachedChats(ctx context.Context, o *options, root string, sessions []liveAgentSession, on string) error {
+	var movable []liveAgentSession
+	for _, s := range sessions {
+		if s.name == "" {
+			fmt.Fprintf(o.stderr, "skipped %s %s: not attached\n", s.provider, s.session)
+			continue
+		}
+		status, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: s.provider, SessionID: s.session, HostKey: s.host})
+		if err != nil || !status.Attached || status.Offline {
+			fmt.Fprintf(o.stderr, "skipped %s %s: offline or ended\n", s.provider, s.session)
+			continue
+		}
+		movable = append(movable, s)
+	}
+	if len(movable) == 0 {
+		fmt.Fprintln(o.stdout, "No attached live chats to move. Nothing was changed.")
+		return nil
+	}
+	for i, s := range movable {
+		fmt.Fprintf(o.stderr, "%d. %s %s (agent:%s)\n", i+1, s.provider, s.session, s.name)
+	}
+	fmt.Fprintf(o.stderr, "Move these %d chats to the login %q? Retype %d to confirm (anything else cancels): ", len(movable), on, len(movable))
+	var answer string
+	_, _ = fmt.Fscanln(o.stdin, &answer)
+	if answer != strconv.Itoa(len(movable)) {
+		fmt.Fprintln(o.stdout, "Cancelled. No chat was changed.")
+		return nil
+	}
+	failed := 0
+	for _, s := range movable {
+		if err := attachLiveAgent(ctx, o, root, s, ""); err != nil {
+			failed++
+			fmt.Fprintf(o.stdout, "FAILED %s %s: %v (it stays where it was)\n", s.provider, s.session, err)
+			continue
+		}
+		fmt.Fprintf(o.stdout, "moved %s %s\n", s.provider, s.session)
+	}
+	fmt.Fprintf(o.stdout, "%d of %d chats moved.\n", len(movable)-failed, len(movable))
+	if failed > 0 {
+		return fmt.Errorf("%d chats were not moved", failed)
+	}
+	return nil
 }
 
 func attachLiveAgent(ctx context.Context, o *options, root string, chosen liveAgentSession, name string) error {
@@ -827,4 +901,23 @@ func isCodingAgentProcess(command string) bool {
 		return true
 	}
 	return strings.HasPrefix(name, "muse-bin-") || (strings.Contains(filepath.ToSlash(command), "/claude-code/") && name == "cli.js") || name == "pi.mjs" || (strings.Contains(filepath.ToSlash(command), "/pi-coding-agent/") && name == "cli.js")
+}
+
+// loginLabel names the saved logins that sign in to a server, so a roster says
+// which login it came from. It never shows credentials or paths.
+func loginLabel(server string) string {
+	want, err := agentworksclient.ValidateServer(server)
+	if err != nil {
+		return ""
+	}
+	var names []string
+	for _, l := range agentworksclient.ListLogins() {
+		if have, e := agentworksclient.ValidateServer(l.Server); e == nil && have == want {
+			names = append(names, l.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return " (login: " + strings.Join(names, ", ") + ")"
 }

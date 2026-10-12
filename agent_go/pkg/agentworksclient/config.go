@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -91,4 +93,77 @@ func SaveConfig(path string, cfg Config) error {
 		return err
 	}
 	return os.Rename(f.Name(), path)
+}
+
+// A named login is a separate private connection file under the user's config
+// directory, so a second login (for example to another server) never replaces
+// the default one. Names are lowercase and short; "default" means the default
+// login and cannot be saved as a name.
+const DefaultLoginName = "default"
+
+var loginNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,31}$`)
+
+func ValidateLoginName(name string) error {
+	if name == DefaultLoginName {
+		return errors.New(`"default" is the default login; choose another name`)
+	}
+	if !loginNamePattern.MatchString(name) {
+		return errors.New("a login name is 1 to 32 lowercase letters, digits, dots, underscores or hyphens, starting with a letter or digit")
+	}
+	return nil
+}
+
+func loginsDir() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "agentworks", "logins"), nil
+}
+
+// LoginPath is the connection file of a named login, or the default login's
+// file for "default".
+func LoginPath(name string) (string, error) {
+	if name == DefaultLoginName {
+		return DefaultConfigPath()
+	}
+	if err := ValidateLoginName(name); err != nil {
+		return "", err
+	}
+	dir, err := loginsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name+".json"), nil
+}
+
+type LoginInfo struct {
+	Name   string `json:"name"`
+	Server string `json:"server"`
+}
+
+// ListLogins returns the default login and every named login with the server it
+// signs in to. It never returns credentials or file paths.
+func ListLogins() []LoginInfo {
+	var out []LoginInfo
+	if path, err := DefaultConfigPath(); err == nil {
+		if cfg, e := LoadConfig(path); e == nil && cfg.Server != "" {
+			out = append(out, LoginInfo{Name: DefaultLoginName, Server: cfg.Server})
+		}
+	}
+	dir, err := loginsDir()
+	if err != nil {
+		return out
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, entry := range entries {
+		name := strings.TrimSuffix(entry.Name(), ".json")
+		if entry.IsDir() || name == entry.Name() || ValidateLoginName(name) != nil {
+			continue
+		}
+		if cfg, e := LoadConfig(filepath.Join(dir, entry.Name())); e == nil && cfg.Server != "" {
+			out = append(out, LoginInfo{Name: name, Server: cfg.Server})
+		}
+	}
+	return out
 }

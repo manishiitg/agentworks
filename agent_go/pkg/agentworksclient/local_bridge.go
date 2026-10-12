@@ -21,27 +21,30 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
-	OwnAttach     bool   `json:"own_attach,omitempty"`
-	MuseCurrent   bool   `json:"muse_current,omitempty"`
-	ReuseIdentity bool   `json:"reuse_identity,omitempty"`
-	Setup         bool   `json:"setup,omitempty"`
-	Action        string `json:"action"`
-	AttachmentID  string `json:"attachment_id,omitempty"`
-	Provider      string `json:"provider"`
-	SessionID     string `json:"session_id"`
-	HostKey       string `json:"host_key,omitempty"`
-	NativeRemote  string `json:"native_remote,omitempty"`
-	ConfigPath    string `json:"config_path,omitempty"`
-	AgentName     string `json:"agent_name,omitempty"`
-	Purpose       string `json:"purpose,omitempty"`
-	MessageID     string `json:"message_id,omitempty"`
-	Delivery      string `json:"delivery,omitempty"`
-	Transport     string `json:"transport,omitempty"`
-	Message       string `json:"message,omitempty"`
-	SubmissionID  string `json:"submission_id,omitempty"`
-	Target        string `json:"target,omitempty"`
-	InboxID       string `json:"inbox_id,omitempty"`
-	Cursor        int    `json:"after,omitempty"`
+	OwnAttach     bool `json:"own_attach,omitempty"`
+	MuseCurrent   bool `json:"muse_current,omitempty"`
+	ReuseIdentity bool `json:"reuse_identity,omitempty"`
+	// SwitchConnection is the person's explicit move of this exact chat to the
+	// connection in ConfigPath. Without it a saved chat keeps its own connection.
+	SwitchConnection bool   `json:"switch_connection,omitempty"`
+	Setup            bool   `json:"setup,omitempty"`
+	Action           string `json:"action"`
+	AttachmentID     string `json:"attachment_id,omitempty"`
+	Provider         string `json:"provider"`
+	SessionID        string `json:"session_id"`
+	HostKey          string `json:"host_key,omitempty"`
+	NativeRemote     string `json:"native_remote,omitempty"`
+	ConfigPath       string `json:"config_path,omitempty"`
+	AgentName        string `json:"agent_name,omitempty"`
+	Purpose          string `json:"purpose,omitempty"`
+	MessageID        string `json:"message_id,omitempty"`
+	Delivery         string `json:"delivery,omitempty"`
+	Transport        string `json:"transport,omitempty"`
+	Message          string `json:"message,omitempty"`
+	SubmissionID     string `json:"submission_id,omitempty"`
+	Target           string `json:"target,omitempty"`
+	InboxID          string `json:"inbox_id,omitempty"`
+	Cursor           int    `json:"after,omitempty"`
 }
 
 type LocalAgentState struct {
@@ -143,6 +146,23 @@ func DefaultLocalBridgeRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "agentworks", "bridge"), nil
+}
+
+// localDifferentNetwork is true only when both parent logins are readable and
+// sign in to different servers, so a same-named agent on another network never
+// blocks an attach. Unknown or equal servers keep the existing conservative check.
+func localDifferentNetwork(a, b string) bool {
+	if a == "" || b == "" || a == b {
+		return false
+	}
+	ca, errA := LoadConfig(a)
+	cb, errB := LoadConfig(b)
+	if errA != nil || errB != nil || ca.Server == "" || cb.Server == "" {
+		return false
+	}
+	sa, errA := ValidateServer(ca.Server)
+	sb, errB := ValidateServer(cb.Server)
+	return errA == nil && errB == nil && sa != sb
 }
 
 func localBridgeKey(provider, session string) string { return provider + ":" + session }
@@ -612,7 +632,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			name = s.Attachment.AgentName
 		}
 		for k, other := range b.sessions {
-			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == name {
+			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == name && !localDifferentNetwork(other.ParentConfigPath, in.ConfigPath) {
 				return LocalBridgeReply{Error: "agent:" + name + " is attached to another chat; detach it there first"}
 			}
 		}
@@ -621,7 +641,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				if in.ReuseIdentity || in.AgentName == "" {
 					in.AgentName = s.Attachment.AgentName
 				}
-				in.ConfigPath = s.ParentConfigPath
+				if !in.SwitchConnection {
+					in.ConfigPath = s.ParentConfigPath
+				}
 				in.Purpose = s.Attachment.Purpose
 			}
 			if !s.Offline && s.AccountSenders && s.HostKey == in.HostKey && s.NativeRemote == in.NativeRemote && s.Attachment.AgentName == in.AgentName && s.ParentConfigPath == in.ConfigPath {
@@ -743,6 +765,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		for _, v := range old {
 			stopMuseWatch(v)
+			if in.SwitchConnection && v.ParentConfigPath != next.ParentConfigPath && v.client != nil && !v.Offline {
+				// The chat now lives on the other connection. Release the old lease
+				// and child connection there; the new attachment is already saved, so
+				// a failure here only leaves a stale name the owner can see as offline.
+				_, _ = v.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": v.Attachment.AgentName, "attachment_id": v.Attachment.ID}, true)
+				if cfg, e := LoadConfig(v.ConfigPath); e == nil {
+					_ = v.client.RevokeOAuth(callCtx, cfg.RefreshToken)
+				}
+			}
 			if v.ConfigPath != next.ConfigPath {
 				_ = os.Remove(v.ConfigPath)
 			}
