@@ -102,3 +102,11 @@ func TestGuestAskNativeBridgeToolsAreTheAllowListMinusCore(t *testing.T) {
 		}
 	}
 }
+
+// The model reads the notice to learn the tools are direct (the bridge spec still shows HTTP routes).
+func TestGuestAskNoticeSaysTheToolsAreDirect(t *testing.T) {
+	src, err := os.ReadFile("crew_session_mode.go")
+	if err != nil || !strings.Contains(string(src), "DIRECT tools") {
+		t.Fatal("the guest ask notice must tell the model its tools are direct")
+	}
+}

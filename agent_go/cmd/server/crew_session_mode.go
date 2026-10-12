@@ -127,7 +127,7 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 		}
 		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
 		if crewGuestCallerForTurn(req, currentUserID) != "" && req.CrewAskReadOnly {
-			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewAskModelSentence + " Read the Crew's files with `" + crewAskFilesToolName + "` (list, search, read); there is no shell.\n" + sessionModeClose
+			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewAskModelSentence + " Read the Crew's files with `" + crewAskFilesToolName + "` (list, search, read) and reply with `send_message`: they, `read_skill`, `list_skills`, `search_skills` and the other tools you were given are DIRECT tools (call them by name, e.g. mcp__api-bridge__" + crewAskFilesToolName + "); do not look for an HTTP route, there is no shell or curl and none is needed.\n" + sessionModeClose
 		}
 		if crewGuestCallerForTurn(req, currentUserID) != "" && !req.CrewAskReadOnly {
 			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewGuestCallsNote + "\n" + sessionModeClose
