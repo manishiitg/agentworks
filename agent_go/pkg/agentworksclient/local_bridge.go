@@ -853,9 +853,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	case "share_person", "unshare_person", "share_own", "unshare_own":
 		// Sharing the chat's agent with everyone on its server. The person types it
 		// in the chat (_person), or the agent does it for its own exact session when
-		// the person asked in plain language (_own, fenced by the process key).
-		if strings.HasSuffix(in.Action, "_own") && (s.Offline || in.HostKey == "" || in.HostKey != s.HostKey) {
-			return LocalBridgeReply{Error: "own sharing needs this exact attached session"}
+		// the person asked in plain language (_own).
+		// Both forms need the exact attached session's process key, so another local
+		// process reaching the bridge socket cannot share an attached chat.
+		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
+			return LocalBridgeReply{Error: "sharing needs this exact attached session"}
 		}
 		if s.ParentConfigPath == "" {
 			return LocalBridgeReply{Error: "this chat has no saved login to share with; attach it again"}

@@ -370,7 +370,11 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
-			items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "expires_at": sh.ExpiresAt, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "purpose": a.Purpose, "online": namedAgentOnline(a)})
+			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "purpose": a.Purpose, "online": namedAgentOnline(a)}
+			if !sh.serverScope() {
+				item["expires_at"] = sh.ExpiresAt
+			}
+			items = append(items, item)
 		}
 	}
 	return items
@@ -476,7 +480,11 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		} else if !sh.live(now) {
 			state = "expired"
 		}
-		shares = append(shares, map[string]interface{}{"share_id": sh.ID, "agent_name": name, "agent_id": sh.AgentID, "person": label(sh.SubjectUserID), "capability": sh.Capability, "created_at": sh.CreatedAt, "expires_at": sh.ExpiresAt, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "state": state})
+		row := map[string]interface{}{"share_id": sh.ID, "agent_name": name, "agent_id": sh.AgentID, "person": label(sh.SubjectUserID), "capability": sh.Capability, "created_at": sh.CreatedAt, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "state": state}
+		if !sh.serverScope() {
+			row["expires_at"] = sh.ExpiresAt // a share with everyone has no expiry
+		}
+		shares = append(shares, row)
 	}
 	for _, b := range s.Blocks {
 		if b.OwnerUserID == claims.UserID {

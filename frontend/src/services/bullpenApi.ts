@@ -18,7 +18,8 @@ export interface BullpenShare {
   share_id: string
   agent_name: string
   person: string
-  expires_at: string
+  expires_at?: string
+  scope?: 'everyone' | 'person'
   state: 'active' | 'revoked' | 'expired'
 }
 

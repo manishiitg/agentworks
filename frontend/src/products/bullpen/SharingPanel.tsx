@@ -68,7 +68,7 @@ export function SharingPanel() {
       <h3 className="font-medium">Shared by you</h3>
       {!data?.shares.length ? <p className="text-sm text-muted-foreground">You have not shared any agent.</p> : <ul className="divide-y divide-border rounded-xl border border-border">
         {data.shares.map(share => <li key={share.share_id} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
-          <span className="min-w-0 break-all"><strong>{share.agent_name}</strong> with <strong>{share.person}</strong> · {stateLabel[share.state]}{share.state === 'active' && ' until ' + when(share.expires_at)}</span>
+          <span className="min-w-0 break-all"><strong>{share.agent_name}</strong> with <strong>{share.person}</strong> · {stateLabel[share.state]}{share.state === 'active' && (share.scope === 'everyone' ? ' until you make it private' : ' until ' + when(share.expires_at ?? ''))}</span>
           {share.state === 'active' && <Button variant="outline" size="sm" disabled={busy} aria-label={'Revoke ' + share.agent_name + ' for ' + share.person} onClick={() => void change(() => bullpenApi.revoke(share.share_id), 'Revoked. Their pending messages will not be delivered.')}>Revoke</Button>}
         </li>)}
       </ul>}
