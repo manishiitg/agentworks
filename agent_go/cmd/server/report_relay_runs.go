@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net/http"
@@ -111,6 +112,10 @@ func relayRecordedRuns(ctx context.Context, claims *UserClaims, workspace string
 		}
 	}
 	root, err := webhookWorkspaceRoot(rootWorkspace)
+	if errors.Is(err, fs.ErrNotExist) {
+		// Nothing has run here yet: no recorded runs, not an error.
+		return map[string]any{"version": version, "runs": []map[string]any{}, "scope": map[bool]string{true: "all", false: "own"}[relayRunSeesAll(claims, manifest)]}, 0, ""
+	}
 	if err != nil {
 		return nil, http.StatusNotFound, "Relay workspace unavailable"
 	}
