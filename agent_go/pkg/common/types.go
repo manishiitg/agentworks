@@ -215,6 +215,7 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 type SessionShellConfig struct {
 	WorkflowPath     string // Owning workflow for live capability reconciliation
 	WorkflowReadOnly bool   // Current workflow turn cannot receive attached-folder write grants
+	CrewAskReadOnly  bool   // Current turn is a guest's free-text ask to a Crew: nothing acts, no MCP or outward tools
 	CrewReader       bool   // Current turn is a Crew Run-mode turn (a reader or a guest call): mutating Crew tools are refused
 	// RunOutputPath is a Run-mode Crew turn's run folder (workspace-relative, trailing slash): the one place it may
 	// write, created by the platform. Empty on every other turn.
@@ -270,6 +271,13 @@ func SetSessionReadOnlyAccess(sessionID string, readOnly bool) {
 func SetSessionCrewReader(sessionID string, crewReader bool) {
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
 		cfg.CrewReader = crewReader
+	})
+}
+
+// SetSessionCrewAskReadOnly marks a guest's free-text ask to a Crew (856-59). It is refreshed on every turn.
+func SetSessionCrewAskReadOnly(sessionID string, askReadOnly bool) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.CrewAskReadOnly = askReadOnly
 	})
 }
 

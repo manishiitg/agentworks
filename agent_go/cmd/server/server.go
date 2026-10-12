@@ -2660,6 +2660,11 @@ func runServer(cmd *cobra.Command, args []string) {
 			executorHandlers.HandlePerToolVirtualRequest(w, r, tool)
 			return
 		}
+		// A guest's free-text ask uses no MCP server, the platform's Vault ones included (856-59).
+		if cfg := common.GetSessionShellConfig(strings.TrimSpace(r.Header.Get("X-Session-ID"))); cfg != nil && cfg.CrewAskReadOnly {
+			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "MCP tools are not available in a read-only ask: call one of the Crew's functions instead."})
+			return
+		}
 		ctx, originalTool, err := api.vaultBridgeToolName(r.Context(), strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
 		if err != nil {
 			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": err.Error()})
@@ -4070,6 +4075,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
+	common.SetSessionCrewAskReadOnly(sessionID, crewGuest != "" && req.CrewAskReadOnly)
 	common.SetSessionReadOnlyAccess(sessionID, access == WorkflowAccessRead)
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
@@ -5983,6 +5989,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
+			if crewGuest != "" && req.CrewAskReadOnly {
+				toolGate.DenyReaderTools(crewAskDeniedTools()...)
+			}
 		}
 		defer toolGate.logSurface(sessionID)
 		_, platformBridgeTools := externalBuilderTransport(GetUserFromContext(r.Context()))

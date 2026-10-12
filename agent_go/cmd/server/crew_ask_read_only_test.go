@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
 	"os"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 // 856-59: a guest's free-text ask only reads. The reader deny list keeps the generic write tools off (the managed DB
@@ -30,5 +33,25 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 	src, err := os.ReadFile("external_tools.go")
 	if err != nil || !strings.Contains(string(src), `add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence`) {
 		t.Fatal("ask_crew description does not carry the sentence")
+	}
+}
+
+// A guest's ask gets no outward tools and no MCP bridge (the probe found Slack, Google and Vault tools reachable).
+func TestGuestAskRefusesOutwardAndMCPTools(t *testing.T) {
+	const sid = "guest-ask-session"
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
+	t.Cleanup(func() { common.ClearSessionShellConfig(sid) })
+	common.SetSessionCrewReader(sid, true)
+	if msg := readerDeniedToolRefusal(ctx, "send_slack_message"); msg != "" {
+		t.Fatalf("a function guest turn keeps its outward tools: %q", msg)
+	}
+	common.SetSessionCrewAskReadOnly(sid, true)
+	for _, tool := range crewAskDeniedTools() {
+		if msg := readerDeniedToolRefusal(ctx, tool); msg == "" {
+			t.Errorf("%s must be refused in a read-only ask", tool)
+		}
+	}
+	if cfg := common.GetSessionShellConfig(sid); cfg == nil || !cfg.CrewAskReadOnly {
+		t.Fatal("ask flag not recorded for the MCP bridge")
 	}
 }
