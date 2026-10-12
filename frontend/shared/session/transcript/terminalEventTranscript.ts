@@ -1064,14 +1064,36 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
   })
 }
 
+// Native transcripts can replay the same assistant message with a fresh event
+// id after each tool. Remove repeats before grouping: removing their rendered
+// rows afterward leaves one isolated "1 tool call" batch per replay. Keep real
+// updates and never deduplicate across a user message or execution/turn change.
+function dropRepeatedAssistantResponses(events: PollingEvent[]): PollingEvent[] {
+  let previous: { text: string; execution: string; turn: string } | null = null
+  return events.filter(event => {
+    if (event.type === 'user_message') {
+      previous = null
+      return true
+    }
+    if (event.type !== 'llm_generation_end' && !COMPLETION_ANSWER_TYPES.has(event.type || '')) return true
+    const text = comparableAnswer(answerText(event))
+    if (!text) return true
+    const execution = lifecycleExecutionID(event)
+    const turn = metadataField(eventFields(event), 'turn_id')
+    if (previous?.text === text && previous.execution === execution && previous.turn === turn) return false
+    previous = { text, execution, turn }
+    return true
+  })
+}
+
 export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
   // Filter wrapper noise before lifecycle deduplication. Otherwise a generic
   // completion can supersede the richer delegated completion and then be
   // removed itself, accidentally hiding both records.
   const transcriptEvents = collapseContextCompactions(normalizeTranscriptChunkEvents(events)).filter(isTranscriptEvent)
-  const visibleEvents = dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
+  const visibleEvents = dropRepeatedAssistantResponses(dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
     dropDuplicateExecutionPromptMessages(collapseCompletedLifecycleStarts(transcriptEvents)),
-  )))
+  ))))
   const items: TranscriptItem[] = []
   let cursor = 0
 
