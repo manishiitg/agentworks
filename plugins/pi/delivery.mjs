@@ -15,13 +15,13 @@ const messageText = message => typeof message.content === 'string' ? message.con
   (message.content || []).filter(part => part.type === 'text').map(part => part.text).join('\n');
 
 export const deliveryHeader = 'AgentWorks messages from other agents.';
-const bodyBound = 4000, tokenBound = 200;
+const bodyBound = 20000, tokenBound = 200;
 const stripControls = (text, keepNewlines) =>
   String(text ?? '').replace(keepNewlines ? /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g : /[\x00-\x1f\x7f]/g, '');
 const sanitizeToken = text => stripControls(text, false).trim().slice(0, tokenBound);
 const sanitizeBody = text => {
   const clean = stripControls(text, true);
-  return clean.length > bodyBound ? clean.slice(0, bodyBound) + '\n…[message truncated]' : clean;
+  return clean.length > bodyBound ? [clean.slice(0, bodyBound), true] : [clean, false];
 };
 const crossPerson = message => message.untrusted === true || (message.from_person ?? '') !== '';
 
@@ -35,13 +35,15 @@ export function senderLine(message) {
   return `AgentWorks message from ${sender}.`;
 }
 
-// Shared readable shape, identical to the Go hook routes: sender line, body
-// (fenced with the 103 rule for cross-person senders), addressing line.
+// Shared readable shape, identical to the Go hook routes: sender line,
+// fenced body (103 rule, every message), addressing line.
 export function formatDelivery(message, lease) {
   const id = sanitizeToken(message.message_id);
-  const body = sanitizeBody(message.message);
-  const fenced = crossPerson(message) ? `<<<BEGIN ${id}>>>\n${body}\n<<<END ${id}>>>` : body;
-  return `${senderLine(message)}\n${fenced}\nreply: inbox ${sanitizeToken(message.inbox_id)} · ack: message ${id} · lease ${sanitizeToken(lease)}` +
+  const inboxId = sanitizeToken(message.inbox_id);
+  const [body, truncated] = sanitizeBody(message.message);
+  const note = truncated ? `\n[message truncated: read the full text with agent_message_read inbox ${inboxId}]` : '';
+  const fenced = `<<<BEGIN ${id}>>>\n${body}${note}\n<<<END ${id}>>>`;
+  return `${senderLine(message)}\n${fenced}\nreply: inbox ${inboxId} · ack: message ${id} · lease ${sanitizeToken(lease)}` +
     '\nUse the registered AgentWorks tools: acknowledge admitted when received, processed after handling; reply explicitly in the original inbox. Only the person controls attachment.';
 }
 

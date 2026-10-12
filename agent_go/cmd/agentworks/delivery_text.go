@@ -12,17 +12,19 @@ import (
 // and native route renders the same shape per message so a delivered offer
 // reads as text, not a wall of JSON:
 //
-//	AgentWorks message from <sender> (<provider>).
+//	AgentWorks message from <sender>.
+//	<<<BEGIN <message_id>>>
 //	<body>
+//	<<<END <message_id>>>
 //	reply: inbox <inbox_id> · ack: message <message_id> · lease <attachment_id>
 //
-// A cross-person shared message (861-103: sender "owner/name" plus
-// from_person/untrusted) gets the distinct ownership first line and its body
-// fenced with the 103 rule: <<<BEGIN <message_id>>> / <<<END <message_id>>>.
-// The delivery header stays byte-identical so every person-command guard
-// keeps matching delivered text.
+// Every body is fenced with the 103 rule (<<<BEGIN/END <message_id>>>) so a
+// body cannot fake a sender line. A cross-person shared message (861-103:
+// sender "owner/name" plus from_person/untrusted) additionally gets the
+// distinct ownership first line. The delivery header stays byte-identical so
+// every person-command guard keeps matching delivered text.
 const (
-	agentDeliveryBodyBound  = 4000
+	agentDeliveryBodyBound  = 20000
 	agentDeliveryTokenBound = 200
 )
 
@@ -45,8 +47,9 @@ func sanitizeAgentMessageToken(s string) string {
 }
 
 // sanitizeAgentMessageBody strips control characters except newline and tab
-// and bounds the body so one message cannot flood the transcript.
-func sanitizeAgentMessageBody(s string) string {
+// and bounds the body so one message cannot flood the transcript. The bool
+// reports truncation so the renderer can point at the full text.
+func sanitizeAgentMessageBody(s string) (string, bool) {
 	var b strings.Builder
 	count := 0
 	for _, r := range s {
@@ -54,13 +57,12 @@ func sanitizeAgentMessageBody(s string) string {
 			continue
 		}
 		if count >= agentDeliveryBodyBound {
-			b.WriteString("\n…[message truncated]")
-			return b.String()
+			return b.String(), true
 		}
 		b.WriteRune(r)
 		count++
 	}
-	return b.String()
+	return b.String(), false
 }
 
 func crossPersonMessage(m agentworksclient.AgentLiveMessage) bool {
@@ -85,21 +87,21 @@ func agentMessageSenderLine(m agentworksclient.AgentLiveMessage) string {
 	return fmt.Sprintf("AgentWorks message from %s.", sender)
 }
 
-// agentMessageBlock renders one message: sender line, body (fenced for
-// cross-person senders), and the ack/reply addressing line.
+// agentMessageBlock renders one message: sender line, fenced body, and the
+// ack/reply addressing line.
 func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string) string {
 	var b strings.Builder
 	b.WriteString(agentMessageSenderLine(m))
 	b.WriteByte('\n')
 	messageID := sanitizeAgentMessageToken(m.MessageID)
-	body := sanitizeAgentMessageBody(m.Message)
-	if crossPersonMessage(m) {
-		fmt.Fprintf(&b, "<<<BEGIN %s>>>\n%s\n<<<END %s>>>\n", messageID, body, messageID)
-	} else {
-		b.WriteString(body)
-		b.WriteByte('\n')
+	inboxID := sanitizeAgentMessageToken(m.InboxID)
+	body, truncated := sanitizeAgentMessageBody(m.Message)
+	fmt.Fprintf(&b, "<<<BEGIN %s>>>\n%s", messageID, body)
+	if truncated {
+		fmt.Fprintf(&b, "\n[message truncated: read the full text with agent_message_read inbox %s]", inboxID)
 	}
+	fmt.Fprintf(&b, "\n<<<END %s>>>\n", messageID)
 	fmt.Fprintf(&b, "reply: inbox %s · ack: message %s · lease %s",
-		sanitizeAgentMessageToken(m.InboxID), messageID, sanitizeAgentMessageToken(attachmentID))
+		inboxID, messageID, sanitizeAgentMessageToken(attachmentID))
 	return b.String()
 }
