@@ -34,9 +34,10 @@ function Step({ number, title, children }: { number: number; title: string; chil
 export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void }) {
   const [clientID, setClientID] = useState<MessagingClient>('codex')
   const [platform, setPlatform] = useState<'unix' | 'windows'>('unix')
+  const [codexMode, setCodexMode] = useState<'app' | 'cli'>('app')
   const [cursorMode, setCursorMode] = useState<'cli' | 'desktop'>('cli')
   const guide = messagingGuides.find(item => item.id === clientID)!
-  const client = clientID === 'cursor' && cursorMode === 'desktop' ? { ...guide, ...guide.desktop } : guide
+  const client = clientID === 'codex' && codexMode === 'app' ? { ...guide, ...guide.app } : clientID === 'cursor' && cursorMode === 'desktop' ? { ...guide, ...guide.desktop } : guide
   const origin = (getApiBaseUrl() || window.location.origin).replace(/\/+$/, '')
   const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
   const local = (() => { try { return ['localhost', '127.0.0.1', '::1'].includes(new URL(origin).hostname.replace(/^\[|\]$/g, '')) } catch { return false } })()
@@ -47,7 +48,7 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Coding agents</span><span className="text-xs text-muted-foreground">Install once. Attach each chat.</span></div>
       <h2 className="text-2xl font-semibold tracking-tight">Connect your AI agent</h2>
-      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Choose your CLI for its requirements and exact setup. You decide which chat connects; the agent handles messages and receipts.</p>
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Choose your coding app or CLI for its requirements and exact setup. You decide which chat connects; the agent handles messages and receipts.</p>
     </div>
     <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
       <Laptop className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-medium">{local ? 'This local server' : 'This AgentWorks server'}</p><code aria-label="Selected AgentWorks server" className="break-all text-xs text-muted-foreground">{origin}</code><p className="mt-1 text-xs leading-5 text-muted-foreground">Messages and purposes are stored on the connected server. Signing in does not move existing chat attachments. Keep several logins side by side with named logins, and move a chat between them with the attach command below.</p></div>
@@ -57,9 +58,10 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
         <span className="flex items-center justify-between gap-2 text-sm font-medium"><span>{item.name}</span>{clientID === item.id && <Check className="h-3.5 w-3.5 text-primary" />}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.status}</span>
       </button>)}
     </div></div>
+    {clientID === 'codex' && <div className="space-y-2"><h3 className="text-sm font-medium">How do you use Codex?</h3><div role="group" aria-label="Codex app or CLI" className="flex flex-wrap gap-2"><Button variant={codexMode === 'app' ? 'secondary' : 'outline'} size="sm" aria-pressed={codexMode === 'app'} onClick={() => setCodexMode('app')}>Codex app</Button><Button variant={codexMode === 'cli' ? 'secondary' : 'outline'} size="sm" aria-pressed={codexMode === 'cli'} onClick={() => setCodexMode('cli')}>Codex CLI</Button></div></div>}
     {clientID === 'cursor' && <div role="group" aria-label="Cursor mode" className="flex flex-wrap gap-2"><Button variant={cursorMode === 'cli' ? 'secondary' : 'outline'} size="sm" aria-pressed={cursorMode === 'cli'} onClick={() => setCursorMode('cli')}>Cursor CLI</Button><Button variant={cursorMode === 'desktop' ? 'secondary' : 'outline'} size="sm" aria-pressed={cursorMode === 'desktop'} onClick={() => setCursorMode('desktop')}>Cursor desktop</Button></div>}
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
-      <div key={client.id + cursorMode} className="min-w-0 rounded-xl border border-border p-5">
+      <div key={client.id + cursorMode + codexMode} className="min-w-0 rounded-xl border border-border p-5">
         <h3 className="mb-5 font-semibold">{client.name} setup</h3>
         <div className="divide-y divide-border">
           <Step number={1} title="Requirements and tested versions">
@@ -68,9 +70,11 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
           </Step>
           <Step number={2} title="Install or update the plugin">
             {client.available && <><p className="text-xs leading-5 text-muted-foreground">Install the AgentWorks CLI first, or update it from a server that publishes the required messaging build.</p><div role="group" aria-label="Install platform" className="flex flex-wrap gap-1"><Button variant={platform === 'unix' ? 'secondary' : 'ghost'} size="sm" aria-pressed={platform === 'unix'} onClick={() => setPlatform('unix')}>macOS / Linux</Button><Button variant={platform === 'windows' ? 'secondary' : 'ghost'} size="sm" aria-pressed={platform === 'windows'} onClick={() => setPlatform('windows')}>Windows</Button></div><Command label="Install AgentWorks" text={install} /><Command label="Update AgentWorks CLI" text={`agentworks --server ${quote(origin)} update`} /><p className="text-xs leading-5 text-muted-foreground">The Windows installer does not establish provider IPC compatibility; check the requirements above.</p></>}
+            {client.installSteps && <ol aria-label="Install in the Codex app" className="list-decimal space-y-2 pl-5 text-xs leading-5 text-muted-foreground">{client.installSteps.map(text => <li key={text}>{text}</li>)}</ol>}
             {client.install.map(command => <Command key={command.label} {...command} />)}
             <p className="text-xs leading-5 text-muted-foreground">{client.installNote}</p>
-            {client.update.length > 0 && <details className="space-y-2"><summary className="cursor-pointer text-sm font-medium">Updating an older installation</summary><div className="space-y-2 pt-2">{client.update.map(command => <Command key={command.label} {...command} />)}<p className="text-xs leading-5 text-muted-foreground">{client.approval}</p><p className="text-xs leading-5 text-muted-foreground">Older installed skills may only allow the typed attach command. Update the CLI and plugin, then reload the provider before asking an agent to attach itself.</p></div></details>}
+            {client.alternativeInstall && <details className="space-y-2"><summary className="cursor-pointer text-sm font-medium">Terminal alternative after sign-in</summary><div className="space-y-2 pt-2">{client.alternativeInstall.map(command => <Command key={command.label} {...command} />)}<p className="text-xs leading-5 text-muted-foreground">{client.alternativeNote}</p></div></details>}
+            {(client.update.length > 0 || client.updateSteps) && <details className="space-y-2"><summary className="cursor-pointer text-sm font-medium">Updating an older installation</summary><div className="space-y-2 pt-2">{client.updateSteps && <ol className="list-decimal space-y-2 pl-5 text-xs leading-5 text-muted-foreground">{client.updateSteps.map(text => <li key={text}>{text}</li>)}</ol>}{client.update.map(command => <Command key={command.label} {...command} />)}<p className="text-xs leading-5 text-muted-foreground">{client.approval}</p><p className="text-xs leading-5 text-muted-foreground">Older installed skills may only allow the typed attach command. Update the CLI and plugin, then reload the provider before asking an agent to attach itself.</p></div></details>}
             <p className="text-xs leading-5 text-muted-foreground">{client.approval}</p>
           </Step>
           <Step number={3} title="Sign in to this server">
@@ -79,7 +83,7 @@ export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void 
           <Step number={4} title="Connect this chat">
             {client.available ? <><p className="text-xs leading-5 text-muted-foreground">Type this yourself in the chat you want to connect. Choose a stable name, or omit it for an automatic name.</p><Command label="Attach this chat" text={client.attach} />{client.id === 'pi' && <><p className="text-xs leading-5 text-muted-foreground">If the Pi extension is missing, first run this in Terminal, accept the bundled/pinned install, reload Pi, then type the chat command again:</p><Command label="Install Pi through terminal attach" text="agentworks attach pi-review" /></>}<p className="text-xs leading-5 text-muted-foreground">Or ask the agent to attach itself with the current CLI and integration loaded:</p><Command label="Connect this chat" text={client.ownRequest} /><p className="text-xs leading-5 text-muted-foreground">Use the current AgentWorks CLI and plugin or extension, available from 12 Oct 2026. Muse additionally needs the CLI’s Monitor support. It does not install a plugin or select another chat. If an older skill or sandbox refuses, use the typed command. Every sender in your AgentWorks account can message this chat; the agent sets its own purpose, up to 512 characters.</p><Command label="Move this chat to another login" text="/agentworks attach [NAME] --on LOGIN" /><p className="text-xs leading-5 text-muted-foreground">Moving keeps the chat’s name unless you give a new one, and warns when unread messages are waiting on the old login. To move every attached chat at once, run <code>agentworks attach --all --on LOGIN</code> in your own terminal; it lists the chats and asks you to retype the count.</p></> : <p className="text-xs leading-5 text-muted-foreground">{client.id === 'cursor' ? 'Cursor is preview: attach is not available yet. Asking the agent to attach itself is not a supported workaround.' : 'No supported agy live attachment is published. Asking the agent to attach itself does not supply a missing adapter.'}</p>}
           </Step>
-          <Step number={5} title="What appears in your CLI menu">
+          <Step number={5} title="Commands and menus">
             <div className="space-y-3">{client.menus.map(item => <div key={item.entry} className="space-y-1"><code className="block break-words text-xs">{item.entry}</code><p className="text-xs leading-5 text-muted-foreground"><strong className="font-medium">{item.who}: </strong>{item.description}</p></div>)}</div>
           </Step>
           <Step number={6} title="Try a message">

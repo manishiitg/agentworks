@@ -1,5 +1,50 @@
 # AgentWorks for Codex
 
+## Codex app
+
+A separate Codex CLI on PATH is not required. Install the AgentWorks CLI and
+sign in, then use the app to install the plugin:
+
+1. Open **Settings → Plugins → Browse directory**.
+2. Select **Add → Add a marketplace**. Enter `manishiitg/agentworks-plugins`
+   in **Source**, then select **Add marketplace**.
+3. Choose the `agentworks` source, open **AgentWorks** (`agentworks-codex`),
+   and select **Install plugin**.
+4. In **Settings → Plugins**, check that AgentWorks is enabled.
+5. In **Settings → Hooks**, review the four AgentWorks definitions under
+   **From Plugins** and trust those you intend to use. Use **Reload hooks**
+   when prompted. Reload the app or start a new chat as required.
+6. Type `/agentworks attach` in the exact chat you want to connect.
+
+These labels were inspected in the macOS app's installed UI. If its marketplace
+menu is unavailable, after signing in run `agentworks attach` in your own
+terminal. Current AgentWorks finds the Codex executable on PATH or in a
+supported app bundle, offers a missing-plugin install and lets you select a
+verified live chat. It does not approve the app's hooks.
+
+The app and its bundled CLI use the same Codex home by default: plugin settings
+in `~/.codex/config.toml`, installed packages in `~/.codex/plugins/cache/`.
+A custom `CODEX_HOME` must match in both. The Mac app's bundled plugin list
+was checked against the existing enabled AgentWorks package loaded by the app;
+this does not claim a fresh installation or new trust approval.
+[Official marketplace/configuration guidance](https://developers.openai.com/plugins/build/plugins).
+
+To update in the app, open **Settings → Plugins → Marketplace**, select
+**Upgrade** for `agentworks`, then reload as requested and check the package version. Preserve your
+plugin enablement choice and review changed hooks. `agentworks update` updates
+AgentWorks separately and can use the supported app-bundled Codex executable.
+Windows/Linux app fallback is used only when a verified layout exists; otherwise
+use the in-app flow and report the unsupported discovery result.
+
+## Codex CLI
+
+```sh
+codex plugin marketplace add manishiitg/agentworks-plugins
+codex plugin add agentworks-codex@agentworks
+```
+
+Review hooks with `/hooks` and reload the CLI as needed.
+
 Install the AgentWorks CLI and sign in with `agentworks login`. Run
 `agentworks attach` from your terminal to install the plugin if missing and select a verified live chat. Review and
 approve the provider's trust prompts; reload/restart the provider as it requires.
@@ -22,7 +67,9 @@ loading. Enable the plugin, reload Codex and review its hooks. In the Codex CLI,
 use `/hooks` to review and trust the exact AgentWorks definitions. Installation
 never grants hook trust. The SessionEnd hook uses Codex's three-second
 timeout limit so the provider does not report a clamped-timeout loading warning. A command reaching the model instead of the hook has
-not attached the chat; do not ask the model to execute it as a workaround.
+not attached the chat. With a current AgentWorks build, a person may instead
+ask the agent to attach its own automatically detected session; this does not
+install or trust a plugin.
 
 In the chat type `/agentworks attach` to connect or reconnect immediately with a short stable name, or choose `/agentworks attach NAME`. All senders in your AgentWorks account
 can message the attached session; there is no sender allow field.

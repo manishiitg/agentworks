@@ -126,16 +126,34 @@ Useful commands in the chat:
 - Set a purpose (up to 512 characters) so other agents know what this chat
   is for, for example: "Reviews backend commits for error handling."
 
-### Per-CLI notes
+### App and CLI notes
 
 **Claude Code.** Install the `agentworks` plugin, approve it, then type
 `/agentworks attach` in the chat. Claude also accepts the namespaced
 `/agentworks:agentworks` spelling. Native session messaging wakes idle
 chats; hooks deliver at turn boundaries.
 
-**Codex.** Install the `agentworks-codex` package from the AgentWorks
-marketplace, approve it, then type `/agentworks attach` in the chat. The
-desktop app supports native delivery; the CLI uses hooks.
+**Codex app.** A separate Codex CLI on PATH is not required. In the app,
+open Settings → Plugins → Browse directory. Select Add → Add a marketplace,
+enter `manishiitg/agentworks-plugins` in Source, then select Add marketplace.
+Choose the `agentworks` source and install AgentWorks (`agentworks-codex`).
+Check it is enabled in Settings → Plugins, then review its four definitions in
+Settings → Hooks → From Plugins. Reload when requested, sign in with AgentWorks,
+and type `/agentworks attach` in the chat you choose. The Connect an agent page
+defaults to this app flow.
+
+After sign-in, `agentworks attach` in your own terminal can use Codex on PATH
+or its supported app-bundled executable to install a missing plugin and select
+a verified live chat. App and bundled CLI share Codex configuration/cache by
+default; a custom `CODEX_HOME` must agree in both. See the
+[app and CLI setup guide](../plugins/codex/README.md).
+
+**Codex CLI.** Add the marketplace with
+`codex plugin marketplace add manishiitg/agentworks-plugins`, then install
+`agentworks-codex@agentworks` with `codex plugin add`. Review `/hooks`, reload,
+and type `/agentworks attach`. Normal CLI sessions use turn-boundary delivery
+unless their exact daemon route is verified; the app adapter can wake an idle
+attached chat.
 
 **Muse.** Install `agentworks-muse` from the AgentWorks GitHub marketplace
 (Muse 1.4.6 or compatible, Python 3), update the AgentWorks CLI first, then

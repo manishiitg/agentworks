@@ -2,7 +2,8 @@ export type MessagingClient = 'codex' | 'claude' | 'muse' | 'pi' | 'cursor' | 'a
 type SetupCommand = { label: string; text: string }
 export type MessagingGuide = {
   id: MessagingClient; name: string; status: string; available: boolean
-  desktop?: Partial<MessagingGuide>
+  desktop?: Partial<MessagingGuide>; app?: Partial<MessagingGuide>
+  installSteps?: string[]; updateSteps?: string[]; alternativeInstall?: SetupCommand[]; alternativeNote?: string
   requirements: string[]; versions: string; install: SetupCommand[]; update: SetupCommand[]
   installNote: string; approval: string; attach: string; ownRequest: string; delivery: string
   menus: { entry: string; who: string; description: string }[]
@@ -10,15 +11,15 @@ export type MessagingGuide = {
 }
 export const messagingGuides: MessagingGuide[] = [
   {
-    id: 'codex', name: 'Codex', status: 'Live messaging · desktop idle wake', available: true,
-    requirements: ['A compatible Codex desktop app or a Codex CLI with plugin hooks, and the AgentWorks CLI on PATH.', 'Desktop native delivery can wake an idle chat. A normal CLI session uses turn-boundary hooks unless its exact shared-daemon queue route is verified.'],
-    versions: 'Current plugin: agentworks-codex 1.0.7. Use the updated AgentWorks CLI with own-session support, available from 12 Oct 2026. A compatible desktop version is required; no universal minimum is pinned.',
+    id: 'codex', name: 'Codex', status: 'Live messaging · app idle wake', available: true,
+    requirements: ['A Codex CLI with plugin hooks and the AgentWorks CLI on PATH.', 'A normal CLI session uses turn-boundary hooks unless its exact shared-daemon queue route is verified. Choose Codex app for desktop setup.'],
+    versions: 'Plugin: agentworks-codex 1.0.7. Use a compatible Codex CLI with hooks and the current AgentWorks CLI with own-session support. No universal Codex minimum is pinned.',
     install: [{ label: 'Install Codex plugin', text: 'codex plugin marketplace add manishiitg/agentworks-plugins\ncodex plugin add agentworks-codex@agentworks' }],
     update: [{ label: 'Update Codex plugin', text: 'codex plugin marketplace upgrade agentworks\ncodex plugin add agentworks-codex@agentworks' }],
     installNote: 'The marketplace supplies updates; the installed plugin is a separate entry. Enable AgentWorks and reload Codex after installation or update.',
     approval: 'Review the exact plugin hooks yourself. In the Codex CLI, use /hooks. Installing the plugin never approves its hooks.',
     attach: '/agentworks attach codex-review', ownRequest: 'Attach this chat to AgentWorks as codex-review.',
-    delivery: 'Desktop native delivery reaches the attached chat, including while it is idle. Hooks deliver at turn boundaries. A notification or a queue write alone is not a processed receipt.',
+    delivery: 'CLI hooks offer messages at turn boundaries. Native idle delivery requires a verified exact-session daemon queue route. A notification or a queue write alone is not a processed receipt.',
     menus: [
       { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
       { entry: '/ menu → Agentworks Codex: Agentworks', who: 'You', description: 'Person-command skill shown in the slash picker. Selecting it explains commands; type /agentworks attach to connect.' },
@@ -29,6 +30,38 @@ export const messagingGuides: MessagingGuide[] = [
       { title: 'Hook blocked this message', text: 'Codex can show this badge when AgentWorks consumes a control command. Read the result: an attached identity or agent list is success; an error needs attention.' },
       { title: 'Attach reaches the model', text: 'Reload the enabled plugin and review its hooks. With the current CLI, you may instead ask the agent to attach its own detected chat.' },
     ],
+    app: {
+      name: 'Codex app',
+      requirements: ['A compatible Codex desktop app and the AgentWorks CLI. A separate Codex CLI on PATH is not required.', 'App installation and native delivery are separate checks. The macOS bundled CLI is verified; other app layouts are used only when the AgentWorks build supports them.'],
+      versions: 'Plugin: agentworks-codex 1.0.7. App installation/configuration inspected on macOS 26.1007.30912. Use an AgentWorks build with Codex app discovery; hook approval remains in the app.',
+      install: [],
+      installSteps: [
+        'In Codex, open Settings → Plugins, then select Browse directory.',
+        'Select Add → Add a marketplace. In Source, enter manishiitg/agentworks-plugins, then select Add marketplace.',
+        'Choose the agentworks marketplace and open AgentWorks (agentworks-codex). Select Install plugin.',
+        'Return to Settings → Plugins and check that AgentWorks is enabled.',
+        'Open Settings → Hooks. Under From Plugins → AgentWorks, review and trust the four definitions: SessionStart, SessionEnd, UserPromptSubmit and Stop. Select Reload hooks if needed.',
+        'Reload Codex or start a new chat when the app requests it. Sign in to AgentWorks below, then attach the chat you choose.'
+      ],
+      installNote: 'These steps install through the app. The marketplace supplies updates; the installed plugin and its hook approval are separate. If Add a marketplace is unavailable on your host, use the terminal alternative after signing in.',
+      alternativeInstall: [{ label: 'Set up Codex app from Terminal', text: 'agentworks attach codex-review' }],
+      alternativeNote: 'After signing in, run this yourself in Terminal. The updated AgentWorks CLI finds Codex on PATH or its supported app-bundled binary, offers a missing-plugin install and lets you choose the exact live chat. It does not trust hooks for you.',
+      update: [],
+      updateSteps: ['Open Settings → Plugins → Marketplace and select Upgrade for agentworks.', 'Reload Codex as requested, check the AgentWorks package version and review changed hooks in Settings → Hooks. Keep your enabled/disabled choice.'],
+      approval: 'Review AgentWorks hooks in the app yourself. Installation does not grant hook trust or attach a chat. App and bundled CLI use the same Codex home by default; a custom CODEX_HOME must match in both.',
+      delivery: 'The desktop adapter can wake an idle attached chat. Hook-only delivery waits for a turn boundary. Confirm admitted and processed receipts; installation or a notification alone does not prove delivery.',
+      menus: [
+        { entry: 'Settings → Plugins / Marketplace', who: 'You', description: 'Install, enable and update AgentWorks in the app; no standalone Codex terminal command is required.' },
+        { entry: 'Settings → Hooks', who: 'You', description: 'Review AgentWorks definitions and their trust state. Reload hooks after a change if prompted.' },
+        { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type in the exact chat after installing and reviewing the integration.' },
+        { entry: 'Agent Messages', who: 'The agent', description: 'Restricted messaging tools and guidance; selecting a skill alone does not attach this chat.' },
+      ],
+      troubleshooting: [
+        { title: 'codex: command not found', text: 'Use the app steps above. The AgentWorks terminal installer can use a supported bundled CLI; installing a separate Codex CLI is not required for app setup.' },
+        { title: 'Only skills appear', text: 'Check the enabled plugin and Settings → Hooks. The package includes two skills, a messaging MCP and four hooks; installing only skills is incomplete.' },
+        { title: 'Plugin exists but attach reaches the model', text: 'Check the app and terminal use the same Codex home, reload the enabled plugin and review its hooks. Marketplace addition and hook trust are separate from installation.' },
+      ],
+    },
   },
   {
     id: 'claude', name: 'Claude Code', status: 'Live messaging · idle wake', available: true,

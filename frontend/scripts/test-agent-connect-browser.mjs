@@ -81,7 +81,7 @@ try {
     await page.getByRole('button', { name: 'Windows', exact: true }).click()
     assert.match(await page.getByLabel('Install AgentWorks', { exact: true }).textContent(), /install-agentworks.ps1/)
     assert.equal(await page.getByRole('link', { name: /Bullpen help/ }).getAttribute('href'), 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md')
-    const headings = ['Requirements and tested versions', 'Install or update the plugin', 'Sign in to this server', 'Connect this chat', 'What appears in your CLI menu', 'Try a message', 'Troubleshooting']
+    const headings = ['Requirements and tested versions', 'Install or update the plugin', 'Sign in to this server', 'Connect this chat', 'Commands and menus', 'Try a message', 'Troubleshooting']
     for (const client of ['Codex', 'Claude Code', 'Pi', 'Cursor', 'agy', 'Muse']) {
       await page.getByRole('button', { name: client, exact: true }).click()
       for (const heading of headings) assert.equal(await page.getByRole('heading', { name: heading, exact: true }).count(), 1, client + ': consistent section ' + heading)
@@ -89,6 +89,21 @@ try {
         assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 0)
         assert.match(await page.getByLabel('Coding agent setup').textContent(), /does not create a coding-chat messaging attachment/)
       } else assert.equal(await page.getByLabel('Attach this chat', { exact: true }).count(), 1)
+      if (client === 'Codex') {
+        assert.equal(await page.getByRole('button', { name: 'Codex app', exact: true }).getAttribute('aria-pressed'), 'true')
+        assert.equal(await page.getByLabel('Install in the Codex app').isVisible(), true)
+        assert.equal(await page.getByLabel('Install Codex plugin', { exact: true }).count(), 0)
+        assert.match(await page.getByLabel('Install in the Codex app').textContent(), /Add → Add a marketplace/)
+        assert.match(await page.getByLabel('Install in the Codex app').textContent(), /Settings → Hooks/)
+        await page.screenshot({ path: path.join(output, 'bullpen-codex-app-' + name + '.png'), fullPage: true })
+        await page.getByRole('button', { name: 'Codex CLI', exact: true }).click()
+        assert.equal(await page.getByLabel('Install in the Codex app').count(), 0)
+        assert.equal(await page.getByLabel('Install Codex plugin', { exact: true }).isVisible(), true)
+        await page.getByRole('button', { name: 'Copy Install Codex plugin', exact: true }).click()
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'codex plugin marketplace add manishiitg/agentworks-plugins\ncodex plugin add agentworks-codex@agentworks')
+        await page.screenshot({ path: path.join(output, 'bullpen-codex-cli-' + name + '.png'), fullPage: true })
+        await page.getByRole('button', { name: 'Codex app', exact: true }).click()
+      }
       if (client === 'Cursor') {
         assert.equal(await page.getByLabel('Configure Cursor project hooks', { exact: true }).isVisible(), true)
         await page.getByRole('button', { name: 'Cursor desktop', exact: true }).click()
@@ -114,7 +129,7 @@ try {
     assert.match(await page.getByLabel('Update Muse plugin', { exact: true }).textContent(), /marketplace update.*\n.*plugins remove.*\n.*plugins install/)
     await page.getByRole('heading', { name: 'Bullpen', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: path.join(output, 'bullpen-setup-' + name + '.png'), fullPage: true })
-    await page.getByRole('heading', { name: 'What appears in your CLI menu', exact: true }).scrollIntoViewIfNeeded()
+    await page.getByRole('heading', { name: 'Commands and menus', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: path.join(output, 'bullpen-muse-menu-' + name + '.png'), fullPage: true })
     await page.goto(url + '?mcp&theme=' + theme)
     await page.getByRole('button', { name: 'Create access token', exact: true }).waitFor()
