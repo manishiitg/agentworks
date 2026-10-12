@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 )
 
 const serverProductManagementTool = "server_product"
+
+var serverProductToolName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 func serverProductManagerAllowed(c *UserClaims, product string) bool {
 	if c == nil || c.Scope != "" || c.Provider == "bot_route" || !activeMCPPerson(c.UserID) || !claimsIsAdmin(c) {
@@ -44,7 +47,7 @@ func externalServerProductDefinitions(add func(string, string, bool, bool, map[s
 	add(serverProductManagementTool, "Manage an installed server product through its private tool catalog. Current administrators with users:manage consent only. First action=tools, then action=call with the returned tool name and arguments. No workflow ID or provider credentials are accepted.", true, false, map[string]any{
 		"product":   map[string]any{"type": "string", "enum": values},
 		"action":    map[string]any{"type": "string", "enum": []any{"tools", "call"}},
-		"name":      externalString("Product tool name from action=tools; required for action=call."),
+		"name":      map[string]any{"type": "string", "pattern": serverProductToolName.String(), "description": "Product tool name from action=tools; required for action=call."},
 		"arguments": map[string]any{"type": "object", "description": "Arguments matching the private product tool schema."},
 	}, "product", "action")
 }
@@ -67,7 +70,7 @@ func (api *StreamingAPI) externalServerProductCall(w http.ResponseWriter, r *htt
 			return
 		}
 	case "call":
-		if externalArg(args, "name") == "" {
+		if !serverProductToolName.MatchString(externalArg(args, "name")) {
 			externalError(w, 400, "invalid_arguments", "Product tool name required.")
 			return
 		}
@@ -113,11 +116,34 @@ func (api *StreamingAPI) externalServerProductCall(w http.ResponseWriter, r *htt
 		clientID = "access-token:" + c.AccessToken.ID
 	}
 	req.Header.Set("X-AgentWorks-Client", clientID)
+	tool := "tools"
+	if method == http.MethodPost {
+		tool = externalArg(args, "name")
+	}
+	audit, receipt, err := startServerProductManagementAudit(r.Context(), c.UserID, clientID, product, tool)
+	if err != nil {
+		externalError(w, 503, "audit_unavailable", "Management audit unavailable; no product operation was sent.")
+		return
+	}
+	defer audit.Close()
+	payload, status := invokeServerProductManagement(req)
+	if err := finishServerProductManagementAudit(audit, receipt, status); err != nil {
+		externalError(w, 503, "audit_unavailable", "Management result could not be recorded. Outcome may be uncertain; inspect current state before retrying.")
+		return
+	}
+	if status != http.StatusOK {
+		externalError(w, status, "product_operation_failed", "Product operation failed; refresh the tool schema and current revision before retrying.")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	externalJSON(w, json.RawMessage(payload))
+}
+
+func invokeServerProductManagement(req *http.Request) ([]byte, int) {
 	client := &http.Client{Transport: capLayerTransport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
-		externalError(w, 502, "product_unavailable", "Server product unavailable.")
-		return
+		return nil, http.StatusBadGateway
 	}
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, (2<<20)+1))
@@ -126,9 +152,7 @@ func (api *StreamingAPI) externalServerProductCall(w http.ResponseWriter, r *htt
 		if response.StatusCode >= 400 && response.StatusCode < 500 {
 			status = response.StatusCode
 		}
-		externalError(w, status, "product_operation_failed", "Product operation failed; refresh the tool schema and current revision before retrying.")
-		return
+		return nil, status
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, json.RawMessage(payload))
+	return payload, http.StatusOK
 }

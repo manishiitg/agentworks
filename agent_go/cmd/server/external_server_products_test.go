@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 )
 
 func TestExternalServerProductManagementAuthority(t *testing.T) {
+	t.Setenv("AUTH_SECRET", strings.Repeat("a", 32))
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_PRODUCTS", "llm-gateway,work")
@@ -86,6 +89,43 @@ func TestExternalServerProductManagementAuthority(t *testing.T) {
 		if w := call(admin, args); w.Code < 400 || calls != 2 {
 			t.Fatal("invalid route reached service", w.Code, calls)
 		}
+	}
+	audit, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer audit.Close()
+	rows, err := audit.db.Query(`SELECT actor_id,client_id,product,tool,status,finished_at FROM server_product_management_audit ORDER BY started_at,id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for rows.Next() {
+		var actor, client, product, tool string
+		var status int
+		var finished int64
+		if err := rows.Scan(&actor, &client, &product, &tool, &status, &finished); err != nil {
+			t.Fatal(err)
+		}
+		if actor != "admin" || client != "access-token:management" || product != "llm-gateway" || (tool != "tools" && tool != "set_model_access") || status != 200 || finished == 0 {
+			t.Fatal("bad management receipt", actor, client, product, tool, status, finished)
+		}
+		count++
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatal("management calls missing from audit", count)
+	}
+	// Audit failure must refuse the operation before forwarding.
+	stateRoot := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", stateRoot+"/missing-parent-file")
+	if err := os.WriteFile(stateRoot+"/missing-parent-file", []byte("blocked"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(admin, args); w.Code != 503 || calls != 2 {
+		t.Fatal("unaudited management forwarded", w.Code, calls)
 	}
 	*directory = `{"users":[{"id":"admin","role":"viewer","products":["llm-gateway"]}]}`
 	invalidateUserDirectoryCache()

@@ -1125,6 +1125,9 @@ kind. Coalesce admission/completion before status filtering or totals. Preserve
 legacy host envelopes for reads. Completed interrupted estimates contribute to
 provisional cost totals; unmatched admissions cannot establish a final bill.
 
+Browser JWTs also reject non-inference product writes (except the session
+bootstrap); management mutations require the dedicated MCP/CLI bridge.
+
 The product web UI is deliberately read-only: Connect, Models, Requests and
 Costs. A Bearer-authenticated POST bootstraps a short-lived opaque, HttpOnly,
 SameSite=Strict browser cookie scoped to that product. It expires no later than
@@ -1140,7 +1143,10 @@ consent. `action=tools` discovers the private product-owned catalog;
 `action=call` invokes a declared operation through a fixed management endpoint.
 Callers never select upstream URLs, methods, identity headers or credentials.
 The public core holds the transport/auth boundary; product schemas and handlers
-stay in the separate source repository. The minimal UI can show existing
+stay in the separate source repository. Management calls write a durable
+admission/completion receipt in host-owned auth state (actor, client, product,
+tool, status; no arguments or output); failed admission prevents forwarding.
+The minimal UI can show existing
 models, usage and setup; provider configuration remains operator-managed.
 
 SDK v1 is experimental and still includes LLM-specific contracts. Validate a

@@ -38,6 +38,12 @@ func (api *StreamingAPI) handleServerProduct(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "unsupported product path", 400)
 		return
 	}
+	// Browser sessions view product state. All non-inference mutations go
+	// through the separately authorized and audited MCP/CLI management hop.
+	if tail != "session" && r.Method != http.MethodGet && r.Method != http.MethodHead && !serverProductTokenPath(r) {
+		http.Error(w, "product management requires MCP/CLI", http.StatusForbidden)
+		return
+	}
 	if strings.HasPrefix(tail, "admin/") && !currentUserIsAdmin(r) {
 		http.Error(w, "administrator role required", 403)
 		return

@@ -76,6 +76,11 @@ func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
 		}
 		return cookie
 	}
+	for _, path := range []string{"admin/model-access", "management/call"} {
+		if w := request("POST", "/api/server-products/llm-gateway/"+path, parent, nil, nil); w.Code != 403 {
+			t.Fatal("browser JWT accepted management write", path, w.Code)
+		}
+	}
 	cookie := bootstrap(parent)
 	for _, path := range []string{"ui/", "ui/app.js", "me", "models", "usage", "admin/models", "admin/audit"} {
 		if w := request("GET", "/api/server-products/llm-gateway/"+path, "", cookie, nil); w.Code != 200 {
