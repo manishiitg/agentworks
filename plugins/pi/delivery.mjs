@@ -16,12 +16,16 @@ const messageText = message => typeof message.content === 'string' ? message.con
 
 export const deliveryHeader = 'AgentWorks messages from other agents.';
 const bodyBound = 20000, tokenBound = 200;
+// Identical code-point/control policy to the Go formatter: bodies keep
+// newline and tab; tokens keep tab only; CR and C1 controls are stripped.
 const stripControls = (text, keepNewlines) =>
-  String(text ?? '').replace(keepNewlines ? /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g : /[\x00-\x1f\x7f]/g, '');
-const sanitizeToken = text => stripControls(text, false).trim().slice(0, tokenBound);
+  String(text ?? '').replace(keepNewlines ? /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g : /[\x00-\x08\x0a-\x1f\x7f-\x9f]/g, '');
+const sanitizeToken = text => [...stripControls(text, false)].slice(0, tokenBound).join('').trim();
+const escapeFenceLines = body => body.split('\n')
+  .map(line => line.startsWith('<<<BEGIN ') || line.startsWith('<<<END ') ? '\\' + line : line).join('\n');
 const sanitizeBody = text => {
-  const clean = stripControls(text, true);
-  return clean.length > bodyBound ? [clean.slice(0, bodyBound), true] : [clean, false];
+  const chars = [...escapeFenceLines(stripControls(text, true))];
+  return chars.length > bodyBound ? [chars.slice(0, bodyBound).join(''), true] : [chars.join(''), false];
 };
 const crossPerson = message => message.untrusted === true || (message.from_person ?? '') !== '';
 

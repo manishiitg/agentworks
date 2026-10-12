@@ -18,8 +18,10 @@ import (
 //	<<<END <message_id>>>
 //	reply: inbox <inbox_id> · ack: message <message_id> · lease <attachment_id>
 //
-// Every body is fenced with the 103 rule (<<<BEGIN/END <message_id>>>) so a
-// body cannot fake a sender line. A cross-person shared message (861-103:
+// Every body is fenced with the 103 rule (<<<BEGIN/END <message_id>>>);
+// marker-looking lines inside the body are backslash-escaped, so the fence
+// boundary is unambiguous and only the renderer's own sender and addressing
+// lines stand outside it. A cross-person shared message (861-103:
 // sender "owner/name" plus from_person/untrusted) additionally gets the
 // distinct ownership first line. The delivery header stays byte-identical so
 // every person-command guard keeps matching delivered text.
@@ -46,23 +48,37 @@ func sanitizeAgentMessageToken(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// escapeAgentMessageFenceLines backslash-escapes body lines that would
+// parse as fence markers, so the rendered BEGIN/END boundary stays
+// unambiguous: marker-looking lines inside the body are always escaped.
+func escapeAgentMessageFenceLines(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "<<<BEGIN ") || strings.HasPrefix(line, "<<<END ") {
+			lines[i] = "\\" + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // sanitizeAgentMessageBody strips control characters except newline and tab
-// and bounds the body so one message cannot flood the transcript. The bool
-// reports truncation so the renderer can point at the full text.
+// (the Pi formatter applies the identical code-point policy), escapes fence
+// lines, and bounds the result by code points so one message cannot flood
+// the transcript. The bool reports truncation so the renderer can point at
+// the full text.
 func sanitizeAgentMessageBody(s string) (string, bool) {
 	var b strings.Builder
-	count := 0
 	for _, r := range s {
 		if r != '\n' && r != '\t' && unicode.IsControl(r) {
 			continue
 		}
-		if count >= agentDeliveryBodyBound {
-			return b.String(), true
-		}
 		b.WriteRune(r)
-		count++
 	}
-	return b.String(), false
+	runes := []rune(escapeAgentMessageFenceLines(b.String()))
+	if len(runes) > agentDeliveryBodyBound {
+		return string(runes[:agentDeliveryBodyBound]), true
+	}
+	return string(runes), false
 }
 
 func crossPersonMessage(m agentworksclient.AgentLiveMessage) bool {
