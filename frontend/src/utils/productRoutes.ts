@@ -75,7 +75,7 @@ export function productRoutePath(route: ProductRoute): string {
   }
   if (route.surface === 'bullpen' && route.view === 'setup') path += '/connect'
   else if (route.id && (route.view === 'dashboard' || route.view === 'report')) path += '/dashboard'
-  else if (route.view) params.set('view', route.view)
+  else if (route.view && !(route.surface === 'code' && route.view === 'files')) params.set('view', route.view)
   if (route.folder) params.set('folder', route.folder)
   return path + (params.size ? '?' + params.toString() : '')
 }

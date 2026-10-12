@@ -15,6 +15,7 @@ describe('shareable product routes', () => {
     expect(productReturnPath('/mcp-gateway')).toBe('/vault')
     expect(productReturnPath('/agentworks')).toBe('/goals')
     expect(productReturnPath('/agentworks/example')).toBe('/workflows/example')
+    expect(productReturnPath('/code/projects/example?view=files')).toBe('/code/projects/example')
     expect(parseProductRoute('/')).toBeNull()
     expect(isLegacyAppPath('/settings')).toBe(true)
     expect(isLegacyAppPath('/chat/old-bookmark')).toBe(true)

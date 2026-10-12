@@ -1,6 +1,7 @@
 import { CopyProductLink } from '../../components/CopyProductLink'
 import { currentProductRoute, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
+import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
@@ -211,7 +212,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     const listed = await loadWorkSessionsIncludingShared(product)
     updateSessions(listed, true)
     const current = selectedProjectIdFor(product)
-    setSelectedId(current && listed.some(item => item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed[0]?.id ?? null))
+    replaceProductSelection(() => setSelectedId(current && listed.some(item => item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed[0]?.id ?? null)))
     return listed
   }, [product, setSelectedId, updateSessions])
 
@@ -223,7 +224,7 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (cancelled || mutationRevision.current !== revisionAtStart) return
         updateSessions(listed, true)
         const current = selectedProjectIdFor(product)
-        setSelectedId(current && listed.some(item => item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed[0]?.id ?? null))
+        replaceProductSelection(() => setSelectedId(current && listed.some(item => item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed[0]?.id ?? null)))
       })
       .catch((cause) => {
         if (!cancelled && mutationRevision.current === revisionAtStart) {
@@ -298,7 +299,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     const remaining = sessions.filter(item => item.id !== projectId)
     updateSessions(remaining)
     if (selectedProjectIdFor(product) === projectId) {
-      setSelectedId(remaining[0]?.id ?? null)
+      replaceProductSelection(() => setSelectedId(remaining[0]?.id ?? null))
     }
   }, [product, sessions, setSelectedId, updateSessions])
 
@@ -843,8 +844,8 @@ function WorkTopBarControl({
       label={selected?.identity?.name || selected?.title}
       leading={selected ? <EntityIdentityIcon icon={selected.identity?.icon} label={selected.identity?.name || selected.title} /> : undefined}
       compactOnNarrow
-      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (read-only)` : ''}` : `New ${product.noun}`}
-      placeholder={`New ${product.itemNoun}`}
+      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (read-only)` : ''}` : `${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
+      placeholder={`${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
       open={open}
       onToggle={() => setOpen(current => !current)}
       onClose={() => setOpen(false)}
@@ -1056,7 +1057,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
-  useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined })
+  const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
+  useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined }, viewNavigationRevision)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -1081,15 +1083,16 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const shownSplitRatio = localCodeSession ? Math.max(splitRatio, LOCAL_CODE_MIN_CHAT_SHARE) : splitRatio
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
-  const selectWorkspaceView = useCallback((view: WorkWorkspaceView) => {
+  const selectWorkspaceView = useCallback((view: WorkWorkspaceView, navigation = true) => {
     const allowedView = isWorkWorkspaceViewEnabled(view, undefined, localCodeSession) ? view : 'files'
     setWorkspaceView(allowedView)
+    if (navigation) setViewNavigationRevision(value => value + 1)
     writeWorkWorkspaceView(selected?.id, product.profileId, allowedView)
   }, [selected?.id, product.profileId, localCodeSession])
 
   // Entering local mode from General must reveal CLI setup immediately.
   useEffect(() => {
-    if (localCodeSession) selectWorkspaceView('files')
+    if (localCodeSession) selectWorkspaceView('files', false)
   }, [activeSessionId, localCodeSession, selectWorkspaceView])
 
   // Someone else's Crew offers only the read-only inspect surface, no
@@ -1262,14 +1265,14 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (selected?.shared) {
       // Identity is always "enabled", so shared Crews need their own
       // fallback: a stale saved view must land on the inspect surface.
-      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files')
+      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files', false)
       return
     }
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels, localCodeSession)) {
       // A disabled saved view cannot be shown. For an unsaved project, keep
       // Identity temporary while the content-based landing check runs.
-      if (localCodeSession) selectWorkspaceView('files')
-      else if (readWorkWorkspaceView(selected?.id, product.profileId)) selectWorkspaceView(product.defaultView)
+      if (localCodeSession) selectWorkspaceView('files', false)
+      else if (readWorkWorkspaceView(selected?.id, product.profileId)) selectWorkspaceView(product.defaultView, false)
       else setWorkspaceView(product.defaultView)
     }
   }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, localCodeSession])
@@ -1455,8 +1458,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   tour={product.hasIdentity ? 'crew-empty-state' : 'code-empty-state'}
                   product={product.noun}
                   icon={<span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">{product.hasIdentity ? '<>' : '</>'}</span>}
-                  title={product.hasIdentity ? 'Your AI workspace for any project' : 'A private workspace to code in'}
-                  description={product.hasIdentity
+                  title={sessions.length ? `Choose a ${product.itemNoun}` : product.hasIdentity ? 'Your AI workspace for any project' : 'A private workspace to code in'}
+                  description={sessions.length ? 'Open an existing workspace from the project menu, or create another.' : product.hasIdentity
                     ? 'Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.'
                     : 'Files, an editor and a terminal on the team server, with a coding agent beside them. Your workspaces stay private to you.'}
                   features={product.hasIdentity ? [
@@ -1470,7 +1473,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   ]}
                   footer={product.hasIdentity ? undefined : `Admins and ${product.noun} reviewers on this server can read your ${product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.`}
                   createTour={product.hasIdentity ? 'crew-create' : 'code-create'}
-                  createLabel={`Create your first ${product.itemNoun}`}
+                  createLabel={`Create ${sessions.length ? 'another' : 'your first'} ${product.itemNoun}`}
                   onCreate={openCreateProject}
                 />
               )}

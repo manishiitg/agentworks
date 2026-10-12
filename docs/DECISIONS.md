@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-13 — Loading a product view preserves its browser history entry (PLAT-746)
+
+Product switches and explicit toolbar choices add history entries. Lazy mounting
+and resource hydration replace the current entry when its view settles. Code's
+default Files view uses the project path without a view query. Product roots with
+existing projects invite selection and offer another workspace rather than a first.
+An inventory fallback after a project disappears replaces its unavailable entry.
+
+Why: one Back step should return to the preceding product, and a root link should
+not imply that an account with existing workspaces has none.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md), issues 746-28..30.
+
 ## 2026-10-13 — Codex is found on PATH or in the Codex desktop app, in the same Codex home (PLAT-861)
 
 People who use the Codex desktop app often have no `codex` on PATH. The installer, the update step and plugin

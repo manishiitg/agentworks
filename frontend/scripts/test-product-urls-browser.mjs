@@ -14,20 +14,20 @@ try {
   await mkdir(output, { recursive: true }); await server.listen()
   browser = await chromium.launch({ headless: true })
   const base = server.resolvedUrls.local[0].replace(/\/$/, '')
-  async function setup(signedIn, allowed = ['agentworks', 'relays', 'bullpen', 'code']) {
+  async function setup(signedIn, allowed = ['agentworks', 'relays', 'bullpen', 'code', 'knowledgebase'], { codeProject = false, defaultProduct = 'agentworks' } = {}) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] })
     const user = { id: signedIn ? 'qa-reader' : 'qa-new-reader', username: 'reader', role: 'reader', allowed_products: allowed, can_run_workflows: true, can_write_workflows: false, is_admin: false }
     const errors = [], calls = []
     page.on('pageerror', error => { errors.push(error.message); console.error('Browser error:', error.stack) })
     await page.addInitScript(({ signedIn }) => {
       if (signedIn && !localStorage.getItem('workspace-connection-store')) localStorage.setItem('auth_token', 'qa-token')
-      for (const key of ['agentworks_welcome_home_v1_dismissed', 'llm_discovery_onboarding_dismissed', 'agentworks_overview_walkthrough_v3_dismissed', 'agentworks_empty_automation_walkthrough_v3_dismissed']) localStorage.setItem(key, 'true')
+      for (const key of ['agentworks_welcome_home_v1_dismissed', 'llm_discovery_onboarding_dismissed', 'agentworks_overview_walkthrough_v3_dismissed', 'agentworks_empty_automation_walkthrough_v3_dismissed', 'agentworks_empty_code_walkthrough_v1_dismissed', 'agentworks_code_walkthrough_v1_dismissed']) localStorage.setItem(key, 'true')
       // Explicit route must override a conflicting remembered product and tab.
       if (!localStorage.getItem('agentworks-product-surface')) localStorage.setItem('agentworks-product-surface', JSON.stringify({ state: { productSurface: 'agentworks' }, version: 6 }))
       localStorage.setItem('bullpen:view', 'agents')
     }, { signedIn })
-    await page.route('**/runtime-config.js*', route => route.fulfill({ contentType: 'text/javascript', body: `window.__APP_RUNTIME_CONFIG__=${JSON.stringify({ apiBaseUrl: base, workspaceApiBaseUrl: base + '/api/wp', deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'relays', 'bullpen', 'code'], defaultProductSurface: 'agentworks' })}` }))
-    await page.route('**/api/**', route => {
+    await page.route('**/runtime-config.js*', route => route.fulfill({ contentType: 'text/javascript', body: `window.__APP_RUNTIME_CONFIG__=${JSON.stringify({ apiBaseUrl: base, workspaceApiBaseUrl: base + '/api/wp', deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'relays', 'bullpen', 'code', 'knowledgebase'], defaultProductSurface: defaultProduct })}` }))
+    await page.route('**/api/**', async route => {
       const url = new URL(route.request().url())
       if (!url.pathname.startsWith('/api/')) return route.continue()
       calls.push(url.pathname)
@@ -36,6 +36,21 @@ try {
       if (url.pathname === '/api/auth/mode') data = { multi_user_mode: true, providers: [{ name: 'simple', display_name: 'Password', type: 'credentials', configured: true }] }
       if (url.pathname === '/api/auth/me') data = user
       if (url.pathname === '/api/auth/login') data = { token: 'qa-token', user }
+      if (codeProject && url.pathname.endsWith('/api/documents')) {
+        if (url.searchParams.get('folder') === 'Chats/Code/projects') {
+          // Reproduce the live sequence: the product history entry is written
+          // before its selected project and default Files view finish loading.
+          await new Promise(resolve => setTimeout(resolve, 150))
+          data = { data: [{ filepath: 'Chats/Code/projects/example/product.json', type: 'file' }] }
+        } else data = { data: [] }
+      }
+      if (codeProject && decodeURIComponent(url.pathname).endsWith('/Chats/Code/projects/example/product.json')) data = { data: { content: JSON.stringify({ schema_version: 1, product: 'code', id: 'example', title: 'Example project', session_id: 'qa-code-session' }) } }
+      if (url.pathname === '/api/knowledgebase/bootstrap') data = { chat_workspace: 'Chats/Knowledgebase', backup_configured: true, is_admin: false }
+      if (url.pathname === '/api/knowledgebase/access-proposals') data = { proposals: [] }
+      if (url.pathname === '/api/knowledgebase/folders') data = { folders: [] }
+      if (url.pathname === '/api/knowledgebase/entries') data = { entries: [] }
+      if (url.pathname.endsWith('/conversation')) data = { conversation_id: 'qa-conversation', conversation_key: 'main', session_id: url.pathname.includes('/code/') ? 'qa-code-session' : 'qa-brain-session' }
+      if (/^\/api\/sessions\/[^/]+\/events$/.test(url.pathname)) data = { events: [], session_status: 'completed', has_more: false, last_event_index: -1 }
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) })
     })
     return { page, calls, errors }
@@ -69,6 +84,44 @@ try {
   await page.screenshot({ path: path.join(output, 'product-disabled.png') })
   assert.deepEqual(errors, [], 'no uncaught errors in navigation')
   await page.close()
+
+  const products = await setup(true, undefined, { codeProject: true, defaultProduct: 'code' })
+  await products.page.goto(base + '/settings')
+  await products.page.getByRole('heading', { name: 'Choose a Code workspace', exact: true }).waitFor()
+  assert.equal(new URL(products.page.url()).pathname, '/code')
+  assert.equal(await products.page.getByRole('button', { name: 'Create your first Code workspace', exact: true }).count(), 0)
+  await products.page.getByRole('button', { name: 'Choose a Code workspace', exact: true }).click()
+  await products.page.getByRole('menuitemradio', { name: 'Example project', exact: true }).click()
+  await products.page.locator('[data-tour="crew-workspace"][data-ui-view="files"]').waitFor()
+  await products.page.waitForURL(base + '/code/projects/example')
+  await products.page.goto(base + '/bullpen/connect')
+  await products.page.getByRole('heading', { name: 'Bullpen', exact: true }).waitFor()
+  async function switchProduct(name) {
+    await products.page.getByRole('button', { name: /^Switch product/ }).click()
+    await products.page.getByRole('menuitem', { name: new RegExp('^' + name + '(?:\\s|$)') }).click()
+  }
+  await switchProduct('Brain')
+  await products.page.waitForURL(url => url.pathname === '/brain')
+  await products.page.getByRole('button', { name: 'Refresh Brain', exact: true }).waitFor()
+  await switchProduct('Code')
+  await products.page.locator('[data-tour="crew-workspace"][data-ui-view="files"]').waitFor()
+  await products.page.waitForURL(base + '/code/projects/example')
+  // Explicit toolbar changes still create an entry, including a return to Files.
+  await products.page.getByRole('button', { name: 'Dashboard', exact: true }).click()
+  await products.page.waitForURL(base + '/code/projects/example/dashboard')
+  await products.page.goBack(); await products.page.waitForURL(base + '/code/projects/example')
+  await products.page.locator('[data-tour="crew-workspace"][data-ui-view="files"]').waitFor()
+  await products.page.goBack(); await products.page.waitForURL(url => url.pathname === '/brain')
+  await products.page.getByRole('button', { name: 'Refresh Brain', exact: true }).waitFor()
+  await products.page.goBack(); await products.page.waitForURL(base + '/bullpen/connect')
+  await products.page.getByRole('heading', { name: 'Bullpen', exact: true }).waitFor()
+  await products.page.goForward(); await products.page.waitForURL(url => url.pathname === '/brain')
+  await products.page.getByRole('button', { name: 'Refresh Brain', exact: true }).waitFor()
+  await products.page.goForward(); await products.page.waitForURL(base + '/code/projects/example')
+  await products.page.locator('[data-tour="crew-workspace"][data-ui-view="files"]').waitFor()
+  assert.deepEqual(products.errors, [], 'no uncaught errors through linked project hydration')
+  await products.page.screenshot({ path: path.join(output, 'product-history-project.png') })
+  await products.page.close()
 
   const restricted = await setup(true, ['code'])
   await restricted.page.goto(base + '/bullpen/connect')
