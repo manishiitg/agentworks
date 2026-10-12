@@ -54,12 +54,22 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 		Routes: []WorkflowRouteAssignment{{StepID: "parent", RouteID: "first", ContributorID: "outsider"}}, ReadOnlyStepIDs: []string{"second-step"}}
 	update := func(token string, team *WorkflowTeam, revision, want int) {
 		t.Helper()
-		f.call(t, token, "workflow_team", map[string]any{"action": "update", "team": team, "expected_revision": revision}, want)
+		f.call(t, token, "workflow_team", map[string]any{"action": "update", "team": team, "expected_revision": revision, "confirm": "invoices"}, want)
 	}
 	update(contributor, policy, 0, 403) // An editor cannot enable team mode.
 	update(owner, policy, 1, 409)       // Initial enablement requires revision zero.
+	// Without confirm, adding members and naming a Leader changes nothing and says exactly what would change.
+	pending := externalTestBody(t, f.call(t, owner, "workflow_team", map[string]any{"action": "update", "team": policy, "expected_revision": 0}, 200), 200)
+	changes, _ := pending["team_changes"].(map[string]any)
+	if pending["confirmation_required"] != true || pending["applied"] != false || changes == nil || len(changes["added"].([]any)) != 2 || changes["leader_changed"] != true {
+		t.Fatalf("unconfirmed enablement was not held back with a precise list: %#v", pending)
+	}
+	var untouched WorkflowManifest
+	if err := json.Unmarshal([]byte(f.read(t, "Workflow/invoices/workflow.json")), &untouched); err != nil || untouched.Team != nil {
+		t.Fatalf("an unconfirmed update changed the team: %v %+v", err, untouched.Team)
+	}
 	result := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workflow_team", "arguments": map[string]any{
-		"workflow_id": "invoices", "action": "update", "team": policy, "expected_revision": 0}})
+		"workflow_id": "invoices", "action": "update", "team": policy, "expected_revision": 0, "confirm": "invoices"}})
 	requireRemoteSuccess(t, result, "team enablement")
 	read := func() *WorkflowManifest {
 		t.Helper()

@@ -109,7 +109,7 @@ func TestRelayMCPAdmissionIsOwnedByBuilderManifest(t *testing.T) {
 		}
 		seen[name] = true
 	}
-	for _, name := range []string{"create_relay", "builder_chat", "test_relay", "publish_relay", "run_relay", "get_relay_run"} {
+	for _, name := range []string{"create_relay", "builder_chat", "test_relay", "publish_relay", "run_relay", "get_relay_run", "list_relay_runs"} {
 		if !seen[name] {
 			t.Fatalf("missing %s", name)
 		}

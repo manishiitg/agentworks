@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"sort"
 )
 
 func externalWorkflowTeamDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -23,9 +24,10 @@ func externalWorkflowTeamDefinition(add func(string, string, bool, bool, map[str
 		"revision":     map[string]any{"type": "integer", "minimum": 0},
 		"contributors": map[string]any{"type": "array", "items": member}, "routes": map[string]any{"type": "array", "items": route},
 		"read_only_step_ids": ids}, "required": []any{"leader_id", "contributors", "routes"}}
-	add("workflow_team", "Manage a workflow's goal team directly through the website backend. get returns policy/revision and assignable routes; eligible_members is available to authorized managers. update replaces the complete team policy: copy get's policy, preserve intended members/grants/read-only steps, and supply expected_revision (0 enables team mode). Only an editable workflow owner may enable; the current Leader/admin manages an enabled team. Assigned routes remain exclusive even against the Leader. Mutations require existing Builder consent and manifest file access. reauthorize_schedule reviews the current saved schedule against current grants and stamps its authorization, preserving timing and enabled state. No Builder model turn is started.", true, true, map[string]any{
+	add("workflow_team", "Manage a workflow's goal team directly through the website backend. get returns policy/revision and assignable routes; eligible_members is available to authorized managers. update replaces the complete team policy and, when it adds members or changes the Leader, needs confirm = workflow_id (the first reply lists exactly who would be added or removed and the Leader change; route-only edits and removals need no confirmation): copy get's policy, preserve intended members/grants/read-only steps, and supply expected_revision (0 enables team mode). Only an editable workflow owner may enable; the current Leader/admin manages an enabled team. Assigned routes remain exclusive even against the Leader. Mutations require existing Builder consent and manifest file access. reauthorize_schedule reviews the current saved schedule against current grants and stamps its authorization, preserving timing and enabled state. No Builder model turn is started.", true, true, map[string]any{
 		"action": map[string]any{"type": "string", "enum": []any{"get", "update", "reauthorize_schedule"}},
 		"team":   policy, "expected_revision": map[string]any{"type": "integer", "minimum": 0, "description": "Current team revision from get; required for mutations."},
+		"confirm":                    externalString("Must equal workflow_id when update adds members or changes the Leader; the reply of an unconfirmed attempt lists exactly what would change."),
 		"expected_schedule_revision": externalString("Exact schedule revision from get's schedule_revisions; required only for reauthorize_schedule."),
 		"schedule_id":                externalString("Existing schedule ID from manage_schedules action=list; only for reauthorize_schedule.")}, "action")
 }
@@ -35,6 +37,10 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 	write := action != "get"
 	if workflow.Manifest.Kind == "relay" {
 		externalError(w, 400, "wrong_product", "Goal teams belong to workflows.")
+		return
+	}
+	if action != "update" && args["confirm"] != nil {
+		externalError(w, 400, "invalid_arguments", "confirm applies only to update.")
 		return
 	}
 	if action == "get" && (args["team"] != nil || args["expected_revision"] != nil || args["schedule_id"] != nil || args["expected_schedule_revision"] != nil) ||
@@ -98,6 +104,23 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 		externalJSON(w, map[string]any{"workflow_id": current.ID, "schedule_id": externalArg(args, "schedule_id"), "team_revision": current.Team.Revision, "authorized": true})
 		return
 	}
+	var changes *workflowTeamChanges
+	if action == "update" {
+		var requested WorkflowTeam
+		raw, _ := json.Marshal(args["team"])
+		if json.Unmarshal(raw, &requested) != nil {
+			externalError(w, 400, "invalid_arguments", "team is not a valid team policy.")
+			return
+		}
+		changes = diffWorkflowTeam(current.Team, requested)
+		if changes.needsConfirmation() && externalArg(args, "confirm") != current.ID {
+			// Nothing is changed. The reply says exactly what confirm would apply.
+			externalJSON(w, map[string]any{"workflow_id": current.ID, "applied": false, "confirmation_required": true,
+				"confirm_with": current.ID, "team_changes": changes.describe(),
+				"note": "No change was made. Re-send the same update with confirm set to the workflow_id to apply it. Ask the person first if they did not request these changes."})
+			return
+		}
+	}
 	method, body := http.MethodGet, any(nil)
 	if action == "update" {
 		method, body = http.MethodPut, map[string]any{"workspace_path": workflow.WorkspacePath, "team": args["team"], "expected_revision": args["expected_revision"]}
@@ -113,6 +136,9 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 		return
 	}
 	out["workflow_id"] = current.ID
+	if changes != nil {
+		out["team_changes"] = changes.describe()
+	}
 	if action == "get" {
 		revisions := map[string]string{}
 		for _, schedule := range current.Schedules {
@@ -147,4 +173,64 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 	}
 	out["note"] = "Team permission changes require explicit schedule reauthorization. Use manage_schedules to inspect schedules; use reauthorize_schedule with the saved team revision after reviewing them."
 	externalJSON(w, out)
+}
+
+// workflowTeamChanges is the difference between the saved team and a requested
+// policy, in account ids and server usernames, for confirmation and for the reply.
+type workflowTeamChanges struct {
+	Added      []string
+	Removed    []string
+	LeaderFrom string
+	LeaderTo   string
+}
+
+func diffWorkflowTeam(current *WorkflowTeam, requested WorkflowTeam) *workflowTeamChanges {
+	had := map[string]bool{}
+	c := &workflowTeamChanges{LeaderTo: requested.LeaderID}
+	if current != nil {
+		c.LeaderFrom = current.LeaderID
+		for _, m := range current.Contributors {
+			had[m.UserID] = true
+		}
+	}
+	want := map[string]bool{}
+	for _, m := range requested.Contributors {
+		want[m.UserID] = true
+		if !had[m.UserID] && m.UserID != c.LeaderFrom {
+			c.Added = append(c.Added, m.UserID)
+		}
+	}
+	for id := range had {
+		if !want[id] && id != requested.LeaderID {
+			c.Removed = append(c.Removed, id)
+		}
+	}
+	sort.Strings(c.Added)
+	sort.Strings(c.Removed)
+	return c
+}
+
+// A new Leader, or any member who gains workflow access, needs confirmation.
+// Turning the team on for the first time is both.
+func (c *workflowTeamChanges) needsConfirmation() bool {
+	return len(c.Added) > 0 || c.LeaderFrom != c.LeaderTo
+}
+
+func (c *workflowTeamChanges) describe() map[string]any {
+	label := shareOwnerLabeler()
+	people := func(ids []string) []map[string]string {
+		out := []map[string]string{}
+		for _, id := range ids {
+			if id == "" {
+				continue
+			}
+			out = append(out, map[string]string{"user_id": id, "username": label(id)})
+		}
+		return out
+	}
+	out := map[string]any{"added": people(c.Added), "removed": people(c.Removed), "leader_changed": c.LeaderFrom != c.LeaderTo}
+	if c.LeaderFrom != c.LeaderTo {
+		out["leader"] = map[string]any{"from": people([]string{c.LeaderFrom}), "to": people([]string{c.LeaderTo})}
+	}
+	return out
 }

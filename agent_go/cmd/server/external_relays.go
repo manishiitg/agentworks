@@ -24,11 +24,12 @@ func externalRelayDefinitions(add func(string, string, bool, bool, map[string]an
 	add("publish_relay", "Publish the validated draft as an immutable Relay version using the existing publisher. Requires Builder permission and owner/editor access. Repeating an unchanged draft returns the same version.", true, true, nil)
 	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll relay action=get_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
 	add("run_relay", "Run a published Relay version with JSON input. Omit version for the active release. Requires runs:execute and current Relay/function access. Reuse idempotency_key on retries; poll relay action=get_run. Does not create Run chat.", false, true, map[string]any{"function": externalString("Published function name."), "input": map[string]any{"type": "object"}, "version": map[string]any{"type": "string", "pattern": "^v[1-9][0-9]*$"}, "idempotency_key": key}, "function", "input", "idempotency_key")
+	add("list_relay_runs", "List recorded runs of a Relay, newest first: run id, status, attempt, start time, duration, step names and statuses, and the returned result. Pass version (v1, v2, ...) for a published version; omit it for draft test runs. Relay owners and editors see every caller's runs; every other reader sees only the runs they made. limit is 1 to 50 (default 20). Requires runs:execute or workflows:read.", false, true, map[string]any{"version": map[string]any{"type": "string", "pattern": "^(draft|v[1-9][0-9]*)$"}, "limit": externalInteger(1, 50)})
 	add("get_relay_run", "Poll your Relay run or draft test by durable run ID. Returns final JSON result, step outputs, status and version (empty for a draft test). Requires runs:execute.", false, true, map[string]any{"run_id": externalString("run_id from relay action=test or relay action=run.")}, "run_id")
 }
 func isExternalRelayTool(name string) bool {
 	switch name {
-	case "create_relay", "update_relay", "get_relay_releases", "publish_relay", "test_relay", "run_relay", "get_relay_run":
+	case "create_relay", "update_relay", "get_relay_releases", "publish_relay", "test_relay", "run_relay", "get_relay_run", "list_relay_runs":
 		return true
 	}
 	return false
@@ -206,6 +207,28 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 			body["version"] = version
 		}
 		externalRelayForwardJSON(w, forward, body, func(w http.ResponseWriter, r *http.Request) { api.startRelayRun(w, r, name == "test_relay") })
+	case "list_relay_runs":
+		claims := GetUserFromContext(r.Context())
+		limit := externalInt(args, "limit", 20)
+		if limit < 1 || limit > 50 {
+			externalError(w, 400, "invalid_arguments", "limit must be between 1 and 50")
+			return
+		}
+		if claims != nil && claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(selected.Manifest.ID) {
+			externalError(w, 404, "relay_not_found", "Relay does not exist or is not accessible.")
+			return
+		}
+		guard := dashboardFileGuard(claims)
+		if guard != nil && !guard.AllowsTraversal("runs") {
+			externalError(w, 403, "forbidden", "Outside connection read grants.")
+			return
+		}
+		out, status, message := relayRecordedRuns(r.Context(), claims, selected.WorkspacePath, selected.Manifest, guard, limit, externalArg(args, "version"))
+		if message != "" {
+			externalError(w, status, "runs_unavailable", message)
+			return
+		}
+		externalJSON(w, out)
 	case "get_relay_run":
 		if api.scheduler == nil {
 			externalError(w, 503, "scheduler_unavailable", "Relay scheduler is unavailable")

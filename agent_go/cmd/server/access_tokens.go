@@ -487,6 +487,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("files:read")
 	case "run_relay", "get_relay_run":
 		return t.Allows("runs:execute")
+	case "list_relay_runs":
+		return t.Allows("runs:execute") || t.Allows("workflows:read")
 	case "get_relay_releases":
 		return t.Allows("workflows:read")
 	case "query_database", "manage_messaging":
