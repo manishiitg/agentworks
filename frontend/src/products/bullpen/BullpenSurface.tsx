@@ -80,9 +80,7 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
         <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
     </div>}
-<<<<<<< HEAD
     {!error && <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}
-=======
     <div className="space-y-2">
       <h3 className="font-medium">Agents other people shared with everyone</h3>
       {!(network?.shared_with_me ?? []).length ? <p className="text-sm text-muted-foreground">No one has shared an agent with everyone yet. Anyone can: they ask their agent to “share yourself with everyone”.</p> : <ul className="divide-y divide-border rounded-xl border border-border">
@@ -90,7 +88,6 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
       </ul>}
       {(network?.blocks ?? []).length > 0 && <p className="text-sm text-muted-foreground">You blocked: {(network?.blocks ?? []).map(block => block.person).join(', ')}.</p>}
     </div>
->>>>>>> 7d2a0f7a2 (PLAT-861: one read-only Agents page, agentic sharing, admin actions only by tool (owner decisions))
     <p className="text-xs leading-5 text-muted-foreground">Connected means the server has an active delivery stream. Whether a message starts a turn depends on the agent’s delivery adapter. Stored, admitted and processed are separate receipts.{updated && ' Last refreshed ' + updated.toLocaleTimeString() + '.'}</p>
     <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. To let everyone on this server message an agent, ask it: “share yourself with everyone” (and “make yourself private” to undo it). Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
     {isAdmin && <AdminPanel />}
