@@ -260,7 +260,7 @@
           "args": {
             "action": "create",
             "label": "QA acceptance relay",
-            "submission_id": "qa-relay-{crew}"
+            "submission_id": "qa-relay-{run}"
           },
           "expect": "created",
           "capture": {
@@ -275,7 +275,7 @@
             "action": "test",
             "workflow_id": "{v.rid}",
             "function": "process",
-            "idempotency_key": "qa-relay-run",
+            "idempotency_key": "qa-relay-{run}",
             "input": {
               "INPUT": {
                 "x": 1

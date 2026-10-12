@@ -37,10 +37,13 @@ def call(server, tool, args, timeout=120):
         return process.returncode, {}, text
 
 
+RUN_TOKEN = uuid.uuid4().hex[:10]
+
+
 def fill(value, crew, variables):
     """Put the scratch Crew's id and values captured by earlier steps into a case's arguments."""
     if isinstance(value, str):
-        value = value.replace("{crew}", crew or "")
+        value = value.replace("{crew}", crew or "").replace("{run}", RUN_TOKEN)
         for name, found in variables.items():
             value = value.replace("{v.%s}" % name, found)
         return value
