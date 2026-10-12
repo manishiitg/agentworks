@@ -27,7 +27,9 @@ import (
 type options struct {
 	serverURL, configPath string
 	// switchPath is the person's chosen login for an attach that moves the chat.
-	switchPath     string
+	switchPath string
+	// namedLogin is set by login --name so the save rechecks the name under a lock.
+	namedLogin     bool
 	jsonOutput     bool
 	stdin          io.Reader
 	stdout, stderr io.Writer
