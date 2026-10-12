@@ -1,5 +1,16 @@
 # Decisions and open issues
 
+## 2026-10-13 — Codex is found on PATH or in the Codex desktop app, in the same Codex home (PLAT-861)
+
+People who use the Codex desktop app often have no `codex` on PATH. The installer, the update step and plugin
+source switching now run Codex as `codex` when it is on PATH and otherwise as the command line the app ships
+inside the ChatGPT app on macOS (`/Applications/ChatGPT.app/.../codex-cli/CodexCLI.app/Contents/MacOS/codex`, a
+layout read from the installed app; no Windows or Linux location is guessed). They read the plugin registry and
+config from the profile Codex itself uses (`CODEX_HOME` when set, else `~/.codex`), so detection, the disabled
+state and migration never look at a different profile than the command they run. The same marketplace and
+`plugin add` are used, existing scope and enablement are kept, and hook trust is never approved or attached
+implicitly. See row 861-141.
+
 ## 2026-10-12 — Product and resource links project the existing navigation state (PLAT-746)
 
 Products have stable public paths, including /goals, /crew, /code, /brain,

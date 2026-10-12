@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -21,6 +22,43 @@ type pluginUpdate struct {
 	Manual   string
 }
 
+// codexAppBundleCLI is the command line the Codex desktop app ships inside the
+// ChatGPT app on macOS (layout read from the installed app; no other layout is
+// assumed). The person may have no codex on PATH and still use the app.
+var codexAppBundleCLI = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+
+// codexExecutable returns what to run for Codex: "codex" when it is on PATH, else
+// the app's own verified command line on macOS, else "" (Codex is not installed).
+func codexExecutable(onPath func(string) bool) string {
+	if onPath("codex") {
+		return "codex"
+	}
+	if runtime.GOOS == "darwin" {
+		if info, err := os.Stat(codexAppBundleCLI); err == nil && info.Mode().IsRegular() && info.Mode()&0111 != 0 {
+			return codexAppBundleCLI
+		}
+	}
+	return ""
+}
+
+// codexHomeDir is the profile Codex itself uses: CODEX_HOME when set, else ~/.codex.
+func codexHomeDir(home string) string {
+	if v := os.Getenv("CODEX_HOME"); v != "" && filepath.IsAbs(v) {
+		return v
+	}
+	return filepath.Join(home, ".codex")
+}
+
+// providerExecutable is the command to run for a provider's own plugin commands.
+func providerExecutable(provider string) string {
+	if provider == "codex" {
+		if exe := codexExecutable(func(n string) bool { _, err := exec.LookPath(n); return err == nil }); exe != "" {
+			return exe
+		}
+	}
+	return provider
+}
+
 // installedPluginUpdates decides what to refresh from what is installed under
 // home and which provider commands exist.
 func installedPluginUpdates(home string, onPath func(string) bool, read func(string) string) []pluginUpdate {
@@ -29,7 +67,7 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 		out = append(out, pluginUpdate{Provider: "claude", Auto: [][]string{{"plugin", "marketplace", "update", "agentworks"}, {"plugin", "update", "agentworks@agentworks"}},
 			Manual: "claude plugin marketplace update agentworks && claude plugin update agentworks@agentworks, then reload Claude Code"})
 	}
-	if onPath("codex") && (strings.Contains(read(filepath.Join(home, ".codex", "config.toml")), "agentworks-codex@agentworks") || strings.Contains(read(filepath.Join(home, ".codex", "plugins", "installed_plugins.json")), "agentworks-codex")) {
+	if codexExecutable(onPath) != "" && (strings.Contains(read(filepath.Join(codexHomeDir(home), "config.toml")), "agentworks-codex@agentworks") || strings.Contains(read(filepath.Join(codexHomeDir(home), "plugins", "installed_plugins.json")), "agentworks-codex")) {
 		out = append(out, pluginUpdate{Provider: "codex", Auto: [][]string{{"plugin", "marketplace", "upgrade", "agentworks"}, {"plugin", "add", "agentworks-codex@agentworks"}},
 			Manual: "codex plugin marketplace upgrade agentworks && codex plugin add agentworks-codex@agentworks, then reload Codex"})
 	}
@@ -75,7 +113,7 @@ func oldMarketplaceProviders(home string, read func(string) string, museList fun
 		}
 	}
 	inSection := false
-	for _, line := range strings.Split(read(filepath.Join(home, ".codex", "config.toml")), "\n") {
+	for _, line := range strings.Split(read(filepath.Join(codexHomeDir(home), "config.toml")), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[") {
 			inSection = line == "[marketplaces.agentworks]"
@@ -102,7 +140,7 @@ func migrateMarketplace(ctx context.Context, provider string) bool {
 	run := func(args ...string) bool {
 		step, cancel := context.WithTimeout(ctx, 120*time.Second)
 		defer cancel()
-		return exec.CommandContext(step, provider, args...).Run() == nil
+		return exec.CommandContext(step, providerExecutable(provider), args...).Run() == nil
 	}
 	// The plugin's scope and state are recorded before anything is removed, so the
 	// reinstall and the rollback restore the same scope and report a lost enablement.
@@ -152,7 +190,7 @@ func pluginListBlock(ctx context.Context, provider string) string {
 	}
 	step, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(step, provider, args...).Output()
+	out, err := exec.CommandContext(step, providerExecutable(provider), args...).Output()
 	if err != nil {
 		return ""
 	}
@@ -227,7 +265,7 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 		done := len(update.Auto) > 0
 		for _, args := range update.Auto {
 			step, cancel := context.WithTimeout(ctx, 90*time.Second)
-			result, e := exec.CommandContext(step, update.Provider, args...).CombinedOutput()
+			result, e := exec.CommandContext(step, providerExecutable(update.Provider), args...).CombinedOutput()
 			cancel()
 			if e != nil && !strings.Contains(strings.ToLower(string(result)), "already") {
 				done = false

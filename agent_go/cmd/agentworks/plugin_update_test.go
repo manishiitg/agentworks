@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -71,5 +73,39 @@ func TestBridgeIsReplacedOnceWhenAnotherBuild(t *testing.T) {
 	}
 	if bridgeIsOlder(root, "build-1") {
 		t.Fatal("two builds must not replace each other repeatedly")
+	}
+}
+
+// Codex is found on PATH or, on macOS, in the Codex desktop app's own command
+// line; the profile is the one Codex itself uses (CODEX_HOME).
+func TestCodexAppCommandLineAndHome(t *testing.T) {
+	if got := codexExecutable(func(n string) bool { return n == "codex" }); got != "codex" {
+		t.Fatalf("codex on PATH must win: %q", got)
+	}
+	dir := t.TempDir()
+	app := filepath.Join(dir, "codex")
+	if err := os.WriteFile(app, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := codexAppBundleCLI
+	defer func() { codexAppBundleCLI = old }()
+	codexAppBundleCLI = app
+	none := func(string) bool { return false }
+	if runtime.GOOS == "darwin" {
+		if got := codexExecutable(none); got != app {
+			t.Fatalf("the app's command line must be used when codex is not on PATH: %q", got)
+		}
+		codexAppBundleCLI = filepath.Join(dir, "missing")
+	}
+	if got := codexExecutable(none); got != "" {
+		t.Fatalf("no codex anywhere must report not installed: %q", got)
+	}
+	t.Setenv("CODEX_HOME", "")
+	if got := codexHomeDir("/home/example"); got != filepath.Join("/home/example", ".codex") {
+		t.Fatalf("default profile: %q", got)
+	}
+	t.Setenv("CODEX_HOME", dir)
+	if got := codexHomeDir("/home/example"); got != dir {
+		t.Fatalf("CODEX_HOME must be honored: %q", got)
 	}
 }

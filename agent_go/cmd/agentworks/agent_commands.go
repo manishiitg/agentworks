@@ -585,7 +585,7 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 	registry := filepath.Join(home, ".claude", "plugins", "installed_plugins.json")
 	marker := "agentworks@agentworks"
 	if provider == "codex" {
-		registry = filepath.Join(home, ".codex", "plugins", "installed_plugins.json")
+		registry = filepath.Join(codexHomeDir(home), "plugins", "installed_plugins.json")
 		marker = "agentworks-codex"
 	}
 	if provider == "codex" {
@@ -594,7 +594,7 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 				Enabled bool `toml:"enabled"`
 			} `toml:"plugins"`
 		}
-		if b, e := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); e == nil && toml.Unmarshal(b, &cfg) == nil {
+		if b, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml")); e == nil && toml.Unmarshal(b, &cfg) == nil {
 			if _, exists := cfg.Plugins["agentworks-codex@agentworks"]; exists {
 				return nil
 			}
@@ -619,7 +619,7 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex@agentworks"}}
 	}
 	for _, args := range steps {
-		c := exec.CommandContext(ctx, provider, args...)
+		c := exec.CommandContext(ctx, providerExecutable(provider), args...)
 		c.Stdin = o.stdin
 		result, e := c.CombinedOutput()
 		if e != nil && !strings.Contains(strings.ToLower(string(result)), "already") {
