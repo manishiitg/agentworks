@@ -37,3 +37,28 @@ func TestAutoAttachNeverGuessesBetweenAgents(t *testing.T) {
 		t.Fatalf("the kill switch must disable it: %q", line)
 	}
 }
+
+// The name of an earlier agent is taken only when nothing can still hold it: not an
+// online chat, not an offline chat whose process runs, not another computer.
+func TestAutoAttachDecisionNeverStealsALiveName(t *testing.T) {
+	req := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "new"}
+	state := func(online, hostAlive, closed bool) []agentworksclient.LocalAgentState {
+		return []agentworksclient.LocalAgentState{{AgentAttachment: agentworksclient.AgentAttachment{AgentName: "one", Provider: "claude", SessionID: "old"}, Online: online, HostAlive: hostAlive, ServerClosed: closed}}
+	}
+	for name, c := range map[string]struct {
+		states []agentworksclient.LocalAgentState
+		server bool
+		want   string
+	}{
+		"previous chat gone":               {state(false, false, false), false, "attach"},
+		"previous chat online":             {state(true, true, false), false, "hint"},
+		"offline but its process runs":     {state(false, true, false), false, "hint"},
+		"held on another computer":         {state(false, false, false), true, "hint"},
+		"closed by the server":             {state(false, false, true), false, "forget"},
+		"nothing known locally, free name": {nil, false, "attach"},
+	} {
+		if got := autoAttachDecision(c.states, "one", req, c.server); got != c.want {
+			t.Fatalf("%s: got %s, want %s", name, got, c.want)
+		}
+	}
+}

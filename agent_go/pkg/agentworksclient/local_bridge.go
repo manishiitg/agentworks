@@ -52,8 +52,11 @@ type LocalBridgeRequest struct {
 
 type LocalAgentState struct {
 	AgentAttachment
-	Online       bool   `json:"online"`
-	ServerClosed bool   `json:"server_closed,omitempty"`
+	Online       bool `json:"online"`
+	ServerClosed bool `json:"server_closed,omitempty"`
+	// HostAlive is whether the chat's own process still runs, even while the chat
+	// is offline (a helper restart leaves a running chat offline for a while).
+	HostAlive    bool   `json:"host_alive,omitempty"`
 	Route        string `json:"route"`
 	Pending      int    `json:"pending"`
 	LastDelivery string `json:"last_delivery,omitempty"`
@@ -571,7 +574,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, Route: "hooks", LastError: session.LastError}
+			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && b.options.HostAlive(session.Attachment.Provider, session.HostKey), Route: "hooks", LastError: session.LastError}
 			if museWatchActive(session) {
 				state.Route = "muse_monitor"
 			}
@@ -611,6 +614,35 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return out.AgentStates[i].AgentName < out.AgentStates[j].AgentName
 		})
 		return out
+	}
+	if in.Action == "agent_online" {
+		// Whether the server sees this agent name attached anywhere (any computer
+		// of the account). Used before a new chat takes a name on its own.
+		client, err := localConfiguredClient(in.ConfigPath)
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		raw, err := client.Call(callCtx, "messages", map[string]any{"action": "list_agents"})
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		var listed struct {
+			Agents []struct {
+				Name   string `json:"agent_name"`
+				Online bool   `json:"online"`
+			} `json:"agents"`
+		}
+		if json.Unmarshal(raw, &listed) != nil {
+			return LocalBridgeReply{Error: "invalid agent list"}
+		}
+		online := false
+		for _, a := range listed.Agents {
+			if a.Name == in.AgentName && a.Online {
+				online = true
+			}
+		}
+		result, _ := json.Marshal(map[string]bool{"online": online})
+		return LocalBridgeReply{Result: result}
 	}
 	if in.Action == "directories" {
 		out := LocalBridgeReply{}

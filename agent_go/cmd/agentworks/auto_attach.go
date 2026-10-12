@@ -68,9 +68,19 @@ func autoAttachUpdate(root, key string, change func(*autoAttachFolder)) {
 	if err != nil {
 		return
 	}
-	tmp := autoAttachPath(root) + ".tmp"
-	if os.WriteFile(tmp, raw, 0600) == nil {
-		_ = os.Rename(tmp, autoAttachPath(root))
+	// Hook processes run concurrently: a unique temp name keeps two writers from
+	// sharing one file, and the rename keeps readers from seeing half a file.
+	tmp, err := os.CreateTemp(root, "auto-attach-*.tmp")
+	if err != nil {
+		return
+	}
+	if _, err = tmp.Write(raw); err != nil || tmp.Chmod(0600) != nil || tmp.Close() != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return
+	}
+	if os.Rename(tmp.Name(), autoAttachPath(root)) != nil {
+		os.Remove(tmp.Name())
 	}
 }
 
@@ -151,17 +161,22 @@ func autoAttachOnStart(ctx context.Context, root string, o *options, req agentwo
 	if err != nil {
 		return ""
 	}
-	for _, state := range list.AgentStates {
-		if state.AgentName != record.Name {
-			continue
+	serverOnline := false
+	if reply, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "agent_online", AgentName: record.Name, ConfigPath: record.ConfigPath}); e == nil && reply.Error == "" {
+		var seen struct {
+			Online bool `json:"online"`
 		}
-		if state.ServerClosed {
-			forgetAutoAttach(root, req.Provider, cwd, record.Name)
-			return ""
-		}
-		if state.Online && !(state.Provider == req.Provider && state.SessionID == req.SessionID) {
-			return "AgentWorks: agent:" + record.Name + " is still attached to another chat in this folder. Type /agentworks attach NAME to give this chat its own agent."
-		}
+		_ = json.Unmarshal(reply.Result, &seen)
+		serverOnline = seen.Online
+	} else {
+		return "" // cannot prove the name is free: never take it on a guess
+	}
+	switch autoAttachDecision(list.AgentStates, record.Name, req, serverOnline) {
+	case "forget":
+		forgetAutoAttach(root, req.Provider, cwd, record.Name)
+		return ""
+	case "hint":
+		return "AgentWorks: agent:" + record.Name + " is still attached to another chat. Type /agentworks attach NAME to give this chat its own agent."
 	}
 	if _, statErr := os.Stat(record.ConfigPath); statErr != nil {
 		forgetAutoAttach(root, req.Provider, cwd, record.Name)
@@ -191,4 +206,27 @@ func autoAttachCommand(words []string) (on bool, ok bool) {
 		return false, true
 	}
 	return false, false
+}
+
+// autoAttachDecision says what a new chat may do with an earlier agent's name:
+// "attach" only when no chat of this computer still holds it (online, or offline
+// while its process runs) and the server sees it attached nowhere else; "forget"
+// when the server closed it; otherwise "hint".
+func autoAttachDecision(states []agentworksclient.LocalAgentState, name string, req agentworksclient.LocalBridgeRequest, serverOnline bool) string {
+	for _, state := range states {
+		if state.AgentName != name {
+			continue
+		}
+		if state.ServerClosed {
+			return "forget"
+		}
+		own := state.Provider == req.Provider && state.SessionID == req.SessionID
+		if !own && (state.Online || state.HostAlive) {
+			return "hint"
+		}
+	}
+	if serverOnline {
+		return "hint"
+	}
+	return "attach"
 }
