@@ -81,6 +81,7 @@ type LocalBridgeReply struct {
 	Sessions           []AgentAttachment     `json:"sessions,omitempty"`
 	LastError          string                `json:"last_error,omitempty"`
 	Offline            bool                  `json:"offline,omitempty"`
+	Version            string                `json:"version,omitempty"`
 	Pending            int                   `json:"pending"`
 	previousGuidanceAt time.Time
 	guidanceAt         time.Time
@@ -152,6 +153,9 @@ type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
 	NativeRoute func(provider, session, hostKey, remote string) string
 	Notify      func(AgentAttachment, string)
+	// Version is the build that runs the bridge. A newer CLI replaces a bridge
+	// that reports another version, so hooks never talk to an older helper.
+	Version string
 }
 
 func DefaultLocalBridgeRoot() (string, error) {
@@ -533,7 +537,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Error: "invalid native session"}
 	}
 	if in.Action == "ping" {
-		return LocalBridgeReply{}
+		return LocalBridgeReply{Version: b.options.Version}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()

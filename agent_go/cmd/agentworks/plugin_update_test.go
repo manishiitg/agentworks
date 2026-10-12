@@ -51,3 +51,25 @@ func TestOldMarketplaceSourceIsDetectedPerProvider(t *testing.T) {
 		t.Fatalf("old source must be found for Claude and Muse, not for Codex on the plugins repository: %v", got)
 	}
 }
+
+// A helper that is another build than the CLI is replaced once; a development
+// build, the same build, and a second attempt within ten minutes never do.
+func TestBridgeIsReplacedOnceWhenAnotherBuild(t *testing.T) {
+	root := t.TempDir()
+	old := cliVersion
+	defer func() { cliVersion = old }()
+	cliVersion = "dev"
+	if bridgeIsOlder(root, "") {
+		t.Fatal("a development build must not replace the helper")
+	}
+	cliVersion = "build-2"
+	if bridgeIsOlder(root, "build-2") {
+		t.Fatal("the same build keeps its helper")
+	}
+	if !bridgeIsOlder(root, "") {
+		t.Fatal("a helper that reports no version is older than this build")
+	}
+	if bridgeIsOlder(root, "build-1") {
+		t.Fatal("two builds must not replace each other repeatedly")
+	}
+}

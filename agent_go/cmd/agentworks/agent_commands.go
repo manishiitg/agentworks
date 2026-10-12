@@ -872,6 +872,26 @@ func stopAgentBridge(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return stopLocalBridgeAt(ctx, root)
+}
+
+// bridgeIsOlder reports whether the running helper is a different build than this
+// CLI. A helper older than version reporting says nothing (""), and a development
+// build never replaces a helper. At most one replacement per ten minutes, so two
+// different installed builds can never fight over the helper.
+func bridgeIsOlder(root, running string) bool {
+	if cliVersion == "" || cliVersion == "dev" || running == cliVersion {
+		return false
+	}
+	marker := filepath.Join(root, "bridge-replaced.at")
+	if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < 10*time.Minute {
+		return false
+	}
+	return os.WriteFile(marker, nil, 0600) == nil
+}
+
+func stopLocalBridgeAt(ctx context.Context, root string) error {
+	var err error
 	if _, err = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err != nil {
 		return nil
 	}

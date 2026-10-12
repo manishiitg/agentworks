@@ -251,6 +251,10 @@ func groupResult(status int, code, msg string) (map[string]interface{}, int, str
 // when it does not exist and a purpose was given. Joining twice is harmless.
 func (api *StreamingAPI) groupJoin(ctx context.Context, ownerID, agentName, groupName, purpose string) (map[string]interface{}, int, string, string) {
 	agent, err := normalizeMessageAgentName(agentName)
+	if strings.TrimSpace(groupName) == "" {
+		// Only a pre-groups helper sends a share with no group.
+		return groupResult(http.StatusBadRequest, "invalid_arguments", "Your AgentWorks helper is older than groups. Run agentworks update, then /agentworks share GROUP.")
+	}
 	group, gerr := normalizeMessageAgentName(groupName)
 	if err != nil || gerr != nil {
 		return groupResult(http.StatusBadRequest, "invalid_arguments", "A group name is 1 to 64 lowercase letters, digits, dots, underscores or hyphens.")

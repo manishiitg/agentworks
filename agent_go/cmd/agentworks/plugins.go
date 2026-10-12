@@ -645,7 +645,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Notify: notifyAgentWaiting, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root)})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, Notify: notifyAgentWaiting, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root)})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
@@ -744,8 +744,15 @@ func bridgeCommand(o *options) *cobra.Command {
 }
 
 func ensureLocalBridge(ctx context.Context, root string, o *options) error {
-	if _, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
-		return nil
+	if reply, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
+		if !bridgeIsOlder(root, reply.Version) {
+			return nil
+		}
+		// The running helper is another build than this CLI (an update or installer
+		// replaced the program but not the helper): replace it so new commands work.
+		if stopLocalBridgeAt(ctx, root) != nil {
+			return nil
+		}
 	}
 	exe, err := os.Executable()
 	if err != nil {
