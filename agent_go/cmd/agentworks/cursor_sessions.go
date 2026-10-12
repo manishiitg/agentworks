@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -64,27 +65,47 @@ func cursorObservedSession(root string, process cursorProcess, session string) (
 		return liveAgentSession{}, errors.New("Cursor has no verified native hook observation")
 	}
 	defer dir.Close()
-	files, err := dir.ReadDir(257)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return liveAgentSession{}, err
-	}
-	if len(files) > 256 {
-		return liveAgentSession{}, errors.New("Cursor discovery exceeds its bounded record limit; clean stale observations before retrying")
-	}
 	var found []cursorObservation
-	for _, file := range files {
-		if !strings.HasSuffix(file.Name(), "-"+session+".json") {
-			continue
+	live := 0
+	// Read at most 4096 owned records per call; prune dead kernel identities
+	// before applying the live-record bound. Never silently truncate ambiguity.
+	scanned := 0
+	for {
+		files, readErr := dir.ReadDir(256)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return liveAgentSession{}, readErr
 		}
-		raw, e := readMuseObservation(dir, file.Name())
-		var record cursorObservation
-		if e != nil || json.Unmarshal(raw, &record) != nil || record.Session != session ||
-			file.Name() != cursorObservationName(record.Host, record.Session) {
-			continue
+		for _, file := range files {
+			scanned++
+			if scanned > 4096 {
+				return liveAgentSession{}, errors.New("Cursor discovery exceeds its bounded scan; clean stale observations before retrying")
+			}
+			raw, e := readMuseObservation(dir, file.Name())
+			var record cursorObservation
+			if e != nil || json.Unmarshal(raw, &record) != nil || record.PID <= 1 ||
+				file.Name() != cursorObservationName(record.Host, record.Session) {
+				continue
+			}
+			if _, e = cursorUUID(record.Session); e != nil {
+				continue
+			}
+			current, e := cursorProcessAt(record.PID)
+			if e != nil || current.Host != record.Host {
+				if !cursorProcessForHost(record.Host) {
+					removeMuseObservation(dir, file.Name())
+				}
+				continue
+			}
+			live++
+			if live > 256 {
+				return liveAgentSession{}, errors.New("Cursor discovery exceeds its live record limit")
+			}
+			if record.Session == session {
+				found = append(found, record)
+			}
 		}
-		current, e := cursorProcessAt(record.PID)
-		if e == nil && current.Host == record.Host {
-			found = append(found, record)
+		if errors.Is(readErr, io.EOF) {
+			break
 		}
 	}
 	if len(found) != 1 || found[0].Host != process.Host {
@@ -109,4 +130,41 @@ func cursorCallingContext() (liveAgentSession, error) {
 		return liveAgentSession{}, err
 	}
 	return cursorObservedSession(root, process, session)
+}
+
+// The desktop app ancestor is shared across conversations. Until the shared
+// own-session lease contract proves the calling conversation, shell helpers are
+// refused even with a forged native environment and an observed UUID.
+func cursorRequireHelperLease(own liveAgentSession, attachment string) error {
+	process, err := cursorProcessForContext(own.host)
+	if err != nil {
+		return err
+	}
+	return cursorHelperAllowed(process.Kind, attachment)
+}
+
+func cursorHelperAllowed(kind, attachment string) error {
+	if kind == "desktop" {
+		return errors.New("Cursor desktop helpers require a per-conversation own-session fence; use the verified hook path")
+	}
+	if attachment == "" {
+		return errors.New("Every Cursor helper action requires the original --attachment-id")
+	}
+	return nil
+}
+
+func cursorProcessForContext(host string) (cursorProcess, error) {
+	parts := strings.Split(host, ":")
+	if len(parts) != 3 || parts[0] != "cursor" {
+		return cursorProcess{}, errors.New("invalid Cursor host")
+	}
+	pid, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return cursorProcess{}, err
+	}
+	process, err := cursorProcessAt(pid)
+	if err != nil || process.Host != host {
+		return cursorProcess{}, errors.New("Cursor host changed")
+	}
+	return process, nil
 }

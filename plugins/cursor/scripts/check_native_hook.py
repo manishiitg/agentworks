@@ -175,6 +175,12 @@ def interactive_run(cli_args, root, env, followup):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
+        # The fresh CLI can leave compile-cache children behind. Signal only
+        # this probe's newly-created process group after its parent has exited.
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
         return process.returncode, captured.decode(errors="replace"), timed_out
     finally:
         if process.poll() is None:

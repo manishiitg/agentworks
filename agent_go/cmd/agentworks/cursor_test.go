@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -103,7 +104,50 @@ func TestCursorNativeChild(t *testing.T) {
 	if err = observeCursor(root, process, input); err != nil {
 		t.Fatal(err)
 	}
+	if mode == "observe" {
+		dir, e := openMuseObservationDirectory(cursorObservationDirectory(root), false)
+		if e != nil {
+			t.Fatal(e)
+		}
+		dead := cursorProcess{PID: 99999999, Host: cursorHostKey(99999999, strings.Repeat("0", 64)), Kind: "cli"}
+		for i := 0; i < 300; i++ {
+			record := cursorObservation{Session: fmt.Sprintf("%08x-2222-4333-8444-555555555555", i+1), PID: dead.PID, Host: dead.Host, Kind: dead.Kind}
+			raw, _ := json.Marshal(record)
+			if e = writeMuseObservation(dir, cursorObservationName(record.Host, record.Session), raw); e != nil {
+				t.Fatal(e)
+			}
+		}
+		dir.Close()
+	}
 	_, err = cursorCallingContext()
+	if mode == "observe" && err == nil {
+		files, e := os.ReadDir(cursorObservationDirectory(root))
+		if e != nil || len(files) != 1 {
+			t.Fatal("dead observations accumulated", e)
+		}
+		if cursorRequireHelperLease(liveAgentSession{host: process.Host}, "") == nil {
+			t.Fatal("helper accepted no original attachment")
+		}
+		// Reproduce a second observed UUID on one app host: even if a forged env
+		// derives it, the desktop helper policy must refuse the shared-host route.
+		other := input
+		other.SessionID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+		if e = observeCursor(root, process, other); e != nil {
+			t.Fatal(e)
+		}
+		t.Setenv("CURSOR_CONVERSATION_ID", other.SessionID)
+		spoofed, e := cursorCallingContext()
+		if e != nil || spoofed.session != other.SessionID {
+			t.Fatal("shared-host spoof fixture failed", e)
+		}
+		if cursorHelperAllowed("desktop", "other-lease") == nil {
+			t.Fatal("desktop shared host accepted a spoofed UUID")
+		}
+		other.Event = "SessionEnd"
+		if e = observeCursor(root, process, other); e != nil {
+			t.Fatal(e)
+		}
+	}
 	if mode == "ambiguous" && err == nil {
 		t.Fatal("two live native UUIDs selected a last-used host")
 	}

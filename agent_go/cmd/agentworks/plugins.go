@@ -612,8 +612,8 @@ func bridgeCommand(o *options) *cobra.Command {
 				return e
 			}
 			session, host = own.session, own.host
-			if (args[0] == "ack" || args[0] == "reply" || args[0] == "read") && cursorAttachment == "" {
-				return errors.New("Cursor receipt/reply/recovery requires the original --attachment-id")
+			if e = cursorRequireHelperLease(own, cursorAttachment); e != nil {
+				return e
 			}
 		}
 		if provider == "codex" {

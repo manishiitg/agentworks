@@ -8,7 +8,9 @@ The shared CLI accepts native Cursor hooks and derives helpers from the installe
 process and CURSOR_CONVERSATION_ID. Linux CLI identity includes the actual bundled
 Node/index.js and kernel birth data. macOS desktop identity uses the native app
 image and kernel birth data, with a separate UUID for every conversation; live
-GUI delivery remains unverified. macOS CLI is unsupported. Desktop MCP remains
+GUI delivery remains unverified. macOS CLI and desktop shell helpers are unsupported. The shared desktop app
+process plus a shell UUID cannot prove the calling conversation; PLAT-861 must
+provide the missing own-session fence before helpers can be enabled. Desktop MCP remains
 disabled because a shared MCP child does not prove the calling conversation.
 
 ## Prerequisites and installation
@@ -71,8 +73,10 @@ queries use only the private Unix socket. `stop` drains only on `completed` with
 integer `loop_count` 0–4. Aborts, errors and exhausted loops leave offers pending.
 `sessionEnd` marks the exact attachment offline, fencing old operations while preserving its name. If the daemon is
 unavailable during close, revoke the connection in AgentWorks; do not claim the
-close was fenced until the server confirms it. Hook input is a same-user local
-boundary, not protection against another program running under your OS account.
+close was fenced until the server confirms it. A model with unrestricted local shell access can forge a beforeSubmitPrompt
+payload beneath the same provider process (PLAT-861 issue861-90). Literal command,
+queued/header and process checks do not authenticate human intent against that
+case. Hooks and discovery are same-user routing checks, not OS-account isolation.
 
 ## Delivery and limitations
 
@@ -93,7 +97,7 @@ A hook
 offer remains `stored`; the receiving agent explicitly acknowledges `admitted`
 after reading it and `processed` after handling it. The messaging skill describes
 acknowledgements and replies through the bridge, retaining the original inbox.
-Both helper commands require `--attachment-id` from the original offer, forward
+Every shared Cursor helper action requires `--attachment-id` from the original offer, forward
 it to the bridge before any operation, and reject a mismatching response. They
 cannot follow a moved address or substitute the newest attachment for an old one.
 
