@@ -36,8 +36,26 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 	}
 }
 
-// A guest's ask gets no outward tools and no MCP bridge (the probe found Slack, Google and Vault tools reachable).
-func TestGuestAskRefusesOutwardAndMCPTools(t *testing.T) {
+// A guest's ask has exactly this tool surface: a new tool fails here until it is classified (reviewer rule, 856-59).
+func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
+	want := []string{
+		"EndConversation", "WebSearch", "execute_shell_command", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
+		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
+		"list_skills", "list_work_folders", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
+		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
+	}
+	var got []string
+	for name := range crewAskAllowedTools {
+		got = append(got, name)
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("guest ask tool surface changed:\n got %v\nwant %v", got, want)
+	}
+}
+
+func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 	const sid = "guest-ask-session"
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
 	t.Cleanup(func() { common.ClearSessionShellConfig(sid) })
@@ -46,12 +64,14 @@ func TestGuestAskRefusesOutwardAndMCPTools(t *testing.T) {
 		t.Fatalf("a function guest turn keeps its outward tools: %q", msg)
 	}
 	common.SetSessionCrewAskReadOnly(sid, true)
-	for _, tool := range crewAskDeniedTools() {
+	for _, tool := range []string{"send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "call_function", "slack"} {
 		if msg := readerDeniedToolRefusal(ctx, tool); msg == "" {
 			t.Errorf("%s must be refused in a read-only ask", tool)
 		}
 	}
-	if cfg := common.GetSessionShellConfig(sid); cfg == nil || !cfg.CrewAskReadOnly {
-		t.Fatal("ask flag not recorded for the MCP bridge")
+	for tool := range crewAskAllowedTools {
+		if msg := readerDeniedToolRefusal(ctx, tool); msg != "" {
+			t.Errorf("%s is allowed in a read-only ask, got %q", tool, msg)
+		}
 	}
 }

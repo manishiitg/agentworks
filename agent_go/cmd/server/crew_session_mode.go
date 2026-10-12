@@ -158,7 +158,7 @@ var readerDeniedToolNames = func() map[string]struct{} {
 // the change.
 func readerDeniedToolRefusal(ctx context.Context, tool string) string {
 	_, denied := readerDeniedToolNames[strings.TrimSpace(tool)]
-	if !denied && crewAskDeniedToolSet[strings.TrimSpace(tool)] {
+	if !denied && !crewAskAllowedTools[strings.TrimSpace(tool)] {
 		if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && cfg.CrewAskReadOnly {
 			return "The tool `" + strings.TrimSpace(tool) + "` is not available in a read-only ask: call one of the Crew's functions to act."
 		}

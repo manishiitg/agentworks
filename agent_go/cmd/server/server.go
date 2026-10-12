@@ -5990,7 +5990,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 			if crewGuest != "" && req.CrewAskReadOnly {
-				toolGate.DenyReaderTools(crewAskDeniedTools()...)
+				toolGate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[strings.TrimSpace(name)] })
 			}
 		}
 		defer toolGate.logSurface(sessionID)
