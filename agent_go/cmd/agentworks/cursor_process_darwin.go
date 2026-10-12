@@ -63,3 +63,8 @@ func cursorProcessAt(pid int) (cursorProcess, error) {
 	}
 	return process, errors.New("not a verified Cursor app image")
 }
+
+func cursorPIDDefinitelyGone(pid int) bool {
+	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	return errors.Is(err, unix.ESRCH) || err == nil && info.Proc.P_pid != int32(pid)
+}

@@ -91,7 +91,10 @@ func cursorObservedSession(root string, process cursorProcess, session string) (
 			}
 			current, e := cursorProcessAt(record.PID)
 			if e != nil || current.Host != record.Host {
-				if !cursorProcessForHost(record.Host) {
+				// An unavailable image/proc read is unknown, not proof of
+				// death. Remove only a confirmed PID disappearance or a
+				// successfully verified replacement kernel identity.
+				if e == nil || cursorPIDDefinitelyGone(record.PID) {
 					removeMuseObservation(dir, file.Name())
 				}
 				continue

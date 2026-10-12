@@ -73,3 +73,8 @@ func cursorProcessAt(pid int) (cursorProcess, error) {
 	process.Host, process.Kind = cursorHostKey(pid, hex.EncodeToString(h[:])), "cli"
 	return process, nil
 }
+
+func cursorPIDDefinitelyGone(pid int) bool {
+	_, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid)))
+	return errors.Is(err, os.ErrNotExist)
+}
