@@ -612,9 +612,9 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 	}
 	var steps [][]string
 	if provider == "claude" {
-		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks", "--scope", "project"}, {"plugin", "install", "agentworks@agentworks", "--scope", "project"}}
+		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", "project"}, {"plugin", "install", "agentworks@agentworks", "--scope", "project"}}
 	} else {
-		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks"}, {"plugin", "add", "agentworks-codex@agentworks"}}
+		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex@agentworks"}}
 	}
 	for _, args := range steps {
 		c := exec.CommandContext(ctx, provider, args...)
@@ -661,7 +661,7 @@ func installMusePlugin(ctx context.Context, o *options) error {
 		return errors.New("plugin installation cancelled")
 	}
 	for _, args := range [][]string{
-		{"plugins", "marketplace", "add", "agentworks", "https://github.com/manishiitg/agentworks.git"},
+		{"plugins", "marketplace", "add", "agentworks", "https://github.com/manishiitg/agentworks-plugins.git"},
 		{"plugins", "install", "agentworks-muse@agentworks"},
 	} {
 		c := exec.CommandContext(ctx, "muse", args...)

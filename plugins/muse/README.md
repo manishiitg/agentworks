@@ -35,7 +35,7 @@ The person adds the GitHub marketplace, installs the Muse package and reviews
 its capabilities:
 
 ```sh
-muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks.git
+muse plugins marketplace add agentworks https://github.com/manishiitg/agentworks-plugins.git
 muse plugins install agentworks-muse@agentworks
 muse plugins inspect agentworks-muse --json
 ```

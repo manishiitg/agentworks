@@ -68,7 +68,7 @@ The person chooses only the attachment name. The attached agent can describe its
 
 ### Updates from GitHub
 
-The marketplace source is `manishiitg/agentworks` on GitHub. Refresh it and
+The marketplace source is `manishiitg/agentworks-plugins` on GitHub, a small repository generated from this one (installing from the main repository still works; to switch, run `codex plugin marketplace remove agentworks` and `codex plugin marketplace add manishiitg/agentworks-plugins`, then `codex plugin add agentworks-codex@agentworks`). Refresh it and
 install the newest published plugin; reload the provider as required.
 
 ```sh
