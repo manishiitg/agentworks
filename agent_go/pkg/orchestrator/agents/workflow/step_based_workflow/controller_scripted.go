@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
@@ -1073,6 +1074,26 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	if hcpo.WorkspaceClient == nil {
 		return "", -1, fmt.Errorf("%w: no workspace client configured", ErrScriptedHarnessRejection)
 	}
+
+	// Freeze the source at dispatch; later edits/retries must not rewrite this
+	// execution's evidence. A transport refusal is recorded as not started.
+	snapshotStart := time.Now()
+	scriptRel := strings.TrimPrefix(mainPyAbsPath, docsRoot+"/")
+	scriptSource, _ := hcpo.ReadWorkspaceFile(ctx, scriptRel)
+	hcpo.recordInspectionEvents(ctx,
+		orchevents.BackgroundAgentTranscriptEvent{Timestamp: snapshotStart, Type: "script_path", Text: scriptRel},
+		orchevents.BackgroundAgentTranscriptEvent{Timestamp: snapshotStart, Type: "script_source", Text: scriptSource})
+	stdout, stderr := "", ""
+	defer func() {
+		status := "completed"
+		if execErr != nil || exitCode != 0 {
+			status = "failed"
+		}
+		if errors.Is(execErr, ErrScriptedHarnessRejection) {
+			status = "not_started"
+		}
+		hcpo.recordInspectionEvents(ctx, scriptInspectionEnd(snapshotStart, stdout, stderr, exitCode, status, execErr)...)
+	}()
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(ctx, reqParams)
 	if err != nil {
 		// Transport failure or a non-2xx status: the request never became a
@@ -1080,6 +1101,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		return "", -1, fmt.Errorf("%w: %w", ErrScriptedHarnessRejection, err)
 	}
 
+	stdout, stderr = result.Stdout, result.Stderr
 	combined := result.Stdout
 	if result.Stderr != "" {
 		if combined != "" {

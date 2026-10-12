@@ -51,6 +51,20 @@ the October 7 automatic-review rule for interactive runs.
 
 Ticket: [PLAT-825](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/pulse/plat-825.md), issue 825-26.
 
+## 2026-10-12 — Inspection follows the execution type and the chat renderer (PLAT-861)
+
+Record agent/script/validation type with its execution, rather than looking up a
+later plan revision. Agent inspection reuses ChatArea's chronological transcript
+and expandable tool controls, with the saved system prompt above it. Script
+inspection shows the per-dispatch source snapshot, stdout/stderr, exit code and
+final output; agent-authored completion snapshots are labeled separately. Keep
+source/output with the chat's durable transcript, its redaction and deletion
+fence. Never substitute today's script or another run's logs for missing records.
+Why: users need to identify the execution type immediately and debug the actual
+conversation or code that belonged to that attempt.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-119.
+
 ## 2026-10-12 — Agent item inspection uses its chat and task identity (PLAT-861)
 
 Bind provider event capture to the registered item execution and owning chat,

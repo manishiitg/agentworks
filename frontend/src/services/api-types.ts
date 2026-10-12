@@ -1640,6 +1640,9 @@ export interface ExecutionInspectionTarget {
 }
 
 export interface ExecutionInspectionResponse {
+ execution_mode?: 'agent' | 'script' | 'validation' | ''
+ scripts?: Array<{origin?: string; started_at: string; completed_at?: string; path?: string; source?: string; stdout?: string; stderr?: string; error?: string; exit_code?: number; status: string}>
+
  transcript: {
   session_id: string
   agent_id: string

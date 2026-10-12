@@ -373,6 +373,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	_ = progress
 	_ = allSteps
 	ctx = withParentStepIndex(ctx, stepIndex)
+	hcpo.recordInspectionMode(ctx, "agent")
 
 	sequenceStep, ok := step.(*AgentPlanStep)
 	if !ok {
@@ -574,6 +575,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		started := time.Now()
 		notificationID, notificationName, notificationMeta, notifyItem := hcpo.startAgentItemNotification(ctx, sequenceStep, item, stepIndex, stepPath, source, started)
 		itemCtx := hcpo.agentItemExecutionContext(ctx, notificationID)
+		if notifyItem {
+			hcpo.recordInspectionMode(itemCtx, agentItemInspectionMode(item))
+		}
 		summary, err := hcpo.executeAgentItem(itemCtx, sequenceStep, item, stepIndex, stepPath, session, isRoute)
 		if err == nil && sequenceStep.AuthoredPrompt && itemIndex == len(plannedItems)-1 {
 			_, err = normalizeAuthoredJSONResult(summary)

@@ -6,11 +6,11 @@ import { RunInspectionButton } from './RunInspectionButton'
 import { StepInspectionTabs } from './StepInspectionTabs'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { openStepInspection } from '../../utils/stepInspection'
-import { inspectionConversation } from '../../utils/inspectionConversation'
+import { inspectionChat, inspectionRecords } from '../../utils/inspectionConversation'
 import { agentApi } from '../../services/api'
 import type { ExecutionInspectionTarget, ExecutionInspectionResponse, PollingEvent } from '../../services/api-types'
 
-vi.mock('../workflow/ConversationViewer', () => ({ConversationViewer: ({content}: {content:string}) => <pre>{content}</pre>}))
+vi.mock('../TerminalEventTranscript', () => ({TerminalEventTranscript: ({events}: {events:unknown}) => <pre>{JSON.stringify(events)}</pre>}))
 vi.mock('../ui/MarkdownRenderer', () => ({MarkdownRenderer: ({content}: {content:string}) => <p>{content}</p>}))
 const original = useChatStore.getState()
 afterEach(() => {useChatStore.setState(original, true); vi.restoreAllMocks(); vi.unstubAllGlobals()})
@@ -56,10 +56,13 @@ it('renders the recorded system/user prompt and merges tool start/result without
  const data = response('first','User instruction')
  data.transcript.events.unshift({timestamp:target.started_at,type:'system_message',role:'system',text:'System instruction'})
  data.transcript.events.push({timestamp:target.started_at,type:'tool_call',tool_call:{tool_call_id:'t',tool_name:'read_file',arguments:'{"path":"sources.txt"}',status:'running'}},{timestamp:target.started_at,type:'tool_call',tool_call:{tool_call_id:'t',tool_name:'read_file',result:'Facts',status:'completed'}})
- const content = inspectionConversation(data)
- expect(content).toContain('System instruction'); expect(content).toContain('User instruction'); expect(content).toContain('sources.txt'); expect(content).toContain('Facts')
- const tools = inspectionConversation(data,true)
- expect(tools).not.toContain('System instruction'); expect(tools).not.toContain('User instruction'); expect(tools).toContain('Facts')
+ const records = inspectionRecords(data)
+ expect(records.system).toEqual(['System instruction']); expect(records.user).toEqual(['User instruction'])
+ expect(records.tools[0].arguments).toContain('sources.txt'); expect(records.tools[0].result).toBe('Facts')
+ const chat = inspectionChat(data)
+ expect(chat.terminal.terminal_id).toBe('parent:first')
+ expect(JSON.stringify(chat.events)).not.toContain('System instruction')
+ expect(JSON.stringify(chat.events)).toContain('User instruction'); expect(JSON.stringify(chat.events)).toContain('sources.txt'); expect(JSON.stringify(chat.events)).toContain('Facts')
 })
 
 it('opens the exact dispatch from the compact run row launch receipt', async () => {

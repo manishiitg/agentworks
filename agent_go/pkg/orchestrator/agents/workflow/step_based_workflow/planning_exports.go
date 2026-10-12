@@ -1409,6 +1409,13 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 		}
 	}
 
+	// A script dispatch already has one registered step lifecycle. Its optional
+	// model repair turns must not create a second completion/notification owner.
+	// Nested child owners remain independent and still pass through tracking.
+	if owner, ok := ctx.Value(scriptInspectionOwnerKey{}).(string); ok && owner != "" && owner == currentWorkshopParentExecutionID(ctx) {
+		return nil
+	}
+
 	// Intercept step start/end events so the server-side bgAgentRegistry can
 	// notify the main workflow-builder agent while a full workflow runs.
 	switch event.Type {
