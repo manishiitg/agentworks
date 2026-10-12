@@ -240,6 +240,15 @@ func endpointDisplayLabel(e agentMessageEndpoint, viewerUserID string) string {
 	return e.Label
 }
 
+// crossPersonOwner is the owner's server username when the endpoint belongs to
+// another person's shared agent, and empty for same-account senders.
+func crossPersonOwner(e agentMessageEndpoint, viewerUserID string) string {
+	if e.ShareID != "" && e.UserID != viewerUserID {
+		return shareOwnerLabel(e.UserID)
+	}
+	return ""
+}
+
 func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	denied := fmt.Errorf("conversation unavailable or access denied")
 	if !namedAgentOperationAllowed(claims, send) || peer.NamedAgentID == "" {
@@ -536,32 +545,37 @@ func (api *StreamingAPI) handleBullpenShareRevoke(w http.ResponseWriter, r *http
 		return
 	}
 	id := mux.Vars(r)["id"]
+	if status, code, msg := api.revokeShare(r.Context(), claims.UserID, id); code != "" {
+		externalError(w, status, code, msg)
+		return
+	}
+	externalJSON(w, map[string]interface{}{"share_id": id, "state": "revoked"})
+}
+
+func (api *StreamingAPI) revokeShare(ctx context.Context, owner, id string) (int, string, string) {
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
-	s, err := readAgentMessageStore(r.Context())
+	s, err := readAgentMessageStore(ctx)
 	if err != nil {
-		externalError(w, http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again.")
-		return
+		return http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again."
 	}
 	for i := range s.Shares {
 		sh := &s.Shares[i]
-		if sh.ID != id || sh.OwnerUserID != claims.UserID {
+		if sh.ID != id || sh.OwnerUserID != owner {
 			continue
 		}
 		if sh.RevokedAt.IsZero() {
 			sh.RevokedAt = time.Now().UTC()
 			sh.RevocationVersion++
 			s.suppressShare(sh.ID)
-			s.auditShare("share_revoked", claims.UserID, sh.OwnerUserID, sh.SubjectUserID, sh.ID, sh.AgentID)
-			if err := saveAgentMessageStore(r.Context(), s); err != nil {
-				externalError(w, http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again.")
-				return
+			s.auditShare("share_revoked", owner, sh.OwnerUserID, sh.SubjectUserID, sh.ID, sh.AgentID)
+			if err := saveAgentMessageStore(ctx, s); err != nil {
+				return http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again."
 			}
 		}
-		externalJSON(w, map[string]interface{}{"share_id": id, "state": "revoked"})
-		return
+		return 0, "", ""
 	}
-	externalError(w, http.StatusNotFound, "unknown_share", "No such share.")
+	return http.StatusNotFound, "unknown_share", "No such share."
 }
 
 // Blocking a person revokes everything shared with them and refuses new sends.

@@ -320,6 +320,9 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery}
+			if person := crossPersonOwner(source, dest.UserID); person != "" {
+				frame["from_person"], frame["untrusted"] = person, true
+			}
 			if write(frame) != nil {
 				return
 			}
