@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-12 — Working tips and quick navigation load on demand (PLAT-746)
+
+Load the working-tip component, selector and catalog request hook only when
+the transcript enters Working. Use an empty Suspense fallback within the same
+fixed-height activity footer; keep the tip delay, cadence and cancellation
+inside the mounted component. Why: optional hints must not enlarge the eager
+application bundle or block release builds. Keep the existing bundle budget.
+Keep the Ctrl+K handler eager, but load its dialog through a lazy host. Warm
+that chunk after startup or on a navigation request, and let Escape dismiss
+the host even while its first request is pending; retain the dialog's focus.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md).
+
 ## 2026-10-12 — Workflow teams can be managed directly through MCP (PLAT-825)
 
 Expose `workflow_team` with get/update and explicit schedule reauthorization.
