@@ -830,6 +830,9 @@ type QueryRequest struct {
 	// as a guest (read-only, may answer and suggest). Honoured only on the
 	// owner's own Crew turn, where it can only narrow access.
 	CrewGuestCaller string `json:"crew_guest_caller,omitempty"`
+	// CrewAskReadOnly marks a guest's free-text `ask` to a Crew: the turn only reads (files, memory, skills, functions,
+	// MCPs); typed functions are how a guest acts (856-59, owner decision 2026-10-12). It only narrows access.
+	CrewAskReadOnly bool `json:"crew_ask_read_only,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
 	// Workspace access configuration (legacy field, ignored — workspace is always enabled)
@@ -6424,6 +6427,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					outputFolder := crewOutputFolder(profileRoot)
+					if crewGuest != "" && req.CrewAskReadOnly {
+						outputFolder = ""
+					}
 					if functionOutput != "" {
 						outputFolder = functionOutput
 					}
