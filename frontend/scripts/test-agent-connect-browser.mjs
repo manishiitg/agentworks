@@ -21,6 +21,7 @@ try {
     let directoryStatus = 200
     let agents = [{ agent_id: 'reviewer', agent_name: 'reviewer', target: 'agent:reviewer', provider: 'codex', online: true, purpose }, { agent_id: 'writer', agent_name: 'writer', target: 'agent:writer', provider: 'claude', online: false, purpose: 'Writes documentation.' }]
     await page.route('**/api/**', route => {
+      if (!new URL(route.request().url()).pathname.startsWith('/api/')) return route.continue()
       const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS' }
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
       if (route.request().url().includes('/api/bullpen/agents')) return route.fulfill({ headers, status: directoryStatus, contentType: 'application/json', body: JSON.stringify({ agents }) })
