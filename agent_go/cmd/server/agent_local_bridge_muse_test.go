@@ -157,6 +157,21 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 	if len(again) != 2 {
 		t.Fatalf("unacknowledged messages were not offered again: %v", again)
 	}
+	// The helper restarts while both messages are received but unacknowledged: the
+	// received state survives, so ack and reply are still accepted afterwards.
+	cancel()
+	<-done
+	cancel, done = start(false)
+	again2 := chat
+	again2.Action, again2.HostKey = "resume", "muse-process-new"
+	if out := call(again2); !out.Attached {
+		t.Fatalf("chat did not come back after the second restart: %+v", out)
+	}
+	reply := chat
+	reply.Action, reply.HostKey, reply.MessageID, reply.Message, reply.SubmissionID = "reply", "muse-process-new", again["second waiting message"], "answering after a restart", "after-restart"
+	if out := call(reply); out.Error != "" {
+		t.Fatalf("reply after a helper restart was refused: %s", out.Error)
+	}
 	ack := chat
 	ack.Action, ack.Delivery, ack.HostKey, ack.MessageID = "ack", "admitted", "muse-process-new", again["first waiting message"]
 	if out := call(ack); out.Error != "" {
