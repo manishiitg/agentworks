@@ -14,7 +14,7 @@ func TestReportRelayRunsUsesProjectAccessAndDoesNotExposePrivateTrace(t *testing
 	t.Setenv("MULTI_USER_MODE", "true")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":[]},{"id":"other","products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":[]},{"id":"other","products":[]}]}`)
 	ws := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/relay/workflow.json": `{"id":"relay","kind":"relay","access":{"owners":["owner"]}}`}})
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
@@ -68,7 +68,7 @@ func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":[]},{"id":"editor","can_edit":true,"products":[]},{"id":"reader-a","products":[]},{"id":"reader-b","products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":[]},{"id":"editor","can_edit":true,"products":[]},{"id":"reader-a","products":[]},{"id":"reader-b","products":[]}]}`)
 	ws := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
 		"Workflow/relay/workflow.json":                  `{"id":"relay","kind":"relay","access":{"owners":["owner"],"editors":["editor"],"readers":["reader-a","reader-b"]}}`,
 		"Workflow/relay/webhooks/deliveries/run-1.json": `{"run_id":"run-1","payload":{"relay_caller":"reader-a"}}`,
