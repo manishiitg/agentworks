@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,7 +35,31 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 	mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
-	mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
+	var slowMuseValidate atomic.Bool
+	validateStarted, validateRelease := make(chan struct{}, 1), make(chan struct{})
+	mux.HandleFunc("/api/external/v1/agents/attachment", func(w http.ResponseWriter, r *http.Request) {
+		if slowMuseValidate.Load() {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var in struct {
+				Action string `json:"action"`
+				Name   string `json:"agent_name"`
+			}
+			_ = json.Unmarshal(body, &in)
+			if in.Action == "validate" && in.Name == "muse-review" {
+				select {
+				case validateStarted <- struct{}{}:
+				default:
+				}
+				select {
+				case <-validateRelease:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		env.api.handleAgentAttachment(w, r)
+	})
 	srv := httptest.NewServer(AuthMiddleware(mux))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
@@ -795,6 +821,267 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if local(wrong).Attached {
 		t.Fatal("another session read attached state")
 	}
+
+	// Muse: real OAuth/SSE + persistent private Unix watch. A wake is metadata,
+	// not a body offer or receipt. Restart never replays an ambiguous wake.
+	_, musePath, _ := issue()
+	museBase := agentworksclient.LocalBridgeRequest{Provider: "muse", SessionID: "11111111-2222-4333-8444-555555555555", HostKey: "muse-birth-key"}
+	museAttach := museBase
+	museAttach.Action, museAttach.AgentName, museAttach.ConfigPath = "attach", "muse-review", musePath
+	museLease := local(museAttach).Attachment.ID
+	museBase.AttachmentID = museLease
+	museContext, museCancel := context.WithCancel(context.Background())
+	defer museCancel()
+	musePlugin, e := agentworksclient.NewMusePluginMCPServer(museContext, root, museBase.HostKey, func() (string, error) { return museBase.SessionID, nil })
+	if e != nil {
+		t.Fatal(e)
+	}
+	tool := func(name string, args map[string]any, wantError bool) *mcp.CallToolResult {
+		t.Helper()
+		result, e := musePlugin.GetTool(name).Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: args}})
+		if e != nil || result.IsError != wantError {
+			t.Fatalf("Muse %s: %+v %v", name, result, e)
+		}
+		return result
+	}
+	config := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	if !strings.Contains(config, "--session") || !strings.Contains(config, museLease) || !strings.Contains(config, `"wake_delay_ms":0`) {
+		t.Fatal("unpinned Monitor config", config)
+	}
+	watch := func(request agentworksclient.LocalBridgeRequest) (context.CancelFunc, <-chan error, <-chan agentworksclient.MuseWatchHint) {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		hints := make(chan agentworksclient.MuseWatchHint, 4)
+		go func() {
+			done <- agentworksclient.WatchMuseBridge(ctx, root, request, func(h agentworksclient.MuseWatchHint) error { hints <- h; return nil })
+		}()
+		return cancel, done, hints
+	}
+	waitActive := func(active bool) {
+		t.Helper()
+		check := museBase
+		check.Action = "status"
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if local(check).MonitorActive == active {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("Muse Monitor activity did not change", active)
+	}
+	slowMuseValidate.Store(true)
+	watchCancel, watchDone, hints := watch(museBase)
+	defer watchCancel()
+	select {
+	case <-validateStarted:
+	case <-time.After(5 * time.Second):
+		close(validateRelease)
+		t.Fatal("watch validation did not start")
+	}
+	responsive := make(chan struct{}, 1)
+	go func() {
+		check := base
+		check.Action = "status"
+		_, _ = agentworksclient.CallLocalBridge(context.Background(), root, check)
+		responsive <- struct{}{}
+	}()
+	select {
+	case <-responsive:
+	case <-time.After(time.Second):
+		close(validateRelease)
+		t.Fatal("slow Muse validation stalled another attached provider")
+	}
+	slowMuseValidate.Store(false)
+	close(validateRelease)
+	waitActive(true)
+	renewMuse := museBase
+	renewMuse.Action = "attach"
+	if out := local(renewMuse); !out.MonitorActive || !out.NativeDelivery || out.Attachment.ID != museLease {
+		t.Fatal("bare Muse reconnect lost its active Monitor or lease", out)
+	}
+	if active := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text; !strings.Contains(active, `"monitor_active":true`) || strings.Contains(active, `"command"`) {
+		t.Fatal("duplicate Monitor startup suggested", active)
+	}
+	for _, bad := range []agentworksclient.LocalBridgeRequest{
+		{Provider: "muse", SessionID: museBase.SessionID, HostKey: "wrong-host", AttachmentID: museLease},
+		{Provider: "muse", SessionID: museBase.SessionID, HostKey: museBase.HostKey, AttachmentID: "old-lease"},
+		museBase, // museSecond reader of the same exact lease
+	} {
+		c, d, _ := watch(bad)
+		select {
+		case err := <-d:
+			if err == nil {
+				t.Fatal("invalid/duplicate watch admitted")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("invalid watch did not fail")
+		}
+		c()
+	}
+	museSend := func(body string) map[string]any {
+		return call(freshSender, map[string]any{"action": "send", "agent_name": "fresh-sender", "target": "agent:muse-review", "message": body, "submission_id": body})
+	}
+	museFirst := museSend("Muse body stays private until receive")
+	select {
+	case hint := <-hints:
+		raw, _ := json.Marshal(hint)
+		if hint.MessageID != museFirst["message_id"] || hint.Source != "agentworks-muse-watch" || hint.Sender != "fresh-sender" || strings.Contains(string(raw), "body stays") {
+			t.Fatal("wrong or overbroad Muse hint", hint)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SSE did not wake the idle Unix watch")
+	}
+	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, true)
+	watchCancel()
+	<-watchDone
+	waitActive(false)
+	stop(cancel, done)
+	cancel, done = start()
+	defer cancel()
+	watchCancel, watchDone, hints = watch(museBase)
+	defer watchCancel()
+	waitActive(true)
+	select {
+	case hint := <-hints:
+		if hint.Kind != "pending" || hint.Pending != 1 || hint.MessageID != "" || hint.InboxID != "" || hint.Sender != "" {
+			t.Fatal("invalid aggregate catch-up hint", hint)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("restart left unread bodies silent")
+	}
+	select {
+	case hint := <-hints:
+		t.Fatal("restart replayed an individual ambiguous hint", hint)
+	case <-time.After(100 * time.Millisecond):
+	}
+	museSecond := museSend("New message wakes the same renewed stream")
+	select {
+	case hint := <-hints:
+		if hint.MessageID != museSecond["message_id"] {
+			t.Fatal("old hint replayed", hint)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("restarted watch did not receive new SSE offer")
+	}
+	received := tool("agent_message_receive", nil, false)
+	var bodies agentworksclient.LocalBridgeReply
+	if e = json.Unmarshal([]byte(received.Content[0].(mcp.TextContent).Text), &bodies); e != nil || len(bodies.Messages) != 2 || bodies.Messages[0].MessageID != museFirst["message_id"] {
+		t.Fatal("Muse bodies unavailable or misrouted", bodies, e)
+	}
+	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, false)
+	tool("agent_message_reply", map[string]any{"message_id": museFirst["message_id"], "message": "Received through Muse Monitor", "submission_id": "muse-monitor-reply"}, false)
+	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "processed"}, false)
+	responses = call(freshSender, map[string]any{"action": "read", "agent_name": "fresh-sender", "inbox_id": museFirst["inbox_id"]})["messages"].([]any)
+	if len(responses) != 1 || responses[0].(map[string]any)["message"] != "Received through Muse Monitor" || responses[0].(map[string]any)["inbox_id"] != museFirst["inbox_id"] {
+		t.Fatal("Muse reply lost its original inbox", responses)
+	}
+	changed := museBase
+	changed.SessionID = "11111111-2222-4333-8444-555555555556"
+	changed.Action = "status"
+	changed.MuseCurrent = true
+	if local(changed).Attached {
+		t.Fatal("chat switch attached another session")
+	}
+	select {
+	case <-watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("chat switch did not stop old Monitor")
+	}
+	waitActive(false)
+	c, d, _ := watch(museBase)
+	select {
+	case err := <-d:
+		if err == nil {
+			t.Fatal("old session watch resumed after switch")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("old-session refusal blocked")
+	}
+	c()
+	changed = museBase
+	changed.Action = "status"
+	changed.MuseCurrent = true
+	local(changed)
+	watchCancel, watchDone, _ = watch(museBase)
+	defer watchCancel()
+	waitActive(true)
+	// The approved MCP brokers a metadata pipe for a sandboxed native reader.
+	watchCancel()
+	<-watchDone
+	waitActive(false)
+	config = tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	var options struct {
+		Monitor struct {
+			Command string `json:"command"`
+		} `json:"monitor"`
+	}
+	if e = json.Unmarshal([]byte(config), &options); e != nil {
+		t.Fatal(e)
+	}
+	parts := strings.Split(options.Monitor.Command, " --subscription-file '")
+	if len(parts) != 2 {
+		t.Fatal("missing private subscription", config)
+	}
+	subscription := strings.TrimSuffix(parts[1], "'")
+	pipeCtx, pipeCancel := context.WithCancel(context.Background())
+	pipeDone := make(chan error, 1)
+	pipeHints := make(chan agentworksclient.MuseWatchHint, 4)
+	go func() {
+		pipeDone <- agentworksclient.ReadMuseMonitorPipe(pipeCtx, subscription, museBase.SessionID, museLease, func(h agentworksclient.MuseWatchHint) error { pipeHints <- h; return nil })
+	}()
+	waitActive(true)
+	if e = agentworksclient.ReadMuseMonitorPipe(context.Background(), subscription, museBase.SessionID, museLease, func(agentworksclient.MuseWatchHint) error { return nil }); e == nil {
+		t.Fatal("duplicate FIFO reader accepted")
+	}
+	third := museSend("Private FIFO carries no body")
+	select {
+	case h := <-pipeHints:
+		if h.MessageID != third["message_id"] {
+			t.Fatal("wrong FIFO metadata", h)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("approved broker did not forward SSE hint to FIFO")
+	}
+	pipeCancel()
+	select {
+	case <-pipeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("FIFO reader cancellation stuck")
+	}
+	waitActive(false) // kernel lock release, no new message or liveness polling
+	// A crashed broker's complete UUID set is cleaned only with its lifetime
+	// lock free. The helper must retain the newly staged live subscription.
+	stale := filepath.Join(filepath.Dir(subscription), "11111111-2222-4333-8444-555555555557.json")
+	record := agentworksclient.MuseMonitorSubscription{Source: "agentworks-muse-watch", SessionID: museBase.SessionID, AttachmentID: museLease, HostKey: museBase.HostKey, DataHome: t.TempDir()}
+	encoded, _ := json.Marshal(record)
+	for _, suffix := range []string{"", ".broker", ".lock", ".fifo"} {
+		if e = os.WriteFile(stale+suffix, encoded, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	config = tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	for _, suffix := range []string{"", ".broker", ".lock", ".fifo"} {
+		if _, e = os.Lstat(stale + suffix); !errors.Is(e, os.ErrNotExist) {
+			t.Fatal("stale Muse subscription retained", suffix, e)
+		}
+	}
+	if again := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text; again != config {
+		t.Fatal("live staged broker was removed or duplicated", again, config)
+	}
+	museCancel()
+	watchCancel, watchDone, _ = watch(museBase)
+	defer watchCancel()
+	waitActive(true)
+	closeMuse := museBase
+	closeMuse.Action = "detach"
+	local(closeMuse)
+	select {
+	case <-watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("detach did not close Monitor")
+	}
+
 	// Revoke after the body was cached but before a hook could release it.
 	_ = send("cached before sender revoke")
 	status := base

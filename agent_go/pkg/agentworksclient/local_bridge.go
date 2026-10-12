@@ -22,6 +22,7 @@ import (
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
 	OwnAttach     bool   `json:"own_attach,omitempty"`
+	MuseCurrent   bool   `json:"muse_current,omitempty"`
 	ReuseIdentity bool   `json:"reuse_identity,omitempty"`
 	Setup         bool   `json:"setup,omitempty"`
 	Action        string `json:"action"`
@@ -58,6 +59,7 @@ type LocalAgentDirectory struct {
 }
 
 type LocalBridgeReply struct {
+	MonitorActive      bool                  `json:"monitor_active,omitempty"`
 	Directories        []LocalAgentDirectory `json:"directories,omitempty"`
 	SetupContext       string                `json:"setup_context,omitempty"`
 	AgentStates        []LocalAgentState     `json:"agent_states,omitempty"`
@@ -78,6 +80,7 @@ type LocalBridgeReply struct {
 }
 
 type localOffer struct {
+	MuseHinted bool `json:"muse_hinted,omitempty"`
 	AgentLiveMessage
 	Offered    bool      `json:"offered"`
 	Suppressed bool      `json:"suppressed,omitempty"`
@@ -86,6 +89,7 @@ type localOffer struct {
 }
 
 type localSession struct {
+	museWatch         *museWatchState
 	OfflineExplicit   bool                  `json:"offline_explicit,omitempty"`
 	OwnCLI            bool                  `json:"own_cli,omitempty"`
 	MissingHostNotice bool                  `json:"missing_host_notice,omitempty"`
@@ -110,13 +114,14 @@ type localSession struct {
 }
 
 type localBridge struct {
-	mu       sync.Mutex
-	root     string
-	sessions map[string]*localSession
-	changed  chan struct{}
-	options  LocalBridgeOptions
-	workers  sync.WaitGroup
-	closed   bool
+	museCurrent map[string]string
+	mu          sync.Mutex
+	root        string
+	sessions    map[string]*localSession
+	changed     chan struct{}
+	options     LocalBridgeOptions
+	workers     sync.WaitGroup
+	closed      bool
 }
 
 var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receipt")
@@ -310,6 +315,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			out.Error = "invalid local bridge request"
 		} else {
+			if in.Action == "watch" {
+				b.serveMuseWatch(ctx, w, r, in)
+				return
+			}
 			if in.Action == "shutdown" {
 				shutdownOnce.Do(func() { close(shutdown) })
 			} else {
@@ -334,6 +343,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		b.mu.Lock()
 		b.closed = true
 		for _, s := range b.sessions {
+			stopMuseWatch(s)
 			if s.cancel != nil {
 				s.cancel()
 			}
@@ -394,12 +404,16 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					return err
 				}
 				b.wake()
-				if b.options.Notify != nil && s.NativeRemote == "" {
+				if b.options.Notify != nil && s.NativeRemote == "" && !museWatchActive(s) {
 					go b.options.Notify(s.Attachment, "")
 				}
 				return nil
 			})
 			b.mu.Lock()
+			var watchErr *APIError
+			if errors.As(err, &watchErr) && (watchErr.Status == 401 || watchErr.Status == 403 || watchErr.Status == 404 || watchErr.Code == "agent_attachment_closed") {
+				stopMuseWatch(s)
+			}
 			b.wake()
 			b.mu.Unlock()
 			var apiErr *APIError
@@ -461,6 +475,17 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Error: "local bridge stopping"}
 	}
 	key := localBridgeKey(in.Provider, in.SessionID)
+	if in.Provider == "muse" && in.MuseCurrent && in.HostKey != "" && in.SessionID != "" {
+		if b.museCurrent == nil {
+			b.museCurrent = map[string]string{}
+		}
+		b.museCurrent[in.HostKey] = in.SessionID
+		for _, current := range b.sessions {
+			if current.Attachment.Provider == "muse" && current.HostKey == in.HostKey && current.Attachment.SessionID != in.SessionID {
+				stopMuseWatch(current)
+			}
+		}
+	}
 	s := b.sessions[key]
 	if in.SessionID == "" && in.HostKey != "" {
 		for k, v := range b.sessions {
@@ -476,6 +501,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
 			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, Route: "hooks", LastError: session.LastError}
+			if museWatchActive(session) {
+				state.Route = "muse_monitor"
+			}
 			if session.Attachment.Provider == "pi" {
 				state.Route = "stored"
 				if piNativeActive(session) {
@@ -603,7 +631,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 						return LocalBridgeReply{Error: err.Error()}
 					}
 					b.wake()
-					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s)}
+					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
 				}
 			}
 		}
@@ -714,6 +742,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		for _, v := range old {
+			stopMuseWatch(v)
 			if v.ConfigPath != next.ConfigPath {
 				_ = os.Remove(v.ConfigPath)
 			}
@@ -756,7 +785,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		b.startNative(s)
 		b.wake()
 	}
-	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s)}
+	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
 	if in.Action == "status" && s.NativeRemote != "" && b.options.NativeRoute != nil {
 		out.NativeRouteStatus = "ok"
 		if b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, s.NativeRemote) != s.NativeRemote {
@@ -872,6 +901,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			b.sessions[key] = s
 			return LocalBridgeReply{Error: err.Error()}
 		}
+		stopMuseWatch(s)
 		if s.cancel != nil {
 			s.cancel()
 		}
@@ -1215,6 +1245,7 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 			if !s.Offline && b.options.HostAlive != nil && !b.options.HostAlive(s.Attachment.Provider, s.HostKey) {
 				s.Offline = true
 				s.LastError = "Provider session ended; type /agentworks attach in that chat to reconnect."
+				stopMuseWatch(s)
 				if s.cancel != nil {
 					s.cancel()
 				}

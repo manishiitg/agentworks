@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "agentworks-muse",
   "displayName": "AgentWorks",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Receive AgentWorks messages in an explicitly attached Muse session.",
   "compat": {
     "source": "native",
@@ -13,6 +13,11 @@
       {
         "id": "messaging",
         "path": "skills/messaging/SKILL.md",
+        "enabledDefault": true
+      },
+      {
+        "id": "monitor",
+        "path": "skills/monitor/SKILL.md",
         "enabledDefault": true
       }
     ],

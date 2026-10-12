@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-12 — Muse idle wake uses an exact-session native Monitor (PLAT-866)
+
+After the literal person attach succeeds in the Muse hook, trusted setup context
+continues a model turn to start its native Monitor. The hook has already granted
+the exact process/session lease; the model cannot perform attachment. Failed,
+queued and header commands remain refused. The approved MCP broker owns one
+private bridge stream and passes bounded metadata through a private FIFO to the
+network-restricted Monitor command. It holds no account credential in the child,
+uses no inbox polling and stops on reader exit or invalid session/lease. A hint
+is not an offer receipt: the exact-session MCP receives bodies, and admission,
+reply and processing remain explicit. Ambiguous individual hints never replay;
+one aggregate pending notice supports recovery. Hooks remain the fallback.
+
+Why: Muse's outside ingress is closed, but its native Monitor can wake an idle
+chat without changing the sandbox or typing into a terminal.
+
+Ticket: [PLAT-866](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/coding-agents/communication/plat-866.md), issue866-9 under PLAT-861 issue861-44.
+
 ## 2026-10-12 — Agents may connect their own chat when the person asks (PLAT-861)
 
 A plain-language request from the person authorizes the coding agent to run

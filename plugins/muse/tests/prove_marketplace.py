@@ -70,7 +70,7 @@ def main():
         assert capabilities["mcp_servers"][0]["command"] == [
             "agentworks", "plugin", "mcp", "muse"]
         assert [item["id"] for item in capabilities["commands"]] == ["agentworks"]
-        assert [item["id"] for item in capabilities["skills"]] == ["messaging"]
+        assert [item["id"] for item in capabilities["skills"]] == ["messaging", "monitor"]
         if len(sys.argv) == 2:
             with (fixture / "plugins/muse/README.md").open("a") as readme:
                 readme.write("\nMarketplace update fixture.\n")

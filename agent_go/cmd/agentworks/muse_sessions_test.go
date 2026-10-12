@@ -123,6 +123,44 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 		}
 		os.Remove(path)
 		os.Rename(path+".saved", path)
+
+		setup := museAttachSetup(agentworksclient.LocalBridgeReply{Attachment: agentworksclient.AgentAttachment{Provider: "muse", SessionID: session, AgentName: "fixture-muse", Purpose: "PEER_TEXT_MUST_NOT_BE_TRUSTED"}, LastError: "PEER_TEXT_MUST_NOT_BE_TRUSTED"})
+		if strings.Contains(setup, "PEER_TEXT_MUST_NOT_BE_TRUSTED") || !strings.Contains(setup, "agent_message_monitor") {
+			t.Fatal("Muse trusted bootstrap contains model-written text", setup)
+		}
+		// A bash spool cannot masquerade as the native Monitor for this UUID.
+		data, err := filepath.EvalSymlinks(t.TempDir()) // macOS /var aliases /private/var
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("XDG_DATA_HOME", data)
+		t.Setenv("MUSE_TOOL_USE_ID", "fixture-call")
+		spool := filepath.Join(data, "muse", "sessions", "2026", "10", "12", session, "tool-outputs", ".spool")
+		if err = os.MkdirAll(spool, 0700); err != nil {
+			t.Fatal(err)
+		}
+		bash := filepath.Join(spool, "fixture-call-bash.txt.tmp")
+		if err = os.WriteFile(bash, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if museMonitorArtifact(session) {
+			t.Fatal("bash listener accepted as Monitor")
+		}
+		monitor := filepath.Join(spool, "fixture-call-monitor-stdout.txt.tmp")
+		if err = os.WriteFile(monitor, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if !museMonitorArtifact(session) || museMonitorArtifact("11111111-2222-4333-8444-555555555556") {
+			t.Fatal("Monitor spool lost exact session")
+		}
+		os.Remove(monitor)
+		if err = os.Symlink(bash, monitor); err != nil {
+			t.Fatal(err)
+		}
+		if museMonitorArtifact(session) {
+			t.Fatal("Monitor followed a linked spool")
+		}
+		os.Remove(monitor)
 		var seen []string
 		server, err := agentworksclient.NewMusePluginMCPServer(context.Background(), root, host, func() (string, error) {
 			id, err := museSessionForHost(root, host)
@@ -131,6 +169,9 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(server.ListTools()) != 8 || server.ListTools()["agent_message_monitor"] == nil || server.ListTools()["agent_message_receive"] == nil {
+			t.Fatal("Muse delivery helper tools missing")
 		}
 		_, _ = server.ListTools()["agent_message_peers"].Handler(context.Background(), mcp.CallToolRequest{})
 		input.SessionID = "11111111-2222-4333-8444-555555555556"

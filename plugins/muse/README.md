@@ -9,8 +9,10 @@ from starting. The observed startup error (exit 1) is:
 Required MCP server `agentworks` failed during startup: the transport closed unexpectedly.
 ```
 
-See the diagnostic details below. Native idle push remains unavailable; the
-plugin delivers through hooks at turn boundaries.
+See the diagnostic details below. This release uses a native idle Monitor and
+retains turn-boundary hooks as a fallback. Update the CLI and plugin together;
+the CLI must also expose `agent_message_monitor`, `agent_message_receive` and
+`agentworks bridge message watch`.
 
 This native Muse plugin packages an AgentWorks MCP connection, messaging skill,
 person command and UserPromptSubmit, Stop and SessionEnd hooks. It uses the shared
@@ -19,7 +21,7 @@ mailbox in a polling loop or implement another bridge.
 
 ## Requirements and installation
 
-Use Muse 1.4.4 or a compatible release, Python 3 and an AgentWorks CLI supporting
+Use Muse 1.4.6 or a compatible release, Python 3 and an AgentWorks CLI supporting
 both `agentworks plugin hook muse` and `agentworks plugin mcp muse` on PATH. The
 common bridge is owned by PLAT-861; this provider package alone does not supply
 those commands. A CLI that accepts only Claude/Codex will refuse Muse attachment
@@ -150,18 +152,48 @@ Muse's documented peer messaging is limited to eligible retained interactive
 sessions for the same user on the same machine. The installed 1.4.4-R5419.1
 `muse session-message list --json` probe returned
 `external_agent_ingress_closed` on 2026-10-11. Turning on Session messaging is not
-proof of external ingress; availability also depends on the rollout gate. No
-documented external-ingress enablement or idle push was established. Use
-turn-boundary hooks and the shared bridge's idle notification. Guarded tmux is an
-explicit opt-in fallback only; this plugin does not implement terminal typing.
+proof of external ingress; availability also depends on the rollout gate. A read-only probe of the newer installed 1.4.6-R6000.1 on 2026-10-12 returned
+`{"status":"unavailable"}` and “external agent ingress is unavailable”. The
+Monitor below supplies idle wake without external session-message ingress or
+terminal typing.
 
-Muse's built-in Monitor is a possible idle-wake route using one persistent
-line-streaming local command or a WebSocket. It needs a credential-free bridge
-stream bound to the attached session, bounded output and clean termination on
-detach. This package does not start a monitor or create its own mailbox poller;
-that shared stream and an approved real-session check remain integration work.
-A Monitor event would still be an offer requiring explicit admission and
-processing acknowledgements.
+Muse's native Monitor uses one persistent, credential-free watch on the local
+bridge. After the hook completes the person's attach, it supplies trusted
+setup context and its `agentworks-muse-monitor` skill tells Muse to call
+`agent_message_monitor` and start the native **monitor** tool with the returned
+arguments (`persistent: true`, `wake_delay_ms: 0`, `show_lines: true`). Only the successful Muse attach continues into a model turn to arm its consumer;
+failed/queued commands remain blocked and other providers retain their handling.
+A normal prompt also supplies pending setup after restart. Native tool approval
+remains the person's choice.
+
+The helper returns an absolute installed CLI command, native UUID, approved
+attachment pins and a private metadata subscription. The approved MCP broker
+rechecks the native UUID and PID/start-time binding before it opens the existing
+private Unix bridge stream. The watch command reads a 0600 FIFO under a fixed
+0700 provider-owned area, with a read-only exclusive reader lock. A kernel lock
+release ends the broker on reader death even while idle. This avoids the native
+command sandbox's Unix-socket restriction without changing network permissions.
+The child neither logs in nor connects to a socket; it rejects mismatching pins
+and stale subscriptions with no live broker lock. It refuses a bash
+listener: the native Monitor's `MUSE_TOOL_USE_ID` and exact-session stdout spool
+must exist. This spool guard prevents accidental wrong-tool startup; same-OS-user
+runtime/filesystem changes are still outside the isolation boundary.
+
+The watch holds one private Unix stream driven by the bridge's existing remote
+SSE connection and change notifications, with no timed inbox reads. It emits one
+bounded metadata hint per authorized new message, with no body or receipt, and
+persists its hint marker before writing. A duplicate reader is refused. Detach,
+changed lease/session/host, host death, revocation or bridge shutdown closes it.
+The roster reports `muse_monitor` only while that consumer is connected. A
+reported route or Monitor line does not prove admission.
+
+On a hint Muse calls `agent_message_receive` to obtain a bounded authorized body
+batch through its exact-session MCP, then acknowledges `admitted`, handles the
+peer data, optionally replies in the original inbox and acknowledges `processed`.
+The watch never marks a body offered or clears it. Individual ambiguous hints do not replay
+on restart. A new consumer emits one aggregate pending notice for unread bodies; lifecycle hooks and bounded mailbox recovery remain available.
+If Monitor is unavailable or refused, report that limit and keep hook delivery;
+do not create a model polling loop.
 
 On 2026-10-11, the official [stable release channel](https://api.meta.ai/muse-code/channels/muse-stable)
 advertised 1.4.4-R5419.1 and the [canary channel](https://api.meta.ai/muse-code/channels/muse-canary)
@@ -181,6 +213,7 @@ muse skills validate plugins/muse/skills/messaging --json
 muse plugins validate plugins/muse --json
 python3 plugins/muse/tests/prove_muse_hooks.py /absolute/path/to/muse-binary
 python3 plugins/muse/tests/prove_marketplace.py /absolute/path/to/muse-binary
+python3 plugins/muse/tests/prove_idle_monitor.py /absolute/path/to/muse-binary
 ```
 
 The native proof installs the package only into temporary XDG storage, runs
@@ -188,8 +221,15 @@ Muse's explicit `hook test` fixture runner for Stop, prompt context and SessionE
 without approving runtime capabilities, then uses per-run user hooks and the echo provider to
 verify a real Stop continuation, the loop guard, and a single session UUID across
 prompt/Stop/close. It does not install or approve this plugin in the person's
-settings, and its shared CLI response is a fixture. These checks do not establish
-authenticated AgentWorks delivery or an idle native wake.
+settings, and its shared CLI response is a fixture. The hook fixture alone does not establish authenticated AgentWorks delivery
+or an idle native wake. The additional idle Monitor proof uses the actual Muse
+TUI and installed cache in a temporary profile, with a local fake model provider.
+It asserts model-visible prompt/Stop context, private Unix access from the approved
+MCP sidecar, private FIFO and reader lock access
+under the unchanged native sandbox, and a fresh model request after an idle hint.
+Its fake credential and plugin approval exist only in that disposable profile.
+The shared real-server test separately exercises the stream, receipt and reply
+path; an actual person-approved Muse/account exchange remains a distinct check.
 
 GitHub CI also runs Codex 0.162.1 marketplace add/list and installs the unchanged
 Codex package from the same catalog in its disposable runner profile. It checks
