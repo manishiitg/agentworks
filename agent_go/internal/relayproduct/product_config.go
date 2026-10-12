@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dashboardguidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -62,7 +63,7 @@ func loadProduct() error {
 				if loadErr != nil {
 					return
 				}
-				skills[name] = string(raw)
+				skills[name] = dashboardguidance.Expand(string(raw))
 			}
 			seen := map[string]bool{}
 			for _, tool := range def.Tools {

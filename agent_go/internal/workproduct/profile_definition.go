@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dashboardguidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -212,7 +213,7 @@ func RegisterFeatureSkills(profileID, productName string) error {
 		return nil
 	}
 	render := func(text string) string {
-		return agentprofiles.RenderFeatureText(profileID, productName, text)
+		return agentprofiles.RenderFeatureText(profileID, productName, dashboardguidance.Expand(text))
 	}
 	bindings := make([]agentprofiles.SkillFileBinding, 0, len(productSkills))
 	for _, binding := range productSkills {

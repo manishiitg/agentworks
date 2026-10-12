@@ -3070,7 +3070,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {chatFileContext.length > 0 && (
         <div className={`${inputPadX} border-t border-gray-200 dark:border-gray-700`}>
           <FileContextDisplay
-            attachmentMode={localCodeMode}
             files={chatFileContext}
             onRemoveFile={removeFileFromContext}
             onClearAll={clearFileContext}

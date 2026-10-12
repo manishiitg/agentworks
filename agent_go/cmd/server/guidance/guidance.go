@@ -29,6 +29,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dashboardguidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -248,7 +249,7 @@ func renderFromRegistry(kind string, data tmplData, registry map[string]kindMeta
 		return "", fmt.Errorf("read template %s: %w", rel, err)
 	}
 	if meta.RawTemplate {
-		return pathDisciplineGuidance + string(body), nil
+		return pathDisciplineGuidance + dashboardguidance.Expand(string(body)), nil
 	}
 	tmpl, err := template.New(kind).Parse(string(body))
 	if err != nil {
@@ -258,7 +259,7 @@ func renderFromRegistry(kind string, data tmplData, registry map[string]kindMeta
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("execute template %s: %w", rel, err)
 	}
-	return pathDisciplineGuidance + strings.TrimRight(buf.String(), "\n") + "\n", nil
+	return pathDisciplineGuidance + strings.TrimRight(dashboardguidance.Expand(buf.String()), "\n") + "\n", nil
 }
 
 // modeAllowed reports whether a kind can be invoked from a given workshop
@@ -579,7 +580,7 @@ func RenderSystemDoc(kind string) string {
 		panic(fmt.Sprintf("guidance: read %s: %v", rel, err))
 	}
 	if meta.RawTemplate {
-		return string(body)
+		return dashboardguidance.Expand(string(body))
 	}
 	tmpl, err := template.New(kind).Parse(string(body))
 	if err != nil {
@@ -589,7 +590,7 @@ func RenderSystemDoc(kind string) string {
 	if err := tmpl.Execute(&buf, tmplData{}); err != nil {
 		panic(fmt.Sprintf("guidance: execute %s: %v", rel, err))
 	}
-	return strings.TrimRight(buf.String(), "\n") + "\n"
+	return strings.TrimRight(dashboardguidance.Expand(buf.String()), "\n") + "\n"
 }
 
 // RenderReferenceKindForTest renders the named reference doc with empty
