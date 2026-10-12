@@ -236,10 +236,9 @@ troubleshooting setup.
 
 ## Coming next
 
-Named logins and moving chats between servers; admin tools for reviewing connected chats. Sharing with a
-whole group or organisation comes later; today you share with one person at a
-time.
-
+Named logins and moving chats between servers; admin tools for reviewing
+connected chats. Sharing with a whole group or organisation comes later; today
+you share with one person at a time.
 
 ## Setup and updates
 

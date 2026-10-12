@@ -595,7 +595,7 @@ func (api *StreamingAPI) handleBullpenBlock(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	subject := dir.byUsername(in.Person)
-	if subject == nil || subject.ID == claims.UserID {
+	if subject == nil || subject.Disabled || subject.ID == claims.UserID {
 		externalError(w, http.StatusBadRequest, "unknown_person", "No active person with that username.")
 		return
 	}
