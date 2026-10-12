@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -44,6 +45,94 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 	return out
 }
 
+const (
+	pluginsRepo    = "manishiitg/agentworks-plugins"
+	pluginsRepoURL = "https://github.com/manishiitg/agentworks-plugins.git"
+	oldPluginsRepo = "manishiitg/agentworks"
+)
+
+// onOldPluginsSource reports whether a registered marketplace source is the full
+// product repository rather than the small plugins repository.
+func onOldPluginsSource(source string) bool {
+	source = strings.ToLower(source)
+	return strings.Contains(source, oldPluginsRepo) && !strings.Contains(source, "agentworks-plugins")
+}
+
+// oldMarketplaceProviders lists the providers whose "agentworks" marketplace still
+// points at the full repository (a 400 MB clone) instead of the plugins repository.
+// Only the marketplace named agentworks is looked at.
+func oldMarketplaceProviders(home string, read func(string) string, museList func() string) map[string]bool {
+	old := map[string]bool{}
+	var known map[string]struct {
+		Source struct {
+			Repo string `json:"repo"`
+			URL  string `json:"url"`
+		} `json:"source"`
+	}
+	if json.Unmarshal([]byte(read(filepath.Join(home, ".claude", "plugins", "known_marketplaces.json"))), &known) == nil {
+		if m, ok := known["agentworks"]; ok && onOldPluginsSource(m.Source.Repo+" "+m.Source.URL) {
+			old["claude"] = true
+		}
+	}
+	inSection := false
+	for _, line := range strings.Split(read(filepath.Join(home, ".codex", "config.toml")), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			inSection = line == "[marketplaces.agentworks]"
+			continue
+		}
+		if inSection && strings.HasPrefix(line, "source ") && onOldPluginsSource(line) {
+			old["codex"] = true
+		}
+	}
+	if museList != nil {
+		for _, line := range strings.Split(museList(), "\n") {
+			if strings.HasPrefix(line, "agentworks\t") && onOldPluginsSource(line) {
+				old["muse"] = true
+			}
+		}
+	}
+	return old
+}
+
+// migrateMarketplace moves one provider's agentworks marketplace to the plugins
+// repository, keeping the marketplace name so plugin ids do not change. It returns
+// false when it could not, after trying to put the old source back.
+func migrateMarketplace(ctx context.Context, provider string) bool {
+	run := func(args ...string) bool {
+		step, cancel := context.WithTimeout(ctx, 120*time.Second)
+		defer cancel()
+		return exec.CommandContext(step, provider, args...).Run() == nil
+	}
+	var remove, add, restore, reinstall []string
+	switch provider {
+	case "claude":
+		remove, add, restore = []string{"plugin", "marketplace", "remove", "agentworks"}, []string{"plugin", "marketplace", "add", pluginsRepo}, []string{"plugin", "marketplace", "add", oldPluginsRepo}
+		reinstall = []string{"plugin", "install", "agentworks@agentworks"}
+	case "codex":
+		remove, add, restore = []string{"plugin", "marketplace", "remove", "agentworks"}, []string{"plugin", "marketplace", "add", pluginsRepo}, []string{"plugin", "marketplace", "add", oldPluginsRepo}
+		reinstall = []string{"plugin", "add", "agentworks-codex@agentworks"}
+	case "muse":
+		remove, add, restore = []string{"plugins", "marketplace", "remove", "agentworks"}, []string{"plugins", "marketplace", "add", "agentworks", pluginsRepoURL}, []string{"plugins", "marketplace", "add", "agentworks", "https://github.com/" + oldPluginsRepo + ".git"}
+	default:
+		return false
+	}
+	if !run(remove...) {
+		return false
+	}
+	if !run(add...) {
+		run(restore...)
+		if reinstall != nil {
+			run(reinstall...)
+		}
+		return false
+	}
+	if reinstall != nil && !run(reinstall...) {
+		return false
+	}
+	return true
+}
+
 // updateInstalledPlugins runs the safe refresh commands and prints one plain
 // line per provider that still needs a step from the person.
 func updateInstalledPlugins(ctx context.Context, o *options) {
@@ -53,7 +142,21 @@ func updateInstalledPlugins(ctx context.Context, o *options) {
 	}
 	onPath := func(name string) bool { _, e := exec.LookPath(name); return e == nil }
 	read := func(path string) string { b, _ := os.ReadFile(path); return string(b) }
+	old := oldMarketplaceProviders(home, read, func() string {
+		if !onPath("muse") {
+			return ""
+		}
+		out, _ := exec.CommandContext(ctx, "muse", "plugins", "marketplace", "list").Output()
+		return string(out)
+	})
 	for _, update := range installedPluginUpdates(home, onPath, read) {
+		if old[update.Provider] {
+			if migrateMarketplace(ctx, update.Provider) {
+				fmt.Fprintf(o.stderr, "Switched the %s plugin source to the small plugins repository (%s).\n", update.Provider, pluginsRepo)
+			} else {
+				fmt.Fprintf(o.stderr, "Could not switch the %s plugin source to %s; it keeps using the full repository for now.\n", update.Provider, pluginsRepo)
+			}
+		}
 		done := len(update.Auto) > 0
 		for _, args := range update.Auto {
 			step, cancel := context.WithTimeout(ctx, 90*time.Second)

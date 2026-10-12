@@ -35,3 +35,19 @@ func TestInstalledPluginUpdatesFollowWhatIsInstalled(t *testing.T) {
 		t.Fatal("pi is not on PATH and must not appear")
 	}
 }
+
+// Only the marketplace named agentworks is moved, and only when it still points at
+// the full product repository.
+func TestOldMarketplaceSourceIsDetectedPerProvider(t *testing.T) {
+	home := "/home/example"
+	files := map[string]string{
+		filepath.Join(home, ".claude", "plugins", "known_marketplaces.json"): `{"agentworks":{"source":{"source":"github","repo":"manishiitg/agentworks"}},"other":{"source":{"source":"github","repo":"manishiitg/agentworks-other"}}}`,
+		filepath.Join(home, ".codex", "config.toml"):                         "[marketplaces.agentworks]\nsource_type = \"git\"\nsource = \"https://github.com/manishiitg/agentworks-plugins.git\"\n",
+	}
+	got := oldMarketplaceProviders(home, func(p string) string { return files[p] }, func() string {
+		return "agentworks\tplugins=2\tsource=https://github.com/manishiitg/agentworks.git\n"
+	})
+	if !got["claude"] || !got["muse"] || got["codex"] {
+		t.Fatalf("old source must be found for Claude and Muse, not for Codex on the plugins repository: %v", got)
+	}
+}
