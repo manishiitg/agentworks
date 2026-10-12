@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 // pluginUpdate is one coding CLI's AgentWorks plugin refresh after the CLI itself
@@ -20,11 +22,14 @@ type pluginUpdate struct {
 	Provider string
 	Auto     [][]string
 	Manual   string
+	Disabled bool // left disabled on purpose: only its marketplace is refreshed
 }
 
 // codexAppBundleCLI is the command line the Codex desktop app ships inside the
 // ChatGPT app on macOS (layout read from the installed app; no other layout is
 // assumed). The person may have no codex on PATH and still use the app.
+var codexGOOS = runtime.GOOS
+
 var codexAppBundleCLI = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
 
 // codexExecutable returns what to run for Codex: "codex" when it is on PATH, else
@@ -33,7 +38,7 @@ func codexExecutable(onPath func(string) bool) string {
 	if onPath("codex") {
 		return "codex"
 	}
-	if runtime.GOOS == "darwin" {
+	if codexGOOS == "darwin" {
 		if info, err := os.Stat(codexAppBundleCLI); err == nil && info.Mode().IsRegular() && info.Mode()&0111 != 0 {
 			return codexAppBundleCLI
 		}
@@ -42,11 +47,48 @@ func codexExecutable(onPath func(string) bool) string {
 }
 
 // codexHomeDir is the profile Codex itself uses: CODEX_HOME when set, else ~/.codex.
+// A relative CODEX_HOME depends on the folder the command runs in, so it is
+// refused ("" and codexHomeError) rather than silently reading the default profile.
 func codexHomeDir(home string) string {
-	if v := os.Getenv("CODEX_HOME"); v != "" && filepath.IsAbs(v) {
-		return v
+	if v := os.Getenv("CODEX_HOME"); v != "" {
+		if filepath.IsAbs(v) {
+			return v
+		}
+		return ""
 	}
 	return filepath.Join(home, ".codex")
+}
+
+func codexHomeError() error {
+	if v := os.Getenv("CODEX_HOME"); v != "" && !filepath.IsAbs(v) {
+		return fmt.Errorf("CODEX_HOME is a relative path (%s). Set it to the full path of the Codex profile, or unset it, so AgentWorks reads the same profile Codex uses", v)
+	}
+	return nil
+}
+
+// codexPluginDisabled reports whether the person turned the AgentWorks Codex plugin
+// off; an update must not turn it back on.
+func codexPluginDisabled(config string) bool {
+	var cfg struct {
+		Plugins map[string]struct {
+			Enabled *bool `toml:"enabled"`
+		} `toml:"plugins"`
+	}
+	if toml.Unmarshal([]byte(config), &cfg) != nil {
+		return false
+	}
+	p, ok := cfg.Plugins["agentworks-codex@agentworks"]
+	return ok && p.Enabled != nil && !*p.Enabled
+}
+
+// providerAvailable says whether a coding CLI can be run: on PATH, or for Codex
+// also the app's own command line.
+func providerAvailable(provider string) bool {
+	onPath := func(n string) bool { _, err := exec.LookPath(n); return err == nil }
+	if provider == "codex" {
+		return codexExecutable(onPath) != ""
+	}
+	return onPath(provider)
 }
 
 // providerExecutable is the command to run for a provider's own plugin commands.
@@ -67,9 +109,16 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 		out = append(out, pluginUpdate{Provider: "claude", Auto: [][]string{{"plugin", "marketplace", "update", "agentworks"}, {"plugin", "update", "agentworks@agentworks"}},
 			Manual: "claude plugin marketplace update agentworks && claude plugin update agentworks@agentworks, then reload Claude Code"})
 	}
-	if codexExecutable(onPath) != "" && (strings.Contains(read(filepath.Join(codexHomeDir(home), "config.toml")), "agentworks-codex@agentworks") || strings.Contains(read(filepath.Join(codexHomeDir(home), "plugins", "installed_plugins.json")), "agentworks-codex")) {
+	if codexHomeDir(home) != "" && codexExecutable(onPath) != "" && (strings.Contains(read(filepath.Join(codexHomeDir(home), "config.toml")), "agentworks-codex@agentworks") || strings.Contains(read(filepath.Join(codexHomeDir(home), "plugins", "installed_plugins.json")), "agentworks-codex")) {
 		out = append(out, pluginUpdate{Provider: "codex", Auto: [][]string{{"plugin", "marketplace", "upgrade", "agentworks"}, {"plugin", "add", "agentworks-codex@agentworks"}},
 			Manual: "codex plugin marketplace upgrade agentworks && codex plugin add agentworks-codex@agentworks, then reload Codex"})
+		if codexPluginDisabled(read(filepath.Join(codexHomeDir(home), "config.toml"))) {
+			// The person turned the plugin off: refresh the marketplace only and
+			// never run plugin add, which would enable it again.
+			last := &out[len(out)-1]
+			last.Auto = last.Auto[:1]
+			last.Disabled = true
+		}
 	}
 	if onPath("muse") {
 		out = append(out, pluginUpdate{Provider: "muse", Manual: "muse plugins marketplace update agentworks && muse plugins remove agentworks-muse && muse plugins install agentworks-muse@agentworks, then approve it and restart Muse (skip this if you do not use the AgentWorks plugin in Muse)"})
@@ -113,7 +162,12 @@ func oldMarketplaceProviders(home string, read func(string) string, museList fun
 		}
 	}
 	inSection := false
-	for _, line := range strings.Split(read(filepath.Join(codexHomeDir(home), "config.toml")), "\n") {
+	codexHome := codexHomeDir(home)
+	codexLines := []string{}
+	if codexHome != "" {
+		codexLines = strings.Split(read(filepath.Join(codexHome, "config.toml")), "\n")
+	}
+	for _, line := range codexLines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[") {
 			inSection = line == "[marketplaces.agentworks]"
@@ -245,6 +299,9 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 	}
 	onPath := func(name string) bool { _, e := exec.LookPath(name); return e == nil }
 	read := func(path string) string { b, _ := os.ReadFile(path); return string(b) }
+	if e := codexHomeError(); e != nil {
+		fmt.Fprintf(o.stderr, "Skipped the Codex plugin: %v.\n", e)
+	}
 	old := oldMarketplaceProviders(home, read, func() string {
 		if !onPath("muse") {
 			return ""
@@ -271,6 +328,10 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 				done = false
 				break
 			}
+		}
+		if done && update.Disabled {
+			fmt.Fprintf(o.stderr, "The %s plugin is turned off; refreshed its source and left it off.\n", update.Provider)
+			continue
 		}
 		if done {
 			fmt.Fprintf(o.stderr, "Updated the %s plugin. Reload %s to use it.\n", update.Provider, update.Provider)

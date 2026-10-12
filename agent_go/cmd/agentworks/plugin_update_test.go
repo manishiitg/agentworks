@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -91,12 +90,18 @@ func TestCodexAppCommandLineAndHome(t *testing.T) {
 	defer func() { codexAppBundleCLI = old }()
 	codexAppBundleCLI = app
 	none := func(string) bool { return false }
-	if runtime.GOOS == "darwin" {
-		if got := codexExecutable(none); got != app {
-			t.Fatalf("the app's command line must be used when codex is not on PATH: %q", got)
-		}
-		codexAppBundleCLI = filepath.Join(dir, "missing")
+	oldOS := codexGOOS
+	defer func() { codexGOOS = oldOS }()
+	codexGOOS = "darwin"
+	if got := codexExecutable(none); got != app {
+		t.Fatalf("the app's command line must be used when codex is not on PATH: %q", got)
 	}
+	codexGOOS = "linux"
+	if got := codexExecutable(none); got != "" {
+		t.Fatalf("no guessed fallback outside macOS: %q", got)
+	}
+	codexGOOS = "darwin"
+	codexAppBundleCLI = filepath.Join(dir, "missing")
 	if got := codexExecutable(none); got != "" {
 		t.Fatalf("no codex anywhere must report not installed: %q", got)
 	}
@@ -107,5 +112,18 @@ func TestCodexAppCommandLineAndHome(t *testing.T) {
 	t.Setenv("CODEX_HOME", dir)
 	if got := codexHomeDir("/home/example"); got != dir {
 		t.Fatalf("CODEX_HOME must be honored: %q", got)
+	}
+	t.Setenv("CODEX_HOME", "relative/profile")
+	if codexHomeDir("/home/example") != "" || codexHomeError() == nil {
+		t.Fatal("a relative CODEX_HOME must be refused, never replaced by the default profile")
+	}
+	if !codexPluginDisabled("[plugins.\"agentworks-codex@agentworks\"]\nenabled = false\n") || codexPluginDisabled("[plugins.\"agentworks-codex@agentworks\"]\nenabled = true\n") || codexPluginDisabled("") {
+		t.Fatal("a disabled Codex plugin must be detected, an enabled or unset one not")
+	}
+	// An app-only Codex user (nothing on PATH) still counts as having Codex.
+	codexAppBundleCLI = app
+	t.Setenv("PATH", "")
+	if !providerAvailable("codex") {
+		t.Fatal("the Codex app must count as an available Codex")
 	}
 }

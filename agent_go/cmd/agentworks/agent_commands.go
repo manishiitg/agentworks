@@ -286,15 +286,15 @@ func attachPluginCommand(o *options) *cobra.Command {
 					providers = []string{"pi"}
 				}
 				for _, p := range providers {
-					if _, e := exec.LookPath(p); e == nil {
-						if e = installAgentPlugin(cmd.Context(), o, p); e != nil {
+					if providerAvailable(p) {
+						if e := installAgentPlugin(cmd.Context(), o, p); e != nil {
 							return e
 						}
 						installed = true
 					}
 				}
 				if !installed {
-					return errors.New("no supported coding CLI found on PATH; install Codex, Claude Code, Muse or Pi first")
+					return errors.New("no supported coding CLI found (on PATH, or for Codex the Codex app on macOS); install Codex, Claude Code, Muse or Pi first")
 				}
 				fmt.Fprintln(o.stdout, "AgentWorks plugin ready. Reload your coding chat, review its hooks, then type /agentworks attach. No chat has been attached.")
 				return nil
@@ -579,6 +579,11 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 	}
 	if provider == "muse" {
 		return installMusePlugin(ctx, o)
+	}
+	if provider == "codex" {
+		if e := codexHomeError(); e != nil {
+			return e
+		}
 	}
 	// Existing cache + installation registry are required; a downloaded cache on
 	// its own is not an installed plugin. Never enable/trust hooks programmatically.
