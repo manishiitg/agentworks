@@ -84,3 +84,16 @@ func TestWorkshopCancelAllSettlesEveryEntryBeforeUnwinding(t *testing.T) {
 		t.Fatalf("stopped=%d, notifications=%d", len(stopped), notifications)
 	}
 }
+
+func TestAgentItemCaptureUsesRegisteredOwnerWithoutChangingParent(t *testing.T) {
+	controller := &StepBasedWorkflowOrchestrator{httpSessionID: "owning-chat"}
+	parent := virtualtools.WithBackgroundAgentID(context.Background(), "step-parent")
+	first := controller.agentItemExecutionContext(parent, "item-first")
+	second := controller.agentItemExecutionContext(parent, "item-second")
+	if currentWorkshopParentExecutionID(parent) != "step-parent" || currentWorkshopParentExecutionID(first) != "item-first" || currentWorkshopParentExecutionID(second) != "item-second" {
+		t.Fatal("item scope changed its parent or another item's execution owner")
+	}
+	if controller.agentItemExecutionContext(parent, "") != parent {
+		t.Fatal("unregistered item changed execution scope")
+	}
+}

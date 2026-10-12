@@ -24,3 +24,27 @@ export function inspectionConversation(response: ExecutionInspectionResponse, to
  messages.sort((a, b) => Number(a.Parts[0].inspectionIndex ?? -1) - Number(b.Parts[0].inspectionIndex ?? -1))
  return JSON.stringify({conversation_history: messages})
 }
+
+/** Exact recorded values for the inspector's four explicit sections. */
+export function inspectionRecords(response: ExecutionInspectionResponse) {
+ const events = [...response.transcript.events].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+ const system = [...new Set(events.filter(event => event.role === 'system').map(event => event.text).filter((text): text is string => !!text))]
+ const user = events.filter(event => event.role === 'user' || event.type === 'user_message').map(event => event.text).filter((text): text is string => !!text)
+ const assistant = events.filter(event => event.role === 'assistant' || event.type === 'assistant_message').map(event => event.text).filter((text): text is string => !!text)
+ const tools = new Map<string, NonNullable<ExecutionInspectionResponse['transcript']['events'][number]['tool_call']>>()
+ events.forEach((event, index) => {
+  const call = event.tool_call
+  if (!call) return
+  const key = call.tool_call_id || `${call.tool_name}:${index}`
+  const previous = tools.get(key)
+  tools.set(key, {...previous, ...call, arguments: call.arguments ?? previous?.arguments, result: call.result ?? previous?.result, error: call.error ?? previous?.error, status: previous && call.status === 'running' && previous.status !== 'running' ? previous.status : call.status})
+ })
+ return {system, user, tools: [...tools.values()], result: response.result || assistant.at(-1) || '', assistant}
+}
+
+export function inspectionTaskLabel(name: string): string {
+ const item = name.match(/^Agent item -> .* \/ ([^/]+) \(([^)]+)\)$/)
+ if (!item) return name
+ if (item[1].startsWith('__automatic_final_validation')) return 'Final validation'
+ return item[2] === 'prevalidation' ? `Validation ${item[1]}` : `Task ${item[1]}`
+}

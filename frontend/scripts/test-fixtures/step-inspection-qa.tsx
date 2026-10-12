@@ -1,0 +1,17 @@
+import { createRoot } from 'react-dom/client'
+import { StepInspectionTabs } from '../../src/components/chat/StepInspectionTabs'
+import { useChatStore, type ChatTab } from '../../src/stores/useChatStore'
+import { agentApi } from '../../src/services/api'
+import { openStepInspection } from '../../src/utils/stepInspection'
+import type { ExecutionInspectionTarget, ExecutionInspectionResponse } from '../../src/services/api-types'
+import '../../src/index.css'
+
+document.documentElement.classList.toggle('dark', new URLSearchParams(location.search).get('theme') !== 'light')
+const started = '2026-10-12T11:26:33Z'
+const target: ExecutionInspectionTarget = {session_id:'qa-chat',execution_id:'step-run',workspace_path:'Workflow/example',name:'Write a status file',step_id:'write-status',run_folder:'iteration-0/default',started_at:started}
+const root: ExecutionInspectionResponse = {transcript:{session_id:target.session_id,agent_id:target.execution_id,name:target.name,status:'completed',started_at:started,inspection:target,events:[]},result:'Step completed and validation passed.',children:[{agent_id:'work-task',name:'Agent item -> Write a status file / write-status (user_message)',status:'completed',started_at:started},{agent_id:'validation-task',name:'Agent item -> Write a status file / __automatic_final_validation__ (prevalidation)',status:'completed',started_at:started}]}
+const task: ExecutionInspectionResponse = {transcript:{session_id:target.session_id,agent_id:'work-task',status:'completed',started_at:started,events:[{timestamp:started,type:'system_message',role:'system',text:'Write only inside the assigned output folder. Verify the requested JSON file before finishing.'},{timestamp:started,type:'user_message',role:'user',text:'Create status.json with status INITIALIZED and report the result.'},{timestamp:started,type:'tool_call',tool_call:{tool_call_id:'tool-1',tool_name:'write_file',arguments:'{"path":"status.json","status":"INITIALIZED"}',status:'running'}},{timestamp:started,type:'tool_call',tool_call:{tool_call_id:'tool-1',tool_name:'write_file',result:'status.json saved.',status:'completed'}},{timestamp:started,type:'assistant_message',role:'assistant',text:'Created status.json with status INITIALIZED.'}]},children:[],result:'Created status.json with status INITIALIZED.'}
+agentApi.inspectSessionExecution = async selected => selected.execution_id === target.execution_id ? root : selected.execution_id === 'work-task' ? task : {transcript:{session_id:target.session_id,agent_id:'validation-task',status:'completed',started_at:started,events:[]},children:[],result:'Validation passed.'}
+useChatStore.setState({activeTabId:'qa',chatTabs:{qa:{tabId:'qa',sessionId:target.session_id,metadata:{mode:'workflow'}} as ChatTab}})
+openStepInspection(target)
+createRoot(document.getElementById('root')!).render(<main className="h-dvh bg-background text-foreground"><StepInspectionTabs tabId="qa"><textarea aria-label="Chat draft" defaultValue="Keep this draft" /></StepInspectionTabs></main>)

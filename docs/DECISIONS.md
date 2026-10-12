@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-12 — Agent item inspection uses its chat and task identity (PLAT-861)
+
+Bind provider event capture to the registered item execution and owning chat,
+separately from the reused provider/MCP runtime. Drain transcript writes before
+publishing item completion. Keep task selection inside one step inspector; open
+the work task when its delegating parent has no conversation. Expose System
+prompt, User message, Tools and Result directly, with internal identifiers and
+saved attempts under technical details. Missing historical records stay explicit;
+never substitute a later attempt's prompts for an earlier execution. Why: a
+successful model turn can otherwise leave an empty inspector, and users should
+not need to decode internal names or open extra tabs to see the recorded work.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-119.
+
 ## 2026-10-12 — Inspection stays reachable from compact workflow chat (PLAT-861)
 
 Keep a compact inspection action for server-identified root background work in

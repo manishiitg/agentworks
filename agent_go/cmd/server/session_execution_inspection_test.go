@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	agentEvents "github.com/manishiitg/mcpagent/events"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
 // Uses the actual durable transcript writer and HTTP reader. Two dispatches of
@@ -126,5 +128,82 @@ func TestInspectSessionExecutionDurableIdentityAndAccess(t *testing.T) {
 		if result.Code != http.StatusNotFound {
 			t.Fatalf("unowned/missing execution exposed: %d", result.Code)
 		}
+	}
+}
+
+// Follow provider-shaped events through the production bridge/writer, durable
+// storage and authenticated HTTP reader. A reused provider session must never
+// be mistaken for the chat or mix two task executions.
+func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	srv := httptest.NewServer(workspace)
+	defer srv.Close()
+	t.Setenv("WORKSPACE_API_URL", srv.URL)
+	api := lifecycleTestAPI()
+	api.activeSessions = map[string]*ActiveSessionInfo{"chat": {SessionID: "chat", WorkspacePath: "Workflow/example", UserID: GetDefaultUserID()}}
+	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), discardEvents{}, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.SetWorkspacePath("Workflow/example")
+	bridge := base.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge)
+	for _, id := range []string{"item-first", "item-second"} {
+		api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: id, Name: "Task", Kind: "agent_item", Status: BGAgentRunning, CreatedAt: time.Now(), Metadata: map[string]string{"step_id": "research", "item_id": id}})
+		api.emitBackgroundAgentStarted("chat", id, "Task", "", "", orchEvents.ExecutionKindSubAgent)
+		ctx := orchestrator.WithBackgroundTranscriptSession(context.Background(), "chat")
+		ctx = context.WithValue(ctx, orchEvents.ParentExecutionIDKey, id)
+		for _, event := range []*agentEvents.AgentEvent{
+			{Type: agentEvents.SystemPrompt, Data: &agentEvents.SystemPromptEvent{Content: "System for " + id + " MCP_API_TOKEN=fixture-capture-secret"}},
+			{Type: agentEvents.UserMessage, Data: &agentEvents.UserMessageEvent{Role: "user", Content: "User for " + id}},
+			{Type: agentEvents.ToolCallStart, Data: &agentEvents.ToolCallStartEvent{ToolCallID: "reused-tool-id", ToolName: "read_file", ToolParams: agentEvents.ToolParams{Arguments: `{"path":"sources.txt"}`}}},
+			{Type: agentEvents.ToolCallEnd, Data: &agentEvents.ToolCallEndEvent{ToolCallID: "reused-tool-id", ToolName: "read_file", Result: "Facts for " + id}},
+			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{Content: "Result for " + id}},
+		} {
+			event.SessionID = "dedicated-provider-runtime"
+			event.Timestamp = time.Now()
+			if err := bridge.HandleEvent(ctx, event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := bridge.WaitForBackgroundTranscriptPersistence(persistCtx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		api.emitBackgroundAgentCompleted("chat", id, "Task", "completed", "Result for "+id, "", "1s")
+	}
+	for _, id := range []string{"item-first", "item-second"} {
+		req := httptest.NewRequest(http.MethodGet, "/sessions/chat/background-work/"+id+"/inspect?workspace_path=Workflow/example", nil)
+		req = mux.SetURLVars(req, map[string]string{"session_id": "chat", "execution_id": id})
+		w := httptest.NewRecorder()
+		api.handleInspectSessionExecution(w, req)
+		var response struct {
+			Transcript *orchEvents.BackgroundAgentTranscript `json:"transcript"`
+			Result     string                                `json:"result"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK {
+			t.Fatalf("inspect status=%d err=%v", w.Code, err)
+		}
+		if response.Transcript == nil || response.Transcript.SessionID != "chat" || response.Transcript.AgentID != id || response.Transcript.Status != "completed" || len(response.Transcript.Events) != 5 || response.Result != "Result for "+id {
+			t.Fatalf("wrong capture for %s: %+v", id, response)
+		}
+		body := w.Body.String()
+		for _, expected := range []string{"System for " + id, "User for " + id, "Facts for " + id, "sources.txt", "[redacted]"} {
+			if !strings.Contains(body, expected) {
+				t.Fatalf("missing %q in capture for %s", expected, id)
+			}
+		}
+		other := "item-first"
+		if id == other {
+			other = "item-second"
+		}
+		if strings.Contains(body, "for "+other) || strings.Contains(body, "fixture-capture-secret") {
+			t.Fatal("cross-execution evidence or secret leaked")
+		}
+	}
+	if _, exists, err := readFileFromWorkspace(context.Background(), orchEvents.BackgroundAgentTranscriptPath("Workflow/example", "dedicated-provider-runtime", "item-first")); err != nil || exists {
+		t.Fatalf("capture created a provider-session orphan: exists=%v err=%v", exists, err)
 	}
 }
