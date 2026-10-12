@@ -177,6 +177,19 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 	return target, nil
 }
 
+// externalOwnerAuthority reports whether a message to a Crew over this connection may start the Crew owner's own turn
+// (856-59): the connection is the person's own (not bound to one registered agent), may write Crews, is not narrowed to
+// other Crews or to a folder guard, and the Crew is one it may use. A read-only, run-only, folder-capped, agent-bound or
+// Crew-narrowed connection never qualifies; whether the person owns the Crew is checked again at delivery.
+func externalOwnerAuthority(claims *UserClaims, target triggerTarget) bool {
+	if claims == nil || claims.AccessToken == nil || target.Kind != triggerCallerCrew {
+		return false
+	}
+	token := claims.AccessToken
+	return strings.TrimSpace(token.BoundAgentName) == "" && strings.TrimSpace(token.BoundAgentID) == "" &&
+		token.Allows("crews:write") && token.Allows("crews:run") && token.AllowsCrew(target.CrewID) && token.FileGuard == nil
+}
+
 func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Request, args map[string]any, target triggerTarget) {
 	claims := GetUserFromContext(r.Context())
 	caller, err := api.externalMessageCaller(r.Context(), claims, args)
@@ -184,6 +197,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
+	caller.OwnerAuthority = caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	if inbox != "" {
 		peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, true)
