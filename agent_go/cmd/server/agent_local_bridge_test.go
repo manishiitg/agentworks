@@ -185,7 +185,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	// The agent itself may move its own chat to another saved login and back
 	// (owner choice for an open system): the second account gains the agent, the
 	// first loses it, and the chat keeps its name.
-	moved, movedPath, _ := issue("move-target")
+	moved, movedPath, _ := issue("other")
 	movedConfig, err := agentworksclient.LoadConfig(movedPath)
 	if err != nil {
 		t.Fatal(err)
