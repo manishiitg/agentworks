@@ -1,5 +1,28 @@
 # Decisions and open issues
 
+## 2026-10-12 — Crews have no Run mode: sharing is the consent (PLAT-856)
+
+A Crew no longer has a restricted "Run mode". Its owner creates it knowing it is shareable, so everyone it is
+shared with, in typed functions, free-text `ask` and chats (the app, Slack, WhatsApp, MCP, the owner's own tools),
+gets the Crew acting with the owner's authority: its tools, outbound function calls (`call_function`), shell and
+writes to its working files. This replaces "the built-in free-text `ask` and every chat stay Run mode" (PLAT-812);
+typed functions already worked this way.
+
+What stays, as permissions rather than a mode:
+- Only the owner changes the Crew's memory (`MEMORY.md`), skill files, instructions, functions and setup. The
+  existing folder guards on memory and skills enforce it for every other caller, so one caller cannot change what the
+  agent does for everyone else; nothing about this needs a mode.
+- Raw secret values are never handed to a caller: the agent uses a secret by name and its system prompt forbids
+  printing it (behavioural protection, accepted 2026-10-10).
+- Each caller keeps their own conversation and cannot read another person's chat.
+- An owner can still make a call behave like an ordinary shared caller with `run_mode: true` on a call, for testing.
+Sharing also lets the owner choose the entry points: functions only (programs only), or functions plus free text.
+
+Why: the owner chose to share, and a restricted mode made an owner's own `ask_crew` from MCP unable to call other
+functions or write files, which blocked building, testing and orchestrating a Crew over MCP.
+
+Ticket: PLAT-856, issue 856-59.
+
 ## 2026-10-12 — Relay readers see only their own recorded runs (PLAT-847)
 
 Relay owners and editors see every caller's recorded run. Every other reader sees only the runs
