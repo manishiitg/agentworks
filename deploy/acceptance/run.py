@@ -82,27 +82,45 @@ def crew_id(server, spec):
     return created
 
 
-def ask(server, crew, message, budget=150, chat_id=None):
-    """Ask the Crew (in its main chat, or the side chat `chat_id`) and wait for its final reply (up to `budget` seconds)."""
+REPLY_NOTE = ("\n\nIMPORTANT: your normal chat answer is not delivered to the tester. Send your answer with the send_message tool, using the inbox_id "
+              "from this message's header. Fastest: in the shell, curl --fail-with-body -sS --json '{\"inbox_id\":\"<that inbox_id>\",\"message\":\"<your answer>\"}' "
+              "-H \"$MCP_AUTH\" \"$MCP_CUSTOM/send_message\" (do not search for other ways first).")
+
+
+def read_inbox(server, inbox, wait=20):
+    """The messages an agent sent back to `inbox`. (The `messages` tool is read through its CLI subcommand: `tools call messages` would overwrite the action.)"""
+    process = subprocess.run(["agentworks", *CONFIG, "--json", "--server", server, "messages", "read", "--inbox", inbox, "--wait", str(wait)],
+                             capture_output=True, text=True, timeout=wait + 60)
+    text = (process.stdout or process.stderr).strip()
+    try:
+        return json.loads(text) if text else {}, text
+    except ValueError:
+        return {}, text
+
+
+def ask(server, crew, message, budget=180, chat_id=None, retry=True):
+    """Ask the Crew (or, with --code, the Code project) and wait for the answer it sends back (up to `budget` seconds).
+
+    An ask is asynchronous: it returns an inbox id, and the agent's chat answer is not forwarded, so the message tells the agent to
+    answer with send_message into that inbox. `chat_id` is kept for old callers and ignored: each ask starts its own conversation."""
     submission = "qa-" + uuid.uuid4().hex[:12]
     if CODE["on"]:
-        code, result, text = call(server, "code", {"action": "ask", "project_id": crew, "message": message, "wait_seconds": 25, "submission_id": submission})
-        call_id = result.get("call_id")
-        deadline = time.time() + budget
-        while call_id and re.search(r'"status"\s*:\s*"(running|pending|queued)"', find_text(result)) and time.time() < deadline:
-            time.sleep(4)
-            code, result, text = call(server, "code", {"action": "ask", "project_id": crew, "call_id": call_id})
-        return find_text(result) if result else text
-    arguments = {"crew_id": crew, "message": message, "wait_seconds": 25, "submission_id": submission}
-    if chat_id:
-        arguments["chat_id"] = chat_id
-    code, result, text = call(server, "ask_crew", arguments)
-    call_id = result.get("call_id")
+        code, result, text = call(server, "code", {"action": "ask", "project_id": crew, "message": message + REPLY_NOTE, "submission_id": submission})
+    else:
+        code, result, text = call(server, "ask_crew", {"crew_id": crew, "message": message + REPLY_NOTE, "submission_id": submission})
+    inbox = result.get("inbox_id") if isinstance(result, dict) else None
+    if not inbox:
+        return text
     deadline = time.time() + budget
-    while call_id and re.search(r'"status"\s*:\s*"(running|pending|queued)"', find_text(result)) and time.time() < deadline:
-        time.sleep(4)
-        code, result, text = call(server, "functions", {"action": "status", "crew_id": crew, "call_id": call_id})
-    return find_text(result) if result else text
+    while time.time() < deadline:
+        page, page_text = read_inbox(server, inbox, 20)
+        answers = [str(m.get("message", "")) for m in page.get("messages") or []]
+        if answers:
+            return "\n".join(answers)
+    if retry:
+        # A weaker model sometimes loops looking for the tool; one fresh ask tells a loop from a refusal.
+        return ask(server, crew, message, budget, retry=False)
+    return f"no answer sent back within {budget} s (asked twice)"
 
 
 def check(case, answer):
@@ -157,26 +175,10 @@ def run_case(server, crew, case):
             return "FAIL", text[:240]
         return check(case, find_text(result) or text)
     if case.get("burst"):
-        # One chat answers one message at a time (a second message typed while it works joins that turn), so a burst goes to
-        # separate chats of the Crew: that is the load several people put on the model at once.
-        chats = []
-        # The scratch Crew allows four side chats: close any an earlier run or a person left open.
-        code, result, text = call(server, "manage_crew_chats", {"action": "list", "crew_id": crew})
-        for old_chat in result.get("chats") or []:
-            if old_chat.get("chat_id") not in (None, "main"):
-                call(server, "manage_crew_chats", {"action": "side_close", "crew_id": crew, "chat_id": old_chat["chat_id"]})
-        for _ in range(min(case["burst"], 4)):
-            code, result, text = call(server, "manage_crew_chats", {"action": "side_open", "crew_id": crew})
-            chat = result.get("chat_id") or (result.get("chat") or {}).get("chat_id")
-            if not chat:
-                return "FAIL", "could not open a side chat: " + text[:200]
-            chats.append(chat)
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(chats)) as pool:
-                answers = list(pool.map(lambda chat: ask(server, crew, case["message"], chat_id=chat), chats))
-        finally:
-            for chat in chats:
-                call(server, "manage_crew_chats", {"action": "side_close", "crew_id": crew, "chat_id": chat})
+        # Several people asking at once: the load on the model. Each ask starts its own conversation.
+        count = min(case["burst"], 4)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
+            answers = list(pool.map(lambda _: ask(server, crew, case["message"]), range(count)))
         failed = [(i, a) for i, a in enumerate(answers) if check(case, a)[0] != "PASS"]
         return ("PASS", "") if not failed else ("FAIL", f"{len(failed)} of {len(answers)} failed; first: {failed[0][1][:200]}")
     return check(case, ask(server, crew, case["message"]))
