@@ -22,7 +22,9 @@ const (
 	shareDefaultTTL     = 30 * 24 * time.Hour
 	shareMaxTTL         = 365 * 24 * time.Hour
 	sharesPerOwner      = 100
-	shareAuditKeep      = 500
+	shareAuditKeep      = 2000
+	shareTombstoneKeep  = 30 * 24 * time.Hour // revoked or expired grants are dropped after this
+	blocksPerOwner      = 500
 )
 
 type agentShare struct {
@@ -61,6 +63,22 @@ func (s *agentMessageStore) auditShare(event, actor string, owner, subject, shar
 	}
 }
 
+// pruneShares drops grants that ended long ago. A missing grant is refused like
+// a revoked one, so old conversations cannot come back; the store stays bounded.
+func (s *agentMessageStore) pruneShares(now time.Time) {
+	kept := s.Shares[:0]
+	for _, sh := range s.Shares {
+		ended := sh.RevokedAt
+		if ended.IsZero() {
+			ended = sh.ExpiresAt
+		}
+		if now.Before(ended.Add(shareTombstoneKeep)) {
+			kept = append(kept, sh)
+		}
+	}
+	s.Shares = kept
+}
+
 func (s agentMessageStore) shareBlocked(owner, subject string) bool {
 	for _, b := range s.Blocks {
 		if b.OwnerUserID == owner && b.BlockedUserID == subject {
@@ -68,6 +86,18 @@ func (s agentMessageStore) shareBlocked(owner, subject string) bool {
 		}
 	}
 	return false
+}
+
+// shareAccountActive is true for an account that still exists, is enabled and
+// may open Bullpen. A deleted account is unknown to the directory, so it is
+// refused instead of defaulting to active. Tests replace it.
+var shareAccountActive = func(userID string) bool {
+	dir, err := loadUserDirectory()
+	if err != nil || dir == nil {
+		return false
+	}
+	rec := dir.byID(userID)
+	return rec != nil && !rec.Disabled && userAllowedProduct(&UserClaims{UserID: userID}, "bullpen")
 }
 
 func (sh agentShare) live(now time.Time) bool {
@@ -84,7 +114,7 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 			continue
 		}
 		if !sh.live(now) || sh.RevocationVersion != version || sh.Capability != shareCapabilityChat || s.shareBlocked(sh.OwnerUserID, sh.SubjectUserID) ||
-			userAccessForClaims(&UserClaims{UserID: sh.OwnerUserID}).Disabled || userAccessForClaims(&UserClaims{UserID: sh.SubjectUserID}).Disabled {
+			!shareAccountActive(sh.OwnerUserID) || !shareAccountActive(sh.SubjectUserID) {
 			return agentShare{}, denied
 		}
 		known := false
@@ -103,13 +133,19 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 
 // shareOwnerLabel is the only owner name shown to a recipient. It is the
 // server's own username for the account id, never an email or sender text.
-func shareOwnerLabel(userID string) string {
-	if dir, err := loadUserDirectory(); err == nil && dir != nil {
-		if rec := dir.byID(userID); rec != nil && rec.Username != "" {
-			return rec.Username
+func shareOwnerLabel(userID string) string { return shareOwnerLabeler()(userID) }
+
+// shareOwnerLabeler loads the directory once and labels many accounts.
+func shareOwnerLabeler() func(string) string {
+	dir, err := loadUserDirectory()
+	return func(userID string) string {
+		if err == nil && dir != nil {
+			if rec := dir.byID(userID); rec != nil && rec.Username != "" {
+				return rec.Username
+			}
 		}
+		return "unknown"
 	}
-	return "unknown"
 }
 
 // bullpenShareClaims admits a signed-in browser session whose JWT came in the
@@ -135,6 +171,7 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	now := time.Now().UTC()
+	label := shareOwnerLabeler()
 	shares, blocks := []map[string]interface{}{}, []map[string]interface{}{}
 	for _, sh := range s.Shares {
 		if sh.OwnerUserID != claims.UserID {
@@ -152,11 +189,11 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		} else if !sh.live(now) {
 			state = "expired"
 		}
-		shares = append(shares, map[string]interface{}{"share_id": sh.ID, "agent_name": name, "agent_id": sh.AgentID, "person": shareOwnerLabel(sh.SubjectUserID), "capability": sh.Capability, "created_at": sh.CreatedAt, "expires_at": sh.ExpiresAt, "state": state})
+		shares = append(shares, map[string]interface{}{"share_id": sh.ID, "agent_name": name, "agent_id": sh.AgentID, "person": label(sh.SubjectUserID), "capability": sh.Capability, "created_at": sh.CreatedAt, "expires_at": sh.ExpiresAt, "state": state})
 	}
 	for _, b := range s.Blocks {
 		if b.OwnerUserID == claims.UserID {
-			blocks = append(blocks, map[string]interface{}{"person": shareOwnerLabel(b.BlockedUserID), "blocked_at": b.At})
+			blocks = append(blocks, map[string]interface{}{"person": label(b.BlockedUserID), "blocked_at": b.At})
 		}
 	}
 	sort.Slice(shares, func(i, j int) bool {
@@ -194,10 +231,10 @@ func (api *StreamingAPI) handleBullpenShareCreate(w http.ResponseWriter, r *http
 	}
 	ttl := shareDefaultTTL
 	if in.ExpiresHours > 0 {
-		ttl = time.Duration(in.ExpiresHours) * time.Hour
-	}
-	if ttl > shareMaxTTL {
 		ttl = shareMaxTTL
+		if in.ExpiresHours < int(shareMaxTTL/time.Hour) {
+			ttl = time.Duration(in.ExpiresHours) * time.Hour
+		}
 	}
 	out, status, code, msg := api.createShare(r.Context(), claims.UserID, name, subject.ID, ttl)
 	if code != "" {
@@ -224,6 +261,7 @@ func (api *StreamingAPI) createShare(ctx context.Context, owner, agentName, subj
 		return nil, http.StatusNotFound, "unknown_agent", "You have no agent with that name."
 	}
 	now := time.Now().UTC()
+	s.pruneShares(now)
 	count := 0
 	for _, sh := range s.Shares {
 		if sh.OwnerUserID == owner && sh.live(now) {
@@ -306,7 +344,7 @@ func (api *StreamingAPI) handleBullpenBlock(w http.ResponseWriter, r *http.Reque
 	}
 	subject := dir.byUsername(in.Person)
 	if subject == nil || subject.ID == claims.UserID {
-		externalError(w, http.StatusBadRequest, "unknown_person", "No person with that username.")
+		externalError(w, http.StatusBadRequest, "unknown_person", "No active person with that username.")
 		return
 	}
 	agentMessageMu.Lock()
@@ -327,6 +365,16 @@ func (api *StreamingAPI) handleBullpenBlock(w http.ResponseWriter, r *http.Reque
 		s.auditShare("unblocked", claims.UserID, claims.UserID, subject.ID, "", "")
 	} else if !s.shareBlocked(claims.UserID, subject.ID) {
 		now := time.Now().UTC()
+		owned := 0
+		for _, b := range s.Blocks {
+			if b.OwnerUserID == claims.UserID {
+				owned++
+			}
+		}
+		if owned >= blocksPerOwner {
+			externalError(w, http.StatusTooManyRequests, "block_limit", "Unblock someone before blocking another person.")
+			return
+		}
 		s.Blocks = append(s.Blocks, agentShareBlock{OwnerUserID: claims.UserID, BlockedUserID: subject.ID, At: now})
 		for i := range s.Shares {
 			if sh := &s.Shares[i]; sh.OwnerUserID == claims.UserID && sh.SubjectUserID == subject.ID && sh.RevokedAt.IsZero() {
