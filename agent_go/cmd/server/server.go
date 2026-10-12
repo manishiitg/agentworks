@@ -2804,6 +2804,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages", api.handleQueuedConversationMessages).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}", api.handleRemoveQueuedConversationMessage).Methods("DELETE")
 	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}/steer", api.handleSteerQueuedConversationMessage).Methods("POST")
+	apiRouter.HandleFunc("/sessions/{session_id}/queued-messages/{message_id}/retry", api.handleRetryQueuedConversationMessage).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/inspect", api.handleInspectSessionExecution).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
@@ -3883,6 +3884,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid CDP configuration: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Preserve caller browser input before the profile adds current workspace settings.
+	r = r.WithContext(withQueuedBrowserInput(r.Context(), req))
 
 	// A workflow may keep durable read-only links in workflow.json. Merge those
 	// with one-message # references before the common authorization boundary so
@@ -11745,6 +11749,10 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 		"provider":        provider,
 		"message_id":      messageID,
 		"delivery_status": deliveryStatus,
+	}
+	if deliveryStatus == "failed" {
+		eventData.Metadata["confirmation"] = "failed"
+		eventData.Metadata["delivery_error"] = queuedTurnFailureMessage
 	}
 	eventID := messageID
 	if clientMessageID != "" {

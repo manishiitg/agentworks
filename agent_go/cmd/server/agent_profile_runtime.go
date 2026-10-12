@@ -19,6 +19,7 @@ import (
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
@@ -616,9 +617,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			return nil, fmt.Errorf("read project browser settings: %w", err)
 		}
 		req.BrowserMode = settings.Mode
-		port := settings.Port
-		req.CdpPort = &port
-		req.CdpPorts = []int{port}
+		req.CdpPort, req.CdpPorts = nil, nil
+		if browser.CDPEnabled() && (settings.Mode == "cdp" || settings.Mode == "auto") {
+			port := settings.Port
+			req.CdpPort = &port
+			req.CdpPorts = []int{port}
+		}
 	}
 	if browserRequirement == agentprofiles.CapabilityRequired || browserRequirement == agentprofiles.CapabilityPreferred || browserRequirement == agentprofiles.CapabilityOptional {
 		// Agent profiles declare browser capability once. The generic chat

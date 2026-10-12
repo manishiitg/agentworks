@@ -1199,6 +1199,10 @@ export const agentApi = {
     await api.delete(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`, { headers: { 'X-Session-ID': sessionId } })
   },
 
+  retryQueuedMessage: async (sessionId: string, messageId: string) => {
+    await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/retry`, {}, { headers: { 'X-Session-ID': sessionId } })
+  },
+
   steerQueuedMessage: async (sessionId: string, messageId: string) => {
     await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/steer`, {}, { headers: { 'X-Session-ID': sessionId } })
   },

@@ -3,16 +3,18 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { expect, it, vi } from 'vitest'
+import type { PendingQueuedMessage } from '../../../shared/session/types'
 
 const fixture = vi.hoisted(() => ({
-  messages: [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Review the settings page.', queue_position: 1 }],
+  messages: [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Review the settings page.', queue_position: 1 }] as PendingQueuedMessage[],
   events: [] as any[],
-  remove: vi.fn(), steer: vi.fn(),
+  remove: vi.fn(), steer: vi.fn(), retry: vi.fn(),
 }))
 vi.mock('../../services/api', () => ({ agentApi: {
   getQueuedMessages: vi.fn(async () => [...fixture.messages]),
   removeQueuedMessage: fixture.remove,
   steerQueuedMessage: fixture.steer,
+  retryQueuedMessage: fixture.retry,
 } }))
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => 1, isChatIdentityCurrent: () => true }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({
@@ -56,6 +58,46 @@ it('restores the server queue and keeps a failed remove visible until the server
     expect(fixture.remove).toHaveBeenLastCalledWith('chat-1', 'queued-1')
     expect(host.textContent).not.toContain('Review the settings page.')
     expect(fixture.steer).not.toHaveBeenCalled()
+  } finally {
+    await act(async () => root.unmount())
+    client.clear()
+    host.remove()
+  }
+})
+
+
+it('keeps a failed queued message and its text on reload, retries only on click', async () => {
+  fixture.messages = [{ message_id: 'failed-1', client_message_id: 'failed-client', content: 'Explain gravity.', queue_position: 1, delivery_error: 'Check the chat before retrying.' }]
+  fixture.events = [{ id: 'user:failed-client', type: 'user_message', data: { data: { content: 'Explain gravity.', metadata: { client_message_id: 'failed-client', confirmation: 'failed' } } } }]
+  fixture.retry.mockClear()
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  let client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const render = () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy={false} canSteer /></QueryClientProvider>)
+  const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
+  try {
+    await act(async () => render())
+    await flush()
+    expect(host.textContent).toContain('Explain gravity.')
+    expect(host.textContent).toContain('Check the chat before retrying.')
+    expect(host.textContent).not.toContain('Steer now')
+    expect(fixture.retry).not.toHaveBeenCalled()
+    await act(async () => root.render(null))
+    client.clear()
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => render())
+    await flush()
+    expect(host.textContent).toContain('Explain gravity.')
+    fixture.retry.mockRejectedValueOnce(new Error('network unavailable'))
+    const retry = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Retry')!
+    await act(async () => retry().click())
+    await flush()
+    expect(host.textContent).toContain('Explain gravity.')
+    fixture.retry.mockImplementationOnce(async () => { fixture.messages = [] })
+    await act(async () => retry().click())
+    await flush()
+    expect(fixture.retry).toHaveBeenLastCalledWith('chat-1', 'failed-1')
+    expect(fixture.events[0].data.data.content).toBe('Explain gravity.')
   } finally {
     await act(async () => root.unmount())
     client.clear()

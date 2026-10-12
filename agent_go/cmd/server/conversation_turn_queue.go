@@ -35,7 +35,29 @@ func shouldUseDurableConversationTurnQueue(req QueryRequest) bool {
 	return !req.IsAutoNotification && shouldSerializeInteractiveQueryInput(req)
 }
 
-func sanitizedQueuedConversationRequest(req QueryRequest) QueryRequest {
+type queuedBrowserInputKey struct{}
+
+type queuedBrowserInput struct {
+	Mode  string
+	Port  *int
+	Ports []int
+}
+
+func withQueuedBrowserInput(ctx context.Context, req QueryRequest) context.Context {
+	input := queuedBrowserInput{Mode: req.BrowserMode, Ports: append([]int(nil), req.CdpPorts...)}
+	if req.CdpPort != nil {
+		port := *req.CdpPort
+		input.Port = &port
+	}
+	return context.WithValue(ctx, queuedBrowserInputKey{}, input)
+}
+
+func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) QueryRequest {
+	// Runtime enrichment is not caller input. Replay the validated browser
+	// selection, then resolve current workspace settings in handleQuery again.
+	if input, ok := ctx.Value(queuedBrowserInputKey{}).(queuedBrowserInput); ok {
+		req.BrowserMode, req.CdpPort, req.CdpPorts = input.Mode, input.Port, input.Ports
+	}
 	// Queue documents live in the workspace. Persist selectors and encrypted
 	// secret names, never resolved values. handleQuery resolves current values
 	// again after the turn is claimed, which also honors rotations and revokes.
@@ -149,7 +171,7 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 		return queuedConversationTurn{}, 0, errors.New("conversation owner and session are required")
 	}
 	turn := queuedConversationTurn{
-		ID: uuid.NewString(), UserID: userID, SessionID: sessionID, Request: sanitizedQueuedConversationRequest(req),
+		ID: uuid.NewString(), UserID: userID, SessionID: sessionID, Request: sanitizedQueuedConversationRequest(ctx, req),
 		Principal: queuedPrincipalFromContext(ctx), CreatedAt: time.Now().UTC(),
 	}
 	if submission, ok := ctx.Value(chatSubmissionContextKey{}).(chatSubmissionContext); ok {
@@ -504,13 +526,20 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 		outcome, proof = "failed", "conversation_turn_failed"
 		logTurnQueue("turn %s failed: %v", turn.ID, err)
 	}
-	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
+	if err == nil {
+		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
+	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
-		logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
-		if err == nil {
-			err = removeErr
+	if err != nil {
+		// A failure may precede the normal user echo, or follow partial work.
+		// Keep its content and explicit owner retry; never replay it automatically.
+		api.recordFailedQueuedConversationUserMessage(turn)
+		if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
+			logTurnQueue("cannot persist failed turn %s: %v", turn.ID, persistErr)
 		}
+	} else if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
+		logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
+		err = removeErr
 	}
 	cancel()
 	api.conversationTurnQueueMu.Lock()
@@ -524,6 +553,32 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 		close(waiter)
 	}
 	api.kickConversationTurnQueue(turn.SessionID)
+}
+
+const queuedTurnFailureMessage = "This queued message could not be completed. Check the chat before retrying."
+
+func (api *StreamingAPI) failConversationTurn(ctx context.Context, turn queuedConversationTurn) error {
+	lock := productConversationRegistryMutex(conversationTurnQueuePath(turn.UserID))
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, turn.UserID)
+	if err != nil {
+		return err
+	}
+	for i := range turns {
+		if turns[i].ID == turn.ID {
+			turns[i].StartedAt = nil
+			turns[i].Steering = false
+			turns[i].DeliveryError = queuedTurnFailureMessage
+		}
+	}
+	return api.writeConversationTurnQueue(ctx, turn.UserID, turns)
+}
+
+func (api *StreamingAPI) recordFailedQueuedConversationUserMessage(turn queuedConversationTurn) {
+	api.recordLiveCodingAgentUserMessage(turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", sanitizeClientMessageID(turn.SubmissionID))
+	// The content must precede its receipt for live and restored consumers.
+	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, "failed", "conversation_turn_failed", turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
 }
 
 func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTurn, reqMap map[string]interface{}) (context.Context, error) {
