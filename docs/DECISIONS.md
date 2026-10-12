@@ -1,5 +1,20 @@
 # Decisions and open issues
 
+## 2026-10-12 — Bullpen administrators see metadata, never messages (PLAT-861)
+
+The Bullpen administrator view and `bullpen_admin` tool (admin account plus
+`users:manage`, never an agent-bound token) show names, purposes, provider,
+connection state and an opaque attachment handle, and can disconnect one
+attachment or remove a stale name. They cannot read messages or see session ids,
+lease ids, host keys or configuration. Each change needs a reason, is audited and
+shown to the owner, and is written in the same store save as its audit row so a
+failed audit means no change. Audit and notices are kept 180 days.
+
+Why: operators must be able to recover a stuck or abandoned agent, but reading
+other people's conversations is a separate, unrequested power.
+
+Ticket: PLAT-861, issue 861-105.
+
 ## 2026-10-12 — Muse idle wake uses an exact-session native Monitor (PLAT-866)
 
 After the literal person attach succeeds in the Muse hook, trusted setup context

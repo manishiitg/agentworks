@@ -189,6 +189,10 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 				return save(map[string]interface{}{"state": "already_closed"})
 			}
 		}
+		s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "attachment_closed", TargetHandle: handle, Reason: reason, Result: "not_found"})
+		if _, _, code, msg := save(nil); code != "" {
+			return bullpenAdminResult(http.StatusServiceUnavailable, code, msg)
+		}
 		return bullpenAdminResult(http.StatusNotFound, "unknown_attachment", "No attachment with that handle.")
 	}
 	agentID := externalArg(args, "agent_id")
@@ -211,6 +215,10 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 		s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "agent_removed", TargetUser: a.UserID, TargetAgent: a.ID, Reason: reason, Result: "done"})
 		s.Notices = append(s.Notices, agentOwnerNotice{ID: "notice-" + uuid.NewString(), OwnerUserID: a.UserID, AgentName: a.Name, At: now, Text: "An administrator removed the stale agent name " + a.Name + ". Reason: " + reason + ". Register it again if you still use it; old conversations are kept but will not reach a new registration."})
 		return save(map[string]interface{}{"state": "removed", "agent_name": a.Name, "owner": label(a.UserID)})
+	}
+	s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "agent_removed", TargetAgent: agentID, Reason: reason, Result: "not_found"})
+	if _, _, code, msg := save(nil); code != "" {
+		return bullpenAdminResult(http.StatusServiceUnavailable, code, msg)
 	}
 	return bullpenAdminResult(http.StatusNotFound, "unknown_agent", "No agent with that id.")
 }

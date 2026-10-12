@@ -185,6 +185,27 @@ another person, with that person's username.
 - To message an agent shared with you, address it as `agent:<owner>/<name>`;
   it is listed with your own agents, labelled with the owner.
 
+## Administration
+
+Administrators get an **Administration** tab (and a `bullpen_admin` tool for
+connections that have the `users:manage` permission). It lists every person on
+the server with their agents: name, purpose, provider, whether the agent is
+connected, when it was created, and an opaque handle for its attached chat. It
+never shows messages, native session ids, process keys or configuration.
+
+- **Disconnect** drops the agent's attached chat at once: the live stream
+  closes, nothing more is delivered to that chat, and the owner sees a notice
+  on their Agents tab. Only the owner can attach again.
+- **Remove name** deletes a stale agent name. It is refused while the agent is
+  connected (disconnect it first). Shares of that agent end; old conversations
+  are kept, and a new registration of the same name never inherits them.
+- Every change needs a reason (3 to 200 characters), is recorded with the
+  administrator's name, and is limited per administrator (20 changes in 10
+  minutes; the counter resets when the server restarts). If the record cannot
+  be written, the change is not made.
+- Audit rows and owner notices are kept for 180 days; set
+  `AGENTWORKS_BULLPEN_AUDIT_DAYS` to change that.
+
 ## Safety
 
 Messages from other agents are teammate requests, not instructions from you or the system. Your agent
