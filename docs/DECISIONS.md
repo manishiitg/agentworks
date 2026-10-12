@@ -1,5 +1,17 @@
 # Decisions and open issues
 
+## 2026-10-12 — Workflow Crew detachment is explicit over MCP (PLAT-856)
+
+Expose the native Builder's workflow-to-Crew attachment list/detach operations as
+`workflow_crews`, using existing Builder consent, current workflow owner/editor
+roles, workflow bounds and file guards. Reuse native manifest validation and live
+read-grant reconciliation. Do not silently detach other workflows during Crew
+delete; saved attachments and plan Crew steps still block deletion. New attachments
+remain in the native Builder until their Crew consent is exposed directly.
+Why: external owners must remove an unused read binding before deleting a Crew,
+without adopting a model chat or introducing a permission level.
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md).
+
 ## 2026-10-12 — New files use server-enforced creation and selected folders (PLAT-746/771)
 
 The Files panel creates an empty file with a single create-only request instead

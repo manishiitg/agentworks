@@ -244,6 +244,10 @@ func externalTools() ([]externalTool, error) {
 		externalTokenLimitDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalPlanMutationDefinition(add)
+		if err := externalWorkflowCrewDefinition(add); err != nil {
+			externalCatalogErr = err
+			return
+		}
 		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		externalScheduleDefinitions(add)
@@ -803,6 +807,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	// chat with its existing read-only tool policy, and control their own turns.
 	if strings.HasPrefix(tool.Name, "builder_") {
 		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	if tool.Name == "workflow_crews" {
+		api.externalWorkflowCrewCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "plan" {

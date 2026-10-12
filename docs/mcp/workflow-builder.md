@@ -102,3 +102,14 @@ go test -race ./cmd/server -run '^TestExternalBuilderOperations' -count=1
 ```
 
 The automated lifecycle tests use a deterministic model hook. Before enabling this on a deployment, smoke-test with its configured model and an actual external AI client against a throwaway workflow: submit a small edit, confirm it appears in the same browser chat, answer a question, cancel a second operation, and inspect the resulting plan/files. Record live checks against the deployment revision in PLAT-856; remote regression tests alone do not establish hosted model or deployment validation.
+
+## Workflow Crew attachments
+
+Use `workflow_crews` with `workflow_id` and `action=list` to inspect a workflow's
+read-only Crew attachments. Detach an alias explicitly with `action=detach` and
+`alias` from that list. Existing Builder consent and the current workflow
+owner/editor role apply, including connection bounds and file guards.
+This removes the read binding and its live grants; it leaves plan steps unchanged.
+Crew deletion still refuses remaining attachments and Crew steps. `crew_references`
+handles Crew-to-workflow references instead. New workflow Crew attachments continue
+through the native Builder's `manage_crew_attachment` tool.
