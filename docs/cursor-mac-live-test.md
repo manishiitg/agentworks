@@ -13,7 +13,10 @@ MCP approval or workspace trust bypass is required.
 2. Retain a clone of `manishiitg/agentworks-plugins`, then run its
    `plugins/cursor/scripts/setup_project.py --project /absolute/project/path`.
    Review `.cursor/hooks.json`. The package hook set is empty; use these project
-   hooks once, without a second user-level AgentWorks registration.
+   hooks once, without a second user-level AgentWorks registration. Their command
+   must be `agentworks plugin hook cursor`, so a package-cache update cannot
+   leave them pointing at a stale version. Older recognized paths migrate when
+   project setup runs again; unrelated entries must remain unchanged.
 3. Sign in to the intended AgentWorks server in your terminal. Review the browser
    consent. Start Cursor with `--plugin-dir /absolute/plugins/cursor` and
    `--workspace /absolute/project/path`. Review Cursor's workspace/MCP prompts.

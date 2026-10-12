@@ -106,8 +106,8 @@ export const messagingGuides: MessagingGuide[] = [
       { label: 'Start Cursor CLI', text: 'cursor-agent --plugin-dir "$HOME/.local/share/agentworks-plugins/plugins/cursor" --workspace "/absolute/project/path"' },
     ],
     update: [{ label: 'Update Cursor plugin', text: 'git -C "$HOME/.local/share/agentworks-plugins" pull --ff-only\npython3 "$HOME/.local/share/agentworks-plugins/plugins/cursor/scripts/setup_project.py" --project "/absolute/project/path"' }],
-    installNote: 'Use the same retained plugin directory when updating. Project setup preserves other hooks and refuses a second AgentWorks hook path. The package registers project hooks once; its plugin hook set is empty so the CLI cannot deliver twice.',
-    approval: 'Review the project hook file and messaging MCP yourself in Cursor. Setup does not approve workspace/MCP trust, sign in, attach a chat, or enable terminal delivery. Remove an older AgentWorks hook entry explicitly before switching directories.',
+    installNote: 'Use the same retained plugin directory when updating. Project setup preserves other hooks, migrates recognized old package paths to the CLI on PATH and refuses duplicates or unknown paths. The package registers project hooks once; its plugin hook set is empty so the CLI cannot deliver twice.',
+    approval: 'Review the project hook file and messaging MCP yourself in Cursor. Setup does not approve workspace/MCP trust, sign in, attach a chat, or enable terminal delivery. Existing stable project hooks use the updated CLI automatically; rerun project setup once for older package-path registrations.',
     attach: '/agentworks attach cursor-review', ownRequest: 'Attach this Cursor CLI chat to AgentWorks as cursor-review.',
     delivery: 'Completed-turn hooks offer messages after busy tools finish. Idle persist/tmux delivery is not built in this milestone; an idle CLI receives pending messages on its next completed turn. A stored message or terminal write is not admission.',
     menus: [

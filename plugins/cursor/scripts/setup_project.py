@@ -42,18 +42,35 @@ def configure(project, package):
     hooks = data.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError("The hooks field must be an object")
-    script = package / "scripts" / "cursor_hook.py"
     template = json.loads((package / "hooks" / "hooks.json").read_text())
-    command = "python3 " + shlex.quote(str(script))
+    command = "agentworks plugin hook cursor"
+    repaired = []
+    def legacy_managed(value):
+        try:
+            words = shlex.split(value)
+            if len(words) != 2 or Path(words[0]).name not in ("python", "python3"):
+                return False
+            script = Path(words[1])
+            if not script.is_absolute() or script.name != "cursor_hook.py" or script.parent.name != "scripts":
+                return False
+            manifest = json.loads(read_config(script.parent.parent / ".cursor-plugin/plugin.json"))
+            return isinstance(manifest, dict) and manifest.get("name") == "agentworks"
+        except (OSError, ValueError, TypeError):
+            return False
     for event, entries in template["hooks"].items():
         existing = hooks.setdefault(event, [])
         if not isinstance(existing, list) or any(not isinstance(item, dict) for item in existing):
             raise ValueError("Each hook event must contain a list of hook objects")
         if any(not isinstance(item.get("command", ""), str) for item in existing):
             raise ValueError("Hook commands must be strings")
-        managed = [item for item in existing if "cursor_hook.py" in item.get("command", "")]
-        if len(managed) > 1 or any(item.get("command") != command for item in managed):
-            raise ValueError("Another AgentWorks hook path is registered; remove that entry explicitly first")
+        managed = [item for item in existing if item.get("command") == command or "cursor_hook.py" in item.get("command", "")]
+        if len(managed) > 1:
+            raise ValueError("Duplicate AgentWorks hooks are registered; review them before retrying")
+        if managed and managed[0].get("command") != command:
+            if not legacy_managed(managed[0]["command"]):
+                raise ValueError("An unknown Cursor hook path is registered; review it before retrying")
+            managed[0]["command"] = command
+            repaired.append(event)
         if not managed:
             existing.append({**entries[0], "command": command})
     data["version"] = 1
@@ -74,6 +91,8 @@ def configure(project, package):
     finally:
         if os.path.exists(name):
             os.unlink(name)
+    if repaired:
+        print("Replaced old AgentWorks package paths with the CLI on PATH for: " + ", ".join(repaired))
     return target, True
 
 

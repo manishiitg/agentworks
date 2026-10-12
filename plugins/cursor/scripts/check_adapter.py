@@ -41,9 +41,21 @@ def main():
         assert changed
         installed = json.loads(target.read_text())
         assert installed["custom"] == "retained" and installed["hooks"]["stop"][0] == prior["hooks"]["stop"][0]
+        assert all(any(item.get("command") == "agentworks plugin hook cursor" for item in entries) for entries in installed["hooks"].values())
         first = target.read_bytes()
         assert setup.configure(project, package)[1] is False and target.read_bytes() == first
-        # An older path must not turn an update into duplicate delivery hooks.
+        # Versioned AgentWorks package paths migrate to the stable CLI command.
+        old = Path(folder) / "old plugin cache/0.1.2"
+        (old / ".cursor-plugin").mkdir(parents=True)
+        (old / ".cursor-plugin/plugin.json").write_text(json.dumps({"name": "agentworks"}))
+        import shlex
+        installed["hooks"]["stop"][1]["command"] = "python3 " + shlex.quote(str(old / "scripts/cursor_hook.py"))
+        target.write_text(json.dumps(installed))
+        assert setup.configure(project, package)[1] is True
+        installed = json.loads(target.read_text())
+        assert installed["hooks"]["stop"][1]["command"] == "agentworks plugin hook cursor"
+        assert len(installed["hooks"]["stop"]) == 2
+        # Unknown or duplicate old paths must not turn an update into duplicate hooks.
         installed["hooks"]["stop"].append({"command": "python3 /old/cursor_hook.py"})
         target.write_text(json.dumps(installed))
         before = target.read_bytes()

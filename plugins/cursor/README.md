@@ -25,7 +25,8 @@ cursor-agent --plugin-dir "$HOME/.local/share/agentworks-plugins/plugins/cursor"
 
 Review the exact `.cursor/hooks.json` and messaging MCP in Cursor yourself.
 The setup script merges the four native hook events, preserves unrelated
-entries, and refuses a duplicate or old AgentWorks hook path. It changes only
+entries, replaces recognized old AgentWorks package paths with the stable
+`agentworks plugin hook cursor` command, and refuses duplicate or unknown paths. It changes only
 that project's hook file. It does not approve trust, create a login, or attach.
 The package's own hook set is empty, so project hooks are registered once.
 This avoids the investigated CLI's plugin-only prompt/stop call-site guards.
@@ -80,7 +81,10 @@ Do not configure an invented opt-in variable or treat a new `--resume` process
 as a live message. Explicit mailbox recovery is the last fallback. No inbox
 polling loop, automatic uncertain replay or desktop typing path is supplied.
 
-Update the retained plugin directory and project registration:
+Update the retained plugin directory and project registration. Stable hooks
+call the CLI on PATH, so `agentworks update` needs no project-path repair. For
+an older package-path registration, rerun the setup command once; it prints
+which events it migrated:
 
 ```sh
 git -C "$HOME/.local/share/agentworks-plugins" pull --ff-only

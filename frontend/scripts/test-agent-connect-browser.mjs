@@ -42,7 +42,7 @@ try {
       console.error('Fixture body:', await page.locator('body').innerText(), 'component errors:', errors, 'scripts:', await page.locator('script').evaluateAll(nodes => nodes.map(node => node.src)))
       throw error
     }
-    await page.getByRole('heading', { name: 'reviewer', exact: true }).waitFor()
+    await page.getByRole('heading', { name: purpose, exact: true }).waitFor()
     await page.getByText('Full purpose', { exact: true }).click()
     assert.equal(await page.getByText(purpose, { exact: true }).last().isVisible(), true)
     await page.getByRole('button', { name: 'Copy address agent:reviewer', exact: true }).click()
@@ -62,13 +62,13 @@ try {
     assert.equal(deleted, true)
     assert.equal(await page.getByLabel('Usage over time').locator('div').count(), 0)
     await page.getByLabel('Find an agent').fill('documentation')
-    assert.equal(await page.getByRole('heading', { name: 'reviewer', exact: true }).count(), 0)
-    assert.equal(await page.getByRole('heading', { name: 'writer', exact: true }).isVisible(), true)
+    assert.equal(await page.getByRole('heading', { name: purpose, exact: true }).count(), 0)
+    assert.equal(await page.getByRole('heading', { name: 'Writes documentation.', exact: true }).isVisible(), true)
     await page.getByLabel('Find an agent').fill('')
     directoryStatus = 403
     await page.getByRole('button', { name: 'Refresh agents', exact: true }).click()
     await page.getByRole('alert').filter({ hasText: 'not enabled' }).waitFor()
-    assert.equal(await page.getByRole('heading', { name: 'reviewer', exact: true }).count(), 0)
+    assert.equal(await page.getByRole('heading', { name: purpose, exact: true }).count(), 0)
     directoryStatus = 200; agents = []
     await page.getByRole('button', { name: 'Refresh agents', exact: true }).click()
     await page.getByRole('heading', { name: 'Bring your first agent into Bullpen' }).waitFor()
