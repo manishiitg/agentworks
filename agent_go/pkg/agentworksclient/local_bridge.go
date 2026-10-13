@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -222,7 +223,7 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	if err != nil {
 		return out, err
 	}
-	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+	if !info.IsDir() || CheckPrivateAccess(root, info) != nil {
 		return out, errors.New("unsafe local bridge directory")
 	}
 	socket := filepath.Join(root, "bridge.sock")
@@ -230,7 +231,7 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	if err != nil {
 		return out, err
 	}
-	if info.Mode()&os.ModeSocket == 0 || info.Mode().Perm()&0077 != 0 {
+	if info.Mode()&os.ModeSocket == 0 || CheckPrivateAccess(socket, info) != nil {
 		return out, errors.New("unsafe local bridge socket")
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -283,6 +284,9 @@ func (b *localBridge) wake() { close(b.changed); b.changed = make(chan struct{})
 // It makes no mailbox polling requests. Current server API has one stream per
 // attachment; a multiplexed server stream remains a separate scaling change.
 func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOptions) error {
+	if err := localIPCSupported(); err != nil {
+		return err
+	}
 	if err := privateLiveDir(root); err != nil {
 		return err
 	}
@@ -296,6 +300,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		defer logFile.Close()
 	}
 	socket := filepath.Join(root, "bridge.sock")
+	if len(socket) >= 104 { // sun_path is 104 bytes on macOS and Windows, 108 on Linux
+		return errors.New("the AgentWorks bridge folder path is too long for a local socket (under 104 characters); shorten it")
+	}
 	if info, e := os.Lstat(socket); e == nil {
 		if info.Mode()&os.ModeSocket == 0 {
 			return errors.New("refusing redirected bridge socket")
@@ -311,8 +318,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		return err
 	}
 	defer l.Close()
-	if err = os.Chmod(socket, 0600); err != nil {
-		return err
+	if runtime.GOOS != "windows" { // a Windows socket is protected by its directory's access list
+		if err = os.Chmod(socket, 0600); err != nil {
+			return err
+		}
 	}
 	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), usageWake: make(chan struct{}, 1)}
 	if len(options) > 0 {

@@ -57,7 +57,7 @@ func WatchMuseBridge(ctx context.Context, root string, in LocalBridgeRequest, of
 		if err != nil {
 			return err
 		}
-		if info.Mode().Perm()&0077 != 0 || path == root && !info.IsDir() || path != root && info.Mode()&os.ModeSocket == 0 {
+		if CheckPrivateAccess(path, info) != nil || path == root && !info.IsDir() || path != root && info.Mode()&os.ModeSocket == 0 {
 			return errors.New("unsafe private bridge path")
 		}
 	}

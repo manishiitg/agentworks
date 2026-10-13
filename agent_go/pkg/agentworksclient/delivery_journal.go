@@ -21,8 +21,14 @@ type deliveryJournal struct {
 }
 
 func privateLiveDir(path string) error {
+	_, existed := os.Lstat(path)
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return err
+	}
+	if existed != nil { // created now: restrict it before anything is put inside
+		if err := protectPrivateDir(path); err != nil {
+			return err
+		}
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -73,7 +79,7 @@ func atomicLiveJSON(path string, value any) error {
 		return err
 	}
 	defer dir.Close()
-	return syncJournalFile(dir)
+	return syncJournalDir(dir)
 }
 
 func readLiveJSON(path string, value any) error {
