@@ -342,3 +342,36 @@ func TestAckOfAMessageOnlySeenAsANoticeSaysToReceiveFirst(t *testing.T) {
 		t.Fatal("the refused ack marked the message offered")
 	}
 }
+
+// Muse sends each plugin tool to its model provider as "mcp__plugin_<plugin>_<server>__<tool>" and the
+// provider rejects names over 64 characters ("name must be at most 64 characters, got 66"), which
+// broke a Muse chat right after attach. Every Muse tool must fit with room to spare, so a long tool name
+// or server id fails here and not in the owner's chat.
+func TestMusePluginToolNamesFitTheProviderNameLimit(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "plugins", "muse", ".muse-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Name         string `json:"name"`
+		Capabilities struct {
+			MCPServers []struct {
+				ID string `json:"id"`
+			} `json:"mcpServers"`
+		} `json:"capabilities"`
+	}
+	if err = json.Unmarshal(raw, &manifest); err != nil || manifest.Name == "" || len(manifest.Capabilities.MCPServers) != 1 {
+		t.Fatalf("Muse manifest: %+v %v", manifest, err)
+	}
+	server, err := NewMusePluginMCPServer(context.Background(), t.TempDir(), "host", func() (string, error) { return "s1", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	const limit, margin = 64, 4 // Muse's exact separator is not documented: leave a few characters
+	prefix := "mcp__plugin_" + manifest.Name + "_" + manifest.Capabilities.MCPServers[0].ID + "__"
+	for name := range server.ListTools() {
+		if n := len(prefix + name); n > limit-margin {
+			t.Errorf("%s is %d characters; keep it at %d or fewer", prefix+name, n, limit-margin)
+		}
+	}
+}

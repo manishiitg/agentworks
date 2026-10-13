@@ -50,7 +50,7 @@ The same GitHub repository serves each provider's catalog. Muse reads
 different provider commands. Claude Code reads `.claude-plugin/marketplace.json`
 and uses `agentworks@agentworks`. Existing Codex metadata remains unchanged.
 
-To update an older plugin to **0.1.7**, use the refresh/remove/reinstall commands
+To update an older plugin to **0.1.8**, use the refresh/remove/reinstall commands
 below, then inspect its version, approve it and restart Muse before attaching.
 
 Muse 1.4.4 keeps an installed marketplace plugin bound to its original snapshot.
