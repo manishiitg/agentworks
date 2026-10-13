@@ -1235,8 +1235,23 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     return () => { cancelled = true }
   }, [product])
 
+  // Capture the deep link's view on first render, before the URL projection
+  // or any later effect can rewrite the address bar and hide it.
+  const initialRouteView = useRef<{ id: string; view: WorkWorkspaceView } | null | undefined>(undefined)
+  if (initialRouteView.current === undefined) {
+    const route = currentProductRoute()
+    const view = route?.surface === product.profileId && route.id ? normalizeWorkWorkspaceView(route.view) : null
+    initialRouteView.current = view && route?.id ? { id: route.id, view } : null
+  }
+  const routeSuppliedView = selected
+    ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))
+    : null
+
   useLayoutEffect(() => {
-    const savedView = routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId)
+    const savedView = routeSuppliedView ?? routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId)
+    // The captured link view is spent once applied (and is keyed to its
+    // project), so switching projects never reapplies an old ?view.
+    if (initialRouteView.current?.id === selected?.id) initialRouteView.current = null
     setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? (product.profileId === 'code' && selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
@@ -1251,10 +1266,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // A fresh deep link names its view (?view=shell): it is the person's
   // explicit choice, so neither the content-based landing guess nor the
   // panel list arriving later may replace it on first load.
-  const routeSuppliedView = selected ? routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView) : null
   useEffect(() => {
     // Code is files-first: it never lands on the dashboard on its own.
-    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || routeView(product.profileId, landingProjectId, normalizeWorkWorkspaceView, product.defaultView) || readWorkWorkspaceView(landingProjectId, product.profileId)) return
+    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || routeSuppliedView || readWorkWorkspaceView(landingProjectId, product.profileId)) return
     let cancelled = false
     void loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed }).then(view => {
       if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId, product.profileId)) return

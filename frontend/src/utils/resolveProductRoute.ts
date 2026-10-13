@@ -41,8 +41,10 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     const item = [...owned, ...shared].find(item => item.id === route.id)
     if (!item) throw new ProductUnavailable()
     const { normalizeWorkWorkspaceView, SHARED_CREW_WORKSPACE_PANELS } = await import('../products/work/WorkSurface')
+    // An unknown or not-allowed view name falls back to the product default
+    // instead of making the whole project link "not available".
     const view = route.view ? normalizeWorkWorkspaceView(route.view) : null
-    if (route.view && (!view || (item.shared && !SHARED_CREW_WORKSPACE_PANELS.has(view)))) throw new ProductUnavailable()
+    if (route.view && (!view || (item.shared && !SHARED_CREW_WORKSPACE_PANELS.has(view)))) route = { ...route, view: undefined }
     activateResource = () => {
       const state = useProductSurfaceStore.getState()
       if (route.surface === 'code') state.setSelectedCodeProjectId(route.id!)

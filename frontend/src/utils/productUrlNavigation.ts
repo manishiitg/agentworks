@@ -71,7 +71,11 @@ export function observeProductHistory(): () => void {
       replace = false
       // Do not take over shared assets, sign-in or consent routes.
       if (currentProductRoute() === undefined) return
-      const path = productRoutePath(readProductNavigation())
+      const projected = readProductNavigation()
+      // A fresh deep link names its view before the mounted surface has
+      // applied it; a projection must not rewrite the link to the default.
+      if (replaceEntry && currentProductRoute()?.view && projected.view !== currentProductRoute()?.view) { lastSelection = productRoutePath(projected); return }
+      const path = productRoutePath(projected)
       if (path === lastSelection && !replaceEntry) return
       lastSelection = path
       if (path !== window.location.pathname + window.location.search) {
