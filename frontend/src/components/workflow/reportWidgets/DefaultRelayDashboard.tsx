@@ -10,7 +10,7 @@ const ChatArea = lazy(() => import('../../ChatArea'))
 
 type RelayStep = { id: string; name: string; status: string; error?: string; output?: unknown; started_at?: number; completed_at?: number }
 type RelayRun = { run: string; run_id: string; version: string; caller?: string; status: string; error?: string; attempt: number; started_at: number; duration_s?: number | null; input?: unknown; result?: unknown; steps: RelayStep[] }
-type RelayData = { product: { id: string; name: string; purpose?: string }; version: string; can_ask: boolean; fetched_at: string; truncated?: boolean; next_before?: number; runs: RelayRun[] }
+type RelayData = { product: { id: string; name: string; purpose?: string }; version: string; can_ask: boolean; can_draft?: boolean; fetched_at: string; truncated?: boolean; next_before?: number; runs: RelayRun[] }
 type QuestionDraft = { question: string; requestId: string; evidence: { product_id: string; version: string; fetched_at: string; run: RelayRun } }
 
 function recordedTime(value?: number) {
@@ -130,7 +130,7 @@ export default function DefaultRelayDashboard({ workspacePath, refreshToken }: {
             <select value={version} onChange={event => { setVersion(event.target.value); setBefore(0); setSelected(null) }} className="rounded-md border border-border bg-background p-1.5">
               <option value="active">Active published version{data.version && data.version !== 'draft' ? ' · ' + data.version : ''}</option>
               {versions.map(item => <option key={item} value={item}>{item}</option>)}
-              {data.can_ask && <option value="draft">Draft tests</option>}
+              {data.can_draft && <option value="draft">Draft tests</option>}
             </select>
           </label>
         </div>

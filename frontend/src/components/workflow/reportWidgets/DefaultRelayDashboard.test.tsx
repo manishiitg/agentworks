@@ -71,6 +71,13 @@ it('shows shared run diagnostics while keeping Run chat and draft tests unavaila
   expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
 })
 
+it('lets a Run person ask about a run but never offers draft tests', async () => {
+  auth.id = 'finance-a'; get.mockResolvedValue({ data: fixture('v1', true) })
+  const { host } = await mount()
+  expect([...host.querySelectorAll('button')].some(item => item.textContent === 'Ask about this run')).toBe(true)
+  expect([...host.querySelectorAll('option')].some(item => item.value === 'draft')).toBe(false)
+})
+
 it('rechecks current Ask access before submitting the selected record', async () => {
   get.mockResolvedValue({ data: fixture() })
   const { host } = await mount()

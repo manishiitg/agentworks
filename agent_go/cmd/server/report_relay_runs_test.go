@@ -120,8 +120,8 @@ func TestReportRelayRunsSharePublishedDiagnosticsAcrossProductMembers(t *testing
 		if strings.Contains(body, "PRIVATE") {
 			t.Fatalf("%s exposed a credential or raw trace: %s", user, body)
 		}
-		if strings.Contains(body, `"can_ask":true`) != (user == "owner") {
-			t.Fatalf("Run must not acquire Builder chat: %s", body)
+		if !strings.Contains(body, `"can_ask":true`) {
+			t.Fatalf("everyone with access can ask (Run chat for non-owners): %s", body)
 		}
 	}
 	if w := read("reader-a", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"version":"v1"`) {
