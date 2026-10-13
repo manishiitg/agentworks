@@ -242,10 +242,17 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 	return bullpenAdminResult(http.StatusNotFound, "unknown_agent", "No agent with that id.")
 }
 
+type bullpenAdminTimingKey struct{}
+type bullpenAdminTiming struct{ store time.Duration }
+
 func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, args map[string]any) (map[string]interface{}, int, string, string) {
-	agentMessageMu.Lock()
+	// Metadata and audit projections grant no mutation authority. Workspace
+	// atomic rename supplies one complete snapshot without waiting on writers.
+	start := time.Now()
 	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	if timing, _ := ctx.Value(bullpenAdminTimingKey{}).(*bullpenAdminTiming); timing != nil {
+		timing.store = time.Since(start)
+	}
 	dir, dirErr := loadUserDirectory()
 	if err != nil || dirErr != nil || dir == nil {
 		return bullpenAdminResult(http.StatusServiceUnavailable, "unavailable", "Bullpen administration is unavailable. Try again.")
@@ -340,7 +347,16 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	action := map[string]string{"/api/bullpen/admin/agents": "list", "/api/bullpen/admin/audit": "audit", "/api/bullpen/admin/attachments/close": "close_attachment", "/api/bullpen/admin/agents/remove": "remove_agent", "/api/bullpen/admin/agents/unshare": "unshare_agent"}[r.URL.Path]
-	out, status, code, msg := api.bullpenAdminAct(r.Context(), claims.UserID, action, args)
+	start := time.Now()
+	timing := &bullpenAdminTiming{}
+	ctx := r.Context()
+	if !mutate {
+		ctx = context.WithValue(ctx, bullpenAdminTimingKey{}, timing)
+	}
+	out, status, code, msg := api.bullpenAdminAct(ctx, claims.UserID, action, args)
+	if !mutate {
+		stampBullpenTiming(w, start, timing.store, "admin", time.Since(start)-timing.store)
+	}
 	if code != "" {
 		externalError(w, status, code, msg)
 		return

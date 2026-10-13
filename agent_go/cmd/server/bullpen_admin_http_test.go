@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,4 +112,65 @@ func TestBullpenAdminCloseEndsStreamAndOwnerCanReattach(t *testing.T) {
 	if out, _, _, _ := env.api.bullpenAdminAct(ctx, "root", "close_attachment", map[string]any{"handle": handle, "reason": "stale handle"}); out["state"] != "already_closed" {
 		t.Fatalf("the old handle closed the new lease: %v", out)
 	}
+}
+
+// Metadata/audit reads stay usable during a held message mutation. Real browser
+// authentication and the existing admin gate still decide who can read them.
+func TestBullpenAdminMetadataDoesNotWaitForMessageWriter(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	t.Setenv("AUTH_SECRET", "admin-snapshot-fixture-secret")
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"operator","username":"operator","admin":true}]}`)
+	if err := saveAgentMessageStore(context.Background(), agentMessageStore{Agents: []namedMessageAgent{{ID: "agent", UserID: "owner", Name: "helper", Connections: []string{"private-connection"}, Attachment: &namedAgentAttachment{ID: "lease", Provider: "codex", SessionID: "private-session"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(AuthMiddleware(http.HandlerFunc(env.api.handleBullpenAdmin)))
+	defer srv.Close()
+	get := func(user, path string, want int) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user != "" {
+			token, e := GenerateJWT(user, user, "")
+			if e != nil {
+				t.Fatal(e)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var body json.RawMessage
+		if err = json.NewDecoder(res.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != want {
+			t.Fatalf("%s: %d want%d: %s", path, res.StatusCode, want, body)
+		}
+		if want == http.StatusOK {
+			if !strings.Contains(res.Header.Get("Server-Timing"), "store;dur=") || !strings.Contains(res.Header.Get("Server-Timing"), "admin;dur=") {
+				t.Fatalf("missing phase timing: %s", res.Header.Get("Server-Timing"))
+			}
+			for _, forbidden := range []string{"private-session", "private-connection", "input_tokens"} {
+				if strings.Contains(string(body), forbidden) {
+					t.Fatalf("metadata exposed %s", forbidden)
+				}
+			}
+		}
+	}
+	func() {
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		for _, path := range []string{"/api/bullpen/admin/agents", "/api/bullpen/admin/audit"} {
+			get("operator", path, http.StatusOK)
+		}
+	}()
+	get("owner", "/api/bullpen/admin/agents", http.StatusForbidden)
+	get("", "/api/bullpen/admin/audit", http.StatusUnauthorized)
 }
