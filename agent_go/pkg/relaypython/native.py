@@ -6,6 +6,7 @@ import functools
 import inspect
 import json
 import logging
+import time
 
 from dbos import DBOS, DBOSClient, SetWorkflowID
 
@@ -206,7 +207,7 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
                  "console_log_level": "WARNING", "system_database_url": url})
     sys.path.insert(0, str(source.parent))
     program = load_module("relay_program", source)
-    lifecycle = {"status": "running"}
+    lifecycle = {"status": "running", "started_at": time.time()}
     events = run_dir / "dbos_events.jsonl"
 
     class EventLog(logging.Handler):
@@ -287,6 +288,8 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
         if poll is not None:
             poll.cancel()
             await asyncio.gather(poll, return_exceptions=True)
+        if lifecycle["status"] != "running":
+            lifecycle["completed_at"] = time.time()
         try:
             await snapshot()
         finally:

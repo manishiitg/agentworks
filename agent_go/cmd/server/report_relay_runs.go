@@ -214,11 +214,13 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 			continue
 		}
 		var trace struct {
-			WorkflowID string `json:"workflow_id"`
-			Status     string `json:"status"`
-			Error      string `json:"error"`
-			Attempt    int    `json:"attempt_number"`
-			Calls      []struct {
+			WorkflowID  string  `json:"workflow_id"`
+			Status      string  `json:"status"`
+			Error       string  `json:"error"`
+			Attempt     int     `json:"attempt_number"`
+			StartedAt   float64 `json:"started_at"`
+			CompletedAt float64 `json:"completed_at"`
+			Calls       []struct {
 				ID        string  `json:"id"`
 				Name      string  `json:"name"`
 				Status    string  `json:"status"`
@@ -252,6 +254,7 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 				completed = call.Completed
 			}
 		}
+		started, completed, approximate := relayRunTimes(root.FS(), entry.Name(), trace.StartedAt, trace.CompletedAt, started, completed)
 		var result any
 		resultPath := path.Join("runs", entry.Name(), "relay_result.json")
 		if guard == nil || guard.Allows(resultPath, false) {
@@ -264,7 +267,7 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 			duration = completed - started
 		}
 		caller, input := relayReportInput(root, guard, trace.WorkflowID)
-		run := map[string]any{"run": entry.Name(), "run_id": relayReportText(trace.WorkflowID), "caller": caller, "input": relayReportValue(input), "version": version, "status": relayReportText(trace.Status), "error": relayReportText(trace.Error), "attempt": trace.Attempt, "started_at": started, "completed_at": completed, "duration_s": duration, "steps": steps, "result": relayReportValue(result)}
+		run := map[string]any{"run": entry.Name(), "run_id": relayReportText(trace.WorkflowID), "caller": caller, "input": relayReportValue(input), "version": version, "status": relayReportText(trace.Status), "error": relayReportText(trace.Error), "attempt": trace.Attempt, "started_at": started, "completed_at": completed, "duration_s": duration, "times_approximate": approximate, "steps": steps, "result": relayReportValue(result)}
 		encoded, _ := json.Marshal(run)
 		if responseBytes+len(encoded) > 512<<10 {
 			truncated = true
@@ -503,11 +506,13 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 	}
 	defer root.Close()
 	type traceFile struct {
-		WorkflowID string `json:"workflow_id"`
-		Status     string `json:"status"`
-		Error      string `json:"error"`
-		Attempt    int    `json:"attempt_number"`
-		Calls      []struct {
+		WorkflowID  string  `json:"workflow_id"`
+		Status      string  `json:"status"`
+		Error       string  `json:"error"`
+		Attempt     int     `json:"attempt_number"`
+		StartedAt   float64 `json:"started_at"`
+		CompletedAt float64 `json:"completed_at"`
+		Calls       []struct {
 			Name      string  `json:"name"`
 			Status    string  `json:"status"`
 			Error     string  `json:"error"`
@@ -586,6 +591,7 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 		}
 		steps = append(steps, step)
 	}
+	started, completed, approximate := relayRunTimes(root.FS(), folder, trace.StartedAt, trace.CompletedAt, started, completed)
 	var result any
 	resultPath := path.Join("runs", folder, "relay_result.json")
 	if guard == nil || guard.Allows(resultPath, false) {
@@ -595,7 +601,7 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 	}
 	out := map[string]any{"run": folder, "run_id": relayReportText(trace.WorkflowID), "version": version, "function": function, "caller": caller,
 		"input": relayReportValue(input), "status": relayReportText(trace.Status), "attempt": trace.Attempt, "started_at": started,
-		"steps": steps, "result": relayReportValue(result)}
+		"times_approximate": approximate, "steps": steps, "result": relayReportValue(result)}
 	if trace.Error != "" {
 		out["error"] = relayReportText(trace.Error)
 	}
@@ -655,4 +661,46 @@ func (api *StreamingAPI) handleReportRelayRun(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(api.maskRelaySecrets(r.Context(), workspace, manifest, out))
+}
+
+// relayRunTimes returns a run's start and finish. The trace's own run-level
+// times win, then the recorded steps; a run with neither (older runs, or a run
+// that made no durable calls) falls back to the run folder's file times, marked
+// approximate.
+func relayRunTimes(fsys fs.FS, folder string, traceStart, traceEnd, callStart, callEnd float64) (started, completed float64, approximate bool) {
+	started, completed = traceStart, traceEnd
+	if started == 0 {
+		started = callStart
+	}
+	if completed == 0 {
+		completed = callEnd
+	}
+	if started > 0 && completed >= started {
+		return started, completed, false
+	}
+	entries, err := fs.ReadDir(fsys, path.Join("runs", folder))
+	if err != nil {
+		return started, completed, false
+	}
+	var first, last float64
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil || entry.IsDir() {
+			continue
+		}
+		at := float64(info.ModTime().UnixNano()) / 1e9
+		if first == 0 || at < first {
+			first = at
+		}
+		if at > last {
+			last = at
+		}
+	}
+	if started == 0 {
+		started, approximate = first, first > 0
+	}
+	if completed < started {
+		completed, approximate = last, last > 0
+	}
+	return started, completed, approximate
 }

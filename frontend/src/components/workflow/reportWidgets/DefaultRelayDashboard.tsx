@@ -9,7 +9,7 @@ import { useLiveRefetch } from '../../../hooks/useLiveRefetch'
 const ChatArea = lazy(() => import('../../ChatArea'))
 
 type RelayStep = { id: string; name: string; status: string; error?: string; output?: unknown; started_at?: number; completed_at?: number }
-type RelayRun = { run: string; run_id: string; version: string; caller?: string; status: string; error?: string; attempt: number; started_at: number; duration_s?: number | null; input?: unknown; result?: unknown; steps: RelayStep[] }
+type RelayRun = { run: string; run_id: string; version: string; caller?: string; status: string; error?: string; attempt: number; started_at: number; duration_s?: number | null; times_approximate?: boolean; input?: unknown; result?: unknown; steps: RelayStep[] }
 type RelayData = { product: { id: string; name: string; purpose?: string }; version: string; can_ask: boolean; can_draft?: boolean; fetched_at: string; truncated?: boolean; next_before?: number; runs: RelayRun[] }
 type QuestionDraft = { question: string; requestId: string; evidence: { product_id: string; version: string; fetched_at: string; run: RelayRun } }
 
@@ -141,7 +141,7 @@ export default function DefaultRelayDashboard({ workspacePath, refreshToken }: {
             <thead><tr className="text-muted-foreground"><th className="py-2 pr-3">Run</th><th className="pr-3">Status</th><th className="pr-3">Started</th><th>Duration</th></tr></thead>
             <tbody>{data.runs.map(item => <tr key={item.run_id || item.run} className="border-t border-border">
               <td className="py-2 pr-3"><button type="button" aria-pressed={run?.run === item.run} onClick={() => setSelected(item.run)} className="text-primary underline underline-offset-2">{item.run_id || item.run}</button></td>
-              <td className="pr-3">{item.status}</td><td className="pr-3">{recordedTime(item.started_at)}</td><td>{item.duration_s == null ? 'Not recorded' : item.duration_s.toFixed(2) + ' s'}</td>
+              <td className="pr-3">{item.status}</td><td className="pr-3">{item.times_approximate && item.started_at ? '≈ ' : ''}{recordedTime(item.started_at)}</td><td>{item.duration_s == null ? 'Not recorded' : (item.times_approximate ? '≈ ' : '') + item.duration_s.toFixed(2) + ' s'}</td>
             </tr>)}</tbody>
           </table></div>}
         {(before > 0 || data.next_before) && <div className="mt-3 flex gap-3 text-xs">
@@ -155,7 +155,9 @@ export default function DefaultRelayDashboard({ workspacePath, refreshToken }: {
           {data.can_ask && <button type="button" onClick={() => setDraft({ question: 'What happened in this run, and why?', requestId: 'relay-run-question:' + crypto.randomUUID(), evidence: { product_id: data.product.id, version: run.version, fetched_at: data.fetched_at, run } })} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">Ask about this run</button>}
         </div>
         <p className="text-xs text-muted-foreground">Version {run.version} · Attempt {run.attempt}{run.caller ? ' · Started by ' + run.caller : ''}</p>
+        {run.times_approximate && <p className="text-xs text-muted-foreground">Times (≈) come from the run's files; this run has no recorded timings.</p>}
         {run.error && <p className="whitespace-pre-wrap text-sm text-destructive">{run.error}</p>}
+        {run.steps.length === 0 && <p className="text-sm text-muted-foreground">This run recorded no steps.</p>}
         {run.steps.map((step, index) => <details key={step.id || index} open={step.status === 'failed'} className="rounded-md border border-border p-3">
           <summary className="cursor-pointer text-sm">{step.name} · {step.status}{step.id ? ' · ' + step.id : ''}</summary>
           <p className="my-2 text-xs text-muted-foreground">{recordedTime(step.started_at)} → {recordedTime(step.completed_at)}</p>

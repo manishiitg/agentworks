@@ -53,7 +53,7 @@ class Context:
         self._sequence = 0
         self._lock = asyncio.Lock()
         self._in_tool = contextvars.ContextVar("relay_tool_callback", default=False)
-        self._trace = {"version": 1, "status": "running", "calls": []}
+        self._trace = {"version": 1, "status": "running", "started_at": time.time(), "calls": []}
         self._save_trace()
 
     def vault(self, name):

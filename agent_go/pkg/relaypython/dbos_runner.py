@@ -263,14 +263,14 @@ async def main():
         if durable_context is None:
             for record in trace["calls"]:
                 record["checkpoint_reused"] = True
-        trace.update(status="completed", attempt_id=attempt.name,
+        trace.update(status="completed", completed_at=time.time(), attempt_id=attempt.name,
                      attempt_number=data.get("attempt_number") or 1,
                      result_reused=durable_context is None)
         sdk._json_write(run_dir / "relay_trace.json", trace)
         save_status("completed")
     except BaseException as exc:
         if durable_context is not None:
-            durable_context._trace.update(status="failed", error=str(exc))
+            durable_context._trace.update(status="failed", error=str(exc), completed_at=time.time())
             durable_context._save_trace()
         save_status("reconciliation" if "requires reconciliation" in str(exc) else "failed", str(exc))
         raise

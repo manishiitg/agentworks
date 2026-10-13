@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
+	"time"
 )
 
 func TestReportRelayRunsUsesProjectAccessAndDoesNotExposePrivateTrace(t *testing.T) {
@@ -253,5 +255,23 @@ func TestReportRelayRunDrillDownShowsFailureToAnyReader(t *testing.T) {
 	}
 	if w := get("reader-b", "relay-run?workspace=Workflow/relay&run=run-1&version=draft"); w.Code != http.StatusForbidden {
 		t.Fatalf("reader must not read draft tests: %d", w.Code)
+	}
+}
+
+// A run with no recorded steps and no run-level times (older runs, or a run
+// that made no durable calls) shows the run folder's file times, marked
+// approximate; recorded times are never marked.
+func TestRelayRunTimesFallBackToRunFolderFiles(t *testing.T) {
+	first, last := time.Unix(1_700_000_000, 0), time.Unix(1_700_000_030, 0)
+	fsys := fstest.MapFS{
+		"runs/run-1/input.json":        {Data: []byte("{}"), ModTime: first},
+		"runs/run-1/relay_result.json": {Data: []byte("{}"), ModTime: last},
+	}
+	started, completed, approximate := relayRunTimes(fsys, "run-1", 0, 0, 0, 0)
+	if !approximate || started != float64(first.Unix()) || completed != float64(last.Unix()) {
+		t.Fatalf("fallback = %v %v approximate=%v", started, completed, approximate)
+	}
+	if started, completed, approximate = relayRunTimes(fsys, "run-1", 100, 105, 0, 0); approximate || started != 100 || completed != 105 {
+		t.Fatalf("recorded times = %v %v approximate=%v", started, completed, approximate)
 	}
 }
