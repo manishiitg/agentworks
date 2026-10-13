@@ -1,8 +1,7 @@
 import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
-import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Link, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
+import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Loader2, MoreHorizontal, Pencil } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import type { FileViewerSource } from './workspace/fileWorkspaceSource'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
@@ -17,7 +16,6 @@ import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedConte
 import LazyModalFallback from './ui/LazyModalFallback'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useChatStore } from '../stores/useChatStore'
-import { useAuthStore } from '../stores/useAuthStore'
 import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
@@ -214,7 +212,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
   const addToast = useChatStore(state => state.addToast)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [showPushToGistDialog, setShowPushToGistDialog] = useState(false)
-  const [shareCopied, setShareCopied] = useState(false)
   const [contentCopied, setContentCopied] = useState(false)
   const [slackCopied, setSlackCopied] = useState(false)
   const [failedImagePath, setFailedImagePath] = useState<string | null>(null)
@@ -379,18 +376,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
     }
   }, [edit, addToast])
 
-  const copyShareLink = useCallback(() => {
-    if (!selectedFile?.path) return
-    const uid = useAuthStore.getState().user?.id || ''
-    const shareUrl = sharedLink(window.location.origin, 'file', selectedFile.path, uid)
-    copyToClipboard(shareUrl).then((ok) => {
-      if (ok) {
-        setShareCopied(true)
-        setTimeout(() => setShareCopied(false), 2000)
-      }
-    })
-  }, [selectedFile?.path])
-
   const isMarkdownFile = selectedFilePathLower.endsWith('.md') || selectedFilePathLower.endsWith('.markdown')
   // PDF, video, and HTML surfaces fill the pane.
   const isTallSurface = isTallSurfacePath(selectedFile?.path || '')
@@ -407,7 +392,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
   const paneActions: PaneAction[] = [
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
-    ...(!source ? [{ key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink }] : []),
     ...(gitFile ? [
       ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
       { key: 'git-blame', label: 'Git blame', icon: <GitCommitHorizontal className="w-4 h-4" />, onSelect: () => git.store.getState().openPanel({ kind: 'blame', repo: gitFile.repo.root, file: gitFile.file }) },

@@ -14,7 +14,7 @@ try {
   await mkdir(output, { recursive: true }); await server.listen()
   browser = await chromium.launch({ headless: true })
   const base = server.resolvedUrls.local[0].replace(/\/$/, '')
-  async function setup(signedIn, allowed = ['agentworks', 'relays', 'bullpen', 'code', 'knowledgebase'], { codeProject = false, defaultProduct = 'agentworks' } = {}) {
+  async function setup(signedIn, allowed = ['agentworks', 'relays', 'bullpen', 'code', 'knowledgebase'], { codeProject = false, codeReports = false, defaultProduct = 'agentworks' } = {}) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } })
     const user = { id: signedIn ? 'qa-reader' : 'qa-new-reader', username: 'reader', role: 'reader', allowed_products: allowed, can_run_workflows: true, can_write_workflows: false, is_admin: false }
     const errors = [], calls = []
@@ -42,9 +42,15 @@ try {
           // before its selected project and default Files view finish loading.
           await new Promise(resolve => setTimeout(resolve, 150))
           data = { data: [{ filepath: 'Chats/Code/projects/example/product.json', type: 'file' }] }
+        } else if (codeReports && url.searchParams.get('folder') === 'Chats/Code/projects/example/db/reports') {
+          data = { data: ['index.html', 'activity.html'].map(name => ({ filepath: 'Chats/Code/projects/example/db/reports/' + name, type: 'file' })) }
         } else data = { data: [] }
       }
       if (codeProject && decodeURIComponent(url.pathname).endsWith('/Chats/Code/projects/example/product.json')) data = { data: { content: JSON.stringify({ schema_version: 1, product: 'code', id: 'example', title: 'Example project', session_id: 'qa-code-session' }) } }
+      if (codeReports && /\/Chats\/Code\/projects\/example\/db\/reports\/(index|activity)\.html$/.test(decodeURIComponent(url.pathname))) {
+        const title = decodeURIComponent(url.pathname).endsWith('/activity.html') ? 'Activity' : 'Overview'
+        data = { success: true, data: { content: `<html><head><title>${title}</title></head><body><h1>${title}</h1></body></html>` } }
+      }
       if (url.pathname === '/api/knowledgebase/bootstrap') data = { chat_workspace: 'Chats/Knowledgebase', backup_configured: true, is_admin: false }
       if (url.pathname === '/api/knowledgebase/access-proposals') data = { proposals: [] }
       if (url.pathname === '/api/knowledgebase/folders') data = { folders: [] }
@@ -126,6 +132,22 @@ try {
   assert.deepEqual(products.errors, [], 'no uncaught errors through linked project hydration')
   await products.page.screenshot({ path: path.join(output, 'product-history-project.png') })
   await products.page.close()
+
+  const reports = await setup(true, undefined, { codeProject: true, codeReports: true })
+  await reports.page.goto(base + '/code/projects/example/dashboard')
+  const reportSwitcher = reports.page.getByRole('button', { name: 'Dashboard: Overview', exact: true })
+  await reportSwitcher.waitFor()
+  assert.equal(await reports.page.getByRole('button', { name: /copy.*link/i }).count(), 0, 'dashboard toolbar has no link-copy control')
+  await reportSwitcher.click()
+  const reportMenu = reports.page.getByRole('menu', { name: 'Reports', exact: true })
+  await reportMenu.waitFor()
+  assert.equal(await reportMenu.getByRole('button', { name: /copy.*link/i }).count(), 0, 'report menu has no link-copy control')
+  await reports.page.screenshot({ path: path.join(output, 'dashboard-report-menu.png') })
+  await reportMenu.getByRole('menuitemradio', { name: 'Activity', exact: true }).click()
+  await reports.page.getByRole('button', { name: 'Dashboard: Activity', exact: true }).waitFor()
+  assert.equal(new URL(reports.page.url()).pathname, '/code/projects/example/dashboard')
+  assert.deepEqual(reports.errors, [], 'report selection still works without link-copy controls')
+  await reports.page.close()
 
   const restricted = await setup(true, ['code'])
   await restricted.page.goto(base + '/bullpen/connect')

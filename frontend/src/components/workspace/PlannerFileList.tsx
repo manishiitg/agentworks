@@ -1,12 +1,9 @@
-import { sharedLink } from '../../utils/sharedLinks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, FilePlus, MoreHorizontal, Move, Download, CheckSquare, Edit2, Link, Check } from 'lucide-react'
+import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, FilePlus, MoreHorizontal, Move, Download, CheckSquare, Edit2 } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { isProtectedWorkspaceEntry } from '../../utils/workspaceSelection'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { copyToClipboard } from '../../utils/textUtils'
 import { FileTypeIcon } from './fileTypeIcon'
 import { useFileGitStore } from './FileGitContext'
 import { type GitDecoration } from '../../stores/useWorkspaceGitStore'
@@ -109,7 +106,6 @@ export default function PlannerFileList({
   const scrollToFile = useWorkspaceStore(state => state.scrollToFile)
   const workspaceOpenFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
   const openFilePath = readOnly ? selectedPath : workspaceOpenFilePath
-  const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
   // Keyboard cursor in the tree (VS Code style): arrows move, Enter opens.
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
@@ -445,26 +441,6 @@ export default function PlannerFileList({
                         </button>
                       </>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setOpenActionsPath(null)
-                        const uid = useAuthStore.getState().user?.id || ''
-                        const shareUrl = sharedLink(window.location.origin, 'folder', file.originalFilepath || file.filepath, uid)
-                        copyToClipboard(shareUrl).then((ok) => {
-                          if (ok) {
-                            setCopiedPath(file.filepath)
-                            setTimeout(() => setCopiedPath(null), 2000)
-                          }
-                        })
-                      }}
-                      className="w-full px-3 py-1 text-left text-xs text-foreground hover:bg-muted flex items-center gap-2"
-                    >
-                      {copiedPath === file.filepath
-                        ? <><Check className="w-3 h-3 text-emerald-500" /><span className="text-emerald-600 dark:text-emerald-400">Copied!</span></>
-                        : <><Link className="w-3 h-3" />Copy Share Link</>
-                      }
-                    </button>
                     {onDeleteAllFilesInFolder && (
                       <button
                         onClick={(e) => {
@@ -581,26 +557,6 @@ export default function PlannerFileList({
                         </button>
                       </>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setOpenActionsPath(null)
-                        const uid = useAuthStore.getState().user?.id || ''
-                        const shareUrl = sharedLink(window.location.origin, 'file', file.originalFilepath || file.filepath, uid)
-                        copyToClipboard(shareUrl).then((ok) => {
-                          if (ok) {
-                            setCopiedPath(file.filepath)
-                            setTimeout(() => setCopiedPath(null), 2000)
-                          }
-                        })
-                      }}
-                      className="w-full px-3 py-1 text-left text-xs text-foreground hover:bg-muted flex items-center gap-2"
-                    >
-                      {copiedPath === file.filepath
-                        ? <><Check className="w-3 h-3 text-emerald-500" /><span className="text-emerald-600 dark:text-emerald-400">Copied!</span></>
-                        : <><Link className="w-3 h-3" />Copy Share Link</>
-                      }
-                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
