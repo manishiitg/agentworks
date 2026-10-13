@@ -379,7 +379,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
         icon={<Users className="h-4 w-4 text-primary" />}
         title="Accounts"
         count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
-        description={vaultOnly ? undefined : 'Manage roles and product access. People are added by DevOps on the server.'}
+        description={vaultOnly ? undefined : 'Manage roles and product access. New people are added by your server administrator.'}
       >
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -393,7 +393,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
             <span>Loading accounts…</span>
           </div>
         ) : sorted.length === 0 ? (
-          <SettingsEmpty>No accounts yet. DevOps adds people on the server.</SettingsEmpty>
+          <SettingsEmpty>No accounts yet. New people are added by your server administrator.</SettingsEmpty>
         ) : (
           <div className="space-y-3">
             <div className="relative max-w-sm">
@@ -466,7 +466,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                                 disabled={busy}
                                 checked={u.vault_reader === true}
                                 onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, vaultReaderPatch(u, role, u.vault_reader !== true))) }}
-                                aria-label={`Vault reader for ${u.username}`}
+                                aria-label={`Vault audit for ${u.username}`}
                               />
                               Vault audit
                             </label>

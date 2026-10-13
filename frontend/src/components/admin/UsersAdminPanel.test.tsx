@@ -29,7 +29,7 @@ describe('Shared user roles and product access', () => {
     const trigger = host.querySelector(`[aria-label="${label}"]`)!
     await act(async () => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
   }
-  it('offers the four roles on each account, and no way to add one: DevOps adds people on the server', async () => {
+  it('offers the four roles on each account, and no way to add one: new people are added by your server administrator', async () => {
     await render()
     // One line per person; the editor opens on click. No "viewer" wording (Builder and Run only).
     expect(host.querySelector('[aria-label="Role for creator@example.com"]')).toBeNull()
@@ -43,6 +43,17 @@ describe('Shared user roles and product access', () => {
     // An SSO account has no password to set, and the identity service behind SSO is not named.
     expect(host.querySelector('button[title="Set a new password"]')).toBeNull()
     expect(host.textContent).toContain('signs in with SSO')
+  })
+  it('labels the Vault checkbox as its visible label and credits the server administrator', async () => {
+    api.listAdminUsers.mockResolvedValue({ products: ['mcp-gateway'], users: [{
+      id: 'gw', username: 'gw@example.com', email: 'gw@example.com', role: 'viewer', admin: false, can_create: false, can_edit: true, products: ['mcp-gateway'], provider: 'google',
+    }] })
+    await render()
+    expect(host.textContent).toContain('New people are added by your server administrator.')
+    expect(host.textContent).not.toContain('DevOps')
+    await act(async () => (host.querySelector('[aria-label="Edit gw@example.com"]') as HTMLElement).click())
+    expect(host.querySelector('[aria-label="Vault audit for gw@example.com"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Vault reader for gw@example.com"]')).toBeNull()
   })
   it('keeps the password reset for a password account', async () => {
     api.listAdminUsers.mockResolvedValue({ products: ['code'], users: [{
