@@ -48,8 +48,18 @@ type externalUserView struct {
 	VaultReader    bool      `json:"vault_reader"`
 }
 
+// Sign-in words match the Users page: the identity provider's name is not
+// something administrators act on, so every SSO account reads "sso" and only
+// a plain password account reads "password" (856-81).
+func externalSignInMethod(v userAdminView) string {
+	if v.Invited || (v.Provider != "" && v.Provider != "simple") {
+		return "sso"
+	}
+	return "password"
+}
+
 func externalUserOf(v userAdminView) externalUserView {
-	return externalUserView{v.ID, v.Username, v.Email, v.Provider, v.Role, v.Products, v.CreateProducts, v.Disabled, v.CodeReviewer, v.VaultReader}
+	return externalUserView{v.ID, v.Username, v.Email, externalSignInMethod(v), v.Role, v.Products, v.CreateProducts, v.Disabled, v.CodeReviewer, v.VaultReader}
 }
 
 func userAccessHash(value any) string {

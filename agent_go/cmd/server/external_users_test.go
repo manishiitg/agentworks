@@ -85,7 +85,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 		return raw
 	}
 	listed := call(map[string]any{"action": "list"}, false)
-	if !strings.Contains(listed, `"sign_in_method":"oidc"`) || !strings.Contains(listed, `"create_products":null`) {
+	if !strings.Contains(listed, `"sign_in_method":"sso"`) || !strings.Contains(listed, `"sign_in_method":"password"`) || strings.Contains(listed, `"sign_in_method":"oidc"`) || !strings.Contains(listed, `"create_products":null`) {
 		t.Fatal("safe account metadata incomplete", listed)
 	}
 	for _, claims := range []*UserClaims{codeReviewToken("member", "users:manage"), codeReviewToken("boss", "code:review")} {
