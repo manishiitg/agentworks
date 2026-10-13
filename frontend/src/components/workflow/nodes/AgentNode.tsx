@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, Loader2, Plus, RefreshCw, ListOrdered, MessageSqu
 import type { AgentNodeData } from '../hooks/usePlanToFlow'
 import type { ChangeType } from '../hooks/usePlanData'
 import type { AgentItem } from '../../../utils/stepConfigMatching'
-import { effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
+import { agentCardItems, effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
 import { getExecutionModeVisuals } from './executionModeVisuals'
 
 interface AgentNodeProps {
@@ -92,7 +92,10 @@ function descriptionPreview(description: string): string {
   return paragraph
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1$2')
     .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*>+\s*/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -110,7 +113,7 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
   const descriptionFirst = step.type === 'agent' && step.prompt_contract === 'description-first-v1' && !step.authored_prompt
   // The description already presents the opening task. Only authored follow-ups
   // need rows here; keep the complete runtime item list in the node data.
-  const seqItems = descriptionFirst && items?.[0]?.id === '__step_description__' ? items.slice(1) : items || []
+  const seqItems = agentCardItems(step, items || [])
   const preview = description ? descriptionPreview(description) : ''
   const displayTitle = title || `Agent ${stepIndex + 1}`
   const executionModeVisuals = getExecutionModeVisuals(effectiveExecutionMode(step), effectiveExecutionModeReason(step))

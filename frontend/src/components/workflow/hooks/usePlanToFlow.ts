@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
-import { isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
+import { agentCardItems, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -193,7 +193,7 @@ const getDagreConfig = (direction: 'LR' | 'TB') => ({
 const NODE_DIMENSIONS = {
   step: { width: 280, height: 120 },
   routing: { width: 280, height: 200 },
-  agent: { width: 320, height: 240 },
+  agent: { width: 320, height: 160 },
   todo_task: { width: 300, height: 120 },
   crew: { width: 280, height: 160 },
   loop: { width: 300, height: 140 },
@@ -283,13 +283,18 @@ function estimateNodeHeight(node: WorkflowNode): number {
   // For agent nodes, add height for title, badges, and item rows
   if (node.type === 'agent') {
     const messageData = data as AgentNodeData
-    const seqItems = messageData.items || []
+    const seqItems = agentCardItems(messageData.step, messageData.items || [])
     const visibleCount = Math.min(seqItems.length, 6)
     const hiddenCount = seqItems.length - visibleCount
-    contentHeight += 35
-    if (messageData.description) contentHeight += 20
-    contentHeight += 20 + Math.max(visibleCount, 1) * 24
-    if (hiddenCount > 0) contentHeight += 18
+    const descriptionFirst = isAgentStep(messageData.step) && messageData.step.prompt_contract === 'description-first-v1' && !messageData.step.authored_prompt
+    const hasQueue = !descriptionFirst || visibleCount > 0
+    const hasStatusFooter = ['running', 'executing', 'evaluating', 'orchestrating', 'completed', 'failed'].includes(messageData.status)
+    // Match the card: header, body padding, two title/preview lines, visible
+    // queue and optional status footer. The generated first turn has no row.
+    return Math.max(baseDimensions.height,
+      48 + 24 + 40 + (messageData.description ? 36 : 0)
+      + (hasQueue ? 24 + Math.max(visibleCount, 1) * 24 : 0)
+      + (hiddenCount > 0 ? 18 : 0) + (hasStatusFooter ? 36 : 0))
   }
 
   // For routing/branch nodes, add height for the decision question + route labels
@@ -316,7 +321,7 @@ function estimateNodeHeight(node: WorkflowNode): number {
   return estimatedHeight
 }
 
-function getNodeLayoutDimensions(node: WorkflowNode): { width: number; height: number } {
+export function getNodeLayoutDimensions(node: WorkflowNode): { width: number; height: number } {
   const baseDimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || NODE_DIMENSIONS.step
   return {
     width: baseDimensions.width,

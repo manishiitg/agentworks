@@ -68,9 +68,9 @@ const PNG_EXPORT_MAX_SIDE = 16000
 const PNG_EXPORT_MAX_PIXELS = 64_000_000
 // Bump this whenever the auto-layout algorithm changes so stale saved layouts
 // (custom drag positions from the old editor) are dropped and the new computed
-// layout takes over. 2.8-wide-route-lanes: each major route gets its own
-// column; route segments follow execution order.
-const WORKFLOW_LAYOUT_VERSION = '2.9-unified-agent-nodes'
+// layout takes over. 3.0: agent cards reserve space only for visible turns,
+// with no generated first-turn row or permanent empty queue/footer.
+const WORKFLOW_LAYOUT_VERSION = '3.0-visible-agent-rows'
 const FLOW_FIT_PADDING = 0.24
 const FLOW_FIT_MIN_ZOOM = 0.08
 const FLOW_FIT_MAX_ZOOM = 0.95
@@ -744,7 +744,7 @@ function DetailSection({
 }
 
 function WriteLimits({ access }: { access: AgentWriteAccess }) {
-  const stores = [['db', 'Database'], ['knowledgebase', 'Knowledgebase'], ['learnings', 'Learnings']] as const
+  const stores = [['db', 'Database'], ['knowledgebase', 'Brain'], ['learnings', 'Learnings']] as const
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
       {stores.map(([key, label]) => <React.Fragment key={key}>
@@ -893,7 +893,7 @@ export function ReadOnlyStepDetailPanel({
 
         {descriptionFirst && step.initial_write_access && (
           <DetailSection icon={Settings} title="First-message write limits">
-            <p className="mb-2 text-xs text-muted-foreground">Knowledgebase and learnings writes are narrowed for this turn. Database permissions are shared across turns. These flags cannot grant access.</p>
+            <p className="mb-2 text-xs text-muted-foreground">Brain and learnings writes are narrowed for this turn. Database permissions are shared across turns. These flags cannot grant access.</p>
             <WriteLimits access={step.initial_write_access} />
           </DetailSection>
         )}
