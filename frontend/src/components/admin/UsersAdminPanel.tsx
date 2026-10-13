@@ -413,13 +413,14 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                     : null
                 return (
                   <li key={u.id} className={u.disabled ? 'opacity-60' : ''}>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
                       disabled={vaultOnly}
                       onClick={() => setExpanded(open ? null : u.id)}
                       aria-expanded={open}
                       aria-label={`${open ? 'Close' : 'Edit'} ${u.username}`}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 disabled:cursor-default disabled:hover:bg-transparent"
+                      className="h-auto w-full justify-start gap-3 rounded-none px-3 py-2.5 text-left font-normal hover:bg-muted/40 disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent"
                     >
                       {!vaultOnly && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />)}
                       <span className="min-w-0 flex-1">
@@ -430,7 +431,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                       <Badge variant="secondary" className="shrink-0">{ROLES.find(r => r.value === role)?.label}</Badge>
                       {status}
                       {busy && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
-                    </button>
+                    </Button>
                     {open && (
                       <div className="grid gap-5 border-t border-border bg-muted/20 px-4 py-4 text-sm sm:grid-cols-2">
                         <section className="space-y-1.5">
