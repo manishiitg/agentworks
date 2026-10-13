@@ -196,6 +196,12 @@ type PhaseLike = { totalCost: number; totalTokens: number; totalInputTokens: num
  * price without token counts; in that case the daily rows (which fall back to
  * run artifacts) are the only token source, so the header sums those rows.
  */
+
+/** Total input for one row/source, whichever way its provider reports cache. */
+function totalInputFor(rawInput: number, cacheRead: number, cacheWrite: number): number {
+  return cacheRead > rawInput ? rawInput + cacheRead + cacheWrite : rawInput
+}
+
 export function resolveOverallSummary(
   scopedCosts: ScopedCostsLike,
   aggregate: AggregateLike,
@@ -207,22 +213,25 @@ export function resolveOverallSummary(
   const hasScopes = !!scopedCosts && Object.keys(scopedCosts.by_scope || {}).length > 0
   const ledgerTokens = hasScopes ? tokensOf(scopedCosts!.total) : 0
   if (hasScopes && ledgerTokens > 0) {
+    const ledgerInput = totalInputFor(inputOf(scopedCosts!.total), scopedCosts!.total.cache_read_tokens || 0, scopedCosts!.total.cache_write_tokens || 0)
     return {
       totalCost: scopedCosts!.total.total_cost_usd || 0,
-      totalTokens: ledgerTokens,
-      totalInputTokens: inputOf(scopedCosts!.total),
+      totalTokens: ledgerInput + (scopedCosts!.total.completion_tokens || 0),
+      totalInputTokens: ledgerInput,
       totalOutputTokens: scopedCosts!.total.completion_tokens || 0,
       cacheReadTokens: scopedCosts!.total.cache_read_tokens || 0,
       cacheWriteTokens: scopedCosts!.total.cache_write_tokens || 0,
       totalRuns: aggregate?.totalRuns || 0,
     }
   }
-  const dailyTokens = daily.reduce((sum, entry) => sum + entry.totalTokens, 0)
+  const dailyOutput = daily.reduce((sum, entry) => sum + (entry.totalOutputTokens || 0), 0)
+  const dailyInput = daily.reduce((sum, entry) => sum + totalInputFor(entry.totalInputTokens || 0, entry.cacheReadTokens || 0, entry.cacheWriteTokens || 0), 0)
+  const dailyTokens = dailyInput + dailyOutput
   if (dailyTokens > 0) {
     return {
       totalCost: daily.reduce((sum, entry) => sum + entry.totalCost, 0),
       totalTokens: dailyTokens,
-      totalInputTokens: daily.reduce((sum, entry) => sum + (entry.totalInputTokens || 0), 0),
+      totalInputTokens: dailyInput,
       totalOutputTokens: daily.reduce((sum, entry) => sum + (entry.totalOutputTokens || 0), 0),
       cacheReadTokens: daily.reduce((sum, entry) => sum + (entry.cacheReadTokens || 0), 0),
       cacheWriteTokens: daily.reduce((sum, entry) => sum + (entry.cacheWriteTokens || 0), 0),
@@ -241,10 +250,12 @@ export function resolveOverallSummary(
     }
   }
   if (!aggregate && !phase) return null
+  const artifactInput = totalInputFor(aggregate?.totalInputTokens || 0, aggregate?.totalCacheReadTokens || 0, aggregate?.totalCacheWriteTokens || 0)
+    + totalInputFor(phase?.totalInputTokens || 0, phase?.totalCacheReadTokens || 0, phase?.totalCacheWriteTokens || 0)
   return {
     totalCost: (aggregate?.totalCost || 0) + (phase?.totalCost || 0),
-    totalTokens: (aggregate?.totalTokens || 0) + (phase?.totalTokens || 0),
-    totalInputTokens: (aggregate?.totalInputTokens || 0) + (phase?.totalInputTokens || 0),
+    totalTokens: artifactInput + (aggregate?.totalOutputTokens || 0) + (phase?.totalOutputTokens || 0),
+    totalInputTokens: artifactInput,
     totalOutputTokens: (aggregate?.totalOutputTokens || 0) + (phase?.totalOutputTokens || 0),
     cacheReadTokens: (aggregate?.totalCacheReadTokens || 0) + (phase?.totalCacheReadTokens || 0),
     cacheWriteTokens: (aggregate?.totalCacheWriteTokens || 0) + (phase?.totalCacheWriteTokens || 0),

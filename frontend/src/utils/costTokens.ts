@@ -23,3 +23,16 @@ export const pricingCoverageText = (usage: CostAggregate) => {
 
 export const totalTokens = (usage?: Partial<CostAggregate>) =>
   inputTokens(usage) + (usage?.completion_tokens ?? 0)
+
+/**
+ * Providers differ: some report input including cache reads, some report
+ * fresh input only. When cache reads exceed the reported input, the input
+ * must be fresh-only, so the total is input + cache reads (+ cache writes).
+ */
+export function inputBreakdown(usage?: Partial<CostAggregate>): { total: number; fresh: number; cached: number; writes: number } {
+  const raw = inputTokens(usage)
+  const cached = usage?.cache_read_tokens ?? 0
+  const writes = usage?.cache_write_tokens ?? 0
+  if (cached > raw) return { total: raw + cached + writes, fresh: raw, cached, writes }
+  return { total: raw, fresh: Math.max(0, raw - cached - writes), cached, writes }
+}

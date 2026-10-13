@@ -28,6 +28,15 @@ describe('resolveOverallSummary', () => {
     expect((summary?.totalInputTokens ?? 0) - (summary?.cacheReadTokens ?? 0) - (summary?.cacheWriteTokens ?? 0)).toBe(7155250 + 231000 - 5100000)
   })
 
+  it('treats input as fresh-only when cache reads exceed it (live numbers)', () => {
+    const rows = [daily({ totalCost: 4.7578, totalTokens: 7280000 + 322254, totalInputTokens: 7280000, totalOutputTokens: 322254, cacheReadTokens: 46710000, cacheWriteTokens: 0 })]
+    const summary = resolveOverallSummary(null, null, null, rows, totalTokens, inputTokens)
+    expect(summary?.totalInputTokens).toBe(53990000)
+    expect(summary?.cacheReadTokens).toBe(46710000)
+    expect((summary?.totalInputTokens ?? 0) - (summary?.cacheReadTokens ?? 0) - (summary?.cacheWriteTokens ?? 0)).toBe(7280000)
+    expect(summary?.totalTokens).toBe(53990000 + 322254)
+  })
+
   it('keeps the ledger total when it has tokens', () => {
     const scoped = { total: { total_cost_usd: 2, completion_tokens: 40, prompt_tokens: 60 }, by_scope: { builder: {} } }
     const summary = resolveOverallSummary(scoped as never, null, null, [daily({ totalTokens: 5, totalCost: 9 })], totalTokens, inputTokens)
