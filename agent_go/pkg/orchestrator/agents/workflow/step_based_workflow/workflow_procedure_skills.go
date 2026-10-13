@@ -1,9 +1,10 @@
-package skills
+package step_based_workflow
 
 import (
 	"fmt"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -30,7 +31,7 @@ func init() {
 		},
 	} {
 		skill.Source = llmtypes.SkillSource{Origin: "builtin"}
-		if err := RegisterBuiltin(skill); err != nil {
+		if err := skills.RegisterBuiltin(skill); err != nil {
 			panic(fmt.Sprintf("register workflow skill: %v", err))
 		}
 	}

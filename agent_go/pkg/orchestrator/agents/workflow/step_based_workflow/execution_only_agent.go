@@ -316,6 +316,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"CurrentTime":               currentTime,
 		"LearningHistory":           learningHistory,
 		"HasLearnings":              fmt.Sprintf("%t", learningHistory != ""),
+		"LearningsAvailable":        learningHistory != "" || (templateVars["LearningsAccess"] != "" && templateVars["LearningsAccess"] != LearningsAccessNone) || strings.Contains(folderGuardReadPaths, "/learnings"),
 		"VariableNames":             variableNames,
 		"VariableValues":            variableValues,
 		"VarMapping":                templateVars["ScriptedVarMapping"], // {{VAR}} → SECRET_VAR mapping (for code exec guidance)

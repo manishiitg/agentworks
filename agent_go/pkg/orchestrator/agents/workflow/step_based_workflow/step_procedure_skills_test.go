@@ -51,6 +51,20 @@ func TestStepProceduresResolveOnDemand(t *testing.T) {
 	if strings.Contains(text, "## Bundled Browser Recording") {
 		t.Fatal("full browser procedures were injected")
 	}
+	// A local KB-writing step gets its guide independently of the attached-source
+	// WORKFLOW_KB_ACCESS environment, through the same effectiveStepSkills path
+	// used by factories and preview.
+	writeSkills := c.effectiveStepSkills(&AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite})
+	writeIdentity, _ := c.assembleStepRuntimeIdentity(cfg, writeSkills, false, []string{"query_workflow_db"}, false, false)
+	found := false
+	for _, skill := range writeIdentity {
+		if skill.Name == "workflow-knowledgebase" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("local KB writer has no procedural guide")
+	}
 	// Archived flags cannot put one provider back onto full inline procedures.
 	if !usesProjectedReferenceSkills(cfg, map[string]string{"UseProjectedReferenceSkills": "false"}) {
 		t.Fatal("provider-specific procedural fallback survived")

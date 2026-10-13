@@ -103,13 +103,13 @@ Use the actual paths and grants below. Write declared outputs under the existing
 **Agent item access:** {{.AgentAccessNote}}
 {{end}}
 
-{{if ne .DBAccess "none"}}Read `{{.WorkflowRoot}}/soul/soul.md` for owner-approved Constraints when available. Those constraints win over stale task values; report any conflict as CONCERNS. Do not edit soul or planning files.{{end}}
+{{if .WorkflowRoot}}Read `{{.WorkflowRoot}}/soul/soul.md` for owner-approved Constraints when granted. Those constraints win over stale task values; report any conflict as CONCERNS. Do not edit soul or planning files.{{end}}
 {{if ne .DBAccess "none"}}
-- **Database ({{.DBAccess}}):** {{if eq .DBDirectAccess "true"}}saved scripts use `agentworks_db`;{{else}}agents use `query_workflow_db`{{if eq .DBAccess "read"}} only (READ-ONLY workflow evidence); do not call `mutate_workflow_db`{{else}} and `mutate_workflow_db`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
+- **Database ({{.DBAccess}}):** {{if eq .DBDirectAccess "true"}}saved scripts use `agentworks_db`;{{else}}agents use `query_workflow_db`{{if eq .DBAccess "read"}} only (read access only); do not call `mutate_workflow_db`{{else}} and `mutate_workflow_db`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
 {{end}}{{if ne .KbAccess "none"}}
 {{if eq .KbAccess "shared"}}- **Shared Brain:** use the **brain** skill under the MCP grant below; local KB is not a fallback.
 {{else}}- **knowledgebase/** ({{.KbAccessLabel}}): read granted user context; open **workflow-knowledgebase** for selective topic reads and permitted contributions. Do not edit context/.{{end}}
-{{end}}{{if ne .DBAccess "none"}}- **learnings/**: advisory know-how from previous runs. Open relevant skills when needed; the task, current instructions and standing rules win over conflicting or stale advice.
+{{end}}{{if .LearningsAvailable}}- **learnings/**: advisory know-how from previous runs. Open relevant skills when needed; the task, current instructions and standing rules win over conflicting or stale advice.
 {{end}}{{if .KBGuidanceBlock}}{{.KBGuidanceBlock}}{{end}}
 ## EXECUTION RULES
 {{if .StepContextOutput}}1. **Mandatory Output**: Create `{{.StepContextOutput}}` under `$STEP_OUTPUT_DIR` (step folder: `{{.StepExecutionPath}}/`).{{else}}{{if eq .DBAccess "read"}}1. **No output file**: this read-only step must complete without mutating the workflow DB.{{else if eq .DBDirectAccess "true"}}1. **Output to the db**: this scripted step declares no output file — persist through the `agentworks_db` helper API; do not open `$DB_PATH` directly.{{else if eq .DBAccess "none"}}1. **No output file**: this step declares no output file — return your result as your final answer.{{else}}1. **Output to the db**: this step declares no output file — persist results with `mutate_workflow_db`; no `$STEP_OUTPUT_DIR` file is required.{{end}}{{end}}

@@ -8,7 +8,12 @@ import (
 )
 
 // SharedConfig reads only a canonical manifest inside the installation.
-func SharedConfig(root, workspace string) (bool, string) {
+func SharedConfig(root, workspace string) (bool, string) { return sharedConfig(root, workspace, false) }
+
+// StepContext returns bindings and availability only; procedures live in the brain skill.
+func StepContext(root, workspace string) (bool, string) { return sharedConfig(root, workspace, true) }
+
+func sharedConfig(root, workspace string, compact bool) (bool, string) {
 	if workspace == "" {
 		return false, ""
 	}
@@ -45,6 +50,9 @@ func SharedConfig(root, workspace string) (bool, string) {
 	}
 	if !productpolicy.Enabled("knowledgebase") {
 		return true, "## Shared knowledge unavailable\nThis project requires a shared knowledge product that is disabled in this installation. Its retired local knowledgebase is not a fallback. Project files and workflow-local learnings remain available under their existing permissions."
+	}
+	if compact {
+		return true, "## Shared knowledge binding\nBrain MCP; the local knowledgebase/ folder is retired. Open the brain skill when using knowledge."
 	}
 	// Folder bindings were removed (PLAT-628): a migrated project's steps name the Brain folders they use.
 	return true, "## Shared Knowledge Base\nThis workflow's knowledge lives in Brain; the local knowledgebase/ folder is retired. Use brain_browse and brain_read on the Brain folders and notes this step's description names, and brain_update only when this step may write. Read an entry before patching it; use its version and a unique request_id."

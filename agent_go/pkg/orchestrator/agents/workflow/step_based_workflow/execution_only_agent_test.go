@@ -101,7 +101,7 @@ func TestReadOnlyExecutionPromptCannotRecommendMutationOrRawSQLite(t *testing.T)
 		"IsScriptedMode":        "false",
 		"DBAccess":              DBAccessRead,
 	})
-	if !strings.Contains(prompt, "READ-ONLY workflow evidence") || !strings.Contains(prompt, "query_workflow_db") {
+	if !strings.Contains(prompt, "read access only") || !strings.Contains(prompt, "query_workflow_db") {
 		t.Fatalf("read-only DB guidance missing:\n%s", prompt)
 	}
 	// Naming the forbidden tool is correct, explicit guidance -- "do not call
@@ -317,7 +317,7 @@ func TestExecutionOnlyPromptNamesNoPlatformStoresWhenThereAreNone(t *testing.T) 
 	}
 	// A normal workflow step keeps its database and knowledge-base guidance.
 	normal := agent.executionOnlySystemPromptProcessor(map[string]string{"DBAccess": DBAccessReadWrite, "KbAccess": KBAccessRead, "DBGuidance": BuildManagedWorkflowDBGuidance(DBAccessReadWrite)})
-	for _, want := range []string{"mutate_workflow_db", "**knowledgebase/**", "**learnings/**"} {
+	for _, want := range []string{"mutate_workflow_db", "**knowledgebase/**"} {
 		if !strings.Contains(normal, want) {
 			t.Errorf("a normal step lost %q", want)
 		}
@@ -361,9 +361,14 @@ func TestStepPromptPathsUseExecutionFolderAndKBWithoutDB(t *testing.T) {
 		"DBAccess":            DBAccessNone,
 		"KbAccess":            KBAccessRead,
 		"KnowledgebasePath":   "/docs/Workflow/demo/knowledgebase",
+		"WorkflowRoot":        "/docs/Workflow/demo",
+		"LearningsAccess":     LearningsAccessRead,
 	})
 	if !strings.Contains(prompt, "| Execution folder | `/docs/Workflow/demo/runs/iteration-0/default/execution/` |") {
 		t.Fatalf("execution folder row does not use the run's execution folder:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "/soul/soul.md") || !strings.Contains(prompt, "**learnings/**") {
+		t.Fatal("stores were coupled to DB access")
 	}
 	if !strings.Contains(prompt, "- **knowledgebase/**") || strings.Contains(prompt, "structured JSON") {
 		t.Fatalf("KB guidance missing without DB access, or stale DB label:\n%s", prompt)
