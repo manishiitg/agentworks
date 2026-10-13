@@ -129,5 +129,5 @@ func cursorAwareHostAlive(provider, host string) bool {
 	if provider == "cursor" {
 		return cursorProcessForHost(host)
 	}
-	return providerHostAlive(provider, host)
+	return providerHostAliveCached(provider, host)
 }

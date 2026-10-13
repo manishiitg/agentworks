@@ -384,7 +384,16 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			if in.Action == "shutdown" {
 				shutdownOnce.Do(func() { close(shutdown) })
 			} else {
-				out = b.handle(ctx, r.Context(), in)
+				callCtx := r.Context()
+				if in.Action == "attach" {
+					// A hook gives up after a few seconds and closes its connection; the attach
+					// must still finish (the next try then finds the chat attached) instead of
+					// being cancelled half way through its server calls.
+					var cancel context.CancelFunc
+					callCtx, cancel = context.WithTimeout(context.WithoutCancel(r.Context()), 45*time.Second)
+					defer cancel()
+				}
+				out = b.handle(ctx, callCtx, in)
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -543,7 +552,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "ping" {
 		return LocalBridgeReply{Version: b.options.Version}
 	}
-	b.mu.Lock()
+	var probed map[hostProbeKey]bool
+	if in.Action == "list" {
+		probed = b.probeHosts() // process checks run before the lock, not inside it
+	}
+	if serverCtx == callCtx {
+		b.mu.Lock() // the bridge's own workers wait their turn: they have no caller to answer
+	} else if !b.lockWithin(localBridgeLockBudget) {
+		return LocalBridgeReply{Error: "AgentWorks is still connecting another step. Try again in a moment."}
+	}
 	defer b.mu.Unlock()
 	if b.closed {
 		return LocalBridgeReply{Error: "local bridge stopping"}
@@ -574,7 +591,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && b.options.HostAlive(session.Attachment.Provider, session.HostKey), Route: "hooks", LastError: session.LastError}
+			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: "hooks", LastError: session.LastError}
 			if museWatchActive(session) {
 				state.Route = "muse_monitor"
 			}
@@ -1431,6 +1448,57 @@ func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMes
 
 // Local maintenance checks process fences and compacts the journal. It never
 // polls an inbox or attaches a new process. Saved identities survive shutdown.
+// localBridgeLockBudget is how long a request waits for the bridge before it answers "still
+// connecting"; it is shorter than a hook's own limit so the person sees a clear message.
+const localBridgeLockBudget = 5 * time.Second
+
+// lockWithin takes b.mu, giving up after d. Requests are serialised on b.mu and some hold it
+// for server calls, so a waiter must not outlive its caller.
+func (b *localBridge) lockWithin(d time.Duration) bool {
+	if b.mu.TryLock() {
+		return true
+	}
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		if b.mu.TryLock() {
+			return true
+		}
+	}
+	return false
+}
+
+type hostProbeKey struct{ provider, host string }
+
+// probeHosts checks, without holding b.mu, whether each attached chat's process still runs.
+func (b *localBridge) probeHosts() map[hostProbeKey]bool {
+	if b.options.HostAlive == nil {
+		return nil
+	}
+	if !b.lockWithin(localBridgeLockBudget) {
+		return nil
+	}
+	keys := make([]hostProbeKey, 0, len(b.sessions))
+	for _, s := range b.sessions {
+		keys = append(keys, hostProbeKey{s.Attachment.Provider, s.HostKey})
+	}
+	b.mu.Unlock()
+	out := make(map[hostProbeKey]bool, len(keys))
+	for _, k := range keys {
+		out[k] = b.options.HostAlive(k.provider, k.host)
+	}
+	return out
+}
+
+// hostAliveFrom uses a result probed before the lock, and asks again only for a chat that
+// attached in between.
+func hostAliveFrom(probed map[hostProbeKey]bool, provider, host string, check func(string, string) bool) bool {
+	if alive, ok := probed[hostProbeKey{provider, host}]; ok {
+		return alive
+	}
+	return check(provider, host)
+}
+
 func (b *localBridge) housekeeping(ctx context.Context) {
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
@@ -1440,10 +1508,11 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
+		probed := b.probeHosts()
 		b.mu.Lock()
 		for _, s := range b.sessions {
 			compactLocalOffers(s, false)
-			if !s.Offline && b.options.HostAlive != nil && !b.options.HostAlive(s.Attachment.Provider, s.HostKey) {
+			if !s.Offline && b.options.HostAlive != nil && !hostAliveFrom(probed, s.Attachment.Provider, s.HostKey, b.options.HostAlive) {
 				s.Offline = true
 				s.LastError = "Provider session ended; type /agentworks attach in that chat to reconnect."
 				stopMuseWatch(s)

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode"
@@ -41,6 +42,9 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 	status.Action = "status"
 	current, err := agentworksclient.CallLocalBridge(ctx, root, status)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return errStillConnecting
+		}
 		return err
 	}
 	// A new process cannot inspect an active lease, but attach can recover it by
@@ -738,16 +742,55 @@ func installMusePlugin(ctx context.Context, o *options) error {
 	return nil
 }
 
+// runPS lists processes with the given ps arguments.
+func runPS(env []string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "ps", args...)
+	if env != nil {
+		command.Env = append(os.Environ(), env...)
+	}
+	return command.Output()
+}
+
+// psSnapshots lets the local bridge ask "is this chat's process alive?" for every attached chat
+// with one process listing instead of one per chat: with twenty chats, a listing each held the
+// bridge for tens of seconds (an attach then timed out in its hook). A snapshot is reused for two seconds.
+var psSnapshots struct {
+	sync.Mutex
+	at  time.Time
+	key string
+	out []byte
+	err error
+}
+
+func cachedPS(env []string, args ...string) ([]byte, error) {
+	psSnapshots.Lock()
+	defer psSnapshots.Unlock()
+	key := strings.Join(env, " ") + "|" + strings.Join(args, " ")
+	if psSnapshots.key == key && time.Since(psSnapshots.at) < 2*time.Second {
+		return psSnapshots.out, psSnapshots.err
+	}
+	out, err := runPS(env, args...)
+	psSnapshots.key, psSnapshots.at, psSnapshots.out, psSnapshots.err = key, time.Now(), out, err
+	return out, err
+}
+
 func providerHostAlive(provider, host string) bool {
+	return providerHostAliveWith(provider, host, runPS)
+}
+
+// providerHostAliveCached is the local bridge's check: many chats, one process listing.
+func providerHostAliveCached(provider, host string) bool {
+	return providerHostAliveWith(provider, host, cachedPS)
+}
+
+func providerHostAliveWith(provider, host string, ps func(env []string, args ...string) ([]byte, error)) bool {
 	if provider == "pi" {
 		if host == "" {
 			return false
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		command := exec.CommandContext(ctx, "ps", "-axo", "pid=", "-o", "comm=", "-o", "args=", "-o", "lstart=")
-		command.Env = append(os.Environ(), "LC_ALL=C", "TZ=UTC")
-		out, err := command.Output()
+		out, err := ps([]string{"LC_ALL=C", "TZ=UTC"}, "-axo", "pid=", "-o", "comm=", "-o", "args=", "-o", "lstart=")
 		if err != nil {
 			return true
 		}
@@ -779,9 +822,7 @@ func providerHostAlive(provider, host string) bool {
 		_ = conn.Close()
 		return true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "ps", "-axo", "pid=", "-o", providerProcessField(provider), "-o", "lstart=").Output()
+	out, err := ps(nil, "-axo", "pid=", "-o", providerProcessField(provider), "-o", "lstart=")
 	if err != nil {
 		return true
 	} // Permission failure is not evidence of death.
@@ -1305,7 +1346,19 @@ func parseGroupWords(action string, rest []string, req *agentworksclient.LocalBr
 // tries once more. Person commands always start it; background hook events do so
 // only when this computer has ever attached a chat, so a plugin that was never
 // used does not leave a helper behind.
+// errStillConnecting is what a hook shows when the bridge did not answer within the hook's time:
+// the work usually finishes on its own, and trying again then finds it done.
+var errStillConnecting = errors.New("AgentWorks is still connecting. Try again in a moment.")
+
 func bridgeCall(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) (agentworksclient.LocalBridgeReply, error) {
+	out, err := bridgeCallOnce(ctx, root, o, req)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		return out, errStillConnecting
+	}
+	return out, err
+}
+
+func bridgeCallOnce(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) (agentworksclient.LocalBridgeReply, error) {
 	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
 	if err == nil || !(errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {
 		return out, err
