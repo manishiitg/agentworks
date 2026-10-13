@@ -122,3 +122,24 @@ func TestBareAttachTakesMostRecentFreeAgent(t *testing.T) {
 		t.Fatalf("with c free again the most recent free agent comes first: %+v", free)
 	}
 }
+
+// A bare attach that creates a new agent says why an earlier one did not come back, instead of leaving the person to
+// guess (reported: "plain attach registered a new identity").
+func TestBareAttachSaysWhyNoEarlierAgentCameBack(t *testing.T) {
+	root := t.TempDir()
+	req := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "new"}
+	autoAttachUpdate(root, autoAttachKey("claude", "/work/billing"), func(f *autoAttachFolder) {
+		f.Records = append(f.Records, autoAttachRecord{Name: "billing-agent", ConfigPath: "/x"})
+	})
+	free, why := autoAttachScan(context.Background(), root, req, "/work/website")
+	if len(free) != 0 || !strings.Contains(why, "agent:billing-agent") || !strings.Contains(why, "billing") || !strings.Contains(why, "other folders") {
+		t.Fatalf("a new folder with agents only in another must say so: %q", why)
+	}
+	autoAttachUpdate(root, autoAttachKey("claude", "/work/website"), func(f *autoAttachFolder) { f.Off = true })
+	if _, why = autoAttachScan(context.Background(), root, req, "/work/website"); !strings.Contains(why, "auto on") {
+		t.Fatalf("a folder with automatic reconnect off must say how to turn it on: %q", why)
+	}
+	if _, why = autoAttachScan(context.Background(), root, agentworksclient.LocalBridgeRequest{Provider: "codex"}, "/work/other"); why != "" {
+		t.Fatalf("another provider's agents are not offered: %q", why)
+	}
+}

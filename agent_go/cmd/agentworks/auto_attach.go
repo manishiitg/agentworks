@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -264,23 +265,41 @@ func autoAttachDecision(states []agentworksclient.LocalAgentState, name string, 
 // attached elsewhere on the server, not closed by it. A name that cannot be
 // proven free is left out.
 func freeAutoAttachRecords(ctx context.Context, root string, req agentworksclient.LocalBridgeRequest, cwd string) []autoAttachRecord {
+	free, _ := autoAttachScan(ctx, root, req, cwd)
+	return free
+}
+
+// autoAttachScan lists the folder's free earlier agents (see freeAutoAttachRecords) and, when there is none,
+// one plain sentence saying why a bare attach did not bring an earlier agent back ("" when there was nothing to
+// bring back or the reason is unknown).
+func autoAttachScan(ctx context.Context, root string, req agentworksclient.LocalBridgeRequest, cwd string) ([]autoAttachRecord, string) {
 	key := autoAttachKey(req.Provider, cwd)
 	if autoAttachDisabled() || key == "" {
-		return nil
+		return nil, ""
 	}
 	folder := autoAttachRead(root, key)
-	if folder.Off || len(folder.Records) == 0 {
-		return nil
+	if folder.Off {
+		return nil, "Automatic reconnect is off for this folder (/agentworks auto on turns it on)."
+	}
+	if len(folder.Records) == 0 {
+		return nil, otherFolderAgents(root, req.Provider, key)
 	}
 	list, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 	var free []autoAttachRecord
+	why := ""
+	note := func(reason string) {
+		if why == "" { // the most recent agent's reason is the one worth saying
+			why = reason
+		}
+	}
 	for i := len(folder.Records) - 1; i >= 0; i-- {
 		record := folder.Records[i]
 		reply, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "agent_online", AgentName: record.Name, ConfigPath: record.ConfigPath})
 		if e != nil || reply.Error != "" {
+			note("agent:" + record.Name + " could not be checked on the server just now, so it was not taken.")
 			continue
 		}
 		var seen struct {
@@ -290,11 +309,45 @@ func freeAutoAttachRecords(ctx context.Context, root string, req agentworksclien
 		switch autoAttachDecision(list.AgentStates, record.Name, req, seen.Online) {
 		case "forget":
 			forgetAutoAttach(root, req.Provider, cwd, record.Name)
+			note("agent:" + record.Name + " was closed by the server, so it was forgotten.")
+		case "hint":
+			if seen.Online {
+				note("agent:" + record.Name + " still looks online on the server (it can take a minute after its chat closes); try again shortly, or attach it by name.")
+			} else {
+				note("agent:" + record.Name + " is still attached to another chat on this computer.")
+			}
 		case "attach":
 			if _, statErr := os.Stat(record.ConfigPath); statErr == nil {
 				free = append(free, record)
+			} else {
+				note("agent:" + record.Name + "'s saved login is gone, so it could not be reconnected.")
 			}
 		}
 	}
-	return free
+	return free, why
+}
+
+// otherFolderAgents says when this provider has agents remembered only for other folders: reuse is per folder, so
+// the person can still take one by name.
+func otherFolderAgents(root, provider, ownKey string) string {
+	autoAttachMu.Lock()
+	all := map[string]*autoAttachFolder{}
+	if raw, err := os.ReadFile(autoAttachPath(root)); err == nil {
+		_ = json.Unmarshal(raw, &all)
+	}
+	autoAttachMu.Unlock()
+	var names []string
+	for k, f := range all {
+		if k != ownKey && f != nil && strings.HasPrefix(k, provider+"|") && len(f.Records) > 0 {
+			names = append(names, "agent:"+f.Records[len(f.Records)-1].Name+" (used in "+filepath.Base(strings.TrimPrefix(k, provider+"|"))+")")
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	sort.Strings(names)
+	if len(names) > 3 {
+		names = names[:3]
+	}
+	return "This folder has no earlier agent, and a new agent was created. Earlier agents belong to other folders: " + strings.Join(names, ", ") + "; /agentworks attach NAME takes one by name."
 }

@@ -56,11 +56,13 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 	if req.AgentName == "" && req.Provider != "pi" && o.switchPath == "" {
 		// A bare attach typed by the person comes back as the folder's most recent
 		// earlier agent that nothing holds, so peers keep the address they know.
-		if free := freeAutoAttachRecords(ctx, root, *req, cwd); len(free) > 0 {
+		free, why := autoAttachScan(ctx, root, *req, cwd)
+		if len(free) > 0 {
 			o.reconnectAlt, o.reconnectCwd = free[1:], cwd
 			o.takeReconnect(req, free[0])
 			return nil
 		}
+		o.newAgentWhy = why
 	}
 	if req.AgentName == "" {
 		req.AgentName, _, err = proposedAgentIdentity(req.Provider, req.SessionID, cwd)
@@ -542,6 +544,8 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	}
 	if o.reconnectNote != "" {
 		fmt.Fprintln(o.stdout, o.reconnectNote)
+	} else if o.newAgentWhy != "" {
+		fmt.Fprintln(o.stdout, o.newAgentWhy)
 	}
 	req.Action = "peers"
 	peers, e := agentworksclient.CallLocalBridge(ctx, root, req)

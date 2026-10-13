@@ -30,6 +30,8 @@ type options struct {
 	switchPath string
 	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
 	reconnectNote string
+	// newAgentWhy is set when a bare attach created a new agent although the person may have expected an earlier one back.
+	newAgentWhy string
 	// reconnectAlt are the other free earlier agents, tried when a bare attach loses a race for the first.
 	reconnectAlt []autoAttachRecord
 	reconnectCwd string

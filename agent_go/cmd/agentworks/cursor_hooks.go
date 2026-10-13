@@ -231,7 +231,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		if req.Action == "peers" {
 			return cursorBlock(o, "AgentWorks agents:\n"+agentRoster(out.Result, agentworksclient.LocalBridgeReply{}))
 		}
-		return cursorBlock(o, strings.TrimSpace("Handled by AgentWorks. "+pluginAttachmentStatus(out)+" "+o.reconnectNote))
+		return cursorBlock(o, strings.TrimSpace("Handled by AgentWorks. "+pluginAttachmentStatus(out)+" "+o.reconnectNote+o.newAgentWhy))
 	}
 	// Ordinary prompt submissions never drain or replace the person's prompt.
 	if input.Event == "UserPromptSubmit" {

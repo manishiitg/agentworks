@@ -206,6 +206,8 @@ func pluginCommand(o *options) *cobra.Command {
 				result := "Handled by AgentWorks. " + pluginAttachmentStatus(out)
 				if o.reconnectNote != "" {
 					result += "\n" + o.reconnectNote
+				} else if o.newAgentWhy != "" {
+					result += "\n" + o.newAgentWhy
 				}
 				if req.Provider == "muse" && !out.MonitorActive {
 					result += "\n" + museMonitorSetup
