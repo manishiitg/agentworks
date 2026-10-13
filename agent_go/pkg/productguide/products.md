@@ -1,6 +1,6 @@
 Choose a product by the work you want to accomplish. This guide describes the products; the current server configuration, connection consent and your roles decide which operations you can actually use. Discover those operations before acting.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations.
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Secret values and personal provider accounts and logins remain private. Personal chats and Code projects are private until shared.
 
 | Product | Choose it for |
 |---|---|
@@ -31,7 +31,7 @@ Use a Crew for a specialist you want to call repeatedly from your agent, another
 
 - **Abilities:** persistent purpose and instructions, project files, memory, selected skills and integrations; admitted shell, browser and database tools; typed functions with input/result schemas; ask and message entry points; schedules and caller-specific conversations.
 - **MCP route:** discover with `crew action=list`, inspect the selected Crew, load `crew-authoring`, and discover exposed functions with `functions action=list`. Call functions or ask only through the entry points currently admitted for that Crew and caller.
-- **Access:** setup edits and execution are different permissions. The current Crew role, account restrictions, connection bounds and owner-controlled entry-point settings apply; a successful call does not authorize changing its memory, skills or setup.
+- **Access:** setup edits and execution are different permissions. The current Crew role, account restrictions, connection bounds and owner-controlled entry-point settings apply. Only the owner changes setup directly. Published functions run with the owner's authority and may change the Crew; callers act through those published functions rather than gaining setup access.
 - **Example:** a document specialist exposes a function that accepts a file and returns a structured summary.
 
 <!-- /product --><!-- product:relays -->### Relays
@@ -40,7 +40,7 @@ Use a Relay when a repeatable code workflow should have an explicit release and 
 
 - **Abilities:** edit source, test drafts, inspect test results, publish immutable versions and execute or inspect production runs; configure the workflow's supported triggers and integrations.
 - **MCP route:** load `relay-builder`; inspect the current source and schemas; edit through admitted source tools, test the draft, then publish with the current revision. A test is not a production publication.
-- **Access:** changes require current project editing authority and Relay authoring consent. Run access determines which execution evidence a person may see.
+- **Access:** changes require current project editing authority and Relay authoring consent. People with access to the Relay can inspect its runs, results and execution logs.
 - **Example:** validate incoming records and deliver the accepted records to a connected system.
 
 <!-- /product --><!-- product:knowledgebase -->### Brain
