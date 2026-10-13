@@ -84,8 +84,9 @@ type costsResponse struct {
 	Omitted    *costsUsage `json:"omitted,omitempty"`
 	NextCursor string      `json:"next_cursor,omitempty"`
 	Coverage   struct {
-		UnattributedEvents int `json:"unattributed_events"`
-		MappedProducts     int `json:"historically_mapped_events,omitempty"`
+		Source             string `json:"source"`
+		UnattributedEvents int    `json:"unattributed_events"`
+		MappedProducts     int    `json:"historically_mapped_events,omitempty"`
 	} `json:"coverage"`
 }
 
@@ -245,6 +246,7 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	out := &costsResponse{From: q.From, To: q.To, Rows: []*costsRow{}}
+	out.Coverage.Source = "platform_cost_events"
 	if q.Action == "breakdown" {
 		out.GroupBy = q.GroupBy
 	}
@@ -277,8 +279,8 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		}
 		pk := costsKey(p.Kind, p.ID, p.OwnerID, e.WorkflowID)
 		// Personal/unmapped events require their own actor-specific decision.
-		if p.ID == "" {
-			pk = costsKey(pk, firstNonEmptyTrimmed(e.ActorID, e.UserID))
+		if p.ID == "" || p.Kind == "code" {
+			pk = costsKey(pk, firstNonEmptyTrimmed(e.ActorID, e.UserID), e.ActorID)
 		}
 		allowed, checked := permissions[pk]
 		if !checked {

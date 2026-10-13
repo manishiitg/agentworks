@@ -61,6 +61,21 @@ func TestMCPCostsAttributionAndAccess(t *testing.T) {
 	defer ledger.Close()
 	api := &StreamingAPI{costLedger: ledger}
 	ownerCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
+	// ask_crew's validated message sender stays the actor when the receiver
+	// is the owner's turn. A guest label in client JSON is not that proof.
+	askCtx := costAgentMessageContext(ownerCtx, agentMessageEndpoint{UserID: "member", Kind: triggerCallerUser})
+	askPrincipal := queuedPrincipalFromContext(askCtx)
+	askQueued, askErr := api.queuedConversationTurnContext(queuedConversationTurn{UserID: "owner", Principal: askPrincipal}, map[string]interface{}{})
+	if askErr != nil {
+		t.Fatal(askErr)
+	}
+	guestAsk := QueryRequest{AgentProfileID: "work", CrewGuestCaller: "member", CrewAskReadOnly: true, PinRunMode: true}
+	if got := api.costTurnAttribution(askQueued, guestAsk, "owner", shared, "chat"); got.ActorID != "member" || got.Activity != "person_chat" {
+		t.Fatal("owner-runtime Crew ask lost authenticated caller", got)
+	}
+	if got := api.costTurnAttribution(ownerCtx, guestAsk, "owner", shared, "chat"); got.ActorID != "owner" {
+		t.Fatal("untrusted guest label reassigned costs", got)
+	}
 	fnCtx := costActivityContext(ownerCtx, "member", "function_call", "fn-public")
 	// Native queued principal propagation preserves the caller while the turn
 	// executes in the owner's namespace. Client JSON cannot supply it.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"io"
 	"log"
 	"maps"
@@ -267,7 +268,7 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	if failure, ok := reqMap["_bot_prepare_error"].(string); ok {
 		return internalSessionTurnResult{}, fmt.Errorf("prepare conversation: %s", failure)
 	}
-	if automatic, _ := reqMap["is_auto_notification"].(bool); automatic {
+	if automatic, _ := reqMap["is_auto_notification"].(bool); automatic && costobserver.AttributionFromContext(ctx).Activity == "" {
 		ctx = costActivityContext(ctx, userID, "background_idle", "")
 	}
 	// Marshal the request map to JSON

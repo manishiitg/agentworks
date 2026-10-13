@@ -4,8 +4,8 @@ import "net/http"
 
 func externalCostsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	properties := map[string]any{
-		"action":              map[string]any{"type": "string", "enum": []string{"breakdown", "detail"}},
-		"group_by":            map[string]any{"type": "string", "enum": []string{"product", "activity", "person", "model", "day"}},
+		"action":              map[string]any{"type": "string", "enum": []any{"breakdown", "detail"}},
+		"group_by":            map[string]any{"type": "string", "enum": []any{"product", "activity", "person", "model", "day"}},
 		"from":                externalString("Inclusive UTC date YYYY-MM-DD; default the last 30 days. Maximum window 366 days."),
 		"to":                  externalString("Inclusive UTC date YYYY-MM-DD; default today."),
 		"product_kind":        externalString("Product kind from a returned product row, or unattributed."),

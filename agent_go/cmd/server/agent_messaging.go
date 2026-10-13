@@ -834,6 +834,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
 	}
+	// The admission just verified this stored sender. Preserve its person
+	// before the receiving turn switches to the Crew owner's namespace.
+	ctx = costAgentMessageContext(ctx, source)
 	text := agentMessageText(c, m)
 	for _, endpoint := range []agentMessageEndpoint{source, dest} {
 		if endpoint.Kind == triggerCallerWorkflow {

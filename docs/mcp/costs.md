@@ -47,3 +47,14 @@ origin context. Dashboard dispatch on the current base has no execution adapter;
 its admitted origin context is ready for adapters to inherit, without a new charge.
 New contexts do not come from client JSON. Unsupported/missing source evidence is
 reported in coverage rather than attributed to a guessed product or person.
+
+Coverage source is `platform_cost_events`. External gateway inference proxies to
+its separate private backend and its usage is not imported into this ledger;
+external-client native usage is also separate. Gateway-backed agent events already
+recorded by the platform remain counted once. Do not interpret the platform total
+as a reconciled vendor invoice or as every external client's consumption.
+
+Release note: first opening an older large ledger adds attribution columns and
+indexes. The one-time index build can pause ledger writes at startup. Queries use
+WAL reads and a 15-second/200,000-event scan bound; narrow a busy date window when
+that bound is reached. Existing cost-page UI and account limits are unchanged.

@@ -139,3 +139,17 @@ func (api *StreamingAPI) setSessionCostAttribution(sessionID string, a costledge
 		session.CostAttribution = a
 	}
 }
+
+func costAgentMessageContext(ctx context.Context, source agentMessageEndpoint) context.Context {
+	a := costobserver.AttributionFromContext(ctx)
+	if a.ActorID == "" {
+		a.ActorID = source.UserID
+	}
+	if a.Activity == "" {
+		a.Activity = "agent_message"
+		if source.Kind == triggerCallerUser {
+			a.Activity = "person_chat"
+		}
+	}
+	return costobserver.ContextWithAttribution(ctx, a)
+}
