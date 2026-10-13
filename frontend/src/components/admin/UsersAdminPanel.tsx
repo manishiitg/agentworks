@@ -60,6 +60,14 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
 // The exact stored value, so a blur without an edit never rounds and saves it.
 const shownLimit = (n?: number) => (n ? String(n) : '')
 
+// How a person signs in, in plain words: the identity service behind single sign-on is not something admins act on.
+// Only a password account has a password to set; an SSO person signs in through the company's identity provider.
+const usesSSO = (u: { invited?: boolean; provider?: string }) => Boolean(u.invited || (u.provider && u.provider !== 'simple'))
+const signInLabel = (u: { invited?: boolean; provider?: string; has_password?: boolean }) => {
+  if (usesSSO(u)) return 'signs in with SSO'
+  return u.has_password ? 'signs in with a password' : 'no password set'
+}
+
 /**
  * One person's limits on the shared server accounts, with their use today and
  * this week. Saved on blur or Enter; empty is unlimited.
@@ -398,7 +406,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                   <tr key={u.id} className={`border-t border-border ${u.disabled ? 'opacity-60' : ''}`}>
                     <td className="py-2 pr-3 align-top">
                       <div className="font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</div>
-                      <div className="text-[11px] text-muted-foreground">{u.email || '—'} · {u.invited ? 'signs in with SSO' : `${u.provider}${u.has_password ? '' : ' · no password'}`}</div>
+                      <div className="text-[11px] text-muted-foreground">{u.email || '—'} · {signInLabel(u)}</div>
                     </td>
                     <td className="py-2 pr-3 align-top">
                       {vaultOnly ? <span className="text-xs text-muted-foreground">{ROLES.find(r => r.value === role)?.label}</span> : <RolePicker
@@ -501,16 +509,18 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                     <td className="py-2 align-top">
                       <div className="flex items-center justify-end gap-1">
                         {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          title="Set a new password"
-                          disabled={busy}
-                          onClick={() => { setResetFor(u); setResetPassword('') }}
-                        >
-                          <KeyRound className="h-3.5 w-3.5" />
-                        </Button>
+                        {!usesSSO(u) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Set a new password"
+                            disabled={busy}
+                            onClick={() => { setResetFor(u); setResetPassword('') }}
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         {!isMe && (
                           <Button
                             variant="ghost"

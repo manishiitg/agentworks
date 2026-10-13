@@ -37,6 +37,9 @@ describe('Shared user roles and product access', () => {
     expect(api.updateAdminUser).toHaveBeenCalledWith('creator', expect.objectContaining({ role: 'viewer' }))
     expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Add user')).toBe(false)
     expect(host.querySelector('[aria-label="Email"]')).toBeNull()
+    // An SSO account has no password to set, and the identity service behind SSO is not named.
+    expect(host.querySelector('button[title="Set a new password"]')).toBeNull()
+    expect(host.textContent).toContain('signs in with SSO')
   })
   it('exposes no platform role/product grants in Vault', async () => {
     await render(true)
