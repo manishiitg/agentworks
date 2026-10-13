@@ -108,7 +108,8 @@ func authorizeWorkflowContextPathsWithReadRoots(ctx context.Context, paths []str
 // workflow or crew that no longer exists (its workflow.json / product.json is
 // definitely absent) is dropped with a log line instead of failing the whole
 // turn -- deleting a crew must not break every crew that had attached it.
-// Anything else (a read error, a malformed manifest, no access) still denies.
+// A saved workflow attachment the sender cannot read is dropped the same way.
+// Anything else (a read error, a malformed manifest) still denies.
 func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, skipMissing bool) ([]string, []string, error) {
 	if len(paths) == 0 {
 		return nil, nil, nil
@@ -147,6 +148,12 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 			}
 			if _, err := authorizeWorkflowContextPaths(ctx, []string{folder}); err != nil {
 				logContextDenial(claims, folder, "workflow not readable by this user")
+				if skipMissing {
+					// Left out of this turn (the agent never sees its files); an
+					// attachment the owner shared must not block someone who can
+					// open the product.
+					continue
+				}
 				return nil, nil, denied
 			}
 		case isCrewContextShape(parts):

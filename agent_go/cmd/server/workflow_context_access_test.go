@@ -48,12 +48,13 @@ func TestWorkflowContextAccess(t *testing.T) {
 	if _, err := authorizeWorkflowContextPaths(ctxFor("reader"), []string{"Workflow/target"}); err == nil {
 		t.Fatal("revoked attachment was accepted")
 	}
-	// A crafted query fails before any session, agent or tool is initialized.
-	recorder := httptest.NewRecorder()
-	api := &StreamingAPI{}
-	api.handleQuery(recorder, sharedSecretsRequest(http.MethodPost, "/api/query", "other", QueryRequest{Query: "read context", WorkflowContextPaths: []string{"Workflow/target"}}))
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("query status=%d body=%s", recorder.Code, recorder.Body.String())
+	// A turn does not fail for an attachment its sender cannot read (the owner
+	// shared the product; Run mode and functions run on the owner's context): the
+	// attachment is left out, so its files are never read. The strict check used
+	// to attach or grant still refuses.
+	req := &QueryRequest{WorkflowContextPaths: []string{"Workflow/target"}}
+	if err := admitTurnContextPaths(ctxFor("other"), req); err != nil || len(req.WorkflowContextPaths) != 0 || len(req.authorizedWorkflowContextReadPaths) != 0 {
+		t.Fatalf("unreadable attachment: err=%v paths=%v reads=%v", err, req.WorkflowContextPaths, req.authorizedWorkflowContextReadPaths)
 	}
 }
 
