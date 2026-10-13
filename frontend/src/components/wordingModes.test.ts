@@ -28,9 +28,11 @@ const FORBIDDEN = [/read-only/i, /READ-ONLY/, /\bviewer\b/i, /\breader\b/i, /\bg
 
 function visibleStrings(source: string): string[] {
   const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  // Role-id string literals in tier ternaries are API values, not labels.
+  const withoutRoleIds = withoutComments.replace(/'(owner|editor|reader)'/g, "''")
   const texts: string[] = []
-  for (const match of withoutComments.matchAll(/>([^<>{}]+)</g)) texts.push(match[1])
-  for (const match of withoutComments.matchAll(/(?:title|aria-label|placeholder|description|label)\s*=\s*(?:"([^"]+)"|\{`([^`]+)`\}|\{'([^']+)'\})/g)) {
+  for (const match of withoutRoleIds.matchAll(/>([^<>{}]+)</g)) texts.push(match[1])
+  for (const match of withoutRoleIds.matchAll(/(?:title|aria-label|placeholder|description|label)\s*=\s*(?:"([^"]+)"|\{`([^`]+)`\}|\{'([^']+)'\})/g)) {
     texts.push(match[1] || match[2] || match[3] || '')
   }
   return texts

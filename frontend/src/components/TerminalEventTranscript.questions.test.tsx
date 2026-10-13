@@ -133,7 +133,7 @@ describe('workflow clarification controls', () => {
     const root = createRoot(host)
     cleanups.push(() => { act(() => root.unmount()); host.remove() })
     await act(async () => root.render(<TerminalEventTranscript events={[request()]} terminal={null} />))
-    expect(host.textContent).toContain('This conversation is read-only.')
+    expect(host.textContent).toContain('This conversation cannot be changed.')
     expect(button(host, 'Use first options').disabled).toBe(true)
     expect(host.querySelector('fieldset')?.disabled).toBe(true)
   })
