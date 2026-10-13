@@ -15,7 +15,10 @@ export function WorkspaceTopToolbar({ className = '', ...props }: HTMLAttributes
       // "Ask AI" button despite the open menu's z-50. z-30 clears every
       // canvas-level control (max z-20 today) while staying below true
       // modals (VariablesSidebar/FilePreviewModal use z-50/z-[60]).
-      className={`relative z-30 flex min-h-10 min-w-0 flex-nowrap items-center gap-3 overflow-visible border-b border-border bg-background px-3 py-1.5 ${className}`}
+      // Below md the tabs and toolbar controls wrap onto a second row instead
+      // of overflowing over the tabs (a 390 px phone hid the project tab and
+      // covered "+ New chat" with Dashboard). Desktop keeps one nowrap row.
+      className={`relative z-30 flex min-h-10 min-w-0 flex-wrap items-center gap-3 overflow-visible border-b border-border bg-background px-3 py-1.5 md:flex-nowrap ${className}`}
     />
   )
 }
