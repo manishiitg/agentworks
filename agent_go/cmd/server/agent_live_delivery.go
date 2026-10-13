@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -392,23 +393,86 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 	}
 	history, _ := args["history"].(bool)
 	permitted := []string{}
+	reasons := map[string]string{} // message id -> why it was left out (logged; counted for the client)
 	for _, id := range ids {
 		for _, c := range s.Conversations {
 			for _, m := range c.Messages {
-				if m.ID != id || c.Endpoints[1-m.From].NamedAgentID != a.ID || !history && (m.LiveAttachment != a.Attachment.ID || m.Delivery != "stored") {
+				if m.ID != id {
+					continue
+				}
+				switch {
+				case c.Endpoints[1-m.From].NamedAgentID != a.ID:
+					reasons[id] = "not_addressed_to_this_agent"
+					continue
+				case !history && m.LiveAttachment != a.Attachment.ID:
+					reasons[id] = "offered_to_another_lease"
+					continue
+				case !history && m.Delivery != "stored":
+					reasons[id] = "already_" + m.Delivery
 					continue
 				}
 				src := c.Endpoints[m.From]
-				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) || api.recheckAgentMessageAdmission(r.Context(), c, m) != nil || api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) {
+					reasons[id] = "share_check_failed"
+					continue
+				}
+				if api.recheckAgentMessageAdmission(r.Context(), c, m) != nil {
+					reasons[id] = "admission_recheck_failed"
+					continue
+				}
+				if api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+					reasons[id] = "sender_authorization_failed"
 					continue
 				}
 				permitted = append(permitted, id)
 			}
 		}
 	}
+	held := map[string]int{}
+	for _, id := range ids {
+		reason, left := reasons[id]
+		if !left && slices.Contains(permitted, id) {
+			continue
+		}
+		if !left {
+			reason = "not_found"
+		}
+		held[reason]++
+		if strings.HasPrefix(reason, "already_") {
+			continue // a normal re-check of a message the chat already took
+		}
+		if validateLogDue(id, reason, time.Now()) {
+			log.Printf("[AGENT-MESSAGE-VALIDATE] left out message=%s agent=%s reason=%s", id, a.Name, reason)
+		}
+	}
 	if _, _, err = currentAgentAttachment(r.Context(), live, a.Name, a.Attachment.ID); err != nil {
 		externalError(w, 403, "attachment_refused", "Attachment changed.")
 		return
 	}
-	externalJSON(w, map[string]any{"message_ids": permitted})
+	externalJSON(w, map[string]any{"message_ids": permitted, "held_reasons": held})
+}
+
+// validateLogged remembers when each (message, reason) was last written: a held message is checked every few seconds, so a
+// line is written the first time and then at most every ten minutes.
+var validateLogged = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+func validateLogDue(id, reason string, now time.Time) bool {
+	validateLogged.Lock()
+	defer validateLogged.Unlock()
+	if len(validateLogged.at) > 5000 {
+		for k, t := range validateLogged.at {
+			if now.Sub(t) > 10*time.Minute {
+				delete(validateLogged.at, k)
+			}
+		}
+	}
+	key := id + "|" + reason
+	if t, ok := validateLogged.at[key]; ok && now.Sub(t) < 10*time.Minute {
+		return false
+	}
+	validateLogged.at[key] = now
+	return true
 }

@@ -170,6 +170,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 	b.mu.Lock()
 	if !valid() {
 		b.mu.Unlock()
+		log.Printf("[BRIDGE] Muse watch for lease %s ended: the lease, host or session changed", boundedMuseHint(in.AttachmentID))
 		return
 	}
 	state.ready = true
@@ -202,6 +203,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		b.mu.Lock()
 		if !valid() {
 			b.mu.Unlock()
+			log.Printf("[BRIDGE] Muse watch for lease %s ended: the lease, host or session changed", boundedMuseHint(in.AttachmentID))
 			return
 		}
 		var pending []localOffer
@@ -218,8 +220,10 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 			case <-changed:
 				continue
 			case <-ctx.Done():
+				log.Printf("[BRIDGE] Muse watch for lease %s ended: the Monitor process disconnected", boundedMuseHint(in.AttachmentID))
 				return
 			case <-serverCtx.Done():
+				log.Printf("[BRIDGE] Muse watch for lease %s ended: the helper is stopping", boundedMuseHint(in.AttachmentID))
 				return
 			}
 		}
@@ -240,6 +244,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		b.mu.Lock()
 		if !valid() {
 			b.mu.Unlock()
+			log.Printf("[BRIDGE] Muse watch for lease %s ended: the lease, host or session changed", boundedMuseHint(in.AttachmentID))
 			return
 		}
 		current, exists := s.Offers[m.MessageID]

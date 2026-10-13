@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,8 +152,12 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 	again := map[string]string{}
 	drain := chat
 	drain.Action, drain.Transport, drain.HostKey = "drain", "muse_hook", "muse-process-new"
-	for _, m := range call(drain).Messages {
+	received := call(drain)
+	for _, m := range received.Messages {
 		again[m.Message] = m.MessageID
+	}
+	if !strings.Contains(received.Warning, "Monitor is not running") {
+		t.Fatalf("a receive with no Monitor running did not say so: %q", received.Warning)
 	}
 	if len(again) != 2 {
 		t.Fatalf("unacknowledged messages were not offered again: %v", again)

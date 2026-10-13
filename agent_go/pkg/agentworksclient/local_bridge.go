@@ -79,24 +79,26 @@ type LocalAgentDirectory struct {
 type LocalBridgeReply struct {
 	MonitorActive bool `json:"monitor_active,omitempty"`
 	// Notice is a one-time line for the person, e.g. an attach that finished after the command gave up.
-	Notice             string                `json:"notice,omitempty"`
-	Directories        []LocalAgentDirectory `json:"directories,omitempty"`
-	SetupContext       string                `json:"setup_context,omitempty"`
-	AgentStates        []LocalAgentState     `json:"agent_states,omitempty"`
-	Attached           bool                  `json:"attached"`
-	NativeDelivery     bool                  `json:"native_delivery"`
-	NativeRouteStatus  string                `json:"native_route_status,omitempty"`
-	IncludeGuidance    bool                  `json:"include_guidance,omitempty"`
-	Attachment         AgentAttachment       `json:"attachment,omitempty"`
-	Messages           []AgentLiveMessage    `json:"messages,omitempty"`
-	Error              string                `json:"error,omitempty"`
-	Warning            string                `json:"warning,omitempty"`
-	Result             json.RawMessage       `json:"result,omitempty"`
-	Sessions           []AgentAttachment     `json:"sessions,omitempty"`
-	LastError          string                `json:"last_error,omitempty"`
-	Offline            bool                  `json:"offline,omitempty"`
-	Version            string                `json:"version,omitempty"`
-	Pending            int                   `json:"pending"`
+	Notice            string                `json:"notice,omitempty"`
+	Directories       []LocalAgentDirectory `json:"directories,omitempty"`
+	SetupContext      string                `json:"setup_context,omitempty"`
+	AgentStates       []LocalAgentState     `json:"agent_states,omitempty"`
+	Attached          bool                  `json:"attached"`
+	NativeDelivery    bool                  `json:"native_delivery"`
+	NativeRouteStatus string                `json:"native_route_status,omitempty"`
+	IncludeGuidance   bool                  `json:"include_guidance,omitempty"`
+	Attachment        AgentAttachment       `json:"attachment,omitempty"`
+	Messages          []AgentLiveMessage    `json:"messages,omitempty"`
+	Error             string                `json:"error,omitempty"`
+	Warning           string                `json:"warning,omitempty"`
+	Result            json.RawMessage       `json:"result,omitempty"`
+	Sessions          []AgentAttachment     `json:"sessions,omitempty"`
+	LastError         string                `json:"last_error,omitempty"`
+	Offline           bool                  `json:"offline,omitempty"`
+	Version           string                `json:"version,omitempty"`
+	Pending           int                   `json:"pending"`
+	// Held counts stored messages the server has left out of this chat's checks so far (they are retried).
+	Held               int `json:"held,omitempty"`
 	previousGuidanceAt time.Time
 	guidanceAt         time.Time
 }
@@ -110,9 +112,13 @@ type localOffer struct {
 	// check. A new lease (a restart or resume) is not yet the one the server
 	// offered it to, so the message waits for the stream to renew it instead of
 	// being dropped; it is given up only after DeniedAt is an hour old.
-	DeniedAt  time.Time `json:"denied_at,omitempty"`
-	Transport string    `json:"transport,omitempty"`
-	OfferedAt time.Time `json:"offered_at,omitempty"`
+	DeniedAt time.Time `json:"denied_at,omitempty"`
+	// FirstDeniedAt and Denials outlive DeniedAt (which is reset when the server lets the message through) so a delayed
+	// message can be explained afterwards.
+	FirstDeniedAt time.Time `json:"first_denied_at,omitempty"`
+	Denials       int       `json:"denials,omitempty"`
+	Transport     string    `json:"transport,omitempty"`
+	OfferedAt     time.Time `json:"offered_at,omitempty"`
 }
 
 type localSession struct {
@@ -518,6 +524,9 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				if b.closed || streamCtx.Err() != nil {
 					return context.Canceled
 				}
+				if s.ServerClosed { // the server is delivering to this lease again
+					s.ServerClosed = false
+				}
 				if old, ok := s.Offers[m.MessageID]; ok {
 					// Renew the lease on a stored, never-offered body. An
 					// ambiguous or admitted offer must never create another turn.
@@ -555,6 +564,9 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			b.mu.Lock()
 			var watchErr *APIError
 			if errors.As(err, &watchErr) && (watchErr.Status == 401 || watchErr.Status == 403 || watchErr.Status == 404 || watchErr.Code == "agent_attachment_closed") {
+				if museWatchActive(s) {
+					log.Printf("[BRIDGE] Muse watch for lease %s stopped: the server stream answered %d %s", boundedMuseHint(s.Attachment.ID), watchErr.Status, watchErr.Code)
+				}
 				stopMuseWatch(s)
 			}
 			if errors.As(err, &watchErr) && watchErr.Code == "agent_attachment_closed" && !s.ServerClosed {
@@ -1252,6 +1264,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		return out
 	case "drain", "next":
+		if s.Attachment.Provider == "muse" && in.Action == "drain" && !museWatchActive(s) {
+			out.Warning = "Your AgentWorks Monitor is not running, so messages reach this chat only when you call agent_message_receive (or the person types). Call agent_message_monitor now and start the native monitor it returns."
+		}
 		if s.Attachment.Provider == "pi" {
 			if in.Action != "next" || in.Transport != "pi_extension" {
 				return LocalBridgeReply{Error: "Pi requires its native SDK adapter"}
@@ -1347,6 +1362,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		for _, id := range checked.IDs {
 			allowed[id] = true
 		}
+		held := 0
 		previous := map[string]localOffer{}
 		filtered := []AgentLiveMessage{}
 		for _, m := range out.Messages {
@@ -1362,6 +1378,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				if v.DeniedAt.IsZero() {
 					v.DeniedAt = time.Now().UTC()
 				}
+				if v.FirstDeniedAt.IsZero() {
+					v.FirstDeniedAt = v.DeniedAt
+				}
+				v.Denials++
+				held++
 				if time.Since(v.DeniedAt) > time.Hour {
 					v.Suppressed = true
 					v.Message = ""
@@ -1370,6 +1391,17 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		out.Messages = filtered
+		out.Held = held
+		if held > 0 {
+			var left []string
+			for _, m := range previous {
+				if !allowed[m.MessageID] {
+					left = append(left, m.MessageID)
+				}
+			}
+			sort.Strings(left)
+			log.Printf("[BRIDGE] the server left %d of %d pending messages out for lease %s (kept and retried): %s", held, len(ids), boundedMuseHint(s.Attachment.ID), strings.Join(left, ","))
+		}
 		previousGuidanceAt := s.LastGuidanceAt
 		out.previousGuidanceAt = previousGuidanceAt
 		if in.Transport != "claude_channel" && len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
