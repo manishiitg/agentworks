@@ -300,3 +300,26 @@ func TestMuseWatchWaitsOutABusyServerButEndsWhenTheLeaseIsRefused(t *testing.T) 
 		t.Fatalf("refused watch = %q", out.String())
 	}
 }
+
+// A long poll or a slow server call runs with the bridge lock released; the "held the bridge lock"
+// log must not count that time (it logged 25 s "holds" for every idle listener, thousands of times).
+func TestHoldClockLeavesOutTimeSpentWithTheLockReleased(t *testing.T) {
+	b := &localBridge{}
+	b.mu.Lock()
+	clock := &holdClock{since: time.Now()}
+	b.hold = clock
+	b.unlocked(func() {
+		if !b.mu.TryLock() { // another request can take the lock meanwhile
+			t.Error("the lock was not released")
+			return
+		}
+		b.hold = &holdClock{since: time.Now()}
+		b.hold = nil // another request ends its turn
+		b.mu.Unlock()
+		time.Sleep(60 * time.Millisecond)
+	})
+	defer b.mu.Unlock()
+	if clock.away < 60*time.Millisecond || b.hold != clock {
+		t.Fatalf("away = %v, hold restored = %v", clock.away, b.hold == clock)
+	}
+}

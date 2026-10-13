@@ -902,6 +902,11 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 	}
 	if desktopHost != "" && validateCodexRemote(remote) == nil {
 		candidates := codexProbeCandidates(local.Sessions)
+		leased := map[string]bool{}
+		for id := range candidates {
+			leased[id] = true
+		}
+		var recent []string // catalog threads, newest first
 		codexDir := o.getenv("CODEX_HOME")
 		if codexDir == "" {
 			codexDir = filepath.Join(home, ".codex")
@@ -916,6 +921,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 					var id, cwd string
 					if rows.Scan(&id, &cwd) == nil {
 						catalog[id] = cwd
+						recent = append(recent, id)
 					}
 				}
 				rows.Close()
@@ -929,12 +935,12 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		if e == nil {
 			defer conn.Close()
 			failures := 0
-			ids := make([]string, 0, len(candidates))
-			for id := range candidates {
-				ids = append(ids, id)
-			}
-			sort.Strings(ids)
+			ids := codexProbeOrder(leased, candidates, recent)
 			for _, id := range ids {
+				if probeCtx.Err() != nil {
+					fmt.Fprintln(o.stderr, "Desktop discovery did not complete. Open the intended chat and type /agentworks attach if it is missing.")
+					break
+				}
 				if _, e = uuid.Parse(id); e != nil {
 					continue
 				}
@@ -1294,6 +1300,32 @@ func codexProbeCandidates(sessions []agentworksclient.AgentAttachment) map[strin
 		}
 	}
 	return candidates
+}
+
+// codexProbeMax is how many threads without a lease are probed. A desktop catalog can hold
+// thousands of threads (one owner's held twelve thousand, and probing them in id order used up
+// the whole time limit before reaching an open chat); only recently used ones can be open.
+const codexProbeMax = 150
+
+// codexProbeOrder lists every leased thread first, then the newest catalog threads that are
+// candidates, up to codexProbeMax of them.
+func codexProbeOrder(leased map[string]bool, candidates map[string]string, recent []string) []string {
+	ids := make([]string, 0, len(leased)+codexProbeMax)
+	for id := range leased {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	extra := 0
+	for _, id := range recent {
+		if _, ok := candidates[id]; !ok || leased[id] {
+			continue
+		}
+		if extra++; extra > codexProbeMax {
+			break
+		}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // mergeCodexCatalog adds the desktop's thread catalog to the candidates. A move

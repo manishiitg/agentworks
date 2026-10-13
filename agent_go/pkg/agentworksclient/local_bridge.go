@@ -138,6 +138,7 @@ type localBridge struct {
 	usageWake   chan struct{}
 	museCurrent map[string]string
 	mu          sync.Mutex
+	hold        *holdClock // the request holding mu, when it is a request
 	attachMu    sync.Mutex
 	attaching   map[string]chan struct{}
 	root        string
@@ -587,12 +588,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	} else if !b.lockWithin(localBridgeLockBudget) {
 		return LocalBridgeReply{Error: "AgentWorks is still connecting another step. Try again in a moment."}
 	}
-	held := time.Now()
+	clock := &holdClock{since: time.Now()}
+	b.hold = clock
 	defer func() {
 		// A long hold makes every other command wait; name the action so it can be found.
-		if d := time.Since(held); d > time.Second {
+		// Time spent with the lock released (server calls, waiting for a message) is not a hold.
+		if d := time.Since(clock.since) - clock.away; d > time.Second {
 			log.Printf("[BRIDGE] action %q held the bridge lock for %v", in.Action, d.Round(time.Millisecond))
 		}
+		b.hold = nil
 		b.mu.Unlock()
 	}()
 	if b.closed {
@@ -917,10 +921,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			res.a, res.client = a, client
 			return res
 		}
-		b.mu.Unlock()
+		away := b.release()
 		res := network()
-		b.mu.Lock()
-		held = time.Now() // the lock was free while the server calls ran
+		b.reacquire(away)
 		if res.fail != nil {
 			return *res.fail
 		}
@@ -1230,16 +1233,16 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			defer wait.Stop()
 			for !localPending(s) && !s.SetupPending && b.sessions[key] == s && !b.closed {
 				changed := b.changed
-				b.mu.Unlock()
+				away := b.release()
 				select {
 				case <-callCtx.Done():
-					b.mu.Lock()
+					b.reacquire(away)
 					return LocalBridgeReply{Error: "local listener cancelled"}
 				case <-wait.C:
-					b.mu.Lock()
+					b.reacquire(away)
 					return out
 				case <-changed:
-					b.mu.Lock()
+					b.reacquire(away)
 				}
 			}
 			if b.sessions[key] != s {
@@ -1625,9 +1628,36 @@ func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMes
 // polls an inbox or attaches a new process. Saved identities survive shutdown.
 // unlocked runs f with b.mu released; the caller holds the lock before and after.
 func (b *localBridge) unlocked(f func()) {
-	b.mu.Unlock()
-	defer b.mu.Lock()
+	away := b.release()
+	defer b.reacquire(away)
 	f()
+}
+
+// holdClock times how long one request really holds the bridge lock: its wall time minus the
+// time it spent with the lock released.
+type holdClock struct {
+	since time.Time
+	away  time.Duration
+}
+
+type awaySince struct {
+	clock *holdClock
+	at    time.Time
+}
+
+// release lets go of the bridge lock in the middle of a request; reacquire takes it back.
+func (b *localBridge) release() awaySince {
+	a := awaySince{b.hold, time.Now()}
+	b.mu.Unlock()
+	return a
+}
+
+func (b *localBridge) reacquire(a awaySince) {
+	b.mu.Lock()
+	if a.clock != nil {
+		a.clock.away += time.Since(a.at)
+	}
+	b.hold = a.clock // the lock now belongs to this request again
 }
 
 // attachGate lets one attach per chat run at a time; a second waits up to d for the first.

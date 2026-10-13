@@ -106,6 +106,15 @@ func openCodexDesktop(ctx context.Context, remote string) (net.Conn, func(string
 	}
 	client := "initializing-client"
 	call := func(method string, params any, version int, target string) (map[string]json.RawMessage, error) {
+		// Each request gets its own time limit: one limit for the whole connection ran out
+		// while many threads were still being checked.
+		limit := time.Now().Add(15 * time.Second)
+		if d, ok := ctx.Deadline(); ok && d.Before(limit) {
+			limit = d
+		}
+		if e := conn.SetDeadline(limit); e != nil {
+			return nil, e
+		}
 		id := uuid.NewString()
 		v := map[string]any{"type": "request", "requestId": id, "sourceClientId": client, "version": version, "method": method, "params": params, "timeoutMs": 10000}
 		if target != "" {
