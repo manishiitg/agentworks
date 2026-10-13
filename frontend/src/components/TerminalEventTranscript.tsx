@@ -711,7 +711,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
       >
         {row && displayStatus === 'ok' ? <TerminalIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> : <span role={displayStatus==='running' ? 'img' : undefined} aria-label={displayStatus==='running' ? 'Tool running' : undefined} className={`shrink-0 font-mono ${markClass}`}>{mark}</span>}
         <span className="truncate font-medium text-foreground">{pair.name}</span>
-        {pair.server && (
+        {pair.server && !/^api[-_]bridge$/.test(pair.server) && (
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {pair.server}
           </span>

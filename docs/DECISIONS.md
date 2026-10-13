@@ -368,8 +368,10 @@ Single-task selectors, overall result and validation are secondary technical
 details; multiple authored tasks have a compact selector. One refresh reloads
 the root and selected task, preserving selected-only polling and exact targets.
 Inspector tool rows expose input/output in one disclosure, without a batch
-disclosure. Keep validation under Run details; single-script source is visible
-by default and can be collapsed, with its output and exit code alongside it.
+disclosure. Hide the internal `api_bridge`/`api-bridge` transport badge in tool
+headers, retaining recorded tool identity and details. Keep validation under
+Run details; single-script source is visible by default and can be collapsed,
+with its output and exit code alongside it.
 
 Run details exposes the selected execution's saved record from the same
 authorized inspection response. Do not embed the workflow-wide log browser:
