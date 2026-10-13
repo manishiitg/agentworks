@@ -52,7 +52,9 @@ type externalUserView struct {
 // something administrators act on, so every SSO account reads "sso" and only
 // a plain password account reads "password" (856-81).
 func externalSignInMethod(v userAdminView) string {
-	if v.Invited || (v.Provider != "" && v.Provider != "simple") {
+	// viewOf already normalizes a password account's provider to "password"
+	// (older records may carry "simple"); everything else is an SSO provider.
+	if v.Invited || (v.Provider != "" && v.Provider != "password" && v.Provider != "simple") {
 		return "sso"
 	}
 	return "password"
