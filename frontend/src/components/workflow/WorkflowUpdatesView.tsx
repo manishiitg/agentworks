@@ -102,6 +102,7 @@ export default function WorkflowUpdatesView({ workspacePath }: { workspacePath: 
   }, [workspacePath])
 
   const pending = status?.pending ?? []
+  const needsUpdate = Boolean(status?.required || pending.length > 0)
   const applied = useMemo(() => [...(status?.applied ?? [])].reverse(), [status?.applied])
   const currentVersion = status?.current_version || '—'
   const platformVersion = status?.platform_version || '—'
@@ -119,19 +120,19 @@ export default function WorkflowUpdatesView({ workspacePath }: { workspacePath: 
       ) : status ? (
         <>
             <section className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/40 p-3">
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${status.required ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'}`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${needsUpdate ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'}`}>
                 <PackageCheck className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-semibold text-foreground">Workflow contract</h3>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${status.required ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>
-                    {status.required ? (pending.length > 0 ? `${pending.length} pending` : 'Needs attention') : 'Up to date'}
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${needsUpdate ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>
+                    {needsUpdate ? (pending.length > 0 ? `${pending.length} pending` : 'Needs attention') : 'Up to date'}
                   </span>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">Current v{currentVersion} · platform v{platformVersion}</p>
               </div>
-              {canWrite && status.required && <AskAIButton
+              {canWrite && needsUpdate && <AskAIButton
                 workspacePath={workspacePath}
                 label="Update workflow"
                 message={MANUAL_CONTRACT_UPGRADE_MESSAGE}

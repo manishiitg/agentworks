@@ -24,12 +24,13 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 	return version
 }
 
-// Only the current contract is execution-compatible. Historical 1.0.41-1.0.43
+// Current and previous agent prompt contracts are execution-compatible during
+// the reviewed description-first rollout. Historical 1.0.41-1.0.43
 // workflows owe the nested-agent-artifact migration, 1.0.44 workflows the
 // managed database script migration, and 1.0.45 workflows the step description
 // layout migration.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
-	return strings.TrimSpace(version) == workflowContractUnifiedAgentVersion
+	return strings.TrimSpace(version) == workflowContractUnifiedAgentVersion || strings.TrimSpace(version) == workflowContractDescriptionFirstVersion
 }
 
 // goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
@@ -68,7 +69,7 @@ func manifestIsRelay(manifest *WorkflowManifest) bool {
 }
 
 // manifestContractIsExecutionCompatible reports whether a manifest's contract
-// version lets it run. A Goals workflow must be on the current version. A Relay
+// version lets it run. A Goals workflow must be on a compatible version. A Relay
 // must be on a version this server knows with no shared migration pending: a
 // Goals-only migration it skipped never blocks it. Callers still require
 // code_layout_version 1.
@@ -132,6 +133,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractManagedDBScriptsVersion,
 		workflowContractStepDescriptionLayoutVersion,
 		workflowContractUnifiedAgentVersion,
+		workflowContractDescriptionFirstVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -498,7 +500,7 @@ func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpg
 func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpgrade {
 	version := workflowContractVersionForUpgrade(manifest)
 	rank, known := workflowContractVersionRank(version)
-	if !known || workflowContractVersionIsExecutionCompatible(version) {
+	if !known || version == WorkflowContractCurrentVersion {
 		return nil
 	}
 
@@ -596,6 +598,9 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 46 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractUnifiedAgentVersion, label: "upgrade-agent-step", query: upgradeAgentStep})
 	}
+	if rank < 47 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractDescriptionFirstVersion, label: "upgrade-description-first", query: upgradeDescriptionFirst})
+	}
 	// Attached here rather than at the call site so the turn text is identical
 	// wherever it is built. The version pair used to be added only on the Pulse
 	// delivery path, which meant the blocking preflight — the one that actually
@@ -621,3 +626,13 @@ EXECUTION CONTEXT. This is a manual platform migration started by the workflow o
 const upgradeAgentStep = `WORKFLOW CONTRACT UPGRADE: ONE AGENT STEP TYPE.
 
 Do only this migration. Conversational steps now use type agent with items and optional predefined_routes. Call migrate_agent_steps once. It rewrites message_sequence, orchestrator and todo_task records, including nested and orphan agents, to agent; legacy messages become items. Routes, IDs, wiring, validation and unknown fields are preserved. Do not edit plan.json by hand or run the workflow. If the migration reports an error, do not stamp. Otherwise call set_workflow_contract_version(version="1.0.47") and stop.`
+
+const upgradeDescriptionFirst = `WORKFLOW CONTRACT UPGRADE: DESCRIPTION FIRST, OPTIONAL FOLLOW-UPS (1.0.48).
+
+Do only this migration; never run the workflow or its side-effecting tools. Read builder-reference/references/step-description.md and agent.md. Review every ordinary agent including nested routes and orphans. Custom authored_prompt agents keep their explicit prompts and items.
+
+The description executes as the first user turn ALONE, before any sequence item. The first item is a later turn, never combined with the description. Zero items is valid. Builder chooses useful next phases or semantic checks when automated validation cannot prove the business evidence; do not require generic execute/verify/repair turns. Automatic final validation and its repair loop remain.
+
+For each ordinary agent, use update_step(step_id=..., changes={...}) to supply prompt_contract="description-first-v1", a runnable description, system_rules containing binding policies/approval/idempotency/scope constraints, and reviewed items. Drop old items that repeat task execution; fold any unique requirements from them into the description or rules. Keep genuinely subsequent phases and their IDs/order, store narrowing, scripts, intermediate gates and output contracts. On the first retained item, set retained_reason to explain the distinct subsequent phase, why the automatic gate cannot cover it, and how it avoids repeating initial work. This is a saved review note, not a user turn. For side-effecting tasks, make verifiers evidence-only: no new send, claim, purchase, browser action, post or publish to repair ambiguous confirmation; report that gap. Replace legacy references to executing a system charter with this task. If a first execute item had narrowed writes, preserve them with initial_write_access. Do not infer edits by regex or blindly drop default-looking instructions. Review script-first ordering: prerequisites needed before task execution belong upstream, not after the new opener. Preserve live input semantics, route re-entry continuity, and reference/read permissions. Do not change scripts, validation schemas, access or external behavior just to stamp.
+
+Check preview_step_runtime for the description turn (default) and retained items. Read back the plan and compare the complete diff, including send-once/claims/spend/provider-call boundaries. Resolve any real business ambiguity with the operator. Once every ordinary agent is reviewed, call set_workflow_contract_version(version="1.0.48"). The stamp refuses unmigrated definitions. Existing old-contract plans remain executable with their saved semantics until migrated; active runs keep their loaded plan. Stop after stamping.`

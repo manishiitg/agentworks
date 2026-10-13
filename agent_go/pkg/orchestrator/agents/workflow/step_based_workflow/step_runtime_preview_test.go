@@ -149,6 +149,18 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if err != nil || !strings.Contains(result, "workflow-learnings") {
 		t.Fatalf("learnings-writer preview failed: %v", err)
 	}
+	// Migrated zero-item agents preview their task, rather than requiring item zero.
+	files["planning/plan.json"] = `{"steps":[{"id":"research","title":"Research","type":"agent","prompt_contract":"description-first-v1","system_rules":"No paid calls.","description":"Research {{TOPIC}}."}]}`
+	result, err = tool.Execute(ctx, map[string]interface{}{"step_id": "research"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(result), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.ItemID != AgentDescriptionTurnID || preview.UserMessage != "Research <VARIABLE:TOPIC>." || strings.Contains(preview.SystemPrompt, "Research <VARIABLE:TOPIC>.") || !strings.Contains(preview.SystemPrompt, "No paid calls.") {
+		t.Fatal("description-only preview has wrong task/rules")
+	}
 	// Invalid persisted config is reported rather than silently repaired.
 	files["planning/step_config.json"] = `{"steps":[{"id":"research"},{"id":"research"}]}`
 	if _, err := tool.Execute(ctx, map[string]interface{}{"step_id": "research"}); err == nil {

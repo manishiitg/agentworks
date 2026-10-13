@@ -196,9 +196,14 @@ context dependencies, and guidance that execution actually receives. Assess:
 - precise wording, no conflicting/stale instructions, needless repetition,
   copied shared policy, or micromanaged procedure without a correctness reason;
 - enough context and accessible references to execute the task without guessing;
-- for an agent, a first item that instructs the work itself. A
-  sequence whose items only verify or re-open results lets the agent satisfy the
-  step by re-checking an earlier run and doing no new work.
+- for description-first-v1 agents, a runnable description and preserved system_rules,
+  with zero items allowed. Verify-only follow-ups are valid because the description
+  has already performed the work. Flag redundant execution items that could repeat
+  side effects; do not require a generic verification/repair sequence. Builder
+  selects semantic review only when automatic checks cannot prove required evidence;
+- for unmigrated agents, retain the saved system-charter/first-work-item contract;
+  do not switch semantics or reuse prompt-quality approval across migration without
+  reviewing the description, policies, items, access and sequencing together.
 
 State the concrete passage/contract examined and the meaningful issue or why it
 is compatible. A short prompt can fail and a long prompt can pass. Do not force

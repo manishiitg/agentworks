@@ -6,12 +6,14 @@ external_note: "External mapping: get_step_prompts uses a workflow Run session w
 ---
 ## Writing Optimized Step Descriptions (Prompt Engineering)
 
-A step's `description` is the durable system-level charter the execution agent
-receives on every turn. Every word costs context and has system-level authority,
-so keep it stable and task-defining. For `agent`, the ordered
-`items[]` are the actual user messages that tell the agent how to carry out,
-inspect, verify, or repair that charter. Read this before writing or editing a
-step's `description` or sequence items.
+For ordinary `agent` steps using `prompt_contract="description-first-v1"`, the
+`description` is the executable first user turn, sent ALONE. Finish that turn
+before sending any authored sequence instruction. `items[]` are optional later
+turns; zero items is valid and is the default for a coherent one-turn task.
+The system prompt carries platform/agent instructions and `system_rules` for
+binding business policies. Existing agents with no prompt_contract retain their
+saved system-charter semantics until their description and items are reviewed.
+Custom `authored_prompt` agents retain their explicit system/user messages.
 
 ### Check what the runtime already supplies
 
@@ -49,20 +51,36 @@ also shows run-specific context unavailable in the source template. A saved
 prompt is evidence for that run, not a preview of later configuration changes;
 new steps have no saved prompt until execution starts.
 
-### Description defines WHAT; items carry turn instructions; skills and learnings carry reusable HOW
+### Description executes the task; rules govern it; skills carry reusable HOW
 
-Write the description as a stable charter focused on the step's objective: what
-result to achieve, which inputs or evidence govern it, the scope and business
-rules, what success means, and where the result belongs. Keep binding constraints
-here, including approval requirements and actions outside the step's authority.
-These define the task even when the implementation changes.
+Write a complete runnable task: objective, inputs/evidence, scope, durable result,
+success boundary and valid no-op/failure behavior. The description must be enough
+to perform the coherent outcome without an execution item. Put binding approval,
+idempotency, spending, access and business policies in `system_rules`, which is
+supplied on every turn. Keep the task's constraints explicit; never demote or
+lose an inline policy merely to shorten the description.
 
-For `agent`, put execution phases and conversational instructions in
-`items[]`: perform the work, re-open authoritative evidence, critique it, repair
-verified gaps, or incorporate new runtime input. Do not repeat the description in
-the first item. The first item should tell the agent what to do now under the
-charter, not redefine the charter. Live Workshop `human_input` and parent-agent
-delegation instructions are also user messages, not description mutations.
+Builder decides whether a later turn adds value. Keep `items` empty when the
+first turn plus automatic validation/repair suffices. Add a separate semantic
+verification, critique, new input or phase only for a specific need, such as
+checking research claims against sources when file/JSON validation cannot do so.
+No mandatory execute/verify/repair sequence. Do not repeat task execution in the
+first item: it runs AFTER the description has completed. Declared later items
+still run in order; optionality is the authoring decision to include them.
+Record `retained_reason` on the first retained item: why this later phase adds
+value beyond the task and automatic gate, and how it avoids repeating initial
+work. This review note is not another user turn. Side-effect verifiers must read
+evidence only; ambiguous confirmation is a reported gap, not authority to send,
+claim, spend, post or publish again.
+Live Workshop/parent instructions remain separate user turns. For tasks needing
+caller-specific evidence before acting, declare input variables/dependencies in
+the description and preserve that ordering during migration.
+
+Migration must review old first items: remove redundant execution; fold unique
+requirements into description/system_rules; retain genuinely subsequent phases
+with their IDs, contracts and access narrowing. Do not regex-delete items or
+blindly move policies. Script prerequisites required by the opener belong in
+upstream scripted steps, not in a batch scheduled after description execution.
 
 ### Use this section layout for the description
 
@@ -82,7 +100,9 @@ only when it has nothing to say; do not add other sections.
 ## Guides     — the skill/learning references to use, named only, never copied
 ```
 
-Everything else belongs somewhere else: execution phases in `items[]`, reusable
+Binding policies in ## Rules must also be represented in `system_rules` so they remain system instructions.
+
+Everything else belongs somewhere else: optional later phases in `items[]`, reusable
 procedures in skills and learnings, domain facts and decisions in the
 knowledgebase, platform mechanics nowhere (the runtime supplies them).
 

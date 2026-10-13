@@ -60,7 +60,17 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 		t.Fatalf("a repeated stamp was not a no-op: %s", again)
 	}
 	after := f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
-	if !strings.Contains(after, `"pending":[]`) {
-		t.Fatalf("no migration should remain: %s", after)
+	if !strings.Contains(after, `upgrade-description-first`) {
+		t.Fatalf("description-first migration should remain: %s", after)
 	}
+	nextStamp := map[string]any{"action": "stamp", "version": "1.0.48", "confirm": "invoices"}
+	f.call(t, owner, "workflow_upgrade", nextStamp, 409)
+	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "review-description-first", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"prompt_contract": "description-first-v1", "description": "Greet the person once.", "system_rules": "Never repeat the greeting to validate it.", "items": []any{}, "reason": "Reviewed description-first task; remove redundant execution item."}}}, 200)
+	f.call(t, owner, "workflow_upgrade", nextStamp, 200)
+	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
+	if !strings.Contains(after, `"pending":[]`) {
+		t.Fatalf("reviewed migration remains due: %s", after)
+	}
+
 }

@@ -736,6 +736,7 @@ type AgentItem struct {
 	Kind             string            `json:"kind,omitempty"`
 	Title            string            `json:"title,omitempty"`
 	Message          string            `json:"message,omitempty"`
+	RetainedReason   string            `json:"retained_reason,omitempty"` // reviewed reason this phase follows the description instead of repeating it
 	WriteAccess      AgentWriteAccess  `json:"write_access,omitempty"`
 	ValidationSchema *ValidationSchema `json:"validation_schema,omitempty"`
 	Prevalidation    *ValidationSchema `json:"prevalidation,omitempty"`
@@ -762,6 +763,10 @@ type AgentPlanStep struct {
 	Type StepType `json:"type"`
 	CommonStepFields
 	Items []AgentItem `json:"items,omitempty"`
+	// Empty contract retains the saved system-charter semantics until reviewed migration.
+	PromptContract     string            `json:"prompt_contract,omitempty"`
+	SystemRules        string            `json:"system_rules,omitempty"`
+	InitialWriteAccess *AgentWriteAccess `json:"initial_write_access,omitempty"`
 	// AuthoredPrompt runs the exact system prompt and user messages supplied by
 	// the author. It is used by Relays on the shared agent executor.
 	AuthoredPrompt          bool                     `json:"authored_prompt,omitempty"`
@@ -800,6 +805,9 @@ func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
 		Type StepType `json:"type"`
 		CommonStepFields
 		Items               []AgentItem       `json:"items,omitempty"`
+		PromptContract      string            `json:"prompt_contract,omitempty"`
+		SystemRules         string            `json:"system_rules,omitempty"`
+		InitialWriteAccess  *AgentWriteAccess `json:"initial_write_access,omitempty"`
 		AuthoredPrompt      bool              `json:"authored_prompt,omitempty"`
 		SystemPrompt        string            `json:"system_prompt,omitempty"`
 		PredefinedRoutesRaw []json.RawMessage `json:"predefined_routes,omitempty"`
@@ -813,6 +821,9 @@ func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
 	m.Type = StepTypeAgent
 	m.CommonStepFields = raw.CommonStepFields
 	m.Items = raw.Items
+	m.PromptContract = raw.PromptContract
+	m.SystemRules = raw.SystemRules
+	m.InitialWriteAccess = raw.InitialWriteAccess
 	m.AuthoredPrompt = raw.AuthoredPrompt
 	m.SystemPrompt = raw.SystemPrompt
 	m.NextStepID = raw.NextStepID
@@ -1047,9 +1058,12 @@ type PartialPlanStep struct {
 	ScriptParameters       map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`        // Optional: replace the scripted runtime parameter contract; pass {} to clear
 	ScriptParametersSchema map[string]interface{}               `json:"script_parameters_schema,omitempty"` // Optional: replace the full JSON Schema contract; pass {} to clear
 	// Agent fields
-	Items          []AgentItem `json:"items,omitempty"`
-	AuthoredPrompt *bool       `json:"authored_prompt,omitempty"`
-	SystemPrompt   *string     `json:"system_prompt,omitempty"`
+	Items              []AgentItem       `json:"items,omitempty"`
+	PromptContract     *string           `json:"prompt_contract,omitempty"`
+	SystemRules        *string           `json:"system_rules,omitempty"`
+	InitialWriteAccess *AgentWriteAccess `json:"initial_write_access,omitempty"`
+	AuthoredPrompt     *bool             `json:"authored_prompt,omitempty"`
+	SystemPrompt       *string           `json:"system_prompt,omitempty"`
 	// Crew step fields
 	CrewProfileID      string `json:"crew_profile_id,omitempty"` // Optional: Updated crew profile ID
 	CrewProjectID      string `json:"crew_project_id,omitempty"` // Optional: Updated crew project ID
@@ -1492,15 +1506,18 @@ func getAddAgentStepSchema() string {
 		"properties": {
 			"id": {"type": "string", "description": "REQUIRED: Stable URL-friendly step ID."},
 			"title": {"type": "string", "description": "REQUIRED: Short title for the agent step."},
-			"description": {"type": "string", "description": "REQUIRED: The durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put ordered execution and verification instructions in items[]."},
+			"description": {"type": "string", "description": "REQUIRED: The executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put binding policies in system_rules. items[] are optional subsequent turns, not a repeated execution instruction."},
 			"authored_prompt": {"type": "boolean", "description": "Relay agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
 			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
-			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
+			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
+            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
+            "required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "REQUIRED: Prior context files this sequence depends on. Use [] if none."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Summary/result file for later steps. Omit when the step writes its result to the db (validate via validation_schema.db)."},
 			"items": {
 				"type": "array",
-				"description": "REQUIRED: Ordered user-message queue describing how to execute and verify the system-level step charter. Add a user_message for a coherent execution phase, evidence-based verification, critique, repair, new external input, or a real phase change; do not create one item per checklist line or tool call. Use explicit prevalidation items only for intermediate gates; the top-level validation_schema runs automatically after the final work turn. Use a scripted item to execute saved orphan scripts as a finite batch, without agentic children. Inline code is not supported. Each referenced script needs its own typed parameters and validation contract. Plain turns inherit step-level DB/KB/learnings writes. Use kind or a non-empty write_access only to narrow a turn to selected stores. Before authoring more than a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).",
+				"description": "OPTIONAL: Subsequent turns after description completes as its own first user turn. Omit or pass [] for a description-only agent. Add semantic verification only when automatic validation cannot prove the result; do not mandate verify/repair turns or repeat task execution. Add a user_message for a coherent execution phase, evidence-based verification, critique, repair, new external input, or a real phase change; do not create one item per checklist line or tool call. Use explicit prevalidation items only for intermediate gates; the top-level validation_schema runs automatically after the final work turn. Use a scripted item to execute saved orphan scripts as a finite batch, without agentic children. Inline code is not supported. Each referenced script needs its own typed parameters and validation contract. Plain turns inherit step-level DB/KB/learnings writes. Use kind or a non-empty write_access only to narrow a turn to selected stores. Before authoring more than a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).",
 				"items": {
 					"type": "object",
 					"properties": {
@@ -1508,7 +1525,8 @@ func getAddAgentStepSchema() string {
 						"type": {"type": "string", "enum": ["user_message", "prevalidation", "foreach", "scripted"], "description": "user_message, prevalidation, foreach, or a deterministic scripted batch"},
 						"kind": {"type": "string", "description": "Optional shorthand that narrows this turn's inherited writes to one store: learning, knowledgebase, or db. Explicit non-empty write_access overrides kind."},
 						"title": {"type": "string"},
-						"message": {"type": "string", "description": "For user_message items: a follow-up semantic workflow instruction run in the same persistent conversation. In a Relay authored step, use {{input}} for the complete caller JSON, {{input.field}} for a required field, or {{steps.id.output.field}} for earlier output. Do not use {{input.INPUT}} or {{variables.INPUT}}. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Prefer evidence-seeking validation/repair turns (e.g. \"Re-open the output. Did you actually satisfy every criterion? Quote the evidence, then fix every unsupported or incomplete item.\") over routine subtask instructions. For foreach items: a Go text/template rendered once per row of source, with the row bound to '.' (e.g. 'Process {{.id}}: {{.task}}')."},
+						"retained_reason": {"type": "string", "description": "Review note explaining what this follow-up adds after the description has completed, why automatic validation is insufficient, and how external actions are kept from repeating. Required on the first retained item when stamping description-first-v1; rationale only, not another user turn."},
+						"message": {"type": "string", "description": "For user_message items: a follow-up semantic workflow instruction run in the same persistent conversation. In a Relay authored step, use {{input}} for the complete caller JSON, {{input.field}} for a required field, or {{steps.id.output.field}} for earlier output. Do not use {{input.INPUT}} or {{variables.INPUT}}. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Prefer evidence-seeking validation/repair turns (e.g. \"Re-open the output. Did you actually satisfy every criterion? Quote the evidence, then fix every unsupported or incomplete item.\") over routine subtask instructions. For a first scripted follow-up: message records why this is a subsequent phase rather than an initial-task prerequisite; it is rationale, not an extra user turn. For foreach items: a Go text/template rendered once per row of source, with the row bound to '.' (e.g. 'Process {{.id}}: {{.task}}')."},
 						"write_access": {
 							"type": "object",
 							"description": "Optional item-scoped narrowing. Omit it to inherit the step-level DB/KB/learnings write permissions. A non-empty object limits this turn to the selected stores and can never exceed step-level access. Folder-level booleans only — NO per-file path scoping (a \"paths\" list is rejected).",
@@ -1538,7 +1556,7 @@ func getAddAgentStepSchema() string {
 			"validation_schema": {"type": "object", "description": "OPTIONAL: Step-level final validation contract. When present, the runtime automatically runs it after the configured work turns and before learning/knowledge closing turns. Validation failures are sent back to the same conversation for repair and retried."},
 			"reason": {"type": "string", "description": "REQUIRED: One-sentence rationale for why this sequence step is being added."}
 		},
-		"required": ["id", "title", "description", "context_dependencies","items", "insert_after_step_id", "reason"]
+		"required": ["id", "title", "description", "context_dependencies", "insert_after_step_id", "reason"]
 	}`
 }
 
@@ -1548,15 +1566,18 @@ func getUpdateAgentStepSchema() string {
 		"properties": {
 			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the agent step to update. Legacy non-scripted steps are accepted and atomically upgraded to agent because that is already their effective runtime type."},
 			"title": {"type": "string", "description": "OPTIONAL: New title. Omit to preserve the existing title."},
-			"description": {"type": "string", "description": "OPTIONAL: Replaces the durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Put ordered execution and verification instructions in items[]. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
+			"description": {"type": "string", "description": "OPTIONAL: Replaces the executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Put binding policies in system_rules. items[] are optional subsequent turns, not a repeated execution instruction. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
 			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
 			"system_prompt": {"type": "string", "description": "Replace the authored system prompt. Supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
-			"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
+			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
+            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
+            "required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "OPTIONAL: Replaces the full list of prior context files this sequence depends on. Omit to preserve the existing list."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Replaces the summary/result file for later steps. Omit to preserve the existing value, or to leave the step writing its result to the db (validate via validation_schema.db) instead of a file."},
 			"items": {
 				"type": "array",
-				"description": "OPTIONAL: Replaces the entire ordered user-message queue — this is a full replacement, not a merge, so include every item you want kept. Items describe how to execute and verify the system-level description charter. Add a user_message for a coherent execution phase, evidence-based verification, critique, repair, new external input, or a real phase change; do not create one item per checklist line or tool call. Use explicit prevalidation items only for intermediate gates; the top-level validation_schema runs automatically after the final work turn. Use a scripted item to execute saved orphan scripts as a finite batch, without agentic children. Inline code is not supported. Each referenced script needs its own typed parameters and validation contract. Plain turns inherit step-level DB/KB/learnings writes; use kind or a non-empty write_access only to narrow a turn to selected stores. Before restructuring items[] into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).",
+				"description": "OPTIONAL: Replaces the entire ordered user-message queue — this is a full replacement, not a merge, so include every item you want kept. Items are optional subsequent turns after the description runs alone. [] clears the sequence. The first retained item needs retained_reason describing its reviewed later phase and non-repetition boundary before stamping. Keep only useful next phases or semantic checks not covered by automatic validation. Add a user_message for a coherent execution phase, evidence-based verification, critique, repair, new external input, or a real phase change; do not create one item per checklist line or tool call. Use explicit prevalidation items only for intermediate gates; the top-level validation_schema runs automatically after the final work turn. Use a scripted item to execute saved orphan scripts as a finite batch, without agentic children. Inline code is not supported. Each referenced script needs its own typed parameters and validation contract. Plain turns inherit step-level DB/KB/learnings writes; use kind or a non-empty write_access only to narrow a turn to selected stores. Before restructuring items[] into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).",
 				"items": {"type": "object"}
 			},
 			"predefined_routes": {
@@ -1920,7 +1941,10 @@ func getAddAgentRouteSchema() string {
 							"description": {"type": "string", "description": "REQUIRED: What this specialized agent does AND its standing brief. For scripted routes this is the stable code contract; runtime variation belongs in script_parameters. For agent routes, per-call instructions are added on top."},
 							"script_parameters": {"type": "object", "description": "For scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 							"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
-							"items": {"type": "array", "description": "REQUIRED when type='agent'. Ordered user_message, prevalidation, or foreach turns.", "items": {"type": "object"}},
+							"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
+            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
+            "items": {"type": "array", "description": "Optional when type='agent': follow-ups after the description turn; [] is valid.", "items": {"type": "object"}},
 							"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 							"context_output": {"type": "string", "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."},
@@ -1979,7 +2003,10 @@ func getUpdateAgentRouteSchema() string {
 					"description": {"type": "string", "description": "OPTIONAL: Replaces the stable route contract. For scripted routes, runtime variation belongs in script_parameters. Omit to preserve the existing description."},
 					"script_parameters": {"type": "object", "description": "For scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 					"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
-					"items": {"type": "array", "description": "Required when type='agent'. Replaces the entire ordered user-message queue — a full replacement, not a merge. The description is the system charter; items explain how to execute and verify it. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
+					"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
+            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
+            "items": {"type": "array", "description": "Optional when type='agent'. Replaces all subsequent turns; [] clears them. The description executes alone first under description-first-v1. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
 					"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
 					"context_output": {"type": "string"},
@@ -2770,6 +2797,17 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 
 	case *AgentPlanStep:
 		updated := *step
+		if partialUpdate.PromptContract != nil {
+			updated.PromptContract = *partialUpdate.PromptContract
+		}
+		if partialUpdate.SystemRules != nil {
+			updated.SystemRules = *partialUpdate.SystemRules
+		}
+		if partialUpdate.InitialWriteAccess != nil {
+			access := *partialUpdate.InitialWriteAccess
+			updated.InitialWriteAccess = &access
+		}
+
 		if partialUpdate.RequiredVariables != nil {
 			updated.RequiredVariables = append([]string{}, partialUpdate.RequiredVariables...)
 		}
@@ -3136,6 +3174,18 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 		})
 	}
 	if sequenceStep, ok := existingStep.(*AgentPlanStep); ok {
+		if partialUpdate.PromptContract != nil {
+			changedFields = append(changedFields, "prompt_contract")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "prompt_contract", OldValue: sequenceStep.PromptContract, NewValue: *partialUpdate.PromptContract})
+		}
+		if partialUpdate.SystemRules != nil {
+			changedFields = append(changedFields, "system_rules")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "system_rules", OldValue: sequenceStep.SystemRules, NewValue: *partialUpdate.SystemRules})
+		}
+		if partialUpdate.InitialWriteAccess != nil {
+			changedFields = append(changedFields, "initial_write_access")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "initial_write_access", OldValue: sequenceStep.InitialWriteAccess, NewValue: partialUpdate.InitialWriteAccess})
+		}
 		if partialUpdate.AuthoredPrompt != nil {
 			changedFields = append(changedFields, "authored_prompt")
 			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "authored_prompt", OldValue: sequenceStep.AuthoredPrompt, NewValue: *partialUpdate.AuthoredPrompt})
@@ -4153,6 +4203,19 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 			}
 		}
 
+		if partialUpdate.PromptContract != nil && *partialUpdate.PromptContract == AgentDescriptionFirstPromptContract {
+			target, _, _ := findStepByID(plan.Steps, partialUpdate.ExistingStepID)
+			if target == nil {
+				target, _, _ = findStepByID(plan.OrphanSteps, partialUpdate.ExistingStepID)
+			}
+			if agent, ok := target.(*AgentPlanStep); ok && !agentDescriptionFirst(agent) {
+				for _, field := range []string{"description", "system_rules", "items"} {
+					if _, provided := args[field]; !provided {
+						return "", fmt.Errorf("description-first migration requires a reviewed description, system_rules and items (including []); missing %s", field)
+					}
+				}
+			}
+		}
 		fieldChanges := make([]PlanFieldChange, 0)
 		if upgradedLegacyScripted {
 			fieldChanges = append(fieldChanges, PlanFieldChange{
@@ -5002,8 +5065,21 @@ func validateAgentStepFieldsTypedWithOptions(step *AgentPlanStep, allowLegacyCod
 	if strings.TrimSpace(step.Description) == "" {
 		return fmt.Errorf("agent step (title: %q, ID: %s) is missing required description field", step.Title, step.ID)
 	}
-	if len(step.Items) == 0 {
-		return fmt.Errorf("agent step (title: %q, ID: %s) must include at least one item", step.Title, step.ID)
+	if step.PromptContract != "" && step.PromptContract != AgentDescriptionFirstPromptContract {
+		return fmt.Errorf("agent step %q has unknown prompt_contract %q", step.ID, step.PromptContract)
+	}
+	if step.AuthoredPrompt && step.PromptContract != "" {
+		return fmt.Errorf("agent step %q: authored_prompt cannot use a generated prompt_contract", step.ID)
+	}
+	if len(step.Items) == 0 && !agentDescriptionFirst(step) {
+		return fmt.Errorf("agent step (title: %q, ID: %s) must include at least one item under the legacy or authored prompt contract", step.Title, step.ID)
+	}
+	if agentDescriptionFirst(step) {
+		for _, item := range step.Items {
+			if item.ID == AgentDescriptionTurnID {
+				return fmt.Errorf("agent step %q: item id %q is reserved for the description turn", step.ID, item.ID)
+			}
+		}
 	}
 	if step.AuthoredPrompt {
 		if strings.TrimSpace(step.SystemPrompt) == "" {
@@ -5159,6 +5235,8 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 		if err != nil {
 			return "", fmt.Errorf("failed to parse step: %w", err)
 		}
+
+		initializeNewAgentPromptContracts(typedStep)
 
 		// Validate step has ID
 		if typedStep.GetID() == "" {
@@ -5531,7 +5609,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"change_step_type",
-		"Convert a step between the two execution models in place, keeping its id, description, dependencies, validation_schema, next_step_id and position (nested and orphan steps included). target_type=\"scripted\" turns a agent into a deterministic scripted step (internal plan type scripted) and declares scripted mode in step_config in the same atomic change -- its conversational items are dropped, since a scripted step's work lives in code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py), which you then write with update_scripted_step(code=...). target_type=\"agent\" turns a scripted step into a sequence with one execute-and-verify item and clears the declared mode; refine the turns with update_agent_step. Use it instead of add_scripted_step + delete_plan_steps + rewiring. Records a revertable before/after entry in planning/changelog. Only scripted <-> agent; other step types have their own tools.",
+		"Convert a step between the two execution models in place, keeping its id, description, dependencies, validation_schema, next_step_id and position (nested and orphan steps included). target_type=\"scripted\" turns a agent into a deterministic scripted step (internal plan type scripted) and declares scripted mode in step_config in the same atomic change -- its conversational items are dropped, since a scripted step's work lives in code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py), which you then write with update_scripted_step(code=...). target_type=\"agent\" turns a scripted step into a description-first agent with optional follow-up items and clears the declared mode; refine the turns with update_agent_step. Use it instead of add_scripted_step + delete_plan_steps + rewiring. Records a revertable before/after entry in planning/changelog. Only scripted <-> agent; other step types have their own tools.",
 		changeStepTypeParams,
 		createChangeStepTypeExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5624,7 +5702,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_agent_step",
-		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the durable objective, boundaries, and definition of done in the system-level description; put execution and verification instructions in items[]. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
+		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the complete executable task in description, sent alone as the first user turn; put standing policies in system_rules. Items are optional subsequent phases, with retained_reason on the first explaining why it adds value without repeating work. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
 		agentSequenceParams,
 		createAddAgentStepExecutor(workspacePath, logger, readFile, writeFile, moveFile),
 		"workflow",
@@ -6103,6 +6181,7 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 		if err := json.Unmarshal(newRouteJSON, &newRoute); err != nil {
 			return "", fmt.Errorf("failed to parse new_route: %w", err)
 		}
+		initializeNewAgentPromptContracts(newRoute.SubAgentStep)
 
 		// Read current plan
 		plan, err := readPlanFromFile(ctx, workspacePath, readFile)

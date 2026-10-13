@@ -168,6 +168,15 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 	if err := validateManagedDBScriptsStamp(version, workflowDir); err != nil {
 		return fmt.Errorf("the managed database script migration is incomplete: %w", err)
 	}
+	if version == AgentDescriptionFirstContractVersion {
+		content, err := readPlan()
+		if err != nil {
+			return err
+		}
+		if err := ValidateAgentDescriptionFirstContractStamp(content); err != nil {
+			return err
+		}
+	}
 	if version == AgentStepContractVersion {
 		content, err := readPlan()
 		if err != nil {

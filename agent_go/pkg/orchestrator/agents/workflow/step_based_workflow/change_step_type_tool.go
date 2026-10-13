@@ -150,7 +150,10 @@ func changeStepTypeInPlan(plan *PlanningResponse, configs []StepConfig, stepID, 
 			configureScripted()
 			return res, nil
 		}
-		if err := replace(normalizeScriptedStepToAgent(step)); err != nil {
+		replacement := normalizeScriptedStepToAgent(step)
+		replacement.Items = nil
+		initializeNewAgentPromptContracts(replacement)
+		if err := replace(replacement); err != nil {
 			return nil, err
 		}
 		res.newType = string(StepTypeAgent)

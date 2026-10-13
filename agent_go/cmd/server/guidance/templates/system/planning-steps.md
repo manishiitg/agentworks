@@ -25,14 +25,13 @@ first and plan to repair the graph afterward.
 
 **Default to one large `agent` per shared-context span.** Modern
 agents can own many actions and long tool sessions, so the strongest shape is
-one conversation that completes the coherent span and then proves it in
-follow-up items: `[do the whole span] → [re-open evidence and prove every
-criterion] → [repair gaps and double-check]`. Put the stable objective,
-boundaries, and definition of done in the system-level `description`; put those
-execution and verification instructions in `items[]` as user turns. Improve the charter,
-run-specific proof/provenance output, top-level `validation_schema`, and
-verify/repair turns before adding another step. A request for more checking is
-not itself a step boundary.
+one conversation that executes the complete `description` as its first user turn
+ALONE, then automatically validates and repairs configured checks. Put binding
+policies in `system_rules`; use `prompt_contract="description-first-v1"` for new
+or reviewed migrated agents. `items[]` is optional: zero items is valid. Builder
+adds later semantic verification or a real phase only when it improves this task;
+never mandate generic execute/verify/repair messages. Improve the runnable task,
+run-specific proof/provenance output and validation before adding another workflow step.
 
 Use multiple large sequences when their contexts should not be shared: distinct
 credentials/security exposure, independent durable outputs or retries,
@@ -49,13 +48,12 @@ switch instead of asking again — `branch` for a small in-flow decision,
 `routing` when the choice forks into a major, self-contained sub-workflow —
 and pass `route_selections` when running either.
 Add `predefined_routes` to an `agent` only when the agent must choose
-specialist work adaptively from runtime evidence. Several known actions in one shared context belong in its ordered items. Do not add a
+specialist work adaptively from runtime evidence. Several known actions in one shared context belong in the complete description task; use ordered items only for distinct subsequent phases. Do not add a
 checkpoint just to ask the same branch choice again.
 
 ## Step types
 
-- **`agent`** (canonical agent step) — a system-level description
-  charter plus ordered user-message items in one conversation; optional
+- **`agent`** (canonical agent step) — a description-first turn plus optional subsequent items in one conversation; optional
   `predefined_routes` expose bounded specialists the agent chooses adaptively
 - **`scripted`** — a scripted deterministic boundary for API/SDK/CLI fetching,
   parsing, normalization, and mechanical persistence; batch related calls

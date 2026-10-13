@@ -1,6 +1,6 @@
 ---
 name: "agent"
-description: "Agent steps: the system-level charter, ordered user-message items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step."
+description: "Agent steps: the description-only first user turn, optional subsequent items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step."
 external: true
 external_note: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."
 ---
@@ -10,7 +10,7 @@ external_note: "External mapping: plan and step edits go through builder action=
 
 ## AGENT STEP
 
-Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. The step `description` is the system-level charter for the whole sequence; every `items[]` entry is a user turn describing how to carry it out.
+Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. For `prompt_contract="description-first-v1"`, the description executes ALONE as the first user turn; each optional `items[]` entry is a subsequent turn after it finishes. `system_rules` carries binding agent/business policies on every turn. Empty items is valid. Saved agents without this contract keep their legacy charter semantics until reviewed migration; authored_prompt retains explicit prompts.
 
 An agent step may declare `predefined_routes`. When routes exist, the agent gets
 bounded sub-agent tools and decides at runtime whether, when, and how often to
@@ -18,9 +18,15 @@ call those specialists. Routes define available capabilities; they do not
 prescribe execution order. Without routes, the step is a single-agent sequence.
 Both forms use the same system prompt and default tool policy; routes add only
 the specialist catalog, delegation guidance, and sub-agent lifecycle tools.
-The plan type is `agent` for both plain conversations and conversations with specialists. Saved legacy shapes are converted by the v1.0.47 migration.
+The plan type is `agent` for both plain conversations and conversations with specialists. Saved legacy shapes are converted by the v1.0.47 migration. Unmarked legacy agents still require an execution item; description-first-v1 agents allow zero. Restarting a route deliberately replays its description opener, so the task must remain rerunnable under its idempotency rules.
 
-The default shape is `[complete the whole shared-context span] → [re-open authoritative evidence and prove every criterion] → [repair gaps and double-check]`, followed by the top-level deterministic validation gate. Require run-specific proof/provenance in the output so validation cannot pass a stale or self-asserted success. Do not create separate workflow steps for these checks.
+Before stamping v1.0.48, the first retained item needs `retained_reason`: a review
+note explaining the distinct later phase, the evidence the automatic gate cannot
+prove, and the boundary preventing repeated initial work. The note is never sent
+as a separate user turn. For public/external effects, a verifier reads receipts
+and reports ambiguity; it must not repeat the action to repair confirmation.
+
+The default shape is `[description: complete the whole shared-context span] → [automatic validation, with repair only if checks fail]`. Add optional authored turns before the final gate only when they contribute a genuine next phase or semantic evidence check that automatic validation cannot prove. Never mandate verify/repair turns or repeat execution in item zero. Require run-specific proof/provenance in the output so validation cannot pass a stale or self-asserted success. Do not create separate workflow steps for these checks.
 
 Use multiple large sequences when contexts should not be shared: different credentials/security exposure, independently rerunnable outputs or failure domains, clean-room reviewer independence, human/routing boundaries, or unrelated context that would distract or contaminate the next agent. The builder should decide this from workflow semantics and be able to state the isolation reason.
 
@@ -125,7 +131,7 @@ SQL `foreach` templates apply to their own conversational messages only.
 
 Follow this item with a `user_message` to analyze the validated results and report.
 A script item can come first: its results are added to runtime context before
-the next conversational item, while the description remains the system charter.
+a subsequent conversational item. Under description-first-v1 the description has already run; scripts required before the initial task must be upstream prerequisites. If the first follow-up is a scripted batch, its message records why that batch is a distinct subsequent phase; the rationale is not another model turn.
 
 - The runtime checks every reference, parameter contract, and saved source before
   starting the batch. No arbitrary file path, inline code, or agentic step is callable.
@@ -287,8 +293,8 @@ Use an `agent` route when the parent agent should preserve specialist memory acr
 
 - Write the stable objective, boundaries, and definition of done in `description`.
 - Write the actual ordered execution/verification instructions in `items[]`.
-- Make the first item a coherent execution instruction for the whole shared-context outcome; do not turn routine phases into separate items.
-- Require run-specific proof/provenance, then add a turn that re-opens authoritative evidence and proves every criterion, followed by repair and double-checking.
+- Make the description a coherent execution instruction for the complete outcome; allow zero items. Keep optional later phases separate from the description turn.
+- Require run-specific proof/provenance. Builder adds a semantic verification or repair follow-up only for a concrete gap in automatic validation, not by default. An optional verification-only sequence is valid after the description has performed the work.
 - Keep each user-message item focused on one outcome.
 - Use explicit durable files or DB rows for cross-step handoff.
 - Declare item write access before execution.

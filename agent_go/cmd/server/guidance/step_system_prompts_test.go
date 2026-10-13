@@ -34,18 +34,18 @@ func TestStepSystemPromptsShareRuntimeAndBuilderSource(t *testing.T) {
 		}
 	}
 	guide := materializedFileContent(t, skill, "references/step-description.md")
-	for _, marker := range []string{ref, "get_step_prompts", "Do not", "table names", "global learnings", "durable system-level charter", "actual user messages"} {
+	for _, marker := range []string{ref, "get_step_prompts", "Do not", "table names", "global learnings", "executable first user turn, sent ALONE", "items[]` are optional later"} {
 		if !strings.Contains(guide, marker) {
 			t.Fatalf("step authoring guidance missing %q", marker)
 		}
 	}
 	sequence := materializedFileContent(t, skill, "references/agent.md")
-	for _, marker := range []string{"canonical agent step", "description` is the system-level charter", "items[]` entry is a user turn", "predefined_routes"} {
+	for _, marker := range []string{"canonical agent step", "description executes ALONE as the first user turn", "items[]` entry is a subsequent turn", "predefined_routes", "Empty items is valid"} {
 		if !strings.Contains(sequence, marker) {
 			t.Fatalf("agent guidance missing unified-agent contract %q", marker)
 		}
 	}
-	for _, stale := range []string{"description is turn 0", "description is the opening user", "no agentic children"} {
+	for _, stale := range []string{"description` is the system-level charter", "durable system-level charter", "no agentic children"} {
 		if strings.Contains(strings.ToLower(guide+sequence), stale) {
 			t.Fatalf("builder reference retains stale prompt model %q", stale)
 		}

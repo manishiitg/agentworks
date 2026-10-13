@@ -1160,16 +1160,18 @@ func TestPlanReviewAndGoalAdvisorPreferCoherentAgenticSteps(t *testing.T) {
 		"design-plan": {
 			"Modern agents can own a substantial end-to-end outcome in one step",
 			"Validation sequence, not micro-steps",
-			"first work turn the complete outcome",
+			"description turn the complete outcome",
+			"Authored follow-ups are optional",
 			"one-message-per-routine-action sequences",
 		},
 		// goal-advisor was checked here too until 0174b6aff "simplify Pulse
 		// workflow reviews" (2026-08-08) removed this content from it; every
 		// other kind below still carries it, confirmed by rendering each one.
 		"plan-design": {
-			"Give the work turn the complete outcome",
-			"do not create one item per checklist line",
-			"re-open the evidence and verify every success criterion",
+			"Description is the first turn alone",
+			"items: []",
+			"re-open its evidence and prove every success criterion",
+			"authored follow-ups are optional",
 			"tiny routine instructions",
 			"one coherent agentic outcome",
 		},
@@ -1214,7 +1216,7 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 				"Deterministic fetcher → agentic processor",
 				"do not create one step per endpoint or command",
 				"scripted step executes it",
-				"Consume deterministic evidence; do not fetch it conversationally",
+				"Do not spend an LLM turn reissuing a known request",
 			},
 		},
 		"scripted": {

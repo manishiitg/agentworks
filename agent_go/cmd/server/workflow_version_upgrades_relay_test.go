@@ -131,7 +131,7 @@ func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
 		t.Error("a Goals workflow on 1.0.44 must be blocked")
 	}
 	relay144 := &WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: "relay"}
-	if plan := workflowVersionUpgradePlan(relay144); len(plan) != 2 || plan[0].label != "upgrade-step-description-layout" {
+	if plan := workflowVersionUpgradePlan(relay144); len(plan) != 3 || plan[0].label != "upgrade-step-description-layout" {
 		t.Errorf("a Relay on 1.0.44 owes only the description layout migration, got %+v", plan)
 	}
 	if manifestContractIsExecutionCompatible(relay144) {

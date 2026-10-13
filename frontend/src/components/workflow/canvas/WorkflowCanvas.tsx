@@ -908,7 +908,7 @@ function ReadOnlyStepDetailPanel({
 
         {sequenceItems?.length ? (
           <DetailSection icon={ListOrdered} title={`${step?.type === 'agent' && step.authored_prompt ? 'User messages' : 'Agent instructions'} (${sequenceItems.length})`}>
-            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'agent' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : 'Ordered items the step runs top to bottom.'}</p>
+            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'agent' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : step?.type === 'agent' && step.prompt_contract === 'description-first-v1' ? 'The step task runs alone first. Optional follow-ups run afterward in order.' : 'Ordered items the step runs top to bottom.'}</p>
             <ol className="space-y-2">
               {sequenceItems.map((item, index) => {
                 // Normalize so it reads consistently with the Agent node card.

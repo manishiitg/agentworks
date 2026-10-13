@@ -163,8 +163,8 @@ func TestChangeStepTypeConvertsScriptedToASequenceAndClearsTheMode(t *testing.T)
 	if !ok {
 		t.Fatalf("step type after conversion = %T, want *AgentPlanStep", step)
 	}
-	if len(seq.Items) != 1 || seq.Items[0].ID != normalizedScriptedSequenceItemID || seq.NextStepID != "judge" {
-		t.Fatalf("expected one execute-and-verify item and the chain kept, got %+v", seq)
+	if len(seq.Items) != 0 || seq.PromptContract != AgentDescriptionFirstPromptContract || seq.NextStepID != "judge" {
+		t.Fatalf("expected a description-first agent with zero follow-ups and the chain kept, got %+v", seq)
 	}
 	cfg := MatchStepConfigByID("collect-price", configs)
 	if cfg == nil || cfg.LockCode != nil {

@@ -293,6 +293,9 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 	err := executionOnlySystemTemplate.Execute(&result, map[string]interface{}{
 		"StepTitle":                 templateVars["StepTitle"],
 		"StepDescription":           systemStepDescription,
+		"DescriptionFirst":          templateVars["DescriptionFirst"],
+		"StepSystemRules":           templateVars["StepSystemRules"],
+		"PendingInvocationInput":    templateVars["PendingInvocationInput"],
 		"StepContextDependencies":   templateVars["StepContextDependencies"],
 		"WorkspacePath":             workspacePath,
 		"IsCodeExecutionMode":       isCodeExecutionMode,

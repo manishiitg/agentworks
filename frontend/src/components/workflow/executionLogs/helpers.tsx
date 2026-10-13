@@ -101,6 +101,7 @@ export const getExecutionOrigin = (execution: unknown, validations: unknown[], p
     .map(asRecord)
     .find(item => item?.id === itemID)
   const plannedMessage = typeof plannedItem?.message === 'string' ? plannedItem.message : undefined
+  if (itemID === '__step_description__') return {label: 'Step task', detail: 'The description runs as the first user turn.', className: 'text-muted-foreground', plannedMessage}
   const repairMatch = itemID.match(/^__automatic_final_validation__-repair-(\d+)$/)
 
   if (repairMatch) {

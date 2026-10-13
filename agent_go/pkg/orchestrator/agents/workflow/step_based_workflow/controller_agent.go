@@ -40,17 +40,21 @@ type agentSequenceRuntimeSessionOverride struct {
 }
 
 type agentSequenceSession struct {
-	SessionID           string                    `json:"session_id"`
-	StepID              string                    `json:"step_id"`
-	RunFolder           string                    `json:"run_folder"`
-	Status              string                    `json:"status"`
-	CreatedAt           time.Time                 `json:"created_at"`
-	UpdatedAt           time.Time                 `json:"updated_at"`
-	ConversationHistory []llmtypes.MessageContent `json:"conversation_history"`
-	LastRuntimeContext  string                    `json:"last_runtime_context,omitempty"`
-	RuntimeSessionID    string                    `json:"runtime_session_id,omitempty"`
-	ExecutionTurnCount  int                       `json:"execution_turn_count,omitempty"`
-	Entries             []agentSequenceEntry      `json:"entries,omitempty"`
+	PromptContract            string `json:"prompt_contract,omitempty"`
+	SystemRules               string `json:"system_rules,omitempty"`
+	pendingInitialInstruction bool
+	initialStep               *AgentPlanStep
+	SessionID                 string                    `json:"session_id"`
+	StepID                    string                    `json:"step_id"`
+	RunFolder                 string                    `json:"run_folder"`
+	Status                    string                    `json:"status"`
+	CreatedAt                 time.Time                 `json:"created_at"`
+	UpdatedAt                 time.Time                 `json:"updated_at"`
+	ConversationHistory       []llmtypes.MessageContent `json:"conversation_history"`
+	LastRuntimeContext        string                    `json:"last_runtime_context,omitempty"`
+	RuntimeSessionID          string                    `json:"runtime_session_id,omitempty"`
+	ExecutionTurnCount        int                       `json:"execution_turn_count,omitempty"`
+	Entries                   []agentSequenceEntry      `json:"entries,omitempty"`
 
 	runtime *agentSequenceRuntime
 	// delegation is set when this sequence is a todo_task orchestrator running on
@@ -444,8 +448,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		source = "configured_queue"
 	}
 	if hasExisting {
-		// Route re-entry: continue the in-memory conversation with one new user message.
+		// Route re-entry keeps the entire starting task/config snapshot in memory.
 		session = existing
+		if existing.initialStep != nil {
+			pinned := *existing.initialStep
+			sequenceStep = &pinned
+		} else {
+			pinned := *sequenceStep
+			pinned.PromptContract = existing.PromptContract
+			pinned.SystemRules = existing.SystemRules
+			sequenceStep = &pinned
+		}
+
 		// The opening route description is already in this conversation. Send only
 		// the new instruction supplied by the parent orchestrator; replaying the full
 		// durable description wastes context and duplicates instructions every call.
@@ -465,11 +479,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	} else {
 		// First route call, or any standalone run: run the configured queue.
 		session = &agentSequenceSession{
-			SessionID: sequenceStep.GetID(),
-			StepID:    sequenceStep.GetID(),
-			RunFolder: hcpo.selectedRunFolder,
-			Status:    "running",
-			CreatedAt: time.Now(),
+			PromptContract: sequenceStep.PromptContract,
+			SystemRules:    sequenceStep.SystemRules,
+			SessionID:      sequenceStep.GetID(),
+			StepID:         sequenceStep.GetID(),
+			RunFolder:      hcpo.selectedRunFolder,
+			Status:         "running",
+			CreatedAt:      time.Now(),
 		}
 		// Run the configured queue, automatically enforce the step-level final
 		// validation contract, then append synthetic learnings/KB contribution
@@ -477,6 +493,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		// learning_objective / knowledgebase_contribution — the same post-step
 		// learnings/KB a scripted step runs. (Copy first so we never mutate the plan's
 		// Items slice.)
+		initialStep := *sequenceStep
+		session.initialStep = &initialStep
 		configuredItems := append([]AgentItem(nil), sequenceStep.Items...)
 		// Live caller/operator input is conversational state, not part of the
 		// durable step charter. Put it in the user-message queue before authored
@@ -489,6 +507,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 			initialInstruction = strings.TrimSpace(execCtx.WorkshopHumanInput)
 		}
 		if initialInstruction != "" && !sequenceStep.AuthoredPrompt {
+			session.pendingInitialInstruction = true
 			configuredItems = append([]AgentItem{{
 				ID:      sequenceStep.GetID() + "-initial-instruction",
 				Type:    "user_message",
@@ -496,13 +515,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 				Message: initialInstruction,
 			}}, configuredItems...)
 		}
-		if len(configuredItems) == 0 && !sequenceStep.AuthoredPrompt {
+		if len(configuredItems) == 0 && !sequenceStep.AuthoredPrompt && !agentDescriptionFirst(sequenceStep) {
 			configuredItems = []AgentItem{{
 				ID:      sequenceStep.GetID() + "-execute",
 				Type:    "user_message",
 				Kind:    "execution",
 				Message: "Execute the step charter now and verify that its requirements are satisfied.",
 			}}
+		}
+		if agentDescriptionFirst(sequenceStep) {
+			// The task is a complete first turn, never combined with item zero,
+			// operator input, a script result, or a generic execution instruction.
+			configuredItems = append([]AgentItem{agentDescriptionItem(sequenceStep)}, configuredItems...)
 		}
 		if sequenceStep.AuthoredPrompt {
 			plannedItems = configuredItems
@@ -1060,6 +1084,9 @@ func formatAgentPrevalidationFeedback(itemID string, results *WorkspaceVerificat
 func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.Context, step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, session *agentSequenceSession) (string, error) {
 	delegation := session.delegation
 	writeAccess := hcpo.resolveAgentItemWriteAccess(getAgentConfigs(step), item)
+	if agentDescriptionFirst(step) && item.ID == AgentDescriptionTurnID && step.InitialWriteAccess != nil {
+		writeAccess = hcpo.constrainAgentWriteAccess(getAgentConfigs(step), *step.InitialWriteAccess)
+	}
 	var readPaths, writePaths []string
 	if delegation != nil {
 		readPaths, writePaths = delegation.ReadPaths, delegation.WritePaths
@@ -1120,6 +1147,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 		session.referencedGuides = &guides
 	}
 	templateVars["ReferencedGuides"] = *session.referencedGuides
+	if agentDescriptionFirst(step) && item.ID == AgentDescriptionTurnID && session.pendingInitialInstruction {
+		templateVars["PendingInvocationInput"] = "true"
+	}
 	common.SetSessionShellEnv(runtime.SessionID, map[string]string{"SHARED_KB_STEP_ACCESS": agentSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)})
 	if step.AuthoredPrompt {
 		systemPrompt, promptErr := hcpo.renderAuthoredPrompt(ctx, step.SystemPrompt)
@@ -1704,7 +1734,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPla
 		"StepTitle":               step.GetTitle(),
 		"StepDescription":         ResolveVariables(step.GetDescription(), promptValues),
 		"BaseDescription":         ResolveVariables(step.GetDescription(), promptValues),
-		"FollowUpMessage":         message,
+		"FollowUpMessage":         ResolveVariables(message, promptValues),
 		"ValidationSchema":        agentSequenceValidationSchemaJSON(step.GetValidationSchema()),
 		"IsContributionTurn":      isContributionTurn,
 		"StepContextDependencies": strings.Join(step.GetContextDependencies(), "\n"),
@@ -1730,6 +1760,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPla
 		"CurrentDate":             promptDate(time.Now()),
 		"CurrentTime":             promptTime(time.Now()),
 	}
+	applyAgentPromptContract(vars, step, promptValues)
 	return applySharedKBPrompt(hcpo.GetWorkspacePath(), vars)
 }
 

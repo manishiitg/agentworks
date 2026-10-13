@@ -227,6 +227,7 @@ export interface AgentItem {
   title?: string;
   message?: string;
   write_access?: AgentWriteAccess;
+  retained_reason?: string;
   validation_schema?: ValidationSchema;
   prevalidation?: ValidationSchema;
   source_sql?: string;        // read-only query against db/db.sqlite
@@ -239,6 +240,9 @@ export interface AgentItem {
 
 export interface AgentPlanStep extends CommonStepFields {
   type: 'agent';
+  prompt_contract?: 'description-first-v1';
+  system_rules?: string;
+  initial_write_access?: AgentWriteAccess;
   authored_prompt?: boolean;
   system_prompt?: string;
   items?: AgentItem[];
@@ -406,7 +410,13 @@ export function runsAsAgent(step: PlanStep): boolean {
 // Display only — these are never written back to plan.json, exactly as the Go
 // side marks them Synthetic and keeps them out of serialization.
 export function configuredAgentItems(step: PlanStep): AgentItem[] {
-  if (isAgentStep(step)) return step.items ?? [];
+  if (isAgentStep(step)) {
+    const items = step.items ?? [];
+    if (step.prompt_contract === 'description-first-v1' && !step.authored_prompt) {
+      return [{id: '__step_description__', type: 'user_message', title: 'Step task', kind: 'execution', message: step.description}, ...items];
+    }
+    return items;
+  }
   if (!runsAsAgent(step)) return [];
 
   const items: AgentItem[] = [{

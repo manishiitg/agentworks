@@ -20,6 +20,7 @@ export function inspectionRecords(response: ExecutionInspectionResponse) {
 export function inspectionTaskLabel(name: string): string {
  const item = name.match(/^Agent item -> .* \/ ([^/]+) \(([^)]+)\)$/)
  if (!item) return name
+ if (item[1] === '__step_description__') return 'Step task'
  if (item[1].startsWith('__automatic_final_validation')) return 'Final validation'
  return item[2] === 'prevalidation' ? `Validation ${item[1]}` : `Task ${item[1]}`
 }

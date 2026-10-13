@@ -6195,6 +6195,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateManagedDBScriptsStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
 				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
 			}
+			if version == AgentDescriptionFirstContractVersion {
+				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
+				if err != nil {
+					return "", err
+				}
+				if err := ValidateAgentDescriptionFirstContractStamp(content); err != nil {
+					return "", err
+				}
+			}
 			if version == AgentStepContractVersion {
 				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
 				if err != nil {

@@ -1,5 +1,26 @@
 # Decisions and open issues
 
+## 2026-10-13 — Agent descriptions execute first; follow-ups are optional (PLAT-861)
+
+Ordinary agents using `prompt_contract=description-first-v1` execute their complete
+step description as the first user turn alone. Authored items are subsequent turns
+and may be empty. Builder chooses a meaningful later phase or semantic verification
+when automatic validation cannot prove the required evidence; generic execute,
+verify and repair sequences are not mandatory. The existing final validation gate
+and its repair loop remain. `system_rules` holds standing business/approval policies;
+`initial_write_access` can preserve the old first work turn's store narrowing.
+
+Saved agents with no marker retain their system-charter semantics until reviewed
+migration. Contract 1.0.48 checks every ordinary agent, route and orphan before
+stamping; 1.0.47 stays execution-compatible during rollout. Migration must remove
+redundant execution items, preserve unique requirements, policies, output/access
+contracts and meaningful phases, and review script prerequisites. In-flight runs
+keep their loaded plan. Custom authored prompts retain their explicit messages.
+Why: task data belongs in a user turn, and routine verification should not force
+extra model turns or repeat an external action during migration.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-152.
+
 ## 2026-10-13 — Remove page sharing copies from report and file menus (PLAT-746)
 
 Report selectors and workspace file/folder menus no longer offer Copy share link.

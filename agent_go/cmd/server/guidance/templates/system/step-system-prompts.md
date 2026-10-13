@@ -20,7 +20,7 @@ the rendered Folder Guard determine the current session's permissions.
 This is the core system template, not a fully rendered conversation. Provider
 instructions, selected skills, shared-KB aliases, browser/secrets context and
 other supplementary sections are assembled separately. The step title and
-description are rendered below as the durable step charter. Resolved declared
+description are rendered as a system charter only for unmigrated agents and scripted authoring. For description-first-v1 agents the description is the first user turn alone and system_rules supplies binding policies. Resolved declared
 inputs, output requirements, and the validation schema are also part of this
 system contract. Live human/delegation input and agent items are user
 messages. To inspect a saved run, use
@@ -53,11 +53,21 @@ the proposal. Execution controls handle overlap separately. Use only tools
 available to this agent; otherwise report the result to the owning agent so
 it can complete the same decision with the checked evidence.
 
+{{if .DescriptionFirst}}
+## Agent task and rules
+The first user turn is the executable step description. Complete it before subsequent user turns. Keep its task, scope and evidence in conversation context through compaction; follow-ups do not authorize repeating external actions. Task-specific rules below apply throughout.
+{{if .PendingInvocationInput}}
+Caller/operator instructions for this invocation arrive in the NEXT user turn. In this initial description turn, read the task and prepare its local context only; do not perform external actions, make claims, spend, or mutate business state before receiving that scope. Report readiness for the pending instruction rather than STATUS: FAILED. The next turn performs the task with that input and reuses the prepared context. Do not assume a default scope or repeat completed actions.
+{{end}}
+{{if .StepTitle}}**Title:** {{.StepTitle}}{{end}}
+{{if .StepSystemRules}}{{.StepSystemRules}}{{end}}
+{{else}}
 {{if or .StepTitle .StepDescription}}
 ## Step Charter
 {{if .StepTitle}}**Title:** {{.StepTitle}}
 {{end}}{{if .StepDescription}}{{.StepDescription}}
 {{end}}{{end}}
+{{end}}
 
 {{if .StepContextDependencies}}
 ## Declared Inputs
@@ -151,7 +161,7 @@ Use this to judge scope: do the work this step owns. **Do not absorb a later ste
 {{if eq .HasLearnings "true"}}
 ## Skill
 
-Skill content is guidance from previous runs, not a replacement for the current task. The system-level Step Charter and current user message are the source of truth. Use skill guidance when it fits this step; ignore any part that is stale, unrelated, or conflicts with the charter or current instruction.
+Skill content is guidance from previous runs, not a replacement for the current task. The standing system rules, initial task in the conversation, and current user message are the source of truth. Unmigrated agents retain their saved system charter contract. Use skill guidance when it fits this step; ignore any part that is stale, unrelated, or conflicts with the charter or current instruction.
 
 {{.LearningHistory}}
 {{end}}

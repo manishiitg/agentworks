@@ -169,7 +169,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 			return nil, fmt.Errorf("authored-prompt steps use their own renderer; inspect their authored contract and get_step_prompts for a saved run")
 		}
 		var item *AgentItem
+		if agentDescriptionFirst(agent) && (itemID == "" || itemID == AgentDescriptionTurnID) {
+			opener := agentDescriptionItem(agent)
+			item = &opener
+		}
 		for i := range agent.Items {
+			if item != nil {
+				break
+			}
 			candidate := &agent.Items[i]
 			if (itemID == "" && candidate.Type == "user_message") || candidate.ID == itemID {
 				item = candidate
@@ -180,6 +187,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 			return nil, fmt.Errorf("select a user_message item to preview an agent turn; foreach/scripted/prevalidation inputs resolve at runtime")
 		}
 		access := hcpo.resolveAgentItemWriteAccess(stepConfig, *item)
+		if item.ID == AgentDescriptionTurnID && agent.InitialWriteAccess != nil {
+			access = hcpo.constrainAgentWriteAccess(stepConfig, *agent.InitialWriteAccess)
+		}
 		readPaths, writePaths = hcpo.setupAgentFolderGuard(step.GetID(), step.GetID(), stepConfig, access, true)
 		vars = hcpo.buildAgentTemplateVars(agent, *item, max(info.TopIndex-1, 0), step.GetID(), ResolveVariables(item.Message, values), readPaths, writePaths, access, values)
 		result.ItemID = item.ID
@@ -188,6 +198,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 			vars = hcpo.buildOrchestratorTemplateVars(ctx, agent, max(info.TopIndex-1, 0), step.GetID(), nil, nil, plan.Steps, "", nil, values)
 			vars["StepContextDependencies"] = strings.Join(step.GetContextDependencies(), "\n")
 			vars["FollowUpMessage"] = ResolveVariables(item.Message, values)
+			applyAgentPromptContract(vars, agent, values)
 			result.InvocationTools = registeredToolNames(virtualtools.CreateSubAgentTools())
 			result.Unresolved = append(result.Unresolved, "Conditional specialist call tools require an admitted owning invocation; child call paths and inputs resolve at runtime.")
 		}

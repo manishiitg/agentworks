@@ -73,9 +73,9 @@ Deterministic code is not a sequence item. Put code in a standalone `scripted` s
 }
 ```
 
-The step `description` is the system-level charter shared by every turn. Items
+For description-first-v1, the step `description` executes alone as the first user turn. System rules govern all turns; optional items
 are the actual user messages, in order, describing how the agent should carry
-out and verify that charter.
+out subsequent phases or semantic checks after the description has completed. Zero items is valid; automatic validation/repair remains the completion gate.
 
 The top-level `validation_schema` is the sequence's final contract. When it is present, the runtime automatically runs it after the configured work turns and before synthetic learning/knowledge closing turns. A failed gate is returned to the same conversation as a repair turn and retried. Explicit `prevalidation` items are only needed for intermediate checkpoints; a final explicit gate with the same schema is not run twice.
 

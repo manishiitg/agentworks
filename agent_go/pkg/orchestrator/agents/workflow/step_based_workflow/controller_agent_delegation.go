@@ -209,6 +209,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		execCtx,
 	)
 
+	applyAgentPromptContract(templateVars, orchestratorStep, hcpo.variableValues)
+
 	agentName := orchestratorStep.Title
 	if agentName == "" {
 		agentName = fmt.Sprintf("todo-task-orchestrator-step-%d", stepIndex+1)
@@ -289,7 +291,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		}
 		// The description is the system-level step charter. Every authored item,
 		// including the first one, is an actual user message.
-		vars["FollowUpMessage"] = message
+		vars["FollowUpMessage"] = ResolveVariables(message, hcpo.variableValues)
+		applyAgentPromptContract(vars, orchestratorStep, hcpo.variableValues)
 		return vars
 	}
 	// The todo_task execution-log shape (SubAgentCallRecords, todo_task_response) is
@@ -312,15 +315,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		}
 		items = append(items, m)
 	}
-	sequenceStep := &AgentPlanStep{
-		Type:             StepTypeAgent,
-		CommonStepFields: orchestratorStep.CommonStepFields,
-		Items:            items,
-		NextStepID:       orchestratorStep.NextStepID,
-		AgentConfigs:     orchestratorStep.AgentConfigs,
-		AuthoredPrompt:   orchestratorStep.AuthoredPrompt,
-		SystemPrompt:     orchestratorStep.SystemPrompt,
-	}
+	sequenceStep := agentSequenceForDelegation(orchestratorStep, items)
+
 	opts := agentSequenceCallOptions{
 		Source: "configured_queue",
 		Delegation: &agentSequenceDelegation{
@@ -1454,4 +1450,11 @@ func latestAssistantExecutionSummary(conversationHistory []llmtypes.MessageConte
 		}
 	}
 	return ""
+}
+
+// Preserve every prompt/access field when adapting to the shared executor.
+func agentSequenceForDelegation(step *AgentPlanStep, items []AgentItem) *AgentPlanStep {
+	value := *step
+	value.Items = append([]AgentItem(nil), items...)
+	return &value
 }
