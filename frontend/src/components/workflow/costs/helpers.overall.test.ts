@@ -14,7 +14,7 @@ describe('resolveOverallSummary', () => {
     // daily rows carry Builder and run tokens.
     const scoped = { total: { total_cost_usd: 4.6959, completion_tokens: 0 }, by_scope: { builder: {} } }
     const rows = [
-      daily({ totalCost: 4.6139, totalTokens: 7155250 + 313754, totalInputTokens: 7155250, totalOutputTokens: 313754 }),
+      daily({ totalCost: 4.6139, totalTokens: 7155250 + 313754, totalInputTokens: 7155250, totalOutputTokens: 313754, cacheReadTokens: 5000000, cacheWriteTokens: 100000 }),
       daily({ date: '2026-10-12', totalCost: 0.0819 + 0.062, totalTokens: 231000 + 8500, totalInputTokens: 231000, totalOutputTokens: 8500 }),
     ]
     const summary = resolveOverallSummary(scoped as never, { totalCost: 0, totalTokens: 0, totalInputTokens: 0, totalOutputTokens: 0, totalRuns: 1 }, null, rows, totalTokens, inputTokens)
@@ -22,6 +22,10 @@ describe('resolveOverallSummary', () => {
     expect(summary?.totalInputTokens).toBe(7155250 + 231000)
     expect(summary?.totalOutputTokens).toBe(313754 + 8500)
     expect(summary?.totalCost).toBeCloseTo(4.6139 + 0.0819 + 0.062)
+    expect(summary?.cacheReadTokens).toBe(5000000)
+    expect(summary?.cacheWriteTokens).toBe(100000)
+    // Fresh input as the header derives it: total - cached - writes.
+    expect((summary?.totalInputTokens ?? 0) - (summary?.cacheReadTokens ?? 0) - (summary?.cacheWriteTokens ?? 0)).toBe(7155250 + 231000 - 5100000)
   })
 
   it('keeps the ledger total when it has tokens', () => {

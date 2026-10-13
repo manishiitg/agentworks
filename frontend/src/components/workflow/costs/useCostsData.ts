@@ -387,6 +387,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
             evaluationTokens: 0,
             totalTokens: 0,
             totalInputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
             totalOutputTokens: 0,
             llmDurationMS: 0,
             runCount: 0,
@@ -405,6 +407,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
         entry.totalTokens += daily.summary.totalTokens
         entry.totalInputTokens = (entry.totalInputTokens ?? 0) + daily.summary.totalInputTokens
         entry.totalOutputTokens = (entry.totalOutputTokens ?? 0) + daily.summary.totalOutputTokens
+        entry.cacheReadTokens = (entry.cacheReadTokens ?? 0) + daily.summary.totalCacheReadTokens
+        entry.cacheWriteTokens = (entry.cacheWriteTokens ?? 0) + daily.summary.totalCacheWriteTokens
       })
       runDailyCostSummaries.forEach(daily => {
         const entry = ensureLegacyEntry(daily.date)
@@ -419,6 +423,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
         entry.totalTokens += daily.summary.totalTokens
         entry.totalInputTokens = (entry.totalInputTokens ?? 0) + daily.summary.totalInputTokens
         entry.totalOutputTokens = (entry.totalOutputTokens ?? 0) + daily.summary.totalOutputTokens
+        entry.cacheReadTokens = (entry.cacheReadTokens ?? 0) + daily.summary.totalCacheReadTokens
+        entry.cacheWriteTokens = (entry.cacheWriteTokens ?? 0) + daily.summary.totalCacheWriteTokens
         entry.runKeys.add(`${daily.scope}:${daily.runFolder}`)
         entry.runCount = entry.runKeys.size
       })
@@ -473,6 +479,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
           evaluationTokens: tokensFor('evaluation') || artifacts?.evaluationTokens || 0,
           totalTokens: totalTokens(total),
           totalInputTokens: inputTokens(total),
+          cacheReadTokens: total.cache_read_tokens || 0,
+          cacheWriteTokens: total.cache_write_tokens || 0,
           totalOutputTokens: total.completion_tokens,
           llmDurationMS: total.llm_generation_duration_ms || 0,
           runCount: total.workflow_run_count || artifacts?.runs.size || 0,

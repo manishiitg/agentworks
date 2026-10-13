@@ -12,7 +12,7 @@ export interface IntegrationSectionOption {
 /** Shared names and descriptions for Crew, Code, workflows and Relay. */
 export const PROJECT_INTEGRATION_SECTIONS: IntegrationSectionOption[] = [
   { value: 'apps', label: 'Tools & secrets', description: 'MCPs, secrets, skills and Vault.', icon: Blocks },
-  { value: 'brain', label: 'Brain', description: 'Shared knowledge for your agents: read & write by default, read only, or off.', icon: Brain, requiredProduct: 'knowledgebase' },
+  { value: 'brain', label: 'Brain', description: 'Shared knowledge for your agents: open and edit by default, open only, or off.', icon: Brain, requiredProduct: 'knowledgebase' },
   { value: 'folders', label: 'Folders & workflows', description: 'Folders on this server and other workflows this one can use.', icon: FolderOpen },
   { value: 'slack', label: 'Slack', description: 'Messages and notifications in Slack.', icon: Slack },
   { value: 'whatsapp', label: 'WhatsApp', description: 'Messages and notifications in WhatsApp.', icon: MessageCircle },

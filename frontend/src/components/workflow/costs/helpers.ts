@@ -170,6 +170,8 @@ export interface CombinedDailyCostSummaryEntry {
   totalTokens: number
   totalInputTokens?: number
   totalOutputTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
   llmDurationMS: number
   runCount: number
 }
@@ -179,13 +181,15 @@ export interface OverallCostSummary {
   totalTokens: number
   totalInputTokens: number
   totalOutputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
   totalRuns: number
 }
 
-type CostAggregateLike = { total_cost_usd?: number; completion_tokens?: number }
+type CostAggregateLike = { total_cost_usd?: number; completion_tokens?: number; cache_read_tokens?: number; cache_write_tokens?: number }
 export type ScopedCostsLike = { total: CostAggregateLike; by_scope?: Record<string, unknown> } | null | undefined
-type AggregateLike = { totalCost: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number; totalRuns: number } | null | undefined
-type PhaseLike = { totalCost: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number } | null | undefined
+type AggregateLike = { totalCost: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number; totalCacheReadTokens?: number; totalCacheWriteTokens?: number; totalRuns: number } | null | undefined
+type PhaseLike = { totalCost: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number; totalCacheReadTokens?: number; totalCacheWriteTokens?: number } | null | undefined
 
 /**
  * The header must agree with the sections under it. Ledger rows can carry a
@@ -208,6 +212,8 @@ export function resolveOverallSummary(
       totalTokens: ledgerTokens,
       totalInputTokens: inputOf(scopedCosts!.total),
       totalOutputTokens: scopedCosts!.total.completion_tokens || 0,
+      cacheReadTokens: scopedCosts!.total.cache_read_tokens || 0,
+      cacheWriteTokens: scopedCosts!.total.cache_write_tokens || 0,
       totalRuns: aggregate?.totalRuns || 0,
     }
   }
@@ -218,6 +224,8 @@ export function resolveOverallSummary(
       totalTokens: dailyTokens,
       totalInputTokens: daily.reduce((sum, entry) => sum + (entry.totalInputTokens || 0), 0),
       totalOutputTokens: daily.reduce((sum, entry) => sum + (entry.totalOutputTokens || 0), 0),
+      cacheReadTokens: daily.reduce((sum, entry) => sum + (entry.cacheReadTokens || 0), 0),
+      cacheWriteTokens: daily.reduce((sum, entry) => sum + (entry.cacheWriteTokens || 0), 0),
       totalRuns: aggregate?.totalRuns || 0,
     }
   }
@@ -227,6 +235,8 @@ export function resolveOverallSummary(
       totalTokens: ledgerTokens,
       totalInputTokens: inputOf(scopedCosts!.total),
       totalOutputTokens: scopedCosts!.total.completion_tokens || 0,
+      cacheReadTokens: scopedCosts!.total.cache_read_tokens || 0,
+      cacheWriteTokens: scopedCosts!.total.cache_write_tokens || 0,
       totalRuns: aggregate?.totalRuns || 0,
     }
   }
@@ -236,6 +246,8 @@ export function resolveOverallSummary(
     totalTokens: (aggregate?.totalTokens || 0) + (phase?.totalTokens || 0),
     totalInputTokens: (aggregate?.totalInputTokens || 0) + (phase?.totalInputTokens || 0),
     totalOutputTokens: (aggregate?.totalOutputTokens || 0) + (phase?.totalOutputTokens || 0),
+    cacheReadTokens: (aggregate?.totalCacheReadTokens || 0) + (phase?.totalCacheReadTokens || 0),
+    cacheWriteTokens: (aggregate?.totalCacheWriteTokens || 0) + (phase?.totalCacheWriteTokens || 0),
     totalRuns: aggregate?.totalRuns || 0,
   }
 }

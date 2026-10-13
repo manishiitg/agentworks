@@ -38,7 +38,7 @@ function renderHeaderWithTotals() {
     <CostsHeader
       loading={false}
       loadAllCosts={() => Promise.resolve()}
-      overallSummary={{ totalCost: 245.6234, totalTokens: 1548130000, totalInputTokens: 1500000000, totalOutputTokens: 48130000, totalRuns: 10 }}
+      overallSummary={{ totalCost: 245.6234, totalTokens: 1548130000, totalInputTokens: 1500000000, totalOutputTokens: 48130000, cacheReadTokens: 0, cacheWriteTokens: 0, totalRuns: 10 }}
       aggregateSummary={null}
       phaseCostSummary={phaseSummary}
       headerAction={<button type="button" data-testid="ask-ai">Ask AI</button>}
@@ -68,6 +68,26 @@ describe('CostsHeader', () => {
     expect(html).toContain('48.13M output')
     expect(html).not.toContain('text-green-')
     expect(html).not.toContain('text-amber-')
+  })
+
+  it('shows the daily-sum token fields when the ledger total is tokenless', () => {
+    const html = renderToStaticMarkup(
+      <CostsHeader
+        loading={false}
+        loadAllCosts={() => Promise.resolve()}
+        scopedCosts={{ total: { total_cost_usd: 4.6959, completion_tokens: 0, prompt_tokens: 0 }, by_scope: {}, by_date: {} } as never}
+        overallSummary={{ totalCost: 4.7578, totalTokens: 7708754, totalInputTokens: 7386250, totalOutputTokens: 322254, cacheReadTokens: 5000000, cacheWriteTokens: 100000, totalRuns: 1 }}
+        aggregateSummary={null}
+        phaseCostSummary={null}
+      />,
+    )
+    expect(html).toContain('Total input')
+    expect(html).toContain('7.39M')
+    expect(html).toContain('Fresh input')
+    expect(html).toContain('2.29M')
+    expect(html).toContain('Cached input')
+    expect(html).toContain('5.00M')
+    expect(html).toContain('322.3K')
   })
 
   it('shows each total once (no icon-duplicated $)', () => {

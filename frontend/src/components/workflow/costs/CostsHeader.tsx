@@ -65,7 +65,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
             Builder {formatUSD(phaseCostSummary.totalCost)}
           </div>
         )}
-        {scopedCosts && <div className="w-full"><CostTokenBreakdown compact usage={scopedCosts.total} /></div>}
+        {scopedCosts && <div className="w-full"><CostTokenBreakdown compact usage={{ input_tokens: overallSummary.totalInputTokens, cache_read_tokens: overallSummary.cacheReadTokens, cache_write_tokens: overallSummary.cacheWriteTokens, completion_tokens: overallSummary.totalOutputTokens }} /></div>}
         {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
         </div>
       ) : undefined}
