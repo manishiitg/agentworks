@@ -104,6 +104,7 @@ it('renders the recorded system/user prompt and merges tool start/result without
 it('renders linked turns as one conversation without joining cross-turn repeats or tool identities', () => {
  const data=response('first','')
  data.transcript.events=[]
+ data.result='Delegation summary'
  data.conversation={source_execution_ids:['turn-1','turn-2'],events:[
   {timestamp:target.started_at,type:'system_message',role:'system',text:'Recorded rules',execution_id:'turn-1'},
   {timestamp:target.started_at,type:'user_message',role:'user',text:'Repeat this instruction',source_type:'orchestrator_agent_start',execution_id:'turn-1'},
@@ -112,6 +113,7 @@ it('renders linked turns as one conversation without joining cross-turn repeats 
    {timestamp:target.started_at,type:'tool_call',execution_id:id,tool_call:{tool_call_id:'reused',tool_name:'read_file',arguments:id,status:'running'}},
    {timestamp:target.started_at,type:'tool_call',execution_id:id,tool_call:{tool_call_id:'reused',tool_name:'read_file',result:`Result ${id}`,status:'completed'}},
   ]),
+  {timestamp:target.started_at,type:'assistant_message',role:'assistant',text:'Complete provider response',execution_id:'turn-2'},
  ]}
  expect(inspectionRecords(data).system).toEqual(['Recorded rules'])
  expect(inspectionRecords(data).tools.map(tool=>tool.arguments)).toEqual(['turn-1','turn-2'])
@@ -119,6 +121,9 @@ it('renders linked turns as one conversation without joining cross-turn repeats 
  expect(chat.events.filter(event=>event.type==='user_message')).toHaveLength(2)
  expect(chat.events.filter(event=>event.type==='tool_call_end').map(event=>(event.data as {data:{tool_call_id:string}}).data.tool_call_id)).toEqual(['turn-1:reused','turn-2:reused'])
  expect(data.transcript.events).toHaveLength(0)
+ expect(inspectionRecords(data).result).toBe('Complete provider response')
+ expect(chat.events.filter(event=>event.type==='llm_generation_end')).toHaveLength(1)
+ expect(JSON.stringify(chat.events)).not.toContain('Delegation summary')
 })
 
 it('opens the selected sub-agent conversation and nested agent without losing failed status', async () => {
