@@ -22,8 +22,9 @@ import (
 
 var knowledgebaseInstance struct {
 	sync.Mutex
-	service *knowledgebase.Service
-	config  knowledgebase.Config
+	service  *knowledgebase.Service
+	stopping bool
+	config   knowledgebase.Config
 }
 
 func knowledgebaseConfig() (knowledgebase.Config, error) {
@@ -103,6 +104,10 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 		return nil, err
 	}
 	knowledgebaseInstance.Lock()
+	if knowledgebaseInstance.stopping {
+		knowledgebaseInstance.Unlock()
+		return nil, fmt.Errorf("Brain host is shutting down")
+	}
 	if knowledgebaseInstance.service != nil && !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
 		// Drain without holding the cache lock: an in-flight host callback may
 		// consult this cache. The root lease refuses a second writer meanwhile.
@@ -132,6 +137,20 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 		}
 	}
 	return knowledgebaseInstance.service, nil
+}
+
+// closeKnowledgebaseService prevents a late background tick or handler from
+// reopening state while process shutdown drains the selected engine.
+func closeKnowledgebaseService() error {
+	knowledgebaseInstance.Lock()
+	knowledgebaseInstance.stopping = true
+	previous := knowledgebaseInstance.service
+	knowledgebaseInstance.service = nil
+	knowledgebaseInstance.Unlock()
+	if previous != nil {
+		return previous.Close()
+	}
+	return nil
 }
 
 func knowledgebaseSyncIdentities(ctx context.Context, service *knowledgebase.Service) error {
@@ -451,7 +470,7 @@ func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
 // follows every save without anyone asking (owner, 2026-10-08). AGENTWORKS_BRAIN_AUTO_PUSH=off turns it off. A
 // remote edited elsewhere is never overwritten: the push stops and the reason is logged and kept for Brain's status.
 func startBrainAutoPush(ctx context.Context) {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_BRAIN_AUTO_PUSH")), "off") {
+	if !productEnabled("knowledgebase") || strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_BRAIN_AUTO_PUSH")), "off") {
 		return
 	}
 	go func() {
