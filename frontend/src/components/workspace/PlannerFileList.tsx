@@ -333,7 +333,7 @@ export default function PlannerFileList({
 
             {/* More actions dropdown for folders */}
             {file.type === 'folder' && (!hideRootActions || depth > 0) && (onCreateFile || onCreateFolder || onFolderUpload || onFolderMove) && (
-              <div className="relative">
+              <div className="relative" onKeyDown={e => { if (e.key === 'Escape' && isActionMenuOpen) { e.stopPropagation(); setOpenActionsPath(null); (e.currentTarget.querySelector('button[aria-haspopup="menu"]') as HTMLButtonElement | null)?.focus() } }}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -472,7 +472,7 @@ export default function PlannerFileList({
 
             {/* More actions dropdown for files */}
             {file.type !== 'folder' && (onFileMove || onFileDownload) && (
-              <div className="relative">
+              <div className="relative" onKeyDown={e => { if (e.key === 'Escape' && isActionMenuOpen) { e.stopPropagation(); setOpenActionsPath(null); (e.currentTarget.querySelector('button[aria-haspopup="menu"]') as HTMLButtonElement | null)?.focus() } }}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button

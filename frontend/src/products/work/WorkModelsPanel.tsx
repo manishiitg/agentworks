@@ -390,7 +390,15 @@ export function WorkModelsPanel({
           configurationSource="agent_profile"
           product={effectiveAccountProduct}
         />
-        <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
+        <section
+          className="mt-4 overflow-hidden rounded-xl border border-border bg-card"
+          onKeyDown={event => {
+            if (event.key !== 'Escape' || !modelPickerOpen) return
+            event.stopPropagation()
+            setModelPickerOpen(false)
+            event.currentTarget.querySelector<HTMLButtonElement>('button[aria-expanded]')?.focus()
+          }}
+        >
           <button
             type="button"
             aria-expanded={modelPickerOpen}

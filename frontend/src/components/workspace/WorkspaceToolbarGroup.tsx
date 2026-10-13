@@ -24,7 +24,16 @@ export function WorkspaceToolbarGroup({ label, open, onToggle, title, hideLabel 
     )
   }
   return (
-    <div {...rest} className="inline-flex h-full items-center gap-0.5 px-1 first:pl-0.5 last:pr-0.5">
+    <div
+      {...rest}
+      className="inline-flex h-full items-center gap-0.5 px-1 first:pl-0.5 last:pr-0.5"
+      onKeyDown={event => {
+        if (event.key !== 'Escape' || !open || !onToggle) return
+        event.stopPropagation()
+        onToggle()
+        event.currentTarget.querySelector<HTMLButtonElement>('button[aria-expanded]')?.focus()
+      }}
+    >
       {onToggle ? (
         <button
           type="button"

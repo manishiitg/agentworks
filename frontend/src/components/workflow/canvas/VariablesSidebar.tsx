@@ -29,6 +29,14 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
   const [hasChanges, setHasChanges] = useState(false)
   const [migrationBlocked, setMigrationBlocked] = useState(false)
 
+  // Escape closes the drawer and focus returns to whatever opened it.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.() }
+  }, [onClose])
+
   // Load variable groups
   useEffect(() => {
     if (!workspacePath) {
@@ -279,6 +287,7 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
           )}
           <button
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
           >
             <X className="w-4 h-4" />
