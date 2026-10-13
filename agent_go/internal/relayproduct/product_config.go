@@ -4,16 +4,20 @@ import (
 	"crypto/sha256"
 	"embed"
 	"fmt"
+	"io/fs"
 	"strings"
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaybackend"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 //go:embed product.yaml prompts/*.md skills/*/SKILL.md
-var files embed.FS
+var builtinFiles embed.FS
+var files fs.FS
+var loadedBackend string
 
 var (
 	once     sync.Once
@@ -24,7 +28,20 @@ var (
 )
 
 func loadProduct() error {
+	name, err := relaybackend.Name()
+	if err != nil {
+		return err
+	}
+	factory, err := relaybackend.Resolve()
+	if err != nil {
+		return err
+	}
 	once.Do(func() {
+		loadedBackend = name
+		files = builtinFiles
+		if factory != nil {
+			files = factory.Files
+		}
 		manifest, loadErr = agentprofiles.LoadProductManifest(files, "product.yaml")
 		if loadErr != nil {
 			loadErr = fmt.Errorf("Relay product manifest: %w", loadErr)
@@ -58,7 +75,7 @@ func loadProduct() error {
 				}
 				skillSeen[name] = true
 				var raw []byte
-				raw, loadErr = files.ReadFile("skills/" + name + "/SKILL.md")
+				raw, loadErr = fs.ReadFile(files, "skills/"+name+"/SKILL.md")
 				if loadErr != nil {
 					return
 				}
@@ -74,6 +91,9 @@ func loadProduct() error {
 			}
 		}
 	})
+	if loadedBackend != name {
+		return fmt.Errorf("changing Relay backend requires a process restart")
+	}
 	return loadErr
 }
 
@@ -218,5 +238,8 @@ func ExternalSkill(name string) (string, bool) {
 
 // ExternalTopics reads exposure metadata from the Relay skills themselves.
 func ExternalTopics() ([]externalguidance.Topic, error) {
+	if err := loadProduct(); err != nil {
+		return nil, err
+	}
 	return externalguidance.Load(files, "skills/*/SKILL.md")
 }

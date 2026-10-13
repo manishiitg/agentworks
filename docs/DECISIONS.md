@@ -6129,3 +6129,26 @@ Dashboard questions reuse the caller's existing ordinary project conversation, a
 Ordinary native Crew chats retain their existing tools and permissions, including the current distinction between owner chats, reader chats and isolated function-call turns. This slice does not change guest function access or the existing read-only MCP ask_crew policy. The existing read_project_files tool is available to native Crew chats and gains a dashboard action for currently authorized captured published source in the bound project. It reads no raw databases or private execution areas. Query admission also refuses a foreign Crew root unless the request resolves through the verified Work conversation binding.
 
 This slice enables Crew dashboard Ask and workflow owners' existing conversations. Workflow-reader parity, Relay published/own-caller evidence, declared-query database isolation and mid-turn token revalidation remain prerequisites for their respective shared paths. The earlier durable dashboard-question API remains a no-model foundation; the existing native chat queue/history is the execution and reply authority for this entry point. Sharing changes and deployment are separate.
+
+## 2026-10-13: Relay product engine and assets behind a private composition boundary
+
+Relays uses a versioned in-process `relayapi` contract for the Python/DBOS runtime,
+immutable release snapshots and Builder assets. The public host retains OAuth and
+current-user/function authorization, scheduling, secret/model/MCP admission,
+workspace scoping and the shared Goals execution engine. Live callbacks keep their
+context and authority; they are not serialized into a separate service.
+
+`AGENTWORKS_RELAY_BACKEND=private` requires a compiled compatible factory and fails
+closed if unavailable. Default public builds retain their compatibility engine.
+Release publishing takes the existing host publication lock and validates the
+frozen program before activating its unchanged release pointer. Draft/release/run
+paths, hashes and DBOS checkpoint formats do not change.
+
+Private builds use a temporary Go factory overlay and a trusted frontend source
+mapping, preserving React module identities and shared platform imports. Public
+builds require neither private source nor credentials. Private CI pins both source
+revisions, checks runtime/Builder/UI parity, exercises real private-backed host
+access and recovery tests, and verifies builtin/private/builtin release and DBOS
+checkpoint rollback. Public compatibility removal follows artifact rollout and
+accepted rollback; extraction does not erase public history or conceal JavaScript
+sent to a browser.

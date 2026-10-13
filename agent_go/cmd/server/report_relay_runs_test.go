@@ -62,8 +62,8 @@ func TestReportRelayRunsUsesProjectAccessAndDoesNotExposePrivateTrace(t *testing
 	}
 }
 
-// Owners and editors see every caller's recorded run; any other reader sees only
-// the runs they started, and a run with no recorded caller stays hidden from them.
+// The single Relay Builder sees every caller's recorded run. Run-mode members,
+// including legacy editors, see only their own runs; unattributed runs stay hidden.
 func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	root := t.TempDir()
@@ -73,10 +73,11 @@ func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
 		"Workflow/relay/workflow.json":                  `{"id":"relay","kind":"relay","access":{"owners":["owner"],"editors":["editor"],"readers":["reader-a","reader-b"]}}`,
 		"Workflow/relay/webhooks/deliveries/run-1.json": `{"run_id":"run-1","payload":{"relay_caller":"reader-a"}}`,
 		"Workflow/relay/webhooks/deliveries/run-2.json": `{"run_id":"run-2","payload":{"relay_caller":"reader-b"}}`,
+		"Workflow/relay/webhooks/deliveries/run-4.json": `{"run_id":"run-4","payload":{"relay_caller":"editor"}}`,
 	}})
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
-	for number, id := range map[string]string{"1": "run-1", "2": "run-2", "3": "run-3"} {
+	for number, id := range map[string]string{"1": "run-1", "2": "run-2", "3": "run-3", "4": "run-4"} {
 		dir := filepath.Join(root, "Workflow/relay/runs/iteration-"+number+"-hook")
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
@@ -100,19 +101,23 @@ func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, user := range []string{"owner", "editor"} {
+	for _, user := range []string{"owner"} {
 		body := seen(user)
-		for _, id := range []string{"run-1", "run-2", "run-3"} {
+		for _, id := range []string{"run-1", "run-2", "run-3", "run-4"} {
 			if !strings.Contains(body, `"run_id":"`+id+`"`) {
 				t.Fatalf("%s should see every run, missing %s: %s", user, id, body)
 			}
 		}
 	}
+	editor := seen("editor")
+	if !strings.Contains(editor, `"run-4"`) || strings.Contains(editor, "run-1") || strings.Contains(editor, "run-2") || strings.Contains(editor, "run-3") || !strings.Contains(editor, `"scope":"own"`) {
+		t.Fatalf("Run-mode editor must see only own run: %s", editor)
+	}
 	a, b := seen("reader-a"), seen("reader-b")
-	if !strings.Contains(a, `"run-1"`) || strings.Contains(a, "run-2") || strings.Contains(a, "run-3") || !strings.Contains(a, `"scope":"own"`) {
+	if !strings.Contains(a, `"run-1"`) || strings.Contains(a, "run-2") || strings.Contains(a, "run-3") || strings.Contains(a, "run-4") || !strings.Contains(a, `"scope":"own"`) {
 		t.Fatalf("reader-a must see only run-1: %s", a)
 	}
-	if !strings.Contains(b, `"run-2"`) || strings.Contains(b, "run-1") || strings.Contains(b, "run-3") {
+	if !strings.Contains(b, `"run-2"`) || strings.Contains(b, "run-1") || strings.Contains(b, "run-3") || strings.Contains(b, "run-4") {
 		t.Fatalf("reader-b must see only run-2: %s", b)
 	}
 }

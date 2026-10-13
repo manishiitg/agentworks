@@ -3,6 +3,7 @@ import { fileURLToPath } from "url"
 import fs from "fs"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import { productSourceOverlay } from './build/productSourceOverlay'
 
 // ESM-safe __dirname: package.json has "type": "module" so the top-level
 // CommonJS __dirname isn't defined when Vite loads this config.
@@ -54,7 +55,7 @@ const isolatedRuntimeConfigPlugin = {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [isolatedRuntimeConfigPlugin, react()],
+  plugins: [...productSourceOverlay(projectRoot), isolatedRuntimeConfigPlugin, react()],
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "./src"),

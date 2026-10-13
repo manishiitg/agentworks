@@ -74,6 +74,11 @@ func validatePythonRelaySource(ctx context.Context, workspacePath string) error 
 }
 
 func inspectPythonRelaySource(ctx context.Context, workspacePath, source string) (json.RawMessage, error) {
+	inspector, backendErr := relaypython.SourceInspectorForBackend()
+	if backendErr != nil {
+		return nil, backendErr
+	}
+
 	if strings.TrimSpace(source) == "" || len(source) > 64*1024 {
 		return nil, fmt.Errorf("relay.py must contain 1–65536 bytes")
 	}
@@ -95,7 +100,7 @@ func inspectPythonRelaySource(ctx context.Context, workspacePath, source string)
 	timeout := 15
 	result, err := client.ExecuteShellCommand(validationCtx, workspace.ExecuteShellCommandParams{
 		Command: "python3 -I -c '" + check + "'", WorkingDirectory: workspacePath, Timeout: &timeout,
-		ExtraEnv: map[string]string{"VAR_RELAY_CHECK_SOURCE": base64.StdEncoding.EncodeToString([]byte(source)), "VAR_RELAY_INSPECTOR": base64.StdEncoding.EncodeToString([]byte(relaypython.SourceInspector))},
+		ExtraEnv: map[string]string{"VAR_RELAY_CHECK_SOURCE": base64.StdEncoding.EncodeToString([]byte(source)), "VAR_RELAY_INSPECTOR": base64.StdEncoding.EncodeToString([]byte(inspector))},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("inspect relay.py: %w", err)
