@@ -2,6 +2,8 @@ package agentworksclient
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,4 +90,32 @@ func TestAttachGateRunsOneAttachPerChat(t *testing.T) {
 	} else {
 		release3()
 	}
+}
+
+// A busy server can take many seconds per call, so peers, send, read, ack and reply talk to it
+// without the bridge lock: while one of them waits, other commands still answer at once.
+func TestSlowServerCallDoesNotHoldTheBridgeLock(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer slow.Close()
+	client, err := New(slow.URL, "token")
+	if err != nil {
+		t.Skip("test server not accepted by the client:", err)
+	}
+	session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: client, Offers: map[string]localOffer{}}
+	b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "s"): session}, changed: make(chan struct{})}
+	done := make(chan struct{})
+	go func() {
+		b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "peers", Provider: "claude", SessionID: "s", HostKey: "h"})
+		close(done)
+	}()
+	time.Sleep(60 * time.Millisecond) // the peers call is now waiting on the server
+	start := time.Now()
+	b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "status", Provider: "claude", SessionID: "s", HostKey: "h"})
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("status waited %v behind a peers call that was only waiting on the server", elapsed)
+	}
+	<-done
 }

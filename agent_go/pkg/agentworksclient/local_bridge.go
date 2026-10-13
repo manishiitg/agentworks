@@ -1060,12 +1060,25 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 	switch in.Action {
 	case "purpose":
-		if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		snap := &localSession{Attachment: s.Attachment, client: s.client}
+		var raw json.RawMessage
+		var failed *LocalBridgeReply
+		b.unlocked(func() { // server calls run without the bridge lock
+			if _, err := snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+				failed = &LocalBridgeReply{Error: "attachment no longer authorized"}
+				return
+			}
+			var err error
+			raw, err = snap.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "purpose": in.Purpose})
+			if err != nil {
+				failed = &LocalBridgeReply{Error: err.Error()}
+			}
+		})
+		if failed != nil {
+			return *failed
 		}
-		raw, err := s.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "purpose": in.Purpose})
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+		if b.closed || b.sessions[key] != s {
+			return LocalBridgeReply{Error: "this chat was detached or replaced while its purpose was being set"}
 		}
 		var updated struct {
 			Purpose string `json:"purpose"`
@@ -1083,52 +1096,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	case "peers", "send", "read", "reply_inbox":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
-		args := map[string]any{"agent_name": s.Attachment.AgentName}
-		switch in.Action {
-		case "peers":
-			args["action"] = "list_agents"
-		case "send":
-			args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
-		case "reply_inbox":
-			history, e := s.client.Call(callCtx, "messages", map[string]any{"action": "read", "agent_name": s.Attachment.AgentName, "inbox_id": in.InboxID, "after": 0, "limit": 20})
-			if e != nil {
-				return LocalBridgeReply{Error: e.Error()}
-			}
-			filtered, e := filterAttachedMailbox(callCtx, s, history)
-			if e != nil {
-				return LocalBridgeReply{Error: e.Error()}
-			}
-			var checked struct {
-				Messages []json.RawMessage `json:"messages"`
-			}
-			if json.Unmarshal(filtered, &checked) != nil || len(checked.Messages) == 0 {
-				return LocalBridgeReply{Error: "inbox has no currently authorized incoming message for this attachment"}
-			}
-			// Explicit mailbox recovery survives local metadata compaction.
-			// The server still verifies this caller's inbox participation.
-			args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
-		case "read":
-			args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
-			if in.InboxID != "" {
-				args["inbox_id"] = in.InboxID
-			}
-		}
-		// Recheck the receiver lease even for directory/read operations.
-		if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-			return LocalBridgeReply{Error: "attachment no longer authorized"}
-		}
-		raw, err := s.client.Call(callCtx, "messages", args)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
-		}
-		if in.Action == "read" {
-			raw, err = filterAttachedMailbox(callCtx, s, raw)
-			if err != nil {
-				return LocalBridgeReply{Error: err.Error()}
-			}
-		}
-		out.Result = raw
-		return out
+		// The server calls run without the bridge lock (a busy server can take many seconds);
+		// they need only this chat's identity and client, copied here.
+		s := &localSession{Attachment: s.Attachment, client: s.client}
+		var reply LocalBridgeReply
+		b.unlocked(func() { reply = b.mailboxCall(callCtx, s, in, out) })
+		return reply
 	case "status":
 		return out
 	case "detach", "offline":
@@ -1326,28 +1299,44 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if !ok || !m.Offered {
 			return LocalBridgeReply{Error: "message was not offered to this exact session"}
 		}
-		args := map[string]any{"agent_name": s.Attachment.AgentName}
-		if in.Action == "ack" {
-			if in.Delivery != "admitted" && in.Delivery != "processed" {
-				return LocalBridgeReply{Error: "ack requires admitted or processed"}
-			}
-			args["action"], args["attachment_id"], args["message_id"], args["delivery"], args["transport"] = "ack", s.Attachment.ID, in.MessageID, in.Delivery, m.Transport
-		} else {
-			if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-				return LocalBridgeReply{Error: "attachment no longer authorized"}
-			}
-			args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", m.InboxID, in.Message, in.SubmissionID
+		if in.Action == "ack" && in.Delivery != "admitted" && in.Delivery != "processed" {
+			return LocalBridgeReply{Error: "ack requires admitted or processed"}
 		}
-		raw, err := s.client.Call(callCtx, "messages", args)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+		// The server call runs without the bridge lock; the offer is updated after it is taken back.
+		snap := &localSession{Attachment: s.Attachment, client: s.client}
+		var raw json.RawMessage
+		var failed *LocalBridgeReply
+		b.unlocked(func() {
+			args := map[string]any{"agent_name": snap.Attachment.AgentName}
+			if in.Action == "ack" {
+				args["action"], args["attachment_id"], args["message_id"], args["delivery"], args["transport"] = "ack", snap.Attachment.ID, in.MessageID, in.Delivery, m.Transport
+			} else {
+				if _, err := snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+					failed = &LocalBridgeReply{Error: "attachment no longer authorized"}
+					return
+				}
+				args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", m.InboxID, in.Message, in.SubmissionID
+			}
+			var err error
+			raw, err = snap.client.Call(callCtx, "messages", args)
+			if err != nil {
+				failed = &LocalBridgeReply{Error: err.Error()}
+			}
+		})
+		if failed != nil {
+			return *failed
 		}
 		if in.Action == "ack" {
-			m.Message = ""
-			m.Delivery = in.Delivery
-			s.Offers[in.MessageID] = m
-			if err = b.save(); err != nil {
-				return LocalBridgeReply{Error: err.Error()}
+			// Re-read: a concurrent ack may have moved the offer on; never step it back.
+			if cur, still := s.Offers[in.MessageID]; still && b.sessions[key] == s {
+				if cur.Delivery != "processed" {
+					cur.Delivery = in.Delivery
+				}
+				cur.Message = ""
+				s.Offers[in.MessageID] = cur
+				if err := b.save(); err != nil {
+					return LocalBridgeReply{Error: err.Error()}
+				}
 			}
 		}
 		out.Result = raw
@@ -1470,6 +1459,57 @@ func nativeCodexTransport(remote string) string {
 
 // Manual recovery obeys the same current sender and peer authorization as push,
 // including historical messages, without recording any delivery receipt.
+// mailboxCall is the server side of peers, send, read and reply_inbox. It touches only the
+// copy of the chat's identity it is given, never the bridge's state, so it runs unlocked.
+func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in LocalBridgeRequest, out LocalBridgeReply) LocalBridgeReply {
+	args := map[string]any{"agent_name": s.Attachment.AgentName}
+	switch in.Action {
+	case "peers":
+		args["action"] = "list_agents"
+	case "send":
+		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
+	case "reply_inbox":
+		history, e := s.client.Call(callCtx, "messages", map[string]any{"action": "read", "agent_name": s.Attachment.AgentName, "inbox_id": in.InboxID, "after": 0, "limit": 20})
+		if e != nil {
+			return LocalBridgeReply{Error: e.Error()}
+		}
+		filtered, e := filterAttachedMailbox(callCtx, s, history)
+		if e != nil {
+			return LocalBridgeReply{Error: e.Error()}
+		}
+		var checked struct {
+			Messages []json.RawMessage `json:"messages"`
+		}
+		if json.Unmarshal(filtered, &checked) != nil || len(checked.Messages) == 0 {
+			return LocalBridgeReply{Error: "inbox has no currently authorized incoming message for this attachment"}
+		}
+		// Explicit mailbox recovery survives local metadata compaction.
+		// The server still verifies this caller's inbox participation.
+		args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
+	case "read":
+		args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
+		if in.InboxID != "" {
+			args["inbox_id"] = in.InboxID
+		}
+	}
+	// Recheck the receiver lease even for directory/read operations.
+	if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+		return LocalBridgeReply{Error: "attachment no longer authorized"}
+	}
+	raw, err := s.client.Call(callCtx, "messages", args)
+	if err != nil {
+		return LocalBridgeReply{Error: err.Error()}
+	}
+	if in.Action == "read" {
+		raw, err = filterAttachedMailbox(callCtx, s, raw)
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+	}
+	out.Result = raw
+	return out
+}
+
 func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMessage) (json.RawMessage, error) {
 	var result map[string]json.RawMessage
 	if json.Unmarshal(raw, &result) != nil {
@@ -1518,6 +1558,13 @@ func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMes
 
 // Local maintenance checks process fences and compacts the journal. It never
 // polls an inbox or attaches a new process. Saved identities survive shutdown.
+// unlocked runs f with b.mu released; the caller holds the lock before and after.
+func (b *localBridge) unlocked(f func()) {
+	b.mu.Unlock()
+	defer b.mu.Lock()
+	f()
+}
+
 // attachGate lets one attach per chat run at a time; a second waits up to d for the first.
 func (b *localBridge) attachGate(key string, d time.Duration) (release func(), ok bool) {
 	b.attachMu.Lock()
