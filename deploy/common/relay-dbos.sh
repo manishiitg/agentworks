@@ -5,7 +5,8 @@ relay_dbos_prepare() (
   set -euo pipefail
   umask 022
   local repo_root="$1" app_dir="$2" requirements digest runtime expected
-  requirements="$repo_root/agent_go/pkg/relaypython/requirements-dbos.txt"
+  # A third argument names the requirements file when the caller has no repository checkout (the AWS EC2 deploy ships it in the release).
+  requirements="${3:-$repo_root/agent_go/pkg/relaypython/requirements-dbos.txt}"
   digest="$(sha256sum "$requirements" | awk '{print $1}')"
   expected="$(sed -n 's/^dbos==//p' "$requirements")"
   [[ -n "$expected" ]] || { echo 'Missing pinned DBOS version' >&2; exit 1; }

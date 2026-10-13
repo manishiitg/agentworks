@@ -145,6 +145,9 @@ cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
 cp "$REPO_ROOT/deploy/common/slots.sh" "$BUILD_DIR/slots.sh"
 cp "$REPO_ROOT/deploy/common/slotcheck.sh" "$BUILD_DIR/slotcheck.sh"
 cp "$REPO_ROOT/deploy/common/admission_scan.py" "$BUILD_DIR/admission_scan.py"
+# Relays run on a managed DBOS interpreter prepared on the server (the same helper as the rootless deploy).
+cp "$REPO_ROOT/deploy/common/relay-dbos.sh" "$BUILD_DIR/relay-dbos.sh"
+cp "$REPO_ROOT/agent_go/pkg/relaypython/requirements-dbos.txt" "$BUILD_DIR/requirements-dbos.txt"
 install -m 0755 "$REPO_ROOT/scripts/migrate_workflow_builder_chats.py" "$BUILD_DIR/migrations/migrate_workflow_builder_chats.py"
 install -m 0644 "$SCRIPT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/migrations/workflow-builder-chat-owners-v1.json"
 # frontend's build:report-preview step (part of `npm run build` above) writes
@@ -252,8 +255,13 @@ AGENTWORKS_BROWSER_CLI_CHECK=1 AGENT_BROWSER_CLI_DIR="$tools_dir/bin" \
 
 # The normal release step retains MCP_API_URL, so correct it before that
 # idempotent merge instead of trusting an older, Docker-only value.
-awk '!/^MCP_API_URL=/' "$env_file" > "$env_file.next"
+# The Relay runtime: a pinned DBOS interpreter outside app-private state (idempotent per requirements digest, so a ready one is
+# reused). Failing here stops the deploy before the switch-over, so a Relay never runs without it.
+source "$remote_release/relay-dbos.sh"
+relay_dbos_python="$(relay_dbos_prepare "" "$remote_app" "$remote_release/requirements-dbos.txt")"
+awk '!/^MCP_API_URL=|^RELAY_DBOS_PYTHON=/' "$env_file" > "$env_file.next"
 echo 'MCP_API_URL=http://127.0.0.1:8000' >> "$env_file.next"
+echo "RELAY_DBOS_PYTHON=$relay_dbos_python" >> "$env_file.next"
 # gog's headless file keyring requires a stable encryption password. Generate
 # it once, keep it only in the service's mode-0600 env file, and preserve it
 # across later releases. Without this, OAuth import waits for a TTY prompt and
