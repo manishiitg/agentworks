@@ -28,7 +28,9 @@ type LocalBridgeRequest struct {
 	OwnAttach bool `json:"own_attach,omitempty"`
 	// RefreshRoute says something that can create a native route just happened (a chat starting), so the
 	// next lookup runs at once instead of waiting out the retry interval.
-	RefreshRoute  bool `json:"refresh_route,omitempty"`
+	RefreshRoute bool `json:"refresh_route,omitempty"`
+	// WantNotice asks for a one-time line saved for this chat (the prompt hook sets it).
+	WantNotice    bool `json:"want_notice,omitempty"`
 	MuseCurrent   bool `json:"muse_current,omitempty"`
 	ReuseIdentity bool `json:"reuse_identity,omitempty"`
 	// SwitchConnection is the person's explicit move of this exact chat to the
@@ -74,7 +76,9 @@ type LocalAgentDirectory struct {
 }
 
 type LocalBridgeReply struct {
-	MonitorActive      bool                  `json:"monitor_active,omitempty"`
+	MonitorActive bool `json:"monitor_active,omitempty"`
+	// Notice is a one-time line for the person, e.g. an attach that finished after the command gave up.
+	Notice             string                `json:"notice,omitempty"`
 	Directories        []LocalAgentDirectory `json:"directories,omitempty"`
 	SetupContext       string                `json:"setup_context,omitempty"`
 	AgentStates        []LocalAgentState     `json:"agent_states,omitempty"`
@@ -111,6 +115,7 @@ type localOffer struct {
 }
 
 type localSession struct {
+	lateNotice        string // set when an attach finished after its command had given up; said once on the next prompt
 	museWatch         *museWatchState
 	OfflineExplicit   bool                  `json:"offline_explicit,omitempty"`
 	OwnCLI            bool                  `json:"own_cli,omitempty"`
@@ -443,6 +448,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 					defer cancel()
 				}
 				out = b.handle(ctx, callCtx, in)
+				if in.Action == "attach" && out.Attached && out.Error == "" && r.Context().Err() != nil {
+					// The command that asked gave up before the attach finished: say so on the next prompt.
+					b.noteLateAttach(in.Provider, in.SessionID, out.Attachment.AgentName)
+				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1115,6 +1124,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		b.wake()
 	}
 	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
+	if in.WantNotice && s.lateNotice != "" {
+		out.Notice, s.lateNotice = s.lateNotice, ""
+	}
 	if in.Action == "status" && s.NativeRemote != "" && b.options.NativeRoute != nil {
 		out.NativeRouteStatus = "ok"
 		if b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, s.NativeRemote) != s.NativeRemote {
@@ -1859,4 +1871,14 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 // neither attachment permission nor a message admission receipt.
 func piNativeActive(s *localSession) bool {
 	return s.Attachment.Provider == "pi" && !s.Offline && s.HostKey != "" && !s.piNextAt.IsZero() && time.Since(s.piNextAt) < 40*time.Second
+}
+
+// noteLateAttach remembers that this chat's attach finished after the command that asked had given up
+// (it reported "still connecting"), so the next prompt can say the chat is attached.
+func (b *localBridge) noteLateAttach(provider, session, name string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if s := b.sessions[localBridgeKey(provider, session)]; s != nil {
+		s.lateNotice = "AgentWorks finished connecting this chat: it is attached as agent:" + name + "."
+	}
 }

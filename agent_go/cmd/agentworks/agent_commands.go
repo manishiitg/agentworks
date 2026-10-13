@@ -1398,9 +1398,16 @@ func parseGroupWords(action string, rest []string, req *agentworksclient.LocalBr
 // the work usually finishes on its own, and trying again then finds it done.
 var errStillConnecting = errors.New("AgentWorks is still connecting. Try again in a moment.")
 
+// errStillAttaching is what an attach shows when it ran out of the hook's time: the attach keeps going in the
+// helper and the next prompt says when it is done (it is not an error, but the hook can only report it as text).
+var errStillAttaching = errors.New("AgentWorks is still connecting this chat. It keeps going; \"attached\" will be confirmed with your next message.")
+
 func bridgeCall(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) (agentworksclient.LocalBridgeReply, error) {
 	out, err := bridgeCallOnce(ctx, root, o, req)
 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		if req.Action == "attach" || req.Action == "resume" {
+			return out, errStillAttaching
+		}
 		return out, errStillConnecting
 	}
 	return out, err

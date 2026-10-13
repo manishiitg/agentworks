@@ -448,3 +448,69 @@ func TestRouteLookupWaitsBetweenFailuresButNotAfterAChatStarts(t *testing.T) {
 		t.Fatalf("a chat starting did not trigger a lookup: %d lookups", lookups.Load())
 	}
 }
+
+// A hook gives up on /agentworks attach after a few seconds while the helper finishes it. The next prompt must
+// then say the chat is attached (once), so the person is not left guessing after a "still connecting" message.
+func TestAttachFinishedAfterTheCommandGaveUpIsConfirmedOnTheNextPrompt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/agents/events"):
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case body.Action == "connection":
+			_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`))
+		case body.Action == "attach":
+			time.Sleep(700 * time.Millisecond)
+			_, _ = w.Write([]byte(`{"attachment_id":"L1","agent_id":"ag","agent_name":"test-agent","provider":"claude","native_session_id":"sess"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	root, err := os.MkdirTemp("", "awb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	bridgeRoot := filepath.Join(root, "b")
+	parent := filepath.Join(root, "parent.json")
+	if err = SaveConfig(parent, Config{Server: srv.URL, Token: "t"}); err != nil {
+		t.Skip("loopback server not accepted:", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ServeLocalBridge(ctx, bridgeRoot) }()
+	defer func() { cancel(); <-done }()
+	for i := 0; i < 100; i++ {
+		if _, e := os.Lstat(filepath.Join(bridgeRoot, "bridge.sock")); e == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	short, stop := context.WithTimeout(ctx, 150*time.Millisecond) // the hook's patience
+	_, err = CallLocalBridge(short, bridgeRoot, LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "sess", HostKey: "h", AgentName: "test-agent", ConfigPath: parent})
+	stop()
+	if err == nil {
+		t.Fatal("the attach finished inside the hook's patience; the test needs a slower server")
+	}
+	prompt := LocalBridgeRequest{Action: "drain", Transport: "claude_hook", Provider: "claude", SessionID: "sess", HostKey: "h", WantNotice: true}
+	var notice string
+	for i := 0; i < 60 && notice == ""; i++ {
+		time.Sleep(100 * time.Millisecond)
+		reply, e := CallLocalBridge(ctx, bridgeRoot, prompt)
+		if e == nil {
+			notice = reply.Notice
+		}
+	}
+	if !strings.Contains(notice, "agent:test-agent") {
+		t.Fatalf("no confirmation after the late attach: %q", notice)
+	}
+	if again, e := CallLocalBridge(ctx, bridgeRoot, prompt); e != nil || again.Notice != "" {
+		t.Fatalf("the confirmation was repeated: %+v %v", again, e)
+	}
+}
