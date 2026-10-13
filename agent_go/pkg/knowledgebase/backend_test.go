@@ -54,7 +54,10 @@ func TestBrainBackendLeaseSwitchPreservesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := map[string]any{"folder_path": "", "filename": "keep.md", "type": "note", "title": "Keep", "content": "original", "request_id": "keep"}
-	value, err := first.Call(t.Context(), admin, "create_knowledgebase", args)
+	forged := admin
+	forged.RequestTool = "forged_namespace"
+	forged.RequestArguments = map[string]any{"request_id": "other"}
+	value, err := first.Call(t.Context(), forged, "create_knowledgebase", args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,5 +205,76 @@ func TestBrainBackendFailedOpenReleasesLeaseAndRejectsSymlink(t *testing.T) {
 	data, err := os.ReadFile(outside)
 	if err != nil || strings.TrimSpace(string(data)) != "untouched" {
 		t.Fatal("modified symlink target")
+	}
+}
+
+func TestBrainBackendDrainTimeoutRetainsWriterLease(t *testing.T) {
+	cfg := Config{Root: t.TempDir()}
+	engine := &drainingEngine{entered: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
+	factory := &brainapi.Factory{Version: brainapi.Version, Catalog: ToolDefinitions(), Open: func(c Config) (brainapi.Engine, error) {
+		var err error
+		engine.Engine, err = newBuiltin(c)
+		return engine, err
+	}}
+	service, err := newService(cfg, "private", factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.closeTimeout = 10 * time.Millisecond
+	go func() { _, _ = service.CallTool(context.Background(), Principal{}, "ignored", nil) }()
+	<-engine.entered
+	if err := service.Close(); err == nil {
+		t.Fatal("hung operation reported a completed drain")
+	}
+	select {
+	case <-engine.finished:
+		t.Fatal("closed state while work remained")
+	default:
+	}
+	if _, err := newService(cfg, "builtin", nil); err == nil {
+		t.Fatal("released writer lease after timed-out drain")
+	}
+	close(engine.release)
+	select {
+	case <-service.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("drain did not finish")
+	}
+	reopened, err := newService(cfg, "builtin", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+}
+
+type cancelledEngine struct {
+	brainapi.Engine
+	entered chan struct{}
+}
+
+func (e *cancelledEngine) CallTool(ctx context.Context, _ Principal, _ string, _ map[string]any) (any, error) {
+	close(e.entered)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func TestBrainBackendCloseCancelsInFlightContext(t *testing.T) {
+	engine := &cancelledEngine{entered: make(chan struct{})}
+	factory := &brainapi.Factory{Version: brainapi.Version, Catalog: ToolDefinitions(), Open: func(c Config) (brainapi.Engine, error) {
+		var err error
+		engine.Engine, err = newBuiltin(c)
+		return engine, err
+	}}
+	service, err := newService(Config{Root: t.TempDir()}, "private", factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { _, err := service.CallTool(context.Background(), Principal{}, "ignored", nil); result <- err }()
+	<-engine.entered
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
 	}
 }

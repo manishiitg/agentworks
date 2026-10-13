@@ -17,15 +17,19 @@ import (
 // Service is the stable host-facing API. Both implementations use this lifecycle
 // guard; the built-in domain remains available during the migration period.
 type Service struct {
-	mu       sync.Mutex
-	cond     *sync.Cond
-	active   int
-	closing  bool
-	engine   brainapi.Engine
-	lease    *os.File
-	closed   bool
-	closeErr error
-	backend  string
+	mu           sync.Mutex
+	cond         *sync.Cond
+	active       int
+	closing      bool
+	engine       brainapi.Engine
+	lease        *os.File
+	closed       bool
+	closeErr     error
+	backend      string
+	shutdown     context.Context
+	cancel       context.CancelFunc
+	done         chan struct{}
+	closeTimeout time.Duration
 }
 
 func New(cfg Config) (*Service, error) {
@@ -72,6 +76,9 @@ func newService(cfg Config, mode string, private *brainapi.Factory) (*Service, e
 	}
 	service := &Service{engine: engine, lease: lease, backend: mode}
 	service.cond = sync.NewCond(&service.mu)
+	service.shutdown, service.cancel = context.WithCancel(context.Background())
+	service.done = make(chan struct{})
+	service.closeTimeout = 45 * time.Second
 	return service, nil
 }
 
@@ -126,20 +133,40 @@ func (s *Service) end() {
 	}
 }
 
-// Close refuses new operations, drains existing calls, then closes SQLite and releases
-// the process lease. A callback that re-enters during shutdown fails rather than
-// deadlocking behind a waiting writer lock.
+// operationContext cancels provider/Git work when the host starts draining.
+func (s *Service) operationContext(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	stop := context.AfterFunc(s.shutdown, cancel)
+	return ctx, func() { stop(); cancel() }
+}
+
+// Close cancels in-flight contexts and bounds how long its caller waits. A timed
+// out drain retains the writer lease; it never opens a second writer while work
+// remains. Cleanup completes automatically after the final operation returns.
 func (s *Service) Close() error {
 	s.mu.Lock()
-	if s.closing {
-		for !s.closed {
-			s.cond.Wait()
-		}
+	if !s.closing {
+		s.closing = true
+		s.cancel()
+		go s.finishClose()
+	}
+	done := s.done
+	timeout := s.closeTimeout
+	s.mu.Unlock()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		s.mu.Lock()
 		err := s.closeErr
 		s.mu.Unlock()
 		return err
+	case <-timer.C:
+		return &Error{Code: "BACKEND_DRAINING", Message: "Brain is still draining; its writer lease remains held.", Retryable: true}
 	}
-	s.closing = true
+}
+func (s *Service) finishClose() {
+	s.mu.Lock()
 	for s.active > 0 {
 		s.cond.Wait()
 	}
@@ -151,9 +178,9 @@ func (s *Service) Close() error {
 	s.mu.Lock()
 	s.closed = true
 	s.closeErr = err
+	close(s.done)
 	s.cond.Broadcast()
 	s.mu.Unlock()
-	return err
 }
 
 func (s *Service) AutoPush(ctx context.Context, quiet time.Duration, now time.Time) (bool, error) {
@@ -161,6 +188,8 @@ func (s *Service) AutoPush(ctx context.Context, quiet time.Duration, now time.Ti
 		return false, closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.AutoPush(ctx, quiet, now)
 }
 
@@ -177,6 +206,9 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 		return nil, closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
+	p.RequestTool, p.RequestArguments = "", nil
 	return s.engine.Call(ctx, p, tool, args)
 }
 
@@ -185,6 +217,9 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 		return nil, closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
+	p.RequestTool, p.RequestArguments = "", nil
 	return s.engine.CallTool(ctx, p, tool, args)
 }
 
@@ -209,6 +244,8 @@ func (s *Service) EnsureDefaultFolder(ctx context.Context, admin Principal, name
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.EnsureDefaultFolder(ctx, admin, name, role, users)
 }
 
@@ -217,6 +254,8 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 		return GitFolder{}, closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.EnsureGitRepository(ctx)
 }
 
@@ -241,6 +280,8 @@ func (s *Service) IdentityActive(ctx context.Context, id string) bool {
 		return false
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.IdentityActive(ctx, id)
 }
 
@@ -257,6 +298,8 @@ func (s *Service) ReconcileBackup(ctx context.Context, p Principal) (any, error)
 		return nil, closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.ReconcileBackup(ctx, p)
 }
 
@@ -265,6 +308,8 @@ func (s *Service) RequireIdentityFolderRole(ctx context.Context, id, folderID, r
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.RequireIdentityFolderRole(ctx, id, folderID, role)
 }
 
@@ -273,6 +318,8 @@ func (s *Service) ReserveIntegrationRequest(ctx context.Context, p Principal, to
 		return "", closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.ReserveIntegrationRequest(ctx, p, tool, args)
 }
 
@@ -281,6 +328,8 @@ func (s *Service) ResolveBinding(ctx context.Context, p Principal, b Binding, au
 		return "", closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.ResolveBinding(ctx, p, b, audience)
 }
 
@@ -289,6 +338,8 @@ func (s *Service) RunGit(ctx context.Context, p Principal, a map[string]any, run
 		return nil, closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.RunGit(ctx, p, a, run)
 }
 
@@ -313,6 +364,8 @@ func (s *Service) SyncDisk(ctx context.Context, actor string) error {
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.SyncDisk(ctx, actor)
 }
 
@@ -321,6 +374,8 @@ func (s *Service) SyncPlatformIdentities(ctx context.Context, users []Identity) 
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.SyncPlatformIdentities(ctx, users)
 }
 
@@ -329,6 +384,8 @@ func (s *Service) ValidateCaps(ctx context.Context, p Principal, id string, caps
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.ValidateCaps(ctx, p, id, caps)
 }
 
@@ -337,6 +394,8 @@ func (s *Service) ValidateServiceTokenIdentity(ctx context.Context, p Principal,
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.ValidateServiceTokenIdentity(ctx, p, id)
 }
 
@@ -345,5 +404,7 @@ func (s *Service) ValidateTokenIdentity(ctx context.Context, p Principal, id str
 		return closedError()
 	}
 	defer s.end()
+	ctx, finish := s.operationContext(ctx)
+	defer finish()
 	return s.engine.ValidateTokenIdentity(ctx, p, id)
 }

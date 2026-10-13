@@ -6100,3 +6100,11 @@ implementation removal is a later migration gate. Product source and customer
 deployment configuration remain separate repositories. This change is developed
 on branches, requires reviewer approval and must not merge before October 17–18.
 No deployment or scheduled automatic merge is part of this work.
+
+Brain's facade clears the engine-owned request namespace metadata on all host
+Call/CallTool entries. Shutdown cancels in-flight contexts and waits at most 45
+seconds per Close call. A timed-out drain keeps the writer lease until work
+finishes; it never closes state beneath an active operation or starts another
+writer as a timeout fallback. Private CI compares the retained and extracted
+engine tokens at the immutable pin, preserving strings/schema descriptions while
+normalizing only implementation identifier names and package declarations.
