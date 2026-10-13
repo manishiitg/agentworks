@@ -1248,9 +1248,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const landingWorkspacePath = selected?.workspacePath
   const landingIsShared = Boolean(selected?.shared)
   const dashboardAllowed = isWorkWorkspaceViewEnabled('dashboard', enabledWorkspacePanels)
+  // A fresh deep link names its view (?view=shell): it is the person's
+  // explicit choice, so neither the content-based landing guess nor the
+  // panel list arriving later may replace it on first load.
+  const routeSuppliedView = selected ? routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView) : null
   useEffect(() => {
     // Code is files-first: it never lands on the dashboard on its own.
-    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || readWorkWorkspaceView(landingProjectId, product.profileId)) return
+    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || routeView(product.profileId, landingProjectId, normalizeWorkWorkspaceView, product.defaultView) || readWorkWorkspaceView(landingProjectId, product.profileId)) return
     let cancelled = false
     void loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed }).then(view => {
       if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId, product.profileId)) return
@@ -1276,6 +1280,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files', false)
       return
     }
+    if (routeSuppliedView && workspaceView === routeSuppliedView) return
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels, localCodeSession)) {
       // A disabled saved view cannot be shown. For an unsaved project, keep
       // Identity temporary while the content-based landing check runs.
@@ -1283,7 +1288,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       else if (readWorkWorkspaceView(selected?.id, product.profileId)) selectWorkspaceView(product.defaultView, false)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, localCodeSession])
+  }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, localCodeSession, routeSuppliedView])
 
   useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 

@@ -14,6 +14,26 @@ vi.mock('../../stores/useLLMStore', () => ({
   useLLMStore: Object.assign((selector: (state: typeof llmState) => unknown) => selector(llmState), { getState: () => llmState }),
 }))
 
+describe('fresh deep links keep their view', () => {
+  afterEach(() => { window.history.pushState(null, '', '/') })
+
+  it('resolves a Crew schedules link instead of the identity default', async () => {
+    const { normalizeWorkWorkspaceView } = await import('./WorkSurface')
+    const { routeView } = await import('../../utils/productRoutes')
+    window.history.pushState(null, '', '/crew/projects/example?view=schedules')
+    expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'identity')).toBe('schedules')
+  })
+
+  it('resolves Code shell and costs links instead of Files', async () => {
+    const { normalizeWorkWorkspaceView } = await import('./WorkSurface')
+    const { routeView } = await import('../../utils/productRoutes')
+    window.history.pushState(null, '', '/code/projects/example?view=shell')
+    expect(routeView('code', 'example', normalizeWorkWorkspaceView, 'files')).toBe('shell')
+    window.history.pushState(null, '', '/code/projects/example?view=costs')
+    expect(routeView('code', 'example', normalizeWorkWorkspaceView, 'files')).toBe('costs')
+  })
+})
+
 describe('CreateWorkProjectDialog', () => {
   let container: HTMLDivElement | null = null
 
