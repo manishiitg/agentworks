@@ -47,7 +47,7 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 		}
 		if o.getenv("CODEX_THREAD_ID") != "" {
 			// A typed /agentworks attach reaches this command only when the chat's hook did not run it.
-			return liveAgentSession{}, true, errors.New("AgentWorks hooks are not active in this Codex chat: trust them in Settings > Hooks, reload the chat, then type /agentworks attach again")
+			return liveAgentSession{}, true, fmt.Errorf("could not confirm this Codex chat from here (detail: %w). If AgentWorks hooks are not active in this chat, trust them in Settings > Hooks and reload it, then ask again or type /agentworks attach; otherwise the Codex app may be busy, so try again in a moment", err)
 		}
 	}
 	if err != nil || provider == "" {
