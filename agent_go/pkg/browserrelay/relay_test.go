@@ -219,6 +219,97 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	}
 }
 
+// Two extension connections of one account stay bound at the same time
+// (PLAT-856 856-70): connecting a second browser never closes the first,
+// commands resolve to the earliest connected browser until a choice is
+// recorded, a rename is cosmetic, and removing one browser leaves the other.
+func TestRelayTwoBrowsersStayBound(t *testing.T) {
+	stateRoot := t.TempDir()
+	m, err := NewPersistent(stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	token, err := m.PairForProfile("alice", "project-one", "Project one", "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(m.ServeExtension))
+	defer server.Close()
+	dial := func(hello envelope) envelope {
+		t.Helper()
+		c, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://test"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Close() })
+		hello.Type = "pair"
+		hello.Token = token
+		if err := c.WriteJSON(hello); err != nil {
+			t.Fatal(err)
+		}
+		var reply envelope
+		if err := c.ReadJSON(&reply); err != nil || reply.Type != "paired" {
+			t.Fatalf("pair: %v %+v", err, reply)
+		}
+		return reply
+	}
+	first := dial(envelope{BrowserID: "instance-one", BrowserName: "Chrome · MacBook"})
+	second := dial(envelope{BrowserID: "instance-two", BrowserName: "Edge · Work"})
+	if first.BrowserID == "" || first.BrowserID == second.BrowserID {
+		t.Fatalf("browser ids not distinct: %q %q", first.BrowserID, second.BrowserID)
+	}
+	if first.BrowserID == "instance-one" || second.BrowserID == "instance-two" {
+		t.Fatal("public browser id echoes the reported instance id")
+	}
+	if got := m.Status("alice", "project-one"); len(got.Browsers) != 2 || !got.Browsers[0].Connected || !got.Browsers[1].Connected {
+		t.Fatalf("both browsers should be connected: %+v", got.Browsers)
+	}
+	if got := m.Lookup("alice", "project-one"); got == nil || got.browserID != second.BrowserID {
+		t.Fatal("lookup did not resolve the most recently connected browser")
+	}
+	if err := m.RenameBrowser("alice", first.BrowserID, "Home Chrome"); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Status("alice", "project-one"); got.Browsers[0].Name != "Home Chrome" {
+		t.Fatalf("rename not reflected: %+v", got.Browsers[0])
+	}
+	if err := m.ChooseBrowser("alice", "project-one", first.BrowserID); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Lookup("alice", "project-one"); got == nil || got.browserID != first.BrowserID {
+		t.Fatal("recorded choice did not move commands")
+	}
+	if err := m.ChooseBrowser("alice", "project-one", second.BrowserID); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Lookup("alice", "project-one"); got == nil || got.browserID != second.BrowserID {
+		t.Fatal("recorded choice did not move commands")
+	}
+	// An old extension without an instance id takes its own assigned slot.
+	legacy := dial(envelope{})
+	if legacy.BrowserID == "" || legacy.BrowserName == "" {
+		t.Fatalf("legacy connection not slotted: %+v", legacy)
+	}
+	if got := m.Status("alice", "project-one"); len(got.Browsers) != 3 {
+		t.Fatalf("legacy browser missing: %+v", got.Browsers)
+	}
+	if err := m.DisconnectBrowser("alice", "project-one", second.BrowserID); err != nil {
+		t.Fatal(err)
+	}
+	// The legacy browser connected last, so it serves until a choice is made.
+	if got := m.Lookup("alice", "project-one"); got == nil || got.browserID != legacy.BrowserID {
+		t.Fatal("remaining browsers did not keep serving")
+	}
+	if got := m.Status("alice", "project-one"); len(got.Browsers) != 2 {
+		t.Fatalf("disconnected browser still listed: %+v", got.Browsers)
+	}
+	// The derived public id is stable: reconnecting the same instance reclaims it.
+	if again := dial(envelope{BrowserID: "instance-two", BrowserName: "Edge · Work"}); again.BrowserID != second.BrowserID {
+		t.Fatalf("reconnect id = %q, want %q", again.BrowserID, second.BrowserID)
+	}
+}
+
 func TestExtensionDiagnosticsExcludePayloadsAndInvalidFields(t *testing.T) {
 	var output bytes.Buffer
 	previous := log.Writer()

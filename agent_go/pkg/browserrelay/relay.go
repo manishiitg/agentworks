@@ -48,32 +48,53 @@ type Status struct {
 	// diagnostics; LatestVersion is the one this server ships for download.
 	ExtensionVersion string `json:"extension_version,omitempty"`
 	LatestVersion    string `json:"latest_extension_version,omitempty"`
+	// Browsers lists every browser bound to this account and project (PLAT-856
+	// 856-70); the flat fields above describe the resolved one, as before.
+	Browsers []BrowserStatus `json:"browsers,omitempty"`
+}
+
+// BrowserStatus is one connected or remembered browser of an account. ID is
+// server-issued and stable per extension instance; it is never a credential —
+// binding still requires the paired account token on every connection.
+type BrowserStatus struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Connected bool   `json:"connected"`
+	Chosen    bool   `json:"chosen"`
+	LastSeen  string `json:"last_seen,omitempty"`
 }
 type Binding struct {
 	mu                                 sync.Mutex
 	key, capability, endpoint, session string
-	owner                              string
-	clients                            map[string]*Client
-	chatClients                        bool
-	profile                            string
-	tabTitles                          []string
-	version                            string
-	label                              string
-	expires                            time.Time
-	extension, cdp                     *websocket.Conn
-	tabs                               int
-	active                             bool
-	diagnostics                        map[string]*tabDiagnostics
-	childTargets                       map[string]string
-	gate                               chan struct{}
-	newTabRequest                      string
-	newTabResult                       chan envelope
-	recordingInterruptions             uint64
+	// browserID is the public stable identity of this browser slot (PLAT-856
+	// 856-70); instanceID is what the extension reported (empty for old
+	// extensions); name is its readable name, customName the person's rename.
+	browserID, instanceID, name, customName string
+	createdAt, lastSeen                     time.Time
+	connectedAt                             time.Time
+	owner                                   string
+	clients                                 map[string]*Client
+	chatClients                             bool
+	profile                                 string
+	tabTitles                               []string
+	version                                 string
+	label                                   string
+	expires                                 time.Time
+	extension, cdp                          *websocket.Conn
+	tabs                                    int
+	active                                  bool
+	diagnostics                             map[string]*tabDiagnostics
+	childTargets                            map[string]string
+	gate                                    chan struct{}
+	newTabRequest                           string
+	newTabResult                            chan envelope
+	recordingInterruptions                  uint64
 }
 type Manager struct {
 	mu              sync.Mutex
 	pairs           map[string]grant
 	bindings        map[string]*Binding
+	choices         map[string]string
 	listener        net.Listener
 	base            string
 	selectionPath   string
@@ -82,8 +103,72 @@ type Manager struct {
 
 var Default = New()
 
-func New() *Manager                 { return &Manager{pairs: map[string]grant{}, bindings: map[string]*Binding{}} }
+func New() *Manager {
+	return &Manager{pairs: map[string]grant{}, bindings: map[string]*Binding{}, choices: map[string]string{}}
+}
 func key(user, scope string) string { return user + "\x00" + scope }
+
+// fullKey addresses one browser slot of a route; Binding.key stays the route
+// key (user, scope) that conversations and change notifications use.
+func fullKey(user, scope, browserID string) string { return key(user, scope) + "\x00" + browserID }
+
+// publicBrowserID derives the stable, unguessable public id of one extension
+// instance of an account. It identifies, never authorizes.
+func publicBrowserID(user, instanceID string) string {
+	sum := sha256.Sum256([]byte(user + "\x00" + instanceID))
+	return "browser-" + hex.EncodeToString(sum[:8])
+}
+
+// bindingsFor returns the route's browser slots, earliest first. Caller holds m.mu.
+func (m *Manager) bindingsFor(user, scope string) []*Binding {
+	prefix := key(user, scope) + "\x00"
+	var out []*Binding
+	for full, b := range m.bindings {
+		if strings.HasPrefix(full, prefix) && b.browserID != "" {
+			out = append(out, b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].createdAt.Before(out[j].createdAt) })
+	return out
+}
+
+// placeholderFor returns the route's restored selection placeholder (no
+// browser identity yet; the next connection adopts it). Caller holds m.mu.
+func (m *Manager) placeholderFor(user, scope string) *Binding {
+	return m.bindings[key(user, scope)+"\x00"]
+}
+
+// bindingFor resolves which browser a route's commands use: the recorded
+// choice, else the only browser, else the most recently connected one (what
+// people expect right after connecting a browser). With no browser slot at
+// all it returns the selection placeholder, so a restored selection still
+// reports itself and fails closed. Caller holds m.mu.
+func (m *Manager) bindingFor(user, scope string) *Binding {
+	all := m.bindingsFor(user, scope)
+	if len(all) == 0 {
+		return m.placeholderFor(user, scope)
+	}
+	if id := m.choices[key(user, scope)]; id != "" {
+		for _, b := range all {
+			if b.browserID == id {
+				return b
+			}
+		}
+	}
+	if len(all) == 1 {
+		return all[0]
+	}
+	var latest *Binding
+	for _, b := range all {
+		if b.Status().Connected && (latest == nil || b.connectedAt.After(latest.connectedAt)) {
+			latest = b
+		}
+	}
+	if latest != nil {
+		return latest
+	}
+	return all[0]
+}
 func secret() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -149,7 +234,7 @@ func (m *Manager) connectionCode(user, scope, label, profile string, reset bool)
 	if user == "" || scope == "" {
 		return "", errors.New("account and browser scope required")
 	}
-	if m.bindings[key(user, scope)] == nil && len(m.bindings) >= 1000 {
+	if len(m.bindings) >= 4096 {
 		return "", errors.New("too many browser selections")
 	}
 	if err := m.start(); err != nil {
@@ -261,7 +346,7 @@ func (m *Manager) availableProjects(token string, authorize func(string, string,
 func (m *Manager) RequestProjectConnection(user, scope string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if b := m.bindings[key(user, scope)]; b != nil && b.Status().Connected {
+	if b := m.bindingFor(user, scope); b != nil && b.Status().Connected {
 		return true
 	}
 	var g grant
@@ -288,11 +373,12 @@ func (m *Manager) RequestProjectConnection(user, scope string) bool {
 	if source == nil {
 		return false
 	}
-	if err := m.persistSelection("", &g); err != nil {
-		return false
+	placeholderKey := key(user, scope) + "\x00"
+	if m.bindings[placeholderKey] == nil && m.bindingFor(user, scope) == nil {
+		m.bindings[placeholderKey] = &Binding{key: key(user, scope), label: g.Label, profile: g.ProfileID, gate: make(chan struct{}, 1)}
 	}
-	if m.bindings[key(user, scope)] == nil {
-		m.bindings[key(user, scope)] = &Binding{key: key(user, scope), label: g.Label, profile: g.ProfileID, gate: make(chan struct{}, 1)}
+	if err := m.persistSelection(); err != nil {
+		return false
 	}
 	source.mu.Lock()
 	defer source.mu.Unlock()
@@ -357,14 +443,54 @@ func (b *Binding) targetCommandFor(ctx context.Context, targetURL, targetID, cli
 func (m *Manager) Lookup(user, scope string) *Binding {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.bindings[key(user, scope)]
+	return m.bindingFor(user, scope)
 }
+
+// ChooseBrowser records the route's chosen browser; "" clears the choice.
+func (m *Manager) ChooseBrowser(user, scope, browserID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if browserID == "" {
+		delete(m.choices, key(user, scope))
+		return m.persistSelection()
+	}
+	for _, b := range m.bindingsFor(user, scope) {
+		if b.browserID == browserID {
+			m.choices[key(user, scope)] = browserID
+			return m.persistSelection()
+		}
+	}
+	return errors.New("browser is not connected to this project")
+}
+
+// RenameBrowser sets the cosmetic display name of one of the account's browsers.
+func (m *Manager) RenameBrowser(user, browserID, name string) error {
+	name = strings.TrimSpace(name)
+	if len(name) > 120 {
+		return errors.New("browser name is too long")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for full, b := range m.bindings {
+		if strings.HasPrefix(full, user+"\x00") && b.browserID == browserID {
+			b.customName = name
+			return m.persistSelection()
+		}
+	}
+	return errors.New("browser not found")
+}
+
 func (m *Manager) Status(user, scope string) Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	status := Status{}
-	if b := m.bindings[key(user, scope)]; b != nil {
+	if b := m.bindingFor(user, scope); b != nil {
 		status = b.Status()
+	}
+	chosen := m.choices[key(user, scope)]
+	for _, b := range m.bindingsFor(user, scope) {
+		name := b.browserName()
+		status.Browsers = append(status.Browsers, BrowserStatus{ID: b.browserID, Name: name, Connected: b.Status().Connected, Chosen: b.browserID == chosen, LastSeen: b.lastSeenText()})
 	}
 	status.LatestVersion = LatestExtensionVersion()
 	for bindingKey, b := range m.bindings {
@@ -374,6 +500,21 @@ func (m *Manager) Status(user, scope string) Status {
 		}
 	}
 	return status
+}
+
+// browserName is the person's rename when set, else the reported name.
+func (b *Binding) browserName() string {
+	if b.customName != "" {
+		return b.customName
+	}
+	return b.name
+}
+
+func (b *Binding) lastSeenText() string {
+	if b.lastSeen.IsZero() {
+		return ""
+	}
+	return b.lastSeen.UTC().Format(time.RFC3339)
 }
 func (b *Binding) Status() Status {
 	b.mu.Lock()
@@ -423,15 +564,46 @@ func (b *Binding) AcquireForActive(ctx context.Context, owner string, active boo
 	}, nil
 }
 func (m *Manager) Disconnect(user, scope string) error {
+	return m.DisconnectBrowser(user, scope, "")
+}
+
+// DisconnectBrowser removes one browser slot of the route (the resolved one
+// when browserID is empty), or the whole route with browserID "all".
+func (m *Manager) DisconnectBrowser(user, scope, browserID string) error {
 	m.mu.Lock()
-	b := m.bindings[key(user, scope)]
-	if err := m.persistSelection(key(user, scope), nil); err != nil {
+	var targets []*Binding
+	for _, b := range m.bindingsFor(user, scope) {
+		if browserID == "all" || browserID == "" && m.bindingFor(user, scope) == b || b.browserID == browserID {
+			targets = append(targets, b)
+		}
+	}
+	if len(targets) == 0 {
+		// No browser slot: still allow clearing a restored offline selection.
+		if placeholder := m.placeholderFor(user, scope); placeholder != nil && (browserID == "" || browserID == "all") {
+			delete(m.bindings, key(user, scope)+"\x00")
+			delete(m.choices, key(user, scope))
+			err := m.persistSelection()
+			m.mu.Unlock()
+			if err == nil {
+				notifyChange(key(user, scope))
+			}
+			return err
+		}
+		m.mu.Unlock()
+		return errors.New("browser is not connected to this project")
+	}
+	for _, b := range targets {
+		delete(m.bindings, fullKey(user, scope, b.browserID))
+		if m.choices[key(user, scope)] == b.browserID {
+			delete(m.choices, key(user, scope))
+		}
+	}
+	if err := m.persistSelection(); err != nil {
 		m.mu.Unlock()
 		return err
 	}
-	delete(m.bindings, key(user, scope))
 	m.mu.Unlock()
-	if b != nil {
+	for _, b := range targets {
 		b.closeWithReason("Disconnected in browser settings")
 	}
 	notifyChange(key(user, scope))
@@ -495,13 +667,18 @@ func (m *Manager) Close() {
 }
 
 type envelope struct {
-	Type        string          `json:"type"`
-	ClientID    string          `json:"client_id,omitempty"`
-	Features    []string        `json:"features,omitempty"`
-	Token       string          `json:"token,omitempty"`
-	Scope       string          `json:"scope,omitempty"`
-	Resume      bool            `json:"resume,omitempty"`
-	ProfileID   string          `json:"profile_id,omitempty"`
+	Type      string   `json:"type"`
+	ClientID  string   `json:"client_id,omitempty"`
+	Features  []string `json:"features,omitempty"`
+	Token     string   `json:"token,omitempty"`
+	Scope     string   `json:"scope,omitempty"`
+	Resume    bool     `json:"resume,omitempty"`
+	ProfileID string   `json:"profile_id,omitempty"`
+	// BrowserID is the extension instance's stable id as reported in hello
+	// (empty from old extensions); BrowserName its readable name. The server
+	// answers with its own canonical browser id in the paired reply.
+	BrowserID   string          `json:"browser_id,omitempty"`
+	BrowserName string          `json:"browser_name,omitempty"`
 	Projects    []projectGrant  `json:"projects,omitempty"`
 	Workspace   string          `json:"workspace,omitempty"`
 	Name        string          `json:"name,omitempty"`
@@ -740,9 +917,38 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code was reset; copy it again"})
 		return
 	}
+	// Resolve this connection's browser slot (PLAT-856 856-70): an extension
+	// that reports a stable instance id reclaims its own slot; an old extension
+	// revives the route's offline unnamed slot or takes a new one. A connection
+	// never closes another browser.
+	instanceID := strings.TrimSpace(hello.BrowserID)
+	reportedName := strings.TrimSpace(hello.BrowserName)
+	if len(reportedName) > 120 {
+		reportedName = reportedName[:120]
+	}
+	var slot *Binding
+	if instanceID != "" {
+		slot = m.bindings[fullKey(g.User, g.Scope, publicBrowserID(g.User, instanceID))]
+	}
+	if slot == nil {
+		if placeholder := m.bindings[key(g.User, g.Scope)+"\x00"]; placeholder != nil && !placeholder.Status().Connected {
+			slot = placeholder
+		}
+	}
+	if slot == nil && instanceID == "" {
+		// An old extension cannot distinguish itself from a second old
+		// browser; as before, its connection reclaims the route's unnamed
+		// slot, connected or not.
+		for _, candidate := range m.bindingsFor(g.User, g.Scope) {
+			if candidate.instanceID == "" {
+				slot = candidate
+				break
+			}
+		}
+	}
 	// An offline browser may have missed the explicit Disconnect close frame.
 	// Resume cannot recreate a selection removed by the authenticated app.
-	if hello.Resume && m.bindings[key(g.User, g.Scope)] == nil {
+	if hello.Resume && slot == nil {
 		m.mu.Unlock()
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Browser connection was disconnected; connect again to enable access"})
 		return
@@ -752,29 +958,62 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		return
 	}
 
-	if err := m.persistSelection("", &g); err != nil {
-		m.mu.Unlock()
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Cannot save Chrome selection; reconnect after checking server storage"})
-		return
-	}
-	old := m.bindings[key(g.User, g.Scope)]
 	capability := secret()
 	hash := sha256.Sum256([]byte(capability))
-	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	now := time.Now()
+	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: now.Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1), createdAt: now, lastSeen: now, connectedAt: now}
+	switch {
+	case slot != nil && slot.browserID != "":
+		b.browserID, b.instanceID, b.createdAt = slot.browserID, slot.instanceID, slot.createdAt
+		b.name, b.customName = slot.name, slot.customName
+	case instanceID != "":
+		b.browserID, b.instanceID = publicBrowserID(g.User, instanceID), instanceID
+	default:
+		sum := sha256.Sum256([]byte(secret()))
+		b.browserID = "browser-" + hex.EncodeToString(sum[:8])
+		if slot != nil {
+			b.name, b.customName, b.createdAt = slot.name, slot.customName, slot.createdAt
+		}
+	}
+	if reportedName != "" {
+		b.name = reportedName
+	}
+	if b.name == "" {
+		unnamed := 0
+		for _, other := range m.bindings {
+			if other.instanceID == "" && strings.HasPrefix(other.key, g.User+"\x00") {
+				unnamed++
+			}
+		}
+		b.name = fmt.Sprintf("Browser %d", unnamed+1)
+	}
 	for _, feature := range hello.Features {
 		if feature == "chat-clients" {
 			b.chatClients = true
 		}
 	}
+	full := fullKey(g.User, g.Scope, b.browserID)
+	old := m.bindings[full]
 	b.mu.Lock()
-	m.bindings[b.key] = b
+	m.bindings[full] = b
+	if slot != nil && slot.browserID == "" {
+		delete(m.bindings, key(g.User, g.Scope)+"\x00")
+	}
+	if err := m.persistSelection(); err != nil {
+		m.mu.Unlock()
+		b.mu.Unlock()
+		conn.WriteJSON(envelope{Type: "error", Workspace: "Cannot save Chrome selection; reconnect after checking server storage"})
+		return
+	}
 	m.mu.Unlock()
-	if old != nil {
-		old.closeWithReason("Connected from another browser")
+	if old != nil && old != b {
+		// The same browser's stale connection: close it as replaced so its
+		// page stops auto-reconnecting; the new connection serves the slot.
+		old.closeWithReason("Reconnected in a newer connection")
 	}
 	notifyChange(b.key)
 	defer b.close()
-	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, BrowserID: b.browserID, BrowserName: b.browserName(), Projects: available, Diagnostics: true})
 	b.mu.Unlock()
 	if err != nil {
 		return
@@ -802,6 +1041,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		b.mu.Lock()
 		switch e.Type {
 		case "ping":
+			b.lastSeen = time.Now()
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			err = conn.WriteJSON(envelope{Type: "pong", Projects: projects})
 		case "tabs":
