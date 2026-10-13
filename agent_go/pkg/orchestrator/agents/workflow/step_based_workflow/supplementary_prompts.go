@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"slices"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
@@ -47,11 +48,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	var identitySkills []*llmtypes.Skill
 	var supplements []string
 	browserCfg := hcpo.resolveBrowserConfig(config.ServerNames, effectiveSkills)
+	browserCfg.HasAgentBrowser = slices.Contains(registeredTools, "agent_browser")
 	for _, toolName := range registeredTools {
 		if toolName == "agent_browser" {
 			browserCfg.HasAgentBrowser = true
 			break
 		}
+	}
+	if slices.Contains(registeredTools, "query_workflow_db") {
+		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-database")
+	}
+	if sharedKBRead {
+		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-knowledgebase")
+	}
+	if config != nil && config.UseCodeExecutionMode {
+		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-execution")
 	}
 	effectiveSkills = executionSelectedSkills(skills.WithAgentBrowserCapability(effectiveSkills, browserCfg.HasAgentBrowser))
 	// Every transport gets the same static AgentWorks reference identity.
@@ -114,7 +125,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	}
 
 	// 3. Secrets
-	effectiveSecrets := GetEffectiveSecrets(hcpo.BaseOrchestrator)
+	env := hcpo.snapshotWorkspaceEnv()
+	if session := common.GetSessionShellConfig(config.MCPSessionID); session != nil {
+		env = session.Env
+	}
+	effectiveSecrets := stepInjectedSecrets(GetEffectiveSecrets(hcpo.BaseOrchestrator), env)
 	if len(effectiveSecrets) > 0 {
 		secretPrompt := BuildWorkflowSecretPrompt(effectiveSecrets)
 		if secretPrompt != "" {
@@ -124,10 +139,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	}
 
 	// 4. Browser instructions (mode-specific)
-	browserPrompt := browserinstructions.BuildBrowserInstructions(browserCfg)
-	if isCodingCLIConfig(config) {
-		browserPrompt = browserinstructions.BuildBrowserRuntimeInstructions(browserCfg)
-	}
+	browserPrompt := browserinstructions.BuildBrowserRuntimeInstructions(browserCfg)
 	if browserPrompt != "" {
 		supplements = append(supplements, browserPrompt)
 		hcpo.GetLogger().Info(fmt.Sprintf("🌐 Added browser instructions to agent (agent-browser=%v, cdp=%v)",
@@ -170,14 +182,9 @@ func isCodingCLIConfig(config *agents.OrchestratorAgentConfig) bool {
 	return config != nil && common.IsCLIProvider(config.LLMConfig.Primary.Provider)
 }
 
-func usesProjectedReferenceSkills(config *agents.OrchestratorAgentConfig, templateVars map[string]string) bool {
-	if raw, ok := templateVars["UseProjectedReferenceSkills"]; ok {
-		return raw == "true"
-	}
-	// The variable name is retained for template compatibility. Reference
-	// skills are attached on every transport; only native disk projection is
-	// CLI-specific, while read_skill is universal.
-	_ = config
+// Every provider gets the same on-demand skill model. Only disk projection is
+// transport-specific; archived switches cannot reinject full procedural bodies.
+func usesProjectedReferenceSkills(_ *agents.OrchestratorAgentConfig, _ map[string]string) bool {
 	return true
 }
 
@@ -263,4 +270,11 @@ func executionSelectedSkills(selected []string) []string {
 		}
 	}
 	return out
+}
+
+func appendUniqueSkill(names []string, name string) []string {
+	if slices.Contains(names, name) {
+		return names
+	}
+	return append(append([]string(nil), names...), name)
 }

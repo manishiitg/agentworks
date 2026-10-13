@@ -13,7 +13,8 @@ type AgentFunctionScope struct {
 }
 
 // AgentFunctionToolFactory binds server function services to one execution agent.
-// The returned definitions enter the normal native/CLI tool registration path.
+// Retained for server-side compatibility bindings; ordinary step factories no
+// longer call appendAgentFunctionTools. Function-service access belongs to Crew.
 type AgentFunctionToolFactory func(context.Context, AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error)
 
 func bindAgentFunctionTools(controller *StepBasedWorkflowOrchestrator, factory AgentFunctionToolFactory) {

@@ -208,7 +208,6 @@ func promptExecutionFolder(templateVars map[string]string) string {
 
 // executionOnlySystemPromptProcessor generates the system prompt for execution-only agent
 func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(templateVars map[string]string) string {
-	workspacePath := templateVars["WorkspacePath"]
 	stepContextOutput := templateVars["StepContextOutput"]
 	isCodeExecutionMode := templateVars["IsCodeExecutionMode"] == "true"
 	learningHistory := templateVars["LearningHistory"]
@@ -240,7 +239,10 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 
 	// Build code execution section using common builder
 	useCodeStyleRules := isCodeExecutionMode
-	codeExecutionSection := BuildCodeExecutionSection(isCodeExecutionMode, workspacePath)
+	codeExecutionSection := ""
+	if isCodeExecutionMode {
+		codeExecutionSection = "## Code execution\nOpen workflow-execution when calling tools through the HTTP bridge or authoring scripts.\n"
+	}
 
 	// Learn code mode: append instructions to write main.py (added on top of code execution section)
 	isScriptedMode := templateVars["IsScriptedMode"] == "true"
@@ -318,7 +320,6 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"VariableValues":            variableValues,
 		"VarMapping":                templateVars["ScriptedVarMapping"], // {{VAR}} → SECRET_VAR mapping (for code exec guidance)
 		"UseCodeStyleRules":         useCodeStyleRules,
-		"PythonBestPractices":       buildCodeExecBestPractices(isCodeExecutionMode, templateVars, useProjectedReferenceSkills),
 		"StepNumber":                stepNumber,
 		"StepExecutionPath":         stepExecutionPath,
 		"PreviousStepsSummary":      previousStepsSummary,
@@ -329,7 +330,6 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"DBPath":                    dbPath,                                  // DB folder path (always enabled)
 		"DBAccess":                  dbAccess,
 		"DBDirectAccess":            dbDirectAccess,
-		"DBGuidance":                BuildManagedWorkflowDBGuidance(dbAccess),
 		"KbAccess":                  templateVars["KbAccess"],                  // "read" | "write" | "read-write" | "none"
 		"KbAccessLabel":             templateVars["KbAccessLabel"],             // Human-readable label (e.g., "READ/WRITE")
 		"KnowledgebaseContribution": templateVars["KnowledgebaseContribution"], // Author-authored instruction for the step's KB contribution (direct mode only)
@@ -340,12 +340,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"IsScriptedMode":            templateVars["IsScriptedMode"],            // Learn code mode flag (validation schema shown in scripted section instead)
 		"WorkflowRoot":              templateVars["WorkflowRoot"],              // Workflow root path for absolute cwd display
 		"DocsRoot":                  GetPromptDocsRoot(),                       // Workspace docs base path — differs between macOS dev (/Users/.../workspace-docs) and Docker (/app/workspace-docs); do NOT hardcode.
-		// Browser authoring rules (refs-are-ephemeral + durable-selector priority
-		// + canonical DOM probe) apply to every browser step — code-exec throwaway
-		// scripts AND learn-code saved main.py. Only the final-artifact permanence
-		// differs between modes; the discovery/selector discipline is identical.
-		"BrowserAuthoringRules": browserAuthoringRulesForExecution(templateVars, useProjectedReferenceSkills),
-		"DelegationGuidance":    renderAgentDelegationGuidance(templateVars),
+		"DelegationGuidance":        renderAgentDelegationGuidance(templateVars),
 	})
 	if err != nil {
 		panic(fmt.Sprintf("execution-only system prompt template execution failed (missing variable?): %v", err))

@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 )
 
 // GetEffectiveSkills returns the skills explicitly enabled for this step.
@@ -28,12 +29,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) effectiveStepSkills(stepConfig *Agent
 	if resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase()) == KBAccessNone {
 		return out
 	}
-	for _, name := range out {
-		if name == "brain" {
-			return out
-		}
+	out = appendUniqueSkill(out, "brain")
+	if shared, _ := workflowkb.SharedConfig(GetPromptDocsRoot(), hcpo.GetWorkspacePath()); !shared {
+		out = appendUniqueSkill(out, "workflow-knowledgebase")
 	}
-	return append(append([]string(nil), out...), "brain")
+	return out
 }
 
 // BuildWorkflowSkillPrompt is gone (Phase 3 rewire). Step skills are

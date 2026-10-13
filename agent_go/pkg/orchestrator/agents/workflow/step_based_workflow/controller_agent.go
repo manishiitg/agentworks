@@ -375,7 +375,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		return "", nil, err
 	}
 	_ = progress
-	_ = allSteps
+	if executionPlanFromContext(ctx) == nil && len(allSteps) > 0 {
+		ctx = withExecutionPlan(ctx, &PlanningResponse{Steps: allSteps})
+	}
 	ctx = withParentStepIndex(ctx, stepIndex)
 	hcpo.recordInspectionMode(ctx, "agent")
 
@@ -1140,7 +1142,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	if delegation != nil {
 		templateVars = delegation.TurnVars(item, message, session.ExecutionTurnCount == 0)
 	} else {
-		templateVars = hcpo.buildAgentTemplateVars(step, item, stepIndex, stepPath, message, readPaths, writePaths, writeAccess)
+		templateVars = hcpo.buildAgentTemplateVars(ctx, step, item, stepIndex, stepPath, message, readPaths, writePaths, writeAccess)
 	}
 	if session.referencedGuides == nil {
 		guides := hcpo.referencedGuidesForStep(ctx, step.GetID(), step.GetDescription())
@@ -1698,7 +1700,7 @@ func agentSequenceValidationSchemaJSON(schema *ValidationSchema) string {
 	return string(schemaJSON)
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, message string, readPaths []string, writePaths []string, writeAccess AgentWriteAccess, previewValues ...map[string]string) map[string]string {
+func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(ctx context.Context, step *AgentPlanStep, item AgentItem, stepIndex int, stepPath string, message string, readPaths []string, writePaths []string, writeAccess AgentWriteAccess, previewValues ...map[string]string) map[string]string {
 	promptValues := hcpo.variableValues
 	if len(previewValues) > 0 {
 		promptValues = previewValues[0]
@@ -1759,6 +1761,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(step *AgentPla
 		"HasLearnings":            "false",
 		"CurrentDate":             promptDate(time.Now()),
 		"CurrentTime":             promptTime(time.Now()),
+	}
+	if plan := executionPlanFromContext(ctx); plan != nil {
+		vars["PlanPosition"] = hcpo.buildStepPlacement(ctx, plan.Steps, stepIndex)
 	}
 	applyAgentPromptContract(vars, step, promptValues)
 	return applySharedKBPrompt(hcpo.GetWorkspacePath(), vars)

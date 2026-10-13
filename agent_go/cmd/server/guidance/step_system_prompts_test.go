@@ -28,7 +28,7 @@ func TestStepSystemPromptsShareRuntimeAndBuilderSource(t *testing.T) {
 			t.Fatalf("builder and runtime disagree on %s", name)
 		}
 	}
-	for _, marker := range []string{"{{.FolderGuardReadPaths}}", "{{.DBGuidance}}", "{{if and .ValidationSchema", "## Declared Inputs", "{{.StepContextDependencies}}"} {
+	for _, marker := range []string{"{{.FolderGuardReadPaths}}", "workflow-database", "{{if and .ValidationSchema", "## Declared Inputs", "{{.StepContextDependencies}}"} {
 		if !strings.Contains(projected, marker) {
 			t.Fatalf("source reference lost runtime conditional/placeholder %s", marker)
 		}

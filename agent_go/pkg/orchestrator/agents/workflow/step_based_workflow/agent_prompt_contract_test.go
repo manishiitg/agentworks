@@ -128,7 +128,7 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 					return "Proof recorded.", history, nil
 				}
 				delegation := &agentSequenceDelegation{CreateAgent: func(context.Context) (agents.OrchestratorAgent, error) { return model, nil }, TurnVars: func(item AgentItem, message string, _ bool) map[string]string {
-					return c.buildAgentTemplateVars(step, item, 0, "proof", message, nil, nil, AgentWriteAccess{})
+					return c.buildAgentTemplateVars(t.Context(), step, item, 0, "proof", message, nil, nil, AgentWriteAccess{})
 				}}
 				var execCtx *ExecutionContext
 				if pending {

@@ -17,18 +17,8 @@ var (
 
 func init() {
 	err := RegisterBuiltin(&llmtypes.Skill{
-		Name: "agent-browser",
-		// Names where the Builder-specific rules actually are. The description
-		// used to say "follow Builder-specific CDP … rules" without saying
-		// where they live, and the surrounding skill list tells an agent to
-		// read learnings/_global/ for workflow content — so a CDP step on
-		// 2026-08-02 tried learnings/_global/references/browser-usage.md.
-		// It had the filename exactly right and only the parent wrong: the doc
-		// is projected to .agents/skills/builder-reference/references/, and is
-		// also served by read_skill. Naming the tool is the stable
-		// answer, since the projected directory differs per provider
-		// (.agents/ vs .claude/) while the tool call does not.
-		Description: "Interactive browsing through Builder's managed agent-browser tool. For repeatable tests use @agentworks/playwright for JS/TS or agentworks-playwright for Python when available and read builder-reference/references/playwright-scripted.md. Load version-matched core/specialized skills from the installed CLI, then call read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}]) for Builder-specific CDP tab ownership, locking, file, and safety rules. Do not guess a path for it under learnings/.",
+		Name:        "agent-browser",
+		Description: "Use managed agent_browser for interactive browsing, CDP tab ownership, downloads and capture; open when browsing is needed.",
 		Content:     agentBrowserSkillContent,
 		Source:      llmtypes.SkillSource{Origin: "builtin"},
 	})

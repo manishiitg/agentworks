@@ -183,7 +183,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 			access = hcpo.constrainAgentWriteAccess(stepConfig, *agent.InitialWriteAccess)
 		}
 		readPaths, writePaths = hcpo.setupAgentFolderGuard(step.GetID(), step.GetID(), stepConfig, access, true)
-		vars = hcpo.buildAgentTemplateVars(agent, *item, max(info.TopIndex-1, 0), step.GetID(), ResolveVariables(item.Message, values), readPaths, writePaths, access, values)
+		vars = hcpo.buildAgentTemplateVars(ctx, agent, *item, max(info.TopIndex-1, 0), step.GetID(), ResolveVariables(item.Message, values), readPaths, writePaths, access, values)
 		result.ItemID = item.ID
 		if len(agent.PredefinedRoutes) > 0 {
 			readPaths, writePaths = hcpo.setupOrchestratorFolderGuard(step, step.GetID())
@@ -212,6 +212,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	if _, agentStep := step.(*AgentPlanStep); !agentStep {
 		vars["IsCodeExecutionMode"] = fmt.Sprint(config.UseCodeExecutionMode)
 	}
+	placementCtx := ctx
+	placementIndex := info.TopIndex - 1
+	if info.ParentID != "" {
+		if parent := findWorkshopStepByID(plan.Steps, info.ParentID); parent != nil {
+			placementCtx = withStepParentPlacement(ctx, parent.Step.GetTitle(), "Caller instructions resolve when this specialist is invoked.")
+			placementIndex = parent.TopIndex - 1
+		}
+		result.Unresolved = append(result.Unresolved, "Specialist placement shows the saved parent; actual delegated task resolves at invocation.")
+	}
+	vars["PlanPosition"] = hcpo.buildStepPlacement(placementCtx, plan.Steps, placementIndex)
 	vars["UseProjectedReferenceSkills"] = "true"
 	vars["ReferencedGuides"] = hcpo.referencedGuidesForStep(ctx, step.GetID(), step.GetDescription())
 	vars["ScriptedParameterSchema"] = formatScriptParameterContract(scriptedParameterDefinitions(step))

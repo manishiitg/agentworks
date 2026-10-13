@@ -9,14 +9,12 @@ import (
 // agent's system prompt when it's responsible for writing KB itself.
 //
 // Notes-only KB model: the knowledgebase is a set of per-topic markdown files
-// under knowledgebase/notes/ plus notes/_index.json as a registry. There is no
-// graph.json / index.json surface. Permitted writes go through execute_shell_command.
+// under knowledgebase/notes/ plus notes/_index.json as a registry. Permitted
+// content writes go through diff_patch_workspace_file.
 //
-// Returns an empty string unless writeMethod is "direct" AND kbAccess allows writes —
-// in every other case (read-only or disabled) the step is not the writer
-// and this block must not appear. When returned, the block covers: topic-ID conventions,
-// read-first discipline, append-don't-rewrite rules, _index.json sync requirement,
-// and (if provided) the per-step knowledgebase_contribution as a contract.
+// Returns no contract without a write grant. Targets, patch-only restrictions
+// and the declared contribution remain binding context; topic and registry
+// procedures live in the workflow-knowledgebase skill.
 func BuildStepKBGuidance(kbAccess, kbContribution string) string {
 	return BuildStepKBGuidanceWithTarget(kbAccess, kbContribution, "")
 }
@@ -33,46 +31,10 @@ func BuildStepKBGuidanceWithTarget(kbAccess, kbContribution, notesTargetPath str
 	notesIndex := path.Join(notesTarget, KBNotesIndexFileName)
 
 	var b strings.Builder
-	b.WriteString("\n### Knowledgebase contribution (DIRECT write)\n")
-	b.WriteString("You are the sole writer of KB for this step — the post-step KB update agent does NOT run. Contribute inline, then finish the step.\n\n")
-	b.WriteString("**Target:** `")
-	b.WriteString(notesTarget)
-	b.WriteString("/` plus registry `")
-	b.WriteString(notesIndex)
-	b.WriteString("`. Use these exact paths; do not rely on your shell working directory.\n\n")
-	b.WriteString("**Surface:** per-topic markdown files under the target folder plus `")
-	b.WriteString(KBNotesIndexFileName)
-	b.WriteString("` as the registry. Use `diff_patch_workspace_file` for every KB content write, including new topic files and registry updates. Do not use shell redirection, heredocs, tee, Python, or built-in file-edit tools for KB writes.\n\n")
-
-	b.WriteString("**Topic ID conventions:**\n")
-	b.WriteString("- **Entity-scoped narrative** → topic id = entity slug (e.g. `company-acme.md`, `person-jane-doe.md`).\n")
-	b.WriteString("- **Cross-cutting pattern** → topic id = `pattern-<slug>` (e.g. `pattern-tax-cycle.md`, `pattern-balance-anomaly.md`).\n")
-	b.WriteString("- Prefer reusing an existing topic over creating a new one. `cat '")
-	b.WriteString(notesIndex)
-	b.WriteString("'` first to see what exists.\n\n")
-
-	b.WriteString("**Discipline:**\n")
-	b.WriteString("1. **Read first.** `cat '")
-	b.WriteString(notesIndex)
-	b.WriteString("'` to see which topics exist and what they cover. Read only the specific topic files relevant to your work — never glob `notes/*.md` (unbounded).\n")
-	b.WriteString("2. **Append, never overwrite.** Use `diff_patch_workspace_file` to add a dated `## YYYY-MM-DD` section (or topical subhead). Use the same tool for creating new `")
-	b.WriteString(path.Join(notesTarget, "<topic>.md"))
-	b.WriteString("` files. Never rewrite the whole file wholesale — that destroys prior-run contributions.\n")
-	b.WriteString("3. **Keep it useful.** Cross-reference entities by slug inside notes (e.g. \"see company-acme\") so future reorganize/consolidation passes can resolve links. Concise, concrete observations beat verbose restatements.\n")
-	b.WriteString("4. **Update `")
-	b.WriteString(notesIndex)
-	b.WriteString("` after every note write.** Bump `size_bytes`, `section_count`, `last_updated`, `last_updated_by`; merge new entity ids into `covers[]`. You may use shell/JQ to compute values, but apply the actual edit with `diff_patch_workspace_file`.\n")
-	b.WriteString("5. **No deletes.** Never remove sections from earlier steps/runs. Refinement only.\n")
-	b.WriteString("6. **No fabrication.** Capture only observations from this execution. If a pattern is unverified, say so explicitly.\n")
-	b.WriteString("7. **Do not edit `knowledgebase/context/`.** That folder is user-supplied runtime context captured by the builder, not step-discovered KB notes.\n")
-	b.WriteString("8. **No shell writes.** Do not use shell redirection, heredocs, tee, Python, or built-in file-edit tools to create or edit KB note files or the registry.\n")
-
-	if trimmed := strings.TrimSpace(kbContribution); trimmed != "" {
-		b.WriteString("\n**For this step specifically, contribute:**\n")
-		b.WriteString(trimmed)
-		b.WriteString("\n\nIf the contribution above names something you cannot verify from the step's work, skip it — do not invent narrative. Partial output is fine; hallucinated output is not.\n")
-	} else {
-		b.WriteString("\n(No `knowledgebase_contribution` was declared for this step, so contribute whatever durable narrative the step surfaced that a future step would want to read.)\n")
+	b.WriteString("\n### Knowledgebase contribution\n**Target:** `" + notesTarget + "/` plus registry `" + notesIndex + "`. Use these exact paths; do not rely on your shell working directory.\n")
+	b.WriteString("Open the workflow-knowledgebase skill for topic and registry procedures. You are the direct writer. Use diff_patch_workspace_file for every KB content write, including new topic files; do not edit context/ or erase earlier notes. Do not use shell redirection, heredocs, tee, Python or built-in file editors for KB writes.\n")
+	if contribution := strings.TrimSpace(kbContribution); contribution != "" {
+		b.WriteString("For this step, contribute: " + contribution + "\n")
 	}
 
 	return b.String()

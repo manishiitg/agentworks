@@ -297,11 +297,10 @@ func TestPrepareCustomToolsMaterializesDBCapabilityFromDBAccess(t *testing.T) {
 			if !gotMutation {
 				t.Fatalf("db_access=%q missing uniform mutation capability (tools=%v)", tt.access, names)
 			}
-			// Migration follows the same DB capability in default and explicit
-			// selections; changing the optional tool list must not change it.
+			// Schema migration is Builder-only, including old explicit selections.
 			gotMigration := slices.Contains(names, "apply_workflow_db_migration") && executors["apply_workflow_db_migration"] != nil
-			if !gotMigration {
-				t.Fatalf("db_access=%q missing uniform migration capability (tools=%v)", tt.access, names)
+			if gotMigration {
+				t.Fatalf("db_access=%q leaked Builder migration capability (tools=%v)", tt.access, names)
 			}
 		})
 	}
@@ -363,12 +362,12 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 				names = append(names, definition.Function.Name)
 			}
 		}
-		for _, required := range []string{"human_feedback", "notify_user", "create_human_input_request"} {
+		for _, required := range []string{"human_feedback", "create_human_input_request"} {
 			if !slices.Contains(names, required) || executors[required] == nil {
 				t.Fatalf("required human tool %q missing: tools=%v", required, names)
 			}
 		}
-		for _, excluded := range allHumanTools[3:] {
+		for _, excluded := range append([]string{"notify_user"}, allHumanTools[3:]...) {
 			if slices.Contains(names, excluded) || executors[excluded] != nil {
 				t.Fatalf("default step tools unexpectedly include human tool %q: tools=%v", excluded, names)
 			}

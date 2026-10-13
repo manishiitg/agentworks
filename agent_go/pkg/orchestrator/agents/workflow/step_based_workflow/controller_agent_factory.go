@@ -1839,49 +1839,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	hcpo.setupBrowserDownloadsPathOverride(ctx, config, stepConfig)
 
 	// Start with the exact same default custom-tool policy as every other
-	// agent agent. Specialist tools are the only conditional overlay.
-	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(stepConfig)
-	// DB capability tools are always derived from trusted db_access even when a
-	// step supplies a narrower custom-tool list.
-	hasTool := func(name string) bool {
-		for _, tool := range toolsToRegister {
-			if tool.Function != nil && tool.Function.Name == name {
-				return true
-			}
-		}
-		return false
-	}
-	for _, name := range []string{"query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration"} {
-		if dbAccess == DBAccessNone {
-			continue
-		}
-		if (name == "mutate_workflow_db" || name == "apply_workflow_db_migration") && dbAccess == DBAccessRead {
-			continue
-		}
-		if !hasTool(name) {
-			for _, tool := range hcpo.WorkspaceTools {
-				if tool.Function != nil && tool.Function.Name == name {
-					toolsToRegister = append(toolsToRegister, tool)
-					if executor, ok := hcpo.WorkspaceToolExecutors[name]; ok {
-						executorsToUse[name] = executor
-					}
-					break
-				}
-			}
-		}
-	}
-	if dbAccess == DBAccessRead {
-		filtered := toolsToRegister[:0]
-		for _, tool := range toolsToRegister {
-			if tool.Function != nil && (tool.Function.Name == "mutate_workflow_db" || tool.Function.Name == "apply_workflow_db_migration") {
-				continue
-			}
-			filtered = append(filtered, tool)
-		}
-		toolsToRegister = filtered
-		delete(executorsToUse, "mutate_workflow_db")
-		delete(executorsToUse, "apply_workflow_db_migration")
-	}
+	// execution agent. Specialist tools are the only conditional overlay.
+	toolsToRegister, executorsToUse := hcpo.prepareOrchestratorCustomTools(stepConfig, dbAccess)
 
 	// Inject STEP_OUTPUT_DIR and STEP_EXECUTION_DIR into execute_shell_command so the
 	// todo-task orchestrator's own shell calls resolve sibling step outputs via env vars

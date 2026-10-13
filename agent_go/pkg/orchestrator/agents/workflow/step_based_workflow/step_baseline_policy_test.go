@@ -56,6 +56,12 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 				t.Fatal(err)
 			}
 			tools, executors := c.prepareCustomTools(cfg)
+			managerTools, managerExecutors := c.prepareOrchestratorCustomTools(cfg, c.resolveDBAccess(cfg))
+			for _, name := range names[5:12] {
+				if slices.Contains(registeredToolNames(managerTools), name) || managerExecutors[name] != nil {
+					t.Fatalf("manager re-added %s", name)
+				}
+			}
 			got := registeredToolNames(tools)
 			for _, name := range names[5:12] {
 				if slices.Contains(got, name) || executors[name] != nil {
@@ -82,6 +88,14 @@ func TestStepPromptProcedureSize(t *testing.T) {
 	for _, mode := range []string{"false", "true"} {
 		vars["IsCodeExecutionMode"] = mode
 		prompt := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(vars)
+		if len([]rune(prompt)) > 9000 {
+			t.Fatalf("step core exceeds 9000 characters: %d", len([]rune(prompt)))
+		}
+		for _, procedure := range []string{"param_sets:", "**Topic ID conventions:**", "never place SQL containing single quotes"} {
+			if strings.Contains(prompt, procedure) {
+				t.Fatalf("core contains procedural body: %s", procedure)
+			}
+		}
 		t.Logf("rendered step core code_execution=%s: %d characters", mode, len([]rune(prompt)))
 	}
 }

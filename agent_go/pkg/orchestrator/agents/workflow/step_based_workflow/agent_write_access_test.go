@@ -209,7 +209,7 @@ func TestAgentTemplateVarsReflectItemWriteAccess(t *testing.T) {
 		WriteAccess: AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true},
 	}
 	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", step.GetID(), getAgentConfigs(step), item.WriteAccess)
-	vars := hcpo.buildAgentTemplateVars(step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, item.WriteAccess)
+	vars := hcpo.buildAgentTemplateVars(t.Context(), step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, item.WriteAccess)
 	if !strings.Contains(vars["FolderGuardReadPaths"], filepath.Join("Workflow", "test-flow", "learnings", step.GetID())) {
 		t.Fatalf("agent cannot read its step-specific learnings: %q", vars["FolderGuardReadPaths"])
 	}
@@ -254,7 +254,7 @@ func TestAgentTemplateVarsUseEffectiveWriteAccess(t *testing.T) {
 	}
 	effectiveAccess := AgentWriteAccess{}
 	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", step.GetID(), getAgentConfigs(step), effectiveAccess)
-	vars := hcpo.buildAgentTemplateVars(step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, effectiveAccess)
+	vars := hcpo.buildAgentTemplateVars(t.Context(), step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, effectiveAccess)
 
 	if note := vars["AgentAccessNote"]; strings.Contains(strings.TrimPrefix(note, "Reads are available for execution outputs, soul, builder logs, db/, knowledgebase/, learnings/_global/, and this step's learnings folder. "), "learnings/_global/") {
 		t.Fatalf("write access note should reflect effective grants, not raw item grants: %q", note)

@@ -470,6 +470,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		"LearningsPath":         filepath.Join(docsRoot, fgGlobalLearningsPath),
 	}
 
+	templateVars["PlanPosition"] = hcpo.buildStepPlacement(ctx, allSteps, stepIndex)
 	applySharedKBPrompt(baseWorkspacePath, templateVars)
 	// Build previous steps summary (includes descriptions, output files, and execution results like human_input responses)
 	previousStepsSummary := hcpo.buildPreviousStepsSummary(allSteps, stepIndex, previousContextFiles, previousExecutionResults)
@@ -686,6 +687,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeGenericAgent(
 			Cancel: subAgentCancel,
 		})
 	}
+	subAgentCtx = withStepParentPlacement(subAgentCtx, parentTodoTitle, response.InstructionsToSubAgent)
 	subAgentCtx = virtualtools.WithBackgroundAgentID(subAgentCtx, agentID)
 	subAgentCtx = context.WithValue(subAgentCtx, events.ParentExecutionIDKey, agentID)
 
@@ -1061,6 +1063,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 			Cancel: subAgentCancel,
 		})
 	}
+	subAgentCtx = withStepParentPlacement(subAgentCtx, parentTodoTitle, response.InstructionsToSubAgent)
 	subAgentCtx = virtualtools.WithBackgroundAgentID(subAgentCtx, subAgentNotifID)
 	subAgentCtx = context.WithValue(subAgentCtx, events.ParentExecutionIDKey, subAgentNotifID)
 	// A saved scripted route does not consume the augmented step description:

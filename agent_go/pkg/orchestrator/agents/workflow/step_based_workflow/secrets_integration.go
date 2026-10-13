@@ -26,3 +26,14 @@ func BuildWorkflowSecretPrompt(secrets []orchestrator.SecretEntry) string {
 	}
 	return "\n## Secrets\n\nAvailable secret names: " + strings.Join(names, ", ") + ". Read values only from the authorized injected environment; never ask for, print, echo, log, save or hardcode them.\n"
 }
+
+// Only name credentials actually injected into this execution environment.
+func stepInjectedSecrets(secrets []orchestrator.SecretEntry, env map[string]string) []orchestrator.SecretEntry {
+	out := make([]orchestrator.SecretEntry, 0, len(secrets))
+	for _, secret := range secrets {
+		if _, ok := env["SECRET_"+secret.Name]; ok {
+			out = append(out, secret)
+		}
+	}
+	return out
+}

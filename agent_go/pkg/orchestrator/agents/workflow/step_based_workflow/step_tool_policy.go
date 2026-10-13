@@ -57,3 +57,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmty
 	}
 	return result, resultExecutors
 }
+
+// Managers use the same baseline and can only narrow it. No capability tools
+// are appended after filtering, so removed Builder tools cannot leak back in.
+func (hcpo *StepBasedWorkflowOrchestrator) prepareOrchestratorCustomTools(cfg *AgentConfigs, dbAccess string) ([]llmtypes.Tool, map[string]interface{}) {
+	tools, executors := hcpo.prepareCustomTools(cfg)
+	result := make([]llmtypes.Tool, 0, len(tools))
+	for _, tool := range tools {
+		name := tool.Function.Name
+		if (dbAccess == DBAccessNone && name == "query_workflow_db") || (dbAccess != DBAccessReadWrite && name == "mutate_workflow_db") {
+			delete(executors, name)
+			continue
+		}
+		result = append(result, tool)
+	}
+	return result, executors
+}

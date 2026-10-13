@@ -1,5 +1,15 @@
 # Decisions and open issues
 
+## 2026-10-13 — Workflow steps use a small core and on-demand procedural skills (PLAT-861)
+
+Every step keeps the general execution tool baseline. DB, knowledgebase and browser procedures live in skills opened when needed, with the same model for API providers and coding CLIs. The core retains actual grants/paths, task/output contracts and bounded goal, plan-position and parent-call context. No new workflow upgrade or Builder tool-selection pass is needed.
+
+Ordinary steps report through run summaries and workflow notifications; notify_user, cost queries, schema migration and function-service tools are omitted even from old explicit selections. Builder keeps administration; Crew owns function calls. Goal metrics require a real soul objective; asking Pulse/Goal Lead additionally requires enabled Pulse. Skills never grant access.
+
+Why: repeated procedural prose and unrelated role tools distracted steps and made their scope unclear. One runtime policy and shared context builder keep preview, direct execution and delegation aligned.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-187.
+
 ## 2026-10-13 — Admin account access over MCP uses the Users page handler (PLAT-856)
 
 The `users` tool lists, inspects and updates existing accounts for active admins

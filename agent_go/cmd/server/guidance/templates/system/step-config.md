@@ -88,3 +88,19 @@ and a write-time gate would suppress exactly that iteration. Record the why in
 1. `update_step_config(step_id, <field>=<value>, ...)` to set; `update_step_config(step_id, clear=["<field>", ...])` to revert to default.
 2. Pair access grants with their prerequisite (`learnings_access: read-write` ⇒ `learning_objective`; KB write ⇒ `knowledgebase_contribution`).
 3. For the reliability/strategy decision-making that drives most config changes: `read_skill(skills=[{"name":"builder-reference","path":"references/optimize-playbook.md"}])`.
+
+## Runtime procedures and tools
+
+Ordinary step agents keep the general execution tool baseline; do not add a
+per-step tool-selection exercise or an upgrade for prompt/skill changes. The
+runtime supplies short workflow-database, workflow-knowledgebase, agent-browser
+and workflow-execution skill listings when applicable. The agent opens a relevant
+skill on demand; do not paste these procedures into descriptions, system_rules
+or verification messages. Keep enabled_skills for useful task/domain skills.
+Ordinary steps do not have notify_user, query_workflow_costs,
+apply_workflow_db_migration or function-service tools. Report results through the
+run summary and workflow notifications; use human_feedback for a needed answer.
+Schema changes belong to Builder; external function-service work belongs to Crew.
+Goal metrics require a real soul objective, and Pulse questions also require Pulse
+on. The runtime supplies bounded goal/position/parent context separately; do not
+repeat it in each sequence instruction.

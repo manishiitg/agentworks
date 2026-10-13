@@ -71,10 +71,9 @@ func TestExecutionOnlyPromptUsesManagedWorkflowDBTools(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"Use `query_workflow_db` for schema discovery and reads",
-		"`mutate_workflow_db` for transactional INSERT/UPDATE/DELETE operations",
-		`jq -n --arg sql "$sql"`,
-		"never place SQL containing single quotes",
+		"agents use `query_workflow_db`",
+		"and `mutate_workflow_db`",
+		"Open **workflow-database**",
 		"persist results with `mutate_workflow_db`",
 	}
 	for _, snippet := range requiredSnippets {
@@ -233,27 +232,6 @@ func TestExecutionOnlyCLIPromptUsesProjectedReferencesAndStaysUnderBudget(t *tes
 	}
 }
 
-func TestExecutionOnlyAPIPromptKeepsOneInlineAuthoringFallback(t *testing.T) {
-	agent := &WorkflowExecutionOnlyAgent{}
-	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{
-		"UseProjectedReferenceSkills": "false",
-		"StepExecutionPath":           "/app/workspace-docs/Workflow/test/execution/step-scripted",
-		"IsCodeExecutionMode":         "true",
-		"IsScriptedMode":              "true",
-		"HasBrowserAccess":            "true",
-	})
-
-	if !strings.Contains(prompt, strings.TrimSpace(BuildMainPyAuthoringRules())) {
-		t.Fatal("API prompt lost its inline main.py authoring fallback")
-	}
-	if got := strings.Count(prompt, "## Python Best Practices"); got != 1 {
-		t.Fatalf("API prompt must contain exactly one Python fallback section, got %d", got)
-	}
-	if !strings.Contains(prompt, "## Browser automation rules") {
-		t.Fatal("API prompt lost its inline browser authoring fallback")
-	}
-}
-
 // A synthetic learnings/KB closing turn (IsContributionTurn) must render as JUST the
 // contribution instruction — the execute-the-task / Inputs / Output / "create the
 // output file" scaffolding is contradictory and wasteful on a write-only turn. A
@@ -361,13 +339,13 @@ func TestSharedKnowledgebasePromptUsesMCPInsteadOfLocalRecipes(t *testing.T) {
 	}
 	vars := map[string]string{"KbAccess": "read", "KnowledgebasePath": "archive", "KnowledgebaseContribution": ""}
 	applySharedKBPrompt(workspace, vars)
-	if vars["KbAccess"] != "shared" || vars["KnowledgebasePath"] != "" || !strings.Contains(vars["KBGuidanceBlock"], "brain_read") {
+	if vars["KbAccess"] != "shared" || vars["KnowledgebasePath"] != "" || !strings.Contains(vars["KBGuidanceBlock"], "brain skill") {
 		t.Fatal(vars)
 	}
 	vars["DBAccess"] = "read"
 	vars["WorkflowRoot"] = workspace
 	prompt := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(vars)
-	if !strings.Contains(prompt, "brain_read") || strings.Contains(prompt, "jq '.topics") || strings.Contains(prompt, "ALWAYS `cat knowledgebase/") {
+	if !strings.Contains(prompt, "brain skill") || strings.Contains(prompt, "jq '.topics") || strings.Contains(prompt, "ALWAYS `cat knowledgebase/") {
 		t.Fatal("shared prompt retained local recipes", prompt)
 	}
 

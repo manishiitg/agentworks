@@ -302,3 +302,19 @@ Use an `agent` route when the parent agent should preserve specialist memory acr
 - Create another large sequence only when its context should be intentionally isolated, and record the boundary rationale in the plan description/review.
 - Keep code and its permissions/validation in saved scripted script definitions; use standalone steps or explicit scripted batch items to execute them.
 - Never add a legacy code item. If an old plan contains one, require the v1.0.10 workflow preflight migration.
+
+## Runtime procedures and tools
+
+Ordinary step agents keep the general execution tool baseline; do not add a
+per-step tool-selection exercise or an upgrade for prompt/skill changes. The
+runtime supplies short workflow-database, workflow-knowledgebase, agent-browser
+and workflow-execution skill listings when applicable. The agent opens a relevant
+skill on demand; do not paste these procedures into descriptions, system_rules
+or verification messages. Keep enabled_skills for useful task/domain skills.
+Ordinary steps do not have notify_user, query_workflow_costs,
+apply_workflow_db_migration or function-service tools. Report results through the
+run summary and workflow notifications; use human_feedback for a needed answer.
+Schema changes belong to Builder; external function-service work belongs to Crew.
+Goal metrics require a real soul objective, and Pulse questions also require Pulse
+on. The runtime supplies bounded goal/position/parent context separately; do not
+repeat it in each sequence instruction.

@@ -345,6 +345,9 @@ func knowledgebaseSourcesList(workspace, intro string) string {
 
 func sharedStepKBGuidance(workspace, access, contribution, notes string) string {
 	if shared, prompt := workflowkb.SharedConfig(GetPromptDocsRoot(), workspace); shared {
+		if strings.HasPrefix(prompt, "## Shared Knowledge Base") {
+			prompt = "## Shared knowledge binding\nBrain MCP; the local knowledgebase/ folder is retired. Open the brain skill when using knowledge."
+		}
 		return prompt + "\nStep access: " + access + ". Contribution instruction: " + contribution
 	}
 	return BuildStepKBGuidanceWithTarget(access, contribution, notes)
