@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -108,6 +109,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		return
 	}
 	failed := func(reason string) {
+		log.Printf("[BRIDGE] Muse watch for lease %s ended: %s", boundedMuseHint(in.AttachmentID), reason)
 		_ = encoder.Encode(MuseWatchHint{Kind: "error", Source: "agentworks-muse-watch", Error: reason})
 		flusher.Flush()
 	}
@@ -153,9 +155,15 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 	valid := func() bool { // caller holds b.mu
 		return !b.closed && b.sessions[key] == s && !s.Offline && s.HostKey == in.HostKey && s.Attachment.ID == in.AttachmentID && s.museWatch == state && ctx.Err() == nil && (b.museCurrent[in.HostKey] == "" || b.museCurrent[in.HostKey] == in.SessionID)
 	}
-	if _, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": name, "attachment_id": in.AttachmentID, "message_ids": []string{}}, true); err != nil {
-		failed("Muse attachment is no longer authorized")
-		return
+	for {
+		_, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": name, "attachment_id": in.AttachmentID, "message_ids": []string{}}, true)
+		if err == nil {
+			break
+		}
+		if !museWatchRetry(ctx, serverCtx, err) {
+			failed("Muse attachment is no longer authorized")
+			return
+		}
 	}
 	b.mu.Lock()
 	if !valid() {
@@ -218,6 +226,9 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": name, "attachment_id": in.AttachmentID, "message_ids": []string{m.MessageID}}, true)
 		var checked struct {
 			IDs []string `json:"message_ids"`
+		}
+		if err != nil && museWatchRetry(ctx, serverCtx, err) {
+			continue // the server was busy or unreachable, which says nothing about the lease
 		}
 		if err != nil || json.Unmarshal(raw, &checked) != nil {
 			failed("Muse offer is no longer authorized")
@@ -291,4 +302,27 @@ func boundedMuseHint(value string) string {
 		}
 	}
 	return string(runes)
+}
+
+// museWatchRetryDelay is how long a watch waits before checking its lease again.
+var museWatchRetryDelay = 5 * time.Second
+
+// museWatchRetry reports whether a failed lease check is only the server being slow or unreachable
+// (so the watch waits and tries again) rather than the server refusing the lease. A watch that
+// ended on a slow server left the chat deaf until its next prompt re-armed it. It waits first.
+func museWatchRetry(ctx, serverCtx context.Context, err error) bool {
+	var apiErr *APIError
+	if ctx.Err() != nil || serverCtx.Err() != nil || errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != 408 && apiErr.Status != 429 {
+		return false
+	}
+	log.Printf("[BRIDGE] Muse watch lease check failed, retrying: %v", err)
+	timer := time.NewTimer(museWatchRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+	case <-serverCtx.Done():
+	}
+	return false
 }

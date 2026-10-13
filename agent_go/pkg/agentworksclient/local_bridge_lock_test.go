@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -223,5 +224,79 @@ func TestMailboxReadChecksLeaseBesideTheReadAndLogRolls(t *testing.T) {
 	}
 	if _, e := os.Stat(path + ".1"); e != nil {
 		t.Fatalf("no rolled log: %v", e)
+	}
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+	hdr http.Header
+}
+
+func (l *lockedBuffer) Header() http.Header { return l.hdr }
+func (l *lockedBuffer) WriteHeader(int)     {}
+func (l *lockedBuffer) Flush()              {}
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.buf.String() }
+
+// A Muse chat's Monitor watch ended whenever the server was slow for its lease check, and the chat
+// then heard nothing until a prompt re-armed it. A busy server only delays the watch; a refusal ends it.
+func TestMuseWatchWaitsOutABusyServerButEndsWhenTheLeaseIsRefused(t *testing.T) {
+	museWatchRetryDelay = 10 * time.Millisecond
+	defer func() { museWatchRetryDelay = 5 * time.Second }()
+	var calls atomic.Int32
+	var refuse atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case refuse.Load():
+			http.Error(w, `{"error":"gone"}`, http.StatusForbidden)
+		case calls.Add(1) < 3:
+			http.Error(w, `{"error":"busy"}`, http.StatusServiceUnavailable)
+		default:
+			_, _ = w.Write([]byte(`{"message_ids":[]}`))
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func() (*lockedBuffer, chan struct{}, context.CancelFunc) {
+		b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{}), museCurrent: map[string]string{}}
+		b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client, Offers: map[string]localOffer{}}
+		ctx, cancel := context.WithCancel(context.Background())
+		out := &lockedBuffer{hdr: http.Header{}}
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			req := httptest.NewRequest(http.MethodPost, "/bridge", nil).WithContext(ctx)
+			b.serveMuseWatch(ctx, out, req, LocalBridgeRequest{Provider: "muse", SessionID: "s1", AttachmentID: "att", HostKey: "h"})
+		}()
+		return out, done, cancel
+	}
+	out, done, cancel := run()
+	for i := 0; i < 200 && !strings.Contains(out.String(), `"ready"`); i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(out.String(), `"ready"`) || calls.Load() < 3 {
+		t.Fatalf("watch after a busy server = %q (%d checks)", out.String(), calls.Load())
+	}
+	cancel()
+	<-done
+
+	refuse.Store(true)
+	out, done, cancel = run()
+	defer cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("watch kept running after the lease was refused")
+	}
+	if !strings.Contains(out.String(), "no longer authorized") {
+		t.Fatalf("refused watch = %q", out.String())
 	}
 }
