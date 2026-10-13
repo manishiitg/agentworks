@@ -966,7 +966,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
 		// A guest's free-text ask only reads, so it saves and links nothing.
-		askReadOnly := guest != "" && len(req) > 0 && req[0].CrewAskReadOnly
+		askReadOnly := len(req) > 0 && crewAskReadOnlyTurn(req[0], userID)
 		if !askReadOnly {
 			if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
 				log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
@@ -974,6 +974,16 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		} else {
 			gate.Declare("list_functions")
 			if err := api.registerCrewFunctionTools(crewFunctionListOnlyRegistrar{registrar}, userID, sessionID, QueryRequest{SelectedFolder: workspacePath}, crewTriggerLinkCaller(workspacePath), nil); err != nil {
+				return err
+			}
+			// The one way a non-owner acts: call a function the owner published (it runs with the owner's authority).
+			gate.Declare(crewPublishedCallToolName)
+			gate.Declare(crewPublishedGetToolName)
+			callerID := guest
+			if callerID == "" {
+				callerID = userID
+			}
+			if err := api.registerCrewPublishedFunctionTools(registrar, callerID, sessionID, workspacePath); err != nil {
 				return err
 			}
 		}

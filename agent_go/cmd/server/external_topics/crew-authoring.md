@@ -82,7 +82,7 @@ type, properties, required, items, enum).
 
 ## Messages and memory
 
-- A non-owner's ask is read-only (it reads files, memory, skills and functions; it writes nothing and uses no MCP tools); to make a Crew do something, call one of its functions. The owner's own ask has full access. Only the owner changes a Crew. Expose a function for everything others may make the Crew do.
+- Everyone except the Crew's owner uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. The owner's own chat is Builder mode, with full access. Only the owner changes a Crew. Expose a function for everything others may make the Crew do.
 - Conversational contact is separate from functions: `messages`/`ask_crew` send a message to the Crew,
   it may reply or not, and replies are read from the inbox. The Crew's **Agent messaging** setting
   (`free_text_ask` in settings) turns incoming programmatic messages off; declared functions and people

@@ -28,7 +28,7 @@ func TestGuestAskIsReadOnly(t *testing.T) {
 
 // The tool description every MCP client reads states the final model.
 func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
-	if !strings.Contains(crewAskModelSentence, "read-only") || !strings.Contains(crewAskModelSentence, "call one of its functions") {
+	if !strings.Contains(crewAskModelSentence, "Run mode") || !strings.Contains(crewAskModelSentence, "published") || !strings.Contains(crewAskModelSentence, "call one of its functions") {
 		t.Fatal(crewAskModelSentence)
 	}
 	src, err := os.ReadFile("external_tools.go")
@@ -44,6 +44,7 @@ func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
+		crewPublishedCallToolName, crewPublishedGetToolName,
 	}
 	var got []string
 	for name := range crewAskAllowedTools {
@@ -107,8 +108,7 @@ func TestGuestAskNativeBridgeToolsAreTheAllowListMinusCore(t *testing.T) {
 
 // The model reads the notice to learn the tools are direct (the bridge spec still shows HTTP routes).
 func TestGuestAskNoticeSaysTheToolsAreDirect(t *testing.T) {
-	src, err := os.ReadFile("crew_session_mode.go")
-	if err != nil || !strings.Contains(string(src), "DIRECT tools") {
+	if !strings.Contains(crewAskNotice("Crew/c-1", false), "DIRECT tools") {
 		t.Fatal("the guest ask notice must tell the model its tools are direct")
 	}
 }
@@ -148,5 +148,38 @@ func TestFunctionCallTurnNamesItsOwnOutputFolder(t *testing.T) {
 	}
 	if got := crewFunctionOutputFolder("another-session", "alice", "Crew/alpha"); got != "" {
 		t.Fatalf("another session must not get it: %q", got)
+	}
+}
+
+// Every non-owner chat with a Crew (the in-app chat, an MCP ask, a dashboard Ask) is one policy decided in one place (856-59,
+// owner 2026-10-13): read-only plus the owner's published functions. The owner's own chat and a guest's function-call turn are not it.
+func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
+	ownerRoot := "_users/owner/Chats/Work/projects/alpha"
+	reader := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}
+	ownerTurn := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}
+	guestAsk := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot, CrewGuestCaller: "reader", CrewAskReadOnly: true, PinRunMode: true}
+	guestCall := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot, CrewGuestCaller: "reader", PinRunMode: true}
+	if !crewAskReadOnlyTurn(reader, "reader") {
+		t.Error("a non-owner's in-app chat must follow the policy")
+	}
+	if !crewAskReadOnlyTurn(guestAsk, "owner") {
+		t.Error("a non-owner's MCP ask must follow the policy")
+	}
+	if crewAskReadOnlyTurn(ownerTurn, "owner") {
+		t.Error("the owner's chat is the full one")
+	}
+	if crewAskReadOnlyTurn(guestCall, "owner") {
+		t.Error("a guest's function-call turn runs the owner's function, not the chat policy")
+	}
+	for _, tool := range []string{crewPublishedCallToolName, crewPublishedGetToolName} {
+		if !crewAskAllowedTools[tool] {
+			t.Errorf("%s must be allowed: it is how a non-owner acts", tool)
+		}
+	}
+	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["call_function"] {
+		t.Error("no shell and no calls to other Crews or workflows in a non-owner's chat")
+	}
+	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, crewPublishedCallToolName) || !strings.Contains(notice, "Run mode") {
+		t.Fatalf("the notice must teach the published-function tool:\n%s", notice)
 	}
 }

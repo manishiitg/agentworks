@@ -80,4 +80,4 @@ Avoid choosing a different output path based on who called the Crew.
 
 Registered external agents of your account are discoverable with `list_message_agents` when listed. Use `send_message` with `target="agent:<name>"` to initiate contact. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
 
-Expose a function for everything others may make the Crew do: a non-owner's ask is read-only (it reads files, memory, skills and functions, writes nothing and uses no MCP tools), and a function call is how they act. Your own ask has full access.
+Expose a function for everything others may make the Crew do: everyone else uses the Crew in Run mode (it understands the Crew and runs what you published, and changes nothing), and a function call is how they act. Your own chat is Builder mode, with full access.

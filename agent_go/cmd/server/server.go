@@ -4078,9 +4078,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
 	}
+	// One policy for every non-owner chat (in-app, MCP ask, dashboard Ask): read-only plus the owner's published functions.
+	crewAskOnly := crewAskReadOnlyTurn(req, currentUserID)
 	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
-	common.SetSessionCrewAskReadOnly(sessionID, crewGuest != "" && req.CrewAskReadOnly)
+	common.SetSessionCrewAskReadOnly(sessionID, crewAskOnly)
 	common.SetSessionReadOnlyAccess(sessionID, access == WorkflowAccessRead)
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
@@ -5914,7 +5916,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
-		if req.ExternalBuilderOperationID != "" || (crewGuest != "" && req.CrewAskReadOnly) {
+		if req.ExternalBuilderOperationID != "" || crewAskOnly {
 			// A guest's free-text ask reads only and gets no secrets in its environment (856-59).
 			for name := range codingAgentSecretEnvironment {
 				if strings.HasPrefix(name, "SECRET_") || req.ExternalBuilderOperationID != "" {
@@ -5999,7 +6001,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
-			if crewGuest != "" && req.CrewAskReadOnly {
+			if crewAskOnly {
 				toolGate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[strings.TrimSpace(name)] })
 			}
 		}
@@ -6023,7 +6025,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
 		// two tools it needs are native bridge tools: reading project files and replying (856-59).
-		if crewGuest != "" && req.CrewAskReadOnly {
+		if crewAskOnly {
 			platformBridgeTools = crewAskBridgeTools(platformBridgeTools)
 		}
 
@@ -6157,7 +6159,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
 		// A guest's free-text ask mounts no MCP server: guests act only through the functions the owner exposes (856-59).
-		guestAsk := crewGuest != "" && req.CrewAskReadOnly
+		guestAsk := crewAskOnly
 		if guestAsk || codeLocalModeTurn(req, resolvedProfile) || (resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID) {
 			selectedServers = []string{mcpclient.NoServers}
 			agentConfig.RuntimeOverrides = nil
@@ -6298,7 +6300,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
 			}
-			if req.ExternalBuilderOperationID != "" || (crewGuest != "" && req.CrewAskReadOnly) {
+			if req.ExternalBuilderOperationID != "" || crewAskOnly {
 				chatAgentSecretEnv = map[string]string{}
 			}
 			workspaceRegistry := virtualtools.CreateWorkspaceToolRegistry(virtualtools.WorkspaceToolRegistryConfig{
@@ -6445,7 +6447,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// mode can write that folder without widening project access.
 					functionOutput := crewFunctionOutputFolder(sessionID, currentUserID, profileRoot)
 					outputFolder := crewOutputFolder(profileRoot)
-					if crewGuest != "" && req.CrewAskReadOnly {
+					if crewAskOnly {
 						outputFolder = ""
 					}
 					if functionOutput != "" {

@@ -121,22 +121,40 @@ func crewSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, r
 		return ""
 	}
 	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
+		if crewAskReadOnlyTurn(req, currentUserID) {
+			return crewAskNotice(req.SelectedFolder, strings.TrimSpace(req.BotPlatform) != "")
+		}
 		runFolder := crewOutputFolder(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
-		if req.CrewAskReadOnly && crewGuestCallerForTurn(req, currentUserID) != "" {
-			runFolder = ""
-		} else if fn := crewFunctionOutputFolder(sessionID, currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)); fn != "" {
+		if fn := crewFunctionOutputFolder(sessionID, currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)); fn != "" {
 			runFolder = fn
 		}
 		notice := crewSessionModeNotice(req.SelectedFolder, runFolder, strings.TrimSpace(req.BotPlatform) != "")
-		if crewGuestCallerForTurn(req, currentUserID) != "" && req.CrewAskReadOnly {
-			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewAskModelSentence + " Read the Crew's files with `" + crewAskFilesToolName + "` (list, search, read) and reply with `send_message`: they, `read_skill`, `list_skills`, `search_skills` and the other tools you were given are DIRECT tools (call them by name, e.g. mcp__api-bridge__" + crewAskFilesToolName + "); do not look for an HTTP route, there is no shell or curl and none is needed.\n" + sessionModeClose
-		}
-		if crewGuestCallerForTurn(req, currentUserID) != "" && !req.CrewAskReadOnly {
+		if crewGuestCallerForTurn(req, currentUserID) != "" {
 			notice = strings.TrimSuffix(notice, "\n"+sessionModeClose) + " " + crewGuestCallsNote + "\n" + sessionModeClose
 		}
 		return notice
 	}
 	return ""
+}
+
+// crewAskNotice is the notice of a non-owner's chat or ask with a Crew (Run mode, 856-59): it reads and calls the functions the
+// owner published. It has no output folder and no shell, so nothing here tells it to save files or run scripts.
+func crewAskNotice(crewRoot string, shared bool) string {
+	who := "someone else's"
+	if ownerID, ok := crewProjectOwnerID(crewRoot); ok {
+		if owner := crewOwnerDisplayName(ownerID); owner != "" {
+			who = owner + "'s"
+		}
+	}
+	scope := "This conversation is the current user's alone. "
+	if shared {
+		scope = "This is a shared chat channel: several people write to this conversation. "
+	}
+	return sessionModeOpen + "\nYou are using " + who + " Crew in Run mode. " + crewAskModelSentence + " " +
+		"Read the Crew's files with `" + crewAskFilesToolName + "` (list, search, read), see what it offers with `list_functions`, and run one with `" + crewPublishedCallToolName + "` (then poll `" + crewPublishedGetToolName + "` until it settles and tell the user the result). " +
+		"These and `read_skill`, `list_skills`, `search_skills`, `send_message` and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__" + crewAskFilesToolName + "); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
+		"Change nothing yourself, and do not work around that. If the user wants something changed that no function does, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
+		scope + "Never reveal a secret's value, any part of it or its length, in any form, and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }
 
 // crewGuestCallsNote tells a shared caller's turn (a function call or an `ask` to the Crew) that it may use other Crews'

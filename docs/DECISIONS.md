@@ -21,6 +21,22 @@ closed by the idle reaper (at most one hour), and a chat resumes on its next mes
 
 Ticket: PLAT-861, issue 861-153.
 
+## 2026-10-13 — There are two modes: Builder (the owner) and Run (everyone else), one policy for every Crew chat (PLAT-856)
+
+A Crew is used in one of two modes. The owner (one person for now) is in Builder mode: change and use everything.
+Everyone else is in Run mode, in every way they chat with it (the app chat, also when opened from a dashboard, or an
+MCP `ask_crew`): they understand the Crew (files through one read tool, memory, skills, the function list) and run
+what the owner published (`call_published_function`, polled with `get_published_function_call`). A published function
+runs with the owner's authority and may write; the owner chose that by publishing it. Only this Crew's functions are
+reachable, never another Crew's or a workflow's. Run mode has no shell, no MCP tools, no secrets, no output folder
+and changes nothing. The test is one server-side predicate (`crewAskReadOnlyTurn`) and one allow list, so a new entry
+point cannot get a looser surface; the owner check is the single place a co-owner role would be added. Why: the app
+chat used a deny list while an MCP ask used an allow list, so the same person got two different rules. A 1:1 Slack DM
+from another person runs as that person's own account (`slack_dm.go`) in their own chat of that Crew, never the
+owner's main chat (`whatsapp_profile_turn.go`), so it is the same Run mode.
+
+Ticket: PLAT-856, issue 856-59.
+
 ## 2026-10-13 — A bare attach reconnects the folder's most recent free agent (PLAT-861)
 
 A person who types a bare `/agentworks attach` in a chat the bridge does not know
