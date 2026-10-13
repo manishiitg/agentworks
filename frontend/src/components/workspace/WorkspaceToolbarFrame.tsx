@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 import { markFeatureUsed } from '../../utils/featureUsage'
 
-const frameClass = 'inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm'
+const frameClass = 'inline-flex min-h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm max-md:flex-wrap'
 const toggleClass = 'grid h-7 w-7 place-items-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
 
 /** Shared icon group frame in the right workspace toolbar. It ends with a

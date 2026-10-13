@@ -32,6 +32,15 @@ describe('WorkWorkspaceToolbar', () => {
     expect(identity).toContain('showAdditionalGroup')
   })
 
+  it('wraps the toolbar instead of clipping it on phone widths', () => {
+    const frame = readFileSync('src/components/workspace/WorkspaceToolbarFrame.tsx', 'utf8')
+    const source = readFileSync('src/products/work/WorkWorkspacePane.tsx', 'utf8')
+    // Below md the icon row wraps onto a second line: at 390 px the fixed
+    // row ran to ~436 px and Integrations / Hide toolbar were unreachable.
+    expect(source).toContain('max-md:flex-wrap')
+    expect(frame).toContain('max-md:flex-wrap')
+  })
+
   it('binds the Work chat to acknowledged workspace view controls', () => {
     const source = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
 

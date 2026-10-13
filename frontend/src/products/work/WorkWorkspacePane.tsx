@@ -151,7 +151,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   </div>
 
   return (
-    <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
+    <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1 max-md:min-w-0 max-md:shrink max-md:flex-wrap max-md:justify-end">
       <TooltipProvider delayDuration={150}>
         {showActivityMonitor && <GlobalActivityMonitor />}
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
