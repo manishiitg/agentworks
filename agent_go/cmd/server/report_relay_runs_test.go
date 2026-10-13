@@ -62,9 +62,8 @@ func TestReportRelayRunsUsesProjectAccessAndDoesNotExposePrivateTrace(t *testing
 	}
 }
 
-// Owners and editors see every caller's recorded run; any other reader sees only
-// the runs they started, and a run with no recorded caller stays hidden from them.
-func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
+// Everyone with access to the Relay sees every caller's recorded run (one company per server).
+func TestReportRelayRunsShowEveryRunToAnyoneWithAccess(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -100,19 +99,15 @@ func TestReportRelayRunsShowReadersOnlyTheirOwnRuns(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, user := range []string{"owner", "editor"} {
+	for _, user := range []string{"owner", "editor", "reader-a", "reader-b"} {
 		body := seen(user)
 		for _, id := range []string{"run-1", "run-2", "run-3"} {
 			if !strings.Contains(body, `"run_id":"`+id+`"`) {
 				t.Fatalf("%s should see every run, missing %s: %s", user, id, body)
 			}
 		}
-	}
-	a, b := seen("reader-a"), seen("reader-b")
-	if !strings.Contains(a, `"run-1"`) || strings.Contains(a, "run-2") || strings.Contains(a, "run-3") || !strings.Contains(a, `"scope":"own"`) {
-		t.Fatalf("reader-a must see only run-1: %s", a)
-	}
-	if !strings.Contains(b, `"run-2"`) || strings.Contains(b, "run-1") || strings.Contains(b, "run-3") {
-		t.Fatalf("reader-b must see only run-2: %s", b)
+		if !strings.Contains(body, `"scope":"all"`) {
+			t.Fatalf("%s: scope must be all: %s", user, body)
+		}
 	}
 }

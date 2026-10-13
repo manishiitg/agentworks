@@ -102,9 +102,6 @@ func TestRelayRunPollsDurableStoreAfterServiceRestart(t *testing.T) {
 		api.handleGetRelayRun(w, r)
 		return w
 	}
-	if w := poll("other"); w.Code != 404 {
-		t.Fatalf("other user could poll Relay: %d %s", w.Code, w.Body.String())
-	}
 	w := poll("owner")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"result":{"value":1}`) {
 		t.Fatalf("durable poll: %d %s", w.Code, w.Body.String())

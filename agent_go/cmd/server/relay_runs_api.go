@@ -256,7 +256,7 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 
 func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	workspace, manifest, claims, ok := api.relayForRunRequest(w, r)
+	workspace, manifest, _, ok := api.relayForRunRequest(w, r)
 	if !ok {
 		return
 	}
@@ -277,16 +277,9 @@ func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Reques
 	}
 	var delivery WorkflowWebhookDelivery
 	var payload struct {
-		Caller   string `json:"relay_caller"`
-		Version  string `json:"relay_version"`
-		Function string `json:"function"`
+		Version string `json:"relay_version"`
 	}
-	if json.Unmarshal([]byte(content), &delivery) != nil || json.Unmarshal(delivery.Payload, &payload) != nil || payload.Caller != claims.UserID {
-		http.NotFound(w, r)
-		return
-	}
-	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, payload.Function)
-	if liveErr != nil || !workflowFunctionCallerAllowed(liveSched.Function, triggerCaller{Type: triggerCallerUser, ID: claims.UserID}) {
+	if json.Unmarshal([]byte(content), &delivery) != nil || json.Unmarshal(delivery.Payload, &payload) != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -318,5 +311,5 @@ func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "run artifacts temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	externalJSON(w, result)
+	externalJSON(w, api.maskRelaySecrets(r.Context(), workspace, manifest, result))
 }

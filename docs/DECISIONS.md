@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-13 — Everyone with access to a product sees all its runs, logs and function results (PLAT-856, PLAT-847)
+
+One company per server: inside a Relay, Crew or workflow someone can access, they see every run and result, step
+and execution logs, and function calls (inputs and results, by anyone). Relays first: `list_relay_runs`, the dashboard
+run data and `get_relay_run` return every caller's runs to anyone with access (replaces "readers see only their own
+runs" of 2026-10-12). Crews and workflows follow (published function calls, triggers and deliveries,
+`schedule-runs.json`, and the Crew's `db/` read-only). Still private: secret values (masked in everything returned),
+personal provider accounts and logins, and a person's own chats and the builder chats until shared. Costs stay
+attribution only. Why: the owner optimises for people and agents working on the same things fast, not for privacy
+between colleagues; access still comes from sharing.
+
+Ticket: PLAT-856 (856-67 reversed), PLAT-847 (847-1).
+
 ## 2026-10-13 — Saved CLI credentials use native operating-system access checks (PLAT-861)
 
 Unix credentials retain the private mode check. Windows validates the real owner
@@ -504,7 +517,7 @@ other functions or writing files, which blocked building, testing and orchestrat
 
 Ticket: PLAT-856, issue 856-59 (step 1 landed on main in 44eadc1fc; step 2 is the shared-caller change).
 
-## 2026-10-12 — Relay readers see only their own recorded runs (PLAT-847)
+## 2026-10-12 — Relay readers see only their own recorded runs (PLAT-847) — superseded 2026-10-13
 
 Relay owners and editors see every caller's recorded run. Every other reader sees only the runs
 they started; a run with no recorded caller is hidden from them. The rule applies to the
