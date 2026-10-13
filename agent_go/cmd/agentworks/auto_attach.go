@@ -19,6 +19,7 @@ import (
 // whenever the server closed the lease.
 type autoAttachRecord struct {
 	Name       string `json:"name"`
+	SessionID  string `json:"session_id,omitempty"`
 	Purpose    string `json:"purpose,omitempty"`
 	ConfigPath string `json:"config_path"`
 }
@@ -109,7 +110,7 @@ func rememberAutoAttach(root, provider, cwd string, a agentworksclient.AgentAtta
 				kept = append(kept, r)
 			}
 		}
-		f.Records = append(kept, autoAttachRecord{Name: a.AgentName, Purpose: a.Purpose, ConfigPath: configPath})
+		f.Records = append(kept, autoAttachRecord{Name: a.AgentName, SessionID: a.SessionID, Purpose: a.Purpose, ConfigPath: configPath})
 		if len(f.Records) > 5 {
 			f.Records = f.Records[len(f.Records)-5:]
 		}
@@ -123,6 +124,21 @@ func forgetAutoAttach(root, provider, cwd, name string) {
 			if name != "" && r.Name != name {
 				kept = append(kept, r)
 			}
+		}
+		f.Records = kept
+	})
+}
+
+// forgetDetachedAutoAttach drops the agent a chat just detached from: by name when known, and
+// otherwise by the chat's session (records made before sessions were kept are matched by name only).
+func forgetDetachedAutoAttach(root, provider, cwd, name, sessionID string) {
+	autoAttachUpdate(root, autoAttachKey(provider, cwd), func(f *autoAttachFolder) {
+		kept := f.Records[:0]
+		for _, r := range f.Records {
+			if name != "" && r.Name == name || name == "" && sessionID != "" && r.SessionID == sessionID {
+				continue
+			}
+			kept = append(kept, r)
 		}
 		f.Records = kept
 	})

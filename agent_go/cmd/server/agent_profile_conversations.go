@@ -246,6 +246,12 @@ func (api *StreamingAPI) handleSwitchAgentProfileConversation(w http.ResponseWri
 	if !ok {
 		return
 	}
+	unlock, capErr := guardNewSideChat(r.Context(), userID, slot.profile.ID, slot.binding.ConversationKey)
+	if capErr != nil {
+		writeAgentProfileError(w, http.StatusConflict, capErr.Error())
+		return
+	}
+	defer unlock()
 	conversation, err := resumeProductConversation(r.Context(), userID, slot.profile, slot.binding, input.SessionID)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())

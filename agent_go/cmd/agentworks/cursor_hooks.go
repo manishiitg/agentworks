@@ -222,9 +222,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			rememberAutoAttach(root, "cursor", cursorFolder(input), out.Attachment, req.ConfigPath)
 		}
 		if req.Action == "detach" {
-			if detachedName != "" {
-				forgetAutoAttach(root, "cursor", cursorFolder(input), detachedName)
-			}
+			forgetDetachedAutoAttach(root, "cursor", cursorFolder(input), detachedName, req.SessionID)
 			return cursorBlock(o, "Handled by AgentWorks. An attachment-fenced detach request was handled; recheck status if the chat was reattached concurrently.")
 		}
 		if !cursorAttached(out, req.SessionID, req.AttachmentID) {

@@ -191,9 +191,7 @@ func pluginCommand(o *options) *cobra.Command {
 				rememberAutoAttach(root, req.Provider, input.Cwd, out.Attachment, req.ConfigPath)
 			}
 			if words[1] == "detach" && !out.Attached {
-				if detachedName != "" {
-					forgetAutoAttach(root, req.Provider, input.Cwd, detachedName)
-				}
+				forgetDetachedAutoAttach(root, req.Provider, input.Cwd, detachedName, req.SessionID)
 			}
 			if out.Offline {
 				return pluginBlock(o, "agent:"+out.Attachment.AgentName+" is offline. Type /agentworks attach in this chat to reconnect it.")

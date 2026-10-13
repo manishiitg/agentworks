@@ -672,18 +672,6 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	// Opening the product's conversation is what the app does on launch: the
 	// family is here, so a due check-in waits for a quiet moment.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if limitsSideChats(profile.ID) && isSideChatConversationKey(input.ConversationKey) {
-		// Creating a side chat is checked and done under one lock, so the app, MCP and a second
-		// device cannot race past the cap; opening one that already exists is always allowed.
-		userID := productWorkspaceUserID(r.Context())
-		lock := sideChatLock(userID, profile.ID, input.ConversationKey)
-		lock.Lock()
-		defer lock.Unlock()
-		if err := checkSideChatCapacity(r.Context(), defaultProductConversationRegistryStore(), userID, profile.ID, input.ConversationKey); err != nil {
-			writeAgentProfileError(w, http.StatusConflict, err.Error())
-			return
-		}
-	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
@@ -781,6 +769,11 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 
 func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profile agentprofiles.Profile, requestedKey string) (ProductConversationRecord, error) {
 	userID := productWorkspaceUserID(r.Context())
+	unlock, capErr := guardNewSideChat(r.Context(), userID, profile.ID, requestedKey)
+	if capErr != nil {
+		return ProductConversationRecord{}, capErr
+	}
+	defer unlock()
 	// Crew Run mode: opening resolves under whichever owner holds the
 	// project. Reader bindings carry no manifest path, so the registry
 	// below stays reader-scoped and project initialization (which
@@ -1149,6 +1142,23 @@ func sideChatLock(userID, profileID, key string) *sync.Mutex {
 
 // limitsSideChats is true for the profiles whose projects have tabs: Code projects and Crews.
 func limitsSideChats(profileID string) bool { return profileID == "code" || profileID == "work" }
+
+// guardNewSideChat takes the project's side-chat lock and refuses a NEW side chat past the cap;
+// the caller holds the lock until the chat exists, so two requests cannot both pass the check.
+// Every route that can create a side chat's registry entry (open, resume, the shared resolver)
+// goes through it. Other keys get a no-op.
+func guardNewSideChat(ctx context.Context, userID, profileID, key string) (unlock func(), err error) {
+	if !limitsSideChats(profileID) || !isSideChatConversationKey(key) {
+		return func() {}, nil
+	}
+	lock := sideChatLock(userID, profileID, key)
+	lock.Lock()
+	if err := checkSideChatCapacity(ctx, defaultProductConversationRegistryStore(), userID, profileID, key); err != nil {
+		lock.Unlock()
+		return nil, err
+	}
+	return lock.Unlock, nil
+}
 
 // checkSideChatCapacity refuses a NEW side chat key once the project already has the most the
 // product allows (externalCrewMaxSideChats). The count is the registry's, not a browser's tabs.

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -2812,6 +2813,17 @@ func FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath 
 const maxChatHistoryTitleRunes = 120
 
 func normalizeChatHistoryTitle(title string) (string, error) {
+	// Titles reach other agents as text (list_project_chats), so control and zero-width
+	// characters are dropped; ordinary whitespace is collapsed below.
+	title = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || !unicode.IsPrint(r) {
+			return -1
+		}
+		return r
+	}, title)
 	title = strings.Join(strings.Fields(title), " ")
 	if title == "" {
 		return "", fmt.Errorf("title is required")

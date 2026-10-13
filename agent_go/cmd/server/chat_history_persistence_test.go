@@ -2006,6 +2006,9 @@ func TestNormalizeChatHistoryTitle(t *testing.T) {
 	if got, err := normalizeChatHistoryTitle("  GPT   Live\n handoff  "); err != nil || got != "GPT Live handoff" {
 		t.Fatalf("normalize = %q, %v", got, err)
 	}
+	if got, _ := normalizeChatHistoryTitle("a\u200bb\x00c\u202ed"); got != "abcd" {
+		t.Fatalf("non-printing characters must be dropped from titles: %q", got)
+	}
 	if _, err := normalizeChatHistoryTitle("   "); err == nil {
 		t.Fatal("expected empty title to fail")
 	}
