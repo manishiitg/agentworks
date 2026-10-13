@@ -23,7 +23,7 @@ For other products, discover the available guidance rather than inventing a topi
 
 <!-- product:knowledgebase -->## Brain notes and skills
 
-- Browse/search permitted Brain folders before creating a duplicate note. Read current content and its opaque Brain version before updating; pass that version as `expected_version` and a stable request ID. Reader, Editor and Owner are folder roles, not semantic source versions.
+- Browse/search permitted Brain folders before creating a duplicate note. Read current content and its opaque Brain version before updating; pass that version as `expected_version` and a stable request ID. Folder grants control reading, editing and sharing; those permissions are separate from semantic source versions.
 - Discover shared skills with `brain_skills action=list`; retrieve the selected package with `action=get` and its returned folder path. Install all returned files under the chosen client skill folder, preserving relative paths. Compare the returned package version with the installed source record and preserve customized copies.
 - The starter package is `Shared/Skills/agentworks-mcp`. `Shared/AgentWorks/product-guide.md` is the same product guide as its reference. Both are starter copies; current MCP guidance remains available independently of Brain.
 <!-- /product -->

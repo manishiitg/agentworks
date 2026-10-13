@@ -1,6 +1,6 @@
 Choose a product by the work you want to accomplish. This guide describes the products; the current server configuration, connection consent and your roles decide which operations you can actually use. Discover those operations before acting.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. <!-- product:knowledgebase -->Brain's Reader, Editor and Owner are folder permission names.<!-- /product -->
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations.
 
 | Product | Choose it for |
 |---|---|
@@ -49,7 +49,7 @@ Use Brain for information and skills that should be reusable across people and p
 
 - **Abilities:** browse and search folders; read notes and files; create, patch, move, restore and delete content; inspect history; share folders; publish and retrieve skill packages; inspect or configure permitted backup, schedule and secret operations.
 - **MCP route:** use the discovered `brain_*` schemas. Browse or search before creating duplicate content. Read the current opaque entry version before updating. Use `brain_skills` to discover and retrieve an installable skill package.
-- **Access:** folder Reader/Editor/Owner roles, inherited grants and connection caps apply. Administrative operations retain their administrator checks. Secret values are not returned through MCP.
+- **Access:** existing folder permissions, inherited grants and connection caps apply. Administrative operations retain their administrator checks. Secret values are not returned through MCP.
 - **Example:** keep a team's operating procedures and a reusable release-check skill in shared folders.
 
 <!-- /product --><!-- product:mcp-gateway -->### Vault
@@ -67,7 +67,7 @@ Use Code for repository development: implementing changes, investigating failure
 
 - **Abilities:** private code projects and chats, repository/file work, coding-agent execution, permitted integrations and review/audit views.
 - **MCP route:** use only the Code operations actually returned by this connection. A product's full app/CLI ability is not a promise that every action exists as a direct MCP tool.
-- **Access:** private project ownership and current Code review/account permissions govern visibility and actions.
+- **Access:** personal project ownership, explicit sharing and current Code review/account permissions govern visibility and actions.
 - **Example:** implement a bounded bug fix and inspect its changes and verification results.
 
 <!-- /product --><!-- product:bullpen -->### Bullpen
