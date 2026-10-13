@@ -632,6 +632,9 @@ func providerHostProcess(provider string) (int, string, error) {
 		process, err := cursorAncestor()
 		return process.PID, process.Host, err
 	}
+	if runtime.GOOS == "windows" {
+		return winHostProcess(provider)
+	}
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -940,6 +943,9 @@ func providerPIDHostKey(provider string, pid int) (string, error) {
 	}
 	if provider == "pi" {
 		return piPIDHostKey(pid)
+	}
+	if runtime.GOOS == "windows" {
+		return winPIDHostKey(provider, pid)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

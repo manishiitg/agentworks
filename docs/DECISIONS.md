@@ -34,6 +34,19 @@ Why: an unregistered intermediate parent made captured prompts/tools invisible.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-180.
 
+## 2026-10-13 — Windows Bullpen bridge: the private folder's access list is the fence (PLAT-861, issue 861-166)
+
+The local bridge on Windows uses a Unix-domain socket (Windows 10 1803+) inside a folder created with an owner-only,
+protected access list (SYSTEM, Administrators, the current user) before the socket is bound; an older run's folder is
+made private again when it is the person's own. Windows does not give the server the connecting user's identity on such a
+socket, so unlike a signed-in session check it relies on that folder's access list, the same trust the Unix
+socket's 0700 folder gives. A process is identified by its id plus start time, and the walk up from a
+tool call stops at a "parent" that began after its child (a reused id). Older Windows refuses with a message.
+
+Why: it keeps one transport and one protocol on all systems; named pipes would double the code for the same trust.
+
+Ticket: PLAT-861, issue 861-166.
+
 ## 2026-10-13 — Release deploys reuse healthy installed tools (PLAT-426)
 
 Normal rootless deploys check every managed coding provider and agent-browser

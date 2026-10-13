@@ -181,3 +181,10 @@ func TestMusePluginVersionsComeFromMusesOwnListings(t *testing.T) {
 		t.Fatalf("another plugin is not AgentWorks: %q", v)
 	}
 }
+
+// A marketplace offering an older version must not downgrade the installed plugin.
+func TestVersionNewerComparesNumbersNotText(t *testing.T) {
+	if !versionNewer("0.1.10", "0.1.9") || versionNewer("0.1.7", "0.1.8") || versionNewer("0.1.8", "0.1.8") || !versionNewer("1.0", "0.9.9") {
+		t.Fatal("version comparison is wrong")
+	}
+}

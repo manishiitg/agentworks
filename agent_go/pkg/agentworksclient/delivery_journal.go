@@ -34,8 +34,15 @@ func privateLiveDir(path string) error {
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() || CheckPrivateAccess(path, info) != nil {
+	if !info.IsDir() {
 		return errors.New("live state must be a private directory, not a symlink")
+	}
+	if CheckPrivateAccess(path, info) != nil {
+		// A folder left by an older run (or one whose access list was loosened) is the person's own:
+		// make it private again. Where that is not possible, name the folder instead of failing blind.
+		if protectPrivateDir(path) != nil || CheckPrivateAccess(path, info) != nil {
+			return fmt.Errorf("the AgentWorks live folder %s is not private to your account; delete that folder (AgentWorks recreates it) and try again", path)
+		}
 	}
 	return nil
 }

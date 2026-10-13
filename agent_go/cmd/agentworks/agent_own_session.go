@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -147,6 +148,9 @@ func codexDesktopOwnSession(ctx context.Context, o *options) (liveAgentSession, 
 }
 
 func ownAgentAncestor(ctx context.Context) (string, int, error) {
+	if runtime.GOOS == "windows" {
+		return winOwnAgentAncestor()
+	}
 	pid := os.Getppid()
 	for i := 0; i < 32 && pid > 1; i++ {
 		probe, cancel := context.WithTimeout(ctx, time.Second)

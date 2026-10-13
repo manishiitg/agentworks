@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -396,7 +397,7 @@ func updateMusePlugin(ctx context.Context, o *options) {
 		fmt.Fprintf(o.stderr, "Could not read the Muse plugin version on offer. To update it, run: %s\n", manual)
 		return
 	}
-	if installed == offered {
+	if !versionNewer(offered, installed) {
 		fmt.Fprintf(o.stderr, "The Muse plugin is up to date (version %s).\n", installed)
 		return
 	}
@@ -415,4 +416,23 @@ func updateMusePlugin(ctx context.Context, o *options) {
 		}
 	}
 	fmt.Fprintf(o.stderr, "Updated the Muse plugin from %s to %s. It needs your approval before it runs: review it, run muse plugins approve agentworks-muse, then restart Muse.\n", installed, offered)
+}
+
+// versionNewer reports whether dotted numeric version a is newer than b ("0.1.10" > "0.1.9"). A marketplace
+// that offers an older version never replaces a newer installed one.
+func versionNewer(a, b string) bool {
+	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var x, y int
+		if i < len(pa) {
+			x, _ = strconv.Atoi(pa[i])
+		}
+		if i < len(pb) {
+			y, _ = strconv.Atoi(pb[i])
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
 }

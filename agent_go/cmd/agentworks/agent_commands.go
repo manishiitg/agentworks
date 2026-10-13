@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -822,6 +823,9 @@ func providerHostAliveWith(provider, host string, ps func(env []string, args ...
 		_ = conn.Close()
 		return true
 	}
+	if runtime.GOOS == "windows" {
+		return winHostAlive(provider, host)
+	}
 	out, err := ps(nil, "-axo", "pid=", "-o", providerProcessField(provider), "-o", "lstart=")
 	if err != nil {
 		return true
@@ -1070,6 +1074,16 @@ func personAgentTerminal() error {
 func personTerminal(command, verb, instead string) error {
 	if !stdinIsTerminal() {
 		return errors.New(command + " is a person command; " + instead)
+	}
+	if runtime.GOOS == "windows" {
+		inside, err := winInsideCodingAgent()
+		if err != nil {
+			return errors.New("cannot verify the terminal process; " + instead)
+		}
+		if inside {
+			return errors.New("coding-agent context cannot " + verb + " through this terminal, including a PTY. Use another terminal, or " + instead)
+		}
+		return nil
 	}
 	pid := os.Getppid()
 	for i := 0; i < 32 && pid > 1; i++ {
