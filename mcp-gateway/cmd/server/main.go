@@ -123,7 +123,7 @@ func localAdminToken(stateDir string) (string, error) {
 	return token, nil
 }
 
-func run() (runErr error) {
+func runBuiltin() (runErr error) {
 	port := env("GATEWAY_PORT", "8080")
 	upstreamURL := env("GATEWAY_UPSTREAM_URL", "https://mcp.context7.com/mcp")
 	provider := env("GATEWAY_PROVIDER", "context7")
