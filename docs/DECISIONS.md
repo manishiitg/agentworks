@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-13 — Release deploys reuse healthy installed tools (PLAT-426)
+
+Normal rootless deploys check every managed coding provider and agent-browser
+can launch, and reuse successful versions while the installer policy and Node/npm
+runtime and architecture are unchanged. Missing or broken tools, changed versions or policy,
+and invalid receipts trigger repair. Healthy installations predating receipts
+are adopted after launch checks. Explicit `DEPLOY_REFRESH_TOOLS=1` performs
+vendor updates; an upstream `latest` release alone no longer changes the tools
+during an application deploy. Receipts contain versions, policy and their original timestamp; receipts older
+than 14 days warn operators to use the explicit refresh.
+
+Why: repeated vendor installation dominates prebuilt activation time and couples
+unrelated provider upgrades to urgent application fixes. Application manifest,
+drain, sandbox and health checks still run, and the release still publishes its
+own AgentWorks CLI downloads and plugins.
+
+Ticket: [PLAT-426](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/ops/deploys/plat-426.md), issue 426-1.
+
 ## 2026-10-13 — Saved CLI credentials use native operating-system access checks (PLAT-861)
 
 Unix credentials retain the private mode check. Windows validates the real owner

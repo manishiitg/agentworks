@@ -40,6 +40,7 @@ server only copies and activates it after verifying its manifest (architecture, 
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
   DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of main's head
                         (it must already be on main); for a release that leaves out work still landing
+  DEPLOY_REFRESH_TOOLS=1    refresh provider CLIs and agent-browser from vendors; normal deploys reuse healthy unchanged tools
   DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a
                         slotted `pwd` per slot + the refusal checks; full adds a live tmux server on the test slot that no slot
                         command may reach, the Python helpers, and the refusals a workflow chat must get (PLAT-480). Runs on the
@@ -337,15 +338,19 @@ fi
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/agent_go/scripts/install-slack-cli.sh"
 # gog (Gmail connector CLI), kept on the latest checksum-verified release.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-gog.sh"
-echo "==> [$PRODUCT] Installing/updating all server coding CLIs"
-# Ship both helpers because this phase precedes the server's source clone.
+case "${DEPLOY_REFRESH_TOOLS:-0}" in
+  0|1) ;;
+  *) echo 'DEPLOY_REFRESH_TOOLS must be 0 or 1' >&2; exit 1 ;;
+esac
+echo "==> [$PRODUCT] Checking server coding CLIs (refresh=${DEPLOY_REFRESH_TOOLS:-0})"
+# Ship the installer and state helper before the server's source clone.
 cli_helpers="$(mktemp -d)"
-cp "$LOCAL_REPO_ROOT/deploy/common/install-coding-clis.sh" "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh" "$cli_helpers/"
+cp "$LOCAL_REPO_ROOT/deploy/common/install-coding-clis.sh" "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh" "$LOCAL_REPO_ROOT/deploy/common/coding-cli-state.py" "$cli_helpers/"
 remote_cli_helpers="$REMOTE_APP/tools/.deploy-cli-helpers"
 "${SSH[@]}" "install -d -m 0700 '$remote_cli_helpers'"
-"${SCP[@]}" "$cli_helpers/install-coding-clis.sh" "$cli_helpers/install-agy.sh" "$PRODUCT@$HOST_IP:$remote_cli_helpers/"
+"${SCP[@]}" "$cli_helpers/install-coding-clis.sh" "$cli_helpers/install-agy.sh" "$cli_helpers/coding-cli-state.py" "$PRODUCT@$HOST_IP:$remote_cli_helpers/"
 rm -rf "$cli_helpers"
-"${SSH[@]}" "set -euo pipefail; export PATH='$REMOTE_RUNTIME_PATH'; bash '$remote_cli_helpers/install-coding-clis.sh' '$REMOTE_TOOLS' '$REMOTE_APP/home' '${AGY_AUTH_MODE:-auto}'; npm install -g --prefix '$REMOTE_TOOLS' --allow-scripts=agent-browser agent-browser@latest >/dev/null; command -v agent-browser >/dev/null; command -v slack >/dev/null; agent-browser --version"
+"${SSH[@]}" "set -euo pipefail; export PATH='$REMOTE_RUNTIME_PATH'; bash '$remote_cli_helpers/install-coding-clis.sh' '$REMOTE_TOOLS' '$REMOTE_APP/home' '${AGY_AUTH_MODE:-auto}' '${DEPLOY_REFRESH_TOOLS:-0}'; command -v agent-browser >/dev/null; command -v slack >/dev/null"
 "${SSH[@]}" "rm -rf '$remote_cli_helpers'"
 
 JOB="$PRODUCT-deploy-$(date +%Y%m%d%H%M%S)-$$"

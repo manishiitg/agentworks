@@ -7,6 +7,7 @@ name: Verify change
 #   Verify-Vitest: src/components/PanelSwitcher.test.tsx
 #   Verify-Frontend-Build: true
 #   Verify-Browser: scripts/test-mcp-offers-browser.mjs
+#   Verify-Deploy: deploy/common/test_install_coding_clis.py
 on:
   push:
     branches: ['verify/**']
@@ -127,6 +128,16 @@ jobs:
       # The macOS CLI files carry build tags, so the Linux build above never
       # compiles them. Cross-compile and vet the CLI for both Mac architectures so a
       # darwin-only mistake fails here and not on the owner's laptop.
+      - name: Deployment checks named in the commit
+        if: contains(github.event.head_commit.message, 'Verify-Deploy:')
+        run: |
+          set -euo pipefail
+          grep -E '^Verify-Deploy:' message.txt | sed 's/^Verify-Deploy:[[:space:]]*//' > deploy-tests.txt
+          while IFS= read -r file; do
+            [[ "$file" =~ ^deploy/(common|rootless-linux)/test_[a-z0-9_]+\.py$ && -f "$file" ]] || { echo "Invalid deployment check: $file"; exit 1; }
+            python3 "$file"
+          done < deploy-tests.txt
+
       - name: Cross-build and vet the CLI for macOS
         if: steps.changed.outputs.go == 'true'
         working-directory: agent_go

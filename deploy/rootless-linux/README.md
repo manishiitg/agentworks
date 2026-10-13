@@ -1,5 +1,16 @@
 # Rootless Linux product deployments
 
+Normal deploys reuse healthy coding-provider CLIs and agent-browser. They check
+that every managed tool launches, and repair missing/broken tools or a changed
+installation policy. Existing healthy installations are adopted on the first
+run; successful versions and policy are recorded outside the releases.
+
+To update those tools from vendors during maintenance, run
+`DEPLOY_REFRESH_TOOLS=1 ./deploy.sh <product>`. Upstream `latest` updates are
+otherwise left for maintenance; tool receipts older than 14 days print a refresh
+reminder. App release manifests, drain, full slot checks,
+health checks, and the release's AgentWorks CLI/plugin downloads still run.
+
 A repeatable redeploy pipeline for fixed-workspace products running as their
 own isolated Linux account on a shared rootless-systemd host, generalized
 from server C's original deployer. One host can run several products, each under
