@@ -389,9 +389,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 				shutdownOnce.Do(func() { close(shutdown) })
 			} else {
 				callCtx := r.Context()
-				if in.Action == "attach" {
-					// One attach per chat at a time: a retry waits for the one in flight (it runs
-					// without the bridge lock for several seconds) and then finds the chat attached.
+				if in.Action == "attach" || in.Action == "detach" || in.Action == "offline" || in.Action == "detach_person" || in.Action == "detach_own" {
+					// One attach or detach per chat at a time: a retry waits for the one in flight (it
+					// runs without the bridge lock for several seconds) and then finds the chat attached
+					// or detached; a detach never gets overwritten by an attach still running.
 					release, ok := b.attachGate(localBridgeKey(in.Provider, in.SessionID), localBridgeLockBudget)
 					if !ok {
 						w.Header().Set("Content-Type", "application/json")
@@ -399,6 +400,8 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 						return
 					}
 					defer release()
+				}
+				if in.Action == "attach" {
 					// A hook gives up after a few seconds and closes its connection; the attach
 					// must still finish (the next try then finds the chat attached) instead of
 					// being cancelled half way through its server calls.
@@ -784,9 +787,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				in.Purpose = s.Attachment.Purpose
 			}
 			if !s.Offline && s.AccountSenders && s.HostKey == in.HostKey && s.NativeRemote == in.NativeRemote && s.Attachment.AgentName == in.AgentName && s.ParentConfigPath == in.ConfigPath {
-				if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err == nil {
+				known, att := s.client, s.Attachment
+				var validateErr error
+				b.unlocked(func() {
+					_, validateErr = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{}}, true)
+				})
+				if validateErr == nil && !b.closed && b.sessions[key] == s {
 					s.SetupPending = in.Setup
-					if err = b.save(); err != nil {
+					if err := b.save(); err != nil {
 						return LocalBridgeReply{Error: err.Error()}
 					}
 					b.wake()
@@ -913,13 +921,27 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return *res.fail
 		}
 		a, connectionPath, newConnection, client := res.a, res.connectionPath, res.newConnection, res.client
+		// Same chat's earlier lease, looked up again now that the lock is back.
+		previous = nil
+		for _, candidate := range b.sessions {
+			if candidate.Attachment.AgentName == in.AgentName && candidate.ParentConfigPath == in.ConfigPath {
+				previous = candidate
+				break
+			}
+		}
 		undo := func() {
-			if newConnection {
-				if cfg, e := LoadConfig(connectionPath); e == nil {
-					if c, e2 := localConfiguredClient(connectionPath); e2 == nil {
-						_ = c.RevokeOAuth(callCtx, cfg.RefreshToken)
+			// The server already holds the new lease (and maybe a new child connection): release both.
+			b.unlocked(func() {
+				cleanup, release := context.WithTimeout(callCtx, 5*time.Second)
+				defer release()
+				_, _ = res.client.request(cleanup, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": in.AgentName, "attachment_id": a.ID}, true)
+				if newConnection {
+					if cfg, e := LoadConfig(connectionPath); e == nil {
+						_ = res.client.RevokeOAuth(cleanup, cfg.RefreshToken)
 					}
 				}
+			})
+			if newConnection {
 				_ = os.Remove(connectionPath)
 			}
 		}
@@ -959,27 +981,36 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		warning := ""
+		var toRelease []*localSession
 		for _, v := range old {
 			stopMuseWatch(v)
-			keepFile := false
-			if in.SwitchConnection && v.ParentConfigPath != next.ParentConfigPath && v.client != nil {
-				// The chat now lives on the other connection. Release the old lease
-				// and child connection there. The new attachment is already saved and
-				// stays; if the release fails, keep the private connection file so it
-				// can be retried and tell the person, instead of silently dropping it.
-				// Short deadline: this runs while the bridge lock is held.
-				cleanup, release := context.WithTimeout(callCtx, 5*time.Second)
-				if err := localReleaseOld(cleanup, v); err != nil {
-					keepFile = true
-					warning = "The chat moved, but its old login could not be told (" + err.Error() + "). The old agent name may show as stale there; its private connection file was kept so the release can be retried."
-				}
-				release()
-			}
-			if v.ConfigPath != next.ConfigPath && !keepFile {
-				_ = os.Remove(v.ConfigPath)
-			}
 			if v.cancel != nil {
 				v.cancel()
+			}
+			if in.SwitchConnection && v.ParentConfigPath != next.ParentConfigPath && v.client != nil {
+				toRelease = append(toRelease, v)
+			}
+		}
+		keepFile := map[*localSession]bool{}
+		if len(toRelease) > 0 {
+			// The chat now lives on the other connection. Release the old lease and child
+			// connection there, without the bridge lock. The new attachment is already saved and
+			// stays; if a release fails, keep the private connection file so it can be retried
+			// and tell the person, instead of silently dropping it.
+			b.unlocked(func() {
+				for _, v := range toRelease {
+					cleanup, release := context.WithTimeout(callCtx, 5*time.Second)
+					if err := localReleaseOld(cleanup, v); err != nil {
+						keepFile[v] = true
+						warning = "The chat moved, but its old login could not be told (" + err.Error() + "). The old agent name may show as stale there; its private connection file was kept so the release can be retried."
+					}
+					release()
+				}
+			})
+		}
+		for _, v := range old {
+			if v.ConfigPath != next.ConfigPath && !keepFile[v] {
+				_ = os.Remove(v.ConfigPath)
 			}
 		}
 		b.start(serverCtx, next)
@@ -1110,7 +1141,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		var err error
 		if !s.Offline {
-			_, err = s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID}, true)
+			known, att := s.client, s.Attachment
+			b.unlocked(func() { // the server call runs without the bridge lock
+				_, err = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": att.AgentName, "attachment_id": att.ID}, true)
+			})
+			if b.closed || b.sessions[key] != s {
+				return LocalBridgeReply{} // replaced or removed meanwhile: nothing left to detach here
+			}
 		}
 		if err != nil {
 			var apiErr *APIError
@@ -1135,7 +1172,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if in.Action == "detach" && s.ParentConfigPath != "" {
 			if cfg, e := LoadConfig(s.ConfigPath); e == nil {
-				_ = s.client.RevokeOAuth(callCtx, cfg.RefreshToken)
+				known := s.client
+				b.unlocked(func() { _ = known.RevokeOAuth(callCtx, cfg.RefreshToken) })
 			}
 			_ = os.Remove(s.ConfigPath)
 		}

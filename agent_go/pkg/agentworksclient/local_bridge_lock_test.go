@@ -2,8 +2,12 @@ package agentworksclient
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -118,4 +122,58 @@ func TestSlowServerCallDoesNotHoldTheBridgeLock(t *testing.T) {
 		t.Fatalf("status waited %v behind a peers call that was only waiting on the server", elapsed)
 	}
 	<-done
+}
+
+// The whole attach, against a fake server whose attach step is slow: other commands keep
+// answering while it runs, and the chat is attached when it ends.
+func TestAttachDoesNotBlockOtherCommandsWhileTheServerIsSlow(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/agents/events"):
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case body.Action == "connection":
+			_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`))
+		case body.Action == "attach":
+			time.Sleep(300 * time.Millisecond)
+			_, _ = w.Write([]byte(`{"attachment_id":"L1","agent_id":"ag","agent_name":"test-agent","provider":"claude","native_session_id":"sess"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	root, err := os.MkdirTemp("", "awb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	parent := filepath.Join(root, "parent.json")
+	if err = SaveConfig(parent, Config{Server: srv.URL, Token: "t"}); err != nil {
+		t.Skip("loopback server not accepted:", err)
+	}
+	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); b.workers.Wait() }()
+	attached := make(chan LocalBridgeReply, 1)
+	go func() {
+		attached <- b.handle(ctx, ctx, LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "sess", HostKey: "h", AgentName: "test-agent", ConfigPath: parent, Setup: true})
+	}()
+	time.Sleep(100 * time.Millisecond) // the attach is now waiting on the server
+	start := time.Now()
+	b.handle(ctx, ctx, LocalBridgeRequest{Action: "status", Provider: "claude", SessionID: "other", HostKey: "x"})
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("another command waited %v behind an attach that was only waiting on the server", elapsed)
+	}
+	reply := <-attached
+	if !reply.Attached || reply.Error != "" || reply.Attachment.ID != "L1" {
+		t.Fatalf("attach = %+v", reply)
+	}
+	if b.sessions[localBridgeKey("claude", "sess")] == nil {
+		t.Fatal("the attached chat was not recorded")
+	}
 }
