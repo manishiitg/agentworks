@@ -25,7 +25,7 @@ type diskState struct {
 }
 
 // SyncDisk picks up changes made directly in Brain's folder (a shell, an editor, git pull), recorded as made by actor.
-func (s *Service) SyncDisk(ctx context.Context, actor string) error {
+func (s *builtinService) SyncDisk(ctx context.Context, actor string) error {
 	unlock, err := s.lock(ctx, false)
 	if err != nil {
 		return err
@@ -38,7 +38,7 @@ func (s *Service) SyncDisk(ctx context.Context, actor string) error {
 }
 
 // syncDiskLocked runs with the content lock held.
-func (s *Service) syncDiskLocked(actor string) error {
+func (s *builtinService) syncDiskLocked(actor string) error {
 	sig, err := s.diskSignature()
 	if err != nil {
 		return err
@@ -80,14 +80,14 @@ func (s *Service) syncDiskLocked(actor string) error {
 	return nil
 }
 
-func (s *Service) rememberDisk(sig string) {
+func (s *builtinService) rememberDisk(sig string) {
 	s.disk.mu.Lock()
 	s.disk.signature = sig
 	s.disk.mu.Unlock()
 }
 
 // noteOwnWrite records Brain's own writes so the next call does not re-read every file for them.
-func (s *Service) noteOwnWrite() {
+func (s *builtinService) noteOwnWrite() {
 	if sig, err := s.diskSignature(); err == nil {
 		s.rememberDisk(sig)
 	}
@@ -105,7 +105,7 @@ func diskNote(rel string, dir bool) bool {
 }
 
 // diskSignature is cheap: names, sizes and modification times of the files that can be notes.
-func (s *Service) diskSignature() (string, error) {
+func (s *builtinService) diskSignature() (string, error) {
 	var parts []string
 	err := filepath.WalkDir(s.live, func(p string, d fs.DirEntry, e error) error {
 		if e != nil {
@@ -138,7 +138,7 @@ func (s *Service) diskSignature() (string, error) {
 }
 
 // diskFiles reads every file that can be a note; programs and files over the size limit are left out.
-func (s *Service) diskFiles() (map[string][]byte, error) {
+func (s *builtinService) diskFiles() (map[string][]byte, error) {
 	files := map[string][]byte{}
 	err := filepath.WalkDir(s.live, func(p string, d fs.DirEntry, e error) error {
 		if e != nil {

@@ -53,7 +53,7 @@ func TestBackupPATEncryptionRotationAndRemoval(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := New(s.cfg)
+	reopened, err := newBuiltin(s.cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

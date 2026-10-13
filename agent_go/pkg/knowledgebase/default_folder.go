@@ -16,7 +16,7 @@ import (
 // whose access an Owner later revokes is not given it again, and people added later are offered it the next time this runs.
 // users is the platform's current identity list (the same one SyncPlatformIdentities took); a repeat call with the same list
 // does nothing.
-func (s *Service) EnsureDefaultFolder(ctx context.Context, admin Principal, name, role string, users []Identity) error {
+func (s *builtinService) EnsureDefaultFolder(ctx context.Context, admin Principal, name, role string, users []Identity) error {
 	if !admin.IsAdmin || admin.IdentityID == "" {
 		return kbErr("FORBIDDEN", "An administrator is required.")
 	}
@@ -87,12 +87,12 @@ func safeRequestID(v string) string {
 	return string(out)
 }
 
-func (s *Service) defaultFolderOfferedPath(name string) string {
+func (s *builtinService) defaultFolderOfferedPath(name string) string {
 	return filepath.Join(s.private, "default-folder-"+safeRequestID(name)+".json")
 }
 
 // defaultFolderOffered lists the people the default folder was already offered to.
-func (s *Service) defaultFolderOffered(name string) map[string]bool {
+func (s *builtinService) defaultFolderOffered(name string) map[string]bool {
 	offered := map[string]bool{}
 	if b, err := os.ReadFile(s.defaultFolderOfferedPath(name)); err == nil {
 		var ids []string
@@ -105,7 +105,7 @@ func (s *Service) defaultFolderOffered(name string) map[string]bool {
 	return offered
 }
 
-func (s *Service) saveDefaultFolderOffered(name string, offered map[string]bool) error {
+func (s *builtinService) saveDefaultFolderOffered(name string, offered map[string]bool) error {
 	ids := make([]string, 0, len(offered))
 	for id := range offered {
 		ids = append(ids, id)

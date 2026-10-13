@@ -120,7 +120,7 @@ func TestBackupErrorPersistsAndSuccessfulRetryClearsIt(t *testing.T) {
 	if err = s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := New(s.cfg)
+	restarted, err := newBuiltin(s.cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/brainapi"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,13 +19,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Identity struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Disabled bool   `json:"disabled"`
-}
-type Service struct {
+type Identity = brainapi.Identity
+type builtinService struct {
 	cfg           Config
 	db            *sql.DB
 	live, private string
@@ -40,38 +36,8 @@ type folderRegistry struct {
 	Entries   []Entry    `json:"entries"`
 	Deletions []Deletion `json:"deletions"`
 }
-type Entry struct {
-	ID              string   `json:"entry_id"`
-	FolderID        string   `json:"folder_id"`
-	FolderPath      string   `json:"folder_path"`
-	Path            string   `json:"path"`
-	Filename        string   `json:"filename"`
-	Type            string   `json:"type"`
-	Title           string   `json:"title"`
-	Description     string   `json:"description"`
-	Tags            []string `json:"tags"`
-	Sequence        uint64   `json:"sequence"`
-	ContentSequence uint64   `json:"content_sequence"`
-	Fingerprint     string   `json:"fingerprint"`
-	Version         string   `json:"version"`
-	CreatedAt       string   `json:"created_at"`
-	UpdatedAt       string   `json:"updated_at"`
-	CreatedBy       string   `json:"created_by"`
-	UpdatedBy       string   `json:"updated_by"`
-	// Binary marks content that is not text (an image, a PDF, an archive). It is stored and read whole, as base64 over
-	// the tools; line and section reads, diffs and search apply to text only.
-	Binary bool `json:"binary,omitempty"`
-}
-type Deletion struct {
-	ID         string `json:"deletion_id"`
-	EntryID    string `json:"entry_id"`
-	FolderID   string `json:"folder_id"`
-	FolderPath string `json:"folder_path"`
-	Path       string `json:"path"`
-	Sequence   uint64 `json:"sequence"`
-	Actor      string `json:"actor"`
-	CreatedAt  string `json:"created_at"`
-}
+type Entry = brainapi.Entry
+type Deletion = brainapi.Deletion
 type accessChange struct {
 	IdentityID         string `json:"identity_id,omitempty"`
 	FolderPath         string `json:"folder_path,omitempty"`
@@ -98,7 +64,7 @@ type requestRecord struct {
 	Result any    `json:"result"`
 }
 
-func New(cfg Config) (*Service, error) {
+func newBuiltin(cfg Config) (*builtinService, error) {
 	if cfg.Root == "" {
 		return nil, errors.New("knowledgebase root is required")
 	}
@@ -119,7 +85,7 @@ func New(cfg Config) (*Service, error) {
 			return nil, err
 		}
 	}
-	s := &Service{cfg: cfg, live: live, private: filepath.Join(root, "private")}
+	s := &builtinService{cfg: cfg, live: live, private: filepath.Join(root, "private")}
 	for _, p := range []string{root, s.live, s.private, filepath.Join(s.private, "requests"), filepath.Join(s.private, "receipts")} {
 		if err := os.MkdirAll(p, 0700); err != nil {
 			return nil, err
@@ -176,7 +142,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	return s, nil
 }
-func (s *Service) Close() error { return s.db.Close() }
+func (s *builtinService) Close() error { return s.db.Close() }
 func safeRegularDir(p string) error {
 	fi, err := os.Lstat(p)
 	if err != nil {
@@ -187,7 +153,7 @@ func safeRegularDir(p string) error {
 	}
 	return nil
 }
-func (s *Service) lock(ctx context.Context, try bool) (func(), error) {
+func (s *builtinService) lock(ctx context.Context, try bool) (func(), error) {
 	f, err := os.OpenFile(filepath.Join(s.private, "content.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
@@ -280,7 +246,7 @@ func syncDir(p string) error {
 	defer f.Close()
 	return f.Sync()
 }
-func (s *Service) apply(j journal) error {
+func (s *builtinService) apply(j journal) error {
 	for _, c := range j.Changes {
 		if c.Access != nil {
 			if e := s.applyAccess(*c.Access); e != nil {
@@ -305,7 +271,7 @@ func (s *Service) apply(j journal) error {
 	}
 	return nil
 }
-func (s *Service) recover() error {
+func (s *builtinService) recover() error {
 	p := filepath.Join(s.private, "mutation-journal.json")
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
@@ -326,7 +292,7 @@ func (s *Service) recover() error {
 	}
 	return syncDir(s.private)
 }
-func (s *Service) transact(changes []fileChange) error {
+func (s *builtinService) transact(changes []fileChange) error {
 	p := filepath.Join(s.private, "mutation-journal.json")
 	j := journal{Changes: changes}
 	if err := atomicJSON(p, j); err != nil {
@@ -340,10 +306,10 @@ func jsonChange(p string, v any) fileChange {
 }
 func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 func stamp() string          { return time.Now().UTC().Format(time.RFC3339Nano) }
-func (s *Service) registryPath(folder string) string {
+func (s *builtinService) registryPath(folder string) string {
 	return filepath.Join(s.live, filepath.FromSlash(folder), ".kb-registry.json")
 }
-func (s *Service) registries() ([]folderRegistry, error) {
+func (s *builtinService) registries() ([]folderRegistry, error) {
 	var out []folderRegistry
 	err := filepath.WalkDir(s.live, func(p string, d os.DirEntry, e error) error {
 		if e != nil {
@@ -374,7 +340,7 @@ func (s *Service) registries() ([]folderRegistry, error) {
 	})
 	return out, err
 }
-func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
+func (s *builtinService) Call(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -473,9 +439,9 @@ func (s *Service) Call(ctx context.Context, p Principal, tool string, args map[s
 	}
 	return result, nil
 }
-func (s *Service) requestPath(p Principal, tool string, args map[string]any) (string, string, error) {
-	if p.requestTool != "" {
-		tool, args = p.requestTool, p.requestArguments
+func (s *builtinService) requestPath(p Principal, tool string, args map[string]any) (string, string, error) {
+	if p.RequestTool != "" {
+		tool, args = p.RequestTool, p.RequestArguments
 	}
 	id, ok := args["request_id"].(string)
 	if !ok || len(id) < 1 || len(id) > 128 {
@@ -490,7 +456,7 @@ func (s *Service) requestPath(p Principal, tool string, args map[string]any) (st
 	key := digest([]byte(s.cfg.OrganizationID + "\x00" + p.IdentityID + "\x00" + tool + "\x00" + id))
 	return filepath.Join(s.private, "requests", key+".json"), digest(b), nil
 }
-func (s *Service) cachedRequest(p Principal, tool string, args map[string]any, path, hash string) (any, bool, error) {
+func (s *builtinService) cachedRequest(p Principal, tool string, args map[string]any, path, hash string) (any, bool, error) {
 	if err := s.checkIntegrationRequest(filepath.Join(s.private, "integration-requests", filepath.Base(path)), hash); err != nil {
 		return nil, false, err
 	}
@@ -517,7 +483,7 @@ func (s *Service) cachedRequest(p Principal, tool string, args map[string]any, p
 	}
 	return r.Result, true, nil
 }
-func (s *Service) authorizeRetry(p Principal, tool string, args map[string]any, result any) error {
+func (s *builtinService) authorizeRetry(p Principal, tool string, args map[string]any, result any) error {
 	switch tool {
 	case "create_knowledgebase", "create_knowledgebase_folder":
 		_, e := s.resolveFolder(p, args, roleEditor)
@@ -541,7 +507,7 @@ func stringArg(a map[string]any, k string) string { v, _ := a[k].(string); retur
 
 // A durable journal precedes the grant transaction. Replay uses fixed values,
 // so a crash after SQLite commit but before writing its request outcome is safe.
-func (s *Service) applyAccess(change accessChange) error {
+func (s *builtinService) applyAccess(change accessChange) error {
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
@@ -572,7 +538,7 @@ func (s *Service) applyAccess(change accessChange) error {
 	}
 	return tx.Commit()
 }
-func (s *Service) nextSecurityGeneration() int {
+func (s *builtinService) nextSecurityGeneration() int {
 	var generation int
 	s.db.QueryRow(`SELECT value FROM security WHERE key='generation'`).Scan(&generation)
 	return generation + 1

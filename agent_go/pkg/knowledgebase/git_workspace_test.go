@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func gitStep(t *testing.T, s *Service, p Principal, args map[string]any) (any, error) {
+func gitStep(t *testing.T, s *builtinService, p Principal, args map[string]any) (any, error) {
 	t.Helper()
 	return s.RunGit(t.Context(), p, args, func(ctx context.Context, dir string) (any, error) {
 		var cmd []string
@@ -35,7 +35,7 @@ func gitStep(t *testing.T, s *Service, p Principal, args map[string]any) (any, e
 		return gitWorkspaceRun(ctx, dir, cmd...)
 	})
 }
-func gitOK(t *testing.T, s *Service, p Principal, op, id string, extra map[string]any) any {
+func gitOK(t *testing.T, s *builtinService, p Principal, op, id string, extra map[string]any) any {
 	t.Helper()
 	v, err := gitStep(t, s, p, merge(extra, map[string]any{"op": op, "request_id": id}))
 	if err != nil {
@@ -53,7 +53,7 @@ func gitCommandTest(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(b))
 }
-func gitSource(t *testing.T, s *Service) string {
+func gitSource(t *testing.T, s *builtinService) string {
 	t.Helper()
 	dir := t.TempDir()
 	gitCommandTest(t, dir, "init", "--initial-branch=main")

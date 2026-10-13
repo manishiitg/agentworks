@@ -33,7 +33,7 @@ func TestBackupSetupIsAdminOnlyDurableAndDoesNotPublish(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("setup state not private", err)
 	}
-	reopened, err := New(s.cfg)
+	reopened, err := newBuiltin(s.cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

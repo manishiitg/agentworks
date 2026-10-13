@@ -6075,3 +6075,28 @@ Dashboard questions reuse the caller's existing ordinary project conversation, a
 Ordinary native Crew chats retain their existing tools and permissions, including the current distinction between owner chats, reader chats and isolated function-call turns. This slice does not change guest function access or the existing read-only MCP ask_crew policy. The existing read_project_files tool is available to native Crew chats and gains a dashboard action for currently authorized captured published source in the bound project. It reads no raw databases or private execution areas. Query admission also refuses a foreign Crew root unless the request resolves through the verified Work conversation binding.
 
 This slice enables Crew dashboard Ask and workflow owners' existing conversations. Workflow-reader parity, Relay published/own-caller evidence, declared-query database isolation and mid-turn token revalidation remain prerequisites for their respective shared paths. The earlier durable dashboard-question API remains a no-model foundation; the existing native chat queue/history is the execution and reply authority for this entry point. Sharing changes and deployment are separate.
+
+## 2026-10-13 — Brain private engine preserves host authority
+
+Brain's first private extraction uses a typed in-process engine contract in
+`agent_go/pkg/brainapi`, compiled through the same source-overlay composition
+pattern as the private LLM Gateway. Authentication, OAuth/PAT scopes, current
+account and project policy, secret entry, schedules, chat and the existing web
+viewer remain host adapters. `Principal.Recheck` remains a live function across
+the boundary; nil and empty folder caps retain their existing meanings. The
+private engine is trusted first-party code, not a third-party plugin sandbox.
+
+`AGENTWORKS_BRAIN_BACKEND=private` requires a composed agent-server and an exact
+compatible tool catalog. Missing or incompatible private code fails closed with
+no fallback. An unset value retains the built-in engine for existing installs.
+The host drains calls and holds one process lease per Brain state root for both
+engines. Operators must stop older binaries that predate the lease before
+switching; the lease cannot constrain an old binary that does not acquire it.
+
+Keep the existing data format, organization binding, live Git folder, encryption
+key derivation, request records and registries. Cutover and rollback change the
+artifact/backend against the same compatible state, with one writer. Public
+implementation removal is a later migration gate. Product source and customer
+deployment configuration remain separate repositories. This change is developed
+on branches, requires reviewer approval and must not merge before October 17–18.
+No deployment or scheduled automatic merge is part of this work.

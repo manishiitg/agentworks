@@ -24,7 +24,7 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) execute(ctx context.Context, p Principal, tool string, a map[string]any) (any, []fileChange, error) {
 	switch tool {
 	case "manage_knowledgebase_access":
 		return s.manage(ctx, p, a)
@@ -64,7 +64,7 @@ func (s *Service) execute(ctx context.Context, p Principal, tool string, a map[s
 	}
 	return nil, nil, badArg("Unsupported tool.")
 }
-func (s *Service) collision(r folderRegistry, name string) bool {
+func (s *builtinService) collision(r folderRegistry, name string) bool {
 	if files, e := os.ReadDir(filepath.Join(s.live, filepath.FromSlash(r.Path))); e == nil {
 		for _, f := range files {
 			if strings.EqualFold(f.Name(), name) {
@@ -85,7 +85,7 @@ func (s *Service) collision(r folderRegistry, name string) bool {
 	}
 	return false
 }
-func (s *Service) createFolder(p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) createFolder(p Principal, a map[string]any) (any, []fileChange, error) {
 	r, err := s.resolveFolder(p, a, roleEditor)
 	if err != nil {
 		return nil, nil, err
@@ -243,7 +243,7 @@ func tagsArg(v any) ([]string, error) {
 		return nil, badArg("tags must be an array of strings.")
 	}
 }
-func (s *Service) createEntry(p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) createEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	r, err := s.resolveFolder(p, a, roleEditor)
 	if err != nil {
 		return nil, nil, err
@@ -304,7 +304,7 @@ func entryResult(e Entry, changed bool) map[string]any {
 	m["entry"] = publicEntry(e)
 	return m
 }
-func (s *Service) entryContent(e Entry) ([]byte, error) {
+func (s *builtinService) entryContent(e Entry) ([]byte, error) {
 	p := filepath.Join(s.live, filepath.FromSlash(e.Path))
 	fi, err := os.Lstat(p)
 	if err != nil {
@@ -319,7 +319,7 @@ func (s *Service) entryContent(e Entry) ([]byte, error) {
 	}
 	return b, err
 }
-func (s *Service) updateEntry(p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) updateEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	e, r, err := s.resolveEntry(p, a, roleEditor)
 	if err != nil {
 		return nil, nil, err
@@ -509,7 +509,7 @@ func validateDiffTarget(diff string, e Entry) error {
 	}
 	return nil
 }
-func (s *Service) deleteEntry(p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) deleteEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	e, r, err := s.resolveEntry(p, a, roleEditor)
 	if err != nil {
 		return nil, nil, err
@@ -545,7 +545,7 @@ func numeric(v any) (int, bool) {
 	}
 	return 0, false
 }
-func (s *Service) readEntry(p Principal, a map[string]any) (any, error) {
+func (s *builtinService) readEntry(p Principal, a map[string]any) (any, error) {
 	e, _, err := s.resolveEntry(p, a, roleReader)
 	if err != nil {
 		return nil, err
@@ -693,7 +693,7 @@ type cursorRecord struct {
 	Generation  int    `json:"generation"`
 }
 
-func (s *Service) paginate(p Principal, tool string, a map[string]any, items []any) (map[string]any, error) {
+func (s *builtinService) paginate(p Principal, tool string, a map[string]any, items []any) (map[string]any, error) {
 	limit := 50
 	if v, present := a["limit"]; present {
 		var ok bool
@@ -735,7 +735,7 @@ func (s *Service) paginate(p Principal, tool string, a map[string]any, items []a
 	}
 	return result, nil
 }
-func (s *Service) listingScope(p Principal, a map[string]any) (folderRegistry, []folderRegistry, error) {
+func (s *builtinService) listingScope(p Principal, a map[string]any) (folderRegistry, []folderRegistry, error) {
 	if _, fp := a["folder_path"]; fp {
 		if _, ip := a["folder_id"]; ip {
 			return folderRegistry{}, nil, badArg("Specify one folder locator.")
@@ -768,7 +768,7 @@ func (s *Service) listingScope(p Principal, a map[string]any) (folderRegistry, [
 	}
 	return r, rs, nil
 }
-func (s *Service) list(p Principal, tool string, a map[string]any) (any, error) {
+func (s *builtinService) list(p Principal, tool string, a map[string]any) (any, error) {
 	r, rs, err := s.listingScope(p, a)
 	if err != nil {
 		return nil, err
@@ -874,7 +874,7 @@ func contains(xs []string, v string) bool {
 	}
 	return false
 }
-func (s *Service) search(ctx context.Context, p Principal, a map[string]any) (any, error) {
+func (s *builtinService) search(ctx context.Context, p Principal, a map[string]any) (any, error) {
 	query := stringArg(a, "query")
 	if query == "" || len(query) > 4000 {
 		return nil, badArg("query must contain 1–4000 bytes.")
@@ -996,7 +996,7 @@ func searchLines(ctx context.Context, file string, content []byte, query string)
 
 // moveEntry moves or renames an entry, keeping its ID and history. Moving
 // changes who may read it, so the caller needs Editor on both folders.
-func (s *Service) moveEntry(p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) moveEntry(p Principal, a map[string]any) (any, []fileChange, error) {
 	e, src, err := s.resolveEntry(p, a, roleEditor)
 	if err != nil {
 		return nil, nil, err
@@ -1065,7 +1065,7 @@ var restoreCommitPattern = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
 // restoreEntry saves an earlier commit's content of an entry as its next
 // version, through the normal update and its version check.
-func (s *Service) restoreEntry(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) restoreEntry(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
 	e, _, err := s.resolveEntry(p, a, roleEditor)
 	if err != nil {
 		return nil, nil, err

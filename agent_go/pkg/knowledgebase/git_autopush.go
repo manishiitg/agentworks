@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/brainapi"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,19 +15,16 @@ import (
 )
 
 // AutoPushStatus is the last automatic push of Brain's folder, kept in Brain's private folder for the backup status.
-type AutoPushStatus struct {
-	At     time.Time `json:"at"`
-	OK     bool      `json:"ok"`
-	Pushed string    `json:"pushed,omitempty"` // the commit now on the remote branch
-	Error  string    `json:"error,omitempty"`
-}
+type AutoPushStatus = brainapi.AutoPushStatus
 
 var autoPushMu sync.Mutex
 
-func (s *Service) autoPushStatusPath() string { return filepath.Join(s.private, "auto-push.json") }
+func (s *builtinService) autoPushStatusPath() string {
+	return filepath.Join(s.private, "auto-push.json")
+}
 
 // LastAutoPush reports the last automatic push, or nil when none has run.
-func (s *Service) LastAutoPush() *AutoPushStatus {
+func (s *builtinService) LastAutoPush() *AutoPushStatus {
 	b, err := os.ReadFile(s.autoPushStatusPath())
 	if err != nil {
 		return nil
@@ -42,7 +40,7 @@ func (s *Service) LastAutoPush() *AutoPushStatus {
 // follows every save without anyone asking (owner, 2026-10-08). Every save is already a commit authored by the
 // person who made it; this only delivers them. It never force-pushes: when the remote branch has commits Brain's
 // folder does not, it stops and records why, and nothing is lost on either side. It returns whether it pushed.
-func (s *Service) AutoPush(ctx context.Context, quiet time.Duration, now time.Time) (bool, error) {
+func (s *builtinService) AutoPush(ctx context.Context, quiet time.Duration, now time.Time) (bool, error) {
 	autoPushMu.Lock()
 	defer autoPushMu.Unlock()
 	f, err := s.GitFolder()
@@ -98,7 +96,7 @@ func (s *Service) AutoPush(ctx context.Context, quiet time.Duration, now time.Ti
 	return true, nil
 }
 
-func (s *Service) saveAutoPush(st AutoPushStatus) {
+func (s *builtinService) saveAutoPush(st AutoPushStatus) {
 	b, _ := json.Marshal(st)
 	tmp := s.autoPushStatusPath() + ".tmp"
 	if os.WriteFile(tmp, b, 0o600) == nil {

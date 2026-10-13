@@ -2,59 +2,20 @@
 package knowledgebase
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/brainapi"
 )
 
-type Config struct {
-	Root string
-	// LiveRoot is the folder holding Brain's notes as plain files (a Git working folder); default <Root>/live.
-	LiveRoot       string
-	OrganizationID string
-	BackupRemote   string
-	BackupBranch   string
-	// Operator-only opt-in for Git hosts on a private network. Never a tool argument.
-	AllowPrivateBackup bool
-	// Host-derived AES key; never persisted in KB configuration or Git.
-	BackupEncryptionKey string `json:"-"`
-	// SecretResolver reads a platform (global) secret by name; backup credentials may reference one instead of
-	// holding a token of their own. Set by the server; nil means no secret can be referenced.
-	SecretResolver func(name string) (string, bool) `json:"-"`
-}
+type Config = brainapi.Config
 
-type Cap struct {
-	FolderPath string `json:"folder_path"`
-	Role       string `json:"role"`
-}
+type Cap = brainapi.Cap
 
-type Principal struct {
-	IdentityID       string                      `json:"identity_id"`
-	IsAdmin          bool                        `json:"is_admin"`
-	AccessOnly       bool                        `json:"access_only"`
-	Caps             *[]Cap                      `json:"caps,omitempty"`
-	Recheck          func(context.Context) error `json:"-"`
-	BindingPolicy    *BindingPolicy              `json:"-"`
-	requestTool      string
-	requestArguments map[string]any
-}
+type Principal = brainapi.Principal
 
-type Error struct {
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-	Retryable  bool   `json:"retryable,omitempty"`
-	RetryAfter *int   `json:"retry_after,omitempty"`
-	Details    any    `json:"details,omitempty"`
-}
+type Error = brainapi.Error
 
-func (e *Error) Error() string { return e.Code + ": " + e.Message }
-
-type ToolDefinition struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"input_schema"`
-	Mutates     bool           `json:"mutates"`
-}
+type ToolDefinition = brainapi.ToolDefinition
 
 const (
 	roleReader = 1
@@ -102,7 +63,7 @@ func operationDefinitions() []ToolDefinition {
 		{"list_knowledgebase_skills", "List Brain skills you can read: folders holding a SKILL.md, with name, description and version.", obj(nil, map[string]any{"folder_path": str("Optional scope, for example Company/Skills."), "query": str("Optional text matched against name, description and folder.")}), false},
 		{"get_knowledgebase_skill", "Return every file of one Brain skill so it can be installed into a skills folder.", obj([]string{"folder_path"}, map[string]any{"folder_path": str("The skill's folder, for example Company/Skills/release-notes.")}), false},
 		{"publish_knowledgebase_skill", "Publish a skill package into Brain (default Skills/<name>), replacing its previous files. Only when the person asks to share a skill company-wide. Needs Editor; a skill with scripts needs Owner.", obj([]string{"files", "request_id"}, map[string]any{"folder_path": str("Optional. The skill's folder; default Skills/<name from SKILL.md> (company skills live in the top-level Skills folder). A different folder's parent must exist."), "files": map[string]any{"type": "array", "minItems": 1, "maxItems": 200, "items": obj([]string{"path"}, map[string]any{"path": str("Path inside the skill, for example SKILL.md, references/guide.md or scripts/run.py."), "content": str("Text content."), "content_base64": str("Base64 bytes for a non-text file.")})}, "request_id": str("Idempotency key.")}), true},
-		{"manage_knowledgebase_access", "List, grant, or revoke folder access and create/disable service accounts.", obj([]string{"action"}, map[string]any{"action": str("list, grant, revoke, create_service_account, or disable_service_account."), "folder_path": str("Relative folder path."), "identity_id": str("Target identity."), "role": str("Reader, Editor, or Owner."), "name": str("Service account name."), "request_id": str("Idempotency key.")}), true},
+		{"manage_knowledgebase_access", "List, grant, or revoke folder access and create/disable service accounts.", obj([]string{"action"}, map[string]any{"action": str("list, grant, revoke, create_service_account, or disable_service_account."), "folder_path": str("Relative folder path."), "identity_id": str("Target identity."), "role": str("Reader, Editor, or Owner."), "name": str("builtinService account name."), "request_id": str("Idempotency key.")}), true},
 	}
 
 	folderLocator := map[string]any{"folder_id": str("Opaque folder ID, exclusive with folder_path."), "folder_path": str("Relative folder path, exclusive with folder_id.")}

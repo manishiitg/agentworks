@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func fixture(t *testing.T, remote bool) (*Service, Principal, Principal) {
+func fixture(t *testing.T, remote bool) (*builtinService, Principal, Principal) {
 	t.Helper()
 	root := t.TempDir()
 	cfg := Config{Root: filepath.Join(root, "kb"), OrganizationID: "org"}
@@ -20,7 +20,7 @@ func fixture(t *testing.T, remote bool) (*Service, Principal, Principal) {
 			t.Fatalf("gitinit %v %s", e, b)
 		}
 	}
-	s, e := New(cfg)
+	s, e := newBuiltin(cfg)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -30,7 +30,7 @@ func fixture(t *testing.T, remote bool) (*Service, Principal, Principal) {
 	}
 	return s, Principal{IdentityID: "admin", IsAdmin: true}, Principal{IdentityID: "priya"}
 }
-func call(t *testing.T, s *Service, p Principal, tool string, a map[string]any) map[string]any {
+func call(t *testing.T, s *builtinService, p Principal, tool string, a map[string]any) map[string]any {
 	t.Helper()
 	v, e := s.Call(context.Background(), p, tool, a)
 	if e != nil {
@@ -38,7 +38,7 @@ func call(t *testing.T, s *Service, p Principal, tool string, a map[string]any) 
 	}
 	return asMap(v)
 }
-func code(t *testing.T, s *Service, p Principal, tool string, a map[string]any, want string) {
+func code(t *testing.T, s *builtinService, p Principal, tool string, a map[string]any, want string) {
 	t.Helper()
 	_, e := s.Call(context.Background(), p, tool, a)
 	ke, ok := e.(*Error)
@@ -46,19 +46,19 @@ func code(t *testing.T, s *Service, p Principal, tool string, a map[string]any, 
 		t.Fatalf("%s %v want %s", tool, e, want)
 	}
 }
-func folder(t *testing.T, s *Service, p Principal, f, n string) {
+func folder(t *testing.T, s *builtinService, p Principal, f, n string) {
 	call(t, s, p, "create_knowledgebase_folder", map[string]any{"folder_path": f, "name": n, "request_id": "f_" + strings.ReplaceAll(f+"_"+n, "/", "_")})
 }
-func grant(t *testing.T, s *Service, p Principal, id, f, r, req string) {
+func grant(t *testing.T, s *builtinService, p Principal, id, f, r, req string) {
 	call(t, s, p, "manage_knowledgebase_access", map[string]any{"action": "grant", "folder_path": f, "identity_id": id, "role": r, "request_id": req, "expected_acl_version": call(t, s, p, "get_knowledgebase_access", map[string]any{"folder_path": f})["acl_version"]})
 }
-func create(t *testing.T, s *Service, p Principal, f, n, c, req string) map[string]any {
+func create(t *testing.T, s *builtinService, p Principal, f, n, c, req string) map[string]any {
 	return call(t, s, p, "create_knowledgebase", map[string]any{"folder_path": f, "filename": n, "type": "skill", "title": "Guide", "content": c, "request_id": req})
 }
-func commit(t *testing.T, s *Service, p Principal, e map[string]any, req string) map[string]any {
+func commit(t *testing.T, s *builtinService, p Principal, e map[string]any, req string) map[string]any {
 	return call(t, s, p, "commit_knowledgebase", map[string]any{"entries": []any{map[string]any{"entry_id": e["entry_id"], "expected_version": e["version"]}}, "message": "Backup guide", "request_id": req})
 }
-func push(t *testing.T, s *Service, p Principal, r map[string]any, req string) map[string]any {
+func push(t *testing.T, s *builtinService, p Principal, r map[string]any, req string) map[string]any {
 	return call(t, s, p, "push_knowledgebase", map[string]any{"receipt_id": r["receipt_id"], "request_id": req})
 }
 func TestPermissionsAtomicPatchPartialReadAndRetries(t *testing.T) {

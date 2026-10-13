@@ -41,7 +41,7 @@ func TestGrantCASAdminBootstrapAndBuilderDiscovery(t *testing.T) {
 	if !s.IdentityActive(context.Background(), p.IdentityID) {
 		t.Fatal("admin bootstrap disabled peer")
 	}
-	if _, e := New(Config{Root: s.cfg.Root, OrganizationID: "another"}); e == nil {
+	if _, e := newBuiltin(Config{Root: s.cfg.Root, OrganizationID: "another"}); e == nil {
 		t.Fatal("data root accepted another organization")
 	}
 }
@@ -271,7 +271,7 @@ func TestControlledFullRestoreKeepsUnpublishedFilesMetadataGrantsAndReceipts(t *
 	copyTree(t, s.cfg.Root, restoredRoot)
 	cfg := s.cfg
 	cfg.Root = restoredRoot
-	restored, err := New(cfg)
+	restored, err := newBuiltin(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestCopiedPendingJournalCannotWriteOldRoot(t *testing.T) {
 	copyTree(t, s.cfg.Root, newRoot)
 	cfg := s.cfg
 	cfg.Root = newRoot
-	if restored, err := New(cfg); err == nil {
+	if restored, err := newBuiltin(cfg); err == nil {
 		restored.Close()
 		t.Fatal("copied pending absolute journal accepted")
 	}

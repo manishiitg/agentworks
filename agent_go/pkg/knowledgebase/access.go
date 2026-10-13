@@ -89,7 +89,7 @@ func roleName(r int) string {
 	}
 	return "None"
 }
-func (s *Service) identities() (map[string]Identity, error) {
+func (s *builtinService) identities() (map[string]Identity, error) {
 	ids := map[string]Identity{}
 	b, e := os.ReadFile(filepath.Join(s.private, "identities.json"))
 	if os.IsNotExist(e) {
@@ -101,7 +101,7 @@ func (s *Service) identities() (map[string]Identity, error) {
 	e = json.Unmarshal(b, &ids)
 	return ids, e
 }
-func (s *Service) identityKnown(id string) bool {
+func (s *builtinService) identityKnown(id string) bool {
 	ids, e := s.identities()
 	if e != nil {
 		return false
@@ -109,7 +109,7 @@ func (s *Service) identityKnown(id string) bool {
 	_, ok := ids[id]
 	return ok
 }
-func (s *Service) IdentityActive(ctx context.Context, id string) bool {
+func (s *builtinService) IdentityActive(ctx context.Context, id string) bool {
 	ids, e := s.identities()
 	if e != nil {
 		return false
@@ -117,7 +117,7 @@ func (s *Service) IdentityActive(ctx context.Context, id string) bool {
 	i, ok := ids[id]
 	return ok && !i.Disabled
 }
-func (s *Service) SyncPlatformIdentities(ctx context.Context, users []Identity) error {
+func (s *builtinService) SyncPlatformIdentities(ctx context.Context, users []Identity) error {
 	unlock, err := s.lock(ctx, false)
 	if err != nil {
 		return err
@@ -156,7 +156,7 @@ func (s *Service) SyncPlatformIdentities(ctx context.Context, users []Identity) 
 }
 
 // Called with the content lock held; the returned map is not persisted yet.
-func (s *Service) platformIdentityUpdate(users []Identity) (map[string]Identity, bool, error) {
+func (s *builtinService) platformIdentityUpdate(users []Identity) (map[string]Identity, bool, error) {
 	ids, err := s.identities()
 	if err != nil {
 		return nil, false, err
@@ -186,7 +186,7 @@ func (s *Service) platformIdentityUpdate(users []Identity) (map[string]Identity,
 	}
 	return ids, changed, nil
 }
-func (s *Service) ValidateServiceTokenIdentity(ctx context.Context, p Principal, id string) error {
+func (s *builtinService) ValidateServiceTokenIdentity(ctx context.Context, p Principal, id string) error {
 	if !p.IsAdmin || !s.IdentityActive(ctx, p.IdentityID) {
 		return kbErr("FORBIDDEN", "An administrator is required to issue service account tokens.")
 	}
@@ -200,7 +200,7 @@ func (s *Service) ValidateServiceTokenIdentity(ctx context.Context, p Principal,
 	}
 	return nil
 }
-func (s *Service) ValidateTokenIdentity(ctx context.Context, p Principal, id string) error {
+func (s *builtinService) ValidateTokenIdentity(ctx context.Context, p Principal, id string) error {
 	if !s.IdentityActive(ctx, p.IdentityID) {
 		return kbErr("FORBIDDEN", "This identity is disabled or unavailable.")
 	}
@@ -212,7 +212,7 @@ func (s *Service) ValidateTokenIdentity(ctx context.Context, p Principal, id str
 	}
 	return nil
 }
-func (s *Service) ValidateCaps(ctx context.Context, p Principal, id string, caps *[]Cap) error {
+func (s *builtinService) ValidateCaps(ctx context.Context, p Principal, id string, caps *[]Cap) error {
 	if err := s.ValidateTokenIdentity(ctx, p, id); err != nil {
 		return err
 	}
@@ -240,14 +240,14 @@ func (s *Service) ValidateCaps(ctx context.Context, p Principal, id string, caps
 	}
 	return nil
 }
-func (s *Service) effective(p Principal, folder string) int {
+func (s *builtinService) effective(p Principal, folder string) int {
 	role := s.effectiveRaw(p, folder)
 	if bound := s.boundRole(p, folder); bound < role {
 		role = bound
 	}
 	return role
 }
-func (s *Service) effectiveRaw(p Principal, folder string) int {
+func (s *builtinService) effectiveRaw(p Principal, folder string) int {
 	role := 0
 	if p.IsAdmin {
 		role = roleOwner
@@ -278,7 +278,7 @@ func (s *Service) effectiveRaw(p Principal, folder string) int {
 	}
 	return role
 }
-func (s *Service) require(p Principal, folder string, role int) error {
+func (s *builtinService) require(p Principal, folder string, role int) error {
 	have := s.effective(p, folder)
 	if have < role {
 		if err := s.explainProjectLimit(p, folder, role); err != nil {
@@ -300,7 +300,7 @@ func (s *Service) require(p Principal, folder string, role int) error {
 // NOT_FOUND made a workflow agent call server A/Engineering "an empty shell" when
 // the workflow's two readers had no access to it (server A 2026-10-07, PLAT-681).
 // Nil when the principal itself lacks the access: the uniform NOT_FOUND stays.
-func (s *Service) explainProjectLimit(p Principal, folder string, role int) error {
+func (s *builtinService) explainProjectLimit(p Principal, folder string, role int) error {
 	policy := p.BindingPolicy
 	if policy == nil || s.effectiveRaw(p, folder) < role {
 		return nil
@@ -329,7 +329,7 @@ func (s *Service) explainProjectLimit(p Principal, folder string, role int) erro
 	}
 	return nil
 }
-func (s *Service) findFolder(folder, id string) (folderRegistry, error) {
+func (s *builtinService) findFolder(folder, id string) (folderRegistry, error) {
 	if id == "" {
 		if err := validatePath(folder, false); err != nil {
 			return folderRegistry{}, err
@@ -346,7 +346,7 @@ func (s *Service) findFolder(folder, id string) (folderRegistry, error) {
 	}
 	return folderRegistry{}, kbErr("NOT_FOUND", "Resource not found.")
 }
-func (s *Service) resolveFolder(p Principal, args map[string]any, role int) (folderRegistry, error) {
+func (s *builtinService) resolveFolder(p Principal, args map[string]any, role int) (folderRegistry, error) {
 	folder, fp := args["folder_path"].(string)
 	id, ip := args["folder_id"].(string)
 	if fp && ip {
@@ -361,7 +361,7 @@ func (s *Service) resolveFolder(p Principal, args map[string]any, role int) (fol
 	}
 	return r, nil
 }
-func (s *Service) resolveEntry(p Principal, args map[string]any, role int) (Entry, folderRegistry, error) {
+func (s *builtinService) resolveEntry(p Principal, args map[string]any, role int) (Entry, folderRegistry, error) {
 	id, ip := args["entry_id"].(string)
 	pp, ppresent := args["path"].(string)
 	if ip == ppresent || ip && id == "" || ppresent && pp == "" {
@@ -388,7 +388,7 @@ func (s *Service) resolveEntry(p Principal, args map[string]any, role int) (Entr
 	}
 	return Entry{}, folderRegistry{}, kbErr("NOT_FOUND", "Resource not found.")
 }
-func (s *Service) access(p Principal, args map[string]any) (any, error) {
+func (s *builtinService) access(p Principal, args map[string]any) (any, error) {
 	r, err := s.resolveFolder(p, args, roleReader)
 	if err != nil {
 		return nil, err
@@ -434,7 +434,7 @@ func (s *Service) access(p Principal, args map[string]any) (any, error) {
 	out["identities"] = identities
 	return out, nil
 }
-func (s *Service) manage(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
+func (s *builtinService) manage(ctx context.Context, p Principal, a map[string]any) (any, []fileChange, error) {
 	if stringArg(a, "action") == "configure_backup" {
 		return s.configureBackup(ctx, p, a)
 	}
@@ -538,7 +538,7 @@ func childPath(parent, name string) string {
 	return path.Join(parent, name)
 }
 
-func (s *Service) registerAdministrator(ctx context.Context, id string) error {
+func (s *builtinService) registerAdministrator(ctx context.Context, id string) error {
 	unlock, e := s.lock(ctx, false)
 	if e != nil {
 		return e
@@ -579,10 +579,10 @@ func (s *Service) registerAdministrator(ctx context.Context, id string) error {
 	return s.transact([]fileChange{{Access: &accessChange{OnlyGeneration: true, SecurityGeneration: s.nextSecurityGeneration()}}, jsonChange(filepath.Join(s.private, "identities.json"), ids)})
 }
 
-func (s *Service) aclToken(folderID string, sequence int) string {
+func (s *builtinService) aclToken(folderID string, sequence int) string {
 	return "acl_" + digest([]byte(fmt.Sprintf("%s:%s:%d", s.cfg.OrganizationID, folderID, sequence)))[:32]
 }
-func (s *Service) aclVersion(folderID string) string {
+func (s *builtinService) aclVersion(folderID string) string {
 	sequence := 1
 	if e := s.db.QueryRow(`SELECT value FROM security WHERE key=?`, "acl:"+folderID).Scan(&sequence); e != nil {
 		sequence = 1
@@ -590,7 +590,7 @@ func (s *Service) aclVersion(folderID string) string {
 	return s.aclToken(folderID, sequence)
 }
 
-func (s *Service) accessDiscovery(p Principal, a map[string]any) (any, error) {
+func (s *builtinService) accessDiscovery(p Principal, a map[string]any) (any, error) {
 	_, explicitPath := a["folder_path"]
 	_, explicitID := a["folder_id"]
 	var out map[string]any
@@ -655,7 +655,7 @@ func (s *Service) accessDiscovery(p Principal, a map[string]any) (any, error) {
 // simply absent, and saying so reveals nothing it could not list itself. A
 // bare "Resource not found." left a weekly refresh step retrying
 // create_folder under server A/Engineering, which did not exist (server A 2026-10-07).
-func (s *Service) explainMissingFolder(p Principal, folder, id string, err error) error {
+func (s *builtinService) explainMissingFolder(p Principal, folder, id string, err error) error {
 	if id != "" || folder == "" || validatePath(folder, false) != nil {
 		return err
 	}

@@ -96,9 +96,9 @@ func subRequestID(base, step string) string {
 	return base + "-" + digest([]byte(step))[:12]
 }
 
-func (s *Service) skillsTool(ctx context.Context, p Principal, args map[string]any) (any, error) {
+func (s *builtinService) skillsTool(ctx context.Context, p Principal, args map[string]any) (any, error) {
 	// Every step is its own request: the outer call's request record must not cover the steps.
-	p.requestTool, p.requestArguments = "", nil
+	p.RequestTool, p.RequestArguments = "", nil
 	switch stringArg(args, "action") {
 	case "list":
 		return s.listSkills(ctx, p, args)
@@ -111,7 +111,7 @@ func (s *Service) skillsTool(ctx context.Context, p Principal, args map[string]a
 }
 
 // skillEntries lists every entry under a folder the caller can read, following pagination.
-func (s *Service) skillEntries(ctx context.Context, p Principal, folder, glob string, limit int) ([]map[string]any, error) {
+func (s *builtinService) skillEntries(ctx context.Context, p Principal, folder, glob string, limit int) ([]map[string]any, error) {
 	var out []map[string]any
 	cursor := ""
 	for {
@@ -147,7 +147,7 @@ func asSlice(v any) []any {
 	return nil
 }
 
-func (s *Service) listSkills(ctx context.Context, p Principal, args map[string]any) (any, error) {
+func (s *builtinService) listSkills(ctx context.Context, p Principal, args map[string]any) (any, error) {
 	entries, err := s.skillEntries(ctx, p, stringArg(args, "folder_path"), skillFile, maxSkillsListed)
 	if err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func (s *Service) listSkills(ctx context.Context, p Principal, args map[string]a
 	return map[string]any{"skills": skills, "count": len(skills)}, nil
 }
 
-func (s *Service) getSkill(ctx context.Context, p Principal, args map[string]any) (any, error) {
+func (s *builtinService) getSkill(ctx context.Context, p Principal, args map[string]any) (any, error) {
 	folder := strings.Trim(stringArg(args, "folder_path"), "/")
 	if folder == "" {
 		return nil, badArg("folder_path names the skill's folder.")
@@ -220,7 +220,7 @@ type skillFileInput struct {
 	binary                 bool
 }
 
-func (s *Service) publishSkill(ctx context.Context, p Principal, args map[string]any) (any, error) {
+func (s *builtinService) publishSkill(ctx context.Context, p Principal, args map[string]any) (any, error) {
 	base := stringArg(args, "request_id")
 	raw := asSlice(args["files"])
 	if len(raw) == 0 || len(raw) > maxSkillFiles {
@@ -361,7 +361,7 @@ func dirOf(rel string) string {
 }
 
 // ensureFolders creates any missing folder, parents first; an existing folder is fine.
-func (s *Service) ensureFolders(ctx context.Context, p Principal, base, skillRoot string, folders []string) error {
+func (s *builtinService) ensureFolders(ctx context.Context, p Principal, base, skillRoot string, folders []string) error {
 	// The skill folder's own parents must exist already: a skill is published into a folder people were granted.
 	parent := path.Dir(skillRoot)
 	if parent == "." {
