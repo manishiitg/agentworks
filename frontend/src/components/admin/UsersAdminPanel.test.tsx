@@ -31,8 +31,11 @@ describe('Shared user roles and product access', () => {
   }
   it('offers the four roles on each account, and no way to add one: DevOps adds people on the server', async () => {
     await render()
+    // One line per person; the editor opens on click. No "viewer" wording (Builder and Run only).
+    expect(host.querySelector('[aria-label="Role for creator@example.com"]')).toBeNull()
+    await act(async () => (host.querySelector('[aria-label="Edit creator@example.com"]') as HTMLElement).click())
     await openRole('Role for creator@example.com')
-    expect(Array.from(document.querySelectorAll('[role="option"]')).map(option => option.querySelector('span.block')?.textContent)).toEqual(['Viewer', 'Editor', 'Creator', 'Admin'])
+    expect(Array.from(document.querySelectorAll('[role="option"]')).map(option => option.querySelector('span.block')?.textContent)).toEqual(['Member', 'Editor', 'Creator', 'Admin'])
     await act(async () => (document.querySelector('[role="option"]') as HTMLElement).click())
     expect(api.updateAdminUser).toHaveBeenCalledWith('creator', expect.objectContaining({ role: 'viewer' }))
     expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Add user')).toBe(false)

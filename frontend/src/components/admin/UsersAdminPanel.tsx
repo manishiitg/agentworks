@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, Mail } from 'lucide-react'
+import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, Mail, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
@@ -22,7 +22,7 @@ import { allowedModelsText } from '../../utils/allowedModels'
 // the same access. Records without a stamped role map from the booleans.
 type Role = 'admin' | 'creator' | 'editor' | 'viewer'
 const ROLES: { value: Role; label: string; hint: string }[] = [
-  { value: 'viewer', label: 'Viewer', hint: 'Use shared work. No creating or editing.' },
+  { value: 'viewer', label: 'Member', hint: 'Runs and uses what is shared with them. Creates and edits nothing.' },
   { value: 'editor', label: 'Editor', hint: 'Edit assigned workflows. No creating.' },
   { value: 'creator', label: 'Creator', hint: 'Create and own workflows and projects.' },
   { value: 'admin', label: 'Admin', hint: 'Manage users, products and all workflows.' },
@@ -363,6 +363,15 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   }
 
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
+  const [query, setQuery] = useState('')
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q ? sorted.filter((u) => `${u.username} ${u.email || ''}`.toLowerCase().includes(q)) : sorted
+  }, [sorted, query])
+  const productsSummary = (u: AdminUser, role: Role) => (
+    role === 'admin' || (role === 'creator' && u.products.length === 0) ? 'All products' : u.products.map(productLabel).join(', ') || 'No products'
+  )
 
   return (
     <div className="[container-type:inline-size] space-y-5">
@@ -386,172 +395,186 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
         ) : sorted.length === 0 ? (
           <SettingsEmpty>No accounts yet. DevOps adds people on the server.</SettingsEmpty>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              <tr className="text-left">
-                <th className="py-1 pr-3 font-semibold">User</th>
-                <th className="py-1 pr-3 font-semibold">Role</th>
-                <th className="py-1 pr-3 font-semibold">Products</th>
-                {!vaultOnly && <th className="py-1 pr-3 font-semibold" title="Tokens on the shared server accounts, per UTC day and Monday-start week. Own accounts are never limited.">Shared-account tokens (UTC)</th>}
-                <th className="py-1 pr-3 font-semibold">Status</th>
-                <th className="py-1 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((u) => {
+          <div className="space-y-3">
+            <div className="relative max-w-sm">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search people" aria-label="Search people" className="h-8 pl-8 text-sm" />
+            </div>
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {shown.map((u) => {
                 const isMe = u.id === me?.id
                 const busy = busyId === u.id
                 const role = roleOf(u)
+                const open = !vaultOnly && expanded === u.id
+                const status = u.disabled
+                  ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Turned off</Badge>
+                  : u.invited
+                    ? <Badge variant="outline" title="Added by an administrator; not signed in yet"><Mail className="mr-1 h-3 w-3" />Added</Badge>
+                    : null
                 return (
-                  <tr key={u.id} className={`border-t border-border ${u.disabled ? 'opacity-60' : ''}`}>
-                    <td className="py-2 pr-3 align-top">
-                      <div className="font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</div>
-                      <div className="text-[11px] text-muted-foreground">{u.email || '—'} · {signInLabel(u)}</div>
-                    </td>
-                    <td className="py-2 pr-3 align-top">
-                      {vaultOnly ? <span className="text-xs text-muted-foreground">{ROLES.find(r => r.value === role)?.label}</span> : <RolePicker
-                        value={role}
-                        label={`Role for ${u.username}`}
-                        disabled={busy || (isMe && role === 'admin')}
-                        title={isMe && role === 'admin' ? 'You cannot remove your own admin access' : undefined}
-                        onChange={(next) => { void run(u.id, () => authApi.updateAdminUser(u.id, roleFields(next))) }}
-                      />}
-                      {!vaultOnly && role !== 'admin' && (
-                        <label
-                          className="mt-1.5 flex items-center gap-1.5 text-xs"
-                          title="Reviews every Code workspace's cost, chats and files, read-only. Every view is recorded in the audit log."
-                        >
-                          <Checkbox
-                            disabled={busy}
-                            checked={u.code_reviewer === true}
-                            onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, codeReviewerPatch(u, role, u.code_reviewer !== true))) }}
-                            aria-label={`Code reviewer for ${u.username}`}
-                          />
-                          Code reviewer
-                        </label>
-                      )}
-                      {!vaultOnly && role !== 'admin' && products.includes('mcp-gateway') && (
-                        <label
-                          className="mt-1.5 flex items-center gap-1.5 text-xs"
-                          title="Sees Vault connections, tools, groups, who can reach what and the audit log. Changes nothing."
-                        >
-                          <Checkbox
-                            disabled={busy}
-                            checked={u.vault_reader === true}
-                            onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, vaultReaderPatch(u, role, u.vault_reader !== true))) }}
-                            aria-label={`Vault reader for ${u.username}`}
-                          />
-                          Vault reader
-                        </label>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3 align-top">
-                      {vaultOnly ? <span className="text-xs text-muted-foreground">{role === 'admin' || (role === 'creator' && u.products.length === 0) ? 'All products' : u.products.map(productLabel).join(', ') || 'None'}</span> : role === 'admin' ? (
-                        <span className="text-xs text-muted-foreground">all</span>
-                      ) : (
-                        products.length === 1 ? (
-                          <span className="text-xs text-muted-foreground">{productLabel(products[0])}</span>
-                        ) : (
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          {products.map((p) => (
-                            <label key={p} className="inline-flex items-center gap-1.5">
+                  <li key={u.id} className={u.disabled ? 'opacity-60' : ''}>
+                    <button
+                      type="button"
+                      disabled={vaultOnly}
+                      onClick={() => setExpanded(open ? null : u.id)}
+                      aria-expanded={open}
+                      aria-label={`${open ? 'Close' : 'Edit'} ${u.username}`}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 disabled:cursor-default disabled:hover:bg-transparent"
+                    >
+                      {!vaultOnly && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />)}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">{u.email && u.email !== u.username ? `${u.email} · ` : ''}{signInLabel(u)}</span>
+                      </span>
+                      <span className="hidden min-w-0 max-w-[40%] truncate text-xs text-muted-foreground sm:block">{productsSummary(u, role)}</span>
+                      <Badge variant="secondary" className="shrink-0">{ROLES.find(r => r.value === role)?.label}</Badge>
+                      {status}
+                      {busy && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
+                    </button>
+                    {open && (
+                      <div className="grid gap-5 border-t border-border bg-muted/20 px-4 py-4 text-sm sm:grid-cols-2">
+                        <section className="space-y-1.5">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Role</h4>
+                          {vaultOnly ? <span className="text-xs text-muted-foreground">{ROLES.find(r => r.value === role)?.label}</span> : <RolePicker
+                            value={role}
+                            label={`Role for ${u.username}`}
+                            disabled={busy || (isMe && role === 'admin')}
+                            title={isMe && role === 'admin' ? 'You cannot remove your own admin access' : undefined}
+                            onChange={(next) => { void run(u.id, () => authApi.updateAdminUser(u.id, roleFields(next))) }}
+                          />}
+                          {!vaultOnly && role !== 'admin' && (
+                            <label
+                              className="mt-1.5 flex items-center gap-1.5 text-xs"
+                              title="Sees every Code workspace's cost, chats and files without changing them. Every view is recorded in the audit log."
+                            >
                               <Checkbox
                                 disabled={busy}
-                                checked={u.products.includes(p)}
-                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { products: toggleProduct(u.products, p) })) }}
-                                aria-label={`${productLabel(p)} for ${u.username}`}
+                                checked={u.code_reviewer === true}
+                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, codeReviewerPatch(u, role, u.code_reviewer !== true))) }}
+                                aria-label={`Code reviewer for ${u.username}`}
                               />
-                              {productLabel(p)}
+                              Code reviewer
                             </label>
-                          ))}
-                          {role === 'creator' && u.products.length === 0 && <span className="text-muted-foreground">(all)</span>}
-                          {(role === 'viewer' || role === 'editor') && u.products.length === 0 && <span className="text-muted-foreground">(none)</span>}
-                        </div>
-                        )
-                      )}
-                      {!vaultOnly && (role === 'creator' || role === 'editor') && creatableFor(u, role).length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" title="Where this account may create new workflows, Relays, Crews or projects. Editing what already exists is not affected.">
-                          <span className="text-muted-foreground">May create in:</span>
-                          {creatableFor(u, role).map((p) => (
-                            <label key={p} className="inline-flex items-center gap-1.5">
+                          )}
+                          {!vaultOnly && role !== 'admin' && products.includes('mcp-gateway') && (
+                            <label
+                              className="mt-1.5 flex items-center gap-1.5 text-xs"
+                              title="Sees Vault connections, tools, groups, who can reach what and the audit log. Changes nothing."
+                            >
                               <Checkbox
                                 disabled={busy}
-                                checked={createListFor(u, role).includes(p)}
-                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { create_products: toggleProduct(createListFor(u, role), p) })) }}
-                                aria-label={`May create in ${productLabel(p)} for ${u.username}`}
+                                checked={u.vault_reader === true}
+                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, vaultReaderPatch(u, role, u.vault_reader !== true))) }}
+                                aria-label={`Vault reader for ${u.username}`}
                               />
-                              {productLabel(p)}
+                              Vault audit
                             </label>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    {!vaultOnly && (
-                      <td className="py-2 pr-3 align-top">
-                        <TokenLimitsCell
-                          user={u}
-                          disabled={busy}
-                          onSave={(limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { token_limits: limits })) }}
-                          accountProviders={accountProviders}
-                          onSaveAccount={(provider, limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_token_limits: { [provider]: limits } })) }}
-                          accountModels={accountModels}
-                          onSaveModels={(provider, models) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_allowed_models: { [provider]: models } })) }}
-                        />
-                      </td>
-                    )}
-                    <td className="py-2 pr-3 align-top text-xs">
-                      {u.disabled
-                        ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Disabled</Badge>
-                        : u.invited
-                          ? <Badge variant="outline" title="Added by an administrator; not signed in yet"><Mail className="mr-1 h-3 w-3" />Added</Badge>
-                          : <Badge variant="secondary"><CheckCircle2 className="mr-1 h-3 w-3" />Active</Badge>}
-                    </td>
-                    <td className="py-2 align-top">
-                      <div className="flex items-center justify-end gap-1">
-                        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-                        {!usesSSO(u) && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="Set a new password"
-                            disabled={busy}
-                            onClick={() => { setResetFor(u); setResetPassword('') }}
-                          >
-                            <KeyRound className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        {!isMe && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title={u.disabled ? 'Enable account' : 'Disable account'}
-                            disabled={busy}
-                            onClick={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { disabled: !u.disabled })) }}
-                          >
-                            {u.disabled ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 h-3.5" />}
-                          </Button>
-                        )}
-                        {!isMe && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                            title="Delete account (their files are kept)"
-                            disabled={busy}
-                            onClick={() => setDeleteFor(u)}
-                          >
-                            <Trash2 className="h-3.5 h-3.5" />
-                          </Button>
-                        )}
+                          )}
+                        </section>
+                        <section className="space-y-1.5">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Products</h4>
+                          {vaultOnly ? <span className="text-xs text-muted-foreground">{role === 'admin' || (role === 'creator' && u.products.length === 0) ? 'All products' : u.products.map(productLabel).join(', ') || 'None'}</span> : role === 'admin' ? (
+                            <span className="text-xs text-muted-foreground">all</span>
+                          ) : (
+                            products.length === 1 ? (
+                              <span className="text-xs text-muted-foreground">{productLabel(products[0])}</span>
+                            ) : (
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              {products.map((p) => (
+                                <label key={p} className="inline-flex items-center gap-1.5">
+                                  <Checkbox
+                                    disabled={busy}
+                                    checked={u.products.includes(p)}
+                                    onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { products: toggleProduct(u.products, p) })) }}
+                                    aria-label={`${productLabel(p)} for ${u.username}`}
+                                  />
+                                  {productLabel(p)}
+                                </label>
+                              ))}
+                              {role === 'creator' && u.products.length === 0 && <span className="text-muted-foreground">(all)</span>}
+                              {(role === 'viewer' || role === 'editor') && u.products.length === 0 && <span className="text-muted-foreground">(none)</span>}
+                            </div>
+                            )
+                          )}
+                          {!vaultOnly && (role === 'creator' || role === 'editor') && creatableFor(u, role).length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" title="Where this account may create new workflows, Relays, Crews or projects. Editing what already exists is not affected.">
+                              <span className="text-muted-foreground">May create in:</span>
+                              {creatableFor(u, role).map((p) => (
+                                <label key={p} className="inline-flex items-center gap-1.5">
+                                  <Checkbox
+                                    disabled={busy}
+                                    checked={createListFor(u, role).includes(p)}
+                                    onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { create_products: toggleProduct(createListFor(u, role), p) })) }}
+                                    aria-label={`May create in ${productLabel(p)} for ${u.username}`}
+                                  />
+                                  {productLabel(p)}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                        <section className="space-y-1.5">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" title="Tokens on the shared server accounts, per UTC day and Monday-start week. Own accounts are never limited.">Token limits on shared accounts</h4>
+                          <TokenLimitsCell
+                              user={u}
+                              disabled={busy}
+                              onSave={(limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { token_limits: limits })) }}
+                              accountProviders={accountProviders}
+                              onSaveAccount={(provider, limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_token_limits: { [provider]: limits } })) }}
+                              accountModels={accountModels}
+                              onSaveModels={(provider, models) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_allowed_models: { [provider]: models } })) }}
+                            />
+                        </section>
+                        <section className="space-y-1.5">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Account</h4>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                            {!usesSSO(u) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="Set a new password"
+                                disabled={busy}
+                                onClick={() => { setResetFor(u); setResetPassword('') }}
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {!isMe && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title={u.disabled ? 'Turn account on' : 'Turn account off'}
+                                disabled={busy}
+                                onClick={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { disabled: !u.disabled })) }}
+                              >
+                                {u.disabled ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 h-3.5" />}
+                              </Button>
+                            )}
+                            {!isMe && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                title="Delete account (their files are kept)"
+                                disabled={busy}
+                                onClick={() => setDeleteFor(u)}
+                              >
+                                <Trash2 className="h-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </section>
                       </div>
-                    </td>
-                  </tr>
+                    )}
+                  </li>
                 )
               })}
-            </tbody>
-          </table>
+              {shown.length === 0 && <li className="px-3 py-4 text-xs text-muted-foreground">No one matches “{query}”.</li>}
+            </ul>
+          </div>
         )}
       </SettingsCard>
 
