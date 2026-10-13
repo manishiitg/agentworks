@@ -61,11 +61,58 @@ func relayDraftWorkspaceForRelease(ctx context.Context, workspace string) (strin
 	return draft, nil
 }
 
-func relayReleasePorts() relayapi.ReleasePorts {
+func relayReleasePorts(selected string) relayapi.ReleasePorts {
+	selected = path.Clean(selected)
+	root := relayReleaseRoot(selected)
+	check := func(file string, parent bool) error {
+		clean := path.Clean(file)
+		within := func(folder string) bool { return clean == folder || strings.HasPrefix(clean, folder+"/") }
+		if !strings.HasPrefix(selected, "Workflow/") || path.IsAbs(selected) || clean != file || path.IsAbs(clean) || (!within(selected) && !within(root) && !(parent && clean == path.Dir(root))) {
+			return errors.New("outside selected Relay workspace")
+		}
+		return nil
+	}
 	return relayapi.ReleasePorts{
-		Read: readFileFromWorkspace, ListFiles: listWorkspaceFilesRecursive, ListFolders: listWorkspaceChildFolderNames,
-		CreateFolder: createWorkspaceFolder, Write: writeFileToWorkspace, Prepare: prepareRelayPublication,
+		Read: func(ctx context.Context, file string) (string, bool, error) {
+			if err := check(file, false); err != nil {
+				return "", false, err
+			}
+			return readFileFromWorkspace(ctx, file)
+		},
+		ListFiles: func(ctx context.Context, folder string) ([]string, error) {
+			if err := check(folder, false); err != nil {
+				return nil, err
+			}
+			return listWorkspaceFilesRecursive(ctx, folder)
+		},
+		ListFolders: func(ctx context.Context, folder string) ([]string, error) {
+			if err := check(folder, false); err != nil {
+				return nil, err
+			}
+			return listWorkspaceChildFolderNames(ctx, folder)
+		},
+		CreateFolder: func(ctx context.Context, folder string) error {
+			if err := check(folder, true); err != nil {
+				return err
+			}
+			return createWorkspaceFolder(ctx, folder)
+		},
+		Write: func(ctx context.Context, file, content string) error {
+			if err := check(file, false); err != nil {
+				return err
+			}
+			return writeFileToWorkspace(ctx, file, content)
+		},
+		Prepare: func(ctx context.Context, workspace string) (relayapi.PublishSpec, error) {
+			if workspace != selected {
+				return relayapi.PublishSpec{}, errors.New("outside selected Relay workspace")
+			}
+			return prepareRelayPublication(ctx, workspace)
+		},
 		ValidatePublished: func(ctx context.Context, workspace string, release *relayRelease) error {
+			if err := check(workspace, false); err != nil {
+				return err
+			}
 			manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 			if err != nil || !found || manifest.Kind != "relay" {
 				return errors.New("published Relay manifest unavailable")
@@ -81,8 +128,15 @@ func relayReleasePorts() relayapi.ReleasePorts {
 			}
 			return nil
 		},
-		Published: publishPlanChanged,
+		Published: func(file string) {
+			if check(file, false) == nil {
+				publishPlanChanged(file)
+			}
+		},
 		LockPublication: func(workspace string) func() {
+			if workspace != selected {
+				return nil
+			}
 			lockAny, _ := relayPublishLocks.LoadOrStore(workspace, &sync.Mutex{})
 			lock := lockAny.(*sync.Mutex)
 			lock.Lock()
@@ -91,26 +145,25 @@ func relayReleasePorts() relayapi.ReleasePorts {
 	}
 }
 func readRelayRelease(ctx context.Context, workspace, version string) (*relayRelease, string, error) {
-	return relayreleases.Read(ctx, relayReleasePorts(), workspace, version)
+	return relayreleases.Read(ctx, relayReleasePorts(workspace), workspace, version)
 }
 func activeRelayRelease(ctx context.Context, workspace string) (*relayRelease, string, error) {
-	return relayreleases.Active(ctx, relayReleasePorts(), workspace)
+	return relayreleases.Active(ctx, relayReleasePorts(workspace), workspace)
 }
 func resolveRelayRelease(ctx context.Context, workspace, version string) (*relayRelease, string, error) {
-	return relayreleases.Resolve(ctx, relayReleasePorts(), workspace, version)
+	return relayreleases.Resolve(ctx, relayReleasePorts(workspace), workspace, version)
 }
 func listRelayReleases(ctx context.Context, workspace string) ([]relayRelease, error) {
-	return relayreleases.List(ctx, relayReleasePorts(), workspace)
+	return relayreleases.List(ctx, relayReleasePorts(workspace), workspace)
 }
 func verifyRelayRelease(ctx context.Context, release *relayRelease, workspace string) error {
-	return relayreleases.Verify(ctx, relayReleasePorts(), release, workspace)
+	return relayreleases.Verify(ctx, relayReleasePorts(workspace), release, workspace)
 }
 func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, error) {
-	return relayreleases.Publish(ctx, relayReleasePorts(), workspace)
+	return relayreleases.Publish(ctx, relayReleasePorts(workspace), workspace)
 }
 func relaySnapshotHash(content map[string]string) string { return relayreleases.SnapshotHash(content) }
 func relaySnapshotFile(relative string) bool             { return relayreleases.SnapshotFile(relative) }
-func relayRuntimeFile(relative string) bool              { return relayreleases.RuntimeFile(relative) }
 
 func prepareRelayPublication(ctx context.Context, workspace string) (relayapi.PublishSpec, error) {
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
