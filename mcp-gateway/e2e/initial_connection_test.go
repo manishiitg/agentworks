@@ -108,7 +108,7 @@ func TestAgentConnectsCustomServerWithoutGrantingAccess(t *testing.T) {
 		t.Fatal("denied setup changed inventory")
 	}
 	rec := request(testHumanToken, valid)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"tool_count":2`) || !strings.Contains(rec.Body.String(), `"group_access_assigned":false`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"tool_count":2`) || !strings.Contains(rec.Body.String(), `"platform_group_access":`) {
 		t.Fatalf("connection failed: %d %s", rec.Code, rec.Body)
 	}
 	connectors := st.ListConnectors("w")

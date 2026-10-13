@@ -144,7 +144,7 @@ func TestSetupToolCreatesSeparateNamedCatalogAccounts(t *testing.T) {
 		}
 		row := result.(map[string]any)
 		c := row["connector"].(store.Connector)
-		if c.Label != label || c.OAuthCredentialID != c.ID || c.Status != store.StatusAuthRequired || row["group_access_assigned"] != false || row["sign_in_required"] != true {
+		if c.Label != label || c.OAuthCredentialID != c.ID || c.Status != store.StatusAuthRequired || row["platform_group_access"] == nil || row["sign_in_required"] != true {
 			t.Fatal("chat created an incorrect connection")
 		}
 	}

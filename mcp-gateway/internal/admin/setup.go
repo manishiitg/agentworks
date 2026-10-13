@@ -51,7 +51,7 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"connector": c, "tool_count": len(a.Store.ListToolsForConnector(c.ID)), "group_access_assigned": false, "sign_in_required": c.Status == store.StatusAuthRequired}, nil
+		return map[string]any{"connector": c, "tool_count": len(a.Store.ListToolsForConnector(c.ID)), "platform_group_access": a.Store.GroupHasServer(store.PlatformGroupID(c.WorkspaceID), c.ID), "sign_in_required": c.Status == store.StatusAuthRequired}, nil
 	case "inspect_environment":
 		tools := a.Store.ListTools(a.WorkspaceID)
 		brief := make([]map[string]any, 0, len(tools))
