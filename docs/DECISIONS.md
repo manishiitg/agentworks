@@ -1,5 +1,12 @@
 # Decisions and open issues
 
+## 2026-10-13 — Bullpen fills the available workspace width (PLAT-746)
+
+The Agents and Connect views use the full content pane with responsive padding.
+Remove the centered width cap so the directory and setup cards can use wide screens.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md), issue 746-32.
+
 ## 2026-10-13 — Share product links from the browser address bar (PLAT-746)
 
 Remove the dedicated Copy link controls from product headers and toolbars.
