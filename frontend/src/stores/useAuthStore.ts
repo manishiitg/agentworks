@@ -11,6 +11,22 @@ import { invalidateChatIdentity } from '../utils/chatIdentity'
 
 let authOperation = 0
 
+// What a person sees when sign-in is refused. The server states the reason in the response body;
+// axios' own text ("Request failed with status code 403") says nothing useful.
+export function signInFailureMessage(error: unknown): string {
+  const res = (error as { response?: { status?: number; data?: unknown } })?.response
+  const data = res?.data as { error?: unknown; error_description?: unknown } | string | undefined
+  const reason = typeof data === 'string' ? data : String(data?.error_description || data?.error || '')
+  if (res?.status === 403) {
+    if (/disabled/i.test(reason)) {
+      return 'This account has been turned off. Ask an administrator to turn it back on.'
+    }
+    return "You can't sign in yet: this email has not been added to this workspace. Ask an administrator to add you, then sign in again."
+  }
+  if (reason) return reason
+  return error instanceof Error ? error.message : 'OAuth callback failed'
+}
+
 // Key for storing OAuth state in sessionStorage
 const OAUTH_STATE_KEY = 'oauth_state'
 
@@ -185,9 +201,9 @@ export const useAuthStore = create<AuthState>()(
             return productReturnPath(response.return_to ?? null)
           } catch (error: unknown) {
             if (operation !== authOperation) return
-            const message = error instanceof Error ? error.message : 'OAuth callback failed'
+            const message = signInFailureMessage(error)
             set({ isLoading: false, error: message })
-            throw error
+            throw new Error(message)
           }
         },
 
