@@ -20,6 +20,7 @@ type Props = {
   onSelect: (tab: BrowserTab) => void
   onClose: (tab: BrowserTab) => void
   onNew: () => void
+  onNeedControl?: () => void
 }
 
 export function BrowserChrome(props: Props) {
@@ -45,7 +46,7 @@ export function BrowserChrome(props: Props) {
       </button>)}
       <div className="ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-background px-2 focus-within:ring-1 focus-within:ring-ring">
         <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <input aria-label="Website address" placeholder="Enter a website address" autoComplete="off" spellCheck={false} readOnly={!props.controlling} value={props.address} onChange={event => props.onAddress(event.target.value)} className="h-7 min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none" />
+        <input aria-label="Website address" placeholder="Enter a website address" autoComplete="off" spellCheck={false} readOnly={!props.controlling} value={props.address} onChange={event => props.onAddress(event.target.value)} onClick={() => { if (!props.controlling) props.onNeedControl?.() }} className="h-7 min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none" />
         {props.canSelect && <button type="submit" aria-label="Go to address" title="Go to address" disabled={!props.controlling || !props.address.trim()} className={`${browserIconButtonClass} h-7 w-7`}><ArrowRight className="h-4 w-4" aria-hidden="true" /></button>}
       </div>
       <span role="status" title={props.sessionLabel} className="browser-status shrink-0 pl-1 text-xs text-muted-foreground">{props.status}</span>

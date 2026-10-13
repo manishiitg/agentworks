@@ -286,6 +286,101 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 	release()
 }
 
+// A slow browser command must not stall viewer input: commands run on one
+// ordered worker while the read loop keeps forwarding input (PLAT-776).
+func TestLiveBrowserInputFlowsWhileNavigateRuns(t *testing.T) {
+	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
+	t.Setenv("MULTI_USER_MODE", "false")
+	const session = "live-stream-slow-nav"
+	browser.GetSessionTracker().Touch(session, "run", "run")
+	defer browser.GetSessionTracker().Remove(session)
+	received := make(chan map[string]interface{}, 8)
+	navStarted := make(chan struct{})
+	releaseNav := make(chan struct{})
+	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"test","label":"Test"}`}})
+			return
+		}
+		if r.URL.Path == "/api/execute" {
+			var request map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&request)
+			if strings.Contains(fmt.Sprint(request["command"]), "open") {
+				close(navStarted)
+				<-releaseNav
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]interface{}{"stdout": "ok", "exit_code": 0}})
+			return
+		}
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		conn.WriteJSON(map[string]interface{}{"type": "frame", "data": "test-frame"})
+		for {
+			var message map[string]interface{}
+			if conn.ReadJSON(&message) != nil {
+				return
+			}
+			if message["type"] != "config" {
+				received <- message
+			}
+		}
+	}))
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	t.Setenv("WORKSPACE_API_TOKEN", "test-service-token")
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"run": {UserID: "alice", WorkspacePath: "Workflow/one"}}}
+	router := mux.NewRouter()
+	router.HandleFunc("/api/browser/live/{session}/stream", api.handleLiveBrowserStream)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		router.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "alice"})))
+	}))
+	defer server.Close()
+	conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1)+"/api/browser/live/"+session+"/stream?workspace_path=Workflow/one", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	defer close(releaseNav)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	readControlling := func() {
+		t.Helper()
+		for {
+			var message map[string]interface{}
+			if err := conn.ReadJSON(&message); err != nil {
+				t.Fatal(err)
+			}
+			if message["type"] == "viewer_control" && message["controlling"] == true {
+				return
+			}
+		}
+	}
+	// Drain the initial viewer_control before taking control.
+	var initial map[string]interface{}
+	if err := conn.ReadJSON(&initial); err != nil {
+		t.Fatal(err)
+	}
+	conn.WriteJSON(map[string]string{"type": "take_control"})
+	readControlling()
+	conn.WriteJSON(map[string]string{"type": "navigate", "url": "https://example.com/slow"})
+	select {
+	case <-navStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("navigate did not reach the executor")
+	}
+	conn.WriteJSON(map[string]interface{}{"type": "input_mouse", "eventType": "mousePressed", "x": 12, "y": 34})
+	select {
+	case value := <-received:
+		if value["type"] != "input_mouse" {
+			t.Fatalf("unexpected upstream message: %v", value)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("input stalled behind the running navigate")
+	}
+}
+
 func TestLiveBrowserCannotBypassWorkflowProxy(t *testing.T) {
 	for _, route := range []struct{ method, path string }{{"GET", "stream"}, {"POST", "text"}} {
 		response := httptest.NewRecorder()

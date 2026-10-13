@@ -307,6 +307,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     socket.current = ws
     let disposed = false
     let receivedFrame = false
+    const openedAt = Date.now()
     ws.onopen = () => { if (!disposed) setConnected(true) }
     ws.onmessage = event => {
       if (disposed) return
@@ -315,6 +316,12 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
         if (message.type === 'frame' && typeof message.data === 'string') {
           setWaitingHint(false)
           const nextFrame = `data:image/${message.data.startsWith('iVBOR') ? 'png' : 'jpeg'};base64,${message.data}`
+          if (!receivedFrame) {
+            // One diagnostic line per session (PLAT-776): how long the first
+            // frame took and what geometry arrived with it. No address or
+            // typed text is ever logged.
+            console.info(`[browser] first frame session=${session} afterMs=${Date.now() - openedAt} device=${message.metadata?.deviceWidth ?? 0}x${message.metadata?.deviceHeight ?? 0} offsetTop=${message.metadata?.offsetTop ?? 0} pageScaleFactor=${message.metadata?.pageScaleFactor ?? 0}`)
+          }
           receivedFrame = true
           reconnectAttempt.current = 0
           setLinkState('live')
@@ -547,7 +554,14 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     if (eventType === 'mousePressed') setClipboardMenu(null)
     if (eventType === 'mousePressed') keyboardTarget.current?.focus()
     flushMove()
-    send({ type: 'input_mouse', eventType, ...point(event.clientX, event.clientY), button: ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
+    const mapped = point(event.clientX, event.clientY)
+    if (eventType === 'mousePressed') {
+      // Per-click diagnostic (PLAT-776): the painted size, the reported page
+      // size, any screencast geometry and where the click was mapped to.
+      const image = screen.current
+      console.info(`[browser] click natural=${image?.naturalWidth ?? 0}x${image?.naturalHeight ?? 0} viewport=${viewport.current.width}x${viewport.current.height} offsetTop=${screencast.current?.offsetTop ?? 0} pageScaleFactor=${screencast.current?.pageScaleFactor ?? 0} mapped=${Math.round(mapped.x)},${Math.round(mapped.y)}`)
+    }
+    send({ type: 'input_mouse', eventType, ...mapped, button: ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
   }
   function keyboard(event: KeyboardEvent<HTMLTextAreaElement>, eventType: string) {
     if (!controlling) return
@@ -694,7 +708,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
 
   return (
     <section className={`live-browser flex min-h-0 flex-1 flex-col overflow-hidden bg-background ${expanded ? 'fixed inset-0 z-50' : 'relative'}`} aria-label={`Live ${scopeNoun} browser`}>
-      {slim ? <BrowserChrome status={statusLabel} sessionLabel={singleBrowserLabel} tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} actions={<>{recordingIndicator}{controlToggle}{teachToggle}{pageSizeToggle}{recordingNote}{expandToggle}{overflowMenu}{toolbar}{showGuide && <WorkspacePanelGuideButton topic="Browser" />}</>} /> : (
+      {slim ? <BrowserChrome status={statusLabel} sessionLabel={singleBrowserLabel} tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNeedControl={canControl ? () => useChatStore.getState().addToast('Take control to type here', 'info') : undefined} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} actions={<>{recordingIndicator}{controlToggle}{teachToggle}{pageSizeToggle}{recordingNote}{expandToggle}{overflowMenu}{toolbar}{showGuide && <WorkspacePanelGuideButton topic="Browser" />}</>} /> : (
         <WorkspaceViewHeader
           icon={Monitor}
           title="Browser"
