@@ -11,7 +11,6 @@ import { GlobalHumanFeedbackPrompt } from "./components/GlobalHumanFeedbackPromp
 import { resetSessionId } from "./services/api";
 import { AuthWrapper } from "./components/AuthWrapper";
 import { Loader2 } from "lucide-react";
-import { WorkflowLayout } from "./components/workflow";
 import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
 import { ModePresetBar } from "./components/ModePresetBar";
 import { TerminalFocusLayout } from './components/TerminalFocusLayout'
@@ -56,6 +55,9 @@ const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: modu
 const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
 const KnowledgebaseSurface = lazy(() => loadKnowledgebaseSurface().then(module => ({ default: module.KnowledgebaseSurface })))
 const BullpenSurface = lazy(() => loadBullpenSurface().then(module => ({ default: module.BullpenSurface })))
+// The workflow workspace is the largest surface in the app; it loads as its
+// own chunk (warmed while idle below) instead of riding in the eager entry.
+const WorkflowLayout = lazy(() => import('./components/workflow/WorkflowLayout'))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
@@ -107,6 +109,18 @@ function AppWorkspace() {
 
   useEffect(() => {
     const warm = () => { void preloadQuickSwitcher().catch(() => {}) }
+    if (typeof window.requestIdleCallback === 'function') {
+      const idle = window.requestIdleCallback(warm, { timeout: 1500 })
+      return () => window.cancelIdleCallback(idle)
+    }
+    const timer = window.setTimeout(warm, 1500)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  // Warm the workspace layout chunk while idle so the first workspace paint
+  // does not wait on it; the lazy import above fetches on demand regardless.
+  useEffect(() => {
+    const warm = () => { void import('./components/workflow/WorkflowLayout').catch(() => {}) }
     if (typeof window.requestIdleCallback === 'function') {
       const idle = window.requestIdleCallback(warm, { timeout: 1500 })
       return () => window.cancelIdleCallback(idle)
@@ -822,10 +836,12 @@ function AppWorkspace() {
                 )}
                 <LlmModalHost />
                 <div className={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage ? 'h-full' : 'hidden'}>
-                  <WorkflowLayout
-                    className="h-full"
-                    onNewChat={startNewChat}
-                  />
+                  <Suspense fallback={<FileSurfaceFallback />}>
+                    <WorkflowLayout
+                      className="h-full"
+                      onNewChat={startNewChat}
+                    />
+                  </Suspense>
                 </div>
             </div>
           </div>
