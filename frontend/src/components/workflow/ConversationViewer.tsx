@@ -758,7 +758,7 @@ export const ConversationMessageDisplay: React.FC<{
 function recordedMessages(value: unknown): ConversationMessage[] | null {
   if (!Array.isArray(value)) return null
   const messages: ConversationMessage[] = []
-  const roles: Record<string, ConversationMessage['Role']> = { system: 'system', developer: 'system', human: 'human', user: 'human', ai: 'ai', assistant: 'ai', tool: 'tool' }
+  const roles: Record<string, ConversationMessage['Role']> = { system: 'system', developer: 'system', human: 'human', user: 'human', ai: 'ai', assistant: 'ai', tool: 'tool', function: 'tool' }
   for (const entry of value) {
     if (!entry || typeof entry !== 'object') return null
     const raw = entry as Record<string, unknown>

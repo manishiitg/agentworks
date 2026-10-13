@@ -18,9 +18,10 @@ it('renders recognized old messages and keeps unsupported backend records out of
     expect(host.textContent).toContain('This older run’s conversation cannot be shown.')
     expect(host.textContent).not.toContain('private backend marker')
     expect(host.querySelector('pre')).toBeNull()
-    await act(async () => root.render(<ConversationViewer content={JSON.stringify({ messages: [{ role: 'user', content: 'Verify the evidence.' }, { role: 'assistant', content: 'Evidence verified.' }] })} />))
+    await act(async () => root.render(<ConversationViewer content={JSON.stringify({ messages: [{ role: 'user', content: 'Verify the evidence.' }, { role: 'function', content: 'Source checked.' }, { role: 'assistant', content: 'Evidence verified.' }] })} />))
     expect(host.textContent).toContain('Verify the evidence.')
     expect(host.textContent).toContain('Evidence verified.')
+    expect(host.textContent).toContain('Source checked.')
     expect(host.textContent).not.toContain('cannot be shown')
   } finally {
     await act(async () => root.unmount())
