@@ -15,7 +15,7 @@ try {
   browser = await chromium.launch({ headless: true })
   const base = server.resolvedUrls.local[0].replace(/\/$/, '')
   async function setup(signedIn, allowed = ['agentworks', 'relays', 'bullpen', 'code', 'knowledgebase'], { codeProject = false, defaultProduct = 'agentworks' } = {}) {
-    const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] })
+    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } })
     const user = { id: signedIn ? 'qa-reader' : 'qa-new-reader', username: 'reader', role: 'reader', allowed_products: allowed, can_run_workflows: true, can_write_workflows: false, is_admin: false }
     const errors = [], calls = []
     page.on('pageerror', error => { errors.push(error.message); console.error('Browser error:', error.stack) })
@@ -59,8 +59,8 @@ try {
   await page.goto(base + '/bullpen/connect')
   await page.getByRole('heading', { name: 'Bullpen', exact: true }).waitFor()
   assert.equal(await page.getByRole('navigation', { name: 'Bullpen views' }).getByRole('button', { name: 'Connect an agent', exact: true }).getAttribute('aria-pressed'), 'true')
-  await page.getByRole('button', { name: 'Copy link', exact: true }).click()
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), base + '/bullpen/connect')
+  assert.equal(await page.getByRole('button', { name: 'Copy link', exact: true }).count(), 0)
+  assert.equal(page.url(), base + '/bullpen/connect', 'the address bar exposes the shareable product link')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   await page.waitForURL(base + '/bullpen')
   await page.goBack(); await page.waitForURL(base + '/bullpen/connect')
@@ -156,7 +156,7 @@ try {
   assert.deepEqual(signedOut.errors, [])
   await signedOut.page.screenshot({ path: path.join(output, 'product-sign-in-return.png') })
   await signedOut.page.close()
-  console.log('Product URL Chromium checks passed: direct/reload/history/switch/clipboard/sign-in and protected destinations.')
+  console.log('Product URL Chromium checks passed: address-bar links/direct/reload/history/switch/sign-in and protected destinations.')
 } catch (error) {
   for (const context of browser?.contexts() ?? []) {
     for (const page of context.pages()) {

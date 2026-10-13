@@ -1,5 +1,13 @@
 # Decisions and open issues
 
+## 2026-10-13 — Share product links from the browser address bar (PLAT-746)
+
+Remove the dedicated Copy link controls from product headers and toolbars.
+The address bar already follows the current product, resource and view, so
+people can copy it directly and keep the toolbar focused on workspace actions.
+
+Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md), issue 746-31.
+
 ## 2026-10-13 — Other callers' function-call data is private to the owner (PLAT-856)
 
 `triggers/deliveries/` (the inputs and results of other callers' function calls, including other guests') and

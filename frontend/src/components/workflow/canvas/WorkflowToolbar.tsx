@@ -1,4 +1,3 @@
-import { CopyProductLink } from '../../CopyProductLink'
 import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -476,7 +475,6 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             </WorkspaceToolbarGroup>
           )}
 
-        <CopyProductLink />
         {/* Operational views keep status and history separate from setup. */}
         {workspacePath && (
           <WorkspaceToolbarGroup

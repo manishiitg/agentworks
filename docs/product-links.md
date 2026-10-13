@@ -1,8 +1,7 @@
 # Product links
 
 The address bar follows the product, project and workspace view you open. Copy
-that address to return to it later or send it to another person. Bullpen and
-workflow/project toolbars also offer **Copy link**. A link identifies a view;
+that address to return to it later or send it to another person. A link identifies a view;
 the recipient still needs their own sign-in and access.
 
 | Destination | Path |
@@ -20,8 +19,8 @@ the recipient still needs their own sign-in and access.
 | SparkQuill | `/sparkquill` |
 
 Workflow, Relay, Crew and Code dashboard links append `/dashboard` to the item
-path. Other workspace views use `?view=<view-id>`. Use the address bar or Copy
-link to obtain the current path rather than guessing an internal view id. Brain
+path. Other workspace views use `?view=<view-id>`. Use the address bar to obtain
+the current path rather than guessing an internal view id. Brain
 folder names are encoded in the query; they are relative to Brain, not server
 filesystem paths.
 
