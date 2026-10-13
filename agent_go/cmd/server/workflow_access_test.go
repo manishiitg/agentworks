@@ -209,3 +209,43 @@ func TestWorkflowEditorsGrant(t *testing.T) {
 		t.Fatalf("owner: %s", got)
 	}
 }
+
+// A Relay has one Builder (the creator while still listed, else the first listed owner); every other listed owner, every editor
+// and every reader runs it. A workflow keeps its owner and editor tiers.
+func TestRelayHasOneBuilder(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[
+	  {"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},
+	  {"id":"b2","username":"bob","can_create":true,"products":[]},
+	  {"id":"c3","username":"carol","can_create":true,"products":[]},
+	  {"id":"d4","username":"dan","can_create":true,"products":[]},
+	  {"id":"e5","username":"erin","can_create":true,"products":[]}
+	]}`)
+	alice, bob, carol, dan, erin := &UserClaims{UserID: "a1"}, &UserClaims{UserID: "b2"}, &UserClaims{UserID: "c3"}, &UserClaims{UserID: "d4"}, &UserClaims{UserID: "e5"}
+	access := &WorkflowAccess{Owners: []string{"c3", "b2"}, Editors: []string{"d4"}, Readers: []string{"e5"}}
+	relay := &WorkflowManifest{ID: "r1", Kind: "relay", CreatedBy: "b2", Access: access}
+	for who, want := range map[*UserClaims]WorkflowAccessLevel{bob: WorkflowAccessOwner, carol: WorkflowAccessRead, dan: WorkflowAccessRead, erin: WorkflowAccessRead, alice: WorkflowAccessOwner} {
+		if got := workflowAccessForManifest(who, relay); got != want {
+			t.Errorf("relay %s: got %s want %s", who.UserID, got, want)
+		}
+	}
+	// Creator no longer listed: the first listed owner builds.
+	moved := &WorkflowManifest{ID: "r2", Kind: "relay", CreatedBy: "x9", Access: &WorkflowAccess{Owners: []string{"c3", "b2"}}}
+	if got := workflowAccessForManifest(carol, moved); got != WorkflowAccessOwner {
+		t.Errorf("first listed owner builds: %s", got)
+	}
+	if got := workflowAccessForManifest(bob, moved); got != WorkflowAccessRead {
+		t.Errorf("second listed owner runs: %s", got)
+	}
+	owners, editors, readers := relayAccessLists(relay)
+	if len(owners) != 1 || owners[0] != "b2" || len(editors) != 0 || len(readers) != 3 {
+		t.Errorf("shown as one owner and everyone else running: %v %v %v", owners, editors, readers)
+	}
+	workflow := &WorkflowManifest{ID: "w9", CreatedBy: "b2", Access: access}
+	if got := workflowAccessForManifest(carol, workflow); got != WorkflowAccessOwner {
+		t.Errorf("a workflow keeps several owners: %s", got)
+	}
+	if got := workflowAccessForManifest(dan, workflow); got != WorkflowAccessWrite {
+		t.Errorf("a workflow keeps its editors: %s", got)
+	}
+}

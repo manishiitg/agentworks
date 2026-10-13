@@ -83,6 +83,20 @@ func (m *WorkflowManifest) hasOwnershipRecord() bool {
 	return len(m.effectiveOwners()) > 0
 }
 
+// relayBuilder is the one person who builds a Relay (Builder mode, owner decision 2026-10-13: a Relay has a single owner, because
+// an editor's runs leave journals in their own slot that the owner cannot clean). It is the creator when the creator is still a
+// listed owner, else the first listed owner, so the answer is the same on every read. Everyone else is in Run mode.
+func (m *WorkflowManifest) relayBuilder() string {
+	owners := m.effectiveOwners()
+	if len(owners) == 0 {
+		return ""
+	}
+	if creator := strings.TrimSpace(m.CreatedBy); creator != "" && containsID(owners, creator) {
+		return creator
+	}
+	return owners[0]
+}
+
 func containsID(list []string, id string) bool {
 	for _, v := range list {
 		if v == id {
@@ -181,6 +195,19 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 	}
 	if m == nil || !m.hasOwnershipRecord() {
 		return account
+	}
+	if m.Kind == "relay" {
+		// A Relay has one Builder; any other listed owner or editor runs published versions like a reader.
+		if claims.UserID == m.relayBuilder() {
+			if !userAccessForClaims(claims).CanEdit {
+				return WorkflowAccessRead
+			}
+			return WorkflowAccessOwner
+		}
+		if containsID(m.effectiveOwners(), claims.UserID) || containsID(m.effectiveEditors(), claims.UserID) || containsID(m.effectiveReaders(), claims.UserID) {
+			return WorkflowAccessRead
+		}
+		return WorkflowAccessNone
 	}
 	if containsID(m.effectiveOwners(), claims.UserID) {
 		if !userAccessForClaims(claims).CanEdit {
@@ -371,11 +398,15 @@ func (api *StreamingAPI) handleGetWorkflowAccess(w http.ResponseWriter, r *http.
 		return
 	}
 	dir, _ := loadUserDirectory()
+	owners, editors, readers := manifest.effectiveOwners(), manifest.effectiveEditors(), manifest.effectiveReaders()
+	if manifest.Kind == "relay" {
+		owners, editors, readers = relayAccessLists(manifest)
+	}
 	writeUsersJSON(w, http.StatusOK, workflowAccessResponse{
 		WorkspacePath: workspacePath,
-		Owners:        describeUsers(manifest.effectiveOwners(), dir),
-		Editors:       describeUsers(manifest.effectiveEditors(), dir),
-		Readers:       describeUsers(manifest.effectiveReaders(), dir),
+		Owners:        describeUsers(owners, dir),
+		Editors:       describeUsers(editors, dir),
+		Readers:       describeUsers(readers, dir),
 		MyAccess:      level,
 		Legacy:        !manifest.hasOwnershipRecord(),
 	})
@@ -469,6 +500,23 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 		writeUsersError(w, http.StatusBadRequest, "a workflow needs at least one owner")
 		return
 	}
+	if manifest.Kind == "relay" {
+		if len(owners) != 1 {
+			writeUsersError(w, http.StatusBadRequest, "A Relay has one owner; others can run its published versions")
+			return
+		}
+		// Everyone who is not the owner runs the Relay: the editor tier does not exist for a Relay.
+		seen := map[string]bool{}
+		var runners []string
+		for _, id := range append(append([]string{}, readers...), editors...) {
+			if !seen[id] {
+				seen[id] = true
+				runners = append(runners, id)
+			}
+		}
+		sort.Strings(runners)
+		editors, readers = nil, runners
+	}
 	// A user holds exactly one tier; higher tiers win overlaps.
 	keptEditors := editors[:0]
 	for _, id := range editors {
@@ -558,4 +606,23 @@ func workflowManifestBlockedWriteForNonOwner(ctx context.Context, claims *UserCl
 		return ""
 	}
 	return folder + "/workflow.json"
+}
+
+// relayAccessLists is how a Relay's people are shown: its one Builder as the owner, nobody as an editor, and everyone else
+// (other listed owners, editors, readers) as running it.
+func relayAccessLists(m *WorkflowManifest) (owners, editors, readers []string) {
+	builder := m.relayBuilder()
+	if builder != "" {
+		owners = []string{builder}
+	}
+	seen := map[string]bool{builder: true}
+	for _, list := range [][]string{m.effectiveOwners(), m.effectiveEditors(), m.effectiveReaders()} {
+		for _, id := range list {
+			if !seen[id] {
+				seen[id] = true
+				readers = append(readers, id)
+			}
+		}
+	}
+	return owners, nil, readers
 }
