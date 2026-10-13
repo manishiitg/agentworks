@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Real signed-in HTTP and the durable directory. URL parameters cannot choose
@@ -34,11 +35,20 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(invalidateUserDirectoryCache)
-	srv := httptest.NewServer(AuthMiddleware(http.HandlerFunc(env.api.handleBullpenAgents)))
+	srv := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/bullpen/groups":
+			env.api.handleBullpenGroups(w, r)
+		case "/api/bullpen/notices":
+			env.api.handleBullpenNotices(w, r)
+		default:
+			env.api.handleBullpenAgents(w, r)
+		}
+	})))
 	defer srv.Close()
-	get := func(user string, status int) string {
+	getAt := func(user, path string, status int) string {
 		t.Helper()
-		req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/bullpen/agents?user_id=other", nil)
+		req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +59,7 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 			}
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		response, err := http.DefaultClient.Do(req)
+		response, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,7 +76,17 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 		}
 		return string(body)
 	}
-	body := get("owner", http.StatusOK)
+	get := func(user string, status int) string { return getAt(user, "/api/bullpen/agents?user_id=other", status) }
+	// A held message writer must not prevent any initial browser directory read.
+	var body string
+	func() {
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		body = get("owner", http.StatusOK)
+		for _, path := range []string{"/api/bullpen/groups", "/api/bullpen/notices"} {
+			getAt("owner", path, http.StatusOK)
+		}
+	}()
 	if !strings.Contains(body, "own-agent") || strings.Contains(body, "foreign-agent") || strings.Contains(body, "private-connection") || strings.Contains(body, "native_session_id") {
 		t.Fatalf("directory ownership or metadata leak: %s", body)
 	}

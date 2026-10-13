@@ -22,7 +22,7 @@ const agentMessagesPath = "_system/agent_messages/conversations.json"
 const agentMessageKeep = 1000
 const agentConversationKeep = 2000
 
-var agentMessageMu sync.Mutex
+var agentMessageMu agentMessageMutex
 var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
@@ -646,10 +646,13 @@ func (api *StreamingAPI) recoverAgentMessages() {
 }
 
 func (api *StreamingAPI) resumeAgentMessages() {
+	// Reading scheduler state may call the workspace API; do it before taking
+	// the store mutation lock. A failed pause read must not fire wakeups.
+	config, configErr := LoadSchedulerConfig(context.Background())
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(context.Background())
-	if err == nil {
-		if materializeAgentWakeupsWithPause(&s, time.Now().UTC()) {
+	if err == nil && configErr == nil {
+		if materializeAgentWakeupsAllowed(&s, time.Now().UTC(), config) {
 			err = saveAgentMessageStore(context.Background(), s)
 		}
 	}
@@ -658,8 +661,22 @@ func (api *StreamingAPI) resumeAgentMessages() {
 		return
 	}
 	for _, c := range s.Conversations {
-		api.kickAgentMessages(c.ID)
+		// Historical and external inboxes have no internal turn to start.
+		// Starting a worker for each one rereads the entire store twice under
+		// the global lock, starving all live send/ack/directory requests.
+		if pendingInternalAgentMessage(c) {
+			api.kickAgentMessages(c.ID)
+		}
 	}
+}
+
+func pendingInternalAgentMessage(c agentConversation) bool {
+	for _, m := range c.Messages {
+		if m.Delivery == "pending" && !c.Endpoints[1-m.From].External {
+			return true
+		}
+	}
+	return false
 }
 func (api *StreamingAPI) kickAgentMessages(id string) {
 	if api == nil {
@@ -678,12 +695,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			if err == nil {
 				for _, c := range s.Conversations {
 					if c.ID == id {
-						for _, m := range c.Messages {
-							if m.Delivery == "pending" {
-								pending = true
-								break
-							}
-						}
+						pending = pendingInternalAgentMessage(c)
 					}
 				}
 			}
@@ -1177,8 +1189,8 @@ func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMes
 // resumeAgentMessagesThrottled runs the wakeup check at most every 5 seconds
 // when many readers poll; the scheduler tick still runs it every minute.
 func (api *StreamingAPI) resumeAgentMessagesThrottled() {
-	if now := time.Now().Unix(); now-agentMessageLastResume.Load() >= 5 {
-		agentMessageLastResume.Store(now)
+	now, last := time.Now().Unix(), agentMessageLastResume.Load()
+	if now-last >= 5 && agentMessageLastResume.CompareAndSwap(last, now) {
 		api.resumeAgentMessages()
 	}
 }

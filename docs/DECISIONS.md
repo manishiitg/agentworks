@@ -1,5 +1,27 @@
 # Decisions and open issues
 
+## 2026-10-13 — Bullpen directory renders before optional usage (PLAT-861)
+
+Browser agent, group and notice directories read a complete atomic workspace
+snapshot without waiting behind messaging mutations. These projections grant no
+message or attachment authority; all authorization and read-modify-write paths
+retain their locks. Current usage loads separately after agent cards appear,
+with the same owner and exact-attachment checks; shared and administrator views
+receive no usage. A failed usage request leaves the directory usable.
+
+Wakeup sweeps start workers only for pending internal deliveries, rather than
+rereading every historical or external inbox under the global messaging lock.
+Scheduler configuration reads occur outside that lock and overlapping throttled
+sweeps coalesce. Slow lock waits/holds log caller names only; browser timing
+separates snapshot reads from directory projection and usage hydration.
+
+Why: historical inbox fan-out can starve active messages and page loads, and
+optional usage must not delay the agent directory. No delivery receipt, lease,
+collection opt-in or sharing permission changes.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-159.
+
+
 ## 2026-10-13 — One versioned product guide for MCP and Brain starters (PLAT-856)
 
 The MCP entry skill, server product-guide topic and Brain starter notes reuse one

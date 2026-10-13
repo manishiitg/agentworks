@@ -42,6 +42,7 @@ function AgentAddress({ target }: { target: string }) {
 function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin: boolean }) {
   const [agents, setAgents] = useState<BullpenAgent[]>([])
   const [loading, setLoading] = useState(true)
+  const [usageLoading, setUsageLoading] = useState(true)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -56,11 +57,20 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
   }, [attempt])
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true); setError('')
+    setLoading(true); setUsageLoading(true); setError('')
     bullpenApi.agents(controller.signal).then(items => {
-      if (!controller.signal.aborted) { setAgents(items); setUpdated(new Date()) }
+      if (controller.signal.aborted) return
+      setAgents(items); setUpdated(new Date()); setLoading(false)
+      // Usage is optional: never hold the directory behind its database request.
+      void bullpenApi.agentUsage(controller.signal).then(readings => {
+        if (controller.signal.aborted) return
+        const byId = new Map(readings.map(reading => [reading.agent_id, reading]))
+        setAgents(current => current.map(agent => agent.shared ? agent : { ...agent, ...byId.get(agent.agent_id) }))
+      }).catch(() => {
+        if (!controller.signal.aborted) setAgents(current => current.map(agent => agent.shared ? agent : { ...agent, usage_unavailable: true }))
+      }).finally(() => { if (!controller.signal.aborted) setUsageLoading(false) })
     }).catch(reason => {
-      if (!controller.signal.aborted) { setAgents([]); setError(bullpenError(reason)) }
+      if (!controller.signal.aborted) { setAgents([]); setUsageLoading(false); setError(bullpenError(reason)) }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [attempt])
@@ -84,7 +94,7 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
         <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
     </div>}
-    {!error && <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}
+    {!error && (usageLoading ? <p role="status" className="text-sm text-muted-foreground">Loading optional usage…</p> : <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />)}
     <div className="space-y-2">
       <h3 className="font-medium">Groups on this server</h3>
       {!groups.length ? <p className="text-sm text-muted-foreground">No groups yet. Ask an agent “share yourself in the docs group, for questions about the docs” to start one.</p> : <ul className="divide-y divide-border rounded-xl border border-border">

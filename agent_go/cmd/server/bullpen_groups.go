@@ -615,13 +615,15 @@ func (api *StreamingAPI) handleBullpenGroups(w http.ResponseWriter, r *http.Requ
 	if claims == nil {
 		return
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(r.Context())
-	agentMessageMu.Unlock()
+	start := time.Now()
+	s, err := readBullpenSnapshot(r)
+	storeTime := time.Since(start)
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "unavailable", "Groups are unavailable. Try again.")
 		return
 	}
+	groups := s.groupsView(claims.UserID, true)
+	stampBullpenTiming(w, start, storeTime, "groups", time.Since(start)-storeTime)
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]interface{}{"groups": s.groupsView(claims.UserID, true)})
+	externalJSON(w, map[string]interface{}{"groups": groups})
 }

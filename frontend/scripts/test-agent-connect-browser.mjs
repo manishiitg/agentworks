@@ -21,8 +21,11 @@ try {
     let directoryStatus = 200
     const sample = { reading_id: 'sample', agent_id: 'reviewer', observed_at: '2026-10-11T19:15:00Z', window_start: '2026-10-11T18:15:00Z', session: { input_tokens: 120, output_tokens: 9, cached_tokens: 90, model: 'fixture-model', source: 'Codex session total' }, delta: { input_tokens: 20, output_tokens: 5, cached_tokens: 10 }, baseline: false }
     let readings = [sample], deleted = false
+    let releaseUsage; const usageGate = new Promise(resolve => { releaseUsage = resolve })
+    let reportUsageStart; const usageStarted = new Promise(resolve => { reportUsageStart = resolve })
+    let usageRequests = 0
     let agents = [{ agent_id: 'reviewer', agent_name: 'reviewer', target: 'agent:reviewer', provider: 'codex', online: true, purpose, usage: { ...sample, reporting: true, available: true, today: sample.delta, today_timezone: 'Asia/Kolkata' } }, { agent_id: 'writer', agent_name: 'writer', target: 'agent:writer', provider: 'claude', online: false, purpose: 'Writes documentation.' }]
-    await page.route('**/api/**', route => {
+    await page.route('**/api/**', async route => {
       if (!new URL(route.request().url()).pathname.startsWith('/api/')) return route.continue()
       const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS' }
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
@@ -31,7 +34,11 @@ try {
         if (route.request().method() === 'DELETE') { readings = []; agents = agents.map(({ usage: _usage, ...agent }) => agent); deleted = true; return route.fulfill({ headers, contentType: 'application/json', body: '{"deleted":true}' }) }
         return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ readings, before: 1, has_more: false, retention_days: 90, row_cap: 250000 }) })
       }
-      if (route.request().url().includes('/api/bullpen/agents')) return route.fulfill({ headers, status: directoryStatus, contentType: 'application/json', body: JSON.stringify({ agents }) })
+      if (route.request().url().includes('/api/bullpen/agents/usage')) {
+        usageRequests++; reportUsageStart(); await usageGate
+        return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ agents: agents.filter(agent => agent.usage).map(({ agent_id, usage }) => ({ agent_id, usage })) }) })
+      }
+      if (route.request().url().includes('/api/bullpen/agents')) return route.fulfill({ headers, status: directoryStatus, contentType: 'application/json', body: JSON.stringify({ agents: agents.map(({ usage: _usage, ...agent }) => agent) }) })
       return route.fulfill({ headers, contentType: 'application/json', body: JSON.stringify({ tokens: [], connections: [], profiles: [], providers: [], presets: [], projects: [], sessions: [] }) })
     })
     const url = server.resolvedUrls.local[0] + 'scripts/test-fixtures/agent-connect-qa.html'
@@ -43,6 +50,13 @@ try {
       throw error
     }
     await page.getByRole('heading', { name: purpose, exact: true }).waitFor()
+    // Agent cards and refresh are usable while the usage response is held.
+    await Promise.race([usageStarted, new Promise((_, reject) => setTimeout(() => reject(new Error("Usage request did not start after directory")), 5000))])
+    assert.equal(usageRequests > 0, true)
+    assert.equal(await page.getByRole('button', { name: 'Refresh agents', exact: true }).isEnabled(), true)
+    assert.equal(await page.getByText('This session:', { exact: false }).count(), 0)
+    releaseUsage()
+    await page.getByText('This session:', { exact: false }).waitFor()
     await page.getByText('Full purpose', { exact: true }).click()
     assert.equal(await page.getByText(purpose, { exact: true }).last().isVisible(), true)
     await page.getByRole('button', { name: 'Copy address agent:reviewer', exact: true }).click()

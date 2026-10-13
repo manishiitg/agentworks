@@ -38,6 +38,8 @@ func TestAgentUsageAuthenticatedLifecycle(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/external/v1/agents/usage":
 			env.api.handleAgentUsageReport(w, r)
+		case "/api/bullpen/agents/usage":
+			env.api.handleBullpenAgentUsage(w, r)
 		case "/api/bullpen/usage":
 			env.api.handleBullpenUsage(w, r)
 		default:
@@ -110,8 +112,15 @@ func TestAgentUsageAuthenticatedLifecycle(t *testing.T) {
 	if len(page.Readings) != 2 || page.Readings[0].Delta.Total() != 25 || !page.Readings[1].Baseline || page.Readings[1].Delta.Total() != 0 {
 		t.Fatalf("hourly native differences/baseline: %s", body)
 	}
-	if b := call("GET", "/api/bullpen/agents?timezone=Asia/Kolkata", owner, nil, 200); !strings.Contains(string(b), "Codex session total") || strings.Contains(string(b), "private-native-id") {
-		t.Fatalf("owner numeric directory: %s", b)
+	if b := call("GET", "/api/bullpen/agents?timezone=Asia/Kolkata", owner, nil, 200); strings.Contains(string(b), "input_tokens") || strings.Contains(string(b), "private-native-id") {
+		t.Fatalf("directory must not wait for or expose usage: %s", b)
+	}
+	if b := call("GET", "/api/bullpen/agents/usage?timezone=Asia/Kolkata", owner, nil, 200); !strings.Contains(string(b), "Codex session total") || strings.Contains(string(b), "private-native-id") {
+		t.Fatalf("owner-only current usage: %s", b)
+	}
+	call("GET", "/api/bullpen/agents/usage", cli, nil, 403)
+	if b := call("GET", "/api/bullpen/agents/usage?user_id=owner", other, nil, 200); strings.Contains(string(b), "input_tokens") || strings.Contains(string(b), "own-agent") {
+		t.Fatal("share recipient received owner current usage")
 	}
 	if b := call("GET", "/api/bullpen/usage?user_id=owner", other, nil, 200); strings.Contains(string(b), "own-agent") {
 		t.Fatal("share recipient read owner usage")
@@ -129,7 +138,7 @@ func TestAgentUsageAuthenticatedLifecycle(t *testing.T) {
 	x.At = time.Now()
 	report("sample", 409)
 	call("DELETE", "/api/bullpen/usage", owner, nil, 200)
-	if b := call("GET", "/api/bullpen/agents", owner, nil, 200); strings.Contains(string(b), "Codex session total") {
+	if b := call("GET", "/api/bullpen/agents/usage", owner, nil, 200); strings.Contains(string(b), "Codex session total") {
 		t.Fatal("delete retained current totals/model")
 	}
 	x.Generation = uuid.NewString()

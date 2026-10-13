@@ -380,9 +380,9 @@ func (api *StreamingAPI) handleBullpenNotices(w http.ResponseWriter, r *http.Req
 	if claims == nil {
 		return
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(r.Context())
-	agentMessageMu.Unlock()
+	start := time.Now()
+	s, err := readBullpenSnapshot(r)
+	storeTime := time.Since(start)
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "unavailable", "Notices are unavailable. Try again.")
 		return
@@ -393,6 +393,7 @@ func (api *StreamingAPI) handleBullpenNotices(w http.ResponseWriter, r *http.Req
 			items = append(items, map[string]interface{}{"notice_id": n.ID, "agent_name": n.AgentName, "text": n.Text, "at": n.At})
 		}
 	}
+	stampBullpenTiming(w, start, storeTime, "notices", time.Since(start)-storeTime)
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, map[string]interface{}{"notices": items})
 }

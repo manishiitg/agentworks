@@ -143,6 +143,12 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	if err != nil {
 		return nil, err
 	}
+	return namedMessageAgentDirectory(ctx, userID, s, true), nil
+}
+
+// Directory projection grants no messaging authority. Browser reads can use an
+// atomic workspace snapshot without waiting for mutation/receipt transactions.
+func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessageStore, withUsage bool) map[string]interface{} {
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
@@ -154,11 +160,13 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 			}()})
 		}
 	}
-	hydrateOwnerUsage(ctx, userID, items, s.Agents)
+	if withUsage {
+		hydrateOwnerUsage(ctx, userID, items, s.Agents)
+	}
 	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
 	items = append(items, s.groupAgentItems(userID)...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
-	return map[string]interface{}{"agents": items, "groups": s.groupsView(userID, false)}, nil
+	return map[string]interface{}{"agents": items, "groups": s.groupsView(userID, false)}
 }
 
 func (api *StreamingAPI) externalMessageCaller(ctx context.Context, claims *UserClaims, args map[string]any) (triggerLinkCaller, error) {

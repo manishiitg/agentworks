@@ -93,6 +93,8 @@ export const bullpenApi = {
   deleteUsage: async (): Promise<void> => { await api.delete('/api/bullpen/usage') },
   agents: async (signal?: AbortSignal): Promise<BullpenAgent[]> =>
     (await api.get<{ agents: BullpenAgent[] | null }>('/api/bullpen/agents', { signal, params: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } })).data.agents ?? [],
+  agentUsage: async (signal?: AbortSignal): Promise<Pick<BullpenAgent, 'agent_id' | 'usage' | 'usage_unavailable'>[]> =>
+    (await api.get<{ agents: Pick<BullpenAgent, 'agent_id' | 'usage' | 'usage_unavailable'>[] | null }>('/api/bullpen/agents/usage', { signal, params: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } })).data.agents ?? [],
   sharing: async (signal?: AbortSignal): Promise<BullpenSharing> =>
     ((data: BullpenSharing) => ({ shares: data.shares ?? [], blocks: data.blocks ?? [], shared_with_me: data.shared_with_me ?? [], incoming: data.incoming ?? [] }))((await api.get<BullpenSharing>('/api/bullpen/shares', { signal })).data),
   groups: async (signal?: AbortSignal): Promise<BullpenGroup[]> =>
