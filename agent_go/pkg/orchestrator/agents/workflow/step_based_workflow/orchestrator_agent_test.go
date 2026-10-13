@@ -83,13 +83,12 @@ func TestOrchestratorPromptDocumentsAgentRoutes(t *testing.T) {
 	}
 }
 
-func TestOrchestratorPromptRoutesConsequentialEvidenceToPulseReview(t *testing.T) {
+func TestOrchestratorPromptAsksForConcernLines(t *testing.T) {
 	agent := &WorkflowExecutionOnlyAgent{}
 	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{})
 
 	for _, want := range []string{
 		"## Completion",
-		"Pulse reads these lines from retained summaries",
 		"`CONCERNS: <what happened",
 		"STATUS: COMPLETED",
 		"STATUS: FAILED",

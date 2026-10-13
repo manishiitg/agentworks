@@ -176,8 +176,12 @@ func TestStepPromptsRespectExplicitPermissionsAndScriptedDBHelpers(t *testing.T)
 	for _, access := range []string{DBAccessNone, DBAccessRead, DBAccessReadWrite} {
 		vars := map[string]string{"DBAccess": access, "KbAccess": KBAccessNone, "IsScriptedMode": "true", "DBDirectAccess": "true"}
 		system := renderer.executionOnlySystemPromptProcessor(vars)
-		if !strings.Contains(system, "Consumption records completion, never reservation") || !strings.Contains(system, "outcome_evidence") || !strings.Contains(system, "asks for early consumption") {
-			t.Fatal("step runtime did not enforce checked completion over early-consumption descriptions")
+		// An ordinary step is not a decision handler: the saved-decision lifecycle and Builder/optimizer
+		// process text belong to the agents that hold those tools, not to every step's system prompt.
+		for _, leak := range []string{"mark_human_input_consumed", "outcome_evidence", "apply_workflow_db_migration", "optimizer", "Unmigrated", "Pulse"} {
+			if strings.Contains(system, leak) {
+				t.Fatalf("ordinary step prompt carries platform process text %q", leak)
+			}
 		}
 		if strings.Count(system, "Standing runtime scope for this step.") != 1 || strings.Count(renderer.executionOnlySystemPromptProcessor(vars), "Standing runtime scope for this step.") != 1 {
 			t.Fatal("runtime supplements disappeared or grew across prompt renders")
