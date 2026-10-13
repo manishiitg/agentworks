@@ -3155,6 +3155,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           chatStore.addToast(`${response.builder_held_by} is using the Builder on this workflow, so this message runs in Run mode: you can run steps and ask questions, but not change the workflow. Builder comes back when ${response.builder_held_by} is done.`, 'info')
         }
 
+        if (response.omitted_context && response.omitted_context > 0) {
+          chatStore.addToast(response.omitted_context === 1 ? '1 attached item was left out because you cannot open it.' : `${response.omitted_context} attached items were left out because you cannot open them.`, 'info')
+        }
+
         console.log('[WF_DEBUG] 3. Before updateTabSessionId', { old: tabSessionId, new: responseSessionId, changed: responseSessionId !== tabSessionId, oldEvents: chatStore.getTabEvents(tabSessionId).length, newEvents: chatStore.getTabEvents(responseSessionId).length })
         chatStore.setSessionId(responseSessionId)
         chatStore.updateTabSessionId(currentTab.tabId, responseSessionId)

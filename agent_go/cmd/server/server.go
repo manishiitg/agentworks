@@ -1437,6 +1437,8 @@ type QueryResponse struct {
 	Message   string `json:"message,omitempty"`
 	// BuilderHeldBy is set when someone else was using the Builder on this workflow, so the turn ran in Run mode.
 	BuilderHeldBy string `json:"builder_held_by,omitempty"`
+	// OmittedContext counts attached workflows or projects left out of this turn because the sender cannot open them.
+	OmittedContext int `json:"omitted_context,omitempty"`
 	// DeliveryStatus/Provider are populated only when handleQuery short-circuits a
 	// message into retained coding-agent CLI delivery (Status ==
 	// "live_input_delivered"). They mirror the live-input endpoint's response so the
@@ -5569,11 +5571,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Return immediate response with query ID
 	response := QueryResponse{
-		QueryID:       queryID,
-		SessionID:     sessionID, // Include the actual session ID used for conversation history
-		Status:        "started",
-		Message:       "Query processing started. Use polling API to get real-time updates.",
-		BuilderHeldBy: req.builderHeldBy,
+		QueryID:        queryID,
+		SessionID:      sessionID, // Include the actual session ID used for conversation history
+		Status:         "started",
+		Message:        "Query processing started. Use polling API to get real-time updates.",
+		BuilderHeldBy:  req.builderHeldBy,
+		OmittedContext: req.omittedWorkflowContextCount,
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
