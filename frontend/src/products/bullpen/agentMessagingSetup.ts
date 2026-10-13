@@ -131,8 +131,8 @@ export const messagingGuides: MessagingGuide[] = [
   },
   {
     id: 'cursor', name: 'Cursor', status: 'CLI preview · desktop later', available: true,
-    requirements: ['Cursor CLI on macOS or Linux, Python 3, and an AgentWorks CLI build with Cursor messaging support.', 'Start in the exact project whose hooks you reviewed. This setup is for cursor-agent; choose Cursor desktop below for its current limits.'],
-    versions: 'Package: agentworks 0.2.0. Investigated CLI: 2026.10.01-e373342; desktop: 3.21.18. Kernel/session checks passed on macOS. Real Cursor acceptance remains pending; this preview delivers at completed-turn boundaries and has no idle input route.',
+    requirements: ['Cursor CLI on macOS or Linux, Python 3, and an AgentWorks CLI build with Cursor messaging support.', 'Cursor picks up new messages when you send your next prompt or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.', 'Start in the exact project whose hooks you reviewed. This setup is for cursor-agent; choose Cursor desktop below for its current limits.'],
+    versions: 'Package: agentworks 0.2.0. Investigated CLI: 2026.10.01-e373342; desktop: 3.21.18. Kernel/session checks passed on macOS. Real Cursor acceptance remains pending.',
     install: [
       { label: 'Get Cursor plugin', text: 'git clone --depth 1 https://github.com/manishiitg/agentworks-plugins.git "$HOME/.local/share/agentworks-plugins"' },
       { label: 'Configure Cursor project hooks', text: 'python3 "$HOME/.local/share/agentworks-plugins/plugins/cursor/scripts/setup_project.py" --project "/absolute/project/path"' },
@@ -142,7 +142,7 @@ export const messagingGuides: MessagingGuide[] = [
     installNote: 'Use the same retained plugin directory when updating. Project setup preserves other hooks, migrates recognized old package paths to the CLI on PATH and refuses duplicates or unknown paths. The package registers project hooks once; its plugin hook set is empty so the CLI cannot deliver twice.',
     approval: 'Review the project hook file and messaging MCP yourself in Cursor. Setup does not approve workspace/MCP trust, sign in, attach a chat, or enable terminal delivery. Existing stable project hooks use the updated CLI automatically; rerun project setup once for older package-path registrations.',
     attach: '/agentworks attach cursor-review', ownRequest: 'Attach this Cursor CLI chat to AgentWorks as cursor-review.',
-    delivery: 'Completed-turn hooks offer messages after busy tools finish. Idle persist/tmux delivery is not built in this milestone; an idle CLI receives pending messages on its next completed turn. A stored message or terminal write is not admission.',
+    delivery: 'Messages are offered when you send your next prompt or when its current turn ends. An idle chat is not woken; messages wait safely. A stored message or terminal write is not admission.',
     menus: [
       { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type in this Cursor CLI conversation after reviewing the project hooks.' },
       { entry: 'AgentWorks messaging MCP tools', who: 'The agent', description: 'Restricted to this verified CLI session; a separate HTTP MCP connection supplies workflow and Crew tools.' },
@@ -150,7 +150,7 @@ export const messagingGuides: MessagingGuide[] = [
     troubleshooting: [
       { title: 'The attach command reaches the model', text: 'Check the selected project and its .cursor/hooks.json. This CLI version may skip plugin-only prompt and stop hooks; rerun the reviewed project setup, then restart Cursor CLI.' },
       { title: 'Messaging MCP cannot start', text: 'Update AgentWorks from a server publishing the Cursor-capable CLI. A preview-era CLI does not expose plugin mcp cursor. Keep workspace and MCP approval as your own choices.' },
-      { title: 'No idle receipt', text: 'This milestone has no idle input route. Complete a turn to receive pending messages through its hook. Explicit mailbox recovery is last; do not start an inbox polling loop.' },
+      { title: 'No idle receipt', text: 'An idle Cursor chat is not woken. Send a prompt, or let a turn finish, to receive pending messages. Explicit mailbox recovery is last; do not start an inbox polling loop.' },
     ],
     desktop: {
       status: 'Desktop · not supported yet', available: false,
