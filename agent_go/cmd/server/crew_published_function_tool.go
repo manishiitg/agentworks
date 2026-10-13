@@ -53,6 +53,8 @@ func (api *StreamingAPI) registerCrewPublishedFunctionTools(registrar definition
 			if err != nil {
 				return "", err
 			}
+			// The call is the person's, as it is over MCP: the trigger binding checks the signed-in user in the context.
+			ctx = context.WithValue(ctx, UserContextKey, claims)
 			target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: crewProfileID, CrewOwner: crew.OwnerID}
 			functions, err := readCrewFunctions(ctx, target)
 			if err != nil {
