@@ -278,3 +278,37 @@ func TestBrainBackendCloseCancelsInFlightContext(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBrainPreparationRequiresWriterLease(t *testing.T) {
+	cfg := Config{Root: t.TempDir()}
+	first, err := newService(cfg, "builtin", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	prepare := func() error { called = true; return nil }
+	if _, err := newServicePrepared(cfg, "builtin", nil, prepare); err == nil {
+		t.Fatal("second writer opened")
+	}
+	if called {
+		t.Fatal("relocated live files before acquiring the lease")
+	}
+	first.Close()
+	prepared, err := newServicePrepared(cfg, "builtin", nil, prepare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("host preparation did not run")
+	}
+	prepared.Close()
+	want := errors.New("preparation failed")
+	if _, err := newServicePrepared(cfg, "builtin", nil, func() error { return want }); !errors.Is(err, want) {
+		t.Fatal(err)
+	}
+	reopened, err := newService(cfg, "builtin", nil)
+	if err != nil {
+		t.Fatal("failed preparation leaked lease", err)
+	}
+	defer reopened.Close()
+}

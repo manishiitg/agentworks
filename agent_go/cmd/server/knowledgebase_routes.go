@@ -121,10 +121,12 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 	}
 	defer knowledgebaseInstance.Unlock()
 	if knowledgebaseInstance.service == nil {
-		if err := moveBrainNotesIntoDocuments(filepath.Join(config.Root, "live"), config.LiveRoot); err != nil {
-			return nil, fmt.Errorf("move Brain's notes into %s: %w", brainFolderName, err)
-		}
-		service, err := knowledgebase.New(config)
+		service, err := knowledgebase.NewPrepared(config, func() error {
+			if err := moveBrainNotesIntoDocuments(filepath.Join(config.Root, "live"), config.LiveRoot); err != nil {
+				return fmt.Errorf("move Brain's notes into %s: %w", brainFolderName, err)
+			}
+			return nil
+		})
 		if err != nil {
 			return nil, err
 		}

@@ -32,15 +32,21 @@ type Service struct {
 	closeTimeout time.Duration
 }
 
-func New(cfg Config) (*Service, error) {
+func New(cfg Config) (*Service, error) { return NewPrepared(cfg, nil) }
+
+// NewPrepared runs host-owned, idempotent filesystem preparation while holding
+// the same writer lease as the selected engine. Private code never gets this callback.
+func NewPrepared(cfg Config, prepare func() error) (*Service, error) {
 	mode := cfg.Backend
 	if mode == "" {
 		mode = os.Getenv("AGENTWORKS_BRAIN_BACKEND")
 	}
-	return newService(cfg, mode, privateBackendFactory())
+	return newServicePrepared(cfg, mode, privateBackendFactory(), prepare)
 }
-
 func newService(cfg Config, mode string, private *brainapi.Factory) (*Service, error) {
+	return newServicePrepared(cfg, mode, private, nil)
+}
+func newServicePrepared(cfg Config, mode string, private *brainapi.Factory, prepare func() error) (*Service, error) {
 	mode = strings.TrimSpace(mode)
 	if mode == "" {
 		mode = "builtin"
@@ -64,6 +70,12 @@ func newService(cfg Config, mode string, private *brainapi.Factory) (*Service, e
 	lease, err := acquireEngineLease(cfg.Root)
 	if err != nil {
 		return nil, err
+	}
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			lease.Close()
+			return nil, err
+		}
 	}
 	engine, err := open(cfg)
 	if err != nil {
@@ -320,6 +332,7 @@ func (s *Service) ReserveIntegrationRequest(ctx context.Context, p Principal, to
 	defer s.end()
 	ctx, finish := s.operationContext(ctx)
 	defer finish()
+	p.RequestTool, p.RequestArguments = "", nil
 	return s.engine.ReserveIntegrationRequest(ctx, p, tool, args)
 }
 
