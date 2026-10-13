@@ -113,7 +113,10 @@ export default function StepInspectionPanel({target}: {target: ExecutionInspecti
  const finalValidation = children.find(child => inspectionTaskLabel(child.name)==='Final validation')
  const preferred = workTasks.find(child => child.status === 'failed') || workTasks.find(child => child.status === 'running') || workTasks[0]
  const hasConversation = data ? inspectionHasConversation(data) : false
- const selectedID = chosen ?? (data?.execution_mode!=='script' && !hasConversation ? preferred?.agent_id : undefined) ?? target.execution_id
+ // Keep a partial view open even when every source was oversized. Automatically
+ // opening one of those tasks would hide the notice and defeat the bounded view.
+ const hasConversationView = hasConversation || !!data?.conversation?.truncated
+ const selectedID = chosen ?? (data?.execution_mode!=='script' && !hasConversationView ? preferred?.agent_id : undefined) ?? target.execution_id
  const child = children.find(item => item.agent_id === selectedID)
  const childTarget = useMemo(() => child ? {workspace_path: target.workspace_path, session_id: target.session_id, execution_id: child.agent_id, name: child.name, started_at: child.started_at || target.started_at} : null, [target, child?.agent_id, child?.name, child?.started_at])
  const activeTarget = nested.at(-1) ?? childTarget
@@ -122,7 +125,7 @@ export default function StepInspectionPanel({target}: {target: ExecutionInspecti
  const viewedTranscript = viewedData?.transcript
  const viewedID = activeTarget?.execution_id || target.execution_id
  const viewedName = activeTarget?.name || transcript?.name || target.name
- const primaryTasks = hasConversation ? children.filter(isSubAgent) : workTasks
+ const primaryTasks = hasConversationView ? children.filter(isSubAgent) : workTasks
  const seen = new Set([target.execution_id,childTarget?.execution_id,...nested.map(item=>item.execution_id)])
  const nestedAgents = activeTarget ? (viewedData?.children ?? []).filter(item=>isSubAgent(item) && !seen.has(item.agent_id)) : []
  const openNested = (id: string) => {
@@ -133,7 +136,7 @@ export default function StepInspectionPanel({target}: {target: ExecutionInspecti
  return <div className="flex h-full min-h-0 flex-col">
   <div className="shrink-0 border-b border-border px-3 py-2">
    <div className="flex items-center gap-2"><ExecutionType mode={viewedData?.execution_mode} /><h2 className="min-w-0 flex-1 truncate text-sm font-medium" title={viewedName}>{viewedName || 'Step'}</h2><span data-testid="inspection-status" className={`inline-flex shrink-0 items-center gap-1 text-xs capitalize ${viewedTranscript?.status==='completed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{viewedTranscript?.status==='completed' && <Check className="h-3 w-3" aria-hidden="true" />}{viewedTranscript?.status || 'Loading…'}</span><button type="button" aria-label="Refresh step inspection" title="Refresh step" onClick={()=>{refresh();setReload(value=>value+1)}} className="rounded p-1 text-muted-foreground hover:bg-muted"><RefreshCw className="h-3.5 w-3.5" /></button></div>
-   {(hasConversation ? primaryTasks.length>0 : primaryTasks.length>1) && <select aria-label="Task" value={selectedID} onChange={event=>choose(event.target.value)} className="mt-2 max-w-full rounded border border-border bg-background px-2 py-1 text-xs"><option value={target.execution_id}>Step conversation</option>{primaryTasks.map(item=><option key={item.agent_id} value={item.agent_id}>{inspectionTaskLabel(item.name)}</option>)}</select>}
+   {(hasConversationView ? primaryTasks.length>0 : primaryTasks.length>1) && <select aria-label="Task" value={selectedID} onChange={event=>choose(event.target.value)} className="mt-2 max-w-full rounded border border-border bg-background px-2 py-1 text-xs"><option value={target.execution_id}>Step conversation</option>{primaryTasks.map(item=><option key={item.agent_id} value={item.agent_id}>{inspectionTaskLabel(item.name)}</option>)}</select>}
    {nested.length>0 && <nav aria-label="Inspection path" className="mt-2 flex flex-wrap gap-2 text-xs"><button onClick={()=>setNavigation({scope,chosen:selectedID,nested:[]})} className="text-muted-foreground underline">{child?.name || 'Step'}</button>{nested.map((item,index)=><button key={item.execution_id} onClick={()=>setNavigation({scope,chosen:selectedID,nested:nested.slice(0,index+1)})} className="text-muted-foreground underline">{item.name}</button>)}</nav>}
    {nestedAgents.length>0 && <select aria-label="Nested sub-agent" value="" onChange={event=>openNested(event.target.value)} className="mt-2 max-w-full rounded border border-border bg-background px-2 py-1 text-xs"><option value="">Inspect a nested sub-agent…</option>{nestedAgents.map(item=><option key={item.agent_id} value={item.agent_id}>{item.name}</option>)}</select>}
   </div>

@@ -156,6 +156,20 @@ it('opens the selected sub-agent conversation and nested agent without losing fa
  } finally {await act(async()=>root.unmount())}
 })
 
+it('keeps an empty partial view open without automatically reading an oversized task', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+ const data=response('first',''); data.execution_mode='agent';data.transcript.events=[]
+ data.conversation={source_execution_ids:[],events:[],truncated:true}
+ data.children=[{agent_id:'large-task',kind:'agent_item',name:'Task',status:'completed'}]
+ const inspect=vi.spyOn(agentApi,'inspectSessionExecution').mockResolvedValue(data)
+ const host=document.createElement('div');const root=createRoot(host)
+ try {
+  await act(async()=>root.render(<StepInspectionPanel target={target} />))
+  await vi.waitFor(()=>expect(host.textContent).toContain('Showing part of the recorded conversation'))
+  expect(inspect.mock.calls.every(([item])=>item.execution_id==='first')).toBe(true)
+ } finally {await act(async()=>root.unmount())}
+})
+
 it('joins lifecycle/provider message carriers while retaining repeated instructions and raw evidence', () => {
  const data=response('first','Repeat this instruction')
  data.transcript.events[0].source_type='orchestrator_agent_start'
