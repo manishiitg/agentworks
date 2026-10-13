@@ -216,3 +216,18 @@ func TestKBSourcesBuilderPromptAndExecutionScope(t *testing.T) {
 		}
 	}
 }
+
+// A step reads attached knowledge bases; attaching them is the Builder's job and is not a step instruction.
+func TestStepKBSourcesPromptHasNoBuilderProcess(t *testing.T) {
+	root, ws, _ := kbSessionFixture(t)
+	saveKBSources(t, root, ws, true, false)
+	prompt := stepKnowledgebaseSourcesPrompt(ws)
+	if !strings.Contains(prompt, "Attached knowledge bases") || !strings.Contains(prompt, "notes/_index.json") {
+		t.Fatalf("step KB sources prompt lost the reading guidance:\n%s", prompt)
+	}
+	for _, leak := range []string{"update_workflow_config", "Builder", "Run mode"} {
+		if strings.Contains(prompt, leak) {
+			t.Fatalf("step KB sources prompt carries Builder process text %q:\n%s", leak, prompt)
+		}
+	}
+}

@@ -141,7 +141,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	if len(previewDownloads) > 0 {
 		browserDownloadsPath = previewDownloads[0]
 	}
-	if browserDownloadsPath != "" {
+	// Only a step with a browser downloads anything; without one this section is noise.
+	if browserDownloadsPath != "" && browserPrompt != "" {
 		downloadsPrompt := fmt.Sprintf(
 			"## Workflow Browser Downloads\nFor this workflow run, use the run-scoped downloads folder %q for browser downloads and file cleanup. Do not read from, write to, or delete files under the root workspace Downloads/ folder.",
 			browserDownloadsPath,
@@ -154,7 +155,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	}
 	sharedKBPrompt := ""
 	if sharedKBRead {
-		sharedKBPrompt = workflowKnowledgebaseSourcesPrompt(hcpo.GetWorkspacePath())
+		sharedKBPrompt = stepKnowledgebaseSourcesPrompt(hcpo.GetWorkspacePath())
 	}
 	if attachedFolders := workflowFolderAccessPrompt(hcpo.GetWorkspacePath()) + "\n" + sharedKBPrompt; strings.TrimSpace(attachedFolders) != "" {
 		supplements = append(supplements, attachedFolders)
