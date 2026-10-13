@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -190,7 +191,16 @@ func (api *StreamingAPI) inspectionChildConversation(ctx context.Context, worksp
 			break
 		}
 		readChildren++
-		content, exists, err := readFileFromWorkspace(ctx, orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, child.AgentID))
+		remainingBytes := maxInspectionConversationBytes - readBytes
+		if remainingBytes <= 0 {
+			view.Truncated = true
+			break
+		}
+		content, exists, err := readFileFromWorkspaceQueryWithLimit(ctx, orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, child.AgentID), "", int64(remainingBytes))
+		if errors.Is(err, errWorkspaceReadLimit) {
+			view.Truncated = true
+			continue
+		}
 		if err != nil || !exists {
 			continue
 		}

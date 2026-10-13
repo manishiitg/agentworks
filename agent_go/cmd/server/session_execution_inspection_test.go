@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,15 +20,34 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
+type inspectionRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f inspectionRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+type inspectionCountedBody struct {
+	io.ReadCloser
+	read int
+}
+
+func (b *inspectionCountedBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.read += n
+	return n, err
+}
+
 func TestInspectDelegatedConversationBounds(t *testing.T) {
 	for _, test := range []struct {
 		name                    string
 		children, events, bytes int
 		wantEvents              int
+		knownLength             bool
 	}{
-		{"children", maxInspectionConversationChildren + 1, 1, 0, maxInspectionConversationChildren},
-		{"events", 1, maxInspectionConversationEvents + 1, 0, maxInspectionConversationEvents},
-		{"bytes", 1, 1, maxInspectionConversationBytes, 0},
+		{"children", maxInspectionConversationChildren + 1, 1, 0, maxInspectionConversationChildren, false},
+		{"events", 1, maxInspectionConversationEvents + 1, 0, maxInspectionConversationEvents, false},
+		{"bytes_chunked", 1, 1, maxInspectionConversationBytes, 0, false},
+		{"bytes_known", 1, 1, maxInspectionConversationBytes, 0, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
@@ -61,6 +81,29 @@ func TestInspectDelegatedConversationBounds(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			var counted *inspectionCountedBody
+			if test.bytes > 0 {
+				previousClient := workspaceHTTPClient
+				transport := previousClient.Transport
+				if transport == nil {
+					transport = http.DefaultTransport
+				}
+				boundedClient := *previousClient
+				boundedClient.Transport = inspectionRoundTripper(func(request *http.Request) (*http.Response, error) {
+					response, err := transport.RoundTrip(request)
+					if err == nil && strings.HasSuffix(request.URL.Path, "/"+path) {
+						counted = &inspectionCountedBody{ReadCloser: response.Body}
+						response.Body = counted
+						response.ContentLength = -1
+						if test.knownLength {
+							response.ContentLength = maxInspectionConversationBytes + 1
+						}
+					}
+					return response, err
+				})
+				workspaceHTTPClient = &boundedClient
+				defer func() { workspaceHTTPClient = previousClient }()
+			}
 			req := httptest.NewRequest(http.MethodGet, "/sessions/chat/background-work/parent/inspect?workspace_path=Workflow/example", nil)
 			req = mux.SetURLVars(req, map[string]string{"session_id": "chat", "execution_id": "parent"})
 			w := httptest.NewRecorder()
@@ -70,6 +113,15 @@ func TestInspectDelegatedConversationBounds(t *testing.T) {
 			}
 			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK || response.Conversation == nil || !response.Conversation.Truncated || len(response.Conversation.Events) != test.wantEvents {
 				t.Fatalf("bounded projection: status=%d err=%v", w.Code, err)
+			}
+			if test.bytes > 0 {
+				wantRead := maxInspectionConversationBytes + 1
+				if test.knownLength {
+					wantRead = 0
+				}
+				if counted == nil || counted.read != wantRead {
+					t.Fatalf("oversized response was not bounded before decoding: %+v", counted)
+				}
 			}
 			if current, _, err := readFileFromWorkspace(context.Background(), path); err != nil || current != saved {
 				t.Fatal("inspection changed the full saved transcript")

@@ -199,6 +199,14 @@ func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, 
 }
 
 func readFileFromWorkspaceQuery(ctx context.Context, filePath, rawQuery string) (string, bool, error) {
+	return readFileFromWorkspaceQueryWithLimit(ctx, filePath, rawQuery, 0)
+}
+
+var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
+
+// A nonzero limit bounds the HTTP body before allocation or JSON decoding.
+// Oversized records can be skipped by read-only callers without altering them.
+func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
 	// URL-encode the filepath segments
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
@@ -223,9 +231,19 @@ func readFileFromWorkspaceQuery(ctx context.Context, filePath, rawQuery string) 
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	if maxBytes > 0 && resp.ContentLength > maxBytes {
+		return "", false, errWorkspaceReadLimit
+	}
+	var reader io.Reader = resp.Body
+	if maxBytes > 0 {
+		reader = io.LimitReader(resp.Body, maxBytes+1)
+	}
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to read response: %w", err)
+	}
+	if maxBytes > 0 && int64(len(body)) > maxBytes {
+		return "", false, errWorkspaceReadLimit
 	}
 
 	// Check if file doesn't exist (404) - this is not an error
