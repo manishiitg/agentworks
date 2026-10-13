@@ -48,6 +48,16 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 	if req.AgentName == "" && current.Attachment.AgentName != "" {
 		req.AgentName = current.Attachment.AgentName
 	}
+	if req.AgentName == "" && req.Provider != "pi" && o.switchPath == "" {
+		// A bare attach typed by the person comes back as the folder's most recent
+		// earlier agent that nothing holds, so peers keep the address they know.
+		if free := freeAutoAttachRecords(ctx, root, *req, cwd); len(free) > 0 {
+			r := free[0]
+			req.AgentName, req.Purpose, req.ConfigPath, req.ReuseIdentity = r.Name, r.Purpose, r.ConfigPath, false
+			o.reconnectNote = "Reconnected as agent:" + r.Name + ". Type /agentworks attach NEW-NAME for a new agent."
+			return nil
+		}
+	}
 	if req.AgentName == "" {
 		req.AgentName, _, err = proposedAgentIdentity(req.Provider, req.SessionID, cwd)
 		if err != nil {
@@ -482,6 +492,9 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
 	} else {
 		fmt.Fprintln(o.stdout, pluginAttachmentStatus(out))
+	}
+	if o.reconnectNote != "" {
+		fmt.Fprintln(o.stdout, o.reconnectNote)
 	}
 	req.Action = "peers"
 	peers, e := agentworksclient.CallLocalBridge(ctx, root, req)

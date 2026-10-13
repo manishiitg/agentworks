@@ -28,6 +28,8 @@ type options struct {
 	serverURL, configPath string
 	// switchPath is the person's chosen login for an attach that moves the chat.
 	switchPath string
+	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
+	reconnectNote string
 	// namedLogin is set by login --name so the save rechecks the name under a lock.
 	namedLogin bool
 	// attachedOnly limits live-chat discovery to chats already attached through

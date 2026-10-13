@@ -154,6 +154,15 @@ func autoAttachOnStart(ctx context.Context, root string, o *options, req agentwo
 	}
 	hint := "AgentWorks: this folder had an agent before. Type /agentworks attach to connect this chat (or /agentworks auto off to stop this hint)."
 	if len(folder.Records) != 1 {
+		// Never guess between agents without the person typing; name the free ones
+		// so a bare /agentworks attach is a known choice.
+		if free := freeAutoAttachRecords(ctx, root, req, cwd); len(free) > 0 {
+			names := make([]string, len(free))
+			for i, r := range free {
+				names[i] = "agent:" + r.Name
+			}
+			return "AgentWorks: this folder had " + strings.Join(names, ", ") + ". Type /agentworks attach to reconnect as agent:" + free[0].Name + " (most recent), or /agentworks attach NAME."
+		}
 		return hint
 	}
 	record := folder.Records[0]
@@ -229,4 +238,44 @@ func autoAttachDecision(states []agentworksclient.LocalAgentState, name string, 
 		return "hint"
 	}
 	return "attach"
+}
+
+// freeAutoAttachRecords lists this folder's earlier agents that nothing holds,
+// most recent first: no live chat or running process on this computer, not
+// attached elsewhere on the server, not closed by it. A name that cannot be
+// proven free is left out.
+func freeAutoAttachRecords(ctx context.Context, root string, req agentworksclient.LocalBridgeRequest, cwd string) []autoAttachRecord {
+	key := autoAttachKey(req.Provider, cwd)
+	if autoAttachDisabled() || key == "" {
+		return nil
+	}
+	folder := autoAttachRead(root, key)
+	if folder.Off || len(folder.Records) == 0 {
+		return nil
+	}
+	list, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
+	if err != nil {
+		return nil
+	}
+	var free []autoAttachRecord
+	for i := len(folder.Records) - 1; i >= 0; i-- {
+		record := folder.Records[i]
+		reply, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "agent_online", AgentName: record.Name, ConfigPath: record.ConfigPath})
+		if e != nil || reply.Error != "" {
+			continue
+		}
+		var seen struct {
+			Online bool `json:"online"`
+		}
+		_ = json.Unmarshal(reply.Result, &seen)
+		switch autoAttachDecision(list.AgentStates, record.Name, req, seen.Online) {
+		case "forget":
+			forgetAutoAttach(root, req.Provider, cwd, record.Name)
+		case "attach":
+			if _, statErr := os.Stat(record.ConfigPath); statErr == nil {
+				free = append(free, record)
+			}
+		}
+	}
+	return free
 }

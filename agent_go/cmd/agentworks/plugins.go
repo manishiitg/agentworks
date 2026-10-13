@@ -197,6 +197,9 @@ func pluginCommand(o *options) *cobra.Command {
 				peers, e := bridgeCall(ctx, root, o, req)
 				local, _ := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "list"})
 				result := "Handled by AgentWorks. " + pluginAttachmentStatus(out)
+				if o.reconnectNote != "" {
+					result += "\n" + o.reconnectNote
+				}
 				if req.Provider == "muse" && !out.MonitorActive {
 					result += "\n" + museMonitorSetup
 				}

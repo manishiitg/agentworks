@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-13 — A bare attach reconnects the folder's most recent free agent (PLAT-861)
+
+A person who types a bare `/agentworks attach` in a chat the bridge does not know
+comes back as the most recent earlier agent of that provider and folder that nothing
+holds (no live chat or process on this computer, not online on the server, not
+closed by it); only when none is free does it mint a new automatic name. The prompt
+at chat start still reconnects on its own only when exactly one earlier agent exists,
+and otherwise names the free ones. Names stay optional; Pi is unchanged. Why: people
+run many chats in one folder and attach bare, and a new name made peers lose the old
+address.
+
+Ticket: PLAT-861, issue 861-150.
+
 ## 2026-10-13 — Bullpen fills the available workspace width (PLAT-746)
 
 The Agents and Connect views use the full content pane with responsive padding.

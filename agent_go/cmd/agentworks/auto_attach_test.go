@@ -2,6 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,5 +65,60 @@ func TestAutoAttachDecisionNeverStealsALiveName(t *testing.T) {
 		if got := autoAttachDecision(c.states, "one", req, c.server); got != c.want {
 			t.Fatalf("%s: got %s, want %s", name, got, c.want)
 		}
+	}
+}
+
+// A bare attach typed by the person comes back as the folder's most recent earlier
+// agent that nothing holds. A name a live chat holds, or the server shows online,
+// is never taken, and a stale one is skipped.
+func TestBareAttachTakesMostRecentFreeAgent(t *testing.T) {
+	dir, err := os.MkdirTemp("", "aw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	ln, err := net.Listen("unix", filepath.Join(dir, "bridge.sock"))
+	if err != nil {
+		t.Skip("no unix sockets:", err)
+	}
+	if err = os.Chmod(filepath.Join(dir, "bridge.sock"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	serverOnline := map[string]bool{"c": true}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in agentworksclient.LocalBridgeRequest
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		reply := agentworksclient.LocalBridgeReply{}
+		switch in.Action {
+		case "list":
+			held := agentworksclient.LocalAgentState{AgentAttachment: agentworksclient.AgentAttachment{AgentName: "b", Provider: "claude", SessionID: "other"}, Online: true}
+			reply.AgentStates = []agentworksclient.LocalAgentState{held}
+		case "agent_online":
+			reply.Result, _ = json.Marshal(map[string]bool{"online": serverOnline[in.AgentName]})
+		}
+		_ = json.NewEncoder(w).Encode(reply)
+	})}
+	go srv.Serve(ln)
+	defer srv.Close()
+
+	folder := t.TempDir()
+	login := filepath.Join(dir, "login.json")
+	if err = os.WriteFile(login, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a", "b", "c"} { // c is the most recent
+		rememberAutoAttach(dir, "claude", folder, agentworksclient.AgentAttachment{AgentName: name}, login)
+	}
+	req := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "new", HostKey: "h"}
+	free := freeAutoAttachRecords(context.Background(), dir, req, folder)
+	if len(free) != 1 || free[0].Name != "a" {
+		t.Fatalf("c is online on the server and b is held by a live chat; only a is free: %+v", free)
+	}
+	if line := autoAttachOnStart(context.Background(), dir, &options{}, req, folder); !strings.Contains(line, "agent:a (most recent)") {
+		t.Fatalf("the hint must name the agent a bare attach would take: %q", line)
+	}
+	serverOnline["c"] = false
+	if free = freeAutoAttachRecords(context.Background(), dir, req, folder); len(free) != 2 || free[0].Name != "c" {
+		t.Fatalf("with c free again the most recent free agent comes first: %+v", free)
 	}
 }
