@@ -11,6 +11,7 @@ import (
 	"path"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -72,6 +73,7 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 	// Relay Run chat is enabled by the common product policy in its own slice.
 	// Until then this entry can only open the existing Builder conversation.
 	out["can_ask"] = relayRunCanReadDraft(claims, manifest) && (claims == nil || claims.Scope == "")
+	out = api.maskRelaySecrets(r.Context(), workspace, manifest, out)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(out)
@@ -87,8 +89,7 @@ func relayRunCanReadDraft(claims *UserClaims, manifest *WorkflowManifest) bool {
 	if claims == nil {
 		return !IsMultiUserMode()
 	}
-	access := workflowAccessForManifest(claims, manifest)
-	return access == WorkflowAccessOwner || access == WorkflowAccessWrite
+	return workflowAccessForManifest(claims, manifest) != WorkflowAccessNone
 }
 
 // relayRunCaller reads who started a run from its saved delivery. Empty when the
@@ -314,4 +315,62 @@ func readReportRelayJSON(root *os.Root, name string, target any) bool {
 		return false
 	}
 	return json.NewDecoder(io.LimitReader(f, 256<<10)).Decode(target) == nil
+}
+
+// relaySecretValues are the values of the secrets a Relay's own runs use (the Builder's selection). Runs are visible to
+// everyone with access to the Relay, but secret values never are.
+func (api *StreamingAPI) relaySecretValues(ctx context.Context, workspace string, manifest *WorkflowManifest) []string {
+	if manifest == nil {
+		return nil
+	}
+	owner := workflowExecutionOwnerUserID(manifest)
+	if owner == "" {
+		return nil
+	}
+	selected := api.loadSelectedSecrets(ctx, owner, workspace, manifest.Capabilities.SelectedSecrets)
+	var values []string
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, owner, selected, manifest.Capabilities.SelectedGlobalSecretNames) {
+		if len(secret.Value) >= 4 {
+			values = append(values, secret.Value)
+		}
+	}
+	sort.Slice(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
+	return values
+}
+
+// maskRelaySecrets returns value with every secret value of the Relay replaced by <REDACTED>, in any string inside it.
+func (api *StreamingAPI) maskRelaySecrets(ctx context.Context, workspace string, manifest *WorkflowManifest, value any) map[string]any {
+	secrets := api.relaySecretValues(ctx, workspace, manifest)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return map[string]any{}
+	}
+	var document any
+	if json.Unmarshal(encoded, &document) != nil {
+		return map[string]any{}
+	}
+	out, _ := maskSecretValues(document, secrets).(map[string]any)
+	if out == nil {
+		out = map[string]any{}
+	}
+	return out
+}
+
+func maskSecretValues(value any, secrets []string) any {
+	switch v := value.(type) {
+	case string:
+		for _, secret := range secrets {
+			v = strings.ReplaceAll(v, secret, "<REDACTED>")
+		}
+		return v
+	case []any:
+		for i := range v {
+			v[i] = maskSecretValues(v[i], secrets)
+		}
+	case map[string]any:
+		for key, entry := range v {
+			v[key] = maskSecretValues(entry, secrets)
+		}
+	}
+	return value
 }

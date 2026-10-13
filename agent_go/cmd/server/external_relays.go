@@ -25,7 +25,7 @@ func externalRelayDefinitions(add func(string, string, bool, bool, map[string]an
 	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll relay action=get_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
 	add("run_relay", "Run a published Relay version with JSON input. Omit version for the active release. Requires runs:execute and current Relay/function access. Reuse idempotency_key on retries; poll relay action=get_run. Does not create Run chat.", false, true, map[string]any{"function": externalString("Published function name."), "input": map[string]any{"type": "object"}, "version": map[string]any{"type": "string", "pattern": "^v[1-9][0-9]*$"}, "idempotency_key": key}, "function", "input", "idempotency_key")
 	add("list_relay_runs", "List bounded Relay diagnostics: run/version/caller, input, result, errors, step IDs/outputs/timings and freshness. Product members see all product runs; function-only callers retain their own-run scope. Non-Builders default to the active published version; draft tests require Builder. Pass version v1, v2, etc., or active; limit is 1 to 50 (default 20). Pass returned next_before as before for older records. Truncation/unavailable markers identify omitted evidence. Requires runs:execute or workflows:read.", false, true, map[string]any{"version": map[string]any{"type": "string", "pattern": "^(active|draft|v[1-9][0-9]*)$"}, "limit": externalInteger(1, 50), "before": externalInteger(1, 2147483647)})
-	add("get_relay_run", "Poll your Relay run or draft test by durable run ID. Returns final JSON result, step outputs, status and version (empty for a draft test). Requires runs:execute.", false, true, map[string]any{"run_id": externalString("run_id from relay action=test or relay action=run.")}, "run_id")
+	add("get_relay_run", "Read a run or draft test of this Relay by durable run ID, whoever started it. Returns final JSON result, step outputs, status and version (empty for a draft test). Requires runs:execute.", false, true, map[string]any{"run_id": externalString("run_id from relay action=test or relay action=run.")}, "run_id")
 }
 func isExternalRelayTool(name string) bool {
 	switch name {
@@ -233,7 +233,7 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 			externalError(w, status, "runs_unavailable", message)
 			return
 		}
-		externalJSON(w, out)
+		externalJSON(w, api.maskRelaySecrets(r.Context(), selected.WorkspacePath, selected.Manifest, out))
 	case "get_relay_run":
 		if api.scheduler == nil {
 			externalError(w, 503, "scheduler_unavailable", "Relay scheduler is unavailable")
