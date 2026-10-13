@@ -4,6 +4,7 @@ import (
 	llm "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/utils"
 	"strings"
 )
@@ -74,7 +75,7 @@ func WithPlatformCodingProviders(profile Profile) Profile {
 func PlatformModelMetadata() []*llmtypes.ModelMetadata {
 	var models []*llmtypes.ModelMetadata
 	seen := map[string]bool{}
-	for _, source := range [][]*llmtypes.ModelMetadata{utils.GetAllModelMetadata(), claudecode.GetAllClaudeCodeModels()} {
+	for _, source := range [][]*llmtypes.ModelMetadata{utils.GetAllModelMetadata(), claudecode.GetAllClaudeCodeModels(), musecli.GetAllMuseCLIModels()} {
 		for _, model := range source {
 			if model == nil || strings.TrimSpace(model.Provider) == "" || strings.TrimSpace(model.ModelID) == "" {
 				continue

@@ -200,7 +200,7 @@ func buildAutoPublishedCodingAgentLLMs(ctx context.Context, saved []StoredPublis
 		existing[publishedLLMIdentityKey(clean)] = true
 	}
 
-	providers := []string{"claude-code", "codex-cli"}
+	providers := []string{"claude-code", "codex-cli", "muse-cli"}
 	generated := make([]StoredPublishedLLM, 0, 16)
 	for _, provider := range providers {
 		if !supportedSet[provider] {
@@ -263,6 +263,11 @@ func autoPublishedCodingAgentModelMetadata(provider string) []*llmtypes.ModelMet
 		}
 		modelID := strings.TrimSpace(model.ModelID)
 		if modelID == "" || seen[modelID] || isCodingAgentAliasModel(provider, modelID) {
+			continue
+		}
+		if provider == "muse-cli" && modelID != "muse-wonder-1.0" && modelID != "muse-spark-1.3-contributor" {
+			// Auto-publish only the current Muse picks; the rest of the
+			// catalog stays available for manual Library publishing.
 			continue
 		}
 		seen[modelID] = true
@@ -363,6 +368,9 @@ func autoPublishedReasoningEfforts(provider string, model *llmtypes.ModelMetadat
 	desired := []string{"high", "xhigh"}
 	if strings.EqualFold(provider, "claude-code") {
 		desired = []string{"high", "max"}
+	}
+	if strings.EqualFold(provider, "muse-cli") && strings.EqualFold(strings.TrimSpace(model.ModelID), "muse-spark-1.3-contributor") {
+		desired = []string{"high"}
 	}
 
 	result := make([]string, 0, len(desired))
