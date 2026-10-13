@@ -51,6 +51,12 @@ export type ScreencastGeometry = { offsetTop?: number; pageScaleFactor?: number;
  * `offsetTop` (in page units) from the surface top and centred horizontally, scaled by `pageScaleFactor`. Mapping
  * through that in-frame page rect is exact for such frames; without plausible geometry the whole-frame mapping
  * above is used unchanged. Scroll offsets describe page scroll, which viewport coordinates already account for.
+ *
+ * The frame's own size is the dispatch space, not the reported page size: on the live release the stream
+ * reported 1280x720 while the captured frame was 1280x633, so scaling clicks to 720 sent bottom clicks below
+ * the page the frame shows (the footer link at the frame's bottom landed at y=671 and missed, PLAT-776,
+ * release 11141116). The reported size still drives the letterboxed-page branch above, where the page
+ * genuinely sits inside a larger surface.
  */
 export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }, frame?: { width: number; height: number }, screencast?: ScreencastGeometry) {
   const shown = frame && frame.width > 0 && frame.height > 0 ? frame : viewport
@@ -74,12 +80,15 @@ export function mapToViewport(clientX: number, clientY: number, rect: { left: nu
       }
     }
   }
-  // One painted pixel is this many page units on each axis (exactly 1 when the frame is the page).
-  const toPageX = viewport.width / shown.width
-  const toPageY = viewport.height / shown.height
+  // Dispatch in the frame's own pixels (see above): one painted pixel is one
+  // page unit on each axis. Without a frame size the reported page size is
+  // the only space there is.
+  const page = frame && frame.width > 0 && frame.height > 0 ? frame : viewport
+  const toPageX = page.width / shown.width
+  const toPageY = page.height / shown.height
   return {
-    x: clamp(frameX * toPageX, viewport.width),
-    y: clamp(frameY * toPageY, viewport.height),
+    x: clamp(frameX * toPageX, page.width),
+    y: clamp(frameY * toPageY, page.height),
   }
 }
 const PAGE_SIZES = [

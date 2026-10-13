@@ -425,16 +425,30 @@ it('maps pointer positions through the letterboxed frame', () => {
 
 it('places clicks by the frame that is painted, not by the page size the stream reports', () => {
   // A 1000×500 frame (2:1) shown in a 700×630 box while the stream reports a 1280×720 page (16:9): the frame is painted
-  // 700×350 with 140px bars above and below. Going by the reported size put a click at the top of the frame 40 page units low.
+  // 700×350 with 140px bars above and below. Dispatch happens in the frame's own pixels, so the painted centre is the
+  // frame's centre; going by the reported size alone put a click at the top of the frame 40 page units low.
   const rect = { left: 0, top: 0, width: 700, height: 630 }
   const page = { width: 1280, height: 720 }
   const frame = { width: 1000, height: 500 }
   const at = (x: number, y: number) => mapToViewport(x, y, rect, page, frame)
-  expect(at(350, 315).x).toBeCloseTo(640, 5)
-  expect(at(350, 315).y).toBeCloseTo(360, 5)
+  expect(at(350, 315).x).toBeCloseTo(500, 5)
+  expect(at(350, 315).y).toBeCloseTo(250, 5)
   expect(at(350, 140).y).toBeCloseTo(0, 5)
-  expect(at(0, 490).y).toBeCloseTo(720, 5)
+  expect(at(0, 490).y).toBeCloseTo(500, 5)
   expect(mapToViewport(350, 140, rect, page).y).toBeCloseTo(40, 3)
+})
+
+it('keeps a bottom click inside the frame when the stream reports a taller page (PLAT-776)', () => {
+  // Live release 11141116: the frame is 1280x633 while the stream reports a 1280x720 viewport, painted
+  // 640x603 with object-contain. Scaling to 720 sent the footer click to y=671, below the page the frame
+  // shows; in frame pixels the same click stays inside 0..633.
+  const rect = { left: 0, top: 0, width: 640, height: 603 }
+  const page = { width: 1280, height: 720 }
+  const frame = { width: 1280, height: 633 }
+  const bottom = mapToViewport(320, 459, rect, page, frame)
+  expect(bottom.y).toBeGreaterThan(600)
+  expect(bottom.y).toBeLessThanOrEqual(633)
+  expect(bottom.x).toBeCloseTo(640, 0)
 })
 
 it('maps clicks through the page rect inside a letterboxed screencast frame', () => {
