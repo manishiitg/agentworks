@@ -367,12 +367,18 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
 
   const overallSummary = useMemo(() => {
     if (scopedCosts && Object.keys(scopedCosts.by_scope || {}).length > 0) {
-      return {
-        totalCost: scopedCosts.total.total_cost_usd,
-        totalTokens: totalTokens(scopedCosts.total),
-        totalInputTokens: inputTokens(scopedCosts.total),
-        totalOutputTokens: scopedCosts.total.completion_tokens,
-        totalRuns: aggregateSummary?.totalRuns || 0
+      const ledgerTokens = totalTokens(scopedCosts.total)
+      const artifactTokens = (aggregateSummary?.totalTokens || 0) + (phaseCostSummary?.totalTokens || 0)
+      // The daily history below falls back to run artifacts when the ledger
+      // has no priced usage; the header must agree instead of showing zero.
+      if (ledgerTokens > 0 || scopedCosts.total.total_cost_usd > 0 || artifactTokens === 0) {
+        return {
+          totalCost: scopedCosts.total.total_cost_usd,
+          totalTokens: ledgerTokens,
+          totalInputTokens: inputTokens(scopedCosts.total),
+          totalOutputTokens: scopedCosts.total.completion_tokens,
+          totalRuns: aggregateSummary?.totalRuns || 0
+        }
       }
     }
     if (!aggregateSummary && !phaseCostSummary) return null
