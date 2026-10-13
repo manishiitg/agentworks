@@ -25,7 +25,7 @@ import (
 func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "starter-guide-test-signing-secret")
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,relays,knowledgebase,mcp-gateway,code")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,relays,knowledgebase,mcp-gateway,code")
 	// The external help dispatcher inventories workflows before routing even a
 	// Brain-only call. Supply the real document handler and an empty workspace.
 	docs := t.TempDir()
@@ -72,8 +72,13 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if guide["content"] != canonical || guide["source_version"] != productguide.GuideVersion {
 		t.Fatal("MCP guide differs from canonical versioned source", guide)
 	}
-	if strings.Contains(canonical, "### SparkQuill") || strings.Contains(canonical, "### Video Studio") {
-		t.Fatal("disabled optional products advertised")
+	for _, excluded := range []string{"Goals", "SparkQuill", "Video Studio", "Bullpen"} {
+		if strings.Contains(canonical, excluded) {
+			t.Fatalf("unavailable or personal product %s advertised in the guide", excluded)
+		}
+	}
+	if !strings.Contains(canonical, "### Should I use a Crew or a Relay?") || strings.Contains(canonical, "### Should I use Goals or") {
+		t.Fatal("product-choice FAQ does not match installation availability")
 	}
 	cache := remote("help", map[string]any{"action": "topic", "topic": "product-guide", "known_version": guide["version"]})
 	if cache["unchanged"] != true || cache["content"] != nil {
@@ -136,9 +141,28 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if content, err := os.ReadFile(filepath.Join(install, "agentworks", "references", "products.md")); err != nil || string(content) != files["references/products.md"] {
 		t.Fatal("CLI product reference missing or different", err)
 	}
-	if !strings.Contains(agentworksclient.EntrySkill(), "| Goals |") || !strings.Contains(agentworksclient.EntrySkill(), "| Brain |") {
+	if strings.Contains(agentworksclient.EntrySkill(), "| Goals |") || !strings.Contains(agentworksclient.EntrySkill(), "| Crew |") || !strings.Contains(agentworksclient.EntrySkill(), "| Brain |") {
 		t.Fatal("entry skill lacks product routing overview")
 	}
+	// The runtime allowlist alone must produce the same restricted guide and
+	// skill as explicit surfaces, including the FAQ and supporting files.
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
+	t.Setenv("AGENT_PRODUCTS", "work,relays,knowledgebase,mcp-gateway,code")
+	if err := seedKnowledgebaseStarter(t.Context(), service, admin); err != nil {
+		t.Fatal(err)
+	}
+	if got := remote("help", map[string]any{"action": "topic", "topic": "product-guide"}); got["content"] != canonical {
+		t.Fatal("runtime product allowlist and surface projection disagree")
+	}
+	for _, file := range knowledgebaseStarterFiles() {
+		for _, excluded := range []string{"Goals", "SparkQuill", "Video Studio", "Bullpen"} {
+			if strings.Contains(file.Content, excluded) {
+				t.Fatalf("starter %s advertises unavailable or personal product %s", file.Path, excluded)
+			}
+		}
+	}
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,relays,knowledgebase,mcp-gateway,code")
 	// A later source release refreshes only known, untouched platform copies.
 	config, err := knowledgebaseConfig()
 	if err != nil {
@@ -160,7 +184,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	}
 	// Installation changes refresh the projection without requiring a new
 	// semantic release, and also change the skill's guide fingerprint/version.
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,relays,knowledgebase,mcp-gateway,code,sparkquill")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,relays,knowledgebase,mcp-gateway,code,bullpen,sparkquill,video-studio")
 	projection := futureStarterFiles(knowledgebaseStarterFiles(), "1.1.0")
 	beforeProjection, err := service.CallTool(t.Context(), admin, "brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})
 	if err != nil {
@@ -173,13 +197,24 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if err != nil || afterProjection.(map[string]any)["version"] == beforeProjection.(map[string]any)["version"] {
 		t.Fatal("product projection did not change installable package revision", err)
 	}
+	for _, raw := range afterProjection.(map[string]any)["files"].([]any) {
+		content := raw.(map[string]any)["content"].(string)
+		if strings.Contains(content, "SparkQuill") || strings.Contains(content, "Video Studio") {
+			t.Fatal("personal products reached an installable Brain skill file")
+		}
+	}
+	for _, content := range agentworksclient.EntrySkillFiles() {
+		if strings.Contains(content, "SparkQuill") || strings.Contains(content, "Video Studio") {
+			t.Fatal("personal products reached an installed CLI skill file")
+		}
+	}
 	futureFiles = projection
 	_ = cli.Close()
 	cli = dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
 	read = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
-	if !strings.Contains(read["content"].(string), "### SparkQuill") {
-		t.Fatal("enabled product did not reach Brain guide")
+	if !strings.Contains(read["content"].(string), "### Bullpen") || strings.Contains(read["content"].(string), "SparkQuill") || strings.Contains(read["content"].(string), "Video Studio") {
+		t.Fatal("enabled work product or personal-product exclusion incorrect in Brain guide")
 	}
 	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, originalFiles); err != nil {
 		t.Fatal(err)

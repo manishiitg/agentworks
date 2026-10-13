@@ -16,7 +16,7 @@ import (
 //go:embed skills/agentworks/SKILL.md
 var installedSkillFile embed.FS
 
-const EntrySkillVersion = "1.0.0"
+const EntrySkillVersion = "1.0.1"
 
 // EntrySkillFiles is shared by CLI installation and hosted skill packages.
 func EntrySkillFiles() map[string]string {

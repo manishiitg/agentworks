@@ -1,5 +1,14 @@
 # Decisions and open issues
 
+## 2026-10-13 — Shared product guidance covers work products (PLAT-856)
+
+The canonical MCP/CLI guide and Brain starter skill omit the personal products,
+even when installed. Product-choice FAQ answers and usage guidance obey the same
+installation and caller selection as product details. Existing customized notes
+and skill packages remain user-owned; fetching current MCP guidance does not
+replace them. Why: the owner wants shared onboarding focused on work products.
+Ticket: PLAT-856, issue 856-75.
+
 ## 2026-10-13 — Bullpen directory renders before optional usage (PLAT-861)
 
 Browser agent, group and notice directories read a complete atomic workspace

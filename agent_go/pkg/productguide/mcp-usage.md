@@ -13,7 +13,13 @@ Use this skill when your own agent needs to use AgentWorks products or shared Br
 
 Discover the accessible project before acting and use its returned ID, never a host path. Read current state before a mutation. Native plan/file/source edits need the returned revision where the schema requires it, plus a unique request ID; reuse that ID only for an identical retry. Follow the product's test, publish and execution lifecycle. Starting a call is not proof it finished: retain its call, session or run ID and read its status/evidence using the discovered tool.
 
-Load the product's current guidance before setup or execution: Crew authoring for Crew functions and setup, Relay Builder for Relay source/test/publish, and the relevant plan/Pulse/run topics for Goals. For other products, discover the available guidance rather than inventing a topic or tool name.
+Load the product's current guidance before setup or execution:
+
+<!-- product:work -->- Crew: load Crew authoring for functions and setup.
+<!-- /product --><!-- product:relays -->- Relays: load Relay Builder for source, test and publish.
+<!-- /product --><!-- product:agentworks -->- Goals: load the relevant plan, Pulse and run topics.
+<!-- /product -->
+For other products, discover the available guidance rather than inventing a topic or tool name.
 
 <!-- product:knowledgebase -->## Brain notes and skills
 

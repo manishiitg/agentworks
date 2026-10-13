@@ -153,10 +153,13 @@ and CAS. Whole customized skill packages remain unchanged. Successful bootstrap
 is cached per service and rendered source within the process. Native Brain history
 attributes these writes to the installation's active administrator.
 
-Guide and skill source versions start at `1.0.0`; their `references/versions.json`
+Guide and MCP usage skill source versions are `1.0.1`; their `references/versions.json`
 records exact content SHA-256 fingerprints. MCP topic/package versions identify
 the current rendered content for conditional refresh. Brain's returned opaque
 entry version is the value for `expected_version`; source versions cannot replace
 it. Installed CLI skills and hosted ZIP/plugin packages include the product
 reference and versions file. Bump the relevant source version when editing either
 canonical source; the fingerprints still detect exact content or product changes.
+The guide includes a product-choice FAQ and describes work products only. Personal
+products are omitted even when installed. Product comparisons appear only when
+both products are enabled, with caller selection also applied to live MCP topics.

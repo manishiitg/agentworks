@@ -1,6 +1,6 @@
 Choose a product by the work you want to accomplish. This guide describes the products; the current server configuration, connection consent and your roles decide which operations you can actually use. Discover those operations before acting.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Brain's Reader, Editor and Owner are folder permission names.
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. <!-- product:knowledgebase -->Brain's Reader, Editor and Owner are folder permission names.<!-- /product -->
 
 | Product | Choose it for |
 |---|---|
@@ -11,10 +11,8 @@ Agent conversations have two modes: **Builder** is the owner's workspace for bui
 <!-- /product --><!-- product:mcp-gateway -->| Vault | Shared MCP integrations, secrets and centrally managed access. |
 <!-- /product --><!-- product:code -->| Code | Repository work and private coding-agent projects. |
 <!-- /product --><!-- product:bullpen -->| Bullpen | Connecting, finding and coordinating your external coding agents. |
-<!-- /product --><!-- product:sparkquill -->| SparkQuill | Learning workspaces with sources, notebooks and writing support. |
-<!-- /product --><!-- product:video-studio -->| Video Studio | Creating and editing videos, compositions and their media. |
 <!-- /product -->
-Products can work together: a Goal can call a Crew; a Crew or workflow can read permitted Brain notes and use permitted integrations. Access to one product never grants access to another project's content or connected account.
+Products can work together when this installation enables them and your current access allows it. Access to one product never grants access to another project's content or connected account.
 
 ## Product details
 
@@ -81,26 +79,45 @@ Use Bullpen to connect and coordinate external agents while they keep working in
 - **Access:** authorized account connections and mailbox ownership apply. Stored or online does not mean a receiving agent has processed a message; peer messages do not grant human permission.
 - **Example:** ask a reviewer agent to inspect a specific candidate and return its findings.
 
-<!-- /product --><!-- product:sparkquill -->### SparkQuill
-
-This optional product supports learning and writing with sources, notebooks and its own workspace guidance. Use it for that learning workflow when installed and available; discover its actual operations before calling them.
-
-<!-- /product --><!-- product:video-studio -->### Video Studio
-
-This optional product supports video compositions, media and rendering workflows. Use it for video creation or editing when installed and available; load its own workflow skills and discover actual tools before calling them.
-
 <!-- /product -->
-## Choosing between products
+## Product choice FAQ
 
-- An ongoing outcome belongs in Goals; a reusable specialist belongs in Crew; a tested code pipeline belongs in Relays.
-- Put reusable facts and procedures in Brain. Use Vault for shared access to connected systems and secrets.
-- Use Code for repository changes and Bullpen for coordination between the agents doing that work.
-- A product missing from the live catalog may be disabled, outside the connection's consent or outside your current access. Check context; do not infer that another tool can bypass that boundary.
+<!-- product:agentworks --><!-- product:work -->### Should I use Goals or a Crew?
+
+Use **Goals** for an ongoing outcome that needs a plan, measures, scheduled work and follow-up. Use a **Crew** for a reusable specialist that answers requests or exposes functions. A Goal can call a Crew when both are enabled and accessible.
+
+<!-- /product --><!-- /product --><!-- product:work --><!-- product:relays -->### Should I use a Crew or a Relay?
+
+Use a **Crew** when the work needs an agent's judgment, standing instructions, memory or conversation. Use a **Relay** when the work is a repeatable code pipeline that you want to test and publish as a version before production runs.
+
+<!-- /product --><!-- /product --><!-- product:agentworks --><!-- product:relays -->### Should I use Goals or Relays?
+
+Use **Goals** to pursue and reassess an outcome over time. Use **Relays** to execute a defined code pipeline with a test and release lifecycle.
+
+<!-- /product --><!-- /product --><!-- product:knowledgebase --><!-- product:mcp-gateway -->### Should I put this in Brain or Vault?
+
+Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Vault** for shared access to integrations and secrets. Store credentials through the supported secure setup flow, never in a guide or ordinary shared note.
+
+<!-- /product --><!-- /product --><!-- product:code --><!-- product:work -->### Should I use Code or a Crew?
+
+Use **Code** to develop a repository, investigate failures or review code changes. Use a **Crew** for a reusable specialist that serves requests across projects.
+
+<!-- /product --><!-- /product --><!-- product:code --><!-- product:bullpen -->### Should I use Code or Bullpen?
+
+Use **Code** for repository work in a coding-agent workspace. Use **Bullpen** to find and coordinate agents already working in their external coding clients.
+
+<!-- /product --><!-- /product --><!-- product:knowledgebase -->### Does Brain run the work described in a note or skill?
+
+**Brain** stores and shares the knowledge or skill package. Choose an enabled execution product or your own agent to carry out the work, using its current tools and permissions.
+
+<!-- /product -->### Why is a product or tool missing?
+
+It may be disabled on this installation, outside this connection's consent or outside your current access. Check the live catalog and context; another tool cannot bypass that boundary. <!-- product:knowledgebase -->Shared Brain guidance describes the installation. <!-- /product -->Live MCP guidance also reflects the caller's allowed products.
 
 ## Versions and local copies
 
-The guide has a semantic source version. Its content fingerprint identifies the exact rendered copy, including the installation's enabled products. MCP guidance also returns a per-topic version for `known_version`/`known_versions` refresh. Brain returns its own opaque entry versions for concurrency checks; use those as `expected_version`, never the guide's semantic version.
+The guide has a semantic source version. Its content fingerprint identifies the exact rendered copy, including the installation's enabled products. MCP guidance also returns a per-topic version for `known_version`/`known_versions` refresh. <!-- product:knowledgebase -->Brain returns its own opaque entry versions for concurrency checks; use those as `expected_version`, never the guide's semantic version.<!-- /product -->
 
-Brain starter notes and skills are created when missing. New source releases and product availability changes refresh only untouched platform-created copies, using the current Brain revision. Pre-existing user notes, customized skill packages and deliberately deleted copies are preserved. CLI installation still needs explicit force to replace an existing client skill. Fetch current server guidance to compare with a saved copy.
+<!-- product:knowledgebase -->Brain starter notes and skills are created when missing. New source releases and product availability changes refresh only untouched platform-created copies, using the current Brain revision. Pre-existing user notes, customized skill packages and deliberately deleted copies are preserved. <!-- /product -->CLI installation still needs explicit force to replace an existing client skill. Fetch current server guidance to compare with a saved copy.
 
-CLI and hosted packages describe the installation's enabled products; live MCP topics additionally use the current caller's product selection. Both render the same canonical source. Bootstrap changes are attributed in Brain history to the active administrator used for installation; no additional account or role is created.
+CLI and hosted packages describe the installation's enabled products; live MCP topics additionally use the current caller's product selection. Both render the same canonical source. <!-- product:knowledgebase -->Bootstrap changes are attributed in Brain history to the active administrator used for installation; no additional account or role is created.<!-- /product -->

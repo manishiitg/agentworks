@@ -2,7 +2,7 @@
 name: agentworks
 description: Use AgentWorks workflows, Crews, Relays, dashboards, Brain and Vault through the tools and guidance allowed by the current MCP connection.
 metadata:
-  version: 1.0.0
+  version: 1.0.1
 ---
 
 # AgentWorks
