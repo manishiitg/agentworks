@@ -1925,7 +1925,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Daily ping to keep a Supabase free-tier auth project from auto-pausing.
 	// No-op unless AUTH_PROVIDERS includes supabase.
 	StartSupabaseKeepalive(context.Background())
-	startBrainAutoPush(context.Background())
+	brainRunContext, stopBrainBackground := context.WithCancel(context.Background())
+	defer stopBrainBackground()
+	startBrainAutoPush(brainRunContext)
 	fmt.Printf("📋 Supported Providers: %s\n", os.Getenv("SUPPORTED_LLM_PROVIDERS"))
 	fmt.Printf("📁 Config: %s\n", config.MCPConfigPath)
 
@@ -3261,6 +3263,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	<-c
+	stopBrainBackground()
 	stopCLIUpdates()
 
 	fmt.Println("\n🛑 Shutting down server...")
@@ -3299,6 +3302,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	} else {
 		stopHTTPProgress()
 		fmt.Printf("✅ HTTP server stopped (%s)\n", time.Since(httpStart).Round(time.Millisecond))
+	}
+
+	// Finish Brain's lifecycle after HTTP admission stops. Close cancels any
+	// remaining Git/backup work and retains the writer lease if draining times out.
+	if err := closeKnowledgebaseService(); err != nil {
+		log.Printf("[BRAIN] shutdown: %v", err)
 	}
 
 	// Close all MCP session connections to prevent orphaned subprocesses

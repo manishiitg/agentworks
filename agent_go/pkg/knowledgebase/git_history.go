@@ -23,7 +23,7 @@ var commitID = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 const maxChangeCommits = 200
 const maxDiffBytes = 200 << 10
 
-func (s *Service) gitInLive(ctx context.Context, env []string, args ...string) (string, error) {
+func (s *builtinService) gitInLive(ctx context.Context, env []string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = s.live
 	cmd.Env = append(append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0"), env...)
@@ -31,14 +31,14 @@ func (s *Service) gitInLive(ctx context.Context, env []string, args ...string) (
 	return string(out), err
 }
 
-func (s *Service) hasGitHistory() bool {
+func (s *builtinService) hasGitHistory() bool {
 	_, err := os.Stat(filepath.Join(s.live, ".git"))
 	return err == nil
 }
 
 // recordHistory commits whatever changed in Brain's folder, as actor. Failures never fail the save: the change is
 // already live and is committed with the next one.
-func (s *Service) recordHistory(actor, message string) {
+func (s *builtinService) recordHistory(actor, message string) {
 	if !s.hasGitHistory() {
 		return
 	}
@@ -95,7 +95,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 // readableNotePath reports whether p may see a note path's folder.
-func (s *Service) readableNotePath(p Principal, notePath string) bool {
+func (s *builtinService) readableNotePath(p Principal, notePath string) bool {
 	folder := path.Dir(notePath)
 	if folder == "." {
 		folder = ""
@@ -103,7 +103,7 @@ func (s *Service) readableNotePath(p Principal, notePath string) bool {
 	return s.effective(p, folder) >= roleReader
 }
 
-func (s *Service) headCommit(ctx context.Context) string {
+func (s *builtinService) headCommit(ctx context.Context) string {
 	out, err := s.gitInLive(ctx, nil, "rev-parse", "--verify", "-q", "HEAD")
 	if err != nil {
 		return ""
@@ -111,7 +111,7 @@ func (s *Service) headCommit(ctx context.Context) string {
 	return strings.TrimSpace(out)
 }
 
-func (s *Service) listChanges(ctx context.Context, p Principal, a map[string]any) (any, error) {
+func (s *builtinService) listChanges(ctx context.Context, p Principal, a map[string]any) (any, error) {
 	if !s.hasGitHistory() {
 		return nil, kbErr("UNAVAILABLE", "Brain's history is not set up on this server yet.")
 	}
@@ -179,7 +179,7 @@ func (s *Service) listChanges(ctx context.Context, p Principal, a map[string]any
 	return result, nil
 }
 
-func (s *Service) noteDiff(ctx context.Context, p Principal, a map[string]any) (any, error) {
+func (s *builtinService) noteDiff(ctx context.Context, p Principal, a map[string]any) (any, error) {
 	if !s.hasGitHistory() {
 		return nil, kbErr("UNAVAILABLE", "Brain's history is not set up on this server yet.")
 	}

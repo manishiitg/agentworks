@@ -28,8 +28,10 @@ type gitWorkspace struct {
 	PublishedTip string `json:"published_tip"`
 }
 
-func (s *Service) gitWorkspacePath() string { return filepath.Join(s.private, "git-workspace.json") }
-func (s *Service) readGitWorkspace() (gitWorkspace, error) {
+func (s *builtinService) gitWorkspacePath() string {
+	return filepath.Join(s.private, "git-workspace.json")
+}
+func (s *builtinService) readGitWorkspace() (gitWorkspace, error) {
 	var state gitWorkspace
 	b, err := os.ReadFile(s.gitWorkspacePath())
 	if os.IsNotExist(err) {
@@ -63,7 +65,7 @@ func validGitOperation(op string) bool {
 
 // RunGit is the repository-wide boundary used by Files and the existing backup
 // MCP tool. The callback is server code, never a client-supplied shell command.
-func (s *Service) RunGit(ctx context.Context, p Principal, a map[string]any, run func(context.Context, string) (any, error)) (any, error) {
+func (s *builtinService) RunGit(ctx context.Context, p Principal, a map[string]any, run func(context.Context, string) (any, error)) (any, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	op := stringArg(a, "op")
@@ -600,7 +602,7 @@ func gitWorkspaceFiles(dir string) (map[string][]byte, error) {
 	}
 	return files, err
 }
-func (s *Service) gitImportChanges(p Principal, regs []folderRegistry, files map[string][]byte) ([]fileChange, error) {
+func (s *builtinService) gitImportChanges(p Principal, regs []folderRegistry, files map[string][]byte) ([]fileChange, error) {
 	folders := map[string]*folderRegistry{}
 	names := map[string]string{}
 	for i := range regs {
@@ -721,8 +723,10 @@ type gitPushIntent struct {
 	Result      any          `json:"result"`
 }
 
-func (s *Service) gitPushIntentPath() string { return filepath.Join(s.private, "git-push-intent.json") }
-func (s *Service) readGitPushIntent() (*gitPushIntent, error) {
+func (s *builtinService) gitPushIntentPath() string {
+	return filepath.Join(s.private, "git-push-intent.json")
+}
+func (s *builtinService) readGitPushIntent() (*gitPushIntent, error) {
 	b, err := os.ReadFile(s.gitPushIntentPath())
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -736,7 +740,7 @@ func (s *Service) readGitPushIntent() (*gitPushIntent, error) {
 	}
 	return &intent, nil
 }
-func (s *Service) finishGitPush(ctx context.Context, intent gitPushIntent, authorize func() error) (any, error) {
+func (s *builtinService) finishGitPush(ctx context.Context, intent gitPushIntent, authorize func() error) (any, error) {
 	if err := authorize(); err != nil {
 		return nil, err
 	}
@@ -797,7 +801,7 @@ func (s *Service) finishGitPush(ctx context.Context, intent gitPushIntent, autho
 	return intent.Result, nil
 }
 
-func (s *Service) cleanupGitGenerations() error {
+func (s *builtinService) cleanupGitGenerations() error {
 	state, err := s.readGitWorkspace()
 	if err != nil {
 		return err

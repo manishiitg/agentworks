@@ -12,7 +12,7 @@ import (
 // ReserveIntegrationRequest shares the public tool/request-ID namespace with
 // ordinary content mutations. Integration effects are checkpointed by their
 // server-owned receipt; a reservation never claims the effect has completed.
-func (s *Service) ReserveIntegrationRequest(ctx context.Context, p Principal, tool string, args map[string]any) (string, error) {
+func (s *builtinService) ReserveIntegrationRequest(ctx context.Context, p Principal, tool string, args map[string]any) (string, error) {
 	// Same key as CallTool, which converts a legacy tool name first (PLAT-608).
 	tool = CanonicalToolName(tool)
 	unlock, err := s.lock(ctx, true)
@@ -60,7 +60,7 @@ func (s *Service) ReserveIntegrationRequest(ctx context.Context, p Principal, to
 	return strings.TrimSuffix(filepath.Base(path), ".json"), nil
 }
 
-func (s *Service) checkIntegrationRequest(path, hash string) error {
+func (s *builtinService) checkIntegrationRequest(path, hash string) error {
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil

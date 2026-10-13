@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 )
 
-func (s *Service) backupCipher() (cipher.AEAD, error) {
+func (s *builtinService) backupCipher() (cipher.AEAD, error) {
 	if len(s.cfg.BackupEncryptionKey) != 32 {
 		return nil, kbErr("STORAGE_UNAVAILABLE", "The host backup encryption key is unavailable.")
 	}
@@ -18,10 +18,10 @@ func (s *Service) backupCipher() (cipher.AEAD, error) {
 	}
 	return cipher.NewGCM(block)
 }
-func (s *Service) backupCredentialAAD(d backupDestination) []byte {
+func (s *builtinService) backupCredentialAAD(d backupDestination) []byte {
 	return []byte("agentworks:knowledgebase:backup:" + s.cfg.OrganizationID + "\x00" + d.Remote + "\x00" + d.Username)
 }
-func (s *Service) encryptBackupPAT(d backupDestination, pat string) (string, error) {
+func (s *builtinService) encryptBackupPAT(d backupDestination, pat string) (string, error) {
 	aead, err := s.backupCipher()
 	if err != nil {
 		return "", err
@@ -32,7 +32,7 @@ func (s *Service) encryptBackupPAT(d backupDestination, pat string) (string, err
 	}
 	return base64.StdEncoding.EncodeToString(aead.Seal(nonce, nonce, []byte(pat), s.backupCredentialAAD(d))), nil
 }
-func (s *Service) decryptBackupPAT(d backupDestination) (string, error) {
+func (s *builtinService) decryptBackupPAT(d backupDestination) (string, error) {
 	aead, err := s.backupCipher()
 	if err != nil {
 		return "", err
@@ -54,7 +54,7 @@ type backupGitCredential struct {
 }
 type backupGitCredentialKey struct{}
 
-func (s *Service) withBackupCredentials(ctx context.Context) (context.Context, error) {
+func (s *builtinService) withBackupCredentials(ctx context.Context) (context.Context, error) {
 	d, err := s.configuredBackupDestination()
 	if err != nil {
 		return ctx, err

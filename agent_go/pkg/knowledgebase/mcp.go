@@ -225,7 +225,7 @@ func ValidateToolArguments(tool string, args map[string]any) error {
 	return nil
 }
 
-func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
+func (s *builtinService) CallTool(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
 	tool = CanonicalToolName(tool)
 	if err := ValidateToolArguments(tool, args); err != nil {
 		return nil, err
@@ -250,7 +250,7 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 			if operation.operation != "manage_knowledgebase_access" {
 				delete(translated, "action")
 			}
-			p.requestTool, p.requestArguments = tool, args
+			p.RequestTool, p.RequestArguments = tool, args
 			return s.Call(ctx, p, operation.operation, translated)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/brainapi"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,30 +16,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type Snapshot struct {
-	EntryID     string `json:"entry_id,omitempty"`
-	DeletionID  string `json:"deletion_id,omitempty"`
-	Path        string `json:"path"`
-	FolderPath  string `json:"folder_path"`
-	Version     string `json:"version,omitempty"`
-	Sequence    uint64 `json:"content_sequence"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	Content     []byte `json:"-"`
-}
-type Receipt struct {
-	Branch         string     `json:"branch,omitempty"`
-	ID             string     `json:"receipt_id"`
-	IdentityID     string     `json:"-"`
-	OrganizationID string     `json:"-"`
-	Base           string     `json:"base_commit_id"`
-	Commit         string     `json:"prepared_commit_id"`
-	Selections     []Snapshot `json:"selections"`
-	CreatedAt      string     `json:"created_at"`
-	ExpiresAt      string     `json:"expires_at"`
-	State          string     `json:"state"`
-	PushedAt       string     `json:"pushed_at,omitempty"`
-	LastError      string     `json:"last_backup_error,omitempty"`
-}
+type Snapshot = brainapi.Snapshot
+type Receipt = brainapi.Receipt
 
 // Receipt's private owner fields are serialized only through receiptDisk.
 type receiptDisk struct {
@@ -62,14 +41,14 @@ type backupState struct {
 	ObservedTip      string                   `json:"observed_tip,omitempty"`
 }
 
-func (s *Service) repo() string { return filepath.Join(s.private, "backup.git") }
-func (s *Service) receiptPath(id string) string {
+func (s *builtinService) repo() string { return filepath.Join(s.private, "backup.git") }
+func (s *builtinService) receiptPath(id string) string {
 	return filepath.Join(s.private, "receipts", id+".json")
 }
-func receiptChange(s *Service, r Receipt) fileChange {
+func receiptChange(s *builtinService, r Receipt) fileChange {
 	return jsonChange(s.receiptPath(r.ID), receiptDisk{Receipt: r, Owner: r.IdentityID, Organization: r.OrganizationID})
 }
-func (s *Service) readReceipt(id string) (Receipt, error) {
+func (s *builtinService) readReceipt(id string) (Receipt, error) {
 	var d receiptDisk
 	if !strings.HasPrefix(id, "receipt_") || strings.ContainsAny(id, "/\\.") {
 		return Receipt{}, kbErr("NOT_FOUND", "Resource not found.")
@@ -88,7 +67,7 @@ func (s *Service) readReceipt(id string) (Receipt, error) {
 	d.Receipt.OrganizationID = d.Organization
 	return d.Receipt, nil
 }
-func (s *Service) receipts() ([]Receipt, error) {
+func (s *builtinService) receipts() ([]Receipt, error) {
 	des, err := os.ReadDir(filepath.Join(s.private, "receipts"))
 	if err != nil {
 		return nil, err
@@ -106,7 +85,7 @@ func (s *Service) receipts() ([]Receipt, error) {
 	}
 	return out, nil
 }
-func (s *Service) backupState() backupState {
+func (s *builtinService) backupState() backupState {
 	var st backupState
 	b, err := os.ReadFile(filepath.Join(s.private, "backup-state.json"))
 	if err == nil {
@@ -117,7 +96,7 @@ func (s *Service) backupState() backupState {
 	}
 	return st
 }
-func (s *Service) publicationLock() (func(), error) {
+func (s *builtinService) publicationLock() (func(), error) {
 	f, err := os.OpenFile(filepath.Join(s.private, "publication.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
@@ -131,7 +110,7 @@ func (s *Service) publicationLock() (func(), error) {
 	}
 	return func() { unix.Flock(int(f.Fd()), unix.LOCK_UN); f.Close() }, nil
 }
-func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args ...string) (string, error) {
+func (s *builtinService) git(ctx context.Context, stdin []byte, extraEnv []string, args ...string) (string, error) {
 	var err error
 	ctx, err = s.withBackupCredentials(ctx)
 	if err != nil {
@@ -154,7 +133,7 @@ func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
-func (s *Service) ensureRepo(ctx context.Context) error {
+func (s *builtinService) ensureRepo(ctx context.Context) error {
 	destination, err := s.configuredBackupDestination()
 	if err != nil {
 		return err
@@ -201,7 +180,7 @@ func (s *Service) ensureRepo(ctx context.Context) error {
 	}
 	return nil
 }
-func (s *Service) remoteTip(ctx context.Context) (string, error) {
+func (s *builtinService) remoteTip(ctx context.Context) (string, error) {
 	destination, err := s.backupDestination()
 	if err != nil {
 		return "", err
@@ -223,7 +202,7 @@ func (s *Service) remoteTip(ctx context.Context) (string, error) {
 	tip, err := s.git(ctx, nil, nil, "rev-parse", "refs/remotes/origin/"+destination.Branch)
 	return tip, err
 }
-func (s *Service) treeFingerprint(ctx context.Context, tip, p string) (string, bool, error) {
+func (s *builtinService) treeFingerprint(ctx context.Context, tip, p string) (string, bool, error) {
 	if tip == "" {
 		return "", false, nil
 	}
@@ -244,7 +223,7 @@ func (s *Service) treeFingerprint(ctx context.Context, tip, p string) (string, b
 	}
 	return digest(b), true, nil
 }
-func (s *Service) gitBytes(ctx context.Context, args ...string) ([]byte, error) {
+func (s *builtinService) gitBytes(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", append(s.gitArgs(), args...)...)
 	cmd.Env = gitEnvironment()
 	b, e := cmd.Output()
@@ -253,7 +232,7 @@ func (s *Service) gitBytes(ctx context.Context, args ...string) ([]byte, error) 
 	}
 	return b, nil
 }
-func (s *Service) authorizeSelections(p Principal, r Receipt) error {
+func (s *builtinService) authorizeSelections(p Principal, r Receipt) error {
 	if r.IdentityID != p.IdentityID || r.OrganizationID != s.cfg.OrganizationID {
 		return kbErr("NOT_FOUND", "Resource not found.")
 	}
@@ -279,7 +258,7 @@ func (s *Service) authorizeSelections(p Principal, r Receipt) error {
 	}
 	return nil
 }
-func (s *Service) validateGenerations(ctx context.Context, p Principal, r Receipt) error {
+func (s *builtinService) validateGenerations(ctx context.Context, p Principal, r Receipt) error {
 	if p.Recheck != nil {
 		if e := p.Recheck(ctx); e != nil {
 			return e
@@ -331,7 +310,7 @@ func (s *Service) validateGenerations(ctx context.Context, p Principal, r Receip
 	}
 	return nil
 }
-func (s *Service) collect(p Principal, a map[string]any) ([]Snapshot, error) {
+func (s *builtinService) collect(p Principal, a map[string]any) ([]Snapshot, error) {
 	sels := []Snapshot{}
 	seen := map[string]bool{}
 	if entries, ok := a["entries"]; ok {
@@ -422,7 +401,7 @@ func objects(v any) ([]map[string]any, error) {
 		return nil, badArg("Selections must be arrays of objects.")
 	}
 }
-func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a map[string]any) (result any, resultErr error) {
+func (s *builtinService) backupCall(ctx context.Context, p Principal, tool string, a map[string]any) (result any, resultErr error) {
 	reqPath, hash, err := s.requestPath(p, tool, a)
 	if err != nil {
 		return nil, err
@@ -563,7 +542,7 @@ func (s *Service) backupCall(ctx context.Context, p Principal, tool string, a ma
 	return s.push(netctx, p, a, receipt, tip, reqPath, hash)
 }
 
-func (s *Service) recordBackupError(err error) error {
+func (s *builtinService) recordBackupError(err error) error {
 	var failure *Error
 	if !errors.As(err, &failure) {
 		return nil
@@ -585,7 +564,7 @@ func (s *Service) recordBackupError(err error) error {
 	st.LastError = failure.Message
 	return s.transact([]fileChange{jsonChange(filepath.Join(s.private, "backup-state.json"), st)})
 }
-func (s *Service) reconcile(ctx context.Context, tip string) error {
+func (s *builtinService) reconcile(ctx context.Context, tip string) error {
 	st := s.backupState()
 	rs, err := s.receipts()
 	if err != nil {
@@ -642,7 +621,7 @@ func (s *Service) reconcile(ctx context.Context, tip string) error {
 	changes = append(changes, jsonChange(filepath.Join(s.private, "backup-state.json"), st))
 	return s.transact(changes)
 }
-func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, sels []Snapshot, base, reqPath, hash string) (any, error) {
+func (s *builtinService) prepare(ctx context.Context, p Principal, a map[string]any, sels []Snapshot, base, reqPath, hash string) (any, error) {
 	destination, err := s.backupDestination()
 	if err != nil {
 		return nil, err
@@ -734,7 +713,7 @@ func (s *Service) prepare(ctx context.Context, p Principal, a map[string]any, se
 	result := asMap(r)
 	return result, s.transact([]fileChange{receiptChange(s, r), jsonChange(reqPath, requestRecord{Hash: hash, At: stamp(), Result: result})})
 }
-func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Receipt, tip, reqPath, hash string) (any, error) {
+func (s *builtinService) push(ctx context.Context, p Principal, a map[string]any, r Receipt, tip, reqPath, hash string) (any, error) {
 	destination, err := s.backupDestination()
 	if err != nil {
 		return nil, err
@@ -866,7 +845,7 @@ func (s *Service) push(ctx context.Context, p Principal, a map[string]any, r Rec
 	return nil, kbErr("BACKUP_BRANCH_ADVANCED", "The backup branch advanced; prepare a new commit.")
 }
 
-func (s *Service) deletionReusable(d Deletion) bool {
+func (s *builtinService) deletionReusable(d Deletion) bool {
 	destination, err := s.backupDestination()
 	if err != nil {
 		return false
@@ -904,7 +883,7 @@ func (s *Service) deletionReusable(d Deletion) bool {
 	}
 	return true
 }
-func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
+func (s *builtinService) backupStatus(p Principal, a map[string]any) (any, error) {
 	destination, err := s.backupDestination()
 	if err != nil {
 		return nil, err
@@ -1007,7 +986,7 @@ func (s *Service) backupStatus(p Principal, a map[string]any) (any, error) {
 
 // Fixed options isolate host hooks and automatic repository writes. Authentication
 // helpers remain backend-owned; no caller controls the environment or configuration.
-func (s *Service) gitArgs() []string {
+func (s *builtinService) gitArgs() []string {
 	return []string{"-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false", "-c", "core.fsmonitor=false", "-c", "core.attributesFile=/dev/null", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "push.followTags=false", "-c", "remote.origin.mirror=false", "--git-dir=" + s.repo()}
 }
 func gitEnvironment() []string {
@@ -1022,7 +1001,7 @@ func gitEnvironment() []string {
 	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
 }
 
-func (s *Service) isAncestor(ctx context.Context, ancestor, tip string) (bool, error) {
+func (s *builtinService) isAncestor(ctx context.Context, ancestor, tip string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "git", append(s.gitArgs(), "merge-base", "--is-ancestor", ancestor, tip)...)
 	cmd.Env = gitEnvironment()
 	err := cmd.Run()
@@ -1039,7 +1018,7 @@ func (s *Service) isAncestor(ctx context.Context, ancestor, tip string) (bool, e
 // ReconcileBackup is a maintenance boundary for an administrator who explicitly
 // accepts a pre-existing or externally changed plain-Markdown branch. It never
 // imports, commits, or publishes content.
-func (s *Service) ReconcileBackup(ctx context.Context, p Principal) (any, error) {
+func (s *builtinService) ReconcileBackup(ctx context.Context, p Principal) (any, error) {
 	if p.Recheck != nil {
 		if e := p.Recheck(ctx); e != nil {
 			return nil, e

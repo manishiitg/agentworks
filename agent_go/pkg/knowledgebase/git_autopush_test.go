@@ -15,7 +15,7 @@ func TestAutoPushDeliversCommitsAndNeverOverwritesTheRemote(t *testing.T) {
 	root := t.TempDir()
 	remote := filepath.Join(root, "remote.git")
 	gitTest(t, "init", "-q", "--bare", "-b", "main", remote)
-	s, err := New(Config{Root: filepath.Join(root, "data"), LiveRoot: filepath.Join(root, "docs", "Brain"), OrganizationID: "org", BackupRemote: remote, BackupBranch: "main"})
+	s, err := newBuiltin(Config{Root: filepath.Join(root, "data"), LiveRoot: filepath.Join(root, "docs", "Brain"), OrganizationID: "org", BackupRemote: remote, BackupBranch: "main"})
 	if err != nil {
 		t.Fatal(err)
 	}

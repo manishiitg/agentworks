@@ -16,9 +16,9 @@ import (
 )
 
 func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
-	api, service := knowledgebaseServerTest(t)
 	t.Setenv("AUTH_SECRET", "knowledgebase-mcp-test-signing-secret")
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	api, service := knowledgebaseServerTest(t)
 	admin := knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}
 	access, err := service.Call(t.Context(), admin, "get_knowledgebase_access", map[string]any{"folder_path": "Payments/Checkout"})
 	if err != nil {

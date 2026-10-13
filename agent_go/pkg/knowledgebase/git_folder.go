@@ -2,6 +2,7 @@ package knowledgebase
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/brainapi"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,18 +13,12 @@ import (
 // GitFolder is Brain's folder as a Git working folder: the Brain chat (and its terminal) run git there normally
 // (PLAT-633). Credentials never touch the folder: its credential helper reads the token from BRAIN_GIT_TOKEN, which
 // the server puts in that shell's environment from the platform secret named by PATSecret.
-type GitFolder struct {
-	Path      string
-	Remote    string
-	Branch    string
-	Username  string
-	PATSecret string
-}
+type GitFolder = brainapi.GitFolder
 
 // GitTokenEnv is the environment variable the folder's credential helper reads.
 const GitTokenEnv = "BRAIN_GIT_TOKEN"
 
-func (s *Service) GitFolder() (GitFolder, error) {
+func (s *builtinService) GitFolder() (GitFolder, error) {
 	d, err := s.configuredBackupDestination()
 	if err != nil {
 		return GitFolder{Path: s.live}, err
@@ -37,7 +32,7 @@ func (s *Service) GitFolder() (GitFolder, error) {
 
 // GitToken resolves the backup token: through the server's secret resolver when the backup names a secret, otherwise
 // the token an administrator saved with the backup setup (stored encrypted). Empty when none is configured.
-func (s *Service) GitToken(f GitFolder) string {
+func (s *builtinService) GitToken(f GitFolder) string {
 	if f.PATSecret != "" {
 		if s.cfg.SecretResolver == nil {
 			return ""
@@ -58,7 +53,7 @@ func (s *Service) GitToken(f GitFolder) string {
 
 // EnsureGitRepository makes Brain's folder a Git repository whose origin is the configured remote. It is idempotent
 // and never commits, fetches or pushes: those are the person's (or their chat's) to run.
-func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
+func (s *builtinService) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 	f, err := s.GitFolder()
 	if err != nil {
 		return f, err
@@ -109,11 +104,13 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 
 // CanEditWholeBrain reports whether p is Owner of Brain's root: only they get Brain's raw folder, since a shell there
 // bypasses every folder role.
-func (s *Service) CanEditWholeBrain(p Principal) bool { return s.effectiveRaw(p, "") >= roleOwner }
+func (s *builtinService) CanEditWholeBrain(p Principal) bool {
+	return s.effectiveRaw(p, "") >= roleOwner
+}
 
 // CanWriteSomewhere reports whether p is Editor or Owner of at least one folder (administrators always are). Only
 // writers and Owners get the Brain chat and its folder; Readers see Brain's files in the Brain tab (owner, 2026-10-06).
-func (s *Service) CanWriteSomewhere(p Principal) bool {
+func (s *builtinService) CanWriteSomewhere(p Principal) bool {
 	if p.IsAdmin {
 		return true
 	}

@@ -241,3 +241,21 @@ func TestBrainMCPAndAppAreOpenToEveryActiveAccount(t *testing.T) {
 		t.Fatal("a disabled account has no access")
 	}
 }
+
+func TestBrainHostShutdownRefusesReopeningState(t *testing.T) {
+	_, service := knowledgebaseServerTest(t)
+	t.Cleanup(func() {
+		knowledgebaseInstance.Lock()
+		knowledgebaseInstance.stopping = false
+		knowledgebaseInstance.Unlock()
+	})
+	if err := closeKnowledgebaseService(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := knowledgebaseService(); err == nil {
+		t.Fatal("host reopened Brain during shutdown")
+	}
+	if service.IdentityActive(t.Context(), "admin") {
+		t.Fatal("closed engine admitted a query")
+	}
+}

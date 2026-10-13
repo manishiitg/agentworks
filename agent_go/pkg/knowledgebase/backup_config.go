@@ -24,7 +24,7 @@ var backupSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 // Deployment configuration takes precedence. An app-configured destination is
 // private control state, separate from both live Markdown and the Git backup.
-func (s *Service) configuredBackupDestination() (backupDestination, error) {
+func (s *builtinService) configuredBackupDestination() (backupDestination, error) {
 	if s.cfg.BackupRemote != "" {
 		return backupDestination{Remote: s.cfg.BackupRemote, Branch: s.cfg.BackupBranch}, nil
 	}
@@ -43,7 +43,7 @@ func (s *Service) configuredBackupDestination() (backupDestination, error) {
 }
 
 // The remote remains pinned; Files chooses the active local branch.
-func (s *Service) backupDestination() (backupDestination, error) {
+func (s *builtinService) backupDestination() (backupDestination, error) {
 	destination, err := s.configuredBackupDestination()
 	if err != nil {
 		return destination, err
@@ -58,7 +58,7 @@ func (s *Service) backupDestination() (backupDestination, error) {
 	return destination, nil
 }
 
-func (s *Service) BackupConfigured() (bool, error) {
+func (s *builtinService) BackupConfigured() (bool, error) {
 	destination, err := s.backupDestination()
 	return destination.Remote != "", err
 }
@@ -96,7 +96,7 @@ func validBackupSSHRemote(remote string) bool {
 
 // Called through the normal request journal while holding both publication and
 // content locks. Initial setup cannot redirect an existing backup destination.
-func (s *Service) configureBackup(ctx context.Context, p Principal, args map[string]any) (any, []fileChange, error) {
+func (s *builtinService) configureBackup(ctx context.Context, p Principal, args map[string]any) (any, []fileChange, error) {
 	if !p.AccessOnly || !p.IsAdmin || p.Caps != nil || strings.HasPrefix(p.IdentityID, "service_") {
 		return nil, nil, kbErr("FORBIDDEN", "An unrestricted administrator is required to configure backup.")
 	}

@@ -22,8 +22,9 @@ import (
 
 var knowledgebaseInstance struct {
 	sync.Mutex
-	service *knowledgebase.Service
-	config  knowledgebase.Config
+	service  *knowledgebase.Service
+	stopping bool
+	config   knowledgebase.Config
 }
 
 func knowledgebaseConfig() (knowledgebase.Config, error) {
@@ -94,7 +95,7 @@ func knowledgebaseConfig() (knowledgebase.Config, error) {
 	if branch == "" {
 		branch = "main"
 	}
-	return knowledgebase.Config{Root: root, LiveRoot: live, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true", SecretResolver: knowledgebaseBackupSecret}, nil
+	return knowledgebase.Config{Backend: strings.TrimSpace(os.Getenv("AGENTWORKS_BRAIN_BACKEND")), Root: root, LiveRoot: live, OrganizationID: org, BackupRemote: strings.TrimSpace(os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE")), BackupBranch: branch, BackupEncryptionKey: string(deriveSecretsKey()), AllowPrivateBackup: os.Getenv("AGENTWORKS_KNOWLEDGEBASE_BACKUP_ALLOW_PRIVATE") == "true", SecretResolver: knowledgebaseBackupSecret}, nil
 }
 
 func knowledgebaseService() (*knowledgebase.Service, error) {
@@ -103,15 +104,29 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 		return nil, err
 	}
 	knowledgebaseInstance.Lock()
+	if knowledgebaseInstance.stopping {
+		knowledgebaseInstance.Unlock()
+		return nil, fmt.Errorf("Brain host is shutting down")
+	}
+	if knowledgebaseInstance.service != nil && !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
+		// Drain without holding the cache lock: an in-flight host callback may
+		// consult this cache. The root lease refuses a second writer meanwhile.
+		previous := knowledgebaseInstance.service
+		knowledgebaseInstance.service = nil
+		knowledgebaseInstance.Unlock()
+		if err := previous.Close(); err != nil {
+			return nil, fmt.Errorf("close previous Brain engine: %w", err)
+		}
+		return knowledgebaseService()
+	}
 	defer knowledgebaseInstance.Unlock()
-	if knowledgebaseInstance.service == nil || !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
-		if knowledgebaseInstance.service != nil {
-			_ = knowledgebaseInstance.service.Close()
-		}
-		if err := moveBrainNotesIntoDocuments(filepath.Join(config.Root, "live"), config.LiveRoot); err != nil {
-			return nil, fmt.Errorf("move Brain's notes into %s: %w", brainFolderName, err)
-		}
-		service, err := knowledgebase.New(config)
+	if knowledgebaseInstance.service == nil {
+		service, err := knowledgebase.NewPrepared(config, func() error {
+			if err := moveBrainNotesIntoDocuments(filepath.Join(config.Root, "live"), config.LiveRoot); err != nil {
+				return fmt.Errorf("move Brain's notes into %s: %w", brainFolderName, err)
+			}
+			return nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -124,6 +139,20 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 		}
 	}
 	return knowledgebaseInstance.service, nil
+}
+
+// closeKnowledgebaseService prevents a late background tick or handler from
+// reopening state while process shutdown drains the selected engine.
+func closeKnowledgebaseService() error {
+	knowledgebaseInstance.Lock()
+	knowledgebaseInstance.stopping = true
+	previous := knowledgebaseInstance.service
+	knowledgebaseInstance.service = nil
+	knowledgebaseInstance.Unlock()
+	if previous != nil {
+		return previous.Close()
+	}
+	return nil
 }
 
 func knowledgebaseSyncIdentities(ctx context.Context, service *knowledgebase.Service) error {
@@ -435,7 +464,7 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 // administrator who sets backup up can name a secret, and only an unrestricted administrator can configure it.
 // sameKnowledgebaseConfig compares everything except the secret resolver (a function, always the same one).
 func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
-	return a.Root == b.Root && a.LiveRoot == b.LiveRoot && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&
+	return a.Backend == b.Backend && a.Root == b.Root && a.LiveRoot == b.LiveRoot && a.OrganizationID == b.OrganizationID && a.BackupRemote == b.BackupRemote &&
 		a.BackupBranch == b.BackupBranch && a.AllowPrivateBackup == b.AllowPrivateBackup && a.BackupEncryptionKey == b.BackupEncryptionKey
 }
 
@@ -443,7 +472,7 @@ func sameKnowledgebaseConfig(a, b knowledgebase.Config) bool {
 // follows every save without anyone asking (owner, 2026-10-08). AGENTWORKS_BRAIN_AUTO_PUSH=off turns it off. A
 // remote edited elsewhere is never overwritten: the push stops and the reason is logged and kept for Brain's status.
 func startBrainAutoPush(ctx context.Context) {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_BRAIN_AUTO_PUSH")), "off") {
+	if !productEnabled("knowledgebase") || strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_BRAIN_AUTO_PUSH")), "off") {
 		return
 	}
 	go func() {

@@ -60,9 +60,10 @@ func TestRelayMigrationRunGatesAndNextStampAgree(t *testing.T) {
 		{name: "Relay owes shared artifact migration", kind: "relay", version: "1.0.43", next: "1.0.44", layout: 1},
 		{name: "Relay skips DB migration but owes description layout", kind: "relay", version: "1.0.44", next: "1.0.46", layout: 1},
 		{name: "Relay owes agent unification", kind: "relay", version: "1.0.46", next: "1.0.47", layout: 1},
-		{name: "Relay on the current contract runs", kind: "relay", version: "1.0.47", layout: 1, allowed: true},
+		{name: "Relay on the previous prompt contract runs with a pending upgrade", kind: "relay", version: workflowContractUnifiedAgentVersion, next: workflowContractDescriptionFirstVersion, layout: 1, allowed: true},
+		{name: "Relay on the current contract runs", kind: "relay", version: WorkflowContractCurrentVersion, layout: 1, allowed: true},
 		{name: "Goals owes DB migration", version: "1.0.44", next: "1.0.45", layout: 1},
-		{name: "Relay still needs code layout", kind: "relay", version: "1.0.47"},
+		{name: "Relay still needs code layout", kind: "relay", version: WorkflowContractCurrentVersion},
 		{name: "Relay refuses unknown version", kind: "relay", version: "9.9.9", layout: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -119,7 +120,7 @@ func TestRelayOwesOnlySharedWorkflowMigrations(t *testing.T) {
 }
 
 func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
-	// 1.0.46 is current for both kinds.
+	// The current contract is execution-compatible for both kinds.
 	for _, kind := range []string{"", "relay"} {
 		if !manifestContractIsExecutionCompatible(&WorkflowManifest{Version: WorkflowContractCurrentVersion, Kind: kind}) {
 			t.Errorf("kind %q on the current contract must run", kind)

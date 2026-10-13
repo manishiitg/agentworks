@@ -171,6 +171,9 @@ func buildPulseTestMCPBridge(t *testing.T) string {
 	workDir := t.TempDir()
 	initWork := exec.Command("go", "work", "init", moduleDir)
 	initWork.Dir = workDir
+	// The bridge owns a fresh workspace; do not inherit a private composition
+	// workspace from the host test process.
+	initWork.Env = append(os.Environ(), "GOWORK=")
 	if output, err := initWork.CombinedOutput(); err != nil {
 		t.Fatalf("init mcpbridge workspace: %v\n%s", err, output)
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-func mcpCall(t *testing.T, s *Service, p Principal, tool string, args map[string]any) map[string]any {
+func mcpCall(t *testing.T, s *builtinService, p Principal, tool string, args map[string]any) map[string]any {
 	t.Helper()
 	result, err := s.CallTool(context.Background(), p, tool, args)
 	if err != nil {
@@ -16,7 +16,7 @@ func mcpCall(t *testing.T, s *Service, p Principal, tool string, args map[string
 	}
 	return asMap(result)
 }
-func mcpError(t *testing.T, s *Service, p Principal, tool string, args map[string]any, want string) {
+func mcpError(t *testing.T, s *builtinService, p Principal, tool string, args map[string]any, want string) {
 	t.Helper()
 	_, err := s.CallTool(context.Background(), p, tool, args)
 	failure, ok := err.(*Error)

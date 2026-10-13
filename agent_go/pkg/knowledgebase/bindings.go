@@ -2,30 +2,16 @@ package knowledgebase
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/brainapi"
 	"regexp"
 	"strings"
 )
 
 // Binding is an additional restriction, never a grant. IDs survive folder
 // display-name changes; no shared binding exposes a host filesystem path.
-type Binding struct {
-	Alias    string `json:"alias"`
-	FolderID string `json:"folder_id"`
-	Access   string `json:"access"`
-}
+type Binding = brainapi.Binding
 
-type BindingPolicy struct {
-	Bindings []Binding
-	Audience []string
-	// Admins are the audience members who are installation administrators: they can read every folder.
-	Admins []string
-	// ReadAll is the project's "Read" Brain access: read-only on any folder the principal can read, and only where every
-	// output reader can read it too. It never allows a write and is exclusive with Bindings.
-	ReadAll bool
-	// WriteAll is "Read & write": read and write wherever the principal itself may, so the project's agents organize
-	// folders themselves. The principal's own role and the output audience still bound every folder.
-	WriteAll bool
-}
+type BindingPolicy = brainapi.BindingPolicy
 
 var bindingAlias = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 
@@ -49,7 +35,7 @@ func ValidateBindings(bindings []Binding, reserved []string) error {
 // ResolveBinding authorizes the execution principal and every output reader
 // under the same content lock. Platform administrator status is deliberately
 // not inherited by members of the output audience.
-func (s *Service) ResolveBinding(ctx context.Context, p Principal, b Binding, audience []string) (string, error) {
+func (s *builtinService) ResolveBinding(ctx context.Context, p Principal, b Binding, audience []string) (string, error) {
 	unlock, err := s.lock(ctx, false)
 	if err != nil {
 		return "", err
@@ -79,7 +65,7 @@ func (s *Service) ResolveBinding(ctx context.Context, p Principal, b Binding, au
 	return f.Path, nil
 }
 
-func (s *Service) boundRole(p Principal, folder string) int {
+func (s *builtinService) boundRole(p Principal, folder string) int {
 	policy := p.BindingPolicy
 	if policy == nil {
 		return roleOwner
@@ -122,7 +108,7 @@ func (s *Service) boundRole(p Principal, folder string) int {
 
 func ValidateImportPath(path string) error { return validatePath(path, true) }
 
-func (s *Service) RequireIdentityFolderRole(ctx context.Context, id, folderID, role string) error {
+func (s *builtinService) RequireIdentityFolderRole(ctx context.Context, id, folderID, role string) error {
 	unlock, err := s.lock(ctx, false)
 	if err != nil {
 		return err
