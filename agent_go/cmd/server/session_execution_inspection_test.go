@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,65 @@ import (
 	agentEvents "github.com/manishiitg/mcpagent/events"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
+
+func TestInspectDelegatedConversationBounds(t *testing.T) {
+	for _, test := range []struct {
+		name                    string
+		children, events, bytes int
+		wantEvents              int
+	}{
+		{"children", maxInspectionConversationChildren + 1, 1, 0, maxInspectionConversationChildren},
+		{"events", 1, maxInspectionConversationEvents + 1, 0, maxInspectionConversationEvents},
+		{"bytes", 1, 1, maxInspectionConversationBytes, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+			workspace := &mockWorkspaceAPI{files: map[string]string{}}
+			srv := httptest.NewServer(workspace)
+			defer srv.Close()
+			t.Setenv("WORKSPACE_API_URL", srv.URL)
+			api := lifecycleTestAPI()
+			api.activeSessions = map[string]*ActiveSessionInfo{"chat": {SessionID: "chat", WorkspacePath: "Workflow/example", UserID: GetDefaultUserID()}}
+			api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "parent", Kind: "sub_agent", Status: BGAgentRunning})
+			api.emitBackgroundAgentStarted("chat", "parent", "Delegated task", "", "", orchEvents.ExecutionKindSubAgent)
+			var path, saved string
+			for index := 0; index < test.children; index++ {
+				id := fmt.Sprintf("task-%d", index)
+				api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: id, Kind: "agent_item", ParentExecutionID: "parent", Status: BGAgentRunning})
+				api.emitBackgroundAgentStarted("chat", id, "Task", "", "parent", orchEvents.ExecutionKindAgentItem)
+				path = orchEvents.BackgroundAgentTranscriptPath("Workflow/example", "chat", id)
+				saved, _, _ = readFileFromWorkspace(context.Background(), path)
+				transcript, err := orchEvents.ParseBackgroundAgentTranscript(saved)
+				if err != nil || transcript == nil {
+					t.Fatalf("source transcript: %v", err)
+				}
+				for event := 0; event < test.events; event++ {
+					transcript.Events = append(transcript.Events, orchEvents.BackgroundAgentTranscriptEvent{Timestamp: time.Now(), Type: "user_message", Role: "user", Text: "Recorded instruction" + strings.Repeat("x", test.bytes)})
+				}
+				saved, err = transcript.Marshal()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := writeFileToWorkspace(context.Background(), path, saved); err != nil {
+					t.Fatal(err)
+				}
+			}
+			req := httptest.NewRequest(http.MethodGet, "/sessions/chat/background-work/parent/inspect?workspace_path=Workflow/example", nil)
+			req = mux.SetURLVars(req, map[string]string{"session_id": "chat", "execution_id": "parent"})
+			w := httptest.NewRecorder()
+			api.handleInspectSessionExecution(w, req)
+			var response struct {
+				Conversation *inspectionConversation `json:"conversation"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK || response.Conversation == nil || !response.Conversation.Truncated || len(response.Conversation.Events) != test.wantEvents {
+				t.Fatalf("bounded projection: status=%d err=%v", w.Code, err)
+			}
+			if current, _, err := readFileFromWorkspace(context.Background(), path); err != nil || current != saved {
+				t.Fatal("inspection changed the full saved transcript")
+			}
+		})
+	}
+}
 
 func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
