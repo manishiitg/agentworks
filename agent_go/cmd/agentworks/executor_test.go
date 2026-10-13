@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 )
 
@@ -273,11 +274,15 @@ func TestDebugReportRemovesSecrets(t *testing.T) {
 		"export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx",
 		"folder " + home + "/project",
 		"08:07:55  shell  app  $ ls  -> 200 in 46ms  exit 0",
+		"Muse watch for lease attach-3d4f2e03-9f4c-4018-9721-dd8d9c536e1a ended; session 01a135d1-019a-7582-8924-1ba2d95edd0e",
 	}, "\n"))
 	for _, secret := range []string{"abcdef0123456789abcdef0123456789", "aw_pat_0123", "hunter2secret", "4a6e96b1868d4506", "r-1234567890abcdef", "sk-abcdefghijklmnop"} {
 		if strings.Contains(report, secret) {
 			t.Fatalf("secret %q survived:\n%s", secret, report)
 		}
+	}
+	if strings.Contains(report, "3d4f2e03-9f4c") || strings.Contains(report, "019a-7582") || !strings.Contains(report, "01a135d1…") {
+		t.Fatalf("lease and session ids must be shortened:\n%s", report)
 	}
 	if !strings.Contains(report, "shell  app  $ ls  -> 200") || !strings.Contains(report, "~/project") {
 		t.Fatalf("the useful activity lines must stay, and the home folder is shortened:\n%s", report)
@@ -411,5 +416,25 @@ func TestOtherSharesOnDeviceNamesWhatIsInTheWay(t *testing.T) {
 	}
 	if len(otherSharesOnDevice(running, "new", "brand-new-device")) != 0 {
 		t.Fatal("a share on another device must not be reported")
+	}
+}
+
+// `agentworks debug` read only the folder-sharing login and said "no server" while the agent login worked. Both are shown,
+// each from its own file, without credentials.
+func TestDebugReportShowsTheAgentLoginAndNotJustTheSharingOne(t *testing.T) {
+	dir := t.TempDir()
+	agent := filepath.Join(dir, "config.json")
+	if err := agentworksclient.SaveConfig(agent, agentworksclient.Config{Server: "https://example.test", Token: "secret-token-value"}); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	server := debugLoginSection(&b, "agent login:", agent)
+	missing := debugLoginSection(&b, "sharing login:", filepath.Join(dir, "executor.json"))
+	text := redactDebug(b.String())
+	if server != "https://example.test" || missing != "" || !strings.Contains(text, "sign-in: signed in") || !strings.Contains(text, "not set up") {
+		t.Fatalf("login sections wrong (server %q, sharing server %q):\n%s", server, missing, text)
+	}
+	if strings.Contains(text, "secret-token-value") {
+		t.Fatalf("a credential reached the report:\n%s", text)
 	}
 }

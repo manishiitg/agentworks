@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/spf13/cobra"
 )
 
@@ -91,40 +92,44 @@ func buildDebugReport(ctx context.Context, o *options) string {
 	line("cli:       %s", cliVersion)
 	line("system:    %s/%s, %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
 
-	_ = o.useShareConfig()
+	// Two logins exist: the one the agents' messaging and tools use (config.json, or the one named with --config),
+	// and the one folder sharing uses (executor.json). Report both, the way each is really used.
 	section("sign-in and server")
-	cfg, cfgPath, err := o.connection(false)
-	line("config:    %s", cfgPath)
-	if err != nil {
-		line("server:    not set (%v)", err)
-	} else {
-		line("server:    %s", cfg.Server)
-		signed := "NOT signed in"
-		if cfg.Token != "" {
-			signed = "signed in"
-			if !cfg.ExpiresAt.IsZero() {
-				if time.Now().After(cfg.ExpiresAt) {
-					signed += fmt.Sprintf(", access token expired %s ago", time.Since(cfg.ExpiresAt).Round(time.Second))
-				} else {
-					signed += ", access token valid until " + cfg.ExpiresAt.Format(time.RFC3339)
-				}
-				if cfg.RefreshToken != "" {
-					signed += " (renewed automatically)"
-				}
-			}
+	servers := map[string]bool{}
+	debugLogin := func(title, path string) {
+		if server := debugLoginSection(&b, title, path); server != "" {
+			servers[server] = true
 		}
-		line("sign-in:   %s", signed)
-		if latest, ok := latestCLIRelease(ctx, cfg.Server); ok {
+	}
+	if path, err := o.path(); err == nil {
+		debugLogin("agent login (messaging and tools):", path)
+	} else {
+		line("agent login: %v", err)
+	}
+	_ = o.useShareConfig()
+	sharePath, shareErr := o.path()
+	if shareErr == nil {
+		debugLogin("sharing login (agentworks start):", sharePath)
+	}
+	names := make([]string, 0, len(servers))
+	for server := range servers {
+		names = append(names, server)
+	}
+	sort.Strings(names)
+	for _, server := range names {
+		if latest, ok := latestCLIRelease(ctx, server); ok {
 			state := "up to date"
 			if cliVersion == "dev" {
 				state = "a development build"
 			} else if !cliIsCurrent(cliVersion, cliBuild, latest.Version, latest.CLIBuild) {
 				state = "OUT OF DATE: run `agentworks update`"
 			}
-			line("cli build:  %s, the server offers %s (%s)", shortVersion(cliBuild), shortVersion(latest.CLIBuild), state)
+			line("cli build: %s, the server offers %s (%s)", shortVersion(cliBuild), shortVersion(latest.CLIBuild), state)
 		}
-		debugNetwork(ctx, &b, cfg.Server)
+		debugNetwork(ctx, &b, server)
 	}
+
+	debugBridge(ctx, &b)
 
 	section("proxy settings")
 	for _, name := range []string{"HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY"} {
@@ -273,6 +278,9 @@ var debugSecretPatterns = []struct {
 	{regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}`), "[redacted key]"},
 	{regexp.MustCompile(`(?i)\b(authorization|token|refresh_token|secret|password|passwd|api[_-]?key)(["']?\s*[:=]\s*["']?)[^\s"',;]{6,}`), "${1}${2}[redacted]"},
 	{regexp.MustCompile(`(?i)(https?://)[^/\s:@]+:[^/\s@]+@`), "${1}[redacted]@"},
+	// A lease id is a fence for one chat's messages, and a session id names a chat: keep only enough to tell them apart.
+	{regexp.MustCompile(`attach-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}`), "attach-[id]"},
+	{regexp.MustCompile(`\b([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`), "${1}…"},
 }
 
 // redactDebug removes tokens and passwords, and shortens the home folder, before a report leaves the machine.
@@ -284,4 +292,100 @@ func redactDebug(report string) string {
 		report = strings.ReplaceAll(report, home, "~")
 	}
 	return report
+}
+
+// debugBridge reports the local messaging helper (Bullpen): whether it runs, which chats it holds and how each is
+// reached, the plugins found on this computer, and the helper's own log. Names and states only, no message text.
+func debugBridge(ctx context.Context, b *strings.Builder) {
+	line := func(format string, args ...any) { fmt.Fprintf(b, format+"\n", args...) }
+	fmt.Fprintf(b, "\n== local messaging helper ==\n")
+	root, err := agentworksclient.DefaultLocalBridgeRoot()
+	if err != nil {
+		line("folder:    %v", err)
+		return
+	}
+	line("folder:    %s", root)
+	reply, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"})
+	if err != nil {
+		line("helper:    not running (%v)", err)
+	} else {
+		state := "same build as this CLI"
+		if reply.Version != "" && reply.Version != cliVersion {
+			state = "ANOTHER build than this CLI (" + shortVersion(cliVersion) + "): run `agentworks update`"
+		}
+		line("helper:    running, build %s (%s)", shortVersion(reply.Version), state)
+		if local, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"}); e == nil {
+			line("chats:     %d held", len(local.AgentStates))
+			for _, st := range local.AgentStates {
+				online := "offline"
+				if st.Online {
+					online = "online"
+				}
+				text := fmt.Sprintf("  %s %s: %s, route %s, %d waiting", st.Provider, st.AgentName, online, st.Route, st.Pending)
+				if st.LastError != "" {
+					text += ", last error: " + st.LastError
+				}
+				line("%s", text)
+			}
+		}
+	}
+	if home, e := os.UserHomeDir(); e == nil {
+		onPath := func(name string) bool { _, err := exec.LookPath(name); return err == nil }
+		read := func(path string) string { raw, _ := os.ReadFile(path); return string(raw) }
+		var found []string
+		for _, u := range installedPluginUpdates(home, onPath, read) {
+			found = append(found, u.Provider)
+		}
+		if len(found) == 0 {
+			line("plugins:   none found for Claude, Codex, Muse, Cursor or Pi on this computer")
+		} else {
+			line("plugins:   found for %s (hook approval is shown inside each app: Settings > Hooks, or the app's plugin list)", strings.Join(found, ", "))
+		}
+	}
+	if lines := tailLines(filepath.Join(root, "bridge.log"), 400); len(lines) > 0 {
+		fmt.Fprintf(b, "\n== local messaging helper log (recent, idle waits left out) ==\n")
+		kept := lines[:0]
+		for _, l := range lines {
+			if !strings.Contains(l, `action "next"`) {
+				kept = append(kept, l)
+			}
+		}
+		if len(kept) > 60 {
+			kept = kept[len(kept)-60:]
+		}
+		for _, l := range kept {
+			fmt.Fprintln(b, l)
+		}
+	}
+}
+
+// debugLoginSection writes one saved login's state (never the credentials) and returns its server.
+func debugLoginSection(b *strings.Builder, title, path string) string {
+	fmt.Fprintf(b, "%s\n  config:  %s\n", title, path)
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(b, "  state:   not set up (no saved login there)\n")
+		return ""
+	}
+	cfg, err := agentworksclient.LoadConfig(path)
+	if err != nil {
+		fmt.Fprintf(b, "  state:   cannot be read (%v)\n", err)
+		return ""
+	}
+	fmt.Fprintf(b, "  server:  %s\n", cfg.Server)
+	signed := "NOT signed in"
+	if cfg.Token != "" {
+		signed = "signed in"
+		if !cfg.ExpiresAt.IsZero() {
+			if time.Now().After(cfg.ExpiresAt) {
+				signed += fmt.Sprintf(", access token expired %s ago", time.Since(cfg.ExpiresAt).Round(time.Second))
+			} else {
+				signed += ", access token valid until " + cfg.ExpiresAt.Format(time.RFC3339)
+			}
+			if cfg.RefreshToken != "" {
+				signed += " (renewed automatically)"
+			}
+		}
+	}
+	fmt.Fprintf(b, "  sign-in: %s\n", signed)
+	return cfg.Server
 }
