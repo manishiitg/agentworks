@@ -743,7 +743,7 @@ function DetailSection({
   )
 }
 
-function ReadOnlyStepDetailPanel({
+export function ReadOnlyStepDetailPanel({
   node,
   workspacePath,
   onClose,
@@ -762,7 +762,11 @@ function ReadOnlyStepDetailPanel({
     : (step?.type === 'todo_task' || step?.type === 'orchestrator' || step?.type === 'agent')
       ? step.predefined_routes
       : undefined
-  const sequenceItems = step && node.type === 'agent' ? effectiveAgentItems(step) : undefined
+  const descriptionFirst = step?.type === 'agent' && step.prompt_contract === 'description-first-v1' && !step.authored_prompt
+  const runtimeItems = step && node.type === 'agent' ? effectiveAgentItems(step) : undefined
+  // The generated opening item is the description rendered below. Show its
+  // content once, while retaining every authored follow-up (including repeats).
+  const sequenceItems = descriptionFirst ? runtimeItems?.slice(1) : runtimeItems
   const validationSchema = step?.validation_schema || ('validation_schema' in data ? data.validation_schema : undefined)
   const agentConfigs = step?.agent_configs
   const declaredExecutionMode = effectiveExecutionMode(step)
@@ -856,10 +860,12 @@ function ReadOnlyStepDetailPanel({
           </DetailSection>
         )}
         {step?.description && (
-          <DetailSection icon={FileText} title="Description">
+          <DetailSection icon={FileText} title={descriptionFirst ? 'First user message' : 'Description'}>
+            {descriptionFirst && <p className="mb-2 text-xs text-muted-foreground">The step description runs alone first.</p>}
             <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1">
               <MarkdownRenderer content={step.description} className="max-w-none" />
             </div>
+            {descriptionFirst && !sequenceItems?.length && <p className="mt-2 text-xs text-muted-foreground">No optional follow-ups configured.</p>}
           </DetailSection>
         )}
 
@@ -907,8 +913,8 @@ function ReadOnlyStepDetailPanel({
         )}
 
         {sequenceItems?.length ? (
-          <DetailSection icon={ListOrdered} title={`${step?.type === 'agent' && step.authored_prompt ? 'User messages' : 'Agent instructions'} (${sequenceItems.length})`}>
-            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'agent' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : step?.type === 'agent' && step.prompt_contract === 'description-first-v1' ? 'The step task runs alone first. Optional follow-ups run afterward in order.' : 'Ordered items the step runs top to bottom.'}</p>
+          <DetailSection icon={ListOrdered} title={`${step?.type === 'agent' && step.authored_prompt ? 'User messages' : descriptionFirst ? 'Optional follow-ups' : 'Agent instructions'} (${sequenceItems.length})`}>
+            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'agent' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : descriptionFirst ? 'These items run in order after the first user message finishes.' : 'Ordered items the step runs top to bottom.'}</p>
             <ol className="space-y-2">
               {sequenceItems.map((item, index) => {
                 // Normalize so it reads consistently with the Agent node card.
@@ -927,7 +933,7 @@ function ReadOnlyStepDetailPanel({
                 return (
                   <li key={item.id || index} className="rounded-md border border-border bg-muted/25 p-2">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted-foreground/20 text-[10px] font-semibold text-foreground/70">{index + 1}</span>
+                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted-foreground/20 text-[10px] font-semibold text-foreground/70">{index + (descriptionFirst ? 2 : 1)}</span>
                       <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase ${chipClass}`}>{String(kind).replace(/_/g, ' ')}</span>
                       {subKind && <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{subKind}</span>}
                       {item.title && <span className="truncate text-xs font-medium text-foreground">{item.title}</span>}
