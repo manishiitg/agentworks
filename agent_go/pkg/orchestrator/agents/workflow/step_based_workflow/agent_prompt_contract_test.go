@@ -87,7 +87,7 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 						t.Fatal("task or rules have the wrong prompt authority")
 					}
 					if pending && calls == 0 {
-						if user != step.Description || len(history) != 0 || vars["PendingInvocationInput"] != "true" || !strings.Contains(system, "do not perform external actions") {
+						if user != step.Description || len(history) != 0 || vars["PendingInvocationInput"] != "true" || !strings.Contains(system, "prepare local context only: no external actions") {
 							t.Fatal("pending scope was combined with the opening task or its preparation-only rule was lost")
 						}
 						calls++

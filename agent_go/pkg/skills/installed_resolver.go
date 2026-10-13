@@ -45,6 +45,27 @@ func NewInstalledSkillReader(workspaceAPIURL, workspacePath string) func(string,
 		if path.IsAbs(clean) || strings.Contains(clean, "..") || strings.ContainsRune(clean, '\x00') {
 			return InstalledSkillFile{}, fmt.Errorf("skill path must be a safe relative path: %q", relPath)
 		}
+		// Product-owned procedures are available directly, just as in the
+		// attachable-skill loader. Resolving them must not depend on a workspace
+		// catalog request or permit a workspace alias to shadow their identity.
+		if skill := builtinAttachableSkill(name); skill != nil {
+			names := []string{SkillFileName}
+			for _, file := range skill.SupportingFiles {
+				names = append(names, file.RelPath)
+			}
+			if clean == SkillFileName {
+				return InstalledSkillFile{Content: skill.Content, Description: skill.Description, AvailableFiles: names}, nil
+			}
+			for _, file := range skill.SupportingFiles {
+				if file.RelPath == clean {
+					if !utf8.Valid(file.Content) {
+						return InstalledSkillFile{}, fmt.Errorf("cannot read binary skill file as text")
+					}
+					return InstalledSkillFile{Content: string(file.Content), Description: skill.Description, AvailableFiles: names}, nil
+				}
+			}
+			return InstalledSkillFile{}, fmt.Errorf("file %q is not part of installed skill %q", clean, name)
+		}
 
 		if clean == SkillFileName {
 			skill, err := GetSkillIn(workspaceAPIURL, workspacePath, name)

@@ -162,8 +162,8 @@ func TestExecutionOnlyPromptsTreatSkillAsAdvisory(t *testing.T) {
 		"IsScriptedMode":        "false",
 	})
 	systemSnippets := []string{
-		"Treat learnings/skill content as advisory guidance from previous runs",
-		"the task, the standing rules in this prompt and the current user message (including any parent-agent or human input) are the source of truth",
+		"advisory know-how from previous runs",
+		"the task, current instructions and standing rules win over conflicting or stale advice",
 	}
 	for _, snippet := range systemSnippets {
 		if !strings.Contains(systemPrompt, snippet) {
