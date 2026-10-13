@@ -44,6 +44,15 @@ describe('Shared user roles and product access', () => {
     expect(host.querySelector('button[title="Set a new password"]')).toBeNull()
     expect(host.textContent).toContain('signs in with SSO')
   })
+  it('keeps the password reset for a password account', async () => {
+    api.listAdminUsers.mockResolvedValue({ products: ['code'], users: [{
+      id: 'pw', username: 'pw@example.com', email: 'pw@example.com', role: 'creator', admin: false, can_create: true, can_edit: true, products: ['code'], provider: 'password', has_password: true,
+    }] })
+    await render()
+    expect(host.textContent).toContain('signs in with a password')
+    await act(async () => (host.querySelector('[aria-label="Edit pw@example.com"]') as HTMLElement).click())
+    expect(host.querySelector('button[title="Set a new password"]')).not.toBeNull()
+  })
   it('exposes no platform role/product grants in Vault', async () => {
     await render(true)
     expect(host.querySelector('[aria-label="Role for creator@example.com"]')).toBeNull()

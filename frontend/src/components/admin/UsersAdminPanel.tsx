@@ -62,7 +62,7 @@ const shownLimit = (n?: number) => (n ? String(n) : '')
 
 // How a person signs in, in plain words: the identity service behind single sign-on is not something admins act on.
 // Only a password account has a password to set; an SSO person signs in through the company's identity provider.
-const usesSSO = (u: { invited?: boolean; provider?: string }) => Boolean(u.invited || (u.provider && u.provider !== 'simple'))
+const usesSSO = (u: { invited?: boolean; provider?: string }) => Boolean(u.invited || (u.provider && u.provider !== 'password' && u.provider !== 'simple'))
 const signInLabel = (u: { invited?: boolean; provider?: string; has_password?: boolean }) => {
   if (usesSSO(u)) return 'signs in with SSO'
   return u.has_password ? 'signs in with a password' : 'no password set'
