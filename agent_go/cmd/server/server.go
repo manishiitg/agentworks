@@ -10945,7 +10945,9 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 		"message":         "Still delivering to the coding agent; the chat updates when it lands",
 	})
 	go func() {
-		handled := <-done
+		// A message the coding agent has not taken is logged while it waits, so a stalled delivery is visible in the log
+		// (no message text): one line each at these waits.
+		handled := waitForLiveInputDelivery(done, sessionID, queryID, liveInputFastResponseWindow)
 		status := recorded.status
 		if status == 0 {
 			status = http.StatusOK
@@ -14466,4 +14468,33 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
 	return resolvedProfile, access, nil
+}
+
+// liveInputStallWarnings are the waits (counted from the start of the delivery) at which a delivery that the coding agent
+// has still not accepted is logged.
+var liveInputStallWarnings = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute}
+
+// waitForLiveInputDelivery waits for a background delivery to finish and logs a [DELIVERY_STALL] line at each warning age
+// while it has not. waited is how long the delivery had already run when this started.
+func waitForLiveInputDelivery(done <-chan bool, sessionID, queryID string, waited time.Duration) bool {
+	started := time.Now().Add(-waited)
+	warnings := liveInputStallWarnings
+	for {
+		var next <-chan time.Time
+		var timer *time.Timer
+		if len(warnings) > 0 {
+			timer = time.NewTimer(time.Until(started.Add(warnings[0])))
+			next = timer.C
+		}
+		select {
+		case handled := <-done:
+			if timer != nil {
+				timer.Stop()
+			}
+			return handled
+		case <-next:
+			log.Printf("[DELIVERY_STALL] session=%s query_id=%s the coding agent has not accepted the message after %s", sessionID, queryID, warnings[0])
+			warnings = warnings[1:]
+		}
+	}
 }

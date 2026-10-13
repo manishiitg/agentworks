@@ -1771,6 +1771,75 @@ type streamingTurnStats struct {
 	firstAt   time.Time
 	lastAt    time.Time
 	startedAt time.Time
+	beats     int // "still running" lines already logged for this turn
+}
+
+// A turn that is still open after these ages gets one "[TURN] ... still_running" line each, then one every
+// turnHeartbeatRepeat, so a stuck turn shows up in the log without anyone asking (a person's chat sat for eight minutes
+// with nothing logged). A turn open for turnAbandonAge is logged as abandoned and forgotten: its end event was lost.
+var turnHeartbeatAges = []time.Duration{2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 20 * time.Minute}
+
+const (
+	turnHeartbeatRepeat = 20 * time.Minute
+	turnAbandonAge      = 6 * time.Hour
+)
+
+// turnHeartbeatDue says whether a turn of this age that has logged this many heartbeats owes another one.
+func turnHeartbeatDue(age time.Duration, beats int) bool {
+	if beats < len(turnHeartbeatAges) {
+		return age >= turnHeartbeatAges[beats]
+	}
+	return age >= turnHeartbeatAges[len(turnHeartbeatAges)-1]+time.Duration(beats-len(turnHeartbeatAges)+1)*turnHeartbeatRepeat
+}
+
+var turnHeartbeatOnce sync.Once
+
+func startTurnHeartbeat() {
+	turnHeartbeatOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for now := range ticker.C {
+				sweepTurnHeartbeats(now)
+			}
+		}()
+	})
+}
+
+func sweepTurnHeartbeats(now time.Time) {
+	type beat struct {
+		session         string
+		age, sinceChunk time.Duration
+		chunks          int
+		abandoned       bool
+	}
+	var out []beat
+	streamingStatsMu.Lock()
+	for id, stats := range streamingStats {
+		age := now.Sub(stats.startedAt)
+		if age >= turnAbandonAge {
+			out = append(out, beat{session: id, age: age, chunks: stats.chunks, abandoned: true})
+			delete(streamingStats, id)
+			continue
+		}
+		if !turnHeartbeatDue(age, stats.beats) {
+			continue
+		}
+		stats.beats++
+		last := stats.lastAt
+		if last.IsZero() {
+			last = stats.startedAt
+		}
+		out = append(out, beat{session: id, age: age, sinceChunk: now.Sub(last), chunks: stats.chunks})
+	}
+	streamingStatsMu.Unlock()
+	for _, b := range out {
+		if b.abandoned {
+			log.Printf("[TURN] session=%s abandoned age=%s chunks=%d (no end event; forgetting it)", b.session, b.age.Round(time.Second), b.chunks)
+			continue
+		}
+		log.Printf("[TURN] session=%s still_running age=%s last_chunk_age=%s chunks=%d", b.session, b.age.Round(time.Second), b.sinceChunk.Round(time.Second), b.chunks)
+	}
 }
 
 var (
@@ -1801,6 +1870,7 @@ func streamingChunkFields(event Event) (source string, isDelta bool, contentLen 
 func logStreamingChunkTelemetry(sessionID string, event Event) {
 	switch event.Type {
 	case "streaming_start":
+		startTurnHeartbeat()
 		streamingStatsMu.Lock()
 		streamingStats[sessionID] = &streamingTurnStats{startedAt: time.Now()}
 		streamingStatsMu.Unlock()
