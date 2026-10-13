@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
@@ -48,41 +49,46 @@ func readAgentMessageSnapshot(ctx context.Context) (agentMessageStore, error) {
 	for {
 		key := agentSnapshotKey{getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
 		agentSnapshotCache.Lock()
-		if flight := agentSnapshotCache.flights[key]; flight != nil {
-			flight.waiters++
-			agentSnapshotCache.Unlock()
-			select {
-			case <-ctx.Done():
-				return agentMessageStore{}, ctx.Err()
-			case <-flight.done:
-			}
-			// A completed write while waiting requires a new validation.
-			if agentMessageVersion.Load() != key.generation {
-				continue
-			}
-			return flight.entry.store, flight.err
-		}
+		flight := agentSnapshotCache.flights[key]
+		leader := flight == nil
 		prior := agentSnapshotCache.entry
-		flight := &agentSnapshotFlight{done: make(chan struct{})}
-		if agentSnapshotCache.flights == nil {
-			agentSnapshotCache.flights = make(map[agentSnapshotKey]*agentSnapshotFlight)
+		if leader {
+			flight = &agentSnapshotFlight{done: make(chan struct{})}
+			if agentSnapshotCache.flights == nil {
+				agentSnapshotCache.flights = make(map[agentSnapshotKey]*agentSnapshotFlight)
+			}
+			agentSnapshotCache.flights[key] = flight
+		} else {
+			flight.waiters++
 		}
-		agentSnapshotCache.flights[key] = flight
 		agentSnapshotCache.Unlock()
-
-		entry, err := fetchAgentMessageSnapshot(ctx, key, prior)
-		agentSnapshotCache.Lock()
-		if err == nil && agentMessageVersion.Load() == key.generation {
-			agentSnapshotCache.entry = entry
+		if leader {
+			// One disconnected request must not cancel validation for other
+			// readers. The detached operation remains bounded even if all leave.
+			fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			go func() {
+				defer cancel()
+				entry, err := fetchAgentMessageSnapshot(fetchCtx, key, prior)
+				agentSnapshotCache.Lock()
+				if err == nil && agentMessageVersion.Load() == key.generation {
+					agentSnapshotCache.entry = entry
+				}
+				flight.entry, flight.err = entry, err
+				delete(agentSnapshotCache.flights, key)
+				close(flight.done)
+				agentSnapshotCache.Unlock()
+			}()
 		}
-		flight.entry, flight.err = entry, err
-		delete(agentSnapshotCache.flights, key)
-		close(flight.done)
-		agentSnapshotCache.Unlock()
-		if agentMessageVersion.Load() != key.generation && err == nil {
+		select {
+		case <-ctx.Done():
+			return agentMessageStore{}, ctx.Err()
+		case <-flight.done:
+		}
+		// A completed write while waiting requires a new validation.
+		if agentMessageVersion.Load() != key.generation && flight.err == nil {
 			continue
 		}
-		return entry.store, err
+		return flight.entry.store, flight.err
 	}
 }
 

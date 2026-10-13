@@ -131,7 +131,7 @@ func TestAgentSnapshotConcurrentValidation(t *testing.T) {
 	if _, err := readAgentMessageSnapshot(ctx); err != nil {
 		t.Fatal(err)
 	}
-	results := make(chan error, 20)
+	results := make(chan error, 19)
 	read := func() {
 		store, err := readAgentMessageSnapshot(ctx)
 		if err == nil && (len(store.Agents) != 1 || store.Agents[0].Name != "alpha") {
@@ -139,7 +139,10 @@ func TestAgentSnapshotConcurrentValidation(t *testing.T) {
 		}
 		results <- err
 	}
-	go read()
+	leaderCtx, cancelLeader := context.WithCancel(ctx)
+	defer cancelLeader()
+	leaderResult := make(chan error, 1)
+	go func() { _, err := readAgentMessageSnapshot(leaderCtx); leaderResult <- err }()
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
@@ -191,8 +194,17 @@ func TestAgentSnapshotConcurrentValidation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("mutation lookup waited behind readers")
 	}
+	cancelLeader()
+	select {
+	case err := <-leaderResult:
+		if err != context.Canceled {
+			t.Fatalf("leader cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("leader cancellation waited for shared I/O")
+	}
 	unblock()
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 19; i++ {
 		select {
 		case err := <-results:
 			if err != nil {
