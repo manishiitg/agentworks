@@ -45,6 +45,15 @@ def tool(function=None, *, description=None, schema=None):
     return decorate(function) if function is not None else decorate
 
 
+def _recorded_started_at(run_dir):
+    """The run's first start time, kept across crash recovery and retries."""
+    try:
+        value = json.loads((run_dir / "relay_trace.json").read_text(encoding="utf-8")).get("started_at")
+        return value if isinstance(value, (int, float)) and value > 0 else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 class Context:
     def __init__(self, run_dir, variables):
         self.run_dir = run_dir
@@ -53,7 +62,7 @@ class Context:
         self._sequence = 0
         self._lock = asyncio.Lock()
         self._in_tool = contextvars.ContextVar("relay_tool_callback", default=False)
-        self._trace = {"version": 1, "status": "running", "started_at": time.time(), "calls": []}
+        self._trace = {"version": 1, "status": "running", "started_at": _recorded_started_at(run_dir) or time.time(), "calls": []}
         self._save_trace()
 
     def vault(self, name):

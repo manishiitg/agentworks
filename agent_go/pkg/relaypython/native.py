@@ -207,7 +207,7 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
                  "console_log_level": "WARNING", "system_database_url": url})
     sys.path.insert(0, str(source.parent))
     program = load_module("relay_program", source)
-    lifecycle = {"status": "running", "started_at": time.time()}
+    lifecycle = {"status": "running", "started_at": context._trace.get("started_at") or time.time()}
     events = run_dir / "dbos_events.jsonl"
 
     class EventLog(logging.Handler):
