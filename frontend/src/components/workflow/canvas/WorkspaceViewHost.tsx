@@ -101,7 +101,7 @@ const dispatchReportExport = () => window.dispatchEvent(new CustomEvent(WORKFLOW
 // the pane content; the host owns the root, the toolbar, and the pane wrapper.
 // ---------------------------------------------------------------------------
 
-function ReportBody({ workspacePath }: { workspacePath: string | null }) {
+function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null; relayMode: boolean }) {
   // In Mobile the report sits in a narrow 480px column; when chat is focused we
   // keep the report mobile-framed so it fits. Laptop keeps its desktop report
   // beside a separate compact chat column, so it needs no report-width cap.
@@ -114,6 +114,7 @@ function ReportBody({ workspacePath }: { workspacePath: string | null }) {
     <div className="h-full min-h-0 relative">
       {workspacePath && <ReportView
         workspacePath={workspacePath}
+        defaultRelayDashboard={relayMode}
         focusTier={reportFocusTier}
         headerAction={<AskAIButton workspacePath={workspacePath} message={getWorkspaceAskAIMessage('report')} iconOnly />}
       />}
@@ -794,7 +795,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   } else if (toolbarOnly) {
     body = null
   } else if (kind === 'preview') {
-    body = <ReportBody workspacePath={workspacePath} />
+    body = <ReportBody workspacePath={workspacePath} relayMode={relayMode} />
   } else if (effectiveView === 'workshop') {
     body = workshopPanel ?? null
   } else if (kind === 'files') {

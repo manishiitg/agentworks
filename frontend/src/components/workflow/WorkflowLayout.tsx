@@ -56,6 +56,7 @@ import {
 } from '../../utils/reportPreviewPreference'
 import { WorkspaceSplitRail } from '../workspace/WorkspaceSplitDivider'
 import { RelayIntro } from './RelayIntro'
+import { ReportView } from './ReportViewer'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
 
 // Helper component to get observerId and render ChatArea
@@ -2342,6 +2343,13 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       className={showChatArea && !workspacePaneVisible ? '!h-auto shrink-0' : 'h-full'}
     />
   )
+
+  // Run enters the product dashboard, including when an old browser preference
+  // retained a Builder pane. The common Relay Run chat policy is still pending;
+  // neither legacy HTML actions nor selection may open its Builder conversation.
+  if (relayMode && workspacePath && activeWorkflowAccess !== 'owner' && activeWorkflowAccess !== 'write') {
+    return <ReportView workspacePath={workspacePath} defaultRelayDashboard dashboardConversation allowContentQuestions={false} sendChatMessage={async () => { throw new Error('Ask is unavailable for this Relay.') }} />
+  }
 
   return (
     <div className={`relative flex flex-col h-full ${className}`}>
