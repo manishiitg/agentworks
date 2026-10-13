@@ -264,6 +264,12 @@ func pluginCommand(o *options) *cobra.Command {
 				out = again
 			}
 		}
+		if out.Attached && req.WantNotice {
+			// What the CLI did on its own (an update) or needs from the person, said on a prompt, at most once a day.
+			if line := autoUpdateHookLine(root, time.Now()); line != "" {
+				out.Notice = strings.TrimSpace(out.Notice + "\n" + line)
+			}
+		}
 		if out.Attached && out.Notice != "" && len(out.Messages) == 0 && out.SetupContext == "" {
 			return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": out.Notice}})
 		}
@@ -685,7 +691,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, Notify: notifyAgentWaiting, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root)})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, Notify: notifyAgentWaiting, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), AutoUpdate: autoUpdateHelperCallback})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")

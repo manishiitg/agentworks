@@ -56,19 +56,33 @@ type cliRelease struct {
 	Version  string `json:"version"`
 	CLIBuild string `json:"cli_build"`
 	Release  string `json:"release"`
+	// Breaking is set deliberately at release time when older clients cannot work with this release: such a
+	// release is never installed automatically; BreakingReason is the one line shown to the person.
+	Breaking       bool   `json:"breaking,omitempty"`
+	BreakingReason string `json:"breaking_reason,omitempty"`
 }
 
 func updateCommand(o *options) *cobra.Command {
-	var check, force, switchSource bool
+	var check, force, switchSource, autoRun bool
+	var auto string
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Self-update the CLI from the connected server",
 		Long:  "Download the CLI build published by the connected server, verify its checksum, and replace this executable. Uses the saved login server unless --server is given; no access token needed.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if auto != "" {
+				return autoUpdateSetting(o, auto)
+			}
+			if autoRun {
+				return runAutoUpdate(o)
+			}
 			return runUpdate(o, check, force, switchSource)
 		},
 	}
+	cmd.Flags().StringVar(&auto, "auto", "", "Turn automatic updates on or off, or show their state: on, off or status")
+	cmd.Flags().BoolVar(&autoRun, "auto-run", false, "Run one automatic update check now (what the background helper does)")
+	_ = cmd.Flags().MarkHidden("auto-run")
 	cmd.Flags().BoolVar(&check, "check", false, "Only report whether an update is available")
 	cmd.Flags().BoolVar(&force, "force", false, "Reinstall even when versions match")
 	cmd.Flags().BoolVar(&switchSource, "switch-plugin-source", false, "Move the AgentWorks coding-CLI plugins from the large repository to the small plugins repository (about a minute; reload the app afterwards)")
@@ -173,54 +187,9 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 			return fmt.Errorf("locate current executable: %w", err)
 		}
 	}
-	binary, err := updateFetch(base + "/" + asset)
-	if err != nil {
+	if _, err = installUpdate(base, asset, target, release, false); err != nil {
 		return err
 	}
-	sidecar, err := updateFetch(base + "/" + asset + ".sha256")
-	if err != nil {
-		return err
-	}
-	fields := strings.Fields(string(sidecar))
-	if len(fields) == 0 {
-		return fmt.Errorf("server published an unreadable checksum")
-	}
-	want := strings.ToLower(fields[0])
-	sum := sha256.Sum256(binary)
-	if hex.EncodeToString(sum[:]) != want {
-		return fmt.Errorf("checksum mismatch for %s; refusing to install", asset)
-	}
-	dir := filepath.Dir(target)
-	staged, err := os.CreateTemp(dir, "agentworks-update-*")
-	if err != nil {
-		return fmt.Errorf("stage update in %s: %w", dir, err)
-	}
-	stagedPath := staged.Name()
-	defer os.Remove(stagedPath)
-	if _, err := staged.Write(binary); err != nil {
-		staged.Close()
-		return fmt.Errorf("stage update: %w", err)
-	}
-	if err := staged.Close(); err != nil {
-		return fmt.Errorf("stage update: %w", err)
-	}
-	if err := os.Chmod(stagedPath, 0o755); err != nil {
-		return fmt.Errorf("stage update: %w", err)
-	}
-	backup := target + ".bak"
-	os.Remove(backup)
-	if err := os.Rename(target, backup); err != nil {
-		return fmt.Errorf("replace %s: %w (need write permission on the install directory)", target, err)
-	}
-	if err := os.Rename(stagedPath, target); err != nil {
-		os.Rename(backup, target)
-		return fmt.Errorf("install update: %w", err)
-	}
-	if out, err := exec.Command(target, "version").CombinedOutput(); err != nil || !strings.Contains(string(out), release.Version) {
-		os.Rename(backup, target)
-		return fmt.Errorf("new binary failed to run; previous version restored")
-	}
-	os.Remove(backup)
 	if err = stopAgentBridge(context.Background()); err != nil {
 		return err
 	}
@@ -229,4 +198,61 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	}
 	updateInstalledPlugins(context.Background(), o, switchSource)
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
+}
+
+// installUpdate downloads the asset, checks its checksum, swaps it in for the executable and runs the new one's
+// `version` as a self-test (restoring the old one if that fails). With keepBackup the previous executable stays at
+// the returned path so a caller can roll back.
+func installUpdate(base, asset, target string, release cliRelease, keepBackup bool) (string, error) {
+	binary, err := updateFetch(base + "/" + asset)
+	if err != nil {
+		return "", err
+	}
+	sidecar, err := updateFetch(base + "/" + asset + ".sha256")
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(sidecar))
+	if len(fields) == 0 {
+		return "", fmt.Errorf("server published an unreadable checksum")
+	}
+	want := strings.ToLower(fields[0])
+	sum := sha256.Sum256(binary)
+	if hex.EncodeToString(sum[:]) != want {
+		return "", fmt.Errorf("checksum mismatch for %s; refusing to install", asset)
+	}
+	dir := filepath.Dir(target)
+	staged, err := os.CreateTemp(dir, "agentworks-update-*")
+	if err != nil {
+		return "", fmt.Errorf("stage update in %s: %w", dir, err)
+	}
+	stagedPath := staged.Name()
+	defer os.Remove(stagedPath)
+	if _, err := staged.Write(binary); err != nil {
+		staged.Close()
+		return "", fmt.Errorf("stage update: %w", err)
+	}
+	if err := staged.Close(); err != nil {
+		return "", fmt.Errorf("stage update: %w", err)
+	}
+	if err := os.Chmod(stagedPath, 0o755); err != nil {
+		return "", fmt.Errorf("stage update: %w", err)
+	}
+	backup := target + ".bak"
+	os.Remove(backup) // a stale one from an earlier update
+	if err := os.Rename(target, backup); err != nil {
+		return "", fmt.Errorf("replace %s: %w (need write permission on the install directory)", target, err)
+	}
+	if err := os.Rename(stagedPath, target); err != nil {
+		os.Rename(backup, target)
+		return "", fmt.Errorf("install update: %w", err)
+	}
+	if out, err := exec.Command(target, "version").CombinedOutput(); err != nil || !strings.Contains(string(out), release.Version) {
+		os.Rename(backup, target)
+		return "", fmt.Errorf("new binary failed to run; previous version restored")
+	}
+	if !keepBackup {
+		os.Remove(backup)
+	}
+	return target + ".bak", nil
 }

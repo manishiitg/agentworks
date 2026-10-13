@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -174,6 +175,11 @@ type LocalBridgeOptions struct {
 	// RouteRetry is how long a chat whose native-route lookup failed waits before the bridge looks again
 	// (5 s when zero). Attaching, re-attaching and a chat starting look at once.
 	RouteRetry time.Duration
+	// AutoUpdate, when set, is called about two minutes after the helper starts and then every six hours (plus up to
+	// half an hour of jitter), but only while no chat is being delivered to; a busy bridge retries in ten minutes, six
+	// times, then waits for the next round. The three intervals can be shortened for tests.
+	AutoUpdate                                        func(context.Context)
+	AutoUpdateFirst, AutoUpdateEvery, AutoUpdateRetry time.Duration
 	// Version is the build that runs the bridge. A newer CLI replaces a bridge
 	// that reports another version, so hooks never talk to an older helper.
 	Version string
@@ -468,6 +474,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	houseCtx, houseCancel := context.WithCancel(ctx)
 	defer houseCancel()
 	go b.housekeeping(houseCtx)
+	if b.options.AutoUpdate != nil {
+		go b.autoUpdateLoop(houseCtx)
+	}
 	usageCtx, usageCancel := context.WithCancel(houseCtx)
 	usageDone := make(chan struct{})
 	go func() { defer close(usageDone); b.runUsage(usageCtx) }()
@@ -1880,5 +1889,63 @@ func (b *localBridge) noteLateAttach(provider, session, name string) {
 	defer b.mu.Unlock()
 	if s := b.sessions[localBridgeKey(provider, session)]; s != nil {
 		s.lateNotice = "AgentWorks finished connecting this chat: it is attached as agent:" + name + "."
+	}
+}
+
+// idleForUpdate says no chat is mid-delivery: nothing handed over in the last two minutes that is not yet processed,
+// and no attach or detach in flight.
+func (b *localBridge) idleForUpdate() bool {
+	b.attachMu.Lock()
+	for _, gate := range b.attaching {
+		if len(gate) > 0 {
+			b.attachMu.Unlock()
+			return false
+		}
+	}
+	b.attachMu.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, s := range b.sessions {
+		if s.Offline {
+			continue
+		}
+		for _, m := range s.Offers {
+			// A message waiting for a chat that has not asked for it can wait for days; one that was just handed
+			// over and not yet processed is a delivery in progress.
+			if m.Offered && !m.Suppressed && m.Delivery != "processed" && time.Since(m.OfferedAt) < 2*time.Minute {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (b *localBridge) autoUpdateLoop(ctx context.Context) {
+	or := func(d, fallback time.Duration) time.Duration {
+		if d > 0 {
+			return d
+		}
+		return fallback
+	}
+	wait := or(b.options.AutoUpdateFirst, 2*time.Minute)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		for try := 0; try < 6; try++ {
+			if b.idleForUpdate() {
+				b.options.AutoUpdate(ctx)
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(or(b.options.AutoUpdateRetry, 10*time.Minute)):
+			}
+		}
+		every := or(b.options.AutoUpdateEvery, 6*time.Hour)
+		wait = every + time.Duration(rand.Int63n(int64(every/12)+1))
 	}
 }

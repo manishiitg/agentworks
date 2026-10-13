@@ -514,3 +514,37 @@ func TestAttachFinishedAfterTheCommandGaveUpIsConfirmedOnTheNextPrompt(t *testin
 		t.Fatalf("the confirmation was repeated: %+v %v", again, e)
 	}
 }
+
+// The helper checks for an update on a schedule but never while a chat is being delivered to: it waits and tries again.
+func TestAutoUpdateWaitsWhileAMessageIsBeingDelivered(t *testing.T) {
+	var calls atomic.Int32
+	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{}), options: LocalBridgeOptions{
+		AutoUpdate:      func(context.Context) { calls.Add(1) },
+		AutoUpdateFirst: 20 * time.Millisecond, AutoUpdateEvery: time.Hour, AutoUpdateRetry: 30 * time.Millisecond,
+	}}
+	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, Offers: map[string]localOffer{
+		"m1": {Offered: true, OfferedAt: time.Now(), AgentLiveMessage: AgentLiveMessage{MessageID: "m1", Delivery: "admitted"}},
+	}}
+	b.sessions[localBridgeKey("claude", "s1")] = s
+	if b.idleForUpdate() {
+		t.Fatal("a message just handed over and not processed is a delivery in progress")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go b.autoUpdateLoop(ctx)
+	time.Sleep(80 * time.Millisecond) // inside the loop's six retries (6 x 30 ms)
+	if calls.Load() != 0 {
+		t.Fatalf("the update ran during a delivery (%d calls)", calls.Load())
+	}
+	b.mu.Lock()
+	m := s.Offers["m1"]
+	m.Delivery = "processed"
+	s.Offers["m1"] = m
+	b.mu.Unlock()
+	for i := 0; i < 40 && calls.Load() == 0; i++ {
+		time.Sleep(25 * time.Millisecond)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("the update did not run once the delivery was processed (%d calls)", calls.Load())
+	}
+}
