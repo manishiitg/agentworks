@@ -126,7 +126,7 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
 		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
 	}
-	if strings.HasPrefix(strings.ToLower(name), "agent:") {
+	agentTarget := func(agentName string) (triggerTarget, error) {
 		if !namedAgentOperationAllowed(claims, send) {
 			return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
 		}
@@ -136,7 +136,10 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 				senderAgentID = a.ID
 			}
 		}
-		return resolveNamedMessageAgent(ctx, claims.UserID, name[len("agent:"):], senderAgentID)
+		return resolveNamedMessageAgent(ctx, claims.UserID, agentName, senderAgentID)
+	}
+	if strings.HasPrefix(strings.ToLower(name), "agent:") {
+		return agentTarget(name[len("agent:"):])
 	}
 	targets := []triggerTarget{}
 	if workflowID == "" {
@@ -171,8 +174,14 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 			targets = append(targets, triggerTarget{Kind: triggerCallerWorkflow, Path: workflow.WorkspacePath, Label: firstNonEmptyTrimmed(m.Label, m.ID), Manifest: m})
 		}
 	}
+	if len(targets) == 0 && crewID == "" && workflowID == "" && name != "" && !strings.Contains(name, ":") {
+		// A bare name that is no Crew or workflow is an agent when one of the caller's agents has that name.
+		if target, err := agentTarget(name); err == nil {
+			return target, nil
+		}
+	}
 	if len(targets) != 1 {
-		return triggerTarget{}, fmt.Errorf("choose one accessible Crew or workflow by ID; target is unavailable or ambiguous")
+		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent (or group:NAME for a group), or choose a Crew or workflow by ID")
 	}
 	target := targets[0]
 	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {

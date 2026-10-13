@@ -356,6 +356,10 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	send := func(text string) map[string]any {
 		return call(sender, map[string]any{"action": "send", "agent_name": "sender", "target": "agent:hook-reviewer", "message": text, "submission_id": text})
 	}
+	// A bare name that is no Crew, workflow or agent says how to address an agent.
+	if _, e := sender.Call(context.Background(), "messages", map[string]any{"action": "send", "agent_name": "sender", "target": "no-such-name", "message": "x", "submission_id": "bare-unknown"}); e == nil || !strings.Contains(e.Error(), "agent:NAME") {
+		t.Fatalf("an unknown bare target must say to use agent:NAME: %v", e)
+	}
 	drain := base
 	drain.Action = "drain"
 	drain.Transport = "claude_hook"
