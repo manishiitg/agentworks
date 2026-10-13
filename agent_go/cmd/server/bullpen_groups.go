@@ -469,9 +469,7 @@ func (api *StreamingAPI) groupAction(ctx context.Context, ownerID, action, agent
 	case "unshare", "leave":
 		return api.groupLeave(ctx, ownerID, agentName, group)
 	case "groups", "group", "list":
-		agentMessageMu.Lock()
-		s, err := readAgentMessageStore(ctx)
-		agentMessageMu.Unlock()
+		s, err := readAgentMessageSnapshot(ctx)
 		if err != nil {
 			return groupResult(http.StatusServiceUnavailable, "unavailable", "Groups are unavailable. Try again.")
 		}
@@ -546,9 +544,7 @@ func (api *StreamingAPI) externalSendGroup(w http.ResponseWriter, r *http.Reques
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Send to group:NAME from one of your registered agents (agent_name).")
 		return
 	}
-	agentMessageMu.Lock()
-	s, readErr := readAgentMessageStore(r.Context())
-	agentMessageMu.Unlock()
+	s, readErr := readAgentMessageSnapshot(r.Context())
 	if readErr != nil {
 		externalError(w, http.StatusServiceUnavailable, "unavailable", "Groups are unavailable. Try again.")
 		return

@@ -17,9 +17,7 @@ func (api *StreamingAPI) externalMessagePeer(ctx context.Context, claims *UserCl
 }
 
 func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (agentMessageEndpoint, error) {
-	agentMessageMu.Lock()
-	store, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	store, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return agentMessageEndpoint{}, err
 	}

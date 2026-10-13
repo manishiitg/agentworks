@@ -25,9 +25,7 @@ func (api *StreamingAPI) externalAgentMessageState(w http.ResponseWriter, r *htt
 	matches := func(e agentMessageEndpoint) bool {
 		return !e.External && e.Kind == target.Kind && e.ID == target.stampID() && canonicalCrewWorkspaceRoot(e.Path) == canonicalCrewWorkspaceRoot(targetMessageEndpoint(claims.UserID, target).Path)
 	}
-	agentMessageMu.Lock()
-	store, err := readAgentMessageStore(r.Context())
-	agentMessageMu.Unlock()
+	store, err := readAgentMessageSnapshot(r.Context())
 	if err != nil {
 		externalError(w, 502, "workspace_unavailable", "Cannot read message state.")
 		return

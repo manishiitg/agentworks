@@ -1,5 +1,24 @@
 # Decisions and open issues
 
+## 2026-10-13 — Validated immutable messaging snapshots (PLAT-861)
+
+Pure directory, claims, event-stream and inbox reads use an immutable parsed
+snapshot outside the message mutation mutex. Every read still validates the
+workspace response, including service authorization; there is no TTL or fallback
+to cached authority when the workspace fails. A strong content ETag detects even
+external edits preserving size and modification time. Successful conditional
+reads reuse parsed data; older workspaces remain compatible through full reads.
+Every store-write attempt advances the generation, and mutation transactions
+retain separate freshly decoded stores. Named-agent results clone their mutable
+connection lists and attachment pointers. Closing, revoking, offering and writing
+messages keep their existing atomic mutation fences.
+
+Why: concurrent event streams repeatedly decoded the full store while holding
+one mutex, delaying unrelated agents. Administration lists/audits now also use
+snapshots and expose store/projection timing without changing their access gates.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-160.
+
 ## 2026-10-13 — MCP explains token use through trusted attribution (PLAT-856)
 
 Add product, originating person and activity snapshots to the existing immutable

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -862,6 +863,19 @@ func GetDocument(c *gin.Context) {
 			Error:   err.Error(),
 		})
 		return
+	}
+
+	// Internal messaging snapshots can validate their parsed cache without
+	// re-encoding/downloading the entire store. Hash the bytes actually read:
+	// atomic replacement or same-size/same-mtime edits cannot reuse an old tag.
+	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
+		tag := fmt.Sprintf("\"%x\"", sha256.Sum256(content))
+		c.Header("ETag", tag)
+		c.Header("Cache-Control", "private, no-cache")
+		if c.GetHeader("If-None-Match") == tag {
+			c.Status(http.StatusNotModified)
+			return
+		}
 	}
 
 	// Return the original user-relative path in the response (not the internal path)

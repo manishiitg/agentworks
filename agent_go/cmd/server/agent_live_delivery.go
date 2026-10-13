@@ -269,9 +269,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			_ = write(map[string]any{"type": "closed"})
 			return
 		}
-		agentMessageMu.Lock()
-		store, e := readAgentMessageStore(r.Context())
-		agentMessageMu.Unlock()
+		store, e := readAgentMessageSnapshot(r.Context())
 		if e != nil {
 			return
 		}
@@ -387,9 +385,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "invalid_arguments", "At most 20 message IDs required.")
 		return
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(r.Context())
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(r.Context())
 	if err != nil {
 		externalError(w, 500, "store_unavailable", "Cannot validate pending messages.")
 		return

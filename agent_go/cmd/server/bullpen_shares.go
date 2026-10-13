@@ -341,9 +341,7 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 	if owner == nil || owner.ID == subjectID {
 		return triggerTarget{}, denied
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return triggerTarget{}, err
 	}
@@ -480,9 +478,7 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 	if claims == nil {
 		return
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(r.Context())
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(r.Context())
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again.")
 		return

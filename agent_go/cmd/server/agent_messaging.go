@@ -527,9 +527,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		} else {
 			seen = v
 		}
-		agentMessageMu.Lock()
-		s, err := readAgentMessageStore(ctx)
-		agentMessageMu.Unlock()
+		s, err := readAgentMessageSnapshot(ctx)
 		if err != nil {
 			return nil, err
 		}

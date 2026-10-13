@@ -77,13 +77,13 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 // Read a fresh store snapshot. Mutation callers already hold agentMessageMu;
 // authorization fails closed if storage is unavailable.
 func namedAgentByID(ctx context.Context, userID, id string) (namedMessageAgent, error) {
-	s, err := readAgentMessageStore(ctx)
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
 	for _, a := range s.Agents {
 		if a.ID == id && a.UserID == userID {
-			return a, nil
+			return cloneNamedAgent(a), nil
 		}
 	}
 	return namedMessageAgent{}, fmt.Errorf("named agent unavailable or access denied")
@@ -94,15 +94,13 @@ func namedAgentForClaims(ctx context.Context, claims *UserClaims, name string) (
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
 	for _, a := range s.Agents {
 		if a.UserID == claims.UserID && a.Name == name && namedAgentConnectionAllowed(a, claims) {
-			return a, nil
+			return cloneNamedAgent(a), nil
 		}
 	}
 	return namedMessageAgent{}, fmt.Errorf("named agent unavailable or access denied")
@@ -116,9 +114,7 @@ func resolveNamedMessageAgent(ctx context.Context, userID, name, senderAgentID s
 	if err != nil {
 		return triggerTarget{}, err
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return triggerTarget{}, err
 	}
@@ -137,9 +133,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 	if userAccessForClaims(&UserClaims{UserID: userID}).Disabled {
 		return nil, fmt.Errorf("account is disabled")
 	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -378,9 +372,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			continue
 		}
 		seen = version
-		agentMessageMu.Lock()
-		s, e := readAgentMessageStore(ctx)
-		agentMessageMu.Unlock()
+		s, e := readAgentMessageSnapshot(ctx)
 		if e != nil {
 			return nil, e
 		}
@@ -468,9 +460,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			}
 			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
 			// What this agent sent recently, and where each message stands.
-			agentMessageMu.Lock()
-			fresh, readErr := readAgentMessageStore(ctx)
-			agentMessageMu.Unlock()
+			fresh, readErr := readAgentMessageSnapshot(ctx)
 			if readErr == nil {
 				sent := []map[string]interface{}{}
 				for _, c := range fresh.Conversations {

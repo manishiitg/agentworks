@@ -249,7 +249,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 	// Metadata and audit projections grant no mutation authority. Workspace
 	// atomic rename supplies one complete snapshot without waiting on writers.
 	start := time.Now()
-	s, err := readAgentMessageStore(ctx)
+	s, err := readAgentMessageSnapshot(ctx)
 	if timing, _ := ctx.Value(bullpenAdminTimingKey{}).(*bullpenAdminTiming); timing != nil {
 		timing.store = time.Since(start)
 	}

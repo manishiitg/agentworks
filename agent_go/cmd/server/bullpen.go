@@ -51,7 +51,7 @@ func (api *StreamingAPI) handleBullpenAgents(w http.ResponseWriter, r *http.Requ
 // browser reads observe one complete snapshot; they neither authorize a message
 // nor mutate a lease. Keep the global lock on all authorization/mutation paths.
 func readBullpenSnapshot(r *http.Request) (agentMessageStore, error) {
-	return readAgentMessageStore(r.Context())
+	return readAgentMessageSnapshot(r.Context())
 }
 
 func stampBullpenTiming(w http.ResponseWriter, start time.Time, store time.Duration, phase string, work time.Duration) {
