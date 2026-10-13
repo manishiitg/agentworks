@@ -174,6 +174,72 @@ export interface CombinedDailyCostSummaryEntry {
   runCount: number
 }
 
+export interface OverallCostSummary {
+  totalCost: number
+  totalTokens: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalRuns: number
+}
+
+type CostAggregateLike = { total_cost_usd?: number; completion_tokens?: number }
+export type ScopedCostsLike = { total: CostAggregateLike; by_scope?: Record<string, unknown> } | null | undefined
+type AggregateLike = { totalCost: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number; totalRuns: number } | null | undefined
+type PhaseLike = { totalCost: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number } | null | undefined
+
+/**
+ * The header must agree with the sections under it. Ledger rows can carry a
+ * price without token counts; in that case the daily rows (which fall back to
+ * run artifacts) are the only token source, so the header sums those rows.
+ */
+export function resolveOverallSummary(
+  scopedCosts: ScopedCostsLike,
+  aggregate: AggregateLike,
+  phase: PhaseLike,
+  daily: CombinedDailyCostSummaryEntry[],
+  tokensOf: (usage?: CostAggregateLike) => number,
+  inputOf: (usage?: CostAggregateLike) => number,
+): OverallCostSummary | null {
+  const hasScopes = !!scopedCosts && Object.keys(scopedCosts.by_scope || {}).length > 0
+  const ledgerTokens = hasScopes ? tokensOf(scopedCosts!.total) : 0
+  if (hasScopes && ledgerTokens > 0) {
+    return {
+      totalCost: scopedCosts!.total.total_cost_usd || 0,
+      totalTokens: ledgerTokens,
+      totalInputTokens: inputOf(scopedCosts!.total),
+      totalOutputTokens: scopedCosts!.total.completion_tokens || 0,
+      totalRuns: aggregate?.totalRuns || 0,
+    }
+  }
+  const dailyTokens = daily.reduce((sum, entry) => sum + entry.totalTokens, 0)
+  if (dailyTokens > 0) {
+    return {
+      totalCost: daily.reduce((sum, entry) => sum + entry.totalCost, 0),
+      totalTokens: dailyTokens,
+      totalInputTokens: daily.reduce((sum, entry) => sum + (entry.totalInputTokens || 0), 0),
+      totalOutputTokens: daily.reduce((sum, entry) => sum + (entry.totalOutputTokens || 0), 0),
+      totalRuns: aggregate?.totalRuns || 0,
+    }
+  }
+  if (hasScopes) {
+    return {
+      totalCost: scopedCosts!.total.total_cost_usd || 0,
+      totalTokens: ledgerTokens,
+      totalInputTokens: inputOf(scopedCosts!.total),
+      totalOutputTokens: scopedCosts!.total.completion_tokens || 0,
+      totalRuns: aggregate?.totalRuns || 0,
+    }
+  }
+  if (!aggregate && !phase) return null
+  return {
+    totalCost: (aggregate?.totalCost || 0) + (phase?.totalCost || 0),
+    totalTokens: (aggregate?.totalTokens || 0) + (phase?.totalTokens || 0),
+    totalInputTokens: (aggregate?.totalInputTokens || 0) + (phase?.totalInputTokens || 0),
+    totalOutputTokens: (aggregate?.totalOutputTokens || 0) + (phase?.totalOutputTokens || 0),
+    totalRuns: aggregate?.totalRuns || 0,
+  }
+}
+
 export const getRunFolderDisplayName = (runFolder: string) => {
   // Show "iteration-N · group" so both dimensions are visible. Single-segment
   // values (legacy layout, or iteration-only) fall through unchanged.

@@ -13,6 +13,7 @@ import type {
 import {
   calculateCostSummary,
   calculatePhaseCostSummary,
+  resolveOverallSummary,
   compareRunCosts,
   type CombinedDailyCostSummaryEntry,
   type PhaseCostSummary,
@@ -365,33 +366,6 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
     }
   }, [runCosts])
 
-  const overallSummary = useMemo(() => {
-    if (scopedCosts && Object.keys(scopedCosts.by_scope || {}).length > 0) {
-      const ledgerTokens = totalTokens(scopedCosts.total)
-      const artifactTokens = (aggregateSummary?.totalTokens || 0) + (phaseCostSummary?.totalTokens || 0)
-      // The daily history below falls back to run artifacts when the ledger
-      // has no priced usage; the header must agree instead of showing zero.
-      if (ledgerTokens > 0 || scopedCosts.total.total_cost_usd > 0 || artifactTokens === 0) {
-        return {
-          totalCost: scopedCosts.total.total_cost_usd,
-          totalTokens: ledgerTokens,
-          totalInputTokens: inputTokens(scopedCosts.total),
-          totalOutputTokens: scopedCosts.total.completion_tokens,
-          totalRuns: aggregateSummary?.totalRuns || 0
-        }
-      }
-    }
-    if (!aggregateSummary && !phaseCostSummary) return null
-
-    return {
-      totalCost: (aggregateSummary?.totalCost || 0) + (phaseCostSummary?.totalCost || 0),
-      totalTokens: (aggregateSummary?.totalTokens || 0) + (phaseCostSummary?.totalTokens || 0),
-      totalInputTokens: (aggregateSummary?.totalInputTokens || 0) + (phaseCostSummary?.totalInputTokens || 0),
-      totalOutputTokens: (aggregateSummary?.totalOutputTokens || 0) + (phaseCostSummary?.totalOutputTokens || 0),
-      totalRuns: aggregateSummary?.totalRuns || 0
-    }
-  }, [aggregateSummary, phaseCostSummary, scopedCosts])
-
   const combinedDailyCostSummaries = useMemo(() => {
     const byDate = scopedCosts?.by_date || {}
     const hasDailyScopeAttribution = Object.values(byDate).some(total => Object.keys(total.by_scope || {}).length > 0)
@@ -506,6 +480,11 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
       })
       .sort((a, b) => b.date.localeCompare(a.date))
   }, [activityTiming, phaseDailyCostSummaries, runDailyCostSummaries, scopedCosts])
+
+  const overallSummary = useMemo(
+    () => resolveOverallSummary(scopedCosts, aggregateSummary, phaseCostSummary, combinedDailyCostSummaries, totalTokens, inputTokens),
+    [aggregateSummary, combinedDailyCostSummaries, phaseCostSummary, scopedCosts],
+  )
 
   const dailyActivityBreakdown = useMemo(() => {
     const details = new Map<string, ReturnType<typeof buildCostActivityBreakdown>>()
