@@ -113,6 +113,9 @@ func TestRelayReaderCanListPublishedVersions(t *testing.T) {
 }
 
 func TestRelayRevokedUserCannotPollOrReplay(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"revoked","username":"revoked"}]}`)
 	draft := "Workflow/review-revoked"
 	release := relayReleaseWorkspace(draft, "v1")
 	m := NewWorkflowManifest("Revoked caller")
@@ -139,26 +142,29 @@ func TestRelayRevokedUserCannotPollOrReplay(t *testing.T) {
 	}
 	api := &StreamingAPI{scheduler: &SchedulerService{stateStore: store}}
 	// A product member may run the published Relay whatever the function
-	// allow-list says (TestRelayFunctionCallerAllowedForProductMembers), so only
-	// reading the run is checked here.
-	for _, method := range []string{"GET"} {
+	// allow-list says (TestRelayFunctionCallerAllowedForProductMembers); a user
+	// whose access was revoked may neither start (POST) nor, as a caller, replay.
+	// Reading a run needs only access to the Relay (the owner here).
+	for _, method := range []string{"GET", "POST"} {
 		url := "/api/relays/" + m.ID + "/runs"
 		if method == "GET" {
 			url += "/" + runID
 		}
 		req := httptest.NewRequest(method, url, strings.NewReader(`{"function":"process","input":{"value":1},"idempotency_key":"request-1"}`))
 		req = mux.SetURLVars(req, map[string]string{"id": m.ID, "run": runID})
-		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
+		user := "owner"
+		if method == "POST" {
+			user = "revoked"
+		}
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
 		out := httptest.NewRecorder()
 		if method == "GET" {
 			api.handleGetRelayRun(out, req)
 		} else {
 			api.handleStartRelayRun(out, req)
 		}
-		// Reading a run needs only access to the Relay (one company per server).
-		want := 200
-		if out.Code != want {
-			t.Fatalf("revoked %s got %d: %s", method, out.Code, out.Body.String())
+		if method == "GET" && out.Code != 200 || method == "POST" && out.Code != 403 && out.Code != 404 {
+			t.Fatalf("%s as %s got %d: %s", method, user, out.Code, out.Body.String())
 		}
 	}
 }
