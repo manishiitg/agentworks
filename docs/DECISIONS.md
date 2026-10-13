@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-13 — Show pending workflow upgrades above chat (PLAT-861)
+
+The workflow chat shows Update workflow whenever migrations are pending, even
+when its saved contract remains execution-compatible. The button starts the
+existing Builder review-and-apply conversation. Only the backend's required
+flag describes a migration that blocks starting a run. Keep the requested-chat
+link until pending work clears, including queued and running migrations.
+
+Why: the description-first migration is pending for runnable v1.0.47 workflows
+and must remain discoverable without opening Identity's Upgrades panel.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-162.
+
 ## 2026-10-13 — Shared product guidance covers work products (PLAT-856)
 
 The canonical MCP/CLI guide and Brain starter skill omit the personal products,

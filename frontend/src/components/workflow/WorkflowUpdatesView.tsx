@@ -5,7 +5,7 @@ import type { WorkflowContractUpgradeItem, WorkflowContractUpgradeStatus } from 
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { AskAIButton } from './AskAIButton'
-import { MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeStatusEvent } from './workflowContractUpgradeEvents'
+import { hasWorkflowContractUpgrade, MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeStatusEvent } from './workflowContractUpgradeEvents'
 
 function formatUpgradeLabel(label: string): string {
   return label
@@ -102,7 +102,7 @@ export default function WorkflowUpdatesView({ workspacePath }: { workspacePath: 
   }, [workspacePath])
 
   const pending = status?.pending ?? []
-  const needsUpdate = Boolean(status?.required || pending.length > 0)
+  const needsUpdate = hasWorkflowContractUpgrade(status)
   const applied = useMemo(() => [...(status?.applied ?? [])].reverse(), [status?.applied])
   const currentVersion = status?.current_version || '—'
   const platformVersion = status?.platform_version || '—'

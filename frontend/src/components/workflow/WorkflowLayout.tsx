@@ -160,7 +160,7 @@ import {
 import { isVisibleActivitySession } from '../../utils/activitySessions'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { isWorkspacePaneView } from './workspaceViews'
-import { MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeChatEvent } from './workflowContractUpgradeEvents'
+import { hasWorkflowContractUpgrade, MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeChatEvent } from './workflowContractUpgradeEvents'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
 
 const WORKFLOW_RESTORE_TIMEOUT_MS = 8000
@@ -960,7 +960,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   }, [activeWorkflowChatTabId, refreshContractUpgrade])
 
   useEffect(() => {
-    if (contractUpgrade && !contractUpgrade.required) setContractUpgradeChat(null)
+    if (contractUpgrade && !hasWorkflowContractUpgrade(contractUpgrade)) setContractUpgradeChat(null)
   }, [contractUpgrade])
 
   useEffect(() => {
@@ -2417,7 +2417,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
               </div>
             )}
 
-            {contractUpgrade?.required && (
+            {contractUpgrade && hasWorkflowContractUpgrade(contractUpgrade) && (
               <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
                 <span className="min-w-0 flex-1 text-muted-foreground">
                   {startingContractUpgrade
@@ -2429,12 +2429,15 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                           ? 'Workflow update is in progress in chat. The pending notice will clear when the migrations are applied.'
                           : 'Workflow update requested in chat. Continue there to finish the migrations or answer any questions.'
                       : <>
-                        This workflow needs a manual platform update before you can start it from chat
+                        {contractUpgrade.required
+                          ? 'This workflow needs a manual platform update before you can start it from chat'
+                          : 'Workflow update available'}
                         {contractUpgrade.current_version && contractUpgrade.platform_version
                           ? contractUpgrade.current_version === contractUpgrade.platform_version
                             ? ' (code layout update required).'
                             : ` (v${contractUpgrade.current_version} → v${contractUpgrade.platform_version}).`
                           : '.'}
+                        {' '}Builder reviews and applies the pending migrations in chat.
                         {' '}Schedules keep running the saved version and will not update it automatically.
                       </>}
                 </span>
