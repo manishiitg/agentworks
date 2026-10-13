@@ -197,6 +197,15 @@ func sanitizeScriptedDescription(desc string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
+// promptExecutionFolder is the run's execution folder shown in the prompt's paths table. Orchestrator
+// (manager) steps pass the workflow root as WorkspacePath and the execution folder separately.
+func promptExecutionFolder(templateVars map[string]string) string {
+	if folder := templateVars["ExecutionFolderPath"]; folder != "" {
+		return folder
+	}
+	return templateVars["WorkspacePath"]
+}
+
 // executionOnlySystemPromptProcessor generates the system prompt for execution-only agent
 func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(templateVars map[string]string) string {
 	workspacePath := templateVars["WorkspacePath"]
@@ -297,7 +306,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"StepSystemRules":           templateVars["StepSystemRules"],
 		"PendingInvocationInput":    templateVars["PendingInvocationInput"],
 		"StepContextDependencies":   templateVars["StepContextDependencies"],
-		"WorkspacePath":             workspacePath,
+		"WorkspacePath":             promptExecutionFolder(templateVars),
 		"IsCodeExecutionMode":       isCodeExecutionMode,
 		"CodeExecutionSection":      codeExecutionSection,
 		"StepContextOutput":         stepContextOutput,

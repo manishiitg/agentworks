@@ -372,3 +372,22 @@ func TestSharedKnowledgebasePromptUsesMCPInsteadOfLocalRecipes(t *testing.T) {
 	}
 
 }
+
+// A manager step passes the workflow root as WorkspacePath; its paths table must still show the run's
+// execution folder, and a step with no DB access still gets its knowledgebase guidance.
+func TestStepPromptPathsUseExecutionFolderAndKBWithoutDB(t *testing.T) {
+	agent := &WorkflowExecutionOnlyAgent{}
+	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{
+		"WorkspacePath":       "/docs/Workflow/demo",
+		"ExecutionFolderPath": "/docs/Workflow/demo/runs/iteration-0/default/execution",
+		"DBAccess":            DBAccessNone,
+		"KbAccess":            KBAccessRead,
+		"KnowledgebasePath":   "/docs/Workflow/demo/knowledgebase",
+	})
+	if !strings.Contains(prompt, "| Execution folder | `/docs/Workflow/demo/runs/iteration-0/default/execution/` |") {
+		t.Fatalf("execution folder row does not use the run's execution folder:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "- **knowledgebase/**") || strings.Contains(prompt, "structured JSON") {
+		t.Fatalf("KB guidance missing without DB access, or stale DB label:\n%s", prompt)
+	}
+}
