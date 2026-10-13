@@ -22,7 +22,7 @@ export function inspectionRecords(response: ExecutionInspectionResponse) {
   const previous = tools.get(key)
   tools.set(key, {...previous, ...call, arguments: call.arguments ?? previous?.arguments, result: call.result ?? previous?.result, error: call.error ?? previous?.error, status: previous && call.status === 'running' && previous.status !== 'running' ? previous.status : call.status})
  })
- return {system, user, tools: [...tools.values()], result: (response.conversation ? assistant.at(-1) : response.result) || response.result || assistant.at(-1) || '', assistant}
+ return {system, user, tools: [...tools.values()], result: (response.conversation && !response.conversation.truncated ? assistant.at(-1) : response.result) || response.result || assistant.at(-1) || '', assistant}
 }
 
 export function inspectionTaskLabel(name: string): string {
@@ -69,7 +69,7 @@ export function inspectionChat(response: ExecutionInspectionResponse) {
   else if (event.role === 'assistant' || event.type === 'assistant_message') {type='llm_generation_end';Object.assign(payload,{content:event.text});lastAssistant=event.text || ''}
   if (type) events.push({id:`${transcript.agent_id}:${index}`,type,timestamp:event.timestamp,session_id:transcript.session_id,sequence:index,data:{type,data:payload}} as PollingEvent)
  }
- if (response.result && !(response.conversation && lastAssistant.trim()) && response.result.trim() !== lastAssistant.trim()) events.push({id:`${transcript.agent_id}:result`,type:'llm_generation_end',timestamp:transcript.completed_at || transcript.started_at,session_id:transcript.session_id,sequence:recordedEvents.length,data:{type:'llm_generation_end',data:{content:response.result,metadata:{execution_owner_id:transcript.agent_id,execution_kind:'background_agent'}}}} as PollingEvent)
+ if (response.result && !(response.conversation && !response.conversation.truncated && lastAssistant.trim()) && response.result.trim() !== lastAssistant.trim()) events.push({id:`${transcript.agent_id}:result`,type:'llm_generation_end',timestamp:transcript.completed_at || transcript.started_at,session_id:transcript.session_id,sequence:recordedEvents.length,data:{type:'llm_generation_end',data:{content:response.result,metadata:{execution_owner_id:transcript.agent_id,execution_kind:'background_agent'}}}} as PollingEvent)
  const terminal: TerminalSnapshot = {terminal_id:`${transcript.session_id}:${transcript.agent_id}`,session_id:transcript.session_id,execution_id:transcript.agent_id,execution_kind:'background_agent',content:'',rows:[],chunk_index:0,active:transcript.status==='running',state:transcript.status,status:{},created_at:transcript.started_at,updated_at:transcript.completed_at || transcript.started_at}
  return {events,terminal}
 }

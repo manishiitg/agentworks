@@ -124,6 +124,10 @@ it('renders linked turns as one conversation without joining cross-turn repeats 
  expect(inspectionRecords(data).result).toBe('Complete provider response')
  expect(chat.events.filter(event=>event.type==='llm_generation_end')).toHaveLength(1)
  expect(JSON.stringify(chat.events)).not.toContain('Delegation summary')
+ // A partial conversation's last reply is not the execution's final response.
+ data.conversation.truncated=true
+ expect(inspectionRecords(data).result).toBe('Delegation summary')
+ expect(JSON.stringify(inspectionChat(data).events)).toContain('Delegation summary')
 })
 
 it('opens the selected sub-agent conversation and nested agent without losing failed status', async () => {
@@ -131,7 +135,7 @@ it('opens the selected sub-agent conversation and nested agent without losing fa
  const parent=response('first','Parent task'); parent.execution_mode='agent'
  parent.children=[{agent_id:'manager',kind:'sub_agent',name:'Manager',status:'completed'}]
  const manager=response('manager',''); manager.execution_mode='agent'; manager.transcript.events=[]
- manager.conversation={source_execution_ids:['manager-turn'],events:[{timestamp:target.started_at,type:'system_message',role:'system',text:'Manager rules',execution_id:'manager-turn'},{timestamp:target.started_at,type:'user_message',role:'user',text:'Manager instruction',execution_id:'manager-turn'}]}
+ manager.conversation={source_execution_ids:['manager-turn'],truncated:true,events:[{timestamp:target.started_at,type:'system_message',role:'system',text:'Manager rules',execution_id:'manager-turn'},{timestamp:target.started_at,type:'user_message',role:'user',text:'Manager instruction',execution_id:'manager-turn'}]}
  manager.children=[{agent_id:'nested',kind:'sub_agent',name:'Nested task',status:'failed'}]
  const child=response('nested','Nested instruction'); child.execution_mode='agent'; child.transcript.status='failed'; child.transcript.error='Task could not finish'
  vi.spyOn(agentApi,'inspectSessionExecution').mockImplementation(item=>Promise.resolve(item.execution_id==='first' ? parent : item.execution_id==='manager' ? manager : child))
@@ -142,6 +146,7 @@ it('opens the selected sub-agent conversation and nested agent without losing fa
   await act(async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Task"]')!;select.value='manager';select.dispatchEvent(new Event('change',{bubbles:true}))})
   await vi.waitFor(()=>expect(host.textContent).toContain('Manager instruction'))
   expect(host.textContent).toContain('Manager rules')
+  expect(host.textContent).toContain('Showing part of the recorded conversation')
   expect(host.textContent).not.toContain('No conversation is attached')
   await act(async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Nested sub-agent"]')!;select.value='nested';select.dispatchEvent(new Event('change',{bubbles:true}))})
   await vi.waitFor(()=>expect(host.textContent).toContain('Nested instruction'))

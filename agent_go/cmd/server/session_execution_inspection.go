@@ -160,7 +160,14 @@ type inspectionConversationEvent struct {
 type inspectionConversation struct {
 	SourceExecutionIDs []string                      `json:"source_execution_ids"`
 	Events             []inspectionConversationEvent `json:"events"`
+	Truncated          bool                          `json:"truncated,omitempty"`
 }
+
+const (
+	maxInspectionConversationChildren = 50
+	maxInspectionConversationEvents   = 5000
+	maxInspectionConversationBytes    = 8 << 20
+)
 
 func inspectionTranscriptHasConversation(transcript *orchEvents.BackgroundAgentTranscript) bool {
 	for _, event := range transcript.Events {
@@ -172,15 +179,27 @@ func inspectionTranscriptHasConversation(transcript *orchEvents.BackgroundAgentT
 }
 
 func (api *StreamingAPI) inspectionChildConversation(ctx context.Context, workspace, sessionID, parentID string, children []BackgroundAgentLogEntry) *inspectionConversation {
-	view := &inspectionConversation{}
+	view := &inspectionConversation{Events: []inspectionConversationEvent{}, SourceExecutionIDs: []string{}}
+	readChildren, readBytes := 0, 0
 	for _, child := range children {
 		if child.Kind != "agent_item" || child.ParentExecutionID != parentID || !inspectionIdentityPart(child.AgentID) {
 			continue
 		}
+		if ctx.Err() != nil || readChildren >= maxInspectionConversationChildren || len(view.Events) >= maxInspectionConversationEvents {
+			view.Truncated = true
+			break
+		}
+		readChildren++
 		content, exists, err := readFileFromWorkspace(ctx, orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, child.AgentID))
 		if err != nil || !exists {
 			continue
 		}
+		// Bound decoding and the combined response without changing saved evidence.
+		if len(content) > maxInspectionConversationBytes-readBytes {
+			view.Truncated = true
+			continue
+		}
+		readBytes += len(content)
 		source, err := orchEvents.ParseBackgroundAgentTranscript(content)
 		if err != nil || source == nil || source.AgentID != child.AgentID || source.SessionID != sessionID || source.ParentExecutionID != parentID || !inspectionTranscriptHasConversation(source) {
 			continue
@@ -188,10 +207,14 @@ func (api *StreamingAPI) inspectionChildConversation(ctx context.Context, worksp
 		source.RedactSensitiveText()
 		view.SourceExecutionIDs = append(view.SourceExecutionIDs, source.AgentID)
 		for _, event := range source.Events {
+			if len(view.Events) >= maxInspectionConversationEvents {
+				view.Truncated = true
+				break
+			}
 			view.Events = append(view.Events, inspectionConversationEvent{BackgroundAgentTranscriptEvent: event, ExecutionID: source.AgentID})
 		}
 	}
-	if len(view.Events) == 0 {
+	if len(view.Events) == 0 && !view.Truncated {
 		return nil
 	}
 	sort.SliceStable(view.Events, func(i, j int) bool { return view.Events[i].Timestamp.Before(view.Events[j].Timestamp) })
