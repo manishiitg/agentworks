@@ -379,8 +379,8 @@ function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction, d
 
   return (
     <FormSection title={own ? `Edit ${own.display_name}` : `Set up this ${noun}'s bot`} description={<>Create a Slack app for this {noun} and paste its two tokens. {inviteHint}</>}>
-      <SlackManifestSetup defaultName={slackConnName || slackAppDefaultName} finalStep={<>Save, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
-      <SlackAppSetupSteps finalStep={<>Save below, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
+      <SlackManifestSetup defaultName={slackConnName || slackAppDefaultName} finalStep={directMessagesOnly ? <>Save, then open a direct message with the bot in Slack.</> : <>Save, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
+      <SlackAppSetupSteps finalStep={directMessagesOnly ? <>Save below, then open a direct message with the bot in Slack.</> : <>Save below, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
       <SlackPermissionsChecklist />
       <div>
         <Label className="mb-2 block">Bot name</Label>
