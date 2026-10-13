@@ -1341,6 +1341,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return out
 	case "ack", "reply":
 		m, ok := s.Offers[in.MessageID]
+		if ok && !m.Offered {
+			// Seen only as a notice or in a read: the body is handed over by receive, and only then can it be acknowledged.
+			return LocalBridgeReply{Error: "message was not offered to this exact session yet: call agent_message_receive in this chat to take it, then ack or reply"}
+		}
 		if !ok || !m.Offered {
 			return LocalBridgeReply{Error: "message was not offered to this exact session"}
 		}

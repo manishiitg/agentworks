@@ -28,6 +28,8 @@ type MuseWatchHint struct {
 	Sender       string `json:"sender,omitempty"`
 	Error        string `json:"error,omitempty"`
 	Pending      int    `json:"pending,omitempty"`
+	// Note tells the chat what a notice is: it never carries the message.
+	Note string `json:"note,omitempty"`
 }
 
 type museWatchState struct {
@@ -189,6 +191,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		notice := ready
 		notice.Kind = "pending"
 		notice.Pending = pendingCount
+		notice.Note = "Messages are waiting. Call agent_message_receive in this chat to read them, then ack."
 		if encoder.Encode(notice) != nil {
 			return
 		}
@@ -283,6 +286,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		hint.MessageID = boundedMuseHint(m.MessageID)
 		hint.InboxID = boundedMuseHint(m.InboxID)
 		hint.Sender = boundedMuseHint(m.Sender)
+		hint.Note = "Notice only, without the message text. Call agent_message_receive in this chat to read it, then ack."
 		if encoder.Encode(hint) != nil {
 			return
 		}
