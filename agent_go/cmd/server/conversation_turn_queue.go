@@ -737,6 +737,26 @@ type PendingQueuedMessage struct {
 	Content         string    `json:"content"`
 	QueuedAt        time.Time `json:"queued_at"`
 	QueuePosition   int       `json:"queue_position"`
+	// Refreshing: the chat is being updated (new definition, model or settings) before this message can go in, so the person
+	// sees that, and Steer now does not apply: steering into the outdated process is what the update replaces. Remove stays, so a long
+	// update can still be withdrawn.
+	Refreshing bool `json:"refreshing,omitempty"`
+}
+
+// markRefreshingQueuedMessages flags a chat's waiting messages when its runtime is waiting to be replaced.
+func (api *StreamingAPI) markRefreshingQueuedMessages(sessionID string, messages []PendingQueuedMessage) {
+	if api == nil || len(messages) == 0 {
+		return
+	}
+	api.conversationTurnQueueMu.Lock()
+	waiting := api.conversationTurnQueueRuntimeChange[sessionID]
+	api.conversationTurnQueueMu.Unlock()
+	if !waiting {
+		return
+	}
+	for i := range messages {
+		messages[i].Refreshing = true
+	}
 }
 
 // pendingQueuedMessages lists the viewer's not-yet-started keyed turns for a
@@ -749,7 +769,9 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 	if err != nil {
 		return nil
 	}
-	return pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	api.markRefreshingQueuedMessages(sessionID, messages)
+	return messages
 }
 
 func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sessionID string) []PendingQueuedMessage {

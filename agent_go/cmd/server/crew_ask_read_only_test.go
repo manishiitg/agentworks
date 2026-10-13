@@ -204,3 +204,19 @@ func TestFunctionRunNoticeSaysPublishedFunctionsMayWrite(t *testing.T) {
 		t.Errorf("a published function is not told it can write only the output folder:\n%s", notice)
 	}
 }
+
+// A queued message of a chat that is waiting for its runtime to be replaced is flagged so the app can say so and drop Steer/Remove.
+func TestQueuedMessagesAreFlaggedWhileTheChatIsBeingUpdated(t *testing.T) {
+	api := &StreamingAPI{}
+	api.setConversationTurnRuntimeChange("chat-1", true)
+	messages := []PendingQueuedMessage{{MessageID: "m1"}}
+	api.markRefreshingQueuedMessages("chat-1", messages)
+	if !messages[0].Refreshing {
+		t.Fatal("a message waiting for a runtime change must be flagged refreshing")
+	}
+	other := []PendingQueuedMessage{{MessageID: "m2"}}
+	api.markRefreshingQueuedMessages("chat-2", other)
+	if other[0].Refreshing {
+		t.Fatal("another chat's messages are not refreshing")
+	}
+}

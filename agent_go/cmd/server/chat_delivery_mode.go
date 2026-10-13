@@ -36,6 +36,7 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 	if messages == nil {
 		messages = []PendingQueuedMessage{}
 	}
+	api.markRefreshingQueuedMessages(sessionID, messages)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"messages": messages})
 }

@@ -104,3 +104,26 @@ it('keeps a failed queued message and its text on reload, retries only on click'
     host.remove()
   }
 })
+
+it('says the chat is being updated and offers no Steer now, but keeps Remove so a long update can be withdrawn', async () => {
+  fixture.messages = [{ message_id: 'refresh-1', client_message_id: 'refresh-client', content: 'Go on with the plan.', queue_position: 1, refreshing: true }]
+  fixture.events = []
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
+  try {
+    await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy canSteer /></QueryClientProvider>))
+    await flush()
+    expect(host.textContent).toContain('Updating this chat')
+    expect(host.textContent).toContain('Go on with the plan.')
+    expect(host.textContent).not.toContain('Steer now')
+    const remove = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')
+    expect(remove).toBeTruthy()
+    expect(remove!.disabled).toBe(false)
+  } finally {
+    await act(async () => root.unmount())
+    client.clear()
+    host.remove()
+  }
+})

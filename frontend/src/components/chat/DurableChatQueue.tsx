@@ -86,22 +86,23 @@ export function DurableChatQueue({ sessionId, tabId, busy, canSteer }: {
       <button type="button" className="ml-2 underline" onClick={() => void query.refetch()}>Retry</button>
     </p>}
     {messages.map(message => {
+      const refreshing = Boolean(message.refreshing && !message.delivery_error)
       const pending = Boolean(message.steering || action === message.message_id)
-      const Icon = pending ? Loader2 : Clock
+      const Icon = pending || refreshing ? Loader2 : Clock
       const text = askAIDisplayText(getDisplaySafeUserMessageContent(message.content))
-      const description = message.delivery_error || (message.steering ? 'Delivering to the current task' : 'Sends automatically when the current turn finishes')
+      const description = message.delivery_error || (refreshing ? 'This chat is being updated to the latest version, then your message goes in' : message.steering ? 'Delivering to the current task' : 'Sends automatically when the current turn finishes')
       return <div key={message.message_id || message.client_message_id} className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1.5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
           <span title={description} className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
-            <Icon className={`h-3 w-3 shrink-0 ${pending ? 'animate-spin' : ''}`} />
-            {message.delivery_error ? 'Delivery unconfirmed' : message.steering ? 'Steering…' : `Queued${message.queue_position ? ` · ${message.queue_position}` : ''}`}
+            <Icon className={`h-3 w-3 shrink-0 ${pending || refreshing ? 'animate-spin' : ''}`} />
+            {message.delivery_error ? 'Delivery unconfirmed' : refreshing ? 'Updating this chat…' : message.steering ? 'Steering…' : `Queued${message.queue_position ? ` · ${message.queue_position}` : ''}`}
           </span>
           <details className="group min-w-0 text-xs text-foreground">
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
           </details>
           {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
             {message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false, true)} className="text-primary hover:underline disabled:opacity-40">Retry</button>}
-            {canSteer && !message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
+            {canSteer && !message.delivery_error && !refreshing && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
             <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Remove</button>
           </div>}
         </div>
