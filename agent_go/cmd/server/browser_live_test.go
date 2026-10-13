@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"github.com/gin-gonic/gin"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"net/http"
@@ -378,6 +379,68 @@ func TestLiveBrowserInputFlowsWhileNavigateRuns(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("input stalled behind the running navigate")
+	}
+}
+
+// One server log line per viewer session records the first frame's timing
+// and reported page size, with no address or content (PLAT-776 follow-up).
+func TestLiveBrowserLogsFirstFrameOnce(t *testing.T) {
+	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
+	t.Setenv("MULTI_USER_MODE", "false")
+	const session = "live-stream-first-frame"
+	browser.GetSessionTracker().Touch(session, "run", "run")
+	defer browser.GetSessionTracker().Remove(session)
+	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		frame := map[string]interface{}{"type": "frame", "data": "test-frame", "metadata": map[string]int{"deviceWidth": 1280, "deviceHeight": 720}}
+		conn.WriteJSON(frame)
+		conn.WriteJSON(frame)
+		for {
+			var message map[string]interface{}
+			if conn.ReadJSON(&message) != nil {
+				return
+			}
+		}
+	}))
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	t.Setenv("WORKSPACE_API_TOKEN", "test-service-token")
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"run": {UserID: "alice", WorkspacePath: "Workflow/one"}}}
+	router := mux.NewRouter()
+	router.HandleFunc("/api/browser/live/{session}/stream", api.handleLiveBrowserStream)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		router.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "alice"})))
+	}))
+	defer server.Close()
+	conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1)+"/api/browser/live/"+session+"/stream?workspace_path=Workflow/one", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	frames := 0
+	for frames < 2 {
+		var message map[string]interface{}
+		if err := conn.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		if message["type"] == "frame" {
+			frames++
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(logs.String(), "[BROWSER-LIVE] first frame") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := logs.String(); strings.Count(got, "[BROWSER-LIVE] first frame session="+session) != 1 || !strings.Contains(got, "device=1280x720") || !strings.Contains(got, "after_ms=") {
+		t.Fatalf("first-frame log missing or duplicated: %q", got)
 	}
 }
 

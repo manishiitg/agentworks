@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -274,6 +275,8 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 	upstream.SetReadLimit(8 << 20)
 	viewer.SetReadLimit(16 << 10)
 	_ = viewer.SetReadDeadline(time.Now().Add(45 * time.Second))
+	streamStarted := time.Now()
+	firstFrameLogged := false
 	go func() {
 		defer cancel()
 		defer viewer.Close()
@@ -294,6 +297,20 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			case "frame", "status", "tabs", "url":
 			default:
 				continue
+			}
+			if message.Type == "frame" && !firstFrameLogged {
+				firstFrameLogged = true
+				// One line per viewer session (PLAT-776): how long the first
+				// frame took and the reported page size, so slowness can be
+				// read from server logs. Never the page address or content.
+				var frame struct {
+					Metadata struct {
+						Width  int `json:"deviceWidth"`
+						Height int `json:"deviceHeight"`
+					} `json:"metadata"`
+				}
+				_ = json.Unmarshal(data, &frame)
+				log.Printf("[BROWSER-LIVE] first frame session=%s after_ms=%d device=%dx%d", session, time.Since(streamStarted).Milliseconds(), frame.Metadata.Width, frame.Metadata.Height)
 			}
 			writeMu.Lock()
 			viewer.SetWriteDeadline(time.Now().Add(10 * time.Second))
