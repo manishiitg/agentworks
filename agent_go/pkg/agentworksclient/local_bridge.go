@@ -290,6 +290,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		return err
 	}
 	defer unlock()
+	if logFile, e := openRotatingLog(filepath.Join(root, "bridge.log")); e == nil { // the helper has no terminal
+		log.SetOutput(logFile)
+		defer logFile.Close()
+	}
 	socket := filepath.Join(root, "bridge.sock")
 	if info, e := os.Lstat(socket); e == nil {
 		if info.Mode()&os.ModeSocket == 0 {
@@ -1530,11 +1534,34 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 			args["inbox_id"] = in.InboxID
 		}
 	}
+	started := time.Now()
+	defer func() {
+		if d := time.Since(started); d > 2*time.Second {
+			log.Printf("[BRIDGE] action %q took %v on the server", in.Action, d.Round(time.Millisecond))
+		}
+	}()
 	// Recheck the receiver lease even for directory/read operations.
-	if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-		return LocalBridgeReply{Error: "attachment no longer authorized"}
+	validate := func() error {
+		_, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true)
+		return err
 	}
-	raw, err := s.client.Call(callCtx, "messages", args)
+	var raw json.RawMessage
+	var err error
+	if in.Action == "peers" || in.Action == "read" {
+		// These only read, so the lease check runs beside the read and the answer is dropped
+		// if the check fails: one server round trip less. Sends and replies check first.
+		checked := make(chan error, 1)
+		go func() { checked <- validate() }()
+		raw, err = s.client.Call(callCtx, "messages", args)
+		if <-checked != nil {
+			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		}
+	} else {
+		if validate() != nil {
+			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		}
+		raw, err = s.client.Call(callCtx, "messages", args)
+	}
 	if err != nil {
 		return LocalBridgeReply{Error: err.Error()}
 	}

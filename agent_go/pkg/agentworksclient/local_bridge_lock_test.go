@@ -177,3 +177,51 @@ func TestAttachDoesNotBlockOtherCommandsWhileTheServerIsSlow(t *testing.T) {
 		t.Fatal("the attached chat was not recorded")
 	}
 }
+
+// peers and read only read, so the lease check runs beside the read (one server round trip
+// less); a failed check still drops the answer, and the helper log rolls over instead of growing.
+func TestMailboxReadChecksLeaseBesideTheReadAndLogRolls(t *testing.T) {
+	var denied atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		if strings.HasSuffix(r.URL.Path, "/agents/attachment") && denied.Load() {
+			http.Error(w, `{"error":"gone"}`, http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"agents":[]}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &localBridge{}
+	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att"}, client: client}
+	start := time.Now()
+	if reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "peers"}, LocalBridgeReply{}); reply.Error != "" || time.Since(start) > 280*time.Millisecond {
+		t.Fatalf("peers = %q after %v, want one round trip", reply.Error, time.Since(start))
+	}
+	denied.Store(true)
+	if reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "peers"}, LocalBridgeReply{}); reply.Error == "" || reply.Result != nil {
+		t.Fatalf("peers after the lease was revoked = %+v", reply)
+	}
+
+	path := filepath.Join(t.TempDir(), "bridge.log")
+	l, err := openRotatingLog(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	chunk := []byte(strings.Repeat("x", 100<<10))
+	for i := 0; i < 8; i++ {
+		if _, err = l.Write(chunk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if info, e := os.Stat(path); e != nil || info.Size() > bridgeLogMaxBytes {
+		t.Fatalf("log = %v, %v", info, e)
+	}
+	if _, e := os.Stat(path + ".1"); e != nil {
+		t.Fatalf("no rolled log: %v", e)
+	}
+}
