@@ -130,7 +130,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
         description={
           <>
             {source?.description ?? (relay
-              ? 'A Relay has one owner, who builds it. Everyone else you add runs its published versions and sees everyone's runs.'
+              ? 'A Relay has one owner, who builds it. Everyone else you add runs its published versions and sees all runs.'
               : 'Owners edit, run, share and delete. Editors edit and run but cannot share. Read-only people can chat, run and watch, but change nothing.')}
             {locked && <span className="mt-1 block font-medium text-amber-600 dark:text-amber-400">{relay ? 'You can see who has access, but only the owner can change it.' : 'Read-only: membership is visible, but all changes are disabled.'}</span>}
             {info?.legacy && <span className="mt-1 block text-amber-600">Nothing recorded yet: every creator and editor can edit this workflow until you save a first grant.</span>}

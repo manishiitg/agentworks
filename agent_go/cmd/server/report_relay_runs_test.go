@@ -169,3 +169,81 @@ func TestReportRelayRunsSharePublishedDiagnosticsAcrossProductMembers(t *testing
 		t.Fatal("delivery projection followed a symlink")
 	}
 }
+
+// A reader opens another person's failed published run and sees the real failure text,
+// step timings, input and logs, never the agent prompt; an outsider gets nothing, and a
+// trace naming a path-like workflow id cannot make the server read another file.
+func TestReportRelayRunDrillDownShowsFailureToAnyReader(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":[]},{"id":"reader-a","products":[]},{"id":"reader-b","products":[]},{"id":"outsider","products":[]}]}`)
+	releaseWS := relayReleaseWorkspace("Workflow/relay", "v1")
+	ws := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
+		"Workflow/relay/workflow.json":                      `{"id":"relay","kind":"relay","access":{"owners":["owner"],"readers":["reader-a","reader-b"]}}`,
+		relayReleaseRoot("Workflow/relay") + "/active.json": `{"version":"v1"}`,
+		releaseWS + "/release.json":                         `{"version":"v1","hash":"h","file_count":1,"files":["workflow.json"]}`,
+		releaseWS + "/outside.json":                         `{"payload":{"relay_caller":"stolen","function":"leak"}}`,
+	}})
+	t.Cleanup(ws.Close)
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	write := func(number, trace string) string {
+		dir := filepath.Join(root, releaseWS, "runs/iteration-"+number+"-hook")
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "relay_trace.json"), []byte(trace), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	dir := write("1", `{"workflow_id":"run-1","status":"failed","error":"validation failed: total mismatch","calls":[{"name":"ocr","status":"completed","started_at":10,"completed_at":12,"output":{"total":"12.50"},"agent_calls":[{"system_prompt":"PRIVATE PROMPT"}]},{"name":"validate","status":"failed","started_at":12,"completed_at":13,"error":"total mismatch: 12.50 vs 21.50"}]}`)
+	if err := os.WriteFile(filepath.Join(dir, "dbos_events.jsonl"), []byte(`{"timestamp":12.5,"level":"INFO","message":"checking total","step_id":2}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	write("2", `{"workflow_id":"../../outside","status":"completed","calls":[]}`)
+	deliveries := filepath.Join(root, releaseWS, "webhooks/deliveries")
+	if err := os.MkdirAll(deliveries, 0700); err != nil {
+		t.Fatal(err)
+	}
+	delivery := `{"run_id":"run-1","payload":{"relay_caller":"reader-a","function":"extract","args":{"INPUT":{"invoice":"INV-7"}}}}`
+	if err := os.WriteFile(filepath.Join(deliveries, "run-1.json"), []byte(delivery), 0600); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	get := func(user, query string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, reportPreviewAPIPrefix+query, nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user}))
+		w := httptest.NewRecorder()
+		if strings.HasPrefix(query, "relay-run?") {
+			api.handleReportRelayRun(w, r)
+		} else {
+			api.handleReportRelayRuns(w, r)
+		}
+		return w
+	}
+	for _, run := range []string{"run-1", "iteration-1-hook"} {
+		w := get("reader-b", "relay-run?workspace=Workflow/relay&run="+run)
+		body := w.Body.String()
+		for _, want := range []string{"validation failed: total mismatch", "total mismatch: 12.50 vs 21.50", `"caller":"reader-a"`, `"function":"extract"`, "INV-7", "checking total", `"duration_s":1`, `"version":"v1"`} {
+			if w.Code != http.StatusOK || !strings.Contains(body, want) {
+				t.Fatalf("%s: missing %q: %d %s", run, want, w.Code, body)
+			}
+		}
+		if strings.Contains(body, "PRIVATE") || strings.Contains(body, "relay_caller") {
+			t.Fatalf("%s: leaked prompt or internal key: %s", run, body)
+		}
+	}
+	if w := get("reader-b", "relay-runs?workspace=Workflow/relay"); strings.Contains(w.Body.String(), "stolen") || strings.Contains(w.Body.String(), "leak") {
+		t.Fatalf("a hostile run id read another file: %s", w.Body.String())
+	}
+	if w := get("outsider", "relay-run?workspace=Workflow/relay&run=run-1"); w.Code != http.StatusForbidden {
+		t.Fatalf("outsider: %d %s", w.Code, w.Body.String())
+	}
+	if w := get("reader-b", "relay-run?workspace=Workflow/relay&run=run-404"); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown run: %d", w.Code)
+	}
+	if w := get("reader-b", "relay-run?workspace=Workflow/relay&run=run-1&version=draft"); w.Code != http.StatusForbidden {
+		t.Fatalf("reader must not read draft tests: %d", w.Code)
+	}
+}

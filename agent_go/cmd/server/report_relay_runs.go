@@ -89,7 +89,8 @@ func relayRunCanReadDraft(claims *UserClaims, manifest *WorkflowManifest) bool {
 	if claims == nil {
 		return !IsMultiUserMode()
 	}
-	return workflowAccessForManifest(claims, manifest) != WorkflowAccessNone
+	access := workflowAccessForManifest(claims, manifest)
+	return access == WorkflowAccessOwner || access == WorkflowAccessWrite
 }
 
 // relayRunCaller reads who started a run from its saved delivery. Empty when the
@@ -293,6 +294,10 @@ func reportRelayRunNumber(name string) int {
 }
 
 func readReportRelayJSON(root *os.Root, name string, target any) bool {
+	return readReportRelayJSONLimit(root, name, target, 256<<10)
+}
+
+func readReportRelayJSONLimit(root *os.Root, name string, target any, limit int64) bool {
 	// os.Root confines traversal. Reject links inside that root as well, so an
 	// authored run cannot turn this summary reader into a private-file reader.
 	for current := name; current != "."; current = path.Dir(current) {
@@ -311,10 +316,10 @@ func readReportRelayJSON(root *os.Root, name string, target any) bool {
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !os.SameFile(before, info) || !info.Mode().IsRegular() || info.Size() > 256<<10 {
+	if err != nil || !os.SameFile(before, info) || !info.Mode().IsRegular() || info.Size() > limit {
 		return false
 	}
-	return json.NewDecoder(io.LimitReader(f, 256<<10)).Decode(target) == nil
+	return json.NewDecoder(io.LimitReader(f, limit)).Decode(target) == nil
 }
 
 // relaySecretValues are the values of the secrets a Relay's own runs use (the Builder's selection). Runs are visible to
@@ -373,4 +378,267 @@ func maskSecretValues(value any, secrets []string) any {
 		}
 	}
 	return value
+}
+
+const (
+	relayRunTraceLimit = 1 << 20   // trace files carry every step output
+	relayRunLogBytes   = 128 << 10 // newest part of a run's event log
+	relayRunLogLines   = 200
+)
+
+// relayRunLogs returns the newest event lines of a run (level, message, step, time).
+// The log is plain text written by the runtime; only these four fields are returned.
+func relayRunLogs(root *os.Root, folder string, guard *wf.FolderGuard) (lines []map[string]any, truncated bool) {
+	name := path.Join("runs", folder, "dbos_events.jsonl")
+	if guard != nil && !guard.Allows(name, false) {
+		return nil, false
+	}
+	for current := name; current != "."; current = path.Dir(current) {
+		if info, err := root.Lstat(current); err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return nil, false
+		}
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, false
+	}
+	if info.Size() > relayRunLogBytes {
+		truncated = true
+		if _, err := f.Seek(info.Size()-relayRunLogBytes, io.SeekStart); err != nil {
+			return nil, false
+		}
+	}
+	data, _ := io.ReadAll(io.LimitReader(f, relayRunLogBytes))
+	all := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if truncated && len(all) > 0 {
+		all = all[1:] // first line may be cut
+	}
+	if len(all) > relayRunLogLines {
+		all, truncated = all[len(all)-relayRunLogLines:], true
+	}
+	for _, line := range all {
+		var event struct {
+			Time    float64 `json:"timestamp"`
+			Level   string  `json:"level"`
+			Message string  `json:"message"`
+			Step    *int    `json:"step_id"`
+		}
+		if json.Unmarshal([]byte(line), &event) != nil {
+			continue
+		}
+		entry := map[string]any{"at": event.Time, "level": event.Level, "message": relayReportText(event.Message)}
+		if event.Step != nil {
+			entry["step"] = *event.Step
+		}
+		lines = append(lines, entry)
+	}
+	return lines, truncated
+}
+
+// relayRunFunction reads which function a run called from its saved delivery.
+func relayRunFunction(root *os.Root, guard *wf.FolderGuard, runID string) string {
+	if !validRelayReportRunID(runID) {
+		return ""
+	}
+	file := path.Join("webhooks/deliveries", runID+".json")
+	if guard != nil && !guard.Allows(file, false) {
+		return ""
+	}
+	var delivery WorkflowWebhookDelivery
+	var payload struct {
+		Function string `json:"function"`
+	}
+	if !readReportRelayJSON(root, file, &delivery) || json.Unmarshal(delivery.Payload, &payload) != nil {
+		return ""
+	}
+	return relayReportText(payload.Function)
+}
+
+// relayRecordedRun returns one recorded run in full: caller, function, input,
+// each step's status, timing, error and output, the result, and the newest log
+// lines. run is a run folder (iteration-N-hook) or a run ID. Prompts and tool
+// transcripts stay private; callers mask secret values before returning it.
+func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string, manifest *WorkflowManifest, guard *wf.FolderGuard, run, version string) (map[string]any, int, string) {
+	if claims != nil && claims.Scope == "" && claims.Provider != "bot_route" {
+		if account := userAccessForClaims(claims); account.Disabled || IsMultiUserMode() && !account.Known {
+			return nil, http.StatusForbidden, "Relay is unavailable for this account."
+		}
+	}
+	// Same version rules as the run list: callers run the active published version,
+	// and draft tests are for Builder.
+	canDraft := relayRunCanReadDraft(claims, manifest)
+	if version == "" {
+		version = "active"
+		if canDraft {
+			version = "draft"
+		}
+	}
+	rootWorkspace := workspace
+	switch {
+	case version == "draft":
+		if !canDraft {
+			return nil, http.StatusForbidden, "Draft tests are available in Builder mode."
+		}
+	case version == "active":
+		release, releaseWorkspace, err := activeRelayRelease(ctx, workspace)
+		if err != nil {
+			return nil, http.StatusNotFound, "Relay run not found"
+		}
+		version, rootWorkspace = release.Version, releaseWorkspace
+	default:
+		var err error
+		if _, rootWorkspace, err = readRelayRelease(ctx, workspace, version); err != nil {
+			return nil, http.StatusNotFound, "Relay version not found"
+		}
+	}
+	root, err := webhookWorkspaceRoot(rootWorkspace)
+	if err != nil {
+		return nil, http.StatusNotFound, "Relay run not found"
+	}
+	defer root.Close()
+	type traceFile struct {
+		WorkflowID string `json:"workflow_id"`
+		Status     string `json:"status"`
+		Error      string `json:"error"`
+		Attempt    int    `json:"attempt_number"`
+		Calls      []struct {
+			Name      string  `json:"name"`
+			Status    string  `json:"status"`
+			Error     string  `json:"error"`
+			Reused    bool    `json:"checkpoint_reused"`
+			Started   float64 `json:"started_at"`
+			Completed float64 `json:"completed_at"`
+			Output    any     `json:"output"`
+		} `json:"calls"`
+	}
+	var trace traceFile
+	folder := run
+	readTrace := func(name string) bool {
+		trace = traceFile{}
+		tracePath := path.Join("runs", name, "relay_trace.json")
+		return (guard == nil || guard.Allows(tracePath, false)) && readReportRelayJSONLimit(root, tracePath, &trace, relayRunTraceLimit)
+	}
+	if reportRelayRunNumber(run) == 0 {
+		// A run ID: look through the newest runs for its trace.
+		entries, _ := fs.ReadDir(root.FS(), "runs")
+		sort.Slice(entries, func(i, j int) bool {
+			return reportRelayRunNumber(entries[i].Name()) > reportRelayRunNumber(entries[j].Name())
+		})
+		folder = ""
+		for i, entry := range entries {
+			if i == relayRunScanLimit || ctx.Err() != nil {
+				break
+			}
+			if entry.IsDir() && reportRelayRunNumber(entry.Name()) > 0 && readTrace(entry.Name()) && trace.WorkflowID == run {
+				folder = entry.Name()
+				break
+			}
+		}
+	} else if !readTrace(folder) {
+		folder = ""
+	}
+	if folder == "" {
+		return nil, http.StatusNotFound, "Relay run not found"
+	}
+	caller, input := relayReportInput(root, guard, trace.WorkflowID)
+	function := relayRunFunction(root, guard, trace.WorkflowID)
+	steps := []map[string]any{}
+	var started, completed float64
+	for _, call := range trace.Calls {
+		step := map[string]any{"name": call.Name, "status": call.Status, "reused": call.Reused}
+		if call.Started > 0 {
+			step["started_at"] = call.Started
+			if started == 0 || call.Started < started {
+				started = call.Started
+			}
+		}
+		if call.Completed > 0 {
+			step["completed_at"] = call.Completed
+			if call.Started > 0 && call.Completed >= call.Started {
+				step["duration_s"] = call.Completed - call.Started
+			}
+			if call.Completed > completed {
+				completed = call.Completed
+			}
+		}
+		if call.Error != "" {
+			step["error"] = relayReportText(call.Error)
+		}
+		if call.Output != nil {
+			step["output"] = relayReportValue(call.Output)
+		}
+		steps = append(steps, step)
+	}
+	var result any
+	resultPath := path.Join("runs", folder, "relay_result.json")
+	if guard == nil || guard.Allows(resultPath, false) {
+		readReportRelayJSON(root, resultPath, &result)
+	}
+	out := map[string]any{"run": folder, "run_id": trace.WorkflowID, "version": version, "function": function, "caller": caller,
+		"input": relayReportValue(input), "status": trace.Status, "attempt": trace.Attempt, "started_at": started,
+		"steps": steps, "result": relayReportValue(result)}
+	if trace.Error != "" {
+		out["error"] = relayReportText(trace.Error)
+	}
+	if started > 0 && completed >= started {
+		out["duration_s"] = completed - started
+	}
+	if logs, cut := relayRunLogs(root, folder, guard); len(logs) > 0 {
+		out["logs"] = logs
+		if cut {
+			out["logs_truncated"] = true
+		}
+	}
+	return out, 0, ""
+}
+
+// handleReportRelayRun serves one recorded run for the dashboard's drill-down,
+// under the same access checks as the run list.
+func (api *StreamingAPI) handleReportRelayRun(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil && IsMultiUserMode() {
+		http.Error(w, "authentication required", http.StatusForbidden)
+		return
+	}
+	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeWorkspace == "" {
+		http.Error(w, "preview token is missing its workflow binding", http.StatusBadRequest)
+		return
+	}
+	workspace, err := reportPreviewWorkspace(r, claims, r.URL.Query().Get("workspace"))
+	if err != nil || !isReportRunWorkflowRoot(workspace) {
+		http.Error(w, "a canonical Relay workspace is required", http.StatusBadRequest)
+		return
+	}
+	if err := reportPreviewReadable(r, claims, workspace); err != nil {
+		http.Error(w, err.Error(), reportPreviewWorkspaceErrorStatus(err))
+		return
+	}
+	guard := dashboardFileGuard(claims)
+	if guard != nil && !guard.AllowsTraversal("runs") {
+		http.Error(w, "outside connection read grants", http.StatusForbidden)
+		return
+	}
+	manifest, found, err := ReadWorkflowManifest(r.Context(), workspace)
+	if err != nil || !found || manifest.Kind != "relay" {
+		http.Error(w, "Relay not found", http.StatusNotFound)
+		return
+	}
+	run := r.URL.Query().Get("run")
+	if run == "" || len(run) > 200 || strings.ContainsAny(run, "/\\") {
+		http.Error(w, "run is required", http.StatusBadRequest)
+		return
+	}
+	out, status, message := relayRecordedRun(r.Context(), claims, workspace, manifest, guard, run, r.URL.Query().Get("version"))
+	if message != "" {
+		http.Error(w, message, status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(api.maskRelaySecrets(r.Context(), workspace, manifest, out))
 }

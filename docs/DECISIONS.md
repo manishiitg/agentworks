@@ -29,7 +29,13 @@ personal provider accounts and logins, and a person's own chats and the builder 
 attribution only. Why: the owner optimises for people and agents working on the same things fast, not for privacy
 between colleagues; access still comes from sharing.
 
-Ticket: PLAT-856 (856-67 reversed), PLAT-847 (847-1).
+Limits to know: masking covers the Relay's selected secrets and the global ones (4 characters or longer); a connection
+token or environment value that a step prints is not masked, so keep credentials out of run results and logs. A function
+that restricts who may call it no longer limits who may read its runs (the `get_relay_run` caller check is gone). One run
+can be read in full (steps, input, result, newest log lines) by run ID or run folder; a run ID is looked up in the newest
+500 runs only, older runs open by folder name.
+
+Ticket: PLAT-856 (856-67 reversed), PLAT-847 (847-1), PLAT-750 (750-17).
 
 ## 2026-10-13 — Saved CLI credentials use native operating-system access checks (PLAT-861)
 
