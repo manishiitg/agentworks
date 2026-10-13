@@ -78,8 +78,8 @@ All calls are authenticated the same way as the rest of the API.
 **Poll a run** — `GET /api/relays/{id}/runs/{run}`
 
 Returns the run status while it works, and the output agent's JSON plus
-`version` once complete. Unknown runs and other people's runs both answer
-404 — the API never confirms what you may not see.
+`version` once complete. Anyone with access to the Relay can poll any caller's run; unknown runs and
+Relays you cannot access answer 404.
 
 **List releases** — `GET /api/relays/{id}/releases`
 

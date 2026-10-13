@@ -280,10 +280,10 @@ func TestExternalRelayDraftAndPublishedIngress(t *testing.T) {
 		t.Fatal("retry changed run")
 	}
 	f.relayCall(t, runner, "get_relay_run", map[string]any{"workflow_id": "invoices", "run_id": runID}, 200)
-	f.relayCall(t, writer, "get_relay_run", map[string]any{"workflow_id": "invoices", "run_id": runID}, 404)
-	// Recorded runs: editors see every caller's, a plain runner only their own.
-	if own := f.relayCall(t, runner, "list_relay_runs", map[string]any{"workflow_id": "invoices"}, 200); own["scope"] != "own" {
-		t.Fatalf("runner must be limited to their own runs: %v", own)
+	f.relayCall(t, writer, "get_relay_run", map[string]any{"workflow_id": "invoices", "run_id": runID}, 200)
+	// Recorded runs: everyone with access sees every caller's (one company per server).
+	if all := f.relayCall(t, runner, "list_relay_runs", map[string]any{"workflow_id": "invoices"}, 200); all["scope"] != "all" {
+		t.Fatalf("a runner must see every run: %v", all)
 	}
 	if all := f.relayCall(t, writer, "list_relay_runs", map[string]any{"workflow_id": "invoices", "version": "v1"}, 200); all["scope"] != "all" {
 		t.Fatalf("editor must see every run: %v", all)
@@ -325,5 +325,14 @@ func TestRelayOAuthAuthoringIsExplicit(t *testing.T) {
 	oauth := mcpOAuthTokenForGrant(grant)
 	if !oauth.RelayBuilderAccess() || oauth.BuilderAccess() || !oauth.AllWorkflows {
 		t.Fatalf("wrong OAuth authority: %+v", oauth)
+	}
+}
+
+// Runs are visible to everyone with access, but a secret value never is.
+func TestMaskSecretValuesHidesCanary(t *testing.T) {
+	doc := map[string]any{"result": "token=canary-secret-value-1", "steps": []any{map[string]any{"out": "x canary-secret-value-1 y"}}}
+	masked, _ := json.Marshal(maskSecretValues(doc, []string{"canary-secret-value-1"}))
+	if strings.Contains(string(masked), "canary-secret-value-1") || !strings.Contains(string(masked), "REDACTED") {
+		t.Fatalf("secret value leaked: %s", masked)
 	}
 }
