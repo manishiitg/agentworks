@@ -905,16 +905,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeRoutedSubAgentStep(
 	}
 	if isAgentStep(sequenceExecutionStep) {
 		agentSequenceRestart, _ := ctx.Value(virtualtools.SubAgentAgentRestartKey).(bool)
-		// See the matching comment in controller_execution.go: mint this step
-		// its own "exec-<step>-<timestamp>" id so agent item
-		// notifications and this step's own tool-call events agree on the
-		// same owner, instead of both falling back to whatever ambient
-		// full-run id was set once at the top of the run.
-		stepExecID := fmt.Sprintf("exec-%s-%d", sequenceExecutionStep.GetID(), time.Now().UnixNano())
-		stepScopedCtx := virtualtools.WithBackgroundAgentID(ctx, stepExecID)
-		stepScopedCtx = context.WithValue(stepScopedCtx, events.ParentExecutionIDKey, stepExecID)
+		// The caller already registered this delegation's execution identity.
+		// Keep it as the parent of the recorded turns. Minting an unregistered
+		// exec-* identity here leaves their transcripts outside the inspection
+		// tree, even though their prompts and tools were durably captured.
 		executionResult, capturedHistory, err := hcpo.executeAgentStep(
-			stepScopedCtx,
+			ctx,
 			sequenceExecutionStep,
 			stepIndex,
 			subAgentStepPath,

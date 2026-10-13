@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -137,7 +138,62 @@ func (api *StreamingAPI) handleInspectSessionExecution(w http.ResponseWriter, r 
 			}
 		}
 	}
+	var conversation *inspectionConversation
+	if mode != "script" && !inspectionTranscriptHasConversation(transcript) {
+		conversation = api.inspectionChildConversation(r.Context(), workspace, sessionID, executionID, children)
+		if conversation != nil {
+			mode = "agent"
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts, "conversation": conversation})
+}
+
+type inspectionConversationEvent struct {
+	orchEvents.BackgroundAgentTranscriptEvent
+	ExecutionID string `json:"execution_id"`
+}
+
+// A read-only conversation view across the recorded turns of this execution.
+// The original transcript and each source record remain unchanged.
+type inspectionConversation struct {
+	SourceExecutionIDs []string                      `json:"source_execution_ids"`
+	Events             []inspectionConversationEvent `json:"events"`
+}
+
+func inspectionTranscriptHasConversation(transcript *orchEvents.BackgroundAgentTranscript) bool {
+	for _, event := range transcript.Events {
+		if event.ToolCall != nil || event.Role == "system" || event.Role == "user" || event.Role == "assistant" {
+			return true
+		}
+	}
+	return false
+}
+
+func (api *StreamingAPI) inspectionChildConversation(ctx context.Context, workspace, sessionID, parentID string, children []BackgroundAgentLogEntry) *inspectionConversation {
+	view := &inspectionConversation{}
+	for _, child := range children {
+		if child.Kind != "agent_item" || child.ParentExecutionID != parentID || !inspectionIdentityPart(child.AgentID) {
+			continue
+		}
+		content, exists, err := readFileFromWorkspace(ctx, orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, child.AgentID))
+		if err != nil || !exists {
+			continue
+		}
+		source, err := orchEvents.ParseBackgroundAgentTranscript(content)
+		if err != nil || source == nil || source.AgentID != child.AgentID || source.SessionID != sessionID || source.ParentExecutionID != parentID || !inspectionTranscriptHasConversation(source) {
+			continue
+		}
+		source.RedactSensitiveText()
+		view.SourceExecutionIDs = append(view.SourceExecutionIDs, source.AgentID)
+		for _, event := range source.Events {
+			view.Events = append(view.Events, inspectionConversationEvent{BackgroundAgentTranscriptEvent: event, ExecutionID: source.AgentID})
+		}
+	}
+	if len(view.Events) == 0 {
+		return nil
+	}
+	sort.SliceStable(view.Events, func(i, j int) bool { return view.Events[i].Timestamp.Before(view.Events[j].Timestamp) })
+	return view
 }

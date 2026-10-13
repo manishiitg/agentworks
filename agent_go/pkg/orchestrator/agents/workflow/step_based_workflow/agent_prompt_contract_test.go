@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
+	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -176,6 +178,29 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 				}
 				if effects != 1 || repairs != 1 || calls != wantCalls+1 || len(resumed) != calls*2 {
 					t.Fatalf("reentry replayed or lost history: effects=%d repairs=%d calls=%d history=%d", effects, repairs, calls, len(resumed))
+				}
+				if contract == AgentDescriptionFirstPromptContract && scenario == "no-followup" {
+					// Follow the actual routed executor rather than calling the item
+					// queue directly. Its turns must remain beneath the registered
+					// call, including continuation and final-validation notifications.
+					notifier := &recordingExecutionNotifier{}
+					c.workshopExecutionNotifier = notifier
+					routed := edited
+					routed.PredefinedRoutes = nil
+					ctx := virtualtools.WithBackgroundAgentID(t.Context(), "registered-route-call")
+					ctx = context.WithValue(ctx, orchEvents.ParentExecutionIDKey, "registered-route-call")
+					_, _, err := c.executeRoutedSubAgentStep(ctx, &routed, "Check the evidence without repeating the action.", 0, "proof", nil, nil, nil, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(notifier.starts) != 2 || effects != 1 {
+						t.Fatalf("routed capture or action changed: starts=%d effects=%d", len(notifier.starts), effects)
+					}
+					for _, start := range notifier.starts {
+						if start.ParentExecutionID != "registered-route-call" {
+							t.Fatalf("captured routed turn points to an unregistered parent: %q", start.ParentExecutionID)
+						}
+					}
 				}
 			})
 		}

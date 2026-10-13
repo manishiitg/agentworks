@@ -180,9 +180,21 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 	}
 	base.SetWorkspacePath("Workflow/example")
 	bridge := base.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge)
-	for _, id := range []string{"item-first", "item-second"} {
-		api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: id, Name: "Task", Kind: "agent_item", Status: BGAgentRunning, CreatedAt: time.Now(), Metadata: map[string]string{"step_id": "research", "item_id": id}})
-		api.emitBackgroundAgentStarted("chat", id, "Task", "", "", orchEvents.ExecutionKindSubAgent)
+	for _, id := range []string{"call-first", "call-second"} {
+		parent := ""
+		if id == "call-second" {
+			parent = "call-first"
+		}
+		api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: id, ParentExecutionID: parent, Name: "Delegated task", Kind: "sub_agent", Status: BGAgentRunning, CreatedAt: time.Now()})
+		api.emitBackgroundAgentStarted("chat", id, "Delegated task", "", parent, orchEvents.ExecutionKindSubAgent)
+	}
+	for _, id := range []string{"item-first", "item-second", "item-foreign", "item-mismatch"} {
+		parent := "call-first"
+		if id == "item-foreign" {
+			parent = "call-second"
+		}
+		api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: id, ParentExecutionID: parent, Name: "Task", Kind: "agent_item", Status: BGAgentRunning, CreatedAt: time.Now(), Metadata: map[string]string{"step_id": "research", "item_id": id}})
+		api.emitBackgroundAgentStarted("chat", id, "Task", "", parent, orchEvents.ExecutionKindAgentItem)
 		ctx := orchestrator.WithBackgroundTranscriptSession(context.Background(), "chat")
 		ctx = context.WithValue(ctx, orchEvents.ParentExecutionIDKey, id)
 		for _, event := range []*agentEvents.AgentEvent{
@@ -205,6 +217,45 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 			t.Fatal(err)
 		}
 		api.emitBackgroundAgentCompleted("chat", id, "Task", "completed", "Result for "+id, "", "1s")
+	}
+	// Even a matching index row cannot import a transcript whose own durable
+	// parent identity disagrees. Nested agents also keep separate conversations.
+	mismatchPath := orchEvents.BackgroundAgentTranscriptPath("Workflow/example", "chat", "item-mismatch")
+	rawMismatch, _, _ := readFileFromWorkspace(context.Background(), mismatchPath)
+	mismatch, _ := orchEvents.ParseBackgroundAgentTranscript(rawMismatch)
+	mismatch.ParentExecutionID = "call-second"
+	changed, _ := mismatch.Marshal()
+	if err := writeFileToWorkspace(context.Background(), mismatchPath, changed); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"call-first", "call-second"} {
+		api.emitBackgroundAgentCompleted("chat", id, "Delegated task", "completed", "Delegation result", "", "1s")
+		req := httptest.NewRequest(http.MethodGet, "/sessions/chat/background-work/"+id+"/inspect?workspace_path=Workflow/example", nil)
+		req = mux.SetURLVars(req, map[string]string{"session_id": "chat", "execution_id": id})
+		w := httptest.NewRecorder()
+		api.handleInspectSessionExecution(w, req)
+		var result struct {
+			Transcript   *orchEvents.BackgroundAgentTranscript `json:"transcript"`
+			Conversation *inspectionConversation               `json:"conversation"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != http.StatusOK || result.Conversation == nil {
+			t.Fatalf("delegated conversation: status=%d err=%v", w.Code, err)
+		}
+		want := 10
+		if id == "call-second" {
+			want = 5
+		}
+		if len(result.Transcript.Events) != 0 || len(result.Conversation.Events) != want {
+			t.Fatalf("conversation replaced raw evidence or mixed tasks: %s", w.Body.String())
+		}
+		for _, event := range result.Conversation.Events {
+			if event.ExecutionID == "item-mismatch" || id == "call-first" && event.ExecutionID == "item-foreign" {
+				t.Fatal("conversation imported an unrelated execution")
+			}
+		}
+		if strings.Contains(w.Body.String(), "fixture-capture-secret") {
+			t.Fatal("conversation projection bypassed redaction")
+		}
 	}
 	for _, id := range []string{"item-first", "item-second"} {
 		req := httptest.NewRequest(http.MethodGet, "/sessions/chat/background-work/"+id+"/inspect?workspace_path=Workflow/example", nil)

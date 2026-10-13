@@ -1642,6 +1642,7 @@ export interface ExecutionInspectionTarget {
 }
 
 export interface ExecutionInspectionResponse {
+ conversation?: {source_execution_ids: string[]; events: ExecutionInspectionResponse['transcript']['events']} | null
  execution_mode?: 'agent' | 'script' | 'validation' | ''
  scripts?: Array<{origin?: string; started_at: string; completed_at?: string; path?: string; source?: string; stdout?: string; stderr?: string; error?: string; exit_code?: number; status: string}>
 
@@ -1654,12 +1655,12 @@ export interface ExecutionInspectionResponse {
   started_at: string
   completed_at?: string
   inspection?: ExecutionInspectionTarget
-  events: Array<{timestamp: string; type: string; source_type?: string; role?: string; text?: string; tool_call?: {
+  events: Array<{timestamp: string; type: string; source_type?: string; execution_id?: string; role?: string; text?: string; tool_call?: {
    tool_call_id?: string; tool_name: string; arguments?: string; result?: string; error?: string; status: string
   }}>
  }
  result?: string
- children: Array<{agent_id: string; name: string; status: string; started_at?: string}>
+ children: Array<{agent_id: string; name: string; status: string; kind?: string; started_at?: string}>
 }
 
 export interface SessionBackgroundWorkItem {

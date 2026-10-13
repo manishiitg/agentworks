@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-13 — Inspect the recorded turns of delegated workflow agents (PLAT-861)
+
+Routed agent turns keep the registered delegation call as their parent. The
+inspector reads its exact direct agent-item records as one conversation, with
+source execution IDs per event, while preserving each raw transcript. Redaction
+and chat/workflow ownership checks apply to this read-only projection. Tool IDs
+and message-carrier joining remain scoped to their source turn. Nested calls
+retain separate conversations and navigation; status describes the selected
+execution. Missing historical links do not justify inferring relationships from
+names, timestamps, folders or today's plan, or claiming capture never occurred.
+Why: an unregistered intermediate parent made captured prompts/tools invisible.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-179.
+
 ## 2026-10-13 — Release deploys reuse healthy installed tools (PLAT-426)
 
 Normal rootless deploys check every managed coding provider and agent-browser

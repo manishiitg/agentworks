@@ -101,6 +101,51 @@ it('renders the recorded system/user prompt and merges tool start/result without
  expect(JSON.stringify(chat.events)).toContain('User instruction'); expect(JSON.stringify(chat.events)).toContain('sources.txt'); expect(JSON.stringify(chat.events)).toContain('Facts')
 })
 
+it('renders linked turns as one conversation without joining cross-turn repeats or tool identities', () => {
+ const data=response('first','')
+ data.transcript.events=[]
+ data.conversation={source_execution_ids:['turn-1','turn-2'],events:[
+  {timestamp:target.started_at,type:'system_message',role:'system',text:'Recorded rules',execution_id:'turn-1'},
+  {timestamp:target.started_at,type:'user_message',role:'user',text:'Repeat this instruction',source_type:'orchestrator_agent_start',execution_id:'turn-1'},
+  {timestamp:target.started_at,type:'user_message',role:'user',text:'Repeat this instruction',source_type:'user_message',execution_id:'turn-2'},
+  ...['turn-1','turn-2'].flatMap(id=>[
+   {timestamp:target.started_at,type:'tool_call',execution_id:id,tool_call:{tool_call_id:'reused',tool_name:'read_file',arguments:id,status:'running'}},
+   {timestamp:target.started_at,type:'tool_call',execution_id:id,tool_call:{tool_call_id:'reused',tool_name:'read_file',result:`Result ${id}`,status:'completed'}},
+  ]),
+ ]}
+ expect(inspectionRecords(data).system).toEqual(['Recorded rules'])
+ expect(inspectionRecords(data).tools.map(tool=>tool.arguments)).toEqual(['turn-1','turn-2'])
+ const chat=inspectionChat(data)
+ expect(chat.events.filter(event=>event.type==='user_message')).toHaveLength(2)
+ expect(chat.events.filter(event=>event.type==='tool_call_end').map(event=>(event.data as {data:{tool_call_id:string}}).data.tool_call_id)).toEqual(['turn-1:reused','turn-2:reused'])
+ expect(data.transcript.events).toHaveLength(0)
+})
+
+it('opens the selected sub-agent conversation and nested agent without losing failed status', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+ const parent=response('first','Parent task'); parent.execution_mode='agent'
+ parent.children=[{agent_id:'manager',kind:'sub_agent',name:'Manager',status:'completed'}]
+ const manager=response('manager',''); manager.execution_mode='agent'; manager.transcript.events=[]
+ manager.conversation={source_execution_ids:['manager-turn'],events:[{timestamp:target.started_at,type:'system_message',role:'system',text:'Manager rules',execution_id:'manager-turn'},{timestamp:target.started_at,type:'user_message',role:'user',text:'Manager instruction',execution_id:'manager-turn'}]}
+ manager.children=[{agent_id:'nested',kind:'sub_agent',name:'Nested task',status:'failed'}]
+ const child=response('nested','Nested instruction'); child.execution_mode='agent'; child.transcript.status='failed'; child.transcript.error='Task could not finish'
+ vi.spyOn(agentApi,'inspectSessionExecution').mockImplementation(item=>Promise.resolve(item.execution_id==='first' ? parent : item.execution_id==='manager' ? manager : child))
+ const host=document.createElement('div');const root=createRoot(host)
+ try {
+  await act(async()=>{root.render(<StepInspectionPanel target={target} />)})
+  await vi.waitFor(()=>expect(host.querySelector('select[aria-label="Task"]')).not.toBeNull())
+  await act(async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Task"]')!;select.value='manager';select.dispatchEvent(new Event('change',{bubbles:true}))})
+  await vi.waitFor(()=>expect(host.textContent).toContain('Manager instruction'))
+  expect(host.textContent).toContain('Manager rules')
+  expect(host.textContent).not.toContain('No conversation is attached')
+  await act(async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Nested sub-agent"]')!;select.value='nested';select.dispatchEvent(new Event('change',{bubbles:true}))})
+  await vi.waitFor(()=>expect(host.textContent).toContain('Nested instruction'))
+  expect(host.querySelector('[data-testid="inspection-status"]')?.textContent).toBe('failed')
+  expect(host.textContent).not.toContain('Manager instruction')
+  expect(host.querySelector('[aria-label="Inspection path"]')).not.toBeNull()
+ } finally {await act(async()=>root.unmount())}
+})
+
 it('joins lifecycle/provider message carriers while retaining repeated instructions and raw evidence', () => {
  const data=response('first','Repeat this instruction')
  data.transcript.events[0].source_type='orchestrator_agent_start'
