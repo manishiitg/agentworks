@@ -77,6 +77,9 @@ def main():
         try:
             print(json.dumps(agent_action(sys.argv[1:])))
             return 0
+        except subprocess.TimeoutExpired:
+            print('{"ok":false,"error":"AgentWorks is still connecting. Try again in a moment."}')
+            return 1
         except (AdapterError, OSError, ValueError, subprocess.SubprocessError):
             print('{"ok":false,"error":"AgentWorks action refused or shared adapter unavailable"}')
             return 1
