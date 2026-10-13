@@ -22,6 +22,8 @@ import (
 // ExecutionInspectionTarget binds navigation to the execution that emitted it.
 // A run folder and a step name alone do not distinguish repeated dispatches.
 type ExecutionInspectionTarget struct {
+	WorkflowKind  string    `json:"workflow_kind,omitempty"`
+	ExecutionKind string    `json:"execution_kind,omitempty"`
 	SessionID     string    `json:"session_id"`
 	ExecutionID   string    `json:"execution_id"`
 	WorkspacePath string    `json:"workspace_path"`

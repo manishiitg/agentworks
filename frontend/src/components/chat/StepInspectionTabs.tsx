@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useId, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
-import { inspectionKey } from '../../utils/stepInspection'
+import { inspectionKey, readInspectionTarget, isWorkflowInspectionTab } from '../../utils/stepInspection'
 
 const StepInspectionPanel = lazy(() => import('./StepInspectionPanel'))
 
@@ -9,7 +9,7 @@ export function StepInspectionTabs({ tabId, children }: { tabId: string | null; 
  const prefix = useId()
  const tabList = useRef<HTMLDivElement>(null)
  const tab = useChatStore(state => tabId ? state.chatTabs[tabId] : undefined)
- const items = tab?.metadata?.stepInspections?.items.filter(item => item.session_id === tab.sessionId) ?? []
+ const items = isWorkflowInspectionTab(tab) ? tab?.metadata?.stepInspections?.items.filter(item => item.session_id === tab.sessionId && readInspectionTarget(item)) ?? [] : []
  const activeId = tab?.metadata?.stepInspections?.activeId
  const selected = items.find(item => inspectionKey(item) === activeId)
  useEffect(() => {

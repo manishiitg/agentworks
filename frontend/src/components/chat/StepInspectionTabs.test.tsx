@@ -6,7 +6,7 @@ import { RunInspectionButton } from './RunInspectionButton'
 import { StepInspectionTabs } from './StepInspectionTabs'
 import StepInspectionPanel from './StepInspectionPanel'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import { openStepInspection } from '../../utils/stepInspection'
+import { openStepInspection, readInspectionTarget } from '../../utils/stepInspection'
 import { inspectionChat, inspectionRecords } from '../../utils/inspectionConversation'
 import { agentApi } from '../../services/api'
 import type { ExecutionInspectionTarget, ExecutionInspectionResponse, PollingEvent } from '../../services/api-types'
@@ -135,7 +135,7 @@ it('opens the exact dispatch from the compact run row launch receipt', async () 
   event('first-start','background_agent_started',{metadata:{inspection:target}}),
   event('second-start','background_agent_started',{metadata:{inspection:{...target,execution_id:'second'}}}),
  ]
- useChatStore.setState({activeTabId:'chat', chatTabs:{chat:{tabId:'chat',sessionId:'parent'} as ChatTab},tabEvents:{parent:events}})
+ useChatStore.setState({activeTabId:'chat', chatTabs:{chat:{tabId:'chat',sessionId:'parent',metadata:{mode:'workflow'}} as ChatTab},tabEvents:{parent:events}})
  const host = document.createElement('div'); const root = createRoot(host)
  try {
   await act(async () => root.render(<RunInspectionButton event={start} />))
@@ -144,4 +144,24 @@ it('opens the exact dispatch from the compact run row launch receipt', async () 
   await act(async () => useChatStore.setState({tabEvents:{parent:events.filter(event => event.type !== 'tool_call_end')}}))
   expect(host.querySelector('button')).toBeNull()
  } finally {await act(async () => root.unmount())}
+})
+
+// Product chats must not inherit workflow step navigation from generic notifications.
+it('limits inspect controls, tab restoration and opening to workflow step chats', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+ const host=document.createElement('div');const root=createRoot(host)
+ try {
+  for (const metadata of [{mode:'multi-agent',agentProfileId:'work'},{mode:'workflow',agentProfileId:'relays'}] as const) {
+   useChatStore.setState({activeTabId:'chat',chatTabs:{chat:{tabId:'chat',sessionId:'parent',metadata:{...metadata,stepInspections:{items:[target],activeId:JSON.stringify([target.workspace_path,target.session_id,target.execution_id])}}} as ChatTab}})
+   expect(openStepInspection(target)).toBe(false)
+   await act(async()=>root.render(<StepInspectionTabs tabId="chat"><span>Product chat</span></StepInspectionTabs>))
+   expect(host.querySelector('[role="tablist"]')).toBeNull()
+   expect(host.textContent).toContain('Product chat')
+  }
+  expect(readInspectionTarget({...target,workspace_path:'_users/default/Chats/Work/projects/demo'})).toBeNull()
+  expect(readInspectionTarget({...target,workflow_kind:'relay'})).toBeNull()
+  expect(readInspectionTarget({...target,execution_kind:'sub_agent'})).toBeNull()
+  expect(readInspectionTarget({...target,step_id:undefined})).toBeNull()
+  expect(readInspectionTarget({...target,workflow_kind:'workflow',execution_kind:'workflow_step'})).toEqual({...target,workflow_kind:'workflow',execution_kind:'workflow_step'})
+ } finally { await act(async()=>root.unmount()) }
 })

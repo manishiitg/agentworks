@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -15,6 +16,36 @@ func inspectionIdentityPart(value string) bool {
 	return value != "" && value != "." && value != ".." && !strings.ContainsAny(value, "/\\\x00")
 }
 
+// Only goal-workflow executions get the step inspector. Crew/product chats and
+// Relays can share the execution recorder without advertising this workflow UI.
+func workflowStepInspectionWorkspace(ctx context.Context, workspace string) bool {
+	if !strings.HasPrefix(strings.Trim(workspace, "/"), "Workflow/") {
+		return false
+	}
+	content, exists, err := readFileFromWorkspace(ctx, strings.Trim(workspace, "/")+"/workflow.json")
+	if err != nil {
+		return false
+	}
+	if !exists {
+		return true
+	} // Legacy goal workflow without a manifest.
+	var manifest struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal([]byte(content), &manifest) != nil {
+		return false
+	}
+	return manifest.Kind == "" || manifest.Kind == "workflow"
+}
+
+func workflowStepInspectionKind(kind string) bool {
+	switch kind {
+	case "workflow_step", "agent", "scripted_step", "agent_item":
+		return true
+	}
+	return false
+}
+
 func (api *StreamingAPI) executionInspectionTarget(sessionID, executionID string) *orchEvents.ExecutionInspectionTarget {
 	workspace := api.backgroundAgentLogWorkspacePath(sessionID)
 	if workspace == "" || !inspectionIdentityPart(sessionID) || !inspectionIdentityPart(executionID) || api.bgAgentRegistry == nil {
@@ -25,7 +56,10 @@ func (api *StreamingAPI) executionInspectionTarget(sessionID, executionID string
 		return nil
 	}
 	snap := agent.GetSnapshot()
-	target := &orchEvents.ExecutionInspectionTarget{SessionID: sessionID, ExecutionID: executionID, WorkspacePath: workspace, Name: snap.Name, StartedAt: snap.CreatedAt}
+	if !workflowStepInspectionKind(snap.Kind) || strings.TrimSpace(snap.Metadata["step_id"]) == "" || !workflowStepInspectionWorkspace(context.Background(), workspace) {
+		return nil
+	}
+	target := &orchEvents.ExecutionInspectionTarget{SessionID: sessionID, ExecutionID: executionID, WorkspacePath: workspace, Name: snap.Name, StartedAt: snap.CreatedAt, WorkflowKind: "workflow", ExecutionKind: snap.Kind}
 	target.StepID = snap.Metadata["step_id"]
 	target.ItemID = snap.Metadata["item_id"]
 	target.RunFolder = strings.TrimSpace(snap.Metadata["run_folder"])
@@ -40,7 +74,8 @@ func (api *StreamingAPI) handleInspectSessionExecution(w http.ResponseWriter, r 
 	sessionID, executionID := vars["session_id"], vars["execution_id"]
 	workspace, valid := cleanWorkspaceReadPath(r.URL.Query().Get("workspace_path"), true)
 	if !valid || !inspectionIdentityPart(sessionID) || !inspectionIdentityPart(executionID) ||
-		!workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspace, logicalPathIsDefaultUser, false) {
+		!workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspace, logicalPathIsDefaultUser, false) ||
+		!workflowStepInspectionWorkspace(r.Context(), workspace) {
 		http.Error(w, "Execution not found", http.StatusNotFound)
 		return
 	}

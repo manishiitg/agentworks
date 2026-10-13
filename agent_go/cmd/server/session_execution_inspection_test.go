@@ -18,6 +18,38 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
+func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	srv := httptest.NewServer(workspace)
+	defer srv.Close()
+	t.Setenv("WORKSPACE_API_URL", srv.URL)
+	api := lifecycleTestAPI()
+	api.activeSessions = map[string]*ActiveSessionInfo{"chat": {SessionID: "chat", WorkspacePath: "Workflow/example", UserID: GetDefaultUserID()}}
+	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "step", Kind: "workflow_step", Metadata: map[string]string{"step_id": "research"}})
+	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "generic", Kind: "sub_agent", Metadata: map[string]string{"step_id": "research"}})
+	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "review", Kind: "workflow_step", Metadata: map[string]string{}})
+	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"workflow"}`); err != nil {
+		t.Fatal(err)
+	}
+	if target := api.executionInspectionTarget("chat", "step"); target == nil || target.WorkflowKind != "workflow" || target.ExecutionKind != "workflow_step" {
+		t.Fatalf("workflow step target missing: %+v", target)
+	}
+	if api.executionInspectionTarget("chat", "generic") != nil || api.executionInspectionTarget("chat", "review") != nil {
+		t.Fatal("ordinary background work advertised step inspection")
+	}
+	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"relay"}`); err != nil {
+		t.Fatal(err)
+	}
+	if api.executionInspectionTarget("chat", "step") != nil || workflowStepInspectionWorkspace(context.Background(), "Workflow/example") {
+		t.Fatal("Relay advertised workflow step inspection")
+	}
+	api.activeSessions["chat"].WorkspacePath = "_users/default/Chats/Work/projects/example"
+	if api.executionInspectionTarget("chat", "step") != nil {
+		t.Fatal("Crew advertised workflow step inspection")
+	}
+}
+
 // Uses the actual durable transcript writer and HTTP reader. Two dispatches of
 // one step remain distinct after completion, and read-only inspection cannot
 // cancel either one or expose another chat's evidence.

@@ -1629,6 +1629,8 @@ export interface SessionExecutionTreeSummary {
 }
 
 export interface ExecutionInspectionTarget {
+  workflow_kind?: string
+  execution_kind?: string
  session_id: string
  execution_id: string
  workspace_path: string
