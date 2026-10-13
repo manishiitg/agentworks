@@ -15,9 +15,9 @@ Discover the accessible project before acting and use its returned ID, never a h
 
 Load the product's current guidance before setup or execution: Crew authoring for Crew functions and setup, Relay Builder for Relay source/test/publish, and the relevant plan/Pulse/run topics for Goals. For other products, discover the available guidance rather than inventing a topic or tool name.
 
-## Brain notes and skills
+<!-- product:knowledgebase -->## Brain notes and skills
 
-<!-- product:knowledgebase -->- Browse/search permitted Brain folders before creating a duplicate note. Read current content and its opaque Brain version before updating; pass that version as `expected_version` and a stable request ID. Reader, Editor and Owner are folder roles, not semantic source versions.
+- Browse/search permitted Brain folders before creating a duplicate note. Read current content and its opaque Brain version before updating; pass that version as `expected_version` and a stable request ID. Reader, Editor and Owner are folder roles, not semantic source versions.
 - Discover shared skills with `brain_skills action=list`; retrieve the selected package with `action=get` and its returned folder path. Install all returned files under the chosen client skill folder, preserving relative paths. Compare the returned package version with the installed source record and preserve customized copies.
 - The starter package is `Shared/Skills/agentworks-mcp`. `Shared/AgentWorks/product-guide.md` is the same product guide as its reference. Both are starter copies; current MCP guidance remains available independently of Brain.
 <!-- /product -->

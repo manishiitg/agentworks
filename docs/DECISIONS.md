@@ -6,12 +6,15 @@ The MCP entry skill, server product-guide topic and Brain starter notes reuse on
 canonical product guide. Brain also offers a versioned AgentWorks MCP usage skill
 with that guide as a reference. Source releases use semantic versions and exact
 content fingerprints; Brain entry revisions remain the concurrency versions.
-Shared bootstrap uses the public Brain tools and creates missing starters once.
-Existing notes, user skill packages and deliberately deleted offers are preserved;
-source upgrades never overwrite them. An ambiguous creation is recorded for
-explicit reconciliation instead of automatic recreation. Product configuration,
+Shared bootstrap uses the public Brain tools and creates missing starters. Source
+updates refresh only untouched platform-created copies, checked by content hash,
+native revision and CAS. Existing user notes, customized skill packages and
+deliberately deleted offers are preserved. Definite pre-write failures retry;
+ambiguous writes are reconciled by reading current state, with missing creations
+logged for explicit reconciliation rather than recreation. Product configuration,
 current roles and consent still decide which tools can execute. Ticket: PLAT-856,
-issue 856-69.
+issue 856-69. Bootstrap history uses the active administrator identity, without
+creating another service account or role.
 
 ## 2026-10-13 — Agent descriptions execute first; follow-ups are optional (PLAT-861)
 

@@ -1,18 +1,23 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/spf13/viper"
 )
 
 // Real Brain tools, durable state, skill retrieval and Streamable HTTP MCP.
@@ -21,6 +26,22 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "starter-guide-test-signing-secret")
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,relays,knowledgebase,mcp-gateway,code")
+	// The external help dispatcher inventories workflows before routing even a
+	// Brain-only call. Supply the real document handler and an empty workspace.
+	docs := t.TempDir()
+	if err := os.Mkdir(filepath.Join(docs, "Workflow"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	oldDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
+	router := gin.New()
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
+	workspace := httptest.NewServer(router)
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api, service := knowledgebaseServerTest(t)
 	admin := knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}
 	store, err := openAccessTokens()
@@ -118,14 +139,59 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if !strings.Contains(agentworksclient.EntrySkill(), "| Goals |") || !strings.Contains(agentworksclient.EntrySkill(), "| Brain |") {
 		t.Fatal("entry skill lacks product routing overview")
 	}
-	// Customize one starter and deliberately remove another through native tools.
-	remote("brain_update", map[string]any{"action": "update", "path": "Shared/AgentWorks/product-guide.md", "content": "Our own product guide", "expected_version": read["version"], "request_id": "custom-guide"})
-	ref := remote("brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"})["result"].(map[string]any)
-	remote("brain_update", map[string]any{"action": "delete", "path": skillFolder + "/references/products.md", "expected_version": ref["version"], "request_id": "remove-starter-ref"})
+	// A later source release refreshes only known, untouched platform copies.
 	config, err := knowledgebaseConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
+	state, err := workflowCLIStateRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(state, "brain-starters", productguide.Fingerprint(config.Root+"\x00"+config.LiveRoot+"\x00"+config.OrganizationID))
+	originalFiles := knowledgebaseStarterFiles()
+	futureFiles := futureStarterFiles(originalFiles, "1.1.0")
+	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, futureFiles); err != nil {
+		t.Fatal(err)
+	}
+	read = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	if read["content"] != futureFiles[0].Content || read["version"] == noteVersion {
+		t.Fatal("unchanged platform guide did not receive new version")
+	}
+	// Installation changes refresh the projection without requiring a new
+	// semantic release, and also change the skill's guide fingerprint/version.
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,relays,knowledgebase,mcp-gateway,code,sparkquill")
+	projection := futureStarterFiles(knowledgebaseStarterFiles(), "1.1.0")
+	beforeProjection, err := service.CallTool(t.Context(), admin, "brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, projection); err != nil {
+		t.Fatal(err)
+	}
+	afterProjection, err := service.CallTool(t.Context(), admin, "brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})
+	if err != nil || afterProjection.(map[string]any)["version"] == beforeProjection.(map[string]any)["version"] {
+		t.Fatal("product projection did not change installable package revision", err)
+	}
+	futureFiles = projection
+	_ = cli.Close()
+	cli = dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
+	initializeExternalMCP(t, t.Context(), cli)
+	read = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	if !strings.Contains(read["content"].(string), "### SparkQuill") {
+		t.Fatal("enabled product did not reach Brain guide")
+	}
+	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, originalFiles); err != nil {
+		t.Fatal(err)
+	}
+	afterRollback := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	if afterRollback["content"] != read["content"] {
+		t.Fatal("older source downgraded a newer guide")
+	}
+	// Customize one starter and deliberately remove another through native tools.
+	remote("brain_update", map[string]any{"action": "update", "path": "Shared/AgentWorks/product-guide.md", "content": "Our own product guide", "expected_version": read["version"], "request_id": "custom-guide"})
+	ref := remote("brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"})["result"].(map[string]any)
+	remote("brain_update", map[string]any{"action": "delete", "path": skillFolder + "/references/products.md", "expected_version": ref["version"], "request_id": "remove-starter-ref"})
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +203,9 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	knowledgebaseInstance.service = restarted
 	knowledgebaseInstance.Unlock()
 	if err := seedKnowledgebaseStarter(t.Context(), restarted, admin); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedBrainStarterFiles(t.Context(), restarted, admin, stateDir, futureStarterFiles(futureFiles, "1.2.0")); err != nil {
 		t.Fatal(err)
 	}
 	if value, err := restarted.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"}); err != nil || value.(map[string]any)["content"] != "Our own product guide" {
@@ -175,4 +244,68 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 			t.Fatal("platform mixed references into a user skill", err)
 		}
 	})
+	t.Run("definite-refusal-retries", func(t *testing.T) {
+		s, err := knowledgebase.New(knowledgebase.Config{Root: filepath.Join(t.TempDir(), "brain"), OrganizationID: "refusal-test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		if err := s.SyncPlatformIdentities(t.Context(), []knowledgebase.Identity{{ID: "admin", Name: "Admin", Type: "user"}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.EnsureDefaultFolder(t.Context(), admin, "Shared", "Editor", nil); err != nil {
+			t.Fatal(err)
+		}
+		caller := &refuseStarterOnce{brainStarterCaller: s}
+		offers := t.TempDir()
+		files := originalFiles[:1]
+		if err := seedBrainStarterFiles(t.Context(), caller, admin, offers, files); !brainStarterError(err, "FORBIDDEN") {
+			t.Fatal("expected pre-write refusal", err)
+		}
+		if err := seedBrainStarterFiles(t.Context(), caller, admin, offers, files); err != nil {
+			t.Fatal(err)
+		}
+		result, err := s.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": files[0].Path})
+		if err != nil || result.(map[string]any)["content"] != files[0].Content {
+			t.Fatal("refused first attempt permanently suppressed starter", result, err)
+		}
+	})
+}
+
+type refuseStarterOnce struct {
+	brainStarterCaller
+	refused bool
+}
+
+func (c *refuseStarterOnce) CallTool(ctx context.Context, p knowledgebase.Principal, name string, args map[string]any) (any, error) {
+	if name == "brain_update" && args["action"] == "create" && !c.refused {
+		c.refused = true
+		return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "temporary pre-write refusal"}
+	}
+	return c.brainStarterCaller.CallTool(ctx, p, name, args)
+}
+
+// Render a future release fixture with coherent source versions and hashes.
+func futureStarterFiles(original []brainStarterFile, version string) []brainStarterFile {
+	out := append([]brainStarterFile(nil), original...)
+	oldGuide, oldSkill := original[0].Content, original[1].Content
+	guide := strings.Replace(oldGuide, "Guide version: "+original[0].SourceVersion, "Guide version: "+version, 1)
+	skill := strings.ReplaceAll(oldSkill, original[1].SourceVersion, version)
+	skill = strings.ReplaceAll(skill, productguide.Fingerprint(oldGuide), productguide.Fingerprint(guide))
+	manifest, _ := json.Marshal(map[string]any{
+		"product_guide": map[string]string{"version": version, "sha256": productguide.Fingerprint(guide)},
+		"mcp_skill":     map[string]string{"name": productguide.SkillName, "version": version, "sha256": productguide.Fingerprint(skill)},
+	})
+	for i := range out {
+		out[i].SourceVersion = version
+		switch i {
+		case 0, 2:
+			out[i].Content = guide
+		case 1:
+			out[i].Content = skill
+		case 3:
+			out[i].Content = string(manifest) + "\n"
+		}
+	}
+	return out
 }

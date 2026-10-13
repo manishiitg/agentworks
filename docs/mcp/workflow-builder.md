@@ -146,8 +146,12 @@ Brain's Shared bootstrap offers `Shared/AgentWorks/product-guide.md` and the
 installable `Shared/Skills/agentworks-mcp` package through the native public Brain
 tools. Each existing note or user skill package is preserved. Starter offers are
 recorded in platform state, so deleting one keeps it deleted after a restart or
-source update; a creation with an ambiguous outcome requires explicit operator
-reconciliation. Bootstrap never replaces an old copy with a new source release.
+source update; a creation with an ambiguous outcome is inspected and logged when
+explicit operator reconciliation is needed. New sources or product availability
+refresh only untouched platform-created files, checked by hash, native revision
+and CAS. Whole customized skill packages remain unchanged. Successful bootstrap
+is cached per service and rendered source within the process. Native Brain history
+attributes these writes to the installation's active administrator.
 
 Guide and skill source versions start at `1.0.0`; their `references/versions.json`
 records exact content SHA-256 fingerprints. MCP topic/package versions identify

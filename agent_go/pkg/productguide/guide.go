@@ -53,7 +53,7 @@ func SkillBody(selection productpolicy.Selection) string {
 }
 
 func Skill(selection productpolicy.Selection) string {
-	return "---\nname: " + SkillName + "\ndescription: " + SkillDescription + "\nmetadata:\n  version: " + SkillVersion + "\n  product-guide-version: " + GuideVersion + "\n---\n\n" + SkillBody(selection)
+	return "---\nname: " + SkillName + "\ndescription: " + SkillDescription + "\nmetadata:\n  version: " + SkillVersion + "\n  product-guide-version: " + GuideVersion + "\n  product-guide-sha256: \"" + Fingerprint(Guide(selection)) + "\"\n---\n\n" + SkillBody(selection)
 }
 
 // Versions separates human-readable source releases from exact content hashes

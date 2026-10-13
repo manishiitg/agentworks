@@ -1,5 +1,7 @@
 Choose a product by the work you want to accomplish. This guide describes the products; the current server configuration, connection consent and your roles decide which operations you can actually use. Discover those operations before acting.
 
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Brain's Reader, Editor and Owner are folder permission names.
+
 | Product | Choose it for |
 |---|---|
 <!-- product:agentworks -->| Goals | An ongoing objective with a plan, scheduled work, measurements and Pulse follow-through. |
@@ -22,14 +24,14 @@ Use Goals when the task is a continuing outcome, rather than a single question o
 
 - **Abilities:** define the objective and success measures; create and edit the workflow plan; configure steps, skills, schedules and integrations; run steps or the workflow; inspect results, reports and costs; use Pulse to follow up on the goal.
 - **MCP route:** discover workflows with `workflow action=list`; read the plan and current revision; discover native edit operations with `plan action=list`; inspect run state and evidence through the available run tools. Load the relevant plan, execution and Pulse guidance.
-- **Access:** current workflow owner/editor/team roles and existing authoring consent govern edits. Running, sharing and integration access have their own current checks.
+- **Access:** edits require current project editing authority and existing authoring consent. Running, sharing and integration access have their own current checks.
 - **Example:** monitor incoming support requests, measure response time and follow up on unresolved cases.
 
 <!-- /product --><!-- product:work -->### Crew
 
 Use a Crew for a specialist you want to call repeatedly from your agent, another project or an enabled messaging channel.
 
-- **Abilities:** persistent purpose and instructions, project files, memory, selected skills and integrations; typed functions with input/result schemas; ask and message entry points; schedules and caller-specific conversations.
+- **Abilities:** persistent purpose and instructions, project files, memory, selected skills and integrations; admitted shell, browser and database tools; typed functions with input/result schemas; ask and message entry points; schedules and caller-specific conversations.
 - **MCP route:** discover with `crew action=list`, inspect the selected Crew, load `crew-authoring`, and discover exposed functions with `functions action=list`. Call functions or ask only through the entry points currently admitted for that Crew and caller.
 - **Access:** setup edits and execution are different permissions. The current Crew role, account restrictions, connection bounds and owner-controlled entry-point settings apply; a successful call does not authorize changing its memory, skills or setup.
 - **Example:** a document specialist exposes a function that accepts a file and returns a structured summary.
@@ -40,7 +42,7 @@ Use a Relay when a repeatable code workflow should have an explicit release and 
 
 - **Abilities:** edit source, test drafts, inspect test results, publish immutable versions and execute or inspect production runs; configure the workflow's supported triggers and integrations.
 - **MCP route:** load `relay-builder`; inspect the current source and schemas; edit through admitted source tools, test the draft, then publish with the current revision. A test is not a production publication.
-- **Access:** current Relay owner/editor roles and Relay authoring consent govern changes; readers see only the run evidence their current access permits.
+- **Access:** changes require current project editing authority and Relay authoring consent. Run access determines which execution evidence a person may see.
 - **Example:** validate incoming records and deliver the accepted records to a connected system.
 
 <!-- /product --><!-- product:knowledgebase -->### Brain
@@ -99,4 +101,6 @@ This optional product supports video compositions, media and rendering workflows
 
 The guide has a semantic source version. Its content fingerprint identifies the exact rendered copy, including the installation's enabled products. MCP guidance also returns a per-topic version for `known_version`/`known_versions` refresh. Brain returns its own opaque entry versions for concurrency checks; use those as `expected_version`, never the guide's semantic version.
 
-Brain starter notes and skills are created only when missing and not previously offered. Existing, customized or deliberately deleted copies are preserved. Fetch current server guidance to compare with an old starter copy; replace a local or Brain copy only as an explicit user-authorized edit.
+Brain starter notes and skills are created when missing. New source releases and product availability changes refresh only untouched platform-created copies, using the current Brain revision. Pre-existing user notes, customized skill packages and deliberately deleted copies are preserved. CLI installation still needs explicit force to replace an existing client skill. Fetch current server guidance to compare with a saved copy.
+
+CLI and hosted packages describe the installation's enabled products; live MCP topics additionally use the current caller's product selection. Both render the same canonical source. Bootstrap changes are attributed in Brain history to the active administrator used for installation; no additional account or role is created.
