@@ -7,9 +7,11 @@ snapshot outside the message mutation mutex. Every read still validates the
 workspace response, including service authorization; there is no TTL or fallback
 to cached authority when the workspace fails. A strong content ETag detects even
 external edits preserving size and modification time. Successful conditional
-reads reuse parsed data; older workspaces remain compatible through full reads.
+reads reuse parsed data; concurrent reads share one validation per generation,
+without holding the cache mutex during I/O. Older workspaces remain compatible
+through full reads.
 Every store-write attempt advances the generation, and mutation transactions
-retain separate freshly decoded stores. Named-agent results clone their mutable
+retain separate freshly decoded stores. Mutation lookups bypass snapshot flights. Named-agent results clone their mutable
 connection lists and attachment pointers. Closing, revoking, offering and writing
 messages keep their existing atomic mutation fences.
 

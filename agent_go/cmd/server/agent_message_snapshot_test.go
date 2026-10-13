@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAgentSnapshotValidationAndMutationIsolation(t *testing.T) {
@@ -53,7 +55,7 @@ func TestAgentSnapshotValidationAndMutationIsolation(t *testing.T) {
 		t.Fatal("unchanged snapshot decoded again")
 	}
 	// A caller cannot edit the cached name's connection or attachment through lookup.
-	agent, err := namedAgentByID(ctx, "owner", "agent")
+	agent, err := namedAgentForClaims(ctx, &UserClaims{UserID: "owner"}, "alpha")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,5 +92,117 @@ func TestAgentSnapshotValidationAndMutationIsolation(t *testing.T) {
 	denied.Store(true)
 	if _, err = readAgentMessageSnapshot(ctx); err == nil {
 		t.Fatal("failed workspace read reused cached authority")
+	}
+}
+
+func TestAgentSnapshotConcurrentValidation(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	ctx := context.Background()
+	if err := saveAgentMessageStore(ctx, agentMessageStore{Agents: []namedMessageAgent{{ID: "agent", UserID: "owner", Name: "alpha"}}}); err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	var validations atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/documents/"+agentMessagesPath {
+			env.mock.mu.Lock()
+			raw := env.mock.files[agentMessagesPath]
+			env.mock.mu.Unlock()
+			tag := fmt.Sprintf("\"%x\"", sha256.Sum256([]byte(raw)))
+			w.Header().Set("ETag", tag)
+			if r.Header.Get("If-None-Match") == tag {
+				if validations.Add(1) == 1 {
+					close(entered)
+				}
+				<-release
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+		env.mock.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	// Unblock before closing the HTTP server, including on test failure.
+	defer unblock()
+	t.Setenv("WORKSPACE_API_URL", srv.URL)
+	if _, err := readAgentMessageSnapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan error, 20)
+	read := func() {
+		store, err := readAgentMessageSnapshot(ctx)
+		if err == nil && (len(store.Agents) != 1 || store.Agents[0].Name != "alpha") {
+			err = fmt.Errorf("incorrect shared snapshot")
+		}
+		results <- err
+	}
+	go read()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("validation did not start")
+	}
+	cancelCtx, cancel := context.WithCancel(ctx)
+	cancelled := make(chan error, 1)
+	go func() { _, err := readAgentMessageSnapshot(cancelCtx); cancelled <- err }()
+	for i := 0; i < 19; i++ {
+		go read()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		agentSnapshotCache.Lock()
+		key := agentSnapshotKey{srv.URL + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
+		flight := agentSnapshotCache.flights[key]
+		joined := flight != nil && flight.waiters == 20
+		agentSnapshotCache.Unlock()
+		if joined {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("readers did not share the in-flight validation")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-cancelled:
+		if err != context.Canceled {
+			t.Fatalf("cancel: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiter blocked by validation I/O")
+	}
+	// A mutation lookup must not wait behind the snapshot validation.
+	fresh := make(chan error, 1)
+	go func() {
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		_, err := namedAgentByID(ctx, "owner", "agent")
+		fresh <- err
+	}()
+	select {
+	case err := <-fresh:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("mutation lookup waited behind readers")
+	}
+	unblock()
+	for i := 0; i < 20; i++ {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("reader did not finish")
+		}
+	}
+	if validations.Load() != 1 {
+		t.Fatalf("concurrent validations: %d", validations.Load())
 	}
 }

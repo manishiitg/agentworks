@@ -77,7 +77,7 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 // Read a fresh store snapshot. Mutation callers already hold agentMessageMu;
 // authorization fails closed if storage is unavailable.
 func namedAgentByID(ctx context.Context, userID, id string) (namedMessageAgent, error) {
-	s, err := readAgentMessageSnapshot(ctx)
+	s, err := readAgentMessageStore(ctx)
 	if err != nil {
 		return namedMessageAgent{}, err
 	}

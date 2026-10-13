@@ -13,88 +13,138 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
-// Shared only by pure reads. Mutation transactions retain independently decoded
-// stores; no caller may edit the slices or pointers in this immutable snapshot.
-var agentSnapshotCache struct {
-	sync.Mutex
+type agentSnapshotKey struct {
 	url        string
-	etag       string
-	digest     [32]byte
 	generation int64
-	valid      bool
-	store      agentMessageStore
 }
 
+type agentSnapshotEntry struct {
+	key    agentSnapshotKey
+	etag   string
+	digest [32]byte
+	valid  bool
+	store  agentMessageStore
+}
+
+type agentSnapshotFlight struct {
+	done    chan struct{}
+	entry   agentSnapshotEntry
+	err     error
+	waiters int
+}
+
+// Only metadata is locked. Validation, transfer and parsing run outside the lock.
+var agentSnapshotCache struct {
+	sync.Mutex
+	entry   agentSnapshotEntry
+	flights map[agentSnapshotKey]*agentSnapshotFlight
+}
+
+// The returned store shares backing arrays and pointers and must be treated as
+// immutable. Mutations use independent readAgentMessageStore copies instead.
+// Concurrent readers share one validation per endpoint/generation; sequential
+// reads still validate, with no TTL or stale-on-error authority fallback.
 func readAgentMessageSnapshot(ctx context.Context) (agentMessageStore, error) {
-	agentSnapshotCache.Lock()
-	defer agentSnapshotCache.Unlock()
-	cache := &agentSnapshotCache
-	endpoint := getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath
-	generation := agentMessageVersion.Load()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	for {
+		key := agentSnapshotKey{getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
+		agentSnapshotCache.Lock()
+		if flight := agentSnapshotCache.flights[key]; flight != nil {
+			flight.waiters++
+			agentSnapshotCache.Unlock()
+			select {
+			case <-ctx.Done():
+				return agentMessageStore{}, ctx.Err()
+			case <-flight.done:
+			}
+			// A completed write while waiting requires a new validation.
+			if agentMessageVersion.Load() != key.generation {
+				continue
+			}
+			return flight.entry.store, flight.err
+		}
+		prior := agentSnapshotCache.entry
+		flight := &agentSnapshotFlight{done: make(chan struct{})}
+		if agentSnapshotCache.flights == nil {
+			agentSnapshotCache.flights = make(map[agentSnapshotKey]*agentSnapshotFlight)
+		}
+		agentSnapshotCache.flights[key] = flight
+		agentSnapshotCache.Unlock()
+
+		entry, err := fetchAgentMessageSnapshot(ctx, key, prior)
+		agentSnapshotCache.Lock()
+		if err == nil && agentMessageVersion.Load() == key.generation {
+			agentSnapshotCache.entry = entry
+		}
+		flight.entry, flight.err = entry, err
+		delete(agentSnapshotCache.flights, key)
+		close(flight.done)
+		agentSnapshotCache.Unlock()
+		if agentMessageVersion.Load() != key.generation && err == nil {
+			continue
+		}
+		return entry.store, err
+	}
+}
+
+func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior agentSnapshotEntry) (agentSnapshotEntry, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, key.url, nil)
 	if err != nil {
-		return agentMessageStore{}, err
+		return agentSnapshotEntry{}, err
 	}
-	same := cache.valid && cache.url == endpoint && cache.generation == generation
-	if same && cache.etag != "" {
-		req.Header.Set("If-None-Match", cache.etag)
+	same := prior.valid && prior.key == key
+	if same && prior.etag != "" {
+		req.Header.Set("If-None-Match", prior.etag)
 	}
-	// Always validate at the workspace service, including authorization. No TTL
-	// or stale-on-error fallback; external edits must be visible to claims reads.
+	// Workspace service authorization is validated even for conditional reads.
 	res, err := workspaceHTTPClient.Do(req)
 	if err != nil {
-		return agentMessageStore{}, err
+		return agentSnapshotEntry{}, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotModified {
-		if !same {
-			return agentMessageStore{}, fmt.Errorf("unexpected snapshot validation")
+		if !same || prior.etag == "" {
+			return agentSnapshotEntry{}, fmt.Errorf("unexpected snapshot validation")
 		}
-		return cache.store, nil
+		return prior, nil
 	}
 	if res.StatusCode == http.StatusNotFound {
-		cache.valid = false
-		return agentMessageStore{}, nil
+		return agentSnapshotEntry{}, nil
 	}
 	if res.StatusCode != http.StatusOK {
-		return agentMessageStore{}, fmt.Errorf("snapshot unavailable (HTTP %d)", res.StatusCode)
+		return agentSnapshotEntry{}, fmt.Errorf("snapshot unavailable (HTTP %d)", res.StatusCode)
 	}
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
-		return agentMessageStore{}, err
+		return agentSnapshotEntry{}, err
 	}
 	var envelope virtualtools.WorkspaceAPIResponse
 	if err = json.Unmarshal(raw, &envelope); err != nil {
-		return agentMessageStore{}, err
+		return agentSnapshotEntry{}, err
 	}
 	if !envelope.Success {
-		return agentMessageStore{}, fmt.Errorf("snapshot unavailable")
+		return agentSnapshotEntry{}, fmt.Errorf("snapshot unavailable")
 	}
 	data, _ := envelope.Data.(map[string]interface{})
 	if binary, _ := data["is_binary"].(bool); binary {
-		return agentMessageStore{}, fmt.Errorf("snapshot is not text")
+		return agentSnapshotEntry{}, fmt.Errorf("snapshot is not text")
 	}
 	content, exists := data["content"].(string)
 	if !exists {
-		cache.valid = false
 		if strings.Contains(envelope.Message, "File does not exist") || strings.Contains(envelope.Error, "File not found") || data["filepath"] != nil {
-			return agentMessageStore{}, nil
+			return agentSnapshotEntry{}, nil
 		}
-		return agentMessageStore{}, fmt.Errorf("invalid snapshot response")
+		return agentSnapshotEntry{}, fmt.Errorf("invalid snapshot response")
 	}
 	digest := sha256.Sum256([]byte(content))
-	if same && cache.digest == digest {
-		cache.etag = res.Header.Get("ETag")
-		return cache.store, nil
+	if same && prior.digest == digest {
+		prior.etag = res.Header.Get("ETag")
+		return prior, nil
 	}
 	var store agentMessageStore
 	if err = json.Unmarshal([]byte(content), &store); err != nil {
-		return agentMessageStore{}, err
+		return agentSnapshotEntry{}, err
 	}
-	// A write may have completed during the fetch. Retain the starting generation
-	// so a subsequent read cannot validate this old snapshot as the new version.
-	cache.url, cache.etag, cache.digest, cache.generation, cache.valid, cache.store = endpoint, res.Header.Get("ETag"), digest, generation, true, store
-	return store, nil
+	return agentSnapshotEntry{key: key, etag: res.Header.Get("ETag"), digest: digest, valid: true, store: store}, nil
 }
 
 func cloneNamedAgent(a namedMessageAgent) namedMessageAgent {
