@@ -159,17 +159,24 @@ func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
 	ownerTurn := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}
 	guestAsk := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot, CrewGuestCaller: "reader", CrewAskReadOnly: true, PinRunMode: true}
 	guestCall := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot, CrewGuestCaller: "reader", PinRunMode: true}
-	if !crewAskReadOnlyTurn(reader, "reader") {
+	if !crewAskReadOnlyTurn(reader, "reader", true) {
 		t.Error("a non-owner's in-app chat must follow the policy")
 	}
-	if !crewAskReadOnlyTurn(guestAsk, "owner") {
+	if !crewAskReadOnlyTurn(guestAsk, "owner", true) {
 		t.Error("a non-owner's MCP ask must follow the policy")
 	}
-	if crewAskReadOnlyTurn(ownerTurn, "owner") {
+	if crewAskReadOnlyTurn(ownerTurn, "owner", false) {
 		t.Error("the owner's chat is the full one")
 	}
-	if crewAskReadOnlyTurn(guestCall, "owner") {
+	if crewAskReadOnlyTurn(guestCall, "owner", true) {
 		t.Error("a guest's function-call turn runs the owner's function, not the chat policy")
+	}
+	// A Slack channel mention runs as the owner's route but read-only: it is Run mode too, not a looser tool set.
+	if !crewAskReadOnlyTurn(ownerTurn, "owner", true) {
+		t.Error("a read-only turn on a Crew (channel mention, pinned turn) must follow the same policy")
+	}
+	if crewAskReadOnlyTurn(QueryRequest{AgentProfileID: "work", SelectedFolder: "Chats/Work"}, "owner", true) {
+		t.Error("the landing chat is not a Crew")
 	}
 	for _, tool := range []string{crewPublishedCallToolName, crewPublishedGetToolName} {
 		if !crewAskAllowedTools[tool] {

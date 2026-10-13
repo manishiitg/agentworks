@@ -63,6 +63,9 @@ func (api *StreamingAPI) registerCrewPublishedFunctionTools(registrar definition
 			if !found {
 				return "", fmt.Errorf("this Crew has no published function %q; see list_functions", strings.TrimSpace(name))
 			}
+			if isBuiltinConversationalFunction(target, fn) {
+				return "", fmt.Errorf("%q is the Crew's built-in conversation, not a published function: you are already in a conversation with this Crew", fn.Name)
+			}
 			callArgs, _ := args["args"].(map[string]interface{})
 			if raw, present := args["args"]; present && raw != nil && callArgs == nil {
 				return "", fmt.Errorf("args must be a JSON object")

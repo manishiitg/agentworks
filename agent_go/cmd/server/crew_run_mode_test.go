@@ -1338,7 +1338,7 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	slack := req
 	slack.BotPlatform = "slack"
 	got := crewSessionModeForTurn(slack, "owner", "", profile, true)
-	if !strings.Contains(got, "shared user") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
+	if !strings.Contains(got, "Run mode") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
 		t.Fatalf("read-only channel turn (running as the owner) notice = %q", got)
 	}
 	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") || strings.Contains(got, "call_function") {

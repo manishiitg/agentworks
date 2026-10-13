@@ -966,7 +966,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 		// A Run-mode turn can link what it saved in the Crew's output folder.
 		// A guest's free-text ask only reads, so it saves and links nothing.
-		askReadOnly := len(req) > 0 && crewAskReadOnlyTurn(req[0], userID)
+		askReadOnly := len(req) > 0 && crewAskReadOnlyTurn(req[0], userID, readOnly)
 		if !askReadOnly {
 			if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath, "outputs/"); err != nil {
 				log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)

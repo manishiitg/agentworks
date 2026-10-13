@@ -4079,7 +4079,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		currentUserIsReadOnly = true
 	}
 	// One policy for every non-owner chat (in-app, MCP ask, dashboard Ask): read-only plus the owner's published functions.
-	crewAskOnly := crewAskReadOnlyTurn(req, currentUserID)
+	crewAskOnly := crewAskReadOnlyTurn(req, currentUserID, currentUserIsReadOnly)
 	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
 	common.SetSessionCrewAskReadOnly(sessionID, crewAskOnly)
@@ -5796,6 +5796,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			profileApprovalsMode = resolvedProfile.Definition.Runtime.Approvals.Mode
 		} else if workflowNativeAgentTools {
 			profileAgentToolsMode = "full"
+		}
+		if crewAskOnly {
+			// Run mode never gets a CLI's native tools, whatever the Crew's setting says.
+			profileAgentToolsMode = "mcp_only"
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
