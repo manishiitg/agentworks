@@ -39,7 +39,7 @@ func LoadConfig(path string) (Config, error) {
 		return cfg, errors.New("config must be a regular file, not a symbolic link")
 	}
 	if err := CheckPrivateAccess(path, info); err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("%w%s", err, privateConfigAccessHint())
 	}
 	if info.Size() > 1<<20 {
 		return cfg, errors.New("config exceeds 1 MiB limit")

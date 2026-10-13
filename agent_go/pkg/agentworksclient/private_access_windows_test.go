@@ -40,6 +40,28 @@ func TestWindowsPrivateConfigLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// A creator-owner entry inheriting only to children grants no access to this
+	// custom parent directory and must not cause a false privacy rejection.
+	dir := filepath.Dir(path)
+	inherited, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;" + user.String() + ")(A;OICIIO;FA;;;CO)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentACL, _, err := inherited.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, parentACL, nil); err != nil {
+		t.Fatal(err)
+	}
+	parentInfo, err := os.Lstat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckPrivateAccess(dir, parentInfo); err != nil {
+		t.Fatalf("inherit-only entry rejected: %v", err)
+	}
 	sd, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;" + user.String() + ")(A;;GR;;;WD)")
 	if err != nil {
 		t.Fatal(err)

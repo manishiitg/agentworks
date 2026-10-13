@@ -50,7 +50,7 @@ func CheckPrivateAccess(path string, _ os.FileInfo) error {
 		if err = windows.GetAce(acl, i, &ace); err != nil {
 			return fmt.Errorf("cannot verify Windows access entry: %w", err)
 		}
-		if ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
+		if ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 || ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
 			continue
 		}
 		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || uintptr(ace.Header.AceSize) < unsafe.Sizeof(*ace) {
@@ -80,3 +80,5 @@ func SecurePrivateFile(f *os.File) error {
 	}
 	return windows.SetNamedSecurityInfo(f.Name(), windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
 }
+
+func privateConfigAccessHint() string { return "" }

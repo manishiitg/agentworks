@@ -51,7 +51,11 @@ func TestWindowsSavedLoginCommands(t *testing.T) {
 	if code, out, problem := invoke("", "logins"); code != 0 || !strings.Contains(out, "default") || !strings.Contains(out, "work") {
 		t.Fatalf("logins: %s %s", out, problem)
 	}
-	if code, _, problem := invoke("", "status"); code != 0 {
+	defaultPath, err := agentworksclient.DefaultConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _, problem := invoke("", "--config", defaultPath, "status"); code != 0 {
 		t.Fatalf("status: %s", problem)
 	}
 	if code, _, problem := invoke("", "tools", "list"); code != 0 {
@@ -71,7 +75,7 @@ func TestWindowsSavedLoginCommands(t *testing.T) {
 	if err := os.WriteFile(def, []byte(`{"expires_at":"malformed-secret-value"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	code, _, problem = invoke("", "status")
+	code, _, problem = invoke("", "--config", def, "status")
 	if code == 0 || !strings.Contains(problem, "saved login cannot be loaded") || strings.Contains(problem, def) || strings.Contains(problem, "malformed-secret-value") {
 		t.Fatalf("invalid default status: %s", problem)
 	}

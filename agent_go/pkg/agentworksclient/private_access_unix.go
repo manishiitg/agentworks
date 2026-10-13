@@ -17,3 +17,5 @@ func CheckPrivateAccess(_ string, info os.FileInfo) error {
 
 // SecurePrivateFile restricts a newly created temporary file before writing.
 func SecurePrivateFile(f *os.File) error { return f.Chmod(0600) }
+
+func privateConfigAccessHint() string { return "; run chmod 600 on the AgentWorks config file" }
