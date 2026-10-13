@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-13 — Twenty side chats per Code project or Crew, counted by the server (PLAT-861)
+
+A Code project or a Crew may have its main chat plus up to 20 side chats (tabs), up from 4
+(owner: an agent could not open a "cicd" tab). One number (`externalCrewMaxSideChats`, mirrored by
+`WORK_SIDE_CHAT_LIMIT` in the app) is enforced where a side chat is created, from the server's
+registry and under a per-project lock, so the app, MCP and a second device cannot go past it (a
+project once held five against four because the app counted only its own open tabs and MCP assumed
+the main chat was in the list). The tab strip scrolls sideways. MCP can name a new tab and rename a
+side chat. This replaces the "5 chats" limit in the 2026-10-06 entry. Idle chats' CLI panes are still
+closed by the idle reaper (at most one hour), and a chat resumes on its next message.
+
+Ticket: PLAT-861, issue 861-153.
+
 ## 2026-10-13 — A bare attach reconnects the folder's most recent free agent (PLAT-861)
 
 A person who types a bare `/agentworks attach` in a chat the bridge does not know

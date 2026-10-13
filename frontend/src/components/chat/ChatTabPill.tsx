@@ -97,6 +97,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       onKeyDown={(event) => event.key === 'Enter' && onTabClick(tab.tabId)}
       role="button"
       tabIndex={0}
+      data-tab-active={isActive ? 'true' : undefined}
       className={`group flex min-w-0 cursor-pointer items-center gap-1.5 rounded-t-md px-2 py-1 text-xs font-medium outline-none transition-colors ${
         isActive
           ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'

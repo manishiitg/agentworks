@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
@@ -671,6 +672,18 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	// Opening the product's conversation is what the app does on launch: the
 	// family is here, so a due check-in waits for a quiet moment.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
+	if limitsSideChats(profile.ID) && isSideChatConversationKey(input.ConversationKey) {
+		// Creating a side chat is checked and done under one lock, so the app, MCP and a second
+		// device cannot race past the cap; opening one that already exists is always allowed.
+		userID := productWorkspaceUserID(r.Context())
+		lock := sideChatLock(userID, profile.ID, input.ConversationKey)
+		lock.Lock()
+		defer lock.Unlock()
+		if err := checkSideChatCapacity(r.Context(), defaultProductConversationRegistryStore(), userID, profile.ID, input.ConversationKey); err != nil {
+			writeAgentProfileError(w, http.StatusConflict, err.Error())
+			return
+		}
+	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
@@ -1121,6 +1134,41 @@ func retireProductCodingCLI(sessionID, reason string) {
 func validateProductConversationContinuation(continuation bool, requested, resolved string) error {
 	if continuation && (strings.TrimSpace(requested) == "" || strings.TrimSpace(requested) != strings.TrimSpace(resolved)) {
 		return fmt.Errorf("conversation continuity conflict: requested session could not be verified in this workspace; reload or recover the original chat")
+	}
+	return nil
+}
+
+// sideChatLocks serialises side-chat creation per user and project.
+var sideChatLocks sync.Map
+
+func sideChatLock(userID, profileID, key string) *sync.Mutex {
+	project, _, _ := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
+	lock, _ := sideChatLocks.LoadOrStore(userID+"|"+profileID+"|"+project, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+// limitsSideChats is true for the profiles whose projects have tabs: Code projects and Crews.
+func limitsSideChats(profileID string) bool { return profileID == "code" || profileID == "work" }
+
+// checkSideChatCapacity refuses a NEW side chat key once the project already has the most the
+// product allows (externalCrewMaxSideChats). The count is the registry's, not a browser's tabs.
+func checkSideChatCapacity(ctx context.Context, store productConversationRegistryStore, userID, profileID, key string) error {
+	project, _, _ := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
+	records, err := store.projectChats(ctx, userID, profileID, project)
+	if err != nil {
+		return nil // an unreadable registry is the resolve step's error to report
+	}
+	sides := 0
+	for _, record := range records {
+		if record.ConversationKey == strings.TrimSpace(key) {
+			return nil // already open: not a new chat
+		}
+		if record.ConversationKey != project {
+			sides++
+		}
+	}
+	if sides >= externalCrewMaxSideChats {
+		return fmt.Errorf("this project already has %d side chats; close one first", externalCrewMaxSideChats)
 	}
 	return nil
 }

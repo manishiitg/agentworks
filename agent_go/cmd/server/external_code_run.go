@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
@@ -27,6 +29,7 @@ var externalCodeRunTools = map[string]bool{
 	"open_my_code_chat":     true,
 	"close_my_code_chat":    true,
 	"stop_my_code_chat":     true,
+	"rename_my_code_chat":   true,
 }
 
 func isExternalCodeRunTool(name string) bool { return externalCodeRunTools[name] }
@@ -52,7 +55,8 @@ func externalCodeRunDefinitions(add func(name, description string, write, scoped
 		"submission_id": externalString("Unique message submission ID; reuse after uncertain delivery."),
 	}, "project_id", "message")
 	chatArg := map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats.")}
-	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to 4), as the + in the app does; talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, project, "project_id")
+	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to "+strconv.Itoa(externalCrewMaxSideChats)+"), as the + in the app does; give it a name with the optional name argument; talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, map[string]any{"project_id": project["project_id"], "name": externalString("A short tab name, optional.")}, "project_id")
+	add("rename_my_code_chat", "Rename one of your Code project's side chats (tab). The main chat keeps its project name."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats."), "name": externalString("The new tab name.")}, "project_id", "chat_id", "name")
 	add("close_my_code_chat", "Close one of your Code project's side chats (tab). The main chat cannot be closed, and a chat that is still working must be stopped first."+suffix, true, false, chatArg, "project_id", "chat_id")
 	add("stop_my_code_chat", "Stop the turn running in one of your Code project's chats (the main chat or a side chat)."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A chat id from code action=chats; default main.")}, "project_id")
 	add("get_my_code_state", "What the server knows about one of your Code projects right now: its mode, folder (the guard's read and write paths), the account slot commands run as, and each chat's working and Local flags. Read-only."+suffix, false, false, project, "project_id")
@@ -172,8 +176,17 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			"chats":        describe(),
 		})
 	case "open_my_code_chat":
-		if len(chats)-1 >= externalCrewMaxSideChats {
-			externalError(w, http.StatusConflict, "too_many_chats", "This project already has 4 side chats; close one first.")
+		ids := make([]string, len(chats))
+		for i, c := range chats {
+			ids[i] = c.ID
+		}
+		if sideChatsOf(ids, codeChatMainName) >= externalCrewMaxSideChats {
+			externalError(w, http.StatusConflict, "too_many_chats", fmt.Sprintf("This project already has %d side chats; close one first.", externalCrewMaxSideChats))
+			return
+		}
+		chatName, nameErr := externalChatName(args)
+		if nameErr != nil {
+			externalError(w, http.StatusBadRequest, "invalid_name", nameErr.Error())
 			return
 		}
 		raw := make([]byte, 4)
@@ -184,7 +197,32 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			externalScheduleRespond(w, status, body)
 			return
 		}
-		externalJSON(w, map[string]any{"project_id": projectID, "chat_id": id, "next": "Talk in it with code action=ask chat_id=" + id + "."})
+		out := map[string]any{"project_id": projectID, "chat_id": id, "next": "Talk in it with code action=ask chat_id=" + id + "."}
+		if chatName != "" {
+			if err := nameNewSideChat(claims.UserID, binding.WorkspacePath, chatName, body); err != nil {
+				out["name_error"] = "The chat is open but could not be named: " + err.Error()
+			} else {
+				out["name"] = chatName
+			}
+		}
+		externalJSON(w, out)
+	case "rename_my_code_chat":
+		chatName, nameErr := externalChatName(args)
+		var target *codeChat
+		for i := range chats {
+			if chats[i].ID != codeChatMainName && strings.EqualFold(chats[i].ID, str("chat_id")) {
+				target = &chats[i]
+			}
+		}
+		if target == nil || nameErr != nil || chatName == "" {
+			externalError(w, http.StatusNotFound, "chat_not_found", "Pass a side chat's chat_id from code action=chats and a name up to 120 characters.")
+			return
+		}
+		if err := RenameChatHistorySession(claims.UserID, target.SessionID, binding.WorkspacePath, chatName); err != nil {
+			externalError(w, http.StatusBadGateway, "rename_failed", "The chat could not be renamed.")
+			return
+		}
+		externalJSON(w, map[string]any{"project_id": projectID, "chat_id": target.ID, "name": chatName})
 	case "close_my_code_chat", "stop_my_code_chat":
 		chatID := str("chat_id")
 		if name == "stop_my_code_chat" {

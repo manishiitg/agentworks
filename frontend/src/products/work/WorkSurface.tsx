@@ -697,8 +697,16 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [allowSideChats])
+  // With many tabs the strip scrolls sideways (tabs keep their width, "+" stays in view) and the
+  // active tab is brought into view when it changes.
+  const stripRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const active = stripRef.current?.querySelector('[data-tab-active="true"]')
+    if (active && typeof (active as HTMLElement).scrollIntoView === 'function') (active as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [activeTabId, tabs.length])
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1">
+    <div className="flex min-w-0 flex-1 items-center gap-1 px-1">
+      <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [&>*]:shrink-0" data-testid="work-chat-tab-strip">
       {tabs.map(tab => <AgentWorksChatTabItem
         key={tab.tabId}
         tab={tab}
@@ -713,6 +721,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         closeStopsSession={isWorkSideChatTab(tab, projectId)}
         onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
       />)}
+      </div>
       {allowSideChats && (
         <button
           type="button"
