@@ -18,7 +18,7 @@ async function inspect(savedStep: PlanStep, check: (host: HTMLElement) => void) 
   const host = document.createElement('div')
   const root = createRoot(host)
   const node: WorkflowNode = {
-    id: savedStep.id, type: 'agent', position: { x: 0, y: 0 },
+    id: savedStep.id, type: savedStep.type, position: { x: 0, y: 0 },
     data: { id: savedStep.id, title: savedStep.title, status: 'pending', stepIndex: 0, step: savedStep },
   }
   try {
@@ -69,5 +69,57 @@ it.each([false, true])('preserves legacy/custom authored descriptions and messag
     expect(host.querySelectorAll('ol > li')).toHaveLength(1)
     expect(host.querySelector('ol > li')?.textContent).toMatch(/^1/)
     expect(host.textContent).toContain('Complete the task.')
+  })
+})
+
+it('shows the saved execution contract without inventing permissions or a validation result', async () => {
+  await inspect({ ...step,
+    system_rules: 'Require approval before changing an external record.',
+    initial_write_access: { db: false, knowledgebase: true },
+    required_variables: ['REQUEST_ID'], success_criteria: 'Evidence identifies the request.',
+    validation_schema: { files: [{ file_name: 'evidence.json', must_exist: true }] },
+    agent_configs: { db_access: 'read', knowledgebase_access: 'none' },
+    items: [{ id: 'later', type: 'user_message', message: 'Review the saved evidence.',
+      write_access: {}, retained_reason: 'The output schema cannot verify the external evidence.' }],
+  }, host => {
+    expect(host.textContent).toContain('Standing system rules')
+    expect(host.textContent).toContain('Require approval before changing an external record.')
+    expect(host.textContent).toContain('First-message write limits')
+    const limits = Array.from(host.querySelectorAll('dl'))
+    expect(limits[0].textContent).toContain('DatabaseUses step permission')
+    expect(limits[0].textContent).toContain('KnowledgebaseUses step permission')
+    expect(limits[0].textContent).toContain('LearningsWrites disabled')
+    expect(limits[1].textContent).toContain('DatabaseUses step permission')
+    expect(limits[1].textContent).toContain('KnowledgebaseWrites disabled')
+    expect(host.textContent).toContain('Required inputs')
+    expect(host.textContent).toContain('REQUEST_ID')
+    expect(host.textContent).toContain('Completion requirements')
+    expect(host.textContent).toContain('Output validation')
+    expect(host.textContent).not.toContain('Passed')
+    expect(host.textContent).not.toContain('Execution Mode')
+    expect(host.textContent).toContain('Why this follow-up is retained')
+    expect(host.textContent).toContain('Technical settings')
+    expect(host.querySelectorAll('details[open]')).toHaveLength(0)
+  })
+})
+
+it('explains scripted execution and human branch choice using their own saved contracts', async () => {
+  await inspect({ id: 'script', title: 'Build evidence', type: 'scripted', script_only: true,
+    description: 'Build the evidence file.', has_loop: true, loop_condition: 'More records remain', max_iterations: 3,
+  }, host => {
+    expect(host.textContent).toContain('scripted step')
+    expect(host.textContent).toContain('Errors fail the step; automatic repair is off.')
+    expect(host.textContent).not.toContain('Errors stop the Relay')
+    expect(host.textContent).toContain('Script loop')
+    expect(host.textContent).toContain('Maximum iterations: 3')
+    expect(host.textContent).not.toContain('First user message')
+    expect(host.querySelector('button[aria-label="Open code file for Build evidence"]')).not.toBeNull()
+  })
+  await inspect({ id: 'choose', title: 'Choose next path', type: 'branch', branch_question: 'Which path?',
+    route_source: 'human', routes: [{ route_id: 'approved', route_name: 'Approved', condition: 'Approved', next_step_id: 'build' }],
+  }, host => {
+    expect(host.textContent).toContain('Asks a person to choose when no route was supplied.')
+    expect(host.textContent).toContain('Approved')
+    expect(host.textContent).not.toContain('First user message')
   })
 })

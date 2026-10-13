@@ -85,6 +85,19 @@ function itemPrimaryText(item: AgentItem): string {
   return flat.length > 52 ? flat.substring(0, 49) + '…' : flat
 }
 
+function descriptionPreview(description: string): string {
+  const normalized = description.replace(/\r\n?/g, '\n')
+  const body = normalized.replace(/^ {0,3}#{1,6}[ \t]+[^\n]*$/gm, '').trim()
+  const paragraph = (body || normalized.replace(/^ {0,3}#{1,6}[ \t]+/gm, '').trim()).split(/\n\s*\n/)[0]
+  return paragraph
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
   const { title, description, items, predefined_routes, status, stepIndex, changeType, isOrphan, step } = data
   const orphanReuseCount = (data as { orphanReuseCount?: number }).orphanReuseCount ?? 0
@@ -94,7 +107,11 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
   const changeStyle = changeType ? changeHighlightStyles[changeType] : ''
   const changeBadge = changeType ? changeBadgeStyles[changeType] : null
 
-  const seqItems = items || []
+  const descriptionFirst = step.type === 'agent' && step.prompt_contract === 'description-first-v1' && !step.authored_prompt
+  // The description already presents the opening task. Only authored follow-ups
+  // need rows here; keep the complete runtime item list in the node data.
+  const seqItems = descriptionFirst && items?.[0]?.id === '__step_description__' ? items.slice(1) : items || []
+  const preview = description ? descriptionPreview(description) : ''
   const displayTitle = title || `Agent ${stepIndex + 1}`
   const executionModeVisuals = getExecutionModeVisuals(effectiveExecutionMode(step), effectiveExecutionModeReason(step))
   const ModeIcon = executionModeVisuals.Icon
@@ -165,26 +182,28 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
               {predefined_routes?.length} specialist{predefined_routes?.length === 1 ? '' : 's'}
             </span>
           )}
-          <span className="text-[10px] font-medium text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded px-1.5 py-0.5 flex-shrink-0">
-            {seqItems.length} {seqItems.length === 1 ? 'item' : 'items'}
-          </span>
+          {(!descriptionFirst || seqItems.length > 0) && (
+            <span className="text-[10px] font-medium text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded px-1.5 py-0.5 flex-shrink-0">
+              {seqItems.length} {descriptionFirst ? (seqItems.length === 1 ? 'follow-up' : 'follow-ups') : (seqItems.length === 1 ? 'item' : 'items')}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Title + description */}
-      <div className="px-4 pt-3">
+      <div className={`px-4 pt-3 ${descriptionFirst && seqItems.length === 0 ? 'pb-3' : ''}`}>
         <div className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
           {displayTitle}
         </div>
-        {description && (
+        {preview && (
           <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-            {description}
+            {preview}
           </div>
         )}
       </div>
 
       {/* Ordered item queue */}
-      <div className="px-4 py-3 space-y-1.5">
+      {(!descriptionFirst || seqItems.length > 0) && <div className="px-4 py-3 space-y-1.5">
         {visibleItems.length === 0 && (
           <div className="text-xs italic text-gray-400 dark:text-gray-500">No items defined</div>
         )}
@@ -194,7 +213,7 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
           return (
             <div key={item.id || idx} className="flex items-center gap-2 min-w-0">
               <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 w-4 flex-shrink-0 text-right">
-                {idx + 1}
+                {idx + (descriptionFirst ? 2 : 1)}
               </span>
               <span className={`flex items-center gap-1 text-[10px] font-medium rounded px-1.5 py-0.5 flex-shrink-0 ${pres.badge}`}>
                 {pres.icon}
@@ -208,14 +227,14 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
         })}
         {hiddenCount > 0 && (
           <div className="text-[11px] text-gray-400 dark:text-gray-500 pl-6">
-            +{hiddenCount} more {hiddenCount === 1 ? 'item' : 'items'}
+            +{hiddenCount} more {descriptionFirst ? (hiddenCount === 1 ? 'follow-up' : 'follow-ups') : (hiddenCount === 1 ? 'item' : 'items')}
           </div>
         )}
-      </div>
+      </div>}
 
       {statusIcon && (
         <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-end bg-gray-50 dark:bg-gray-900/50">
-          <div className="flex-shrink-0">{statusIcon}</div>
+          <div className="flex-shrink-0" role="status" aria-label={`Step status: ${status}`} title={`Step status: ${status}`}>{statusIcon}</div>
         </div>
       )}
 

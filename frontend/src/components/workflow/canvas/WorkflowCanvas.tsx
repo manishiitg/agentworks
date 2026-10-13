@@ -11,7 +11,7 @@ import {
   type NodeChange,
   type OnNodeDrag
 } from '@xyflow/react'
-import { Braces, FileCode2, FileText, ListOrdered, Maximize, RefreshCw, Route, Settings, X } from 'lucide-react'
+import { Braces, FileCode2, FileText, ListOrdered, Maximize, RefreshCw, Repeat, Route, Settings, X } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
 
 import { useModeStore } from '../../../stores/useModeStore'
@@ -47,7 +47,7 @@ import { WorkspacePanelGuideButton } from '../WorkspacePanelGuideButton'
 import { PlanEmptyState } from '../PlanEmptyState'
 import { useChatStore } from '../../../stores/useChatStore'
 import { agentApi } from '../../../services/api'
-import type { PlanStep } from '../../../utils/stepConfigMatching'
+import type { AgentWriteAccess, PlanStep } from '../../../utils/stepConfigMatching'
 import { effectiveAgentItems, effectiveExecutionMode, effectiveExecutionModeReason, isCrewStep } from '../../../utils/stepConfigMatching'
 import { CrewStepDetailSection } from './CrewStepDetailSection'
 import {
@@ -743,6 +743,18 @@ function DetailSection({
   )
 }
 
+function WriteLimits({ access }: { access: AgentWriteAccess }) {
+  const stores = [['db', 'Database'], ['knowledgebase', 'Knowledgebase'], ['learnings', 'Learnings']] as const
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+      {stores.map(([key, label]) => <React.Fragment key={key}>
+        <dt className="text-muted-foreground">{label}</dt>
+        <dd>{key === 'db' || access[key] ? 'Uses step permission' : 'Writes disabled'}</dd>
+      </React.Fragment>)}
+    </dl>
+  )
+}
+
 export function ReadOnlyStepDetailPanel({
   node,
   workspacePath,
@@ -833,7 +845,7 @@ export function ReadOnlyStepDetailPanel({
                 <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
                 <span>
                   {step.script_only
-                    ? 'Runs the saved Python code exactly. Errors stop the Relay; no agent repairs the script.'
+                    ? 'Runs the saved Python code exactly. Errors fail the step; automatic repair is off.'
                     : agentConfigs?.lock_code
                     ? 'Runs the saved Python code first. Automatic repair is off because this code is locked.'
                     : 'Runs the saved Python code first. If it fails, an agent uses the description below to repair the code and retry.'}
@@ -869,11 +881,49 @@ export function ReadOnlyStepDetailPanel({
           </DetailSection>
         )}
 
+        {descriptionFirst && step.system_rules?.trim() && (
+          <DetailSection icon={Settings} title="Standing system rules">
+            <p className="mb-2 text-xs text-muted-foreground">Saved rules applied across this agent's turns, alongside the platform instructions.</p>
+            <details>
+              <summary className="cursor-pointer text-xs font-medium">Expand rules</summary>
+              <div className="mt-2 prose prose-sm max-w-none dark:prose-invert"><MarkdownRenderer content={step.system_rules} className="max-w-none" /></div>
+            </details>
+          </DetailSection>
+        )}
+
+        {descriptionFirst && step.initial_write_access && (
+          <DetailSection icon={Settings} title="First-message write limits">
+            <p className="mb-2 text-xs text-muted-foreground">Knowledgebase and learnings writes are narrowed for this turn. Database permissions are shared across turns. These flags cannot grant access.</p>
+            <WriteLimits access={step.initial_write_access} />
+          </DetailSection>
+        )}
+
+        {!!step?.required_variables?.length && (
+          <DetailSection icon={Braces} title="Required inputs">
+            <p className="mb-2 text-xs text-muted-foreground">These variables must be available when this step starts.</p>
+            <ul className="space-y-1 text-xs">{step.required_variables.map(name => <li key={name}><code>{name}</code></li>)}</ul>
+          </DetailSection>
+        )}
+
+        {step?.success_criteria && (
+          <DetailSection icon={FileText} title="Completion requirements">
+            <div className="prose prose-sm max-w-none dark:prose-invert"><MarkdownRenderer content={step.success_criteria} className="max-w-none" /></div>
+          </DetailSection>
+        )}
+
+        {step && (step.type === 'scripted' || step.type === 'regular') && step.has_loop && (
+          <DetailSection icon={Repeat} title="Script loop">
+            {step.loop_description && <p className="mb-2 text-xs">{step.loop_description}</p>}
+            {step.loop_condition && <p className="text-xs"><span className="text-muted-foreground">Condition: </span>{step.loop_condition}</p>}
+            {step.max_iterations != null && <p className="mt-1 text-xs">Maximum iterations: {step.max_iterations}</p>}
+          </DetailSection>
+        )}
+
         {step && isCrewStep(step) && (
           <CrewStepDetailSection step={step} workspacePath={workspacePath} />
         )}
 
-        {declaredExecutionMode && (
+        {declaredExecutionMode && !descriptionFirst && (
           <DetailSection icon={Settings} title="Execution Mode">
             <div className="flex flex-wrap items-center gap-2 text-xs leading-relaxed">
               {DeclaredExecutionModeIcon && (
@@ -895,8 +945,9 @@ export function ReadOnlyStepDetailPanel({
         )}
 
         {(routingQuestion || routes?.length) && (
-          <DetailSection icon={Route} title={step?.type === 'branch' ? 'Branch' : 'Routing'}>
+          <DetailSection icon={Route} title={step?.type === 'branch' ? 'Branch' : step?.type === 'agent' ? 'Specialists' : 'Routing'}>
             {routingQuestion && <p className="mb-2 text-sm text-foreground/85">{routingQuestion}</p>}
+            {step?.type === 'branch' && step.route_source === 'human' && <p className="mb-2 text-xs text-muted-foreground">Asks a person to choose when no route was supplied.</p>}
             {routes?.length ? (
               <div className="space-y-2">
                 {routes.map((route, index) => (
@@ -905,6 +956,7 @@ export function ReadOnlyStepDetailPanel({
                     {'condition' in route && route.condition && (
                       <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{route.condition}</div>
                     )}
+                    {'orphan_step_ref' in route && route.orphan_step_ref && <p className="mt-1 text-xs text-muted-foreground">Saved step: <code>{route.orphan_step_ref}</code></p>}
                   </div>
                 ))}
               </div>
@@ -925,11 +977,6 @@ export function ReadOnlyStepDetailPanel({
                     : kind === 'foreach' ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400'
                       : 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
                 const writes = item.write_access
-                const accessBits = [
-                  writes?.db ? 'db' : null,
-                  writes?.knowledgebase ? 'kb' : null,
-                  writes?.learnings ? 'learnings' : null,
-                ].filter(Boolean) as string[]
                 return (
                   <li key={item.id || index} className="rounded-md border border-border bg-muted/25 p-2">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -959,9 +1006,13 @@ export function ReadOnlyStepDetailPanel({
                         {item.max_iterations ? <> (max {item.max_iterations})</> : null}
                       </div>
                     )}
-                    {accessBits.length > 0 && (
-                      <div className="mt-1 text-[10px] text-muted-foreground">write access: {accessBits.join(', ')}</div>
+                    {writes && (
+                      <div className="mt-2">
+                        <p className="mb-1 text-xs text-muted-foreground">Write limits · cannot grant access beyond the step's permissions</p>
+                        <WriteLimits access={writes} />
+                      </div>
                     )}
+                    {item.retained_reason && <details className="mt-2 text-xs"><summary className="cursor-pointer text-muted-foreground">Why this follow-up is retained</summary><p className="mt-1">{item.retained_reason}</p></details>}
                     {(item.validation_schema || item.prevalidation) && (
                       <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-1 font-mono text-[10px] leading-relaxed text-foreground/70">{formatJson(item.validation_schema || item.prevalidation)}</pre>
                     )}
@@ -973,17 +1024,17 @@ export function ReadOnlyStepDetailPanel({
         ) : null}
 
         {(contextInputs.length > 0 || contextOutputs.length > 0) && (
-          <DetailSection icon={FileText} title="Context">
+          <DetailSection icon={FileText} title="Files">
             <div className="space-y-2 text-xs">
               {contextInputs.length > 0 && (
                 <div>
-                  <div className="mb-1 font-medium text-muted-foreground">Reads</div>
+                  <div className="mb-1 font-medium text-muted-foreground">Input files</div>
                   <div className="space-y-1">{contextInputs.map(path => <div key={path} className="rounded bg-muted/40 px-2 py-1 font-mono text-foreground/80">{path}</div>)}</div>
                 </div>
               )}
               {contextOutputs.length > 0 && (
                 <div>
-                  <div className="mb-1 font-medium text-muted-foreground">Writes</div>
+                  <div className="mb-1 font-medium text-muted-foreground">Declared outputs</div>
                   <div className="space-y-1">{contextOutputs.map(path => <div key={path} className="rounded bg-muted/40 px-2 py-1 font-mono text-foreground/80">{path}</div>)}</div>
                 </div>
               )}
@@ -992,18 +1043,19 @@ export function ReadOnlyStepDetailPanel({
         )}
 
         {!!validationSchema && (
-          <DetailSection icon={Braces} title="Schema">
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/35 p-2 font-mono text-[11px] leading-relaxed text-foreground/80">
-              {formatJson(validationSchema)}
-            </pre>
+          <DetailSection icon={Braces} title="Output validation">
+            <p className="mb-2 text-xs text-muted-foreground">The runtime checks this output contract before the step completes. Inspect a run to see its validation result.</p>
+            <details><summary className="cursor-pointer text-xs font-medium">View validation schema</summary>
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/35 p-2 font-mono text-[11px] leading-relaxed text-foreground/80">{formatJson(validationSchema)}</pre>
+            </details>
           </DetailSection>
         )}
 
-        {agentConfigs && (
-          <DetailSection icon={Settings} title="Step Config">
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/35 p-2 font-mono text-[11px] leading-relaxed text-foreground/80">
-              {formatJson(agentConfigs)}
-            </pre>
+        {agentConfigs && Object.keys(agentConfigs).length > 0 && (
+          <DetailSection icon={Settings} title="Technical settings">
+            <details><summary className="cursor-pointer text-xs font-medium">View saved step configuration</summary>
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/35 p-2 font-mono text-[11px] leading-relaxed text-foreground/80">{formatJson(agentConfigs)}</pre>
+            </details>
           </DetailSection>
         )}
 
