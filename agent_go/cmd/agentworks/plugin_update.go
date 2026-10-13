@@ -415,7 +415,7 @@ func updateMusePlugin(ctx context.Context, o *options) {
 			return
 		}
 	}
-	fmt.Fprintf(o.stderr, "Updated the Muse plugin from %s to %s. It needs your approval before it runs: review it, run muse plugins approve agentworks-muse, then restart Muse.\n", installed, offered)
+	fmt.Fprintf(o.stderr, "Updated the Muse plugin from %s to %s. It needs your approval before it runs. Review it: muse plugins inspect agentworks-muse. Then approve it: muse plugins approve agentworks-muse. Then start a NEW Muse chat; do not resume an older one, because it remembers the old tool names and will keep failing.\n", installed, offered)
 }
 
 // versionNewer reports whether dotted numeric version a is newer than b ("0.1.10" > "0.1.9"). A marketplace

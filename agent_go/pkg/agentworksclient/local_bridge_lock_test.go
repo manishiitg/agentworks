@@ -375,3 +375,47 @@ func TestMusePluginToolNamesFitTheProviderNameLimit(t *testing.T) {
 		}
 	}
 }
+
+// agentworks update starts the new helper right after the old one stopped answering, while the old one is
+// still exiting and holds the single-listener lock. The new helper must wait for that lock, not quit
+// (which left delivery down: "CLI ready, but delivery did not reconnect").
+func TestNewHelperWaitsForTheStoppingHelpersLock(t *testing.T) {
+	dir, err := os.MkdirTemp("", "aw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	root := filepath.Join(dir, "bridge")
+	if err = privateLiveDir(root); err != nil {
+		t.Fatal(err)
+	}
+	oldHelper, err := liveFileLock(filepath.Join(root, "bridge.lock")) // the old helper, still exiting
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{Version: "new"}) }()
+	time.Sleep(700 * time.Millisecond)
+	select {
+	case err = <-done:
+		t.Fatalf("the new helper quit while the old one held the lock: %v", err)
+	default:
+	}
+	oldHelper()
+	var reply LocalBridgeReply
+	for i := 0; i < 100; i++ {
+		callCtx, stop := context.WithTimeout(ctx, time.Second)
+		reply, err = CallLocalBridge(callCtx, root, LocalBridgeRequest{Action: "ping"})
+		stop()
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if err != nil || reply.Version != "new" {
+		t.Fatalf("new helper did not take over: %+v %v", reply, err)
+	}
+}

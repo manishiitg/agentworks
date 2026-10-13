@@ -291,6 +291,19 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		return err
 	}
 	unlock, err := liveFileLock(filepath.Join(root, "bridge.lock"))
+	// A helper that was just stopped stops answering before it has fully exited and keeps the lock
+	// until then (update starts the new one right away). While nothing answers on the socket, wait for
+	// that lock instead of quitting; a helper that does answer is really running, so stop at once.
+	for waited := time.Duration(0); err != nil && waited < 40*time.Second; waited += 200 * time.Millisecond {
+		probe, release := context.WithTimeout(ctx, time.Second)
+		_, alive := CallLocalBridge(probe, root, LocalBridgeRequest{Action: "ping"})
+		release()
+		if alive == nil || ctx.Err() != nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+		unlock, err = liveFileLock(filepath.Join(root, "bridge.lock"))
+	}
 	if err != nil {
 		return err
 	}

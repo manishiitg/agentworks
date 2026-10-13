@@ -1048,7 +1048,8 @@ func restoreAgentBridge(ctx context.Context, o *options, executable string) erro
 		return err
 	}
 	go func() { _ = c.Wait() }()
-	wait, cancel := context.WithTimeout(ctx, 8*time.Second)
+	// The new helper waits for the old one to finish exiting (it holds the single-listener lock until then).
+	wait, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	for {
 		if _, err = agentworksclient.CallLocalBridge(wait, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {

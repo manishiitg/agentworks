@@ -53,6 +53,12 @@ and uses `agentworks@agentworks`. Existing Codex metadata remains unchanged.
 To update an older plugin to **0.1.8**, use the refresh/remove/reinstall commands
 below, then inspect its version, approve it and restart Muse before attaching.
 
+After any plugin update, Muse shows the new hooks and tool server as "review needed". Review them with
+`muse plugins inspect agentworks-muse`, approve with `muse plugins approve agentworks-muse`, restart Muse
+and **start a new chat**: a resumed older chat keeps the old tool names in its history and keeps failing.
+`agentworks update` does the marketplace refresh and reinstall for you when a newer version is on offer,
+and prints these steps; it never approves anything.
+
 Muse 1.4.4 keeps an installed marketplace plugin bound to its original snapshot.
 After refreshing the marketplace, direct reinstall refuses the different source
 and `plugins update` still reads the old snapshot. To upgrade on this release:
