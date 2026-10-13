@@ -436,3 +436,21 @@ func versionNewer(a, b string) bool {
 	}
 	return false
 }
+
+// pluginInstallHelp is the exact line the person runs to install the AgentWorks plugin for one CLI, so a chat that
+// is attached without native delivery says what to do next instead of leaving the person to find the commands.
+func pluginInstallHelp(provider string) string {
+	switch provider {
+	case "claude":
+		return "claude plugin marketplace add " + pluginsRepo + " && claude plugin install agentworks@agentworks, then reload Claude Code"
+	case "codex":
+		return "codex plugin marketplace add " + pluginsRepo + ", then in the Codex app open Settings > Plugins and install AgentWorks, and trust its hooks in Settings > Hooks"
+	case "muse":
+		return "muse plugins marketplace add agentworks " + pluginsRepoURL + " && muse plugins install agentworks-muse@agentworks, then muse plugins approve agentworks-muse and start a new Muse chat"
+	case "cursor":
+		return "git clone --depth 1 " + pluginsRepoURL + " ~/.local/share/agentworks-plugins && python3 ~/.local/share/agentworks-plugins/plugins/cursor/scripts/setup_project.py --project <this folder>"
+	case "pi":
+		return "run agentworks attach in a terminal and accept the Pi extension install (no repository clone needed), then reload Pi"
+	}
+	return ""
+}

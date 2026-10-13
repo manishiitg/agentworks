@@ -539,6 +539,9 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	}
 	if !installPlugin && !out.NativeDelivery {
 		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
+		if help := pluginInstallHelp(chosen.provider); help != "" {
+			fmt.Fprintf(o.stdout, "For live delivery the person installs the %s plugin: %s\n", chosen.provider, help)
+		}
 	} else {
 		fmt.Fprintln(o.stdout, pluginAttachmentStatus(out))
 	}

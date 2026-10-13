@@ -188,3 +188,21 @@ func TestVersionNewerComparesNumbersNotText(t *testing.T) {
 		t.Fatal("version comparison is wrong")
 	}
 }
+
+// The exact install line per CLI (people lost time finding the right plugin commands for their CLI).
+func TestPluginInstallHelpNamesTheRightCommandPerCLI(t *testing.T) {
+	for provider, want := range map[string]string{
+		"claude": "claude plugin install agentworks@agentworks",
+		"codex":  "codex plugin marketplace add manishiitg/agentworks-plugins",
+		"muse":   "muse plugins install agentworks-muse@agentworks",
+		"cursor": "setup_project.py",
+		"pi":     "no repository clone needed",
+	} {
+		if got := pluginInstallHelp(provider); !strings.Contains(got, want) {
+			t.Fatalf("%s: %q lacks %q", provider, got, want)
+		}
+	}
+	if pluginInstallHelp("agy") != "" {
+		t.Fatal("a CLI without a plugin must not be given a command")
+	}
+}
