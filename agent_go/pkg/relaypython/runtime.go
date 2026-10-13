@@ -6,13 +6,13 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relayapi"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
@@ -31,87 +31,21 @@ var nativeBridge string
 //go:embed inspect_source.py
 var SourceInspector string
 
-// DBOSConfig enables durable execution in an isolated database per invocation.
-// Authorize must recheck live invocation access and the
-// complete published release checksum on every attempt, including recovery.
-// PythonExecutable must have the version in requirements-dbos.txt installed.
-type DBOSConfig struct {
-	RunID, ReleaseHash, PythonExecutable string
-	Attempt                              int
-	Authorize                            func(context.Context) error
-}
+type DBOSConfig = relayapi.DBOSConfig
+type DBOSPrototype = relayapi.DBOSPrototype
+type InterruptedError = relayapi.InterruptedError
+type Tool = relayapi.Tool
+type MCP = relayapi.MCP
+type Call = relayapi.Call
+type ToolCaller = relayapi.ToolCaller
+type AgentResult = relayapi.AgentResult
+type AgentCaller = relayapi.AgentCaller
+type Files = relayapi.Files
+type Config = relayapi.Config
 
-// DBOSPrototype is retained for callers of the initial experimental adapter.
-type DBOSPrototype = DBOSConfig
+const RecoveryLeaseGracePeriod = relayapi.RecoveryLeaseGracePeriod
 
-// A Python executor outlives an HTTP caller in some workspace deployments.
-// Restart recovery waits for that executor's heartbeat lease to expire first.
-const RecoveryLeaseGracePeriod = 17 * time.Second
-
-// InterruptedError means the admitted Python process exited while its durable
-// workflow was still pending. Application errors and cancelled contexts never
-// become recovery candidates.
-type InterruptedError struct{ Cause error }
-
-func (e *InterruptedError) Error() string { return "Relay process interrupted: " + e.Cause.Error() }
-func (e *InterruptedError) Unwrap() error { return e.Cause }
-func IsInterrupted(err error) bool {
-	var interrupted *InterruptedError
-	return errors.As(err, &interrupted)
-}
-
-type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Schema      map[string]interface{} `json:"schema"`
-}
-type MCP struct {
-	Server string   `json:"server"`
-	Tools  []string `json:"tools"`
-}
-type Call struct {
-	// AttemptID isolates agent artifacts when transport call IDs restart on recovery.
-	AttemptID    string                 `json:"-"`
-	Kind         string                 `json:"kind"`
-	Server       string                 `json:"server"`
-	Tool         string                 `json:"tool"`
-	Arguments    map[string]interface{} `json:"arguments"`
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	SystemPrompt string                 `json:"system_prompt"`
-	Messages     []string               `json:"messages"`
-	Model        interface{}            `json:"model"`
-	Tools        []Tool                 `json:"tools"`
-	Skills       []string               `json:"skills"`
-	MCP          []MCP                  `json:"mcp"`
-	OutputSchema map[string]interface{} `json:"output_schema"`
-	MaxTurns     int                    `json:"max_turns"`
-	Recovery     string                 `json:"recovery"`
-}
-type ToolCaller func(context.Context, string, map[string]interface{}) (string, error)
-type AgentResult struct {
-	Output   interface{}
-	Tools    []map[string]interface{}
-	Provider string
-	Model    string
-}
-type AgentCaller func(context.Context, Call, ToolCaller) (interface{}, error)
-type Files interface {
-	ReadWorkspaceFile(context.Context, workspace.ReadWorkspaceFileParams) (workspace.ReadFileResult, error)
-	UpdateWorkspaceFile(context.Context, workspace.UpdateWorkspaceFileParams) (workspace.UpdateFileResult, error)
-	ExecuteShellCommand(context.Context, workspace.ExecuteShellCommandParams) (workspace.ShellCommandResult, error)
-}
-type Config struct {
-	Client              Files
-	SourcePath, RunPath string
-	Input               interface{}
-	Variables           map[string]interface{}
-	Env                 map[string]string
-	CallAgent           AgentCaller
-	Timeout             int
-	DBOSPrototype       *DBOSPrototype
-	DBOS                *DBOSConfig
-}
+func IsInterrupted(err error) bool { return relayapi.IsInterrupted(err) }
 
 func quote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 func write(ctx context.Context, c Files, file string, value interface{}) error {
@@ -139,7 +73,7 @@ func read(ctx context.Context, c Files, file string, target interface{}) (bool, 
 // Run uses a per-run file mailbox in the already authorized workspace. No new
 // global/session-selectable RPC or credential is introduced.
 // Agent tools call back into the *same* live Python process (including closures).
-func Run(ctx context.Context, cfg Config) (runErr error) {
+func runBuiltin(ctx context.Context, cfg Config) (runErr error) {
 	if cfg.DBOS != nil {
 		cfg.DBOSPrototype = cfg.DBOS
 	}
