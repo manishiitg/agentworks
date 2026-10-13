@@ -36,6 +36,17 @@ can be read in full (steps, input, result, newest log lines) by run ID or run fo
 500 runs only, older runs open by folder name.
 
 Ticket: PLAT-856 (856-67 reversed), PLAT-847 (847-1), PLAT-750 (750-17).
+## 2026-10-13 — Relays have a Run chat for everyone except the Builder (PLAT-856, 856-80)
+
+On a Relay, its one owner chats in Builder mode; everyone else with access chats in Run mode, the same server-side
+policy as a Crew's (no shell, MCP servers or secrets, forced mcp_only). The Run tool surface is exactly four tools,
+declared in the Relay product manifest (`chat.run`) and enforced by the tool gate: `read_relay` (published source and
+releases, never the draft), `list_relay_runs` and `get_relay_run` (every caller's runs, with secret values masked), and
+`run_relay` (a published version, recorded under the caller; idempotency keys are per caller). No draft test, publish or
+file write. Why: dashboards on a Relay need a chat that understands it and can run it, and the owner wants everyone with
+access to see runs and results (one company per server) while only the owner changes the Relay.
+
+Ticket: PLAT-856 (856-80), PLAT-847, PLAT-750.
 
 ## 2026-10-13 — Saved CLI credentials use native operating-system access checks (PLAT-861)
 

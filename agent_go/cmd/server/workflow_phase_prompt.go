@@ -27,11 +27,15 @@ This request was made by the signed-in AgentWorks user below. Use this identity 
 // are passed in by the caller, so size and content tests exercise the same path.
 func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx promptContext, additions ...string) (string, []string, []string, error) {
 	if phase == "workflow-builder" && vars["WorkflowKind"] == "relay" {
-		chatPrompt, err := relayproduct.BuilderPrompt()
+		promptFn, surface := relayproduct.BuilderPrompt, "Builder"
+		if vars["RelayRunMode"] == "true" {
+			promptFn, surface = relayproduct.RunPrompt, "Run"
+		}
+		chatPrompt, err := promptFn()
 		if err != nil {
 			return "", nil, nil, err
 		}
-		parts := []string{chatPrompt, "## Workspace\n\nActive Relay workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Relay Builder tools and attached skills."}
+		parts := []string{chatPrompt, "## Workspace\n\nActive Relay workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Relay " + surface + " tools and attached skills."}
 		if ctx.WorkflowUIAvailable {
 			parts = append(parts, "## Relay views\n\nUse perform_ui_action to open and refresh the graph, triggers, and executions when useful.")
 		}

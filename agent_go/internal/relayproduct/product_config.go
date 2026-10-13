@@ -34,15 +34,15 @@ func loadProduct() error {
 			loadErr = fmt.Errorf("Relay product manifest has profile %q", manifest.Profile.ID)
 			return
 		}
-		if len(manifest.Chat) != 1 {
-			loadErr = fmt.Errorf("Relay product must declare only builder chat")
+		if len(manifest.Chat) != 2 {
+			loadErr = fmt.Errorf("Relay product must declare only builder and run chat")
 			return
 		}
 		prompts = map[string]string{}
 		skills = map[string]string{}
-		for _, mode := range []string{"builder"} {
+		for _, mode := range []string{"builder", "run"} {
 			def, ok := manifest.Chat[mode]
-			if !ok || len(def.Skills) == 0 || len(def.Tools) == 0 {
+			if !ok || len(def.Tools) == 0 || (mode == "builder" && len(def.Skills) == 0) {
 				loadErr = fmt.Errorf("Relay %s chat needs a prompt, skills, and tools", mode)
 				return
 			}
@@ -162,6 +162,8 @@ func Manifest() (agentprofiles.ProductManifest, error) {
 }
 
 func BuilderPrompt() (string, error)     { return ChatPrompt("builder") }
+func RunPrompt() (string, error)         { return ChatPrompt("run") }
+func RunTools() ([]string, error)        { return ChatTools("run") }
 func BuilderTools() ([]string, error)    { return ChatTools("builder") }
 func BuilderAllowsTool(name string) bool { return ChatAllowsTool("builder", name) }
 func BuilderSkill() (*llmtypes.Skill, error) {

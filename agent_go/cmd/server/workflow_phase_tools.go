@@ -152,6 +152,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	switch workflowPhaseID {
 	case workflowtypes.WorkflowStatusWorkflowBuilder:
+		if phaseTemplateVars["WorkflowKind"] == "relay" && phaseTemplateVars["RelayRunMode"] == "true" {
+			if err := api.registerRelayRunChatTools(definitionAgent, userID, phaseWorkspacePath); err != nil {
+				return fmt.Errorf("register Relay Run tools: %w", err)
+			}
+		}
 		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
 			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
 				return fmt.Errorf("register Relay release tools: %w", err)
@@ -505,7 +510,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		// plausible-looking pass instead. Tools may legitimately be unavailable;
 		// the procedure describing how to behave must not vanish with them.
 		if phaseTemplateVars["WorkflowKind"] == "relay" {
-			skills, err := relayproduct.ChatSkills("builder")
+			skillMode := "builder"
+			if phaseTemplateVars["RelayRunMode"] == "true" {
+				skillMode = "run"
+			}
+			skills, err := relayproduct.ChatSkills(skillMode)
 			if err != nil {
 				return fmt.Errorf("load Relay Builder skills: %w", err)
 			}

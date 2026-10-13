@@ -4576,6 +4576,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
 	isWorkflowPhase := req.AgentMode == "workflow_phase"
 	req.admittedWorkflowPhase = isWorkflowPhase
+	relayRunChat := false // a non-owner's chat on a Relay (856-78)
 	workflowPhaseID := req.PhaseID
 	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
 	workflowPhaseRunFolder := ""
@@ -4724,6 +4725,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				} else if req.SelectedFolder != "" {
 					workflowPhaseFolder = req.SelectedFolder
 				}
+			}
+		}
+		// A Relay's Builder chat is its owner's; everyone else with access chats in Run mode (856-78). Run mode is the same
+		// server-side policy as a Crew's: no shell, MCP servers or secrets, and only the Run tool surface.
+		if currentUserIsReadOnly && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
+			if relayManifest, relayFound, relayErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder); relayErr == nil && relayFound && relayManifest.Kind == "relay" {
+				relayRunChat = true
+				crewAskOnly = true
+				common.SetSessionCrewAskReadOnly(sessionID, true)
 			}
 		}
 		// Convert to multi-agent mode so it falls through to the standard agent path
@@ -5993,11 +6003,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			if found && manifest.Kind == "relay" {
 				relayChat = true
+				relayToolsFn := relayproduct.BuilderTools
 				if currentUserIsReadOnly {
-					sendError("Relay Builder requires edit access to this Relay.", true)
-					return
+					relayToolsFn = relayproduct.RunTools
 				}
-				relayTools, toolErr := relayproduct.BuilderTools()
+				relayTools, toolErr := relayToolsFn()
 				if toolErr != nil {
 					sendError(fmt.Sprintf("Failed to load Relay Builder tools: %v", toolErr), true)
 					return
@@ -6046,7 +6056,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
 		// two tools it needs are native bridge tools: reading project files and replying (856-59).
-		if crewAskOnly {
+		if relayRunChat {
+			platformBridgeTools = append(append([]string(nil), platformBridgeTools...), relayRunChatTools...)
+		} else if crewAskOnly {
 			platformBridgeTools = crewAskBridgeTools(platformBridgeTools)
 		}
 
@@ -6886,7 +6898,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					allowedHumanTool := false
 					if relayChat {
-						allowedHumanTool = relayproduct.BuilderAllowsTool(toolName)
+						allowedHumanTool = relayproduct.ChatAllowsTool(map[bool]string{true: "run", false: "builder"}[currentUserIsReadOnly], toolName)
 					} else {
 						allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
 					}
@@ -7511,6 +7523,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if relayChat {
 					phaseTemplateVars["WorkflowKind"] = "relay"
+					if relayRunChat {
+						phaseTemplateVars["RelayRunMode"] = "true"
+					}
 				}
 
 				// Pass workshop mode from frontend override (auto-detection happens after plan is loaded below).
