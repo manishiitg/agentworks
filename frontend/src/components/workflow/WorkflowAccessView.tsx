@@ -74,7 +74,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
           : activeTab === 'slack'
             ? 'The shared Slack bot and every workflow bot in this deployment.'
             : isRelay
-              ? `${scopeName} · owners, editors and read-only access.`
+              ? `${scopeName} · one owner builds it; everyone else runs it.`
               : `${scopeName} · one Leader owns the goal; Contributors work through assigned routes.`}
         actions={
           activeTab ? (
@@ -98,7 +98,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
               isRelay
-                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} />
+                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} relay />
                 : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />

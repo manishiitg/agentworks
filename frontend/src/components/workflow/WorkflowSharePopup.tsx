@@ -27,6 +27,8 @@ interface WorkflowSharePopupProps {
   /** Readers may inspect membership but cannot change grants. */
   readOnly?: boolean
   source?: ShareSource
+  /** A Relay has one owner (Builder); everyone else runs it (Run). */
+  relay?: boolean
 }
 
 /**
@@ -37,7 +39,7 @@ interface WorkflowSharePopupProps {
  * docs/design/user_accounts_and_workflow_sharing.md, phase 3.
  */
 type ShareTier = 'owner' | 'editor' | 'reader'
-const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, readOnly = false, source }) => {
+const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, readOnly = false, source, relay = false }) => {
   const me = useAuthStore((s) => s.user)
   const refreshWorkflows = useWorkflowManifestStore((s) => s.refreshWorkflows)
   const [info, setInfo] = useState<WorkflowAccessInfo | null>(null)
@@ -127,8 +129,10 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
         count={info ? `${total} ${total === 1 ? 'person' : 'people'}` : undefined}
         description={
           <>
-            {source?.description ?? 'Owners edit, run, share and delete. Editors edit and run but cannot share. Read-only people can chat, run and watch, but change nothing.'}
-            {locked && <span className="mt-1 block font-medium text-amber-600 dark:text-amber-400">Read-only: membership is visible, but all changes are disabled.</span>}
+            {source?.description ?? (relay
+              ? 'A Relay has one owner, who builds it. Everyone else you add runs its published versions and sees their own runs.'
+              : 'Owners edit, run, share and delete. Editors edit and run but cannot share. Read-only people can chat, run and watch, but change nothing.')}
+            {locked && <span className="mt-1 block font-medium text-amber-600 dark:text-amber-400">{relay ? 'You can see who has access, but only the owner can change it.' : 'Read-only: membership is visible, but all changes are disabled.'}</span>}
             {info?.legacy && <span className="mt-1 block text-amber-600">Nothing recorded yet: every creator and editor can edit this workflow until you save a first grant.</span>}
           </>
         }
@@ -151,9 +155,9 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
             <div className="sm:w-36">
               <Label>As</Label>
               <select value={pickRole} onChange={(e) => setPickRole(e.target.value as ShareTier)} className="w-full mt-1 px-2 py-1.5 text-sm bg-muted/40 border border-border rounded disabled:cursor-not-allowed disabled:opacity-50">
-                <option value="reader">Read-only</option>
-                <option value="editor">Editor</option>
-                <option value="owner">Owner</option>
+                <option value="reader">{relay ? 'Run' : 'Read-only'}</option>
+                {!relay && <option value="editor">Editor</option>}
+                {!relay && <option value="owner">Owner</option>}
               </select>
             </div>
             <Button size="sm" disabled={!pickId || saving} onClick={add}>
@@ -169,10 +173,10 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
         ) : (
           <>
             {([
-              { tier: 'owner' as ShareTier, title: 'Owners', empty: 'No owner recorded.', users: info.owners },
+              { tier: 'owner' as ShareTier, title: relay ? 'Owner (Builder)' : 'Owners', empty: 'No owner recorded.', users: info.owners },
               { tier: 'editor' as ShareTier, title: 'Editors', empty: 'Nobody yet.', users: info.editors ?? [] },
-              { tier: 'reader' as ShareTier, title: 'Read-only', empty: 'Nobody yet.', users: info.readers },
-            ]).map((section) => (
+              { tier: 'reader' as ShareTier, title: relay ? 'Run' : 'Read-only', empty: 'Nobody yet.', users: info.readers },
+            ]).filter((section) => !(relay && section.tier === 'editor')).map((section) => (
               <div key={section.tier}>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1">{section.title}</p>
                 {section.users.length === 0 && <SettingsEmpty>{section.empty}</SettingsEmpty>}
@@ -182,18 +186,22 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
                     <div key={u.id} className="flex items-center justify-between py-1.5 border-t border-border">
                       <span className="text-sm">{label(u)}{u.email && <span className="ml-1 text-xs text-muted-foreground">{u.email}</span>}</span>
                       <span className="flex items-center gap-1">
-                        <select
-                          value={tierOf(u.id)}
-                          disabled={locked || saving || lastOwner}
-                          title={locked ? 'Read-only access' : lastOwner ? 'A workflow needs at least one owner' : 'Change tier'}
-                          onChange={(e) => moveTo(u.id, e.target.value as ShareTier)}
-                          className="px-2 py-1 text-xs bg-muted/40 border border-border rounded disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <option value="owner">Owner</option>
-                          <option value="editor">Editor</option>
-                          <option value="reader">Read-only</option>
-                        </select>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" disabled={locked || saving || lastOwner} title={locked ? 'Read-only access' : 'Remove'} onClick={() => remove(u.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        {relay ? (
+                          <span className="px-2 py-1 text-xs text-muted-foreground">{section.tier === 'owner' ? 'Owner' : 'Run'}</span>
+                        ) : (
+                          <select
+                            value={tierOf(u.id)}
+                            disabled={locked || saving || lastOwner}
+                            title={locked ? 'Read-only access' : lastOwner ? 'A workflow needs at least one owner' : 'Change tier'}
+                            onChange={(e) => moveTo(u.id, e.target.value as ShareTier)}
+                            className="px-2 py-1 text-xs bg-muted/40 border border-border rounded disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="owner">Owner</option>
+                            <option value="editor">Editor</option>
+                            <option value="reader">Read-only</option>
+                          </select>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" disabled={locked || saving || lastOwner} title={locked ? (relay ? 'Only the owner can change access' : 'Read-only access') : 'Remove'} onClick={() => remove(u.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </span>
                     </div>
                   )

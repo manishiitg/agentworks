@@ -40,7 +40,7 @@ it('loads Sharing without team requests for a Relay, including before discovery,
   workflows = [{ workspace_path: 'Workflow/relay/', my_access: 'owner', manifest: { id: 'relay', kind: 'relay' } }]
   await act(async () => root?.render(<WorkflowAccessView workspacePath="Workflow/relay" />))
   expect(host.textContent).toContain('Sharing')
-  expect(host.textContent).toContain('owners, editors and read-only access')
+  expect(host.textContent).toContain('one owner builds it; everyone else runs it')
   expect(host.textContent).not.toContain('Goal team')
   expect(host.textContent).not.toContain('Create a plan')
   expect(api.teamGet).not.toHaveBeenCalled()

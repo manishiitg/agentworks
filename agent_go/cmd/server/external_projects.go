@@ -92,6 +92,10 @@ func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *h
 		respond(scheduleHandler(r, api.handleGetWorkflowAccess, http.MethodGet, "/api/workflow/access", nil, url.Values{"workspace_path": {root}}, nil))
 	case "set_access":
 		owners, editors, readers := workflow.Manifest.effectiveOwners(), workflow.Manifest.effectiveEditors(), workflow.Manifest.effectiveReaders()
+		if workflow.Manifest.Kind == "relay" {
+			// A Relay has one owner and no editors: what is not sent keeps its meaning (the Builder; everyone else running).
+			owners, editors, readers = relayAccessLists(workflow.Manifest)
+		}
 		changed := false
 		for key, target := range map[string]*[]string{"owners": &owners, "editors": &editors, "readers": &readers} {
 			if raw, ok := args[key].([]any); ok {

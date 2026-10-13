@@ -112,7 +112,11 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 			return nil, err
 		}
 		p.Owners = append([]string{}, manifest.effectiveOwners()...)
-		p.Audience = append(append(append([]string{}, p.Owners...), manifest.effectiveEditors()...), manifest.effectiveReaders()...)
+		if manifest.Kind == "relay" && manifest.relayBuilder() != "" {
+			// A Relay has one Builder; its other listed people only run it, so they are the audience, not owners.
+			p.Owners = []string{manifest.relayBuilder()}
+		}
+		p.Audience = append(append(append([]string{}, manifest.effectiveOwners()...), manifest.effectiveEditors()...), manifest.effectiveReaders()...)
 		for _, source := range manifest.KnowledgebaseSources {
 			p.Reserved = append(p.Reserved, source.Alias)
 		}

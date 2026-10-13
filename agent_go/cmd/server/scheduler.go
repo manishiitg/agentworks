@@ -668,6 +668,13 @@ func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 	if manifest == nil {
 		return ""
 	}
+	if manifest.Kind == "relay" {
+		// Only a Relay's one Builder runs it unattended: if that account is inactive the run fails closed, and it never falls to
+		// another listed owner (now Run mode), whose slot would write journals into the Relay.
+		if builder := strings.TrimSpace(manifest.relayBuilder()); builder != "" {
+			return builder
+		}
+	}
 	owners := manifest.effectiveOwners()
 	createdBy := strings.TrimSpace(manifest.CreatedBy)
 	if createdBy != "" && containsID(owners, createdBy) && workflowExecutionAccountActive(createdBy) {
