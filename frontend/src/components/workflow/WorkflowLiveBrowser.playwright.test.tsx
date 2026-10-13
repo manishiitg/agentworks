@@ -431,11 +431,28 @@ it('places clicks by the frame that is painted, not by the page size the stream 
   const page = { width: 1280, height: 720 }
   const frame = { width: 1000, height: 500 }
   const at = (x: number, y: number) => mapToViewport(x, y, rect, page, frame)
-  expect(at(350, 315).x).toBeCloseTo(500, 5)
-  expect(at(350, 315).y).toBeCloseTo(250, 5)
+  // Uniform scale from the width: s = 1280/1000, so the painted centre maps to (640, 320)
+  // and the frame's bottom edge clamps at 500 * s = 640, not the reported 720.
+  expect(at(350, 315).x).toBeCloseTo(640, 5)
+  expect(at(350, 315).y).toBeCloseTo(320, 5)
   expect(at(350, 140).y).toBeCloseTo(0, 5)
-  expect(at(0, 490).y).toBeCloseTo(500, 5)
+  expect(at(0, 490).y).toBeCloseTo(640, 5)
   expect(mapToViewport(350, 140, rect, page).y).toBeCloseTo(40, 3)
+})
+
+it('scales downscaled and high-DPI frames by the same width factor (PLAT-776)', () => {
+  const rect = { left: 0, top: 0, width: 640, height: 603 }
+  const page = { width: 1280, height: 720 }
+  // Downscaled capture (1024 wide for a 1280 page): s = 1.25, bottom clamps at 506 * 1.25.
+  const down = mapToViewport(320, 459, rect, page, { width: 1024, height: 506 })
+  expect(down.x).toBeCloseTo(640, 0)
+  expect(down.y).toBeGreaterThan(600)
+  expect(down.y).toBeLessThanOrEqual(633)
+  // High-DPI capture (2560 wide): s = 0.5, bottom clamps at 1266 * 0.5 = 633.
+  const hidpi = mapToViewport(320, 459, rect, page, { width: 2560, height: 1266 })
+  expect(hidpi.x).toBeCloseTo(640, 0)
+  expect(hidpi.y).toBeGreaterThan(600)
+  expect(hidpi.y).toBeLessThanOrEqual(633)
 })
 
 it('keeps a bottom click inside the frame when the stream reports a taller page (PLAT-776)', () => {

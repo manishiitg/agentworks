@@ -52,11 +52,12 @@ export type ScreencastGeometry = { offsetTop?: number; pageScaleFactor?: number;
  * through that in-frame page rect is exact for such frames; without plausible geometry the whole-frame mapping
  * above is used unchanged. Scroll offsets describe page scroll, which viewport coordinates already account for.
  *
- * The frame's own size is the dispatch space, not the reported page size: on the live release the stream
- * reported 1280x720 while the captured frame was 1280x633, so scaling clicks to 720 sent bottom clicks below
- * the page the frame shows (the footer link at the frame's bottom landed at y=671 and missed, PLAT-776,
- * release 11141116). The reported size still drives the letterboxed-page branch above, where the page
- * genuinely sits inside a larger surface.
+ * Dispatch scales by one uniform factor from the width, not per-axis to the reported page size: on the
+ * live release the stream reported 1280x720 while the captured frame was 1280x633, so scaling y to 720
+ * sent bottom clicks below the page the frame shows (the footer link landed at y=671 and missed, PLAT-776,
+ * release 11141116). With s = reported width / frame width (1 there), y clamps to the scaled frame height;
+ * a downscaled or high-DPI frame keeps the same factor on both axes. The reported size still drives the
+ * letterboxed-page branch above, where the page genuinely sits inside a larger surface.
  */
 export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }, frame?: { width: number; height: number }, screencast?: ScreencastGeometry) {
   const shown = frame && frame.width > 0 && frame.height > 0 ? frame : viewport
@@ -80,15 +81,20 @@ export function mapToViewport(clientX: number, clientY: number, rect: { left: nu
       }
     }
   }
-  // Dispatch in the frame's own pixels (see above): one painted pixel is one
-  // page unit on each axis. Without a frame size the reported page size is
-  // the only space there is.
-  const page = frame && frame.width > 0 && frame.height > 0 ? frame : viewport
-  const toPageX = page.width / shown.width
-  const toPageY = page.height / shown.height
+  // One uniform scale from the width (see above): a downscaled or high-DPI
+  // frame keeps the page's aspect, while its height is the captured page
+  // height, so y uses the same scale and clamps to the scaled frame height.
+  // Without a frame size the reported page size is the only space there is.
+  if (frame && frame.width > 0 && frame.height > 0) {
+    const s = viewport.width / frame.width
+    return {
+      x: clamp(frameX * s, viewport.width),
+      y: clamp(frameY * s, frame.height * s),
+    }
+  }
   return {
-    x: clamp(frameX * toPageX, page.width),
-    y: clamp(frameY * toPageY, page.height),
+    x: clamp(frameX, viewport.width),
+    y: clamp(frameY, viewport.height),
   }
 }
 const PAGE_SIZES = [
