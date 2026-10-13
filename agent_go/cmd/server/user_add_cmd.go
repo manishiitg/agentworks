@@ -63,6 +63,8 @@ func addDirectoryUser(dir *userDirectory, email, username, role string, products
 }
 
 func runAddUser(cmd *cobra.Command, _ []string) error {
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
 	email, _ := cmd.Flags().GetString("email")
 	username, _ := cmd.Flags().GetString("username")
 	role, _ := cmd.Flags().GetString("role")

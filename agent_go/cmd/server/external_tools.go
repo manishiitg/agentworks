@@ -243,6 +243,7 @@ func externalTools() ([]externalTool, error) {
 		externalCodeRunDefinitions(add)
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
+		externalUsersDefinition(add)
 		externalCostsDefinition(add)
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
@@ -663,6 +664,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalTokenLimitTool(tool.Name) {
 		api.externalTokenLimitCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == externalUsersTool {
+		api.externalUsersCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == bullpenAdminTool {

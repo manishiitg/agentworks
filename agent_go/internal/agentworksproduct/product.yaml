@@ -600,6 +600,7 @@ chat:
       - brain_admin
       # Cross-product recorded token attribution, under current sharing and consent.
       - costs
+      - users
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

@@ -110,12 +110,14 @@ type UserSSO struct {
 }
 
 type userDirectoryFile struct {
-	Users []UserRecord `json:"users"`
+	Users          []UserRecord                 `json:"users"`
+	AccessRequests map[string]userAccessReceipt `json:"access_requests,omitempty"`
 }
 
 // userDirectory is the in-memory view of users.json.
 type userDirectory struct {
-	Users []UserRecord
+	Users          []UserRecord
+	AccessRequests map[string]userAccessReceipt
 }
 
 func userDirectoryFilePath() string { return "config/users.json" }
@@ -218,7 +220,7 @@ func readUserDirectoryFile() (*userDirectory, error) {
 	if err := json.Unmarshal([]byte(data), &f); err != nil {
 		return &userDirectory{}, fmt.Errorf("users.json: %w", err)
 	}
-	return &userDirectory{Users: f.Users}, nil
+	return &userDirectory{Users: f.Users, AccessRequests: f.AccessRequests}, nil
 }
 
 // saveUserDirectory writes the whole file and drops the cache. Callers hold
@@ -226,13 +228,14 @@ func readUserDirectoryFile() (*userDirectory, error) {
 func saveUserDirectory(dir *userDirectory) error {
 	userDirectoryMu.Lock()
 	defer userDirectoryMu.Unlock()
+	pruneUserAccessReceipts(dir, time.Now().UTC())
 	sort.Slice(dir.Users, func(i, j int) bool { return dir.Users[i].Username < dir.Users[j].Username })
 	for i := range dir.Users {
 		if dir.Users[i].Products == nil {
 			dir.Users[i].Products = []string{}
 		}
 	}
-	data, err := json.MarshalIndent(userDirectoryFile{Users: dir.Users}, "", "  ")
+	data, err := json.MarshalIndent(userDirectoryFile{Users: dir.Users, AccessRequests: dir.AccessRequests}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -643,6 +646,8 @@ var hardcodedUsersSource = GetHardcodedUsers
 // startup, after the workspace API is reachable; failures are logged, not
 // fatal, since the legacy env path still authenticates.
 func bootstrapUserDirectory(ctx context.Context) {
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()
 	if err != nil {
 		log.Printf("[USERS] bootstrap: cannot read %s: %v", userDirectoryFilePath(), err)
@@ -690,6 +695,8 @@ func bootstrapUserDirectory(ctx context.Context) {
 // products) unless ADMIN_USERS names them — the safe default for an open
 // sign-in provider; an admin switches them on. Returns the record.
 func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecord {
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()
 	if err != nil {
 		return nil
@@ -978,16 +985,36 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()
 	if err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if !userAccessMutationCallerAllowed(r, dir) {
+		writeUsersError(w, http.StatusForbidden, "administrator access is required")
+		return
+	}
+	mcp, _ := r.Context().Value(userAccessMutationKey{}).(*userAccessMutation)
+	if mcp != nil {
+		pruneUserAccessReceipts(dir, time.Now().UTC())
+		if receipt, found := dir.AccessRequests[mcp.Key]; found {
+			if receipt.Hash != mcp.Hash {
+				writeUsersError(w, http.StatusConflict, "request_id was already used for a different update")
+				return
+			}
+			writeUsersJSON(w, http.StatusOK, receipt.Result)
+			return
+		}
 	}
 	rec := dir.byID(id)
 	if rec == nil {
 		writeUsersError(w, http.StatusNotFound, "user not found")
 		return
 	}
+	wasActiveAdmin := activeDirectoryAdmin(rec)
+	wasAdmin := accessForRecord(rec).Admin
 	callerID := GetUserIDFromContext(r.Context())
 	// An admin cannot lock themselves out: no removing their own admin
 	// flag or disabling their own account. Another admin can. A role
@@ -1049,6 +1076,14 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	if req.Disabled != nil {
 		rec.Disabled = *req.Disabled
 	}
+	if wasActiveAdmin && !activeDirectoryAdmin(rec) && !directoryHasActiveAdmin(dir) {
+		writeUsersError(w, http.StatusBadRequest, "the last active administrator cannot be removed or disabled")
+		return
+	}
+	if mcp != nil && (wasAdmin != accessForRecord(rec).Admin || wasActiveAdmin != activeDirectoryAdmin(rec)) && mcp.Confirm != id {
+		writeUsersError(w, http.StatusBadRequest, "changing administrator access requires confirm=user_id")
+		return
+	}
 	if req.TokenLimits != nil {
 		rec.TokenLimits = req.TokenLimits.normalized()
 	}
@@ -1061,10 +1096,28 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		return
 	}
 	rec.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if mcp != nil {
+		if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "update_user_attempt", id, "", "request_id="+mcp.RequestID+" fields="+mcp.Fields); err != nil {
+			writeUsersError(w, http.StatusServiceUnavailable, "the account change could not be audited")
+			return
+		}
+		if dir.AccessRequests == nil {
+			dir.AccessRequests = map[string]userAccessReceipt{}
+		}
+		dir.AccessRequests[mcp.Key] = userAccessReceipt{Hash: mcp.Hash, CreatedAt: time.Now().UTC(), Result: viewOf(*rec)}
+	}
 	if err := saveUserDirectory(dir); err != nil {
+		if mcp != nil {
+			if auditErr := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "update_user_failed", id, "", "request_id="+mcp.RequestID+" fields="+mcp.Fields); auditErr != nil {
+				log.Printf("[USERS] could not audit failed account save: %v", auditErr)
+			}
+		}
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Saving sorts the backing slice; the earlier pointer may now identify
+	// another account. Resolve the target again for the response and log.
+	rec = dir.byID(id)
 	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v vault_reader=%v disabled=%v token_limits=%+v account_token_limits=%s account_allowed_models=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.VaultReader, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits), accountAllowedModelsSummary(rec.AccountAllowedModels))
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
@@ -1078,9 +1131,15 @@ func (api *StreamingAPI) handleAdminDeleteUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusBadRequest, "you cannot delete your own account")
 		return
 	}
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()
 	if err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !userAccessMutationCallerAllowed(r, dir) {
+		writeUsersError(w, http.StatusForbidden, "administrator access is required")
 		return
 	}
 	kept := dir.Users[:0]
@@ -1098,6 +1157,10 @@ func (api *StreamingAPI) handleAdminDeleteUser(w http.ResponseWriter, r *http.Re
 		return
 	}
 	dir.Users = kept
+	if activeDirectoryAdmin(removed) && !directoryHasActiveAdmin(dir) {
+		writeUsersError(w, http.StatusBadRequest, "the last active administrator cannot be removed or disabled")
+		return
+	}
 	if err := saveUserDirectory(dir); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1109,6 +1172,8 @@ func (api *StreamingAPI) handleAdminDeleteUser(w http.ResponseWriter, r *http.Re
 // POST /api/auth/password — a user changes their own password. Requires the
 // current one; an admin resets someone else's through the admin route.
 func (api *StreamingAPI) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
+	userDirectoryMutationMu.Lock()
+	defer userDirectoryMutationMu.Unlock()
 	claims := GetUserFromContext(r.Context())
 	if claims == nil {
 		writeUsersError(w, http.StatusUnauthorized, "not authenticated")

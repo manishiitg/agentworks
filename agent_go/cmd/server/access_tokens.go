@@ -380,6 +380,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "costs" {
 		return externalCostsAllowed(c)
 	}
+	if tool.Name == externalUsersTool {
+		return externalUsersAllowed(c)
+	}
 	if tool.actions != nil {
 		return externalMergedAllows(c, tool)
 	}

@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-13 — Admin account access over MCP uses the Users page handler (PLAT-856)
+
+The `users` tool lists, inspects and updates existing accounts for active admins
+with `users:manage`. It returns an explicit metadata projection and writes through
+the app's PUT handler. Credential changes and account provisioning stay outside
+this tool. Administrator access changes require the target ID as confirmation.
+Self-demotion and self-disable remain refused; app and MCP cannot remove the last
+active administrator. Directory mutations serialize, and a successful MCP update
+stores its retry receipt with the same atomic directory save. Reusing a request ID
+with different arguments fails for seven days; identical retries during that
+window cannot undo later changes. Timestamped receipts expire after seven days
+and are pruned on saves; an expired ID starts a new update. Caller attempt audit
+must succeed before a new MCP mutation; failed saves are labelled as failures
+when audit is available. No role or scope is added.
+Why: administrators need to repair product/create access from their own MCP client.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-81.
+
 ## 2026-10-13 — Inspect the recorded turns of delegated workflow agents (PLAT-861)
 
 Routed agent turns keep the registered delegation call as their parent. The

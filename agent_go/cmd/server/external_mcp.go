@@ -154,6 +154,12 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
+		if tool.Name == externalUsersTool {
+			instructions += " Administrator account access: users action=list/get inspects safe account metadata; update changes existing roles, products and create permissions under users:manage using the app's rules. Use a stable request_id and confirm=user_id for changes to administrator access. Account provisioning and credentials are separate."
+			break
+		}
+	}
+	for _, tool := range allowed {
 		if tool.Name == "create_crew" {
 			instructions += " " + externalMCPCrewAuthoringInstructions
 			break
@@ -443,7 +449,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Vault"
 		case name == "code_review" || strings.Contains(name, "_code_"):
 			group = "Code review"
-		case name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
+		case name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
 			group = "Account"
 		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
 			group = "Help"
