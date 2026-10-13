@@ -327,8 +327,12 @@ func TestHoldClockLeavesOutTimeSpentWithTheLockReleased(t *testing.T) {
 // A notice (or a read) never hands a message to a chat; acking it must stay refused, and the refusal
 // must tell the chat the one thing that works: take it with receive first.
 func TestAckOfAMessageOnlySeenAsANoticeSaysToReceiveFirst(t *testing.T) {
+	client, err := New("http://127.0.0.1:1", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
 	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{})}
-	b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h",
+	b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client,
 		Offers: map[string]localOffer{"m1": {MuseHinted: true, AgentLiveMessage: AgentLiveMessage{MessageID: "m1"}}}}
 	reply := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "ack", Provider: "muse", SessionID: "s1", HostKey: "h", MessageID: "m1", Delivery: "admitted"})
 	if !strings.Contains(reply.Error, "agent_message_receive") {
