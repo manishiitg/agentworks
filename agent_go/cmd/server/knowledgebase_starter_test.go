@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
@@ -21,7 +23,16 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,relays,knowledgebase,mcp-gateway,code")
 	api, service := knowledgebaseServerTest(t)
 	admin := knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}
-	claims := &UserClaims{UserID: "admin", Username: "admin"}
+	store, err := openAccessTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	token, _, err := store.Issue(t.Context(), accesstokens.Token{UserID: "admin", Username: "admin", Name: "starter_mcp", Scopes: []string{"knowledgebase:read", "knowledgebase:write"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: "admin", Username: "admin", AccessToken: &token}
 	srv := serveExternalMCP(t, api, claims)
 	cli := dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
@@ -48,12 +59,14 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 		t.Fatal("guide cache did not retain its version")
 	}
 	read := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
-	if read["content"] != productguide.Guide(productpolicy.Selection{}) || read["version"] == "" || read["version"] == productguide.GuideVersion {
+	noteVersion, _ := read["version"].(string)
+	if read["content"] != productguide.Guide(productpolicy.Selection{}) || noteVersion == "" || noteVersion == productguide.GuideVersion {
 		t.Fatal("Brain guide source or opaque revision incorrect", read)
 	}
 	const skillFolder = "Shared/Skills/agentworks-mcp"
 	pack := remote("brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})["result"].(map[string]any)
-	if pack["name"] != productguide.SkillName || pack["version"] == "" || len(pack["files"].([]any)) != 3 {
+	brainSkillVersion, _ := pack["version"].(string)
+	if pack["name"] != productguide.SkillName || brainSkillVersion == "" || len(pack["files"].([]any)) != 3 {
 		t.Fatal("Brain package incomplete", pack)
 	}
 	files := map[string]string{}
