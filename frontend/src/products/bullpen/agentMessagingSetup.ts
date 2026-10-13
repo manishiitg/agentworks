@@ -131,7 +131,7 @@ export const messagingGuides: MessagingGuide[] = [
   },
   {
     id: 'cursor', name: 'Cursor', status: 'CLI preview · desktop later', available: true,
-    requirements: ['Cursor CLI on macOS or Linux, Python 3, and an AgentWorks CLI build with Cursor messaging support.', 'Cursor picks up new messages when you send your next prompt or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.', 'Start in the exact project whose hooks you reviewed. This setup is for cursor-agent; choose Cursor desktop below for its current limits.'],
+    requirements: ['Cursor CLI on macOS or Linux, Python 3, and an AgentWorks CLI build with Cursor messaging support.', 'Gets messages when its chat is used: when you send your next prompt or when its current turn ends. A chat sitting idle is not woken; its messages wait safely until then.', 'Start in the exact project whose hooks you reviewed. This setup is for cursor-agent; choose Cursor desktop below for its current limits.'],
     versions: 'Package: agentworks 0.2.0. Investigated CLI: 2026.10.01-e373342; desktop: 3.21.18. Kernel/session checks passed on macOS. Real Cursor acceptance remains pending.',
     install: [
       { label: 'Get Cursor plugin', text: 'git clone --depth 1 https://github.com/manishiitg/agentworks-plugins.git "$HOME/.local/share/agentworks-plugins"' },
@@ -142,7 +142,7 @@ export const messagingGuides: MessagingGuide[] = [
     installNote: 'Use the same retained plugin directory when updating. Project setup preserves other hooks, migrates recognized old package paths to the CLI on PATH and refuses duplicates or unknown paths. The package registers project hooks once; its plugin hook set is empty so the CLI cannot deliver twice.',
     approval: 'Review the project hook file and messaging MCP yourself in Cursor. Setup does not approve workspace/MCP trust, sign in, attach a chat, or enable terminal delivery. Existing stable project hooks use the updated CLI automatically; rerun project setup once for older package-path registrations.',
     attach: '/agentworks attach cursor-review', ownRequest: 'Attach this Cursor CLI chat to AgentWorks as cursor-review.',
-    delivery: 'Messages are offered when you send your next prompt or when its current turn ends. An idle chat is not woken; messages wait safely. A stored message or terminal write is not admission.',
+    delivery: 'The chat gets its messages when it is used: at your next prompt or when its current turn ends. An idle chat is not woken; messages wait safely. A message that is only stored has not been seen by the chat yet.',
     menus: [
       { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type in this Cursor CLI conversation after reviewing the project hooks.' },
       { entry: 'AgentWorks messaging MCP tools', who: 'The agent', description: 'Restricted to this verified CLI session; a separate HTTP MCP connection supplies workflow and Crew tools.' },
@@ -150,17 +150,17 @@ export const messagingGuides: MessagingGuide[] = [
     troubleshooting: [
       { title: 'The attach command reaches the model', text: 'Check the selected project and its .cursor/hooks.json. This CLI version may skip plugin-only prompt and stop hooks; rerun the reviewed project setup, then restart Cursor CLI.' },
       { title: 'Messaging MCP cannot start', text: 'Update AgentWorks from a server publishing the Cursor-capable CLI. A preview-era CLI does not expose plugin mcp cursor. Keep workspace and MCP approval as your own choices.' },
-      { title: 'No idle receipt', text: 'An idle Cursor chat is not woken. Send a prompt, or let a turn finish, to receive pending messages. Explicit mailbox recovery is last; do not start an inbox polling loop.' },
+      { title: 'Nothing arrives in an idle chat', text: 'An idle Cursor chat is not woken. Send a prompt, or let a turn finish, and its waiting messages arrive. Reading the mailbox by hand is a last resort; do not set up a loop that keeps checking.' },
     ],
     desktop: {
       status: 'Desktop · not supported yet', available: false,
-      requirements: ['Cursor desktop 3.21.18 was inspected. This release does not claim end-to-end desktop messaging.', 'A shared desktop MCP process needs an exact per-call conversation fence and an idle input route before messaging helpers can be enabled.'],
+      requirements: ['Cursor desktop 3.21.18 was inspected. This release does not claim end-to-end desktop messaging.', 'Attach is not available yet; use Cursor CLI above.'],
       versions: 'Desktop remains a separate development stage; CLI results do not prove desktop delivery.',
       install: [], update: [],
       installNote: 'Use the supported Cursor CLI setup. Do not install or reconfigure a desktop messaging MCP expecting it to create a live attachment.',
       approval: 'Workflow/Crew HTTP MCP tools can be configured separately; their access does not attach this desktop chat.',
       attach: '', ownRequest: '',
-      delivery: 'Native hooks can continue a completed turn. No supported exact-chat idle wake or desktop typing path is claimed.',
+      delivery: 'Not available yet. Use Cursor CLI above to connect a Cursor chat.',
       menus: [{ entry: 'Cursor desktop messaging', who: 'Later stage', description: 'Per-call identity and native delivery still need proof.' }],
       troubleshooting: [{ title: 'HTTP MCP works but the chat is absent', text: 'Tool access is separate from Bullpen chat attachment. Use Cursor CLI for this setup; desktop support remains pending.' }],
     },
