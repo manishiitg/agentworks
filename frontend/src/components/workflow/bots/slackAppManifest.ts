@@ -22,7 +22,7 @@ export const SLACK_BOT_EVENTS: readonly string[] = ['app_mention', 'message.chan
 // AgentWorks permissions (matched by their Slack email); channels always run
 // in Run mode. Channel bots work without these, so "Save & test" reports
 // them as needed for DMs rather than failing.
-export const SLACK_DM_SCOPES: readonly string[] = ['im:history', 'im:read']
+export const SLACK_DM_SCOPES: readonly string[] = ['im:history', 'im:read', 'im:write']
 export const SLACK_DM_EVENTS: readonly string[] = ['message.im']
 
 /** App-level token scope for Socket Mode (not part of the manifest). */
@@ -59,10 +59,15 @@ export interface SlackAppManifest {
   }
 }
 
-export function buildSlackAppManifest({ name, optionalScopes = [] }: { name?: string; optionalScopes?: readonly string[] } = {}): SlackAppManifest {
+export function buildSlackAppManifest({ name, optionalScopes = [], directMessagesOnly = false }: { name?: string; optionalScopes?: readonly string[]; directMessagesOnly?: boolean } = {}): SlackAppManifest {
   const appName = (name || '').trim().slice(0, APP_NAME_MAX).trim() || SLACK_DEFAULT_APP_NAME
   const allowedOptional = new Set(SLACK_OPTIONAL_SCOPES.map(item => item.scope))
-  const extra = optionalScopes.filter(scope => allowedOptional.has(scope) && !SLACK_REQUIRED_SCOPES.includes(scope))
+  const extra = optionalScopes.filter(scope => allowedOptional.has(scope) && !SLACK_REQUIRED_SCOPES.includes(scope) && !(directMessagesOnly && scope === 'chat:write.public'))
+  // DMs-only bots (Codes) never read or join channels: least privilege.
+  const baseScopes = directMessagesOnly
+    ? SLACK_REQUIRED_SCOPE_GROUPS.filter(group => group.label !== 'Read mentions and channel context').flatMap(group => group.scopes)
+    : SLACK_REQUIRED_SCOPES
+  const botEvents = directMessagesOnly ? [...SLACK_DM_EVENTS] : [...SLACK_BOT_EVENTS, ...SLACK_DM_EVENTS]
   return {
     display_information: { name: appName },
     features: {
@@ -71,9 +76,9 @@ export function buildSlackAppManifest({ name, optionalScopes = [] }: { name?: st
       app_home: { home_tab_enabled: true, messages_tab_enabled: true, messages_tab_read_only_enabled: false },
       bot_user: { display_name: slackBotDisplayName(appName), always_online: true },
     },
-    oauth_config: { scopes: { bot: [...SLACK_REQUIRED_SCOPES, ...SLACK_DM_SCOPES, ...new Set(extra)] } },
+    oauth_config: { scopes: { bot: [...baseScopes, ...SLACK_DM_SCOPES, ...new Set(extra)] } },
     settings: {
-      event_subscriptions: { bot_events: [...SLACK_BOT_EVENTS, ...SLACK_DM_EVENTS] },
+      event_subscriptions: { bot_events: botEvents },
       ...(SLACK_INTERACTIVITY_REQUIRED ? { interactivity: { is_enabled: true } } : {}),
       org_deploy_enabled: false,
       socket_mode_enabled: true,

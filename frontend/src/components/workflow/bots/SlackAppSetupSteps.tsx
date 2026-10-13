@@ -65,7 +65,7 @@ export function SlackManifestSetup({ defaultName, finalStep, directMessagesOnly 
   const [name, setName] = useState('')
   const [optional, setOptional] = useState<string[]>([])
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const json = useMemo(() => slackAppManifestJSON({ name: name.trim() || fallbackName, optionalScopes: optional }), [name, fallbackName, optional])
+  const json = useMemo(() => slackAppManifestJSON({ name: name.trim() || fallbackName, optionalScopes: optional, directMessagesOnly }), [name, fallbackName, optional, directMessagesOnly])
 
   const copyJSON = async () => {
     try {
