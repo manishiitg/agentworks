@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -45,6 +46,9 @@ func externalTopicVersionFor(claims *UserClaims, topic externalGuidanceTopic) st
 	if _, body, err := externalGuidanceContentForProducts(topic.Name, builderProductSelection(claims)); err == nil {
 		h.Write([]byte(body))
 	}
+	if topic.Source == "mcp-usage" {
+		h.Write([]byte(productguide.Versions(builderProductSelection(claims))))
+	}
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
@@ -56,8 +60,9 @@ type externalGuidanceTopic struct {
 	// a file under external_topics/ ("embedded") or a Relay Builder skill ("relay").
 	Source string
 	// Scopes the token must allow for the topic to be listed and served.
-	Scopes  []string
-	Content string
+	Scopes        []string
+	Content       string
+	SourceVersion string
 }
 
 //go:embed external_topics/*.md
@@ -266,6 +271,10 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 			topics = append(topics, externalGuidanceTopic{Name: item.Name, Description: item.Description, ExternalNote: item.ExternalNote, Scopes: item.Scopes, Source: source.name, Content: item.Content})
 		}
 	}
+	topics = append(topics,
+		externalGuidanceTopic{Name: "product-guide", Description: "Choose AgentWorks products: purpose, abilities, access requirements and examples.", Source: "product-guide", SourceVersion: productguide.GuideVersion},
+		externalGuidanceTopic{Name: productguide.SkillName, Description: productguide.SkillDescription, Source: "mcp-usage", SourceVersion: productguide.SkillVersion},
+	)
 	sort.Slice(topics, func(i, j int) bool { return topics[i].Name < topics[j].Name })
 	return topics
 }
@@ -305,6 +314,12 @@ func externalGuidanceContentForProducts(topic string, selection productpolicy.Se
 		return "", "", fmt.Errorf("topic %q is not exposed", topic)
 	}
 	topic = meta.Name
+	if meta.Source == "product-guide" {
+		return meta.Description, productguide.Guide(selection), nil
+	}
+	if meta.Source == "mcp-usage" {
+		return meta.Description, productguide.SkillBody(selection), nil
+	}
 	if meta.Source != "" {
 		return selection.Text(meta.Description), selection.Text(meta.Content), nil
 	}
@@ -394,6 +409,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 // additionally operate the run-mode tools in pinned Run-mode sessions.
 func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
+		"Choose a product with help action=topic topic=product-guide. For an installable MCP usage skill, request help action=skills topics=[agentworks-mcp]. These are versioned server guidance, independent of Brain access.",
 		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Workflow Run-session tools start model turns; direct Crew and project handlers execute without a model turn.",
 		"Call list_workflows to discover workflow IDs; IDs are never filesystem paths.",
 		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
@@ -401,7 +417,7 @@ func externalPreparation(claims *UserClaims) []string {
 		"Use files download (not read_file) for a local copy; downloads refuse to overwrite existing files.",
 	}
 	if claims != nil && claims.AccessToken != nil && claims.AccessToken.Allows("dashboards:read") {
-		steps[0] = "Use only tools present in this connection’s catalog. Dashboards: dashboard action=list discovers accessible projects and published documents; action=get reads the selected source. Links require recipients to have current project access."
+		steps[1] = "Use only tools present in this connection’s catalog. Dashboards: dashboard action=list discovers accessible projects and published documents; action=get reads the selected source. Links require recipients to have current project access."
 		if dashboardAuthoringAllowed(claims, nil) {
 			steps = append(steps, "Create or update a dashboard draft, validate its revision, preview it when runs:execute is granted, then dashboard action=publish using expected_revision. action=restore republishes a previous published revision. Use {{dashboard_assets}} and {{dashboard_scripts}} for revision-scoped assets and scripts; styling follows the user’s preferences.")
 		}
@@ -434,7 +450,11 @@ func (api *StreamingAPI) externalGuidanceTopicList(w http.ResponseWriter, r *htt
 		if !externalTopicVisible(claims, topic) {
 			continue
 		}
-		topics = append(topics, map[string]string{"name": topic.Name, "description": topic.Description, "version": externalTopicVersionFor(claims, topic)})
+		item := map[string]string{"name": topic.Name, "description": topic.Description, "version": externalTopicVersionFor(claims, topic)}
+		if topic.SourceVersion != "" {
+			item["source_version"] = topic.SourceVersion
+		}
+		topics = append(topics, item)
 	}
 	externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topics": topics, "refresh": "Each topic has its own version. Fetch a topic again only when its version differs from the one you saved; pass known_version to get_guidance_topic to skip an unchanged body."})
 }
@@ -458,6 +478,9 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		return
 	}
 	out := map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topic": name, "version": version, "description": description, "content": body}
+	if allowed.SourceVersion != "" {
+		out["source_version"] = allowed.SourceVersion
+	}
 	if note := externalTopicNoteFor(GetUserFromContext(r.Context()), *allowed); note != "" {
 		out["external_note"] = note
 	}

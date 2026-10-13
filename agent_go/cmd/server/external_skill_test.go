@@ -55,7 +55,7 @@ func TestExternalPluginPackagesSkillAndOAuthConnector(t *testing.T) {
 		}
 		entries[file.Name] = string(content)
 	}
-	if len(entries) != 4 {
+	if len(entries) != 6 {
 		t.Fatalf("unexpected plugin files: %v", entries)
 	}
 	var manifest struct {
@@ -79,6 +79,9 @@ func TestExternalPluginPackagesSkillAndOAuthConnector(t *testing.T) {
 	}
 	if entries["skills/agentworks/SKILL.md"] != buildHostedSkillMarkdown("https://customer.example.com") {
 		t.Fatal("plugin skill differs from hosted skill")
+	}
+	if entries["skills/agentworks/references/products.md"] == "" || entries["skills/agentworks/references/versions.json"] == "" {
+		t.Fatal("plugin omitted product guide or source versions")
 	}
 	if !strings.Contains(entries["README.md"], "OAuth") {
 		t.Fatal("plugin instructions missing")
@@ -145,12 +148,12 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unzip: %v", err)
 	}
-	if len(archive.File) != 1 || archive.File[0].Name != "agentworks/SKILL.md" {
+	if len(archive.File) != 3 || archive.File[0].Name != "agentworks/SKILL.md" {
 		names := make([]string, 0, len(archive.File))
 		for _, f := range archive.File {
 			names = append(names, f.Name)
 		}
-		t.Fatalf("zip entries %v, want [agentworks/SKILL.md]", names)
+		t.Fatalf("zip entries %v, want SKILL.md and both product references", names)
 	}
 	entry, err := archive.File[0].Open()
 	if err != nil {

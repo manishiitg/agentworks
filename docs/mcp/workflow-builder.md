@@ -135,3 +135,24 @@ This removes the read binding and its live grants; it leaves plan steps unchange
 Crew deletion still refuses remaining attachments and Crew steps. `crew_references`
 handles Crew-to-workflow references instead. New workflow Crew attachments continue
 through the native Builder's `manage_crew_attachment` tool.
+# Product guide and Brain starter skill
+
+The MCP entry skill includes a short product-choice overview. Use
+`help action=topic topic=product-guide` for purpose, abilities, access and examples,
+or `help action=skills topics=[agentworks-mcp]` for the MCP usage skill and its
+references. The canonical source lives in `agent_go/pkg/productguide`.
+
+Brain's Shared bootstrap offers `Shared/AgentWorks/product-guide.md` and the
+installable `Shared/Skills/agentworks-mcp` package through the native public Brain
+tools. Each existing note or user skill package is preserved. Starter offers are
+recorded in platform state, so deleting one keeps it deleted after a restart or
+source update; a creation with an ambiguous outcome requires explicit operator
+reconciliation. Bootstrap never replaces an old copy with a new source release.
+
+Guide and skill source versions start at `1.0.0`; their `references/versions.json`
+records exact content SHA-256 fingerprints. MCP topic/package versions identify
+the current rendered content for conditional refresh. Brain's returned opaque
+entry version is the value for `expected_version`; source versions cannot replace
+it. Installed CLI skills and hosted ZIP/plugin packages include the product
+reference and versions file. Bump the relevant source version when editing either
+canonical source; the fingerprints still detect exact content or product changes.

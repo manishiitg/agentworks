@@ -10,6 +10,8 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
 // Hosted skill endpoints. ChatGPT and Claude Cowork connect over remote MCP
@@ -71,6 +73,20 @@ func (api *StreamingAPI) handleExternalSkillZIP(w http.ResponseWriter, r *http.R
 		externalError(w, http.StatusInternalServerError, "skill_unavailable", err.Error())
 		return
 	}
+	for _, name := range []string{"references/products.md", "references/versions.json"} {
+		content := agentworksclient.EntrySkillFiles()[name]
+		if name == "references/versions.json" {
+			content = productguide.VersionsForSkill(productpolicy.Selection{}, "agentworks", agentworksclient.EntrySkillVersion, buildHostedSkillMarkdown(getBaseURL(r)))
+		}
+		entry, err := archive.Create("agentworks/" + name)
+		if err == nil {
+			_, err = io.WriteString(entry, content)
+		}
+		if err != nil {
+			externalError(w, http.StatusInternalServerError, "skill_unavailable", err.Error())
+			return
+		}
+	}
 	if err := archive.Close(); err != nil {
 		externalError(w, http.StatusInternalServerError, "skill_unavailable", err.Error())
 		return
@@ -97,8 +113,8 @@ func (api *StreamingAPI) handleExternalPlugin(w http.ResponseWriter, r *http.Req
 		return
 	}
 	manifest, err := json.MarshalIndent(map[string]any{
-		"name": "agentworks", "version": "0.1.0",
-		"description": "Read AgentWorks workflow knowledge and test code, inspect runs, and run permitted workflows.",
+		"name": "agentworks", "version": "0.2.0",
+		"description": "Choose and use AgentWorks products through current MCP tools, roles and consent.",
 		"author":      map[string]string{"name": "AgentWorks"},
 	}, "", "  ")
 	if err != nil {
@@ -117,6 +133,13 @@ func (api *StreamingAPI) handleExternalPlugin(w http.ResponseWriter, r *http.Req
 		{".mcp.json", string(connector) + "\n"},
 		{"skills/agentworks/SKILL.md", buildHostedSkillMarkdown(origin)},
 		{"README.md", "# AgentWorks for Claude Cowork\n\nInstall this plugin in Customize > Plugins, then connect AgentWorks and approve access in your browser. The connector uses OAuth; this package contains no credential.\n"},
+	}
+	for _, name := range []string{"references/products.md", "references/versions.json"} {
+		content := agentworksclient.EntrySkillFiles()[name]
+		if name == "references/versions.json" {
+			content = productguide.VersionsForSkill(productpolicy.Selection{}, "agentworks", agentworksclient.EntrySkillVersion, buildHostedSkillMarkdown(origin))
+		}
+		files = append(files, struct{ name, content string }{"skills/agentworks/" + name, content})
 	}
 	var buf bytes.Buffer
 	archive := zip.NewWriter(&buf)

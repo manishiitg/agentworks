@@ -163,8 +163,27 @@ func knowledgebaseEnsureDefaultFolder(ctx context.Context, service *knowledgebas
 	}
 	for _, user := range directory.Users {
 		if user.Admin && !user.Disabled {
-			if err := service.EnsureDefaultFolder(ctx, knowledgebase.Principal{IdentityID: user.ID, IsAdmin: true}, brainDefaultFolder, brainDefaultRole, identities); err != nil {
+			admin := knowledgebase.Principal{IdentityID: user.ID, IsAdmin: true}
+			admin.Recheck = func(ctx context.Context) error {
+				live, err := loadUserDirectory()
+				if err != nil {
+					return err
+				}
+				if live != nil {
+					for _, current := range live.Users {
+						if current.ID == user.ID && current.Admin && !current.Disabled {
+							return ctx.Err()
+						}
+					}
+				}
+				return fmt.Errorf("Brain bootstrap administrator is no longer active")
+			}
+			if err := service.EnsureDefaultFolder(ctx, admin, brainDefaultFolder, brainDefaultRole, identities); err != nil {
 				log.Printf("[BRAIN] default folder %q not ready: %v", brainDefaultFolder, err)
+				return nil
+			}
+			if err := seedKnowledgebaseStarter(ctx, service, admin); err != nil {
+				log.Printf("[BRAIN] starter content not ready: %v", err)
 			}
 			return nil
 		}

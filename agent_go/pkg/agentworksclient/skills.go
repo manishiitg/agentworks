@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
 // installedSkillDir is the skill folder name written by the install flow.
@@ -12,23 +16,41 @@ import (
 //go:embed skills/agentworks/SKILL.md
 var installedSkillFile embed.FS
 
+const EntrySkillVersion = "1.0.0"
+
+// EntrySkillFiles is shared by CLI installation and hosted skill packages.
+func EntrySkillFiles() map[string]string {
+	selection := productpolicy.Selection{}
+	content := EntrySkill()
+	return map[string]string{
+		"SKILL.md":                 content,
+		"references/products.md":   productguide.Guide(selection),
+		"references/versions.json": productguide.VersionsForSkill(selection, "agentworks", EntrySkillVersion, content),
+	}
+}
+
 // InstallSkill writes the bundled AgentWorks skill into dir/agentworks/.
 // It refuses to overwrite an existing installation without force so a user's
 // customized copy is never clobbered silently.
 func InstallSkill(dir string, force bool) (string, error) {
-	content, err := installedSkillFile.ReadFile("skills/agentworks/SKILL.md")
-	if err != nil {
-		return "", err
-	}
 	target := filepath.Join(dir, "agentworks", "SKILL.md")
-	if _, err := os.Stat(target); err == nil && !force {
-		return "", fmt.Errorf("skill already installed at %s (use force to overwrite)", target)
+	files := EntrySkillFiles()
+	for relative := range files {
+		path := filepath.Join(dir, "agentworks", filepath.FromSlash(relative))
+		if _, err := os.Lstat(path); err == nil && !force {
+			return "", fmt.Errorf("skill already installed at %s (use force to overwrite)", path)
+		} else if err != nil && !os.IsNotExist(err) {
+			return "", err
+		}
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(target, content, 0o644); err != nil {
-		return "", err
+	for relative, content := range files {
+		path := filepath.Join(dir, "agentworks", filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			return "", err
+		}
 	}
 	return target, nil
 }
@@ -39,5 +61,5 @@ func EntrySkill() string {
 	if err != nil {
 		panic(err)
 	}
-	return string(content)
+	return strings.Replace(string(content), "# AgentWorks\n", "# AgentWorks\n\n"+productguide.Overview(productpolicy.Selection{})+"\n\nRead [the product guide](references/products.md) for abilities, roles and examples, or fetch `help action=topic topic=product-guide` from the current server. Guide source version: "+productguide.GuideVersion+".\n", 1)
 }

@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-13 — One versioned product guide for MCP and Brain starters (PLAT-856)
+
+The MCP entry skill, server product-guide topic and Brain starter notes reuse one
+canonical product guide. Brain also offers a versioned AgentWorks MCP usage skill
+with that guide as a reference. Source releases use semantic versions and exact
+content fingerprints; Brain entry revisions remain the concurrency versions.
+Shared bootstrap uses the public Brain tools and creates missing starters once.
+Existing notes, user skill packages and deliberately deleted offers are preserved;
+source upgrades never overwrite them. An ambiguous creation is recorded for
+explicit reconciliation instead of automatic recreation. Product configuration,
+current roles and consent still decide which tools can execute. Ticket: PLAT-856,
+issue 856-69.
+
 ## 2026-10-13 — Agent descriptions execute first; follow-ups are optional (PLAT-861)
 
 Ordinary agents using `prompt_contract=description-first-v1` execute their complete
@@ -21,6 +34,7 @@ extra model turns or repeat an external action during migration.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-152.
 
+
 ## 2026-10-13 — Remove page sharing copies from report and file menus (PLAT-746)
 
 Report selectors and workspace file/folder menus no longer offer Copy share link.
@@ -28,6 +42,7 @@ Together with the product toolbar removal, this keeps page sharing in the browse
 address bar and removes duplicate link-copy controls throughout workspace navigation.
 
 Ticket: [PLAT-746](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/navigation/plat-746.md), issue 746-33.
+
 
 ## 2026-10-13 — Twenty side chats per Code project or Crew, counted by the server (PLAT-861)
 
