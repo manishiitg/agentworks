@@ -19,14 +19,14 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi
 const revision = 'a'.repeat(64)
 const view = { project_id: 'project-1', product: 'workflow', capability: { can_view: true, can_ask: true, mode: 'owner' } }
 
-async function mount() {
+async function mount(product = 'workflow') {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
   const render = async (publication = revision) => {
     const data = { workspacePath: 'Workflow/demo', sendChatMessage: vi.fn() } as unknown as ReportDataApi
     await act(async () => root.render(<ReportEmbedProvider value={{ data }}>
-      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product="workflow" projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: true, mode: 'owner' }} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
+      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: true, mode: 'owner' }} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
     </ReportEmbedProvider>))
   }
   await render()
@@ -40,6 +40,15 @@ function click(text: string) {
   if (!button) throw new Error(`Missing ${text}`)
   button.click()
 }
+
+it('opens a managed Relay dashboard in the Builder’s existing normal conversation', async () => {
+  get.mockResolvedValue({ data: { ...view, product: 'relay' } }); openAsk.mockResolvedValue('relay-builder-chat')
+  const current = await mount('relay')
+  await act(async () => click('Open project Ask'))
+  expect(openAsk).toHaveBeenCalledWith({ product: 'relay', projectId: 'project-1', workspacePath: 'Workflow/demo' })
+  expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-builder-chat')
+  expect(send).not.toHaveBeenCalled()
+})
 async function editQuestion(frame: HTMLIFrameElement) {
   const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
   Object.defineProperty(event, 'isTrusted', { value: true })

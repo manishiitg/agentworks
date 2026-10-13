@@ -2,7 +2,7 @@
 // db/reports/. The shared toolbar selects the active document; each HTML file
 // tabs, sections, a sidebar, or a single scrolling page.
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
 import api, { agentApi, workspaceApi, getApiBaseUrl } from '../../services/api'
 import { useReportFilePreviewStore } from '../../stores/useReportFilePreviewStore'
@@ -41,6 +41,8 @@ type ReportDocument = {
   questions?: { resourceId: string; revision: string; projectId: string; workspacePath: string; capability: DashboardQuestionCapability; product: string }
 }
 
+const DefaultRelayDashboard = lazy(() => import('./reportWidgets/DefaultRelayDashboard'))
+
 interface ReportViewerProps {
   workspacePath: string
   isOpen: boolean
@@ -62,6 +64,7 @@ interface ReportViewProps {
   /** Standalone viewing links have no project chat destination. */
   allowContentQuestions?: boolean
   dashboardConversation?: boolean
+  defaultRelayDashboard?: boolean
   headerAction?: React.ReactNode
 }
 
@@ -216,7 +219,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, allowContentQuestions = true, dashboardConversation = false }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, allowContentQuestions = true, dashboardConversation = false, defaultRelayDashboard = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -290,7 +293,8 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           <div className={shellClass}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
-            {!loading && !error && !report && (
+            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Relay dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} /></Suspense>}
+            {!loading && !error && !report && !defaultRelayDashboard && (
               <div className="m-3 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border p-8 text-center">
                 {emptyIdentity ? (
                   <div className="flex flex-col items-center gap-2">

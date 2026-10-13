@@ -25,7 +25,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const opening = useRef<Promise<string> | null>(null)
   // Workflow readers and Relays need shared Ask parity and published-result
   // checks before this entry point can expose their conversation here.
-  const canAsk = Boolean(viewer && capability.can_ask && (product === 'crew' || product === 'workflow' && capability.mode === 'owner'))
+  const canAsk = Boolean(viewer && capability.can_ask && (product === 'crew' || (product === 'workflow' || product === 'relay') && capability.mode === 'owner'))
   useEffect(() => {
     generation.current++
     setBound(null); setOpen(false); setError(null)
