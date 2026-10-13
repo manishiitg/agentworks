@@ -198,7 +198,7 @@ func TestDescriptionFirstContractStampAndAuthoring(t *testing.T) {
 	updated.Items = []AgentItem{{ID: "verify", Type: "user_message", Message: "Re-open the authoritative evidence and repair any gap."}}
 	raw, _ = json.Marshal(plan)
 	if err := ValidateAgentDescriptionFirstContractStamp(string(raw)); err == nil || !strings.Contains(err.Error(), "retained_reason") {
-		t.Fatal("a retained first item stamped without review of its later phase")
+		t.Fatalf("expected retained_reason review error, got %v", err)
 	}
 	updated.Items[0].RetainedReason = "Evidence-only confirmation; report ambiguity, never repeat the greeting."
 	updated.Items[0].Message = "Read the saved greeting receipt and report gaps without greeting again."

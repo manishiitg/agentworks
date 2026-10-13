@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"time"
 
@@ -15,6 +16,20 @@ import (
 )
 
 const AgentStepContractVersion = "1.0.47"
+
+// JSON field order and indentation do not make a canonical agent a legacy
+// record. Preserve number precision while comparing the actual saved values.
+func sameAgentJSON(left, right []byte) bool {
+	var values [2]interface{}
+	for i, raw := range [][]byte{left, right} {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&values[i]); err != nil {
+			return false
+		}
+	}
+	return reflect.DeepEqual(values[0], values[1])
+}
 
 // ValidateAgentStepContractStamp is shared by interactive stamps and drained
 // deployment batches. A version marker cannot stand in for the plan migration.
@@ -107,7 +122,7 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 	legacy := typ == "message_sequence" || typ == "orchestrator" || typ == "todo_task"
 	if typ != "agent" && !legacy {
 		after, err := json.Marshal(step)
-		return after, !bytes.Equal(before, after), err
+		return after, !sameAgentJSON(before, after), err
 	}
 	step["type"] = json.RawMessage(`"agent"`)
 	if inner := step["todo_task_step"]; len(inner) > 0 && string(inner) != "null" {
@@ -138,7 +153,7 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 		if len(oldItems) > 0 && len(newItems) > 0 {
 			oldJSON, _ := json.Marshal(oldItems)
 			newJSON, _ := json.Marshal(newItems)
-			if !bytes.Equal(oldJSON, newJSON) {
+			if !sameAgentJSON(oldJSON, newJSON) {
 				return nil, false, fmt.Errorf("agent step has conflicting items and legacy messages; resolve the saved sequences before migration")
 			}
 		}
@@ -186,7 +201,7 @@ func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 		step["items"], _ = json.Marshal(items)
 	}
 	after, err := json.Marshal(step)
-	return after, !bytes.Equal(before, after), err
+	return after, !sameAgentJSON(before, after), err
 }
 
 // MigrateAgentStepContent walks only plan step locations, preserving unknown
