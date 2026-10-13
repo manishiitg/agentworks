@@ -24,6 +24,13 @@ describe('fresh deep links keep their view', () => {
     expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'identity')).toBe('schedules')
   })
 
+  it('keeps a route view only while its panel is enabled', async () => {
+    const { isWorkWorkspaceViewEnabled } = await import('./workViewGating')
+    expect(isWorkWorkspaceViewEnabled('schedules', new Set(['schedules']))).toBe(true)
+    expect(isWorkWorkspaceViewEnabled('schedules', new Set(['files']))).toBe(false)
+    expect(isWorkWorkspaceViewEnabled('costs', new Set(['files']))).toBe(false)
+  })
+
   it('resolves Code shell and costs links instead of Files', async () => {
     const { normalizeWorkWorkspaceView } = await import('./WorkSurface')
     const { routeView } = await import('../../utils/productRoutes')

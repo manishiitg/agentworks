@@ -1280,7 +1280,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files', false)
       return
     }
-    if (routeSuppliedView && workspaceView === routeSuppliedView) return
+    // Keep a route-supplied view only while it is enabled for this product
+    // and person; a link to a disabled view still falls back below.
+    if (routeSuppliedView && workspaceView === routeSuppliedView && isWorkWorkspaceViewEnabled(routeSuppliedView, enabledWorkspacePanels, localCodeSession)) return
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels, localCodeSession)) {
       // A disabled saved view cannot be shown. For an unsaved project, keep
       // Identity temporary while the content-based landing check runs.
