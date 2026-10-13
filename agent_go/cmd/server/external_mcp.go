@@ -25,8 +25,8 @@ import (
 // local stdio bridge.
 //
 // Unlike the CLI and stdio bridge, which list every tool, the remote surface
-// is two self-describing tools: get_api_spec discovers names and schemas,
-// call_tool executes. The full catalog (product.yaml's external_tools plus
+// is three self-describing tools: search_tools finds names by keyword,
+// get_api_spec returns schemas, call_tool executes. The full catalog (product.yaml's external_tools plus
 // run.tools) is resolved internally, so the MCP surface stays tiny no matter
 // how run mode grows, and hosted clients without tool search never face a
 // truncated tail.
@@ -36,6 +36,9 @@ const (
 	externalMCPToolSpec = "get_api_spec"
 	externalMCPToolCall = "call_tool"
 )
+
+// externalMCPToolNames is the remote surface, in listing order (search_tools is externalMCPToolSearch).
+var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, externalMCPToolCall}
 
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
@@ -59,6 +62,15 @@ var externalMCPToolSchemas = map[string]map[string]any{
 		},
 		"additionalProperties": false,
 	},
+	externalMCPToolSearch: {
+		"type": "object",
+		"properties": map[string]any{
+			"query":  map[string]any{"type": "string", "maxLength": 512, "description": "Intent or tool-name keywords; omit to list every tool."},
+			"offset": map[string]any{"type": "integer", "minimum": 0},
+			"limit":  map[string]any{"type": "integer", "minimum": 10, "maximum": 20, "default": 10},
+		},
+		"additionalProperties": false,
+	},
 	externalMCPToolCall: {
 		"type": "object",
 		"properties": map[string]any{
@@ -79,11 +91,12 @@ var externalMCPToolSchemas = map[string]map[string]any{
 }
 
 var externalMCPToolDescriptions = map[string]string{
-	externalMCPToolSpec: "Discover AgentWorks tools. Call with no arguments to list every available tool name with a one-line description; call with names (a string or an array of strings) to get full JSON schemas for those tools. Only tools this connection may use are listed. Then execute with call_tool.",
-	externalMCPToolCall: "Execute one AgentWorks tool by name. Get its schema first with get_api_spec. Arguments must match the tool's schema; workflow tools need the workflow_id from list_workflows.",
+	externalMCPToolSpec:   "Discover AgentWorks tools. Call with no arguments to list every available tool name with a one-line description; call with names (a string or an array of strings) to get full JSON schemas for those tools. Only tools this connection may use are listed. Then execute with call_tool.",
+	externalMCPToolSearch: "Find AgentWorks tools by intent or name (for example \"dashboard\" or \"vault\"). Returns tool names with one-line descriptions, ten per page (use next_offset for more), not schemas. Then call get_api_spec with the names and run them with call_tool. Only tools this connection may use are found; searching grants nothing.",
+	externalMCPToolCall:   "Execute one AgentWorks tool by name. Get its schema first with get_api_spec. Arguments must match the tool's schema; workflow tools need the workflow_id from list_workflows.",
 }
 
-// handleExternalMCP serves the two-tool remote surface over MCP Streamable
+// handleExternalMCP serves the three-tool remote surface over MCP Streamable
 // HTTP. It runs stateless: every request is independently authenticated,
 // matching the per-request PAT validation of the REST API.
 func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +189,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		server.WithElicitation(),
 		server.WithInstructions(instructions),
 	)
-	for _, name := range []string{externalMCPToolSpec, externalMCPToolCall} {
+	for _, name := range externalMCPToolNames {
 		schema, err := json.Marshal(externalMCPToolSchemas[name])
 		if err != nil {
 			externalError(w, http.StatusInternalServerError, "schema_error", err.Error())
@@ -209,6 +222,9 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 	args := request.GetArguments()
 	if args == nil {
 		args = map[string]any{}
+	}
+	if name == externalMCPToolSearch {
+		return externalMCPSearchTools(args, externalListedTools(GetUserFromContext(r.Context()), allowed))
 	}
 	if name == externalMCPToolSpec {
 		return externalMCPAPISpec(args, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed)

@@ -132,8 +132,8 @@ var externalToolWord = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+)+`)
 // known Builder and Run tools, and any snake_case word that starts with a tool
 // verb (Builder tools registered in code are not all in the product lists).
 func externalNamedOperationsFor(claims *UserClaims, body string) []string {
-	// call_tool and get_api_spec are this connection's own entry points.
-	exposed := map[string]bool{"call_tool": true, "get_api_spec": true}
+	// call_tool, get_api_spec and search_tools are this connection's own entry points.
+	exposed := map[string]bool{"call_tool": true, "get_api_spec": true, "search_tools": true}
 	if catalog, err := externalTools(); err == nil {
 		for _, tool := range catalog {
 			if claims == nil || externalTokenAllows(claims, tool) {

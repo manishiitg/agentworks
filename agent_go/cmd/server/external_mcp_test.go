@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -182,16 +183,16 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 		t.Fatalf("run-capable connection got read-only instructions: %q", initResult.Instructions)
 	}
 
-	// The remote surface is exactly two tools; the catalog resolves inside.
+	// The remote surface is exactly three tools; the catalog resolves inside.
 	tools := listExternalMCPTools(t, ctx, cli)
-	if len(tools) != 2 {
+	if len(tools) != 3 {
 		names := make([]string, 0, len(tools))
 		for name := range tools {
 			names = append(names, name)
 		}
-		t.Fatalf("remote tools %v, want exactly [get_api_spec call_tool]", names)
+		t.Fatalf("remote tools %v, want exactly [get_api_spec search_tools call_tool]", names)
 	}
-	for _, name := range []string{externalMCPToolSpec, externalMCPToolCall} {
+	for _, name := range externalMCPToolNames {
 		if _, ok := tools[name]; !ok {
 			t.Fatalf("remote surface missing %q", name)
 		}
@@ -283,10 +284,10 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 	if initResult.Instructions != (productpolicy.Selection{}).Text(externalMCPReadOnlyInstructions) {
 		t.Fatalf("read-only connection got run instructions: %q", initResult.Instructions)
 	}
-	// Same two tools; the scope filter applies inside the spec and the calls.
+	// Same three tools; the scope filter applies inside the spec and the calls.
 	tools := listExternalMCPTools(t, ctx, cli)
-	if len(tools) != 2 {
-		t.Fatalf("read-only surface has %d tools, want 2", len(tools))
+	if len(tools) != 3 {
+		t.Fatalf("read-only surface has %d tools, want 3", len(tools))
 	}
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "read-only spec list")
@@ -342,5 +343,40 @@ func TestExternalMCPToolMenuNamesToolsAndExpiresWhenToolsChange(t *testing.T) {
 	}
 	if stale := post("aw1-000000000000000000000000", `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`); stale.StatusCode != http.StatusNotFound {
 		t.Fatalf("stale session answered %d, want 404", stale.StatusCode)
+	}
+}
+
+// search_tools finds listed tools by keyword, never returns fewer than ten per page, and pages with next_offset.
+func TestExternalMCPSearchToolsFindsByKeywordAndPages(t *testing.T) {
+	var listed []externalTool
+	for i := 0; i < 12; i++ {
+		listed = append(listed, externalTool{Name: fmt.Sprintf("dashboard_step_%02d", i), Description: "Dashboard helper"})
+	}
+	listed = append(listed, externalTool{Name: "vault_list", Description: "List vault groups"})
+	decode := func(args map[string]any) map[string]any {
+		t.Helper()
+		result := externalMCPSearchTools(args, listed)
+		if result.IsError {
+			t.Fatalf("search failed: %v", result.Content)
+		}
+		var out map[string]any
+		raw, _ := json.Marshal(result.StructuredContent)
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	first := decode(map[string]any{"query": "dashboard", "limit": float64(1)})
+	if len(first["tools"].([]any)) != 10 || first["total"].(float64) != 12 || first["next_offset"].(float64) != 10 {
+		t.Fatalf("a limit of 1 must return a page of 10 with a next page: %v", first)
+	}
+	if last := decode(map[string]any{"query": "dashboard", "offset": float64(10)}); len(last["tools"].([]any)) != 2 || last["next_offset"] != nil {
+		t.Fatalf("last page: %v", last)
+	}
+	if one := decode(map[string]any{"query": "vault groups"}); one["total"].(float64) != 1 {
+		t.Fatalf("every word must match: %v", one)
+	}
+	if bad := externalMCPSearchTools(map[string]any{"limit": float64(21)}, listed); !bad.IsError {
+		t.Fatal("a limit above 20 must be refused")
 	}
 }
