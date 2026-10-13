@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { AgentNode } from './AgentNode'
 import type { AgentNodeData } from '../hooks/usePlanToFlow'
+import { getNodeLayoutDimensions } from '../hooks/usePlanToFlow'
 import { configuredAgentItems, type AgentPlanStep } from '../../../utils/stepConfigMatching'
 
 vi.mock('@xyflow/react', () => ({ Handle: () => null, Position: { Top: 'top', Bottom: 'bottom' } }))
@@ -42,6 +43,18 @@ it('shows the task preview once without a generated row or item count', async ()
     expect(host.textContent).not.toContain('Inputs')
     expect(data.items?.map(item => item.id)).toEqual(['__step_description__'])
     expect(data.step.description).toBe(step.description)
+    const node = {id: data.id, type: 'agent' as const, position: {x: 0, y: 0}, data}
+    expect(getNodeLayoutDimensions(node).height).toBeLessThan(200)
+    expect(getNodeLayoutDimensions({...node, data: {...data, items: []}})).toEqual(getNodeLayoutDimensions(node))
+  })
+})
+
+it('previews emphasis, quoted text and numbered lists as plain text', async () => {
+  await renderStep({...step, description: '## Goal\n> 1. Create *fixtures* with `run_label`.'}, host => {
+    expect(host.textContent).toContain('Create fixtures with run_label.')
+    expect(host.textContent).not.toContain('1. Create')
+    expect(host.textContent).not.toContain('*fixtures*')
+    expect(host.textContent).not.toContain('>')
   })
 })
 

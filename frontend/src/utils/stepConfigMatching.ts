@@ -402,6 +402,12 @@ export function runsAsAgent(step: PlanStep): boolean {
   return isScriptedStep(step) && legacyDeclaredMode(step) === 'agentic';
 }
 
+// Card rows are presentation only; execution keeps the complete item queue.
+export function agentCardItems(step: PlanStep, items: AgentItem[]): AgentItem[] {
+  return isAgentStep(step) && step.prompt_contract === 'description-first-v1' && !step.authored_prompt && items[0]?.id === '__step_description__'
+    ? items.slice(1) : items;
+}
+
 // The item list the runtime actually executes. An authored agent
 // supplies its own; a normalized scripted step gets the single synthesized turn
 // from normalizeScriptedStepToAgent, plus the validation gate
