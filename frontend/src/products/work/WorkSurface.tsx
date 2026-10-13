@@ -1575,7 +1575,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       const width = Math.max(MOBILE_PANE_MIN, (mobilePaneWidthRef.current ?? 494) - Math.round(delta * 600))
                       mobilePaneWidthRef.current = width; setMobilePaneWidthState(width); writeMobilePaneWidth(selected?.id, width)
                     }}
-                    className="md:row-start-2"
+                    className="max-md:hidden md:row-start-2"
                     previewDevice={reportPreviewPreference}
                     onPreviewDeviceChange={device => writeReportPreviewPreference(selected.workspacePath, device)}
                     onCollapseChat={() => setChatOpen(false)}

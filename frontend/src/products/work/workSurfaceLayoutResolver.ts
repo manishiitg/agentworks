@@ -37,7 +37,9 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
   const split = chatOpen && panelOpen
 
   return {
-    gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] ${split ? 'md:[grid-template-columns:var(--work-split-columns)]' : ''}`,
+    // Below md the two panes stack (chat above, workspace below) instead of
+    // squeezing side by side into a ~60 px chat column (390 px live check).
+    gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 ${split ? 'grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)] md:[grid-template-columns:var(--work-split-columns)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`,
     gridStyle: split
       ? ({ '--work-split-columns': mobilePreview
         ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
@@ -48,7 +50,7 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     chatClassName: `flex min-h-0 min-w-0 flex-col overflow-hidden bg-background col-start-1 row-start-2 ${panelOpen ? 'border-b border-border md:border-b-0 md:border-r' : ''}`,
     showDivider: split,
     showPanel: panelOpen,
-    panelClassName: `min-h-0 min-w-0 overflow-hidden bg-background row-start-2 ${chatOpen ? 'md:col-start-2' : 'col-start-1'}`,
+    panelClassName: `min-h-0 min-w-0 overflow-hidden bg-background ${chatOpen ? 'row-start-3 md:row-start-2 md:col-start-2' : 'row-start-2 col-start-1'}`,
   }
 }
 

@@ -15,6 +15,14 @@ describe('resolveWorkSurfaceLayout', () => {
     expect(layout.panelClassName).toContain('md:col-start-2')
   })
 
+  it('stacks chat above the panel below desktop width so neither is squeezed', () => {
+    const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.4 })
+    expect(layout.gridClassName).toContain('grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)]')
+    expect(layout.gridClassName).toContain('md:grid-rows-[auto_minmax(0,1fr)]')
+    expect(layout.panelClassName).toContain('row-start-3 md:row-start-2')
+    expect(layout.chatClassName).toContain('row-start-2')
+  })
+
   it('gives chat the single column when the panel is closed', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: false, splitRatio: 0.5 })
     expect(layout.showDivider).toBe(false)
