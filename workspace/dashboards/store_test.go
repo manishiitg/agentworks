@@ -70,3 +70,21 @@ func TestDashboardPublicationAndGuards(t *testing.T) {
 		t.Fatalf("linked write accepted: %v", err)
 	}
 }
+
+// Dashboard scripts and pages are private to the service: the runner is handed the code, not the file (no world-readable scripts).
+func TestDashboardScriptsStayPrivate(t *testing.T) {
+	docs := t.TempDir()
+	root := "Crew/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "status", Title: "Status", IncludeDraft: true,
+		Files: map[string]string{"index.html": "<html><title>S</title></html>", "scripts/data.py": "print('{}')\n"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.Stat(filepath.Join(docs, root, "code/reports/managed/status", out.Dashboard.Revision, "data.py"))
+	if err != nil || script.Mode().Perm() != 0600 {
+		t.Fatalf("script must stay 0600: %v %v", script, err)
+	}
+}

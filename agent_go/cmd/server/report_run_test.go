@@ -286,3 +286,22 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 		t.Fatalf("non-JSON stdout accepted: %v", result)
 	}
 }
+
+// A managed dashboard script is handed to the interpreter as code in the environment: never as a path the runner's account cannot
+// open, and never inside the command text (logs, /proc cmdline).
+func TestReportRunInlineCommandPassesCodeInEnvironment(t *testing.T) {
+	code := "import os\nprint('{\"ok\": 1}')  # KEY-CANARY-123\n"
+	cmd, env, err := reportRunInlineCommand("/data/docs/Crew/x/code/reports/managed/d/rev/data.py", []byte(code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(cmd, "python3 -c ") || strings.Contains(cmd, "KEY-CANARY") || strings.Contains(cmd, "/data/docs") || env[reportRunInlineEnv] != code || env[reportRunInlinePathEnv] == "" || !strings.Contains(cmd, `os.environ.pop("`+reportRunInlineEnv+`")`) {
+		t.Fatalf("expected a fixed command and the code in the environment: %q %v", cmd, env)
+	}
+	if node, _, _ := reportRunInlineCommand("x/data.mjs", []byte("console.log(1)")); !strings.HasPrefix(node, "node -e ") {
+		t.Fatalf("node script: %q", node)
+	}
+	if _, _, err := reportRunInlineCommand("x/big.py", make([]byte, reportRunInlineLimit+1)); err == nil {
+		t.Fatal("oversized script must be refused")
+	}
+}

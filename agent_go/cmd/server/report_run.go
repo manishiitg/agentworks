@@ -129,6 +129,35 @@ func reportRunCommand(absScript string) string {
 	return interpreter + " '" + strings.ReplaceAll(absScript, "'", `'"'"'`) + "'"
 }
 
+// reportRunInlineLimit is the largest managed script handed over in the environment (one environment string is capped near 128 KB).
+const reportRunInlineLimit = 100 * 1024
+
+// reportRunInlineEnv is the variable that carries a managed dashboard script's code.
+const reportRunInlineEnv = "REPORT_SCRIPT_CODE"
+
+// reportRunInlinePathEnv carries the script's original path, so __file__ and argv[0] still name it.
+const reportRunInlinePathEnv = "REPORT_SCRIPT_PATH"
+
+// reportRunInlineCommand runs a managed dashboard script from its code, not its path. The service writes those scripts 0600 so no
+// other account on the server can read them, but the script runs as the person's own account, which therefore cannot open the
+// file; the service reads it and passes the code in the process environment (private to that account). The command text is a
+// fixed one-liner, so the code is in neither the command string, the logs nor /proc/<pid>/cmdline. REPORT_ARGS, the rest of the
+// environment and the working directory are the same as for a path run.
+func reportRunInlineCommand(absScript string, code []byte) (command string, env map[string]string, err error) {
+	if len(code) > reportRunInlineLimit {
+		return "", nil, fmt.Errorf("dashboard script is larger than %d KB", reportRunInlineLimit/1024)
+	}
+	env = map[string]string{reportRunInlineEnv: string(code), reportRunInlinePathEnv: absScript}
+	// The bootstrap removes both variables before running the script, so processes the script starts do not inherit its code.
+	switch filepath.Ext(absScript) {
+	case ".js":
+		return `node -e 'const c = process.env.` + reportRunInlineEnv + `; const p = process.env.` + reportRunInlinePathEnv + `; delete process.env.` + reportRunInlineEnv + `; delete process.env.` + reportRunInlinePathEnv + `; process.argv[1] = p; new Function("require", "__filename", c)(require, p)'`, env, nil
+	case ".mjs":
+		return `node -e 'const c = process.env.` + reportRunInlineEnv + `; delete process.env.` + reportRunInlineEnv + `; delete process.env.` + reportRunInlinePathEnv + `; import("data:text/javascript;base64," + Buffer.from(c).toString("base64"))'`, env, nil
+	}
+	return `python3 -c 'import os, sys; c = os.environ.pop("` + reportRunInlineEnv + `"); p = os.environ.pop("` + reportRunInlinePathEnv + `"); sys.argv[0] = p; exec(compile(c, p, "exec"), {"__name__": "__main__", "__file__": p})'`, env, nil
+}
+
 // POST /api/workflow/report-preview/run {workspace, path, args}
 // Lives under the report-preview prefix so the headless preview page (whose
 // token reaches only that prefix) renders live reports the same way.
@@ -327,8 +356,23 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	runCtx, cancel := context.WithTimeout(ctx, reportRunTimeout+15*time.Second)
 	defer cancel()
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
+	command := reportRunCommand(absScript)
+	if strings.HasPrefix(script, "code/reports/managed/") {
+		code, readErr := os.ReadFile(absScript)
+		if readErr != nil {
+			return map[string]any{"success": false, "error": "could not read the dashboard script"}
+		}
+		inline, inlineEnv, inlineErr := reportRunInlineCommand(absScript, code)
+		if inlineErr != nil {
+			return map[string]any{"success": false, "error": inlineErr.Error()}
+		}
+		command = inline
+		for key, value := range inlineEnv {
+			env[key] = value
+		}
+	}
 	out, execErr := client.ExecuteShellCommand(runCtx, workspace.ExecuteShellCommandParams{
-		Command:          reportRunCommand(absScript),
+		Command:          command,
 		WorkingDirectory: filepath.ToSlash(filepath.Join(workspacePath, "code")),
 		Timeout:          &timeoutSeconds,
 		ExtraEnv:         env,
