@@ -97,6 +97,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	// project-scoped schedule surface. General workflow authoring stays out;
 	// attached workflows have only the scoped internal-trigger run surface.
 	wantEnabled := map[string]bool{
+		"read_project_files":                     false,
 		"get_file_link":                          false,
 		"get_report_link":                        false,
 		"diff_patch_workspace_file":              false,

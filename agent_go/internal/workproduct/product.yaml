@@ -77,6 +77,7 @@ profile:
   tool_policy:
     mode: allowlist
     enabled:
+      - read_project_files
       - get_file_link
       - get_report_link
     # Populated by features above. Not enabled, deliberately: workflow
