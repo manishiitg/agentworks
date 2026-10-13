@@ -50,15 +50,20 @@ else
 fi
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before
-# building or touching the server if either checked-in allowlist drifts.
-grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway", "knowledgebase"]' "$RUNTIME_CONFIG" || {
-  echo "RTS deployment must expose AgentWorks, Video Studio, Work, Code, Vault, and Brain" >&2
+# building or touching the server if a checked-in allowlist drifts.
+# The product switcher (client enabledProductSurfaces) and the loaded backends
+# (AGENT_PRODUCTS) must name the same products; "agentworks" is the shell and is
+# only in the client list. A mismatch hides a product that is running, or offers
+# one that is not.
+client_products="$(sed -n 's/.*enabledProductSurfaces: *\[\(.*\)\].*/\1/p' "$RUNTIME_CONFIG" | head -n 1 | tr -d ' "' | tr ',' '\n' | grep -v '^agentworks$' | sort -u)"
+server_products="$(sed -n 's/^Environment=AGENT_PRODUCTS=//p' "$AGENT_SERVICE_FILE" | head -n 1 | tr -d ' ' | tr ',' '\n' | grep -v '^$' | sort -u)"
+[[ -n "$client_products" && -n "$server_products" ]] || { echo "Cannot read enabledProductSurfaces from the runtime config or AGENT_PRODUCTS from the agent service" >&2; exit 1; }
+only_client="$(comm -23 <(printf '%s\n' "$client_products") <(printf '%s\n' "$server_products") | paste -sd, -)"
+only_server="$(comm -13 <(printf '%s\n' "$client_products") <(printf '%s\n' "$server_products") | paste -sd, -)"
+if [[ -n "$only_client" || -n "$only_server" ]]; then
+  echo "Product lists disagree: in the client switcher only: ${only_client:-none}; loaded as backends only: ${only_server:-none}" >&2
   exit 1
-}
-grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code,mcp-gateway,knowledgebase' "$AGENT_SERVICE_FILE" || {
-  echo "RTS deployment must load the video-studio, work, code, Vault and Brain product backends" >&2
-  exit 1
-}
+fi
 grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$AGENT_SERVICE_FILE" || {
   echo "Video Studio server deployment must disable CDP in the agent service" >&2
   exit 1
