@@ -3,6 +3,9 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
+import { normalizeWorkWorkspaceView } from './WorkSurface'
+import { isWorkWorkspaceViewEnabled } from './workViewGating'
+import { routeView } from '../../utils/productRoutes'
 import { crewTemplates, type CrewTemplateId } from './crewTemplates'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -17,23 +20,18 @@ vi.mock('../../stores/useLLMStore', () => ({
 describe('fresh deep links keep their view', () => {
   afterEach(() => { window.history.pushState(null, '', '/') })
 
-  it('resolves a Crew schedules link instead of the identity default', async () => {
-    const { normalizeWorkWorkspaceView } = await import('./WorkSurface')
-    const { routeView } = await import('../../utils/productRoutes')
+  it('resolves a Crew schedules link instead of the identity default', () => {
     window.history.pushState(null, '', '/crew/projects/example?view=schedules')
     expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'identity')).toBe('schedules')
   })
 
-  it('keeps a route view only while its panel is enabled', async () => {
-    const { isWorkWorkspaceViewEnabled } = await import('./workViewGating')
+  it('keeps a route view only while its panel is enabled', () => {
     expect(isWorkWorkspaceViewEnabled('schedules', new Set(['schedules']))).toBe(true)
     expect(isWorkWorkspaceViewEnabled('schedules', new Set(['files']))).toBe(false)
     expect(isWorkWorkspaceViewEnabled('costs', new Set(['files']))).toBe(false)
   })
 
-  it('resolves Code shell and costs links instead of Files', async () => {
-    const { normalizeWorkWorkspaceView } = await import('./WorkSurface')
-    const { routeView } = await import('../../utils/productRoutes')
+  it('resolves Code shell and costs links instead of Files', () => {
     window.history.pushState(null, '', '/code/projects/example?view=shell')
     expect(routeView('code', 'example', normalizeWorkWorkspaceView, 'files')).toBe('shell')
     window.history.pushState(null, '', '/code/projects/example?view=costs')
