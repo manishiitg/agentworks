@@ -6092,6 +6092,5 @@ exclusive configuration-store ownership. LLM Gateway SDK factories can mount on
 either host, so moving Vault does not require merging or exposing private LLM
 source in public core. Product source and deployment credentials remain separate.
 
-Develop and verify on independent branches. Reviewer approval and the October
-17–18 merge window are required. No rollout or automatic merge is included;
-retiring public compatibility source is a later fleet-migration gate.
+Retiring public compatibility source is a later fleet-migration gate after
+installations have the private artifact and rollback is proven.
