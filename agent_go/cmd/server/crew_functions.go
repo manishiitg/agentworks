@@ -787,12 +787,16 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 		return internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
 	}
 	var delivery internalTriggerDeliveryResult
+	workflowContext := workflowFunctionCallerPayload(ctx, caller)
+	workflowRunID, _ := workflowContext["workflow_run_id"].(string)
+	workflowStepID, _ := workflowContext["workflow_step_id"].(string)
 	switch target.Kind {
 	case triggerCallerCrew:
 		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
 			CallerPath: caller.Path, PinRunMode: runMode, RunAsOwner: runAsOwner,
+			WorkflowRunID: workflowRunID, WorkflowStepID: workflowStepID,
 		})
 	case triggerCallerWorkflow:
 		delivery, err = api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
@@ -939,6 +943,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": fromPath},
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
 	}
+	for key, value := range workflowFunctionCallerPayload(ctx, caller) {
+		body[key] = value
+	}
 	if call.RunMode {
 		body["run_mode"] = true // read, and removed, by dispatchTargetTrigger
 	} else if !call.FreeText {
@@ -989,9 +996,11 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	if target.Kind == triggerCallerWorkflow {
 		// Inputs are checked here, before anything runs: a missing or unknown
 		// input comes straight back to the caller.
+		payload := workflowFunctionCallerPayload(ctx, caller)
+		payload["call_id"], payload["from"] = id, body["from"]
 		_, delivery, err = api.scheduler.dispatchWorkflowFunction(ctx, workflowFunctionCall{
 			WorkflowID: target.Manifest.ID, Function: fn.Name, Caller: caller.Stamp, DeliveryID: id, Args: args,
-			Payload: map[string]interface{}{"call_id": id, "from": body["from"]},
+			Payload: payload,
 		})
 		if err != nil {
 			err = crewWorkflowRunError(err)
@@ -1335,6 +1344,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 type crewFunctionToolOptions struct {
 	Claims         *UserClaims
 	ExecutionScope string
+	WorkflowScope  *todo_creation_human.AgentFunctionScope
 	FunctionTools  agentprofiles.ExecutionFunctionTools
 	CheckTarget    func(context.Context, triggerTarget, bool) error
 }
@@ -1395,6 +1405,9 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 		if options.ExecutionScope != "" {
 			ctx = context.WithValue(ctx, structuredFunctionExecutionScopeKey{}, options.ExecutionScope)
+			if options.WorkflowScope != nil {
+				ctx = context.WithValue(ctx, workflowFunctionScopeKey{}, options.WorkflowScope)
+			}
 			if notify {
 				return "", fmt.Errorf("execution agents poll get_function_call; notify must be false")
 			}

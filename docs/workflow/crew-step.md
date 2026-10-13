@@ -151,8 +151,10 @@ For example, with variable groups enabled:
 Workflow/example/runs/iteration-0/production/execution/review-with-server A/response.md
 ```
 
-Active runs execute in `iteration-0` (older numbered folders are archives);
-without groups the step folder sits directly under `runs/iteration-0/execution/`.
+Builder/manual runs execute in `iteration-0` (older plain numbered folders
+are archives). Saved schedules, webhooks, and Slack runs use their allocated
+immutable iteration folders. Without groups the step folder sits directly
+under `runs/<iteration>/execution/`.
 
 The execution record should also retain operational metadata—Crew project ID,
 trigger ID, Crew run ID, session ID, status, timestamps, and error details—in
@@ -171,9 +173,11 @@ The delivery payload should include at least:
 
 ```json
 {
-  "source": "workflow_step",
+  "source": "workflow",
   "workflow_id": "release-pipeline",
   "workflow_run_id": "9f3c2e1a-7b4d-4c8e-a1f2-3d5b7c9e1a4f",
+  "workflow_run_folder": "iteration-12-sched/production",
+  "iteration": "iteration-12-sched",
   "workflow_step_id": "review-with-server A",
   "group": "production",
   "instruction": "Rendered workflow-specific instruction",
@@ -190,6 +194,15 @@ The delivery payload should include at least:
 `workflow_run_id` is the calling execution's immutable execution identity, not
 its run folder: run folders are reused between executions, so only the
 execution identity keeps one execution from adopting another's Crew delivery.
+`workflow_run_folder` is the current folder relative to `runs/`, including the
+group suffix when present. `iteration` is its first path component, preserving
+schedule, webhook, and Slack suffixes. Both are empty when the caller has no
+run folder; the Crew must not infer `iteration-0` from previous deliveries.
+Use `workflow_run_id` for run identity and deduplication, since an iteration
+folder can be reused or archived.
+Execution agents using `call_function` send the same caller run context to
+Crew and workflow function targets, beside the function arguments. A receiving
+workflow still allocates its own run folder; these fields identify the caller.
 Payload data cannot override Crew permissions, tools, trigger ownership,
 conversation destination, or folder guards.
 

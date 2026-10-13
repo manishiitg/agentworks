@@ -49,6 +49,47 @@ func TestCrewStepDeliveryBaseVariesWithTrigger(t *testing.T) {
 	}
 }
 
+func TestRunCrewStepPayloadIncludesActualIteration(t *testing.T) {
+	for _, tc := range []struct {
+		name, runFolder, iteration string
+	}{
+		{"manual", "iteration-0", "iteration-0"},
+		{"manual group", "iteration-0/production", "iteration-0"},
+		{"schedule group", "iteration-12-sched/production", "iteration-12-sched"},
+		{"webhook", "iteration-7-hook", "iteration-7-hook"},
+		{"slack group", "iteration-3-slack-abc/production", "iteration-3-slack-abc"},
+		{"unknown folder", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, files := newInternalDispatchCrew(t, crewRunnerTriggers)
+			svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
+			req := testCrewStepRequest()
+			req.WorkflowRunFolder = tc.runFolder
+			runner := newCrewStepRunner(svc, "owner")
+			runner.pollInterval = 5 * time.Millisecond
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			// Keep the conversation busy so the real dispatcher saves the payload
+			// without starting a Crew agent. The queued run then times out here.
+			result, err := runner.RunCrewStep(ctx, req)
+			if err == nil || !strings.Contains(err.Error(), "timed out") || result.CrewRunID == "" {
+				t.Fatalf("queued invocation = %+v, err = %v", result, err)
+			}
+			payloadPath := "_users/owner/Chats/Work/projects/project-a/triggers/deliveries/" + result.CrewRunID + ".json"
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(files[payloadPath]), &payload); err != nil {
+				t.Fatalf("saved payload: %v", err)
+			}
+			if payload["iteration"] != tc.iteration || payload["workflow_run_folder"] != tc.runFolder {
+				t.Fatalf("run context = %v, want iteration %q and folder %q", payload, tc.iteration, tc.runFolder)
+			}
+			if payload["workflow_run_id"] != req.ExecutionID || payload["group"] != req.Group {
+				t.Fatalf("execution identity/group lost: %v", payload)
+			}
+		})
+	}
+}
+
 func TestRunCrewStepAdoptsSuccessfulDuplicate(t *testing.T) {
 	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
 	convKey := "owner\x1fproduct-project:crewx:project-a:trig-1"

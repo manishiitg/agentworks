@@ -78,14 +78,22 @@ func (r *crewStepRunner) RunCrewStep(ctx context.Context, req stepworkflow.CrewS
 		// the key below.
 		runScope = strings.TrimSpace(req.WorkflowRunFolder) + "/adhoc-" + uuid.NewString()
 	}
+	// The execution identity is for deduplication; the run folder tells the
+	// Crew which iteration produced this input. Group runs include a suffix
+	// (iteration-N/group), so expose both the iteration and the full folder.
+	// Never guess iteration-0 when an ad-hoc caller has no folder context.
+	runFolder := strings.TrimSpace(req.WorkflowRunFolder)
+	iteration, _, _ := strings.Cut(runFolder, "/")
 	payload, err := json.Marshal(map[string]interface{}{
-		"source":           "workflow",
-		"workflow_id":      req.WorkflowID,
-		"workflow_run_id":  runScope,
-		"workflow_step_id": req.StepID,
-		"group":            req.Group,
-		"instruction":      req.Instruction,
-		"inputs":           req.Inputs,
+		"source":              "workflow",
+		"workflow_id":         req.WorkflowID,
+		"workflow_run_id":     runScope,
+		"workflow_run_folder": runFolder,
+		"iteration":           iteration,
+		"workflow_step_id":    req.StepID,
+		"group":               req.Group,
+		"instruction":         req.Instruction,
+		"inputs":              req.Inputs,
 	})
 	if err != nil {
 		return stepworkflow.CrewStepResult{}, fmt.Errorf("crew step %q cannot encode its trigger payload: %w", req.StepID, err)

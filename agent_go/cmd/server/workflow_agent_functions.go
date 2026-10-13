@@ -81,8 +81,27 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 			return nil
 		}
 		draft := &workflowAgentFunctionDraft{executors: map[string]interface{}{}}
-		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, FunctionTools: agentworksproduct.ExecutionFunctionTools(), CheckTarget: checkTarget})
+		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, WorkflowScope: &scope, FunctionTools: agentworksproduct.ExecutionFunctionTools(), CheckTarget: checkTarget})
 		return draft.tools, draft.executors, err
+	}
+}
+
+type workflowFunctionScopeKey struct{}
+
+// workflowFunctionCallerPayload carries controller-owned caller context beside
+// validated function arguments. The receiving workflow has its own run folder.
+func workflowFunctionCallerPayload(ctx context.Context, caller triggerLinkCaller) map[string]interface{} {
+	scope, _ := ctx.Value(workflowFunctionScopeKey{}).(*stepworkflow.AgentFunctionScope)
+	if scope == nil || caller.Stamp.Type != triggerCallerWorkflow {
+		return map[string]interface{}{}
+	}
+	runFolder := strings.TrimSpace(scope.RunFolder)
+	iteration, _, _ := strings.Cut(runFolder, "/")
+	return map[string]interface{}{
+		"source": "workflow", "workflow_id": caller.Stamp.ID,
+		"workflow_run_id":     firstNonEmptyTrimmed(scope.ExecutionID, scope.SessionID),
+		"workflow_run_folder": runFolder, "iteration": iteration,
+		"workflow_step_id": scope.StepID, "group": scope.Group,
 	}
 }
 
