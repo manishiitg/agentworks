@@ -65,3 +65,27 @@ func TestNativeRouteDiscoveryIsThrottledPerChat(t *testing.T) {
 		t.Fatalf("route discovery ran %d times for one chat in a burst of hooks", calls.Load())
 	}
 }
+
+// An attach runs its server calls without the bridge lock, so a retry of the same attach
+// must wait for it (and then find the chat attached) rather than start a second one.
+func TestAttachGateRunsOneAttachPerChat(t *testing.T) {
+	b := &localBridge{}
+	release, ok := b.attachGate("claude|s", time.Second)
+	if !ok {
+		t.Fatal("the first attach must start")
+	}
+	if _, ok = b.attachGate("claude|s", 30*time.Millisecond); ok {
+		t.Fatal("a second attach for the same chat started while the first ran")
+	}
+	if release2, ok2 := b.attachGate("claude|other", 30*time.Millisecond); !ok2 {
+		t.Fatal("another chat must not wait")
+	} else {
+		release2()
+	}
+	go func() { time.Sleep(20 * time.Millisecond); release() }()
+	if release3, ok3 := b.attachGate("claude|s", time.Second); !ok3 {
+		t.Fatal("the retry must run once the first attach is done")
+	} else {
+		release3()
+	}
+}

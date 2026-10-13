@@ -138,6 +138,8 @@ type localBridge struct {
 	usageWake   chan struct{}
 	museCurrent map[string]string
 	mu          sync.Mutex
+	attachMu    sync.Mutex
+	attaching   map[string]chan struct{}
 	root        string
 	sessions    map[string]*localSession
 	changed     chan struct{}
@@ -388,6 +390,15 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			} else {
 				callCtx := r.Context()
 				if in.Action == "attach" {
+					// One attach per chat at a time: a retry waits for the one in flight (it runs
+					// without the bridge lock for several seconds) and then finds the chat attached.
+					release, ok := b.attachGate(localBridgeKey(in.Provider, in.SessionID), localBridgeLockBudget)
+					if !ok {
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.NewEncoder(w).Encode(LocalBridgeReply{Error: "AgentWorks is still connecting this chat. Try again in a moment."})
+						return
+					}
+					defer release()
 					// A hook gives up after a few seconds and closes its connection; the attach
 					// must still finish (the next try then finds the chat attached) instead of
 					// being cancelled half way through its server calls.
@@ -803,23 +814,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if in.SessionID == "" || in.HostKey == "" {
 			return LocalBridgeReply{Error: "AgentWorks cannot tell which chat this is. Type /agentworks attach in the chat itself."}
 		}
-		client, err := localConfiguredClient(in.ConfigPath)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
-		}
-		registration := map[string]any{"action": "register", "agent_name": in.AgentName}
-		if in.Purpose != "" {
-			registration["purpose"] = in.Purpose
-		}
-		if _, err = client.Call(callCtx, "messages", registration); err != nil {
-			var apiErr *APIError
-			if errors.As(err, &apiErr) && apiErr.Code == "unknown_tool" {
-				return LocalBridgeReply{Error: "AgentWorks at " + client.baseURL + " does not expose agent messaging. Sign in to an updated server with agentworks --server SERVER login, then retry attach."}
-			}
-			return LocalBridgeReply{Error: err.Error()}
-		}
 		connectionDir := filepath.Join(b.root, "connections")
-		if err = privateLiveDir(connectionDir); err != nil {
+		if err := privateLiveDir(connectionDir); err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		connectionPath := ""
@@ -830,56 +826,115 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				break
 			}
 		}
-		newConnection := false
-		create := func() error {
-			cfg, e := client.CreateAgentConnection(callCtx, in.AgentName)
-			if e != nil {
-				return e
-			}
-			connectionPath = filepath.Join(connectionDir, liveHash(cfg.Server, in.AgentName, in.SessionID, time.Now().String())+".json")
-			if e = SaveConfig(connectionPath, cfg); e != nil {
-				_ = client.RevokeOAuth(callCtx, cfg.RefreshToken)
-				return e
-			}
-			newConnection = true
-			return nil
+		// The server calls below take seconds (register, create the child connection, attach).
+		// They run without the bridge lock, so every other command keeps answering; a second
+		// attach for the same chat waits for this one (see attachGate) and then finds it done.
+		type attachResult struct {
+			a              AgentAttachment
+			connectionPath string
+			newConnection  bool
+			client         *Client
+			fail           *LocalBridgeReply
 		}
-		if connectionPath == "" {
-			if err = create(); err != nil {
-				return LocalBridgeReply{Error: err.Error()}
+		network := func() (res attachResult) {
+			fail := func(err error) attachResult { return attachResult{fail: &LocalBridgeReply{Error: err.Error()}} }
+			client, err := localConfiguredClient(in.ConfigPath)
+			if err != nil {
+				return fail(err)
 			}
+			registration := map[string]any{"action": "register", "agent_name": in.AgentName}
+			if in.Purpose != "" {
+				registration["purpose"] = in.Purpose
+			}
+			if _, err = client.Call(callCtx, "messages", registration); err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.Code == "unknown_tool" {
+					return attachResult{fail: &LocalBridgeReply{Error: "AgentWorks at " + client.baseURL + " does not expose agent messaging. Sign in to an updated server with agentworks --server SERVER login, then retry attach."}}
+				}
+				return fail(err)
+			}
+			res.connectionPath = connectionPath
+			create := func() error {
+				cfg, e := client.CreateAgentConnection(callCtx, in.AgentName)
+				if e != nil {
+					return e
+				}
+				res.connectionPath = filepath.Join(connectionDir, liveHash(cfg.Server, in.AgentName, in.SessionID, time.Now().String())+".json")
+				if e = SaveConfig(res.connectionPath, cfg); e != nil {
+					_ = client.RevokeOAuth(callCtx, cfg.RefreshToken)
+					return e
+				}
+				res.newConnection = true
+				return nil
+			}
+			if res.connectionPath == "" {
+				if err = create(); err != nil {
+					return fail(err)
+				}
+			}
+			client, err = localConfiguredClient(res.connectionPath)
+			if err != nil {
+				return fail(err)
+			}
+			options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID}
+			a, err := client.AttachAgent(callCtx, options)
+			var apiErr *APIError
+			if err != nil && !res.newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {
+				// Re-login/expiry requires a new child from the currently approved
+				// parent, once. Never retry an ambiguous attachment write.
+				client, err = localConfiguredClient(in.ConfigPath)
+				if err == nil {
+					err = create()
+				}
+				if err == nil {
+					client, err = localConfiguredClient(res.connectionPath)
+				}
+				if err == nil {
+					a, err = client.AttachAgent(callCtx, options)
+				}
+			}
+			if err != nil {
+				if res.newConnection {
+					if cfg, e := LoadConfig(res.connectionPath); e == nil {
+						_ = client.RevokeOAuth(callCtx, cfg.RefreshToken)
+					}
+					_ = os.Remove(res.connectionPath)
+				}
+				return fail(err)
+			}
+			res.a, res.client = a, client
+			return res
 		}
-		client, err = localConfiguredClient(connectionPath)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+		b.mu.Unlock()
+		res := network()
+		b.mu.Lock()
+		held = time.Now() // the lock was free while the server calls ran
+		if res.fail != nil {
+			return *res.fail
 		}
-
-		options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID}
-		a, err := client.AttachAgent(callCtx, options)
-		var apiErr *APIError
-		if err != nil && !newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {
-			// Re-login/expiry requires a new child from the currently approved
-			// parent, once. Never retry an ambiguous attachment write.
-			client, err = localConfiguredClient(in.ConfigPath)
-			if err == nil {
-				err = create()
-			}
-			if err == nil {
-				client, err = localConfiguredClient(connectionPath)
-			}
-			if err == nil {
-				a, err = client.AttachAgent(callCtx, options)
-			}
-		}
-		if err != nil {
+		a, connectionPath, newConnection, client := res.a, res.connectionPath, res.newConnection, res.client
+		undo := func() {
 			if newConnection {
 				if cfg, e := LoadConfig(connectionPath); e == nil {
-					_ = client.RevokeOAuth(callCtx, cfg.RefreshToken)
+					if c, e2 := localConfiguredClient(connectionPath); e2 == nil {
+						_ = c.RevokeOAuth(callCtx, cfg.RefreshToken)
+					}
 				}
 				_ = os.Remove(connectionPath)
 			}
-			return LocalBridgeReply{Error: err.Error()}
 		}
+		if b.closed {
+			undo()
+			return LocalBridgeReply{Error: "local bridge stopping"}
+		}
+		// Another chat may have taken the name while the lock was released.
+		for k, other := range b.sessions {
+			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == in.AgentName && !localDifferentNetwork(other.ParentConfigPath, effectiveConfig) {
+				undo()
+				return LocalBridgeReply{Error: "agent:" + in.AgentName + " is attached to another chat; detach it there first"}
+			}
+		}
+		var err error
 		next := &localSession{OwnCLI: in.OwnAttach, SetupPending: in.Setup, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
@@ -1463,6 +1518,26 @@ func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMes
 
 // Local maintenance checks process fences and compacts the journal. It never
 // polls an inbox or attaches a new process. Saved identities survive shutdown.
+// attachGate lets one attach per chat run at a time; a second waits up to d for the first.
+func (b *localBridge) attachGate(key string, d time.Duration) (release func(), ok bool) {
+	b.attachMu.Lock()
+	if b.attaching == nil {
+		b.attaching = map[string]chan struct{}{}
+	}
+	gate := b.attaching[key]
+	if gate == nil {
+		gate = make(chan struct{}, 1)
+		b.attaching[key] = gate
+	}
+	b.attachMu.Unlock()
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, true
+	case <-time.After(d):
+		return nil, false
+	}
+}
+
 // localBridgeLockBudget is how long a request waits for the bridge before it answers "still
 // connecting"; it is shorter than a hook's own limit so the person sees a clear message.
 const localBridgeLockBudget = 5 * time.Second
