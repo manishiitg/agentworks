@@ -162,7 +162,7 @@ func knowledgebaseEnsureDefaultFolder(ctx context.Context, service *knowledgebas
 		return nil
 	}
 	for _, user := range directory.Users {
-		if user.Admin && !user.Disabled {
+		if roleForRecord(&user) == UserRoleAdmin && !user.Disabled {
 			admin := knowledgebase.Principal{IdentityID: user.ID, IsAdmin: true}
 			admin.Recheck = func(ctx context.Context) error {
 				live, err := loadUserDirectory()
@@ -171,7 +171,7 @@ func knowledgebaseEnsureDefaultFolder(ctx context.Context, service *knowledgebas
 				}
 				if live != nil {
 					for _, current := range live.Users {
-						if current.ID == user.ID && current.Admin && !current.Disabled {
+						if current.ID == user.ID && roleForRecord(&current) == UserRoleAdmin && !current.Disabled {
 							return ctx.Err()
 						}
 					}
