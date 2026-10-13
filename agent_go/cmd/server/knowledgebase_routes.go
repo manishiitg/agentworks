@@ -103,12 +103,19 @@ func knowledgebaseService() (*knowledgebase.Service, error) {
 		return nil, err
 	}
 	knowledgebaseInstance.Lock()
-	defer knowledgebaseInstance.Unlock()
-	if knowledgebaseInstance.service == nil || !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
-		if knowledgebaseInstance.service != nil {
-			_ = knowledgebaseInstance.service.Close()
-			knowledgebaseInstance.service = nil
+	if knowledgebaseInstance.service != nil && !sameKnowledgebaseConfig(knowledgebaseInstance.config, config) {
+		// Drain without holding the cache lock: an in-flight host callback may
+		// consult this cache. The root lease refuses a second writer meanwhile.
+		previous := knowledgebaseInstance.service
+		knowledgebaseInstance.service = nil
+		knowledgebaseInstance.Unlock()
+		if err := previous.Close(); err != nil {
+			return nil, fmt.Errorf("close previous Brain engine: %w", err)
 		}
+		return knowledgebaseService()
+	}
+	defer knowledgebaseInstance.Unlock()
+	if knowledgebaseInstance.service == nil {
 		if err := moveBrainNotesIntoDocuments(filepath.Join(config.Root, "live"), config.LiveRoot); err != nil {
 			return nil, fmt.Errorf("move Brain's notes into %s: %w", brainFolderName, err)
 		}
