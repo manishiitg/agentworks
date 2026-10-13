@@ -289,7 +289,7 @@ func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedu
 			payload.Caller = triggerCaller{Type: triggerCallerUser, ID: payload.User}
 		}
 		liveSchedule, err := findWorkflowFunctionTrigger(live, payload.Function)
-		if payload.Caller.ID == "" || err != nil || !workflowFunctionCallerAllowed(liveSchedule.Function, payload.Caller) {
+		if payload.Caller.ID == "" || err != nil || !relayFunctionCallerAllowed(live, liveSchedule.Function, payload.Caller) {
 			return nil, fmt.Errorf("capacity resume caller is no longer allowed")
 		}
 		access := workflowAccessForManifest(principalClaims(payload.Caller.ID), live)

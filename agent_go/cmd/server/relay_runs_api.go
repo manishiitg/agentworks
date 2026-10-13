@@ -152,7 +152,7 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 	}
 	caller := triggerCaller{Type: triggerCallerUser, ID: claims.UserID}
 	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, request.Function)
-	if liveErr != nil || !workflowFunctionCallerAllowed(liveSched.Function, caller) {
+	if liveErr != nil || !draft && !relayFunctionCallerAllowed(manifest, liveSched.Function, caller) || draft && !workflowFunctionCallerAllowed(liveSched.Function, caller) {
 		http.Error(w, "Relay function not found", http.StatusNotFound)
 		return
 	}

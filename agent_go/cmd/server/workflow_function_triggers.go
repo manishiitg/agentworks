@@ -230,6 +230,19 @@ func workflowFunctionCallerAllowed(spec *WorkflowFunctionSpec, caller triggerCal
 	return false
 }
 
+// relayFunctionCallerAllowed is workflowFunctionCallerAllowed for a Relay's
+// PUBLISHED versions: anyone with access to the Relay (a product member in Run
+// mode) may run the whole published Relay, so the per-function allow-list only
+// narrows plain function callers (a workflow, a Crew or a user without access).
+// Draft tests never use it.
+func relayFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSpec, caller triggerCaller) bool {
+	if workflowFunctionCallerAllowed(spec, caller) {
+		return true
+	}
+	return live != nil && live.Kind == "relay" && strings.EqualFold(caller.Type, triggerCallerUser) && caller.ID != "" &&
+		workflowAccessForManifest(principalClaims(caller.ID), live) != WorkflowAccessNone
+}
+
 // workflowFunctionArgs checks call arguments against the function's inputs
 // and turns them into the run's variables and group. Unknown, missing or
 // mistyped inputs fail before anything runs.
@@ -367,7 +380,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		if liveErr != nil {
 			return "", internalTriggerDeliveryResult{}, liveErr
 		}
-		if !workflowFunctionCallerAllowed(liveSchedule.Function, call.Caller) {
+		if !call.draftRelay && !relayFunctionCallerAllowed(manifest, liveSchedule.Function, call.Caller) || call.draftRelay && !workflowFunctionCallerAllowed(liveSchedule.Function, call.Caller) {
 			return liveSchedule.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, call.Function)
 		}
 		if !call.draftRelay {

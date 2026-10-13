@@ -138,7 +138,10 @@ func TestRelayRevokedUserCannotPollOrReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{scheduler: &SchedulerService{stateStore: store}}
-	for _, method := range []string{"GET", "POST"} {
+	// A product member may run the published Relay whatever the function
+	// allow-list says (TestRelayFunctionCallerAllowedForProductMembers), so only
+	// reading the run is checked here.
+	for _, method := range []string{"GET"} {
 		url := "/api/relays/" + m.ID + "/runs"
 		if method == "GET" {
 			url += "/" + runID
@@ -152,11 +155,8 @@ func TestRelayRevokedUserCannotPollOrReplay(t *testing.T) {
 		} else {
 			api.handleStartRelayRun(out, req)
 		}
-		// Starting a run needs the function grant; reading a run needs only access to the Relay (one company per server).
-		want := 404
-		if method == "GET" {
-			want = 200
-		}
+		// Reading a run needs only access to the Relay (one company per server).
+		want := 200
 		if out.Code != want {
 			t.Fatalf("revoked %s got %d: %s", method, out.Code, out.Body.String())
 		}
@@ -307,5 +307,24 @@ func TestRelayReaderRunsUseOwnerCredentials(t *testing.T) {
 	secrets := env.api.loadSelectedSecrets(context.Background(), sctx.OwnerUserID, release, []string{"TOKEN"})
 	if len(secrets) != 1 || secrets[0].Value != "owner-value" {
 		t.Fatalf("owner secret resolution: %+v", secrets)
+	}
+}
+
+// Run people (product members) may run the whole PUBLISHED Relay; the
+// per-function allow-list only narrows callers who have no access to it.
+func TestRelayFunctionCallerAllowedForProductMembers(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"member","username":"member"},{"id":"stranger","username":"stranger"}]}`)
+	m := NewWorkflowManifest("Members run")
+	m.Kind, m.CreatedBy = "relay", "owner"
+	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"member"}}
+	spec := &WorkflowFunctionSpec{Name: "process", AllowedCallers: []triggerCaller{{Type: triggerCallerCrew, ID: "sde", ProfileID: "work"}}}
+	for id, want := range map[string]bool{"owner": true, "member": true, "stranger": false} {
+		if got := relayFunctionCallerAllowed(m, spec, triggerCaller{Type: triggerCallerUser, ID: id}); got != want {
+			t.Errorf("user %s allowed=%v, want %v", id, got, want)
+		}
+	}
+	if relayFunctionCallerAllowed(m, spec, triggerCaller{Type: triggerCallerCrew, ID: "other", ProfileID: "work"}) {
+		t.Error("a Crew that is not on the allow-list was allowed")
 	}
 }

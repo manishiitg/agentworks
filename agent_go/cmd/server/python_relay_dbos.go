@@ -42,7 +42,7 @@ func authorizePythonRelayInvocation(ctx context.Context, sctx *ScheduleContext) 
 		payload.Caller = triggerCaller{Type: triggerCallerUser, ID: payload.User}
 	}
 	trigger, err := findWorkflowFunctionTrigger(live, payload.Function)
-	if payload.Caller.ID == "" || err != nil || trigger.ID != sctx.Schedule.ID || !workflowFunctionCallerAllowed(trigger.Function, payload.Caller) {
+	if payload.Caller.ID == "" || err != nil || trigger.ID != sctx.Schedule.ID || !relayFunctionCallerAllowed(live, trigger.Function, payload.Caller) {
 		return fmt.Errorf("Relay invocation caller is no longer allowed")
 	}
 	if payload.Caller.Type == triggerCallerUser {
