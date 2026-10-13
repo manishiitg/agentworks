@@ -214,6 +214,14 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 			Metadata struct {
 				Width  int `json:"deviceWidth"`
 				Height int `json:"deviceHeight"`
+				// Screencast geometry beyond the page size: where the page sits
+				// inside the captured surface. Viewers need it to map clicks
+				// when the surface letterboxes the page (PLAT-776); it is
+				// carried through, never trusted for ownership or scope.
+				OffsetTop       float64 `json:"offsetTop,omitempty"`
+				PageScaleFactor float64 `json:"pageScaleFactor,omitempty"`
+				ScrollOffsetX   float64 `json:"scrollOffsetX,omitempty"`
+				ScrollOffsetY   float64 `json:"scrollOffsetY,omitempty"`
 			} `json:"metadata"`
 			Tabs []struct {
 				ID     string `json:"tabId"`
@@ -238,6 +246,16 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 			bytes, err := base64.StdEncoding.DecodeString(m.Data)
 			if err != nil || len(bytes) < 3 || bytes[0] != 0xff || bytes[1] != 0xd8 || bytes[2] != 0xff {
 				return
+			}
+			// Implausible screencast geometry is dropped, not forwarded: the
+			// viewer falls back to whole-frame mapping without it.
+			if m.Metadata.PageScaleFactor < 0.1 || m.Metadata.PageScaleFactor > 10 {
+				m.Metadata.PageScaleFactor = 0
+			}
+			for _, offset := range []*float64{&m.Metadata.OffsetTop, &m.Metadata.ScrollOffsetX, &m.Metadata.ScrollOffsetY} {
+				if *offset < -16384 || *offset > 16384 {
+					*offset = 0
+				}
 			}
 			lastFrame = time.Now()
 			clean, _ := json.Marshal(map[string]interface{}{"type": "frame", "data": m.Data, "metadata": m.Metadata})

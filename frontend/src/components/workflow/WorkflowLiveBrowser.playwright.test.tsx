@@ -437,6 +437,56 @@ it('places clicks by the frame that is painted, not by the page size the stream 
   expect(mapToViewport(350, 140, rect, page).y).toBeCloseTo(40, 3)
 })
 
+it('maps clicks through the page rect inside a letterboxed screencast frame', () => {
+  // The reporter's shape (PLAT-776): a 1280x720 page sits inside a 1600x1010 capture surface, 145 page units below
+  // its top, painted into a 716x630 panel. Whole-frame mapping puts a top click about 90 page units low; mapping
+  // through the in-frame page rect (offsetTop/pageScaleFactor from the stream) lands it on the button.
+  const rect = { left: 0, top: 0, width: 716, height: 630 }
+  const page = { width: 1280, height: 720 }
+  const frame = { width: 1600, height: 1010 }
+  const screencast = { offsetTop: 145, pageScaleFactor: 1 }
+  expect(mapToViewport(358, 172, rect, page, frame).y).toBeGreaterThan(100)
+  expect(mapToViewport(358, 172, rect, page, frame, screencast).x).toBeCloseTo(640, 0)
+  expect(mapToViewport(358, 172, rect, page, frame, screencast).y).toBeCloseTo(40, 0)
+  expect(mapToViewport(358, 463, rect, page, frame, screencast).y).toBeCloseTo(691, 0)
+  // The same surface at retina scale (factor 2, doubled offsets) maps identically.
+  const retina = { offsetTop: 145, pageScaleFactor: 2 }
+  expect(mapToViewport(358, 172, rect, page, { width: 3200, height: 2020 }, retina).y).toBeCloseTo(40, 0)
+})
+
+it('coalesces mouse moves behind a press and maps through the in-frame page rect', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
+  // Clicking the empty stage before the first frame says so instead of vanishing.
+  const stage = [...host.querySelectorAll('div')].find(div => div.className.includes('justify-center') && div.className.includes('flex-1'))!
+  await act(async () => { stage.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+  expect(host.textContent).toContain('Waiting for the page…')
+  // A frame arrives with the page letterboxed inside the surface (PLAT-776 geometry above).
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'frame', data: '/9j/', metadata: { deviceWidth: 1280, deviceHeight: 720, offsetTop: 145, pageScaleFactor: 1 } }) }) })
+  const painted = host.querySelector('img')!
+  Object.defineProperty(painted, 'naturalWidth', { configurable: true, value: 1600 })
+  Object.defineProperty(painted, 'naturalHeight', { configurable: true, value: 1010 })
+  painted.getBoundingClientRect = () => ({ left: 0, top: 0, width: 716, height: 630 } as DOMRect)
+  ws.send.mockClear()
+  await act(async () => {
+    painted.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 100, clientY: 100 }))
+    painted.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 200, clientY: 150 }))
+    painted.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 358, clientY: 172 }))
+    painted.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 358, clientY: 172 }))
+  })
+  const sent = ws.send.mock.calls.map(([value]) => JSON.parse(value)).filter(message => message.type === 'input_mouse')
+  const moves = sent.filter(message => message.eventType === 'mouseMoved')
+  const press = sent.at(-1)
+  expect(moves.length).toBeLessThanOrEqual(2)
+  expect(sent.indexOf(press)).toBeGreaterThan(sent.indexOf(moves.at(-1)!))
+  expect(press.eventType).toBe('mousePressed')
+  expect(press.x).toBeCloseTo(640, 0)
+  expect(press.y).toBeCloseTo(40, 0)
+  expect(moves.at(-1)!.y).toBeCloseTo(40, 0)
+})
+
 it('lets the user start a scoped browser before an agent opens one', async () => {
  api.get.mockResolvedValue({ data: { sessions: [] } })
  const { host } = await mountBrowser()

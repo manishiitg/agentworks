@@ -130,10 +130,16 @@ func TestPlaywrightLiveOwnerScopeWatchOnlyAndCleanup(t *testing.T) {
 		}
 	}
 	// Only viewport fields survive the relay; unrelated producer payload is dropped.
-	_ = producer.WriteJSON(map[string]interface{}{"type": "frame", "data": "/9j/", "metadata": map[string]int{"deviceWidth": 640, "deviceHeight": 480}, "secret": "must-not-forward"})
+	// Screencast geometry (where the page sits inside the captured surface)
+	// survives too, so viewers can map clicks through it (PLAT-776).
+	_ = producer.WriteJSON(map[string]interface{}{"type": "frame", "data": "/9j/", "metadata": map[string]interface{}{"deviceWidth": 640, "deviceHeight": 480, "offsetTop": 120.5, "pageScaleFactor": 2, "scrollOffsetY": 33}, "secret": "must-not-forward"})
 	frame := readPlaywrightType(t, viewer, "frame")
 	if frame["data"] != "/9j/" || frame["secret"] != nil {
 		t.Fatalf("invalid relay: %v", frame)
+	}
+	geometry, _ := frame["metadata"].(map[string]interface{})
+	if geometry["offsetTop"] != 120.5 || geometry["pageScaleFactor"] != float64(2) || geometry["scrollOffsetY"] != float64(33) {
+		t.Fatalf("screencast geometry dropped: %v", frame)
 	}
 	req, _ := http.NewRequest("POST", server.URL+"/api/browser/live/"+id+"/recording?workspace_path=Workflow/test", strings.NewReader(`{"action":"start"}`))
 	req.Header.Set("X-Test-User", "alice")

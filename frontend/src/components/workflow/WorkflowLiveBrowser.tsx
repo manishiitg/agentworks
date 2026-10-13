@@ -36,25 +36,50 @@ export const BROWSER_RECONNECT_ATTEMPTS = 5
 export function browserReconnectDelayMs(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, 15000)
 }
+/** Screencast geometry beyond the page size: where the page sits inside the captured surface (PLAT-776). */
+export type ScreencastGeometry = { offsetTop?: number; pageScaleFactor?: number; scrollOffsetX?: number; scrollOffsetY?: number }
+
 /**
  * Maps a pointer position over the object-contain frame to page coordinates. The painted area is worked out from the
  * frame image's own size when it is known (`frame`), not from the page size the stream reports: when the two shapes
  * differ, centring and scaling by the reported size misplaces every click, by nothing at the middle of the page and
  * more toward its edges (a 2:1 frame in a 16:9 page: a click at the top landed about 70 px low, server B 2026-10-09,
  * PLAT-776). Without a frame size the page size is used, as before.
+ *
+ * When the stream reports screencast geometry (`screencast`), the captured surface can itself letterbox the page
+ * (a device-metrics page centred in a larger window surface): the page then occupies only part of the frame, at
+ * `offsetTop` (in page units) from the surface top and centred horizontally, scaled by `pageScaleFactor`. Mapping
+ * through that in-frame page rect is exact for such frames; without plausible geometry the whole-frame mapping
+ * above is used unchanged. Scroll offsets describe page scroll, which viewport coordinates already account for.
  */
-export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }, frame?: { width: number; height: number }) {
+export function mapToViewport(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }, frame?: { width: number; height: number }, screencast?: ScreencastGeometry) {
   const shown = frame && frame.width > 0 && frame.height > 0 ? frame : viewport
   const scale = Math.min(rect.width / shown.width, rect.height / shown.height)
   const offsetX = (rect.width - shown.width * scale) / 2
   const offsetY = (rect.height - shown.height * scale) / 2
+  const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value))
+  const frameX = (clientX - rect.left - offsetX) / scale
+  const frameY = (clientY - rect.top - offsetY) / scale
+  const factor = screencast?.pageScaleFactor
+  if (frame && factor && factor >= 0.1 && factor <= 10) {
+    // The page's rect inside the frame, in frame pixels.
+    const pageWidth = viewport.width * factor
+    const pageHeight = viewport.height * factor
+    if (pageWidth <= shown.width * 1.02 && pageHeight <= shown.height * 1.02) {
+      const pageX = (shown.width - pageWidth) / 2
+      const pageY = Math.max(0, (screencast.offsetTop ?? 0) * factor)
+      return {
+        x: clamp((frameX - pageX) / factor, viewport.width),
+        y: clamp((frameY - pageY) / factor, viewport.height),
+      }
+    }
+  }
   // One painted pixel is this many page units on each axis (exactly 1 when the frame is the page).
   const toPageX = viewport.width / shown.width
   const toPageY = viewport.height / shown.height
-  const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value))
   return {
-    x: clamp((clientX - rect.left - offsetX) / scale * toPageX, viewport.width),
-    y: clamp((clientY - rect.top - offsetY) / scale * toPageY, viewport.height),
+    x: clamp(frameX * toPageX, viewport.width),
+    y: clamp(frameY * toPageY, viewport.height),
   }
 }
 const PAGE_SIZES = [
@@ -109,6 +134,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const selectedBrowser = useRef('')
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [frame, setFrame] = useState('')
+  const [waitingHint, setWaitingHint] = useState(false)
   const [lastPlaywrightFrame, setLastPlaywrightFrame] = useState<{ workspace: string; session: string; frame: string } | null>(null)
   const [replayURL, setReplayURL] = useState('')
   const replayScope = useRef<{ workspace: string; ids: Set<string>; cleanup?: ReturnType<typeof setTimeout> } | null>(null)
@@ -151,6 +177,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const pendingTab = useRef('')
   const socket = useRef<WebSocket | null>(null)
   const viewport = useRef({ width: 1280, height: 720 })
+  const screencast = useRef<ScreencastGeometry | undefined>(undefined)
   const screen = useRef<HTMLImageElement>(null)
   const keyboardTarget = useRef<HTMLTextAreaElement>(null)
   const [browserPlatform, setBrowserPlatform] = useState('linux')
@@ -265,6 +292,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
 
   useEffect(() => {
     pendingTab.current = ''
+    screencast.current = undefined
     setFrame(''); setTabs([]); setConnected(false); setControlling(false); setError('')
     if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
     if (reconnectAttempt.current === 0) setLinkState('starting')
@@ -285,6 +313,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
       try {
         const message = JSON.parse(event.data)
         if (message.type === 'frame' && typeof message.data === 'string') {
+          setWaitingHint(false)
           const nextFrame = `data:image/${message.data.startsWith('iVBOR') ? 'png' : 'jpeg'};base64,${message.data}`
           receivedFrame = true
           reconnectAttempt.current = 0
@@ -293,6 +322,14 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
           if (session.startsWith('pw-')) setLastPlaywrightFrame({ workspace: workspacePath, session, frame: nextFrame })
           if (message.metadata?.deviceWidth > 0 && message.metadata?.deviceHeight > 0) {
             viewport.current = { width: message.metadata.deviceWidth, height: message.metadata.deviceHeight }
+          }
+          if (message.metadata && (message.metadata.pageScaleFactor > 0 || message.metadata.offsetTop > 0)) {
+            screencast.current = {
+              offsetTop: message.metadata.offsetTop,
+              pageScaleFactor: message.metadata.pageScaleFactor,
+              scrollOffsetX: message.metadata.scrollOffsetX,
+              scrollOffsetY: message.metadata.scrollOffsetY,
+            }
           }
         } else if (message.type === 'tabs' && Array.isArray(message.tabs)) {
           setTabs(message.tabs)
@@ -455,7 +492,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
       if (!rect.width || !rect.height || ws?.readyState !== WebSocket.OPEN) return
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.current.height : 1
       ws.send(JSON.stringify({ type: 'input_mouse', eventType: 'mouseWheel',
-        ...mapToViewport(event.clientX, event.clientY, rect, viewport.current, { width: image.naturalWidth, height: image.naturalHeight }),
+        ...mapToViewport(event.clientX, event.clientY, rect, viewport.current, { width: image.naturalWidth, height: image.naturalHeight }, screencast.current),
         deltaX: event.deltaX * unit, deltaY: event.deltaY * unit,
       }))
     }
@@ -475,14 +512,42 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     const rect = screen.current?.getBoundingClientRect()
     if (!rect || !rect.width || !rect.height) return { x: 0, y: 0 }
     const image = screen.current
-    return mapToViewport(clientX, clientY, rect, viewport.current, image ? { width: image.naturalWidth, height: image.naturalHeight } : undefined)
+    return mapToViewport(clientX, clientY, rect, viewport.current, image ? { width: image.naturalWidth, height: image.naturalHeight } : undefined, screencast.current)
   }
+  // mouseMoved fires per pointer step; forwarding every one floods the single
+  // upstream loop and delays the press behind them (PLAT-776). Keep only the
+  // latest position, send at most one move per interval, and always flush the
+  // pending move before a press or release so order is preserved.
+  const pendingMove = useRef<{ x: number; y: number; button: string } | null>(null)
+  const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function flushMove() {
+    if (moveTimer.current) { clearTimeout(moveTimer.current); moveTimer.current = null }
+    if (!pendingMove.current) return
+    const move = pendingMove.current
+    pendingMove.current = null
+    send({ type: 'input_mouse', eventType: 'mouseMoved', ...move, clickCount: 1 })
+  }
+  function queueMove(position: { x: number; y: number }, button: string) {
+    pendingMove.current = { ...position, button }
+    if (moveTimer.current) return
+    flushMove()
+    moveTimer.current = setTimeout(() => { moveTimer.current = null; flushMove() }, 50)
+  }
+  useEffect(() => () => { if (moveTimer.current) clearTimeout(moveTimer.current) }, [])
   function mouse(event: MouseEvent<HTMLImageElement>, eventType: string) {
     if (!controlling) return
-    if (eventType === 'mousePressed') setClipboardMenu(null)
+    // No frame yet: the page size and painted area are still unknown, so any
+    // coordinate would be a guess against the 1280x720 default (PLAT-776).
+    if (!frame) return
     event.preventDefault()
+    if (eventType === 'mouseMoved') {
+      queueMove(point(event.clientX, event.clientY), !event.buttons ? 'none' : ['left', 'middle', 'right'][event.button] || 'left')
+      return
+    }
+    if (eventType === 'mousePressed') setClipboardMenu(null)
     if (eventType === 'mousePressed') keyboardTarget.current?.focus()
-    send({ type: 'input_mouse', eventType, ...point(event.clientX, event.clientY), button: eventType === 'mouseMoved' && !event.buttons ? 'none' : ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
+    flushMove()
+    send({ type: 'input_mouse', eventType, ...point(event.clientX, event.clientY), button: ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
   }
   function keyboard(event: KeyboardEvent<HTMLTextAreaElement>, eventType: string) {
     if (!controlling) return
@@ -690,7 +755,7 @@ Review this browser demonstration. Inspect its recorded evidence and test errors
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.pasteFromClipboard() }}>Paste</button>
         </div>}
         {retainedFrame && <span className="pointer-events-none absolute bottom-3 right-3 rounded bg-background/90 px-3 py-1 text-xs shadow">{completed ? 'Completed' : 'Disconnected'} · Last frame</span>}
-      </div> : showingEmptyContent ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{typeof emptyContent === 'function' ? emptyContent({ startBrowser, startingBrowser, canStart: canWrite }) : emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground">{centered}</div>}
+      </div> : showingEmptyContent ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{typeof emptyContent === 'function' ? emptyContent({ startBrowser, startingBrowser, canStart: canWrite }) : emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground" onMouseDown={() => { if (controlling) setWaitingHint(true) }}>{waitingHint && controlling ? 'Waiting for the page…' : centered}</div>}
       {(readOnly && !minimal) || session === 'shared-browser' ? <p className="live-browser-footer shrink-0 border-t border-border px-3 py-1 text-[11px] text-muted-foreground">{readOnly && !minimal ? 'Playwright test · Watch-only. Video replay is recorded automatically.' : 'Shared browser · everyone uses the same tabs and sign-ins. Coordinate before making changes.'}</p> : null}
     </section>
   )
