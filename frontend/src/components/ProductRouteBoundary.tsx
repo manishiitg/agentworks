@@ -3,7 +3,7 @@ import { deploymentDefaultProductSurface, enabledProductSurfaces, intersectAllow
 import { waitForChatStoreHydration } from '../stores/useChatStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { isLegacyAppPath, parseProductRoute, productRoutePath } from '../utils/productRoutes'
+import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, productRoutePath } from '../utils/productRoutes'
 import { observeProductHistory, readProductNavigation } from '../utils/productUrlNavigation'
 import { cancelPendingWorkflowNavigation } from '../utils/workflowNavigation'
 import { ProductUnavailable, resolveProductRoute } from '../utils/resolveProductRoute'
@@ -36,7 +36,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     let route = parseProductRoute(requested)
     const enabled = enabledProductSurfaces()
     const allowed = intersectAllowedProductSurfaces(enabled, allowedProducts)
-    if (route === undefined && isLegacyAppPath(requested) && allowed.length) {
+    if (route === undefined && isLegacyAppPath(requested) && LEGACY_APP_ROOTS.has(legacyAppRoot(requested)) && allowed.length) {
       window.history.replaceState({}, '', '/')
       const preferred = deploymentDefaultProductSurface()
       route = { surface: allowed.includes(preferred) ? preferred : allowed[0] }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { isLegacyAppPath, parseProductRoute, productReturnPath, productRoutePath, PRODUCT_PATHS, PRODUCT_ROUTE_ALIASES } from './productRoutes'
+import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, productReturnPath, productRoutePath, PRODUCT_PATHS, PRODUCT_ROUTE_ALIASES } from './productRoutes'
 
 describe('shareable product routes', () => {
   it('round trips every surface and the resource/view contract', () => {
@@ -21,6 +21,23 @@ describe('shareable product routes', () => {
     expect(isLegacyAppPath('/chat/old-bookmark')).toBe(true)
     expect(isLegacyAppPath('/code/projects/example/extra')).toBe(false)
     expect(isLegacyAppPath('/%252fexample.com/code')).toBe(false)
+  })
+
+  it('keeps every real top-level path resolving', () => {
+    // Product roots and resources parse as routes.
+    for (const path of [...Object.values(PRODUCT_PATHS), '/workflows', '/bullpen/connect', '/goals', '/crew', '/code', '/brain', '/vault', '/relays', '/llm-gateway']) {
+      expect(parseProductRoute(path), path).toBeTruthy()
+    }
+    // Old app pages keep the home fallback through the boundary.
+    for (const root of ['settings', 'chat', 'users', 'providers', 'schedules']) {
+      expect(LEGACY_APP_ROOTS.has(legacyAppRoot(`/${root}`)), root).toBe(true)
+    }
+    // Auth and share paths are handled before the product boundary; they
+    // must never be mistaken for legacy pages either.
+    for (const path of ['/login', '/auth/callback', '/oauth/consent', '/oauth/vault', '/oauth/cli', '/report', '/file', '/folder']) {
+      expect(LEGACY_APP_ROOTS.has(legacyAppRoot(path)), path).toBe(false)
+    }
+    expect(LEGACY_APP_ROOTS.has(legacyAppRoot('/no-such-place'))).toBe(false)
   })
 
   it('refuses encoded redirect escapes, traversal, malformed resources and unknown routes', () => {

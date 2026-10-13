@@ -90,6 +90,15 @@ export function currentProductRoute(): ProductRoute | null | undefined {
   return typeof window === 'undefined' ? null : parseProductRoute(window.location.pathname + window.location.search)
 }
 
+/** Roots the old app actually served; only these keep the home fallback. */
+export const LEGACY_APP_ROOTS = new Set(['settings', 'chat', 'users', 'providers', 'schedules'])
+
+export function legacyAppRoot(value: string): string {
+  const safe = safeRelativeAppPath(value)
+  if (!safe) return ''
+  try { return decodeURIComponent(new URL(safe, 'https://agentworks.invalid').pathname.slice(1).split('/')[0]) } catch { return '' }
+}
+
 /** Old app paths were ignored; retain that fallback only for safe unknown roots. */
 export function isLegacyAppPath(value: string): boolean {
   const safe = safeRelativeAppPath(value)

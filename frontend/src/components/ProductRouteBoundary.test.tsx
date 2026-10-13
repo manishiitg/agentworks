@@ -62,6 +62,13 @@ describe('protected deep-link boundary', () => {
       expect(host.querySelector('[role=alert]')?.textContent).toBe(deniedText)
       expect(window.location.pathname).toBe('/code/projects/missing')
 
+      window.history.replaceState({}, '', '/no-such-place')
+      await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
+      expect(host.querySelector('[role=alert]')?.textContent).toContain('not available')
+      expect(host.querySelector('a')?.textContent).toBe('Home')
+      expect(window.location.pathname).toBe('/no-such-place')
+      expect(mounted).not.toHaveBeenCalled()
+
       window.history.replaceState({}, '', '/sparkquill')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
       expect(host.textContent).toContain('not enabled on this server')
