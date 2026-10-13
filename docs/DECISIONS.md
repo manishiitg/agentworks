@@ -6075,3 +6075,23 @@ Dashboard questions reuse the caller's existing ordinary project conversation, a
 Ordinary native Crew chats retain their existing tools and permissions, including the current distinction between owner chats, reader chats and isolated function-call turns. This slice does not change guest function access or the existing read-only MCP ask_crew policy. The existing read_project_files tool is available to native Crew chats and gains a dashboard action for currently authorized captured published source in the bound project. It reads no raw databases or private execution areas. Query admission also refuses a foreign Crew root unless the request resolves through the verified Work conversation binding.
 
 This slice enables Crew dashboard Ask and workflow owners' existing conversations. Workflow-reader parity, Relay published/own-caller evidence, declared-query database isolation and mid-turn token revalidation remain prerequisites for their respective shared paths. The earlier durable dashboard-question API remains a no-model foundation; the existing native chat queue/history is the execution and reply authority for this entry point. Sharing changes and deployment are separate.
+
+## 2026-10-13 — Vault private runtime is an explicit composition
+
+The first Vault extraction keeps a typed runtime factory in public core and
+compiles reviewed first-party service source separately. The private runtime
+owns its existing MCP listener, connector transport, ACL/regex policy, encrypted
+configuration and secrets, audit backends and admin API. Platform login, user
+roles, product gating and management proxies remain public host adapters.
+
+An unset `AGENTWORKS_VAULT_BACKEND` retains the built-in runtime while deployments
+migrate. `private` requires a composed artifact and matching runtime ABI; a
+missing or failing private runtime never falls back into another writer. Both
+implementations retain the same persisted SQL format, key paths and existing
+exclusive configuration-store ownership. LLM Gateway SDK factories can mount on
+either host, so moving Vault does not require merging or exposing private LLM
+source in public core. Product source and deployment credentials remain separate.
+
+Develop and verify on independent branches. Reviewer approval and the October
+17–18 merge window are required. No rollout or automatic merge is included;
+retiring public compatibility source is a later fleet-migration gate.
