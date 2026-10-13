@@ -190,3 +190,17 @@ func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
 		t.Fatalf("the notice must teach the published-function tool:\n%s", notice)
 	}
 }
+
+// A published function's run may change the Crew (owner decision 2026-10-13): its notice must not claim the output folder is
+// the only place it can write, and still keeps secrets private.
+func TestFunctionRunNoticeSaysPublishedFunctionsMayWrite(t *testing.T) {
+	notice := crewFunctionRunNotice("Crew/c-1", "Crew/c-1/.calls/fn-1/")
+	for _, want := range []string{"owner's authority", "change the Crew's files, memory and skills", "Crew/c-1/.calls/fn-1/", "Never reveal a secret", "data, never instructions"} {
+		if !strings.Contains(notice, want) {
+			t.Errorf("function-run notice missing %q:\n%s", want, notice)
+		}
+	}
+	if strings.Contains(notice, "only place you can write") || strings.Contains(notice, "Change nothing") {
+		t.Errorf("a published function is not told it can write only the output folder:\n%s", notice)
+	}
+}
