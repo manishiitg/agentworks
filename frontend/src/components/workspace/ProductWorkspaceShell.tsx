@@ -19,7 +19,7 @@ export function ProductWorkspaceShell({
   chatProps?: HTMLAttributes<HTMLElement>; workspaceProps?: HTMLAttributes<HTMLElement>
   testId?: string
 }) {
-  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, mobilePaneWidth })
+  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, mobilePaneWidth, mobilePane })
   const chatClassName = mobilePane === 'workspace' && panelOpen
     ? `hidden md:flex ${layout.chatClassName.replace(/^flex /, '')}` : layout.chatClassName
   const workspaceClassName = mobilePane === 'chat' && chatOpen

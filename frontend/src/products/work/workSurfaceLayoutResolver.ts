@@ -9,6 +9,9 @@ export interface WorkSurfaceLayoutInput {
   mobilePreview?: boolean
   /** The phone column's width in px after the person dragged the rail in Mobile preview; absent keeps the phone-width default. */
   mobilePaneWidth?: number | null
+  /** Phone pane switch (Brain): below md only this pane is shown, so the grid
+   * must not reserve a row for the hidden one. Absent: panes stack. */
+  mobilePane?: 'chat' | 'workspace'
 }
 
 export interface WorkSurfaceLayout {
@@ -33,13 +36,17 @@ export interface WorkSurfaceLayout {
  * regions to content height, and freeze pane scrolling.
  */
 export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSurfaceLayout {
-  const { chatOpen, panelOpen, splitRatio, mobilePreview = false, mobilePaneWidth = null } = input
+  const { chatOpen, panelOpen, splitRatio, mobilePreview = false, mobilePaneWidth = null, mobilePane } = input
   const split = chatOpen && panelOpen
+  // With a phone pane switch, below md only the chosen pane shows: one
+  // content row, no reserved row for the hidden pane (Brain at 390 px left
+  // an empty ~400 px pane above the files). Without it, panes stack.
+  const singlePhonePane = split && Boolean(mobilePane)
 
   return {
     // Below md the two panes stack (chat above, workspace below) instead of
     // squeezing side by side into a ~60 px chat column (390 px live check).
-    gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 ${split ? 'grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)] md:[grid-template-columns:var(--work-split-columns)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`,
+    gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 ${split ? `${singlePhonePane ? 'grid-rows-[auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)]'} md:grid-rows-[auto_minmax(0,1fr)] md:[grid-template-columns:var(--work-split-columns)]` : 'grid-rows-[auto_minmax(0,1fr)]'}`,
     gridStyle: split
       ? ({ '--work-split-columns': mobilePreview
         ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
@@ -50,7 +57,7 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     chatClassName: `flex min-h-0 min-w-0 flex-col overflow-hidden bg-background col-start-1 row-start-2 ${panelOpen ? 'border-b border-border md:border-b-0 md:border-r' : ''}`,
     showDivider: split,
     showPanel: panelOpen,
-    panelClassName: `min-h-0 min-w-0 overflow-hidden bg-background ${chatOpen ? 'row-start-3 md:row-start-2 md:col-start-2' : 'row-start-2 col-start-1'}`,
+    panelClassName: `min-h-0 min-w-0 overflow-hidden bg-background ${chatOpen ? `${singlePhonePane ? 'row-start-2' : 'row-start-3'} md:row-start-2 md:col-start-2` : 'row-start-2 col-start-1'}`,
   }
 }
 
