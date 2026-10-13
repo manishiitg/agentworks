@@ -77,7 +77,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       </>}
     />}
     <div className="space-y-4 p-4">
-    <p className="text-xs leading-relaxed text-muted-foreground">Webhooks let outside systems (GitHub, CI) start work. Each one runs in the Crew's main chat or in its own continuing conversation. Other Crews, workflows and MCP/CLI tools call this Crew through Functions instead. {!deliveryHistory && onViewRuns && <button type="button" className="underline text-foreground" onClick={onViewRuns}>View delivery history</button>}</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">Webhooks let outside systems (GitHub, CI) start work. Each one runs in this {profileId === 'code' ? 'Code' : 'Crew'} project's main chat or in its own continuing conversation. Other projects, workflows and MCP/CLI tools call this project through Functions instead. {!deliveryHistory && onViewRuns && <button type="button" className="underline text-foreground" onClick={onViewRuns}>View delivery history</button>}</p>
     {workspacePath && <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onCounts={setGmailCounts} onAsk={onAsk ?? (message => sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message }).then(() => undefined))} />}
     {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {issued?.secret && <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">

@@ -25,7 +25,13 @@ export function SlackTokenHint({ kind }: { kind: 'bot' | 'app' }) {
   </>
 }
 
-export function SlackPermissionsChecklist() {
+export function SlackPermissionsChecklist({ directMessagesOnly = false }: { directMessagesOnly?: boolean }) {
+  const scopeGroups = directMessagesOnly
+    ? SLACK_REQUIRED_SCOPE_GROUPS.filter(group => group.label !== 'Read mentions and channel context')
+    : SLACK_REQUIRED_SCOPE_GROUPS
+  const optionalScopes = directMessagesOnly
+    ? SLACK_OPTIONAL_SCOPES.filter(item => item.scope !== 'chat:write.public')
+    : SLACK_OPTIONAL_SCOPES
   return (
     <section aria-label="Slack permissions and events" className="space-y-3 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
       <div>
@@ -33,16 +39,16 @@ export function SlackPermissionsChecklist() {
         <p className="mt-1">In your Slack app, open <b>OAuth &amp; Permissions → Bot Token Scopes</b> and add these required scopes:</p>
       </div>
       <ul className="space-y-2">
-        {SLACK_REQUIRED_SCOPE_GROUPS.map(group => (
+        {scopeGroups.map(group => (
           <li key={group.label}><b className="text-foreground">{group.label}:</b> {codeList(group.scopes)}</li>
         ))}
       </ul>
-      <p><b className="text-foreground">Optional bot scopes:</b> {SLACK_OPTIONAL_SCOPES.map((item, i) => <span key={item.scope}>{i > 0 && '; '}<Code>{item.scope}</Code> to {item.purpose}</span>)}.</p>
+      <p><b className="text-foreground">Optional bot scopes:</b> {optionalScopes.map((item, i) => <span key={item.scope}>{i > 0 && '; '}<Code>{item.scope}</Code> to {item.purpose}</span>)}.</p>
       <p><b className="text-foreground">App-Level Token:</b> add <Code>{SLACK_APP_TOKEN_SCOPE}</Code> under <b>Basic Information → App-Level Tokens</b> for Socket Mode.</p>
-      <p><b className="text-foreground">Required bot events:</b> under <b>Event Subscriptions → Subscribe to bot events</b>, add {codeList(SLACK_BOT_EVENTS)} and save. Enable Socket Mode first; leave Request URL empty.</p>
-      <p><b className="text-foreground">Direct messages (1:1 with the bot):</b> add the scopes {codeList(SLACK_DM_SCOPES)} and the event {codeList(SLACK_DM_EVENTS)}, and under <b>App Home</b> turn on the <b>Messages Tab</b> and tick <b>Allow users to send Slash commands and messages from the messages tab</b>. A DM runs with the sender's own AgentWorks permissions, matched by their Slack email; channels always run in Run mode.</p>
+      {!directMessagesOnly && <p><b className="text-foreground">Required bot events:</b> under <b>Event Subscriptions → Subscribe to bot events</b>, add {codeList(SLACK_BOT_EVENTS)} and save. Enable Socket Mode first; leave Request URL empty.</p>}
+      <p><b className="text-foreground">Direct messages (1:1 with the bot):</b> add the scopes {codeList(SLACK_DM_SCOPES)} and the event {codeList(SLACK_DM_EVENTS)}, and under <b>App Home</b> turn on the <b>Messages Tab</b> and tick <b>Allow users to send Slash commands and messages from the messages tab</b>. A DM runs with the sender's own AgentWorks permissions, matched by their Slack email{directMessagesOnly ? '.' : '; channels always run in Run mode.'}</p>
       {SLACK_INTERACTIVITY_REQUIRED && <p><b className="text-foreground">Interactivity:</b> turn on <b>Interactivity &amp; Shortcuts</b> so button clicks in the bot's replies reach it. With Socket Mode no Request URL is needed.</p>}
-      <p>Reinstall the Slack app after changing scopes. “Save &amp; test” checks tokens and granted scopes; confirm delivery with an @mention and a plain thread reply.</p>
+      <p>Reinstall the Slack app after changing scopes. “Save &amp; test” checks tokens and granted scopes; confirm delivery with {directMessagesOnly ? 'a direct message to the bot' : 'an @mention and a plain thread reply'}.</p>
     </section>
   )
 }
@@ -54,7 +60,7 @@ function codeList(items: readonly string[]) {
 // Create the Slack app from a ready-made manifest instead of setting scopes,
 // events and Socket Mode by hand. Generated from the same lists as the
 // checklist above.
-export function SlackManifestSetup({ defaultName, finalStep }: { defaultName?: string; finalStep: ReactNode }) {
+export function SlackManifestSetup({ defaultName, finalStep, directMessagesOnly = false }: { defaultName?: string; finalStep: ReactNode; directMessagesOnly?: boolean }) {
   const fallbackName = defaultName?.trim() || SLACK_DEFAULT_APP_NAME
   const [name, setName] = useState('')
   const [optional, setOptional] = useState<string[]>([])
@@ -82,7 +88,7 @@ export function SlackManifestSetup({ defaultName, finalStep }: { defaultName?: s
         <Input id="slack-manifest-name" type="text" value={name} maxLength={35} onChange={e => setName(e.target.value)} placeholder={fallbackName} className="h-8 text-xs" />
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
-        {SLACK_OPTIONAL_SCOPES.map(item => (
+        {SLACK_OPTIONAL_SCOPES.filter(item => !directMessagesOnly || item.scope !== 'chat:write.public').map(item => (
           <label key={item.scope} className="flex cursor-pointer items-center gap-1.5">
             <input
               type="checkbox"
@@ -108,7 +114,7 @@ export function SlackManifestSetup({ defaultName, finalStep }: { defaultName?: s
   )
 }
 
-export function SlackAppSetupSteps({ finalStep }: { finalStep: ReactNode }) {
+export function SlackAppSetupSteps({ finalStep, directMessagesOnly = false }: { finalStep: ReactNode; directMessagesOnly?: boolean }) {
   return (
     <details className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">
       <summary className="cursor-pointer select-none font-medium text-foreground">Where to get Slack tokens and set up the app by hand</summary>
@@ -123,7 +129,7 @@ export function SlackAppSetupSteps({ finalStep }: { finalStep: ReactNode }) {
           <b>Basic Information</b> → <b>App-Level Tokens</b> → <b>Generate Token and Scopes</b>. Add <Code>connections:write</Code> and copy the <Code>xapp-</Code> <b>App Token</b>. Then enable <b>Socket Mode</b>.
         </li>
         <li>
-          <b>Event Subscriptions</b> → enable and subscribe to the bot events {codeList(SLACK_BOT_EVENTS)}. All are required; leave the Request URL empty. For direct messages also add {codeList(SLACK_DM_EVENTS)}.
+          <b>Event Subscriptions</b> → enable and subscribe to the bot events {codeList(directMessagesOnly ? SLACK_DM_EVENTS : SLACK_BOT_EVENTS)}. All are required; leave the Request URL empty. {!directMessagesOnly && <>For direct messages also add {codeList(SLACK_DM_EVENTS)}.</>}
         </li>
         <li>
           For direct messages: <b>App Home</b> → turn on the <b>Messages Tab</b> and tick <b>Allow users to send Slash commands and messages from the messages tab</b>.

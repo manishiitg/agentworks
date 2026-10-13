@@ -370,7 +370,7 @@ function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction, d
             Open the app at <a href="https://api.slack.com/apps" target="_blank" rel="noreferrer" className="underline">api.slack.com/apps</a>, add anything missing below, then reinstall it to the workspace. <b>Test bot</b> reports what the installed token has.
           </p>
           <div className="mt-3">
-            <SlackPermissionsChecklist />
+            <SlackPermissionsChecklist directMessagesOnly={directMessagesOnly} />
           </div>
         </details>
       </FormSection>
@@ -379,9 +379,9 @@ function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction, d
 
   return (
     <FormSection title={own ? `Edit ${own.display_name}` : `Set up this ${noun}'s bot`} description={<>Create a Slack app for this {noun} and paste its two tokens. {inviteHint}</>}>
-      <SlackManifestSetup defaultName={slackConnName || slackAppDefaultName} finalStep={directMessagesOnly ? <>Save, then open a direct message with the bot in Slack.</> : <>Save, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
-      <SlackAppSetupSteps finalStep={directMessagesOnly ? <>Save below, then open a direct message with the bot in Slack.</> : <>Save below, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
-      <SlackPermissionsChecklist />
+      <SlackManifestSetup directMessagesOnly={directMessagesOnly} defaultName={slackConnName || slackAppDefaultName} finalStep={directMessagesOnly ? <>Save, then open a direct message with the bot in Slack.</> : <>Save, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
+      <SlackAppSetupSteps directMessagesOnly={directMessagesOnly} finalStep={directMessagesOnly ? <>Save below, then open a direct message with the bot in Slack.</> : <>Save below, then in Slack run <b>/invite @YourBot</b> in any channel and @mention it.</>} />
+      <SlackPermissionsChecklist directMessagesOnly={directMessagesOnly} />
       <div>
         <Label className="mb-2 block">Bot name</Label>
         <Input type="text" value={slackConnName} onChange={e => setSlackConnName(e.target.value)} disabled={!canManageWorkflowSlack} placeholder="e.g. Support bot" title={ownTitle} />
