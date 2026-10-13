@@ -322,6 +322,10 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 				fmt.Fprintf(o.stderr, "Could not switch the %s plugin source to %s; it keeps using the full repository for now.\n", update.Provider, pluginsRepo)
 			}
 		}
+		if update.Provider == "muse" {
+			updateMusePlugin(ctx, o)
+			continue
+		}
 		done := len(update.Auto) > 0
 		for _, args := range update.Auto {
 			step, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -342,4 +346,73 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 		}
 		fmt.Fprintf(o.stderr, "To update the %s plugin, run: %s\n", update.Provider, update.Manual)
 	}
+}
+
+// musePluginVersions reads Muse's "plugins list" (installed) and "plugins list --available" output:
+// one tab-separated line per plugin, "<id> <version> key=value ...". It returns the installed
+// AgentWorks plugin's version and whether it is enabled, and the version the marketplace offers.
+func musePluginVersions(installedList, availableList string) (installed string, enabled bool, offered string) {
+	for _, line := range strings.Split(installedList, "\n") {
+		if f := strings.Split(line, "\t"); len(f) >= 2 && f[0] == "agentworks-muse" {
+			installed, enabled = f[1], !strings.Contains(line, "enabled=false")
+		}
+	}
+	for _, line := range strings.Split(availableList, "\n") {
+		if f := strings.Split(line, "\t"); len(f) >= 2 && f[0] == "agentworks-muse@agentworks" {
+			offered = f[1]
+		}
+	}
+	return installed, enabled, offered
+}
+
+// updateMusePlugin brings an installed AgentWorks plugin in Muse to the version its marketplace
+// offers. Muse 1.4.4 keeps an installed marketplace plugin on its first snapshot, so a new version
+// means remove and install again; it is done only when the offered version differs. It never approves
+// the new hooks and tool server: that stays the person's step.
+func updateMusePlugin(ctx context.Context, o *options) {
+	run := func(args ...string) (string, error) {
+		step, cancel := context.WithTimeout(ctx, 90*time.Second)
+		defer cancel()
+		out, err := exec.CommandContext(step, "muse", args...).Output()
+		return string(out), err
+	}
+	manual := "muse plugins marketplace update agentworks && muse plugins remove agentworks-muse && muse plugins install agentworks-muse@agentworks, then approve it and restart Muse"
+	list, err := run("plugins", "list")
+	if err != nil {
+		fmt.Fprintf(o.stderr, "Could not read Muse's plugins. To update the Muse plugin, run: %s\n", manual)
+		return
+	}
+	if installed, _, _ := musePluginVersions(list, ""); installed == "" {
+		fmt.Fprintln(o.stderr, "The Muse plugin is not installed; nothing to update.")
+		return
+	}
+	if _, err = run("plugins", "marketplace", "update", "agentworks"); err != nil {
+		fmt.Fprintf(o.stderr, "Could not refresh the Muse plugin source. To update the Muse plugin, run: %s\n", manual)
+		return
+	}
+	available, err := run("plugins", "list", "--available")
+	installed, enabled, offered := musePluginVersions(list, available)
+	if err != nil || offered == "" {
+		fmt.Fprintf(o.stderr, "Could not read the Muse plugin version on offer. To update it, run: %s\n", manual)
+		return
+	}
+	if installed == offered {
+		fmt.Fprintf(o.stderr, "The Muse plugin is up to date (version %s).\n", installed)
+		return
+	}
+	if !enabled {
+		fmt.Fprintf(o.stderr, "The Muse plugin is turned off; version %s is on offer and it was left alone. Turn it on, then run agentworks update again.\n", offered)
+		return
+	}
+	if _, err = run("plugins", "remove", "agentworks-muse"); err != nil {
+		fmt.Fprintf(o.stderr, "Could not remove the old Muse plugin. To update it, run: %s\n", manual)
+		return
+	}
+	if _, err = run("plugins", "install", "agentworks-muse@agentworks"); err != nil {
+		if _, err = run("plugins", "install", "agentworks-muse@agentworks"); err != nil { // the old one is gone: try once more
+			fmt.Fprintln(o.stderr, "The old Muse plugin was removed but the new one could not be installed. Run: muse plugins install agentworks-muse@agentworks, then approve it and restart Muse.")
+			return
+		}
+	}
+	fmt.Fprintf(o.stderr, "Updated the Muse plugin from %s to %s. It needs your approval before it runs: review it, run muse plugins approve agentworks-muse, then restart Muse.\n", installed, offered)
 }

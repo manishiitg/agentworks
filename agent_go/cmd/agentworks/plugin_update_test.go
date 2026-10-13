@@ -165,3 +165,19 @@ func TestSourceSwitchLeavesADisabledCodexPluginAlone(t *testing.T) {
 		t.Fatalf("the person must be told why the source was not switched: %q", out.String())
 	}
 }
+
+// The Muse plugin is reinstalled only when the marketplace offers another version than the installed
+// one (a reinstall asks the person to approve it again).
+func TestMusePluginVersionsComeFromMusesOwnListings(t *testing.T) {
+	installed := "agentworks-muse\t0.1.7\tenabled=true active=true trust=user-local\nwarning\tthird-party plugin\n"
+	available := "agentworks-codex@agentworks\t1.0.7\tstatus=available\nagentworks-muse@agentworks\t0.1.8\tstatus=available\n"
+	if v, enabled, offered := musePluginVersions(installed, available); v != "0.1.7" || !enabled || offered != "0.1.8" {
+		t.Fatalf("installed %q enabled %v offered %q", v, enabled, offered)
+	}
+	if v, enabled, _ := musePluginVersions("agentworks-muse\t0.1.7\tenabled=false active=false", ""); v != "0.1.7" || enabled {
+		t.Fatalf("a plugin turned off must be reported as off: %q %v", v, enabled)
+	}
+	if v, _, _ := musePluginVersions("another-plugin\t1.0.0\tenabled=true", ""); v != "" {
+		t.Fatalf("another plugin is not AgentWorks: %q", v)
+	}
+}
