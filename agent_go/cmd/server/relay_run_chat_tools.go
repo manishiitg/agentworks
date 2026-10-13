@@ -82,7 +82,9 @@ func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegis
 				if truncated {
 					source = source[:relayRunSourceLimit]
 				}
-				return jsonResult(map[string]interface{}{"relay": manifest.Label, "version": release.Version, "functions": release.Functions, "relay_py": source, "truncated": truncated})
+				// A secret value pasted into the source stays private, as in runs.
+				masked, _ := maskSecretValues(source, api.relaySecretValues(ctx, workspace, manifest)).(string)
+				return jsonResult(map[string]interface{}{"relay": manifest.Label, "version": release.Version, "functions": release.Functions, "relay_py": masked, "truncated": truncated})
 			}
 			return "", fmt.Errorf("action must be source or releases")
 		}, "relay_run_tools"); err != nil {

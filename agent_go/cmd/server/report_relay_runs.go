@@ -72,7 +72,7 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 	out["product"] = map[string]any{"id": manifest.ID, "name": manifest.Label, "purpose": manifest.Description}
 	// Everyone with product access can ask: the Builder in their own Builder chat, everyone else in the Relay's Run chat
 	// (read_relay, list/get runs, run_relay; 856-80).
-	out["can_draft"] = relayRunCanReadDraft(claims, manifest) && (claims == nil || claims.Scope == "")
+	out["can_draft"] = claims != nil && workflowAccessForManifest(claims, manifest) == WorkflowAccessOwner && claims.Scope == ""
 	out["can_ask"] = relayRunSeesAll(claims, manifest) && (claims == nil || claims.Scope == "")
 	out = api.maskRelaySecrets(r.Context(), workspace, manifest, out)
 	w.Header().Set("Content-Type", "application/json")
