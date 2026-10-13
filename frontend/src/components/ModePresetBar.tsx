@@ -663,8 +663,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   {isActiveWorkflowReadOnly
-                    ? 'This automation is shared with you read-only — you can chat and watch runs, but cannot edit its plans, secrets, schedules, or config.'
-                    : "Your account has read-only workflow access — you can chat and watch runs, but can't edit plans, secrets, schedules, or config."}
+                    ? 'You can run this and watch its runs; only the owner changes its plans, secrets, schedules, or config.'
+                    : "You can run this and watch its runs; only the owner changes its plans, secrets, schedules, or config."}
                 </TooltipContent>
               </Tooltip>
             )}

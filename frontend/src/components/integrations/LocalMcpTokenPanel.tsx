@@ -48,7 +48,7 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
   const activeTokens = tokens.filter(token => !token.revoked_at && (token.non_expiring || new Date(token.expires_at).getTime() > Date.now()))
   return <div className="space-y-5">
     <div><h3 className="text-base font-semibold">Connect a local AI agent</h3><p className="mt-1 text-sm text-muted-foreground">Create an access token and use it with your agent’s HTTP MCP connection. No browser sign-in is needed.</p></div>
-    <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Local access token" description="Choose full access or read-only access and when it expires. Your current folder, workflow and Crew permissions still apply.">
+    <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Local access token" description="Choose full access or Run access and when it expires. Your current folder, workflow and Crew permissions still apply.">
       <div className="space-y-3">
         <label className="block text-sm">Access<select aria-label="Local token access" value={access} disabled={busy} onChange={event => setAccess(event.target.value as 'full' | 'read')} className="ml-2 rounded border border-border bg-background p-2"><option value="full">Full access</option><option value="read">Read only</option></select></label>
         <label className="block text-sm">Expiry<select aria-label="Local token expiry" value={expiry} disabled={busy} onChange={event => setExpiry(Number(event.target.value))} className="ml-2 rounded border border-border bg-background p-2"><option value={0}>Until revoked</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>

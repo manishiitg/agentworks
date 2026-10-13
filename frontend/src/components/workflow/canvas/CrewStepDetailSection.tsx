@@ -94,7 +94,7 @@ export function CrewStepDetailSection({ step, workspacePath }: { step: CrewPlanS
           <div className="space-y-1.5 text-xs">
             <div className="flex items-center gap-2 text-foreground">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-              <span>Attached read-only as <span className="font-mono">{attachmentAlias}</span></span>
+              <span>Attached to open as <span className="font-mono">{attachmentAlias}</span></span>
             </div>
             <p className="leading-relaxed text-muted-foreground">
               Downstream steps read crew files as <span className="font-mono">{attachmentAlias}/&lt;path&gt;</span>.

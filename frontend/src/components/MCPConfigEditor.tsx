@@ -210,7 +210,7 @@ export const MCPConfigEditor: React.FC<MCPConfigEditorProps> = ({
             <Lock className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-amber-800 dark:text-amber-200 font-medium">
-                MCP server configuration is read-only
+                MCP server configuration is on Run
               </p>
               <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                 Contact your administrator to add, edit, or remove MCP servers.

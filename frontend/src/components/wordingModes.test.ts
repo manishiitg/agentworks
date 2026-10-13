@@ -14,6 +14,13 @@ const FILES = [
   'products/work/SharedCrewFilesPanel.tsx',
   'components/ToolSelectionSection.tsx',
   'hooks/useCanWriteWorkflow.ts',
+  'components/MCPConfigEditor.tsx',
+  'components/ModePresetBar.tsx',
+  'components/TerminalCenter.tsx',
+  'components/scheduler/scheduleRuns/AfterRunActions.tsx',
+  'components/integrations/LocalMcpTokenPanel.tsx',
+  'pages/CLIOAuthConsent.tsx',
+  'pages/MCPOAuthConsent.tsx',
 ]
 const FORBIDDEN = [/read-only/i, /READ-ONLY/, /\bviewer\b/i, /\breader\b/i, /\bguest\b/i, /Read only/]
 

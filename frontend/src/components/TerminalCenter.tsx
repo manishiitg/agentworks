@@ -1083,9 +1083,9 @@ function terminalStateDescription(terminal: TerminalSnapshot): string {
       }
       return terminal.close_reason
         ? `Archived terminal capture: ${terminal.close_reason}. The tmux process is closed.`
-        : 'Archived terminal capture: the tmux process is closed and this view is read-only.'
+        : 'Archived terminal capture: the tmux process is closed and this view cannot be changed.'
     case 'closing':
-      return `Snapshot: the agent finished and this read-only view will be removed in ${formatCloseCountdown(terminalSecondsUntilClose(terminal))}.`
+      return `Snapshot: the agent finished and this view cannot be changed and will be removed in ${formatCloseCountdown(terminalSecondsUntilClose(terminal))}.`
     default:
       return terminal.active ? 'Active terminal' : 'Inactive terminal snapshot'
   }

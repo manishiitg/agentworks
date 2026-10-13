@@ -6,7 +6,7 @@ type Consent = { client_name: string; redirect_uri: string; scopes: string[] }
 
 const scopeDescriptions: Record<string, string> = {
   'vault:manage': 'Manage Vault MCP connections, groups, tool and regex permissions, and secret access as an administrator. Secret values are not returned',
-  'vault:read': 'See Vault connections, tools, groups, who can reach what, the audit log, and run read-only SQL. Changes nothing',
+  'vault:read': 'See Vault connections, tools, groups, who can reach what, the audit log, and run SQL that changes nothing',
   'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
   'workflows:read': 'See workflows you can access and their setup',
   'files:read': 'Read workflow files, including test code',
@@ -20,14 +20,14 @@ const scopeDescriptions: Record<string, string> = {
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Save shared knowledge within your folder grants',
   'code:run': 'Send messages into your own Code projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role. Never granted by default',
-  'code:review': 'Review every Code workspace: cost, chats and files, read-only. Every view is recorded in the audit log',
+  'code:review': 'Review every Code workspace: cost, chats and files. Every view is recorded in the audit log',
   'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
 
 // The page leads with a few plain lines, one per kind of access; the exact permissions sit behind "Show details".
 const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Manage Vault connections, groups and permissions (administrator)', scopes: ['vault:manage'] },
-  { summary: 'See Vault setup, access and the audit log (read-only)', scopes: ['vault:read'] },
+  { summary: 'See Vault setup, access and the audit log', scopes: ['vault:read'] },
   { summary: 'Use Vault MCP tools you are allowed to use', scopes: ['vault:mcp'] },
   { summary: 'See and run your workflows', scopes: ['workflows:read', 'files:read', 'runs:execute'] },
   { summary: 'Discover and view your accessible dashboards', scopes: ['dashboards:read'] },
@@ -36,7 +36,7 @@ const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Edit Relays and workflows, as far as your role allows', scopes: ['builder:chat', 'relays:write'] },
   { summary: 'Use shared Brain within your folder grants', scopes: ['knowledgebase:read', 'knowledgebase:write'] },
   { summary: 'Run your own Code: send it messages and read the replies (it runs commands in your project)', scopes: ['code:run'] },
-  { summary: 'Review Code workspaces (read-only, logged)', scopes: ['code:review'] },
+  { summary: 'Review Code workspaces (logged)', scopes: ['code:review'] },
   { summary: 'Set people\'s shared-account token limits (administrator, logged)', scopes: ['users:manage'] },
 ]
 
