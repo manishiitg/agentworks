@@ -14,6 +14,7 @@ import { copyToClipboard } from '../utils/textUtils'
 // the coding agents are set up. Shown once (then from the event below), instead of an empty product surface.
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
 export const OPEN_WELCOME_HOME_EVENT = 'open-welcome-home'
+const PERSONAL_PRODUCTS = new Set<string>(['video-studio', 'sparkquill'])
 
 export function WelcomeHome() {
   // Someone whose account opens exactly one product (a Code-only account) goes straight to it: the welcome page is for choosing
@@ -23,7 +24,8 @@ export function WelcomeHome() {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const products = useMemo(() => {
     const visible = new Set(visibleProductSurfaceIDs(allowedProducts))
-    return PRODUCT_CARDS.filter(product => visible.has(product.id))
+    // Personal products are never named in the shared welcome, even where enabled; they stay in the product switcher.
+    return PRODUCT_CARDS.filter(product => visible.has(product.id) && !PERSONAL_PRODUCTS.has(product.id))
   }, [allowedProducts])
 
   useEffect(() => {

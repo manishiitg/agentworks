@@ -20,8 +20,8 @@ describe('WelcomeHome', () => {
   afterEach(() => { document.body.innerHTML = ''; window.localStorage.clear(); delete (window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ })
 
   it('shows only the products this person may open, once', async () => {
-    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Acme Agents', enabledProductSurfaces: ['agentworks', 'work', 'code'] }
-    useAuthStore.setState({ user: { allowed_products: ['code', 'work'] } } as never)
+    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { appName: 'Acme Agents', enabledProductSurfaces: ['agentworks', 'work', 'code', 'video-studio'] }
+    useAuthStore.setState({ user: { allowed_products: ['code', 'work', 'video-studio'] } } as never)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<WelcomeHome />))
     expect(host.textContent).toContain('Welcome to Acme Agents')
@@ -30,6 +30,8 @@ describe('WelcomeHome', () => {
     expect(cards.some(t => t?.includes('Code'))).toBe(true)
     expect(cards.some(t => t?.includes('Crew'))).toBe(true)
     expect(cards.some(t => t?.includes('Goals'))).toBe(false)
+    // A personal product is enabled for this person but never named in the shared welcome.
+    expect(host.textContent).not.toContain('Video Studio')
     await act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Code')) as HTMLButtonElement).click())
     expect(openProductWorkspace).toHaveBeenCalledWith('code')
     expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')
