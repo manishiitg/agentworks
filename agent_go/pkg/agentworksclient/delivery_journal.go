@@ -56,7 +56,7 @@ func atomicLiveJSON(path string, value any) error {
 		_, err = f.Write(b)
 	}
 	if err == nil {
-		err = f.Sync()
+		err = syncJournalFile(f)
 	}
 	closeErr := f.Close()
 	if err != nil {
@@ -73,7 +73,7 @@ func atomicLiveJSON(path string, value any) error {
 		return err
 	}
 	defer dir.Close()
-	return dir.Sync()
+	return syncJournalFile(dir)
 }
 
 func readLiveJSON(path string, value any) error {

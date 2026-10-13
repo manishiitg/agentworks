@@ -46,3 +46,22 @@ func TestBridgeListProbesOutsideTheLockAndBusyAnswersQuickly(t *testing.T) {
 		t.Fatalf("probeHosts without a probe = %v", got)
 	}
 }
+
+// Looking for a chat's native route lists session files and checks processes, and every hook of
+// every attached chat reaches it with the bridge lock held: a chat with no route is looked up at
+// most once every 30 s, not on every hook.
+func TestNativeRouteDiscoveryIsThrottledPerChat(t *testing.T) {
+	var calls atomic.Int32
+	b := &localBridge{options: LocalBridgeOptions{
+		HostAlive:   func(string, string) bool { return true },
+		NativeOffer: func(context.Context, string, LocalBridgeReply) error { return nil },
+		NativeRoute: func(string, string, string, string) string { calls.Add(1); return "" },
+	}}
+	s := &localSession{Attachment: AgentAttachment{Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: &Client{}}
+	for i := 0; i < 5; i++ {
+		b.recoverNativeRoute(s)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("route discovery ran %d times for one chat in a burst of hooks", calls.Load())
+	}
+}

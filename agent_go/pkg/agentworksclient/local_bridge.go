@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -129,6 +130,7 @@ type localSession struct {
 	nativeCalls       int
 	piNextAt          time.Time // Observed SDK consumer, not persisted authority.
 	ServerClosed      bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
+	routeTriedAt      time.Time // Last native-route discovery for this chat; it can run many process checks.
 	switchWarned      string    // Target login the person was already warned about (unread mail does not follow a move).
 }
 
@@ -524,6 +526,12 @@ func (b *localBridge) recoverNativeRoute(s *localSession) bool {
 	if s.Offline || !s.AccountSenders || s.client == nil || s.HostKey == "" || s.NativeRemote != "" || b.options.NativeOffer == nil || b.options.NativeRoute == nil || b.options.HostAlive == nil || !b.options.HostAlive(s.Attachment.Provider, s.HostKey) {
 		return false
 	}
+	// Discovery lists session files and runs a process check for each, and every hook of every
+	// attached chat reaches here while the bridge lock is held: look again at most every 30 s.
+	if time.Since(s.routeTriedAt) < 30*time.Second {
+		return false
+	}
+	s.routeTriedAt = time.Now()
 	remote := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, "")
 	if remote == "" {
 		return false
@@ -561,7 +569,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	} else if !b.lockWithin(localBridgeLockBudget) {
 		return LocalBridgeReply{Error: "AgentWorks is still connecting another step. Try again in a moment."}
 	}
-	defer b.mu.Unlock()
+	held := time.Now()
+	defer func() {
+		// A long hold makes every other command wait; name the action so it can be found.
+		if d := time.Since(held); d > time.Second {
+			log.Printf("[BRIDGE] action %q held the bridge lock for %v", in.Action, d.Round(time.Millisecond))
+		}
+		b.mu.Unlock()
+	}()
 	if b.closed {
 		return LocalBridgeReply{Error: "local bridge stopping"}
 	}
