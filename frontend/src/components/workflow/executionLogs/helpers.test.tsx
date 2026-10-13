@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRunFolderLabel, getDefaultRunFolder, getStepLatestError, getStepStatus, getStepTypeBadgeStyle, getStepTypeDescription, getStepTypeLabel, isWebhookRunFolder } from './helpers'
+import { formatRunFolderLabel, getDefaultRunFolder, getStepLatestError, getRecordedStepType, getStepStatus, getStepTypeBadgeStyle, getStepTypeDescription, getStepTypeLabel, isWebhookRunFolder } from './helpers'
 
 describe('isWebhookRunFolder', () => {
   it('recognizes webhook iteration roots and group folders', () => {
@@ -58,4 +58,20 @@ describe('saved script execution status', () => {
   it('does not turn a recovered agent attempt into a failed step', () => {
     expect(getStepStatus({ type: 'scripted', executions: [{ content: { success: false } }, { content: { success: true } }], validations: [{ content: { execution_status: 'COMPLETED' } }] } as never)).toBe('completed')
   })
+})
+
+it('uses latest retained terminal evidence for old agent logs without a gate', () => {
+  const failed = { type: 'regular', executions: [{ content: { execution_result: 'Message sequence item: verify-facts (user_message)\nSTATUS: FAILED cancelled', completed_at: '2026-10-13T18:00:00Z' } }], validations: [] }
+  expect(getStepStatus(failed as never)).toBe('failed')
+  expect(getRecordedStepType(failed as never)).toBe('agent')
+  expect(getStepTypeLabel('message_sequence')).toBe('Agent')
+  expect(getStepStatus({ type: 'message_sequence', executions: [
+    { content: { execution_result: 'STATUS: COMPLETED', completed_at: '2026-10-13T19:00:00Z' } },
+    { content: { execution_result: 'STATUS: FAILED', completed_at: '2026-10-13T18:00:00Z' } },
+  ], validations: [] } as never)).toBe('completed')
+  expect(getStepStatus({ type: 'regular', executions: [], validations: [
+    { content: { execution_status: 'FAILED', completed_at: '2026-10-13T18:00:00Z' } },
+    { content: { execution_status: 'COMPLETED', completed_at: '2026-10-13T19:00:00Z' } },
+  ] } as never)).toBe('completed')
+  expect(getStepStatus({ ...failed, validations: [{ content: { execution_status: 'COMPLETED', completed_at: '2026-10-13T17:00:00Z' } }] } as never)).toBe('failed')
 })

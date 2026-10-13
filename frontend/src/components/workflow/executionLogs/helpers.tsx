@@ -205,6 +205,18 @@ export const getSentAgentMessages = (conversation: string): SentAgentMessage[] =
     .filter((item): item is SentAgentMessage => item !== null)
 }
 
+// Some older plans called conversational execution regular/scripted, while
+// their retained records identify the agent item explicitly. This is a display
+// interpretation of that run, not a rewrite of the current workflow plan.
+export const getRecordedStepType = (stepLogs: StepExecutionLogs): string => {
+  if (stepLogs.type === 'message_sequence') return 'agent'
+  if (stepLogs.executions?.some(exec => {
+    const content = exec.content
+    return content?.agent_item_id || content?.message_sequence_item_id || /^Message sequence item:/m.test(String(content?.execution_result ?? ''))
+  })) return 'agent'
+  return stepLogs.type
+}
+
 export const getStepIcon = (type: string) => {
   switch (type) {
     case 'orchestration':
@@ -216,6 +228,7 @@ export const getStepIcon = (type: string) => {
       return <User className="w-4 h-4 text-orange-500" />
     case 'sub-agent':
       return <Bot className="w-4 h-4 text-indigo-500" />
+    case 'message_sequence':
     case 'agent':
       return <MessageSquare className="w-4 h-4 text-teal-500" />
     case 'regular':
@@ -605,6 +618,7 @@ export const getStepTypeLabel = (type: string): string => {
       return 'Human Input'
     case 'sub-agent':
       return 'Sub-Agent'
+    case 'message_sequence':
     case 'agent':
       return 'Agent'
     case 'crew':
@@ -623,6 +637,7 @@ export const getStepTypeDescription = (type: string): string => {
       return 'Orchestrator: decides which delegated tasks to run and tracks their outcomes.'
     case 'sub-agent':
       return 'Sub-agent: a child task dispatched by an agent.'
+    case 'message_sequence':
     case 'agent':
       return 'Agent: completes an ordered series of instructions and conversation turns.'
     case 'routing':
@@ -655,6 +670,7 @@ export const getStepTypeBadgeStyle = (type: string): string => {
       return 'bg-orange-500/10 text-orange-600 border-orange-500/20 dark:bg-orange-500/20 dark:text-orange-300'
     case 'sub-agent':
       return 'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:bg-blue-500/20 dark:text-blue-300'
+    case 'message_sequence':
     case 'agent':
       return 'bg-teal-500/10 text-teal-600 border-teal-500/20 dark:bg-teal-500/20 dark:text-teal-300'
     case 'crew':
@@ -673,46 +689,47 @@ export const getStepStatus = (stepLogs: StepExecutionLogs): 'completed' | 'faile
   const orchestration = stepLogs.orchestration || []
   const todoTask = stepLogs.todo_task || []
 
-  if (stepLogs.type === 'agent') {
+  if (stepLogs.type === 'agent' && stepLogs.agent_status) {
     if (stepLogs.agent_status === 'failed') return 'failed'
     if (stepLogs.agent_status === 'completed') return 'completed'
     if (stepLogs.agent_status === 'running') return 'running'
     return 'pending'
   }
 
-  // A saved Python script can fail before a validation record is written.
-  // Its last fast-path execution carries the terminal failure directly. Other
-  // step types may recover from an earlier failed attempt, so do not treat
-  // any historical execution error as their final status.
-  const latestExecution = executions[executions.length - 1]
-  if ((latestExecution?.fast_path || latestExecution?.content?.mode === 'scripted_fast_path') &&
-    (latestExecution.content?.success === false ||
-      (typeof latestExecution.content?.exit_code === 'number' && latestExecution.content.exit_code !== 0))) {
-    return 'failed'
+  const timestamp = (content: Record<string, unknown> | undefined) => {
+    const value = content?.completed_at ?? content?.started_at ?? content?.timestamp
+    return typeof value === 'string' ? Date.parse(value) : NaN
   }
-
-  // Check validations first for finality
-  if (validations.length > 0) {
-    if (validations.some(v => v.content?.execution_status === 'FAILED')) {
-      return 'failed'
-    }
-    const latestVal = validations[validations.length - 1]
-    if (latestVal.content?.execution_status === 'COMPLETED') {
-      return 'completed'
-    }
-    if (latestVal.content?.execution_status === 'RUNNING' || latestVal.content?.execution_status === 'PENDING') {
-      return 'running'
-    }
+  const latest = <T extends { content?: Record<string, unknown> }>(records: T[]): T | undefined => (
+    records.reduce<T | undefined>((best, record) => {
+      if (!best) return record
+      const a = timestamp(best.content), b = timestamp(record.content)
+      if (Number.isFinite(a) && !Number.isFinite(b)) return best
+      if (!Number.isFinite(a) || b >= a) return record
+      return best
+    }, undefined)
+  )
+  const execution = latest(executions)
+  const validation = latest(validations)
+  const text = execution?.content?.execution_result
+  // Match actual terminal lines, not prose describing a failed probe. The last
+  // status wins within a retained result; retry counters restart each dispatch.
+  const terminal = typeof text === 'string' ? [...text.matchAll(/^\s*STATUS:\s*(COMPLETED|FAILED)\b/gim)].at(-1)?.[1].toLowerCase() : undefined
+  const executionStatus = terminal ?? (
+    execution?.content?.success === false || (typeof execution?.content?.exit_code === 'number' && execution.content.exit_code !== 0)
+      ? 'failed' : execution?.content?.success === true ? 'completed' : undefined
+  )
+  const validationStatus = String(validation?.content?.execution_status ?? '').toLowerCase()
+  // Validation is the gate when it is the latest record. A dated newer failed
+  // dispatch cannot inherit an older passing validation from the same run.
+  const executionTime = timestamp(execution?.content), validationTime = timestamp(validation?.content)
+  const validationIsLatest = validation && !(Number.isFinite(executionTime) && Number.isFinite(validationTime) && executionTime > validationTime)
+  if (validationIsLatest) {
+    if (validationStatus === 'failed' || validationStatus === 'completed') return validationStatus
+    if (validationStatus === 'running' || validationStatus === 'pending') return 'running'
   }
-
-  // If executions exist but validations aren't finalized or present:
-  if (executions.length > 0) {
-    // If the step has no success criteria, execution completion means the step is completed.
-    if (!stepLogs.success_criteria) {
-      return 'completed'
-    }
-    return 'running'
-  }
+  if (executionStatus === 'failed' || executionStatus === 'completed') return executionStatus
+  if (executions.length > 0) return stepLogs.success_criteria ? 'running' : 'completed'
 
   // Orchestration and todo-task routing records are emitted after their work completes.
   if (orchestration.length > 0 || todoTask.length > 0) {

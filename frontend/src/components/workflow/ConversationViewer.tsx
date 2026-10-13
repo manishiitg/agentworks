@@ -34,7 +34,9 @@ export interface ConversationMessage {
 }
 
 interface ConversationData {
-  conversation_history: ConversationMessage[]
+  conversation_history?: ConversationMessage[]
+  messages?: unknown[]
+  conversationHistory?: unknown[]
   llm_calls?: LLMCallTiming[]
   tool_calls?: ToolCallTiming[]
   timing?: TimingData
@@ -751,6 +753,27 @@ export const ConversationMessageDisplay: React.FC<{
   )
 }
 
+// Retained logs used both SDK Role/Parts and chat role/content messages.
+// Accept only recognized records; unrelated backend objects are not a transcript.
+function recordedMessages(value: unknown): ConversationMessage[] | null {
+  if (!Array.isArray(value)) return null
+  const messages: ConversationMessage[] = []
+  const roles: Record<string, ConversationMessage['Role']> = { system: 'system', developer: 'system', human: 'human', user: 'human', ai: 'ai', assistant: 'ai', tool: 'tool' }
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') return null
+    const raw = entry as Record<string, unknown>
+    const role = roles[String(raw.Role ?? raw.role)]
+    if (!role) return null
+    if (Array.isArray(raw.Parts)) {
+      if (raw.Parts.some(part => !part || typeof part !== 'object' || (part.Text !== undefined && typeof part.Text !== 'string') || (part.Content !== undefined && typeof part.Content !== 'string') || (part.FunctionCall !== undefined && (!part.FunctionCall || typeof part.FunctionCall.Name !== 'string' || typeof part.FunctionCall.Arguments !== 'string')))) return null
+      messages.push({ Role: role, Parts: raw.Parts as ConversationPart[] })
+    } else if (typeof raw.content === 'string') {
+      messages.push({ Role: role, Parts: [{ Text: raw.content }] })
+    } else return null
+  }
+  return messages
+}
+
 // Main ConversationViewer component
 export const ConversationViewer: React.FC<ConversationViewerProps> = ({ content, searchQuery }) => {
   const [showRawJson, setShowRawJson] = useState(false)
@@ -759,19 +782,21 @@ export const ConversationViewer: React.FC<ConversationViewerProps> = ({ content,
   const { messages, parseError, timing, llmCalls, toolCalls } = useMemo(() => {
     try {
       const data: ConversationData = JSON.parse(content)
-      if (data.conversation_history && Array.isArray(data.conversation_history)) {
+      const history = Array.isArray(data) ? data : [data?.conversation_history, data?.messages, data?.conversationHistory].find(Array.isArray)
+      const parsed = recordedMessages(history)
+      if (parsed) {
         const parsedTiming = data.timing
         return {
-          messages: data.conversation_history,
+          messages: parsed,
           parseError: null,
           timing: parsedTiming,
-          llmCalls: parsedTiming?.llm?.calls || data.llm_calls || [],
-          toolCalls: parsedTiming?.tools?.calls || data.tool_calls || []
+          llmCalls: Array.isArray(parsedTiming?.llm?.calls) ? parsedTiming.llm.calls : Array.isArray(data.llm_calls) ? data.llm_calls : [],
+          toolCalls: Array.isArray(parsedTiming?.tools?.calls) ? parsedTiming.tools.calls : Array.isArray(data.tool_calls) ? data.tool_calls : []
         }
       }
-      return { messages: null, parseError: 'Invalid conversation format: missing conversation_history', timing: undefined, llmCalls: [], toolCalls: [] }
-    } catch (e) {
-      return { messages: null, parseError: `Failed to parse conversation: ${e}`, timing: undefined, llmCalls: [], toolCalls: [] }
+      return { messages: null, parseError: 'This older run’s conversation cannot be shown.', timing: undefined, llmCalls: [], toolCalls: [] }
+    } catch {
+      return { messages: null, parseError: 'This older run’s conversation cannot be shown.', timing: undefined, llmCalls: [], toolCalls: [] }
     }
   }, [content])
 
@@ -848,7 +873,7 @@ export const ConversationViewer: React.FC<ConversationViewerProps> = ({ content,
     })
   }, [messages, searchQuery])
 
-  // If parsing failed, show raw JSON with error message
+  // Unsupported historical formats get a plain note, never a backend JSON dump.
   if (parseError || !messages) {
     return (
       <div>
@@ -856,9 +881,6 @@ export const ConversationViewer: React.FC<ConversationViewerProps> = ({ content,
           <Settings className="w-2.5 h-2.5" />
           {parseError || 'Could not parse conversation format'}
         </div>
-        <pre className="whitespace-pre-wrap overflow-x-auto text-muted-foreground max-h-80 overflow-y-auto text-[10px] font-mono">
-          {content}
-        </pre>
       </div>
     )
   }

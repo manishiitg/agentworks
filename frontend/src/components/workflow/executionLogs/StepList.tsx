@@ -15,6 +15,7 @@ import {
   formatTokenCount,
   getStepDisplayTitle,
   getStepIcon,
+  getRecordedStepType,
   getStepIndentStyle,
   getStepLatestError,
   getStepMetrics,
@@ -112,12 +113,12 @@ export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly =
 
                               <div className="flex flex-col items-start text-left min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="flex-shrink-0" title={getStepTypeDescription(stepLogs.type || 'scripted')}>
-                                    {getStepIcon(stepLogs.type)}
+                                  <span className="flex-shrink-0" title={getStepTypeDescription(getRecordedStepType(stepLogs) || 'scripted')}>
+                                    {getStepIcon(getRecordedStepType(stepLogs))}
                                   </span>
                                   <span className="text-sm font-semibold text-foreground truncate">{displayTitle}</span>
-                                  <span title={getStepTypeDescription(stepLogs.type || 'scripted')} className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${getStepTypeBadgeStyle(stepLogs.type)}`}>
-                                    {getStepTypeLabel(stepLogs.type)}
+                                  <span title={getStepTypeDescription(getRecordedStepType(stepLogs) || 'scripted')} className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${getStepTypeBadgeStyle(getRecordedStepType(stepLogs))}`}>
+                                    {getStepTypeLabel(getRecordedStepType(stepLogs))}
                                   </span>
                                   <span className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${pill.className}`}>
                                     {pill.pulse && <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" />}
