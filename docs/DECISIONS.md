@@ -6097,9 +6097,7 @@ Keep the existing data format, organization binding, live Git folder, encryption
 key derivation, request records and registries. Cutover and rollback change the
 artifact/backend against the same compatible state, with one writer. Public
 implementation removal is a later migration gate. Product source and customer
-deployment configuration remain separate repositories. This change is developed
-on branches, requires reviewer approval and must not merge before October 17–18.
-No deployment or scheduled automatic merge is part of this work.
+deployment configuration remain separate repositories.
 
 Brain's facade clears the engine-owned request namespace metadata on all host
 Call/CallTool entries. Shutdown cancels in-flight contexts and waits at most 45
