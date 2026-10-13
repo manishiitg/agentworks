@@ -75,7 +75,10 @@ func autoAttachUpdate(root, key string, change func(*autoAttachFolder)) {
 	if err != nil {
 		return
 	}
-	if _, err = tmp.Write(raw); err != nil || tmp.Chmod(0600) != nil || tmp.Close() != nil {
+	if err = agentworksclient.SecurePrivateFile(tmp); err == nil {
+		_, err = tmp.Write(raw)
+	}
+	if err != nil || tmp.Close() != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
 		return

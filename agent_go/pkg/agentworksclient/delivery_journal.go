@@ -28,14 +28,14 @@ func privateLiveDir(path string) error {
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+	if !info.IsDir() || CheckPrivateAccess(path, info) != nil {
 		return errors.New("live state must be a private directory, not a symlink")
 	}
 	return nil
 }
 
 func atomicLiveJSON(path string, value any) error {
-	if info, err := os.Lstat(path); err == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
+	if info, err := os.Lstat(path); err == nil && (!info.Mode().IsRegular() || CheckPrivateAccess(path, info) != nil) {
 		return errors.New("refusing non-private or redirected live state")
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -52,7 +52,7 @@ func atomicLiveJSON(path string, value any) error {
 		return err
 	}
 	defer os.Remove(f.Name())
-	if err = f.Chmod(0600); err == nil {
+	if err = SecurePrivateFile(f); err == nil {
 		_, err = f.Write(b)
 	}
 	if err == nil {
@@ -81,7 +81,7 @@ func readLiveJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 32<<20 {
+	if !info.Mode().IsRegular() || CheckPrivateAccess(path, info) != nil || info.Size() > 32<<20 {
 		return errors.New("invalid private live state")
 	}
 	b, err := os.ReadFile(path)

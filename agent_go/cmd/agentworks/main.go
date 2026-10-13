@@ -810,17 +810,23 @@ func (o *options) output(value any) error {
 
 func loginsCommand(o *options) *cobra.Command {
 	return &cobra.Command{Use: "logins", Args: cobra.NoArgs, Short: "List saved logins by name", Long: "Lists the default login and each named login with the server it signs in to. It never shows credentials or file paths.", RunE: func(cmd *cobra.Command, _ []string) error {
-		logins := agentworksclient.ListLogins()
+		logins, loadErr := agentworksclient.ListLogins()
 		if o.jsonOutput {
-			return o.output(map[string]any{"logins": logins})
+			if err := o.output(map[string]any{"logins": logins}); err != nil {
+				return err
+			}
+			return loadErr
 		}
 		if len(logins) == 0 {
+			if loadErr != nil {
+				return loadErr
+			}
 			_, err := fmt.Fprintln(o.stdout, "No saved logins. Run agentworks login --server URL [--name NAME].")
 			return err
 		}
 		for _, l := range logins {
 			fmt.Fprintf(o.stdout, "%s\t%s\n", l.Name, l.Server)
 		}
-		return nil
+		return loadErr
 	}}
 }

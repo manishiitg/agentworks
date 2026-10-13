@@ -1110,7 +1110,8 @@ func loginLabel(server string) string {
 		return ""
 	}
 	var names []string
-	for _, l := range agentworksclient.ListLogins() {
+	logins, _ := agentworksclient.ListLogins() // Cosmetic labels; the logins command reports loading errors.
+	for _, l := range logins {
 		if have, e := agentworksclient.ValidateServer(l.Server); e == nil && have == want {
 			names = append(names, l.Name)
 		}

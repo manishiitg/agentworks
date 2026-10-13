@@ -98,7 +98,7 @@ func withUsageLock(root string, fn func() error) error {
 		return err
 	}
 	p := filepath.Join(root, "usage.lock")
-	if st, e := os.Lstat(p); e == nil && (!st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0) {
+	if st, e := os.Lstat(p); e == nil && (!st.Mode().IsRegular() || CheckPrivateAccess(p, st) != nil) {
 		return errors.New("unsafe usage state lock")
 	}
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0600)
@@ -106,6 +106,9 @@ func withUsageLock(root string, fn func() error) error {
 		return err
 	}
 	defer f.Close()
+	if err = SecurePrivateFile(f); err != nil {
+		return err
+	}
 	unlock, err := lockFileExclusive(f)
 	if err != nil {
 		return err

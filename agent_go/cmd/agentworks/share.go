@@ -556,6 +556,13 @@ func statusCommand(o *options) *cobra.Command {
 		if err := o.useShareConfig(); err != nil {
 			return err
 		}
+		configPath, err := o.path()
+		if err != nil {
+			return err
+		}
+		if _, err = agentworksclient.LoadConfig(configPath); err != nil {
+			return errors.New("saved login cannot be loaded; check its file access or sign in again")
+		}
 		dir, err := o.shareDir()
 		if err != nil {
 			return err

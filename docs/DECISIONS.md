@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-13 — Saved CLI credentials use native operating-system access checks (PLAT-861)
+
+Unix credentials retain the private mode check. Windows validates the real owner
+and ACL instead of synthetic Unix mode bits, allowing only the current user,
+SYSTEM and Administrators. Temporary credential and journal files receive a
+protected ACL before content is written; failed verification or ACL updates stop
+the operation. Custom config paths retain the same access requirements. Named
+login listings return valid entries alongside explicit loading errors, without
+printing credentials, malformed values or file paths. Status reports a saved
+login loading failure rather than an empty sharing state.
+
+Why: Windows ignores Unix permission masks, so a successfully saved login was
+subsequently rejected and silently hidden. Local live delivery support on Windows
+is a separate platform gap; this change does not grant attachment authority.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-165.
+
+
 ## 2026-10-13 — Validated immutable messaging snapshots (PLAT-861)
 
 Pure directory, claims, event-stream and inbox reads use an immutable parsed

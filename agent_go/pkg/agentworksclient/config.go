@@ -38,8 +38,8 @@ func LoadConfig(path string) (Config, error) {
 	if !info.Mode().IsRegular() {
 		return cfg, errors.New("config must be a regular file, not a symbolic link")
 	}
-	if info.Mode().Perm()&0077 != 0 {
-		return cfg, fmt.Errorf("config is accessible to other users; run chmod 600 %q", path)
+	if err := CheckPrivateAccess(path, info); err != nil {
+		return cfg, err
 	}
 	if info.Size() > 1<<20 {
 		return cfg, errors.New("config exceeds 1 MiB limit")
@@ -77,7 +77,7 @@ func SaveConfig(path string, cfg Config) error {
 		return err
 	}
 	defer os.Remove(f.Name())
-	if err := f.Chmod(0600); err != nil {
+	if err := SecurePrivateFile(f); err != nil {
 		f.Close()
 		return err
 	}
@@ -144,28 +144,44 @@ type LoginInfo struct {
 
 // ListLogins returns the default login and every named login with the server it
 // signs in to. It never returns credentials or file paths.
-func ListLogins() []LoginInfo {
+func ListLogins() ([]LoginInfo, error) {
 	var out []LoginInfo
-	if path, err := DefaultConfigPath(); err == nil {
-		if cfg, e := LoadConfig(path); e == nil && cfg.Server != "" {
-			out = append(out, LoginInfo{Name: DefaultLoginName, Server: cfg.Server})
+	var problems []error
+	load := func(name, path string) {
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("saved login %q cannot be loaded; check its file access or sign in again", name))
+			return
 		}
+		if cfg.Server != "" {
+			if _, err := ValidateServer(cfg.Server); err != nil {
+				problems = append(problems, fmt.Errorf("saved login %q has an invalid server; sign in again", name))
+				return
+			}
+			out = append(out, LoginInfo{Name: name, Server: cfg.Server})
+		}
+	}
+	if path, err := DefaultConfigPath(); err == nil {
+		load(DefaultLoginName, path)
+	} else {
+		problems = append(problems, errors.New("cannot locate the default saved login"))
 	}
 	dir, err := loginsDir()
 	if err != nil {
-		return out
+		return out, errors.Join(append(problems, errors.New("cannot locate named saved logins"))...)
 	}
-	entries, _ := os.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		problems = append(problems, errors.New("named saved logins cannot be read; check their directory access"))
+	}
 	for _, entry := range entries {
 		name := strings.TrimSuffix(entry.Name(), ".json")
 		if entry.IsDir() || name == entry.Name() || ValidateLoginName(name) != nil {
 			continue
 		}
-		if cfg, e := LoadConfig(filepath.Join(dir, entry.Name())); e == nil && cfg.Server != "" {
-			out = append(out, LoginInfo{Name: name, Server: cfg.Server})
-		}
+		load(name, filepath.Join(dir, entry.Name()))
 	}
-	return out
+	return out, errors.Join(problems...)
 }
 
 // SaveLoginIfSameServer saves a named login while holding a lock on it, and
