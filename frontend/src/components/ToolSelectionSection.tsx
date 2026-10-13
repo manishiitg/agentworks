@@ -431,7 +431,7 @@ export const ToolSelectionSection: React.FC<ToolSelectionSectionProps> = ({
                         handleServerToolModeChange(serverName, 'all');
                       }}
                       disabled={disabled}
-                      title={disabled ? 'Read-only access' : undefined}
+                      title={disabled ? 'Run access' : undefined}
                       className={`flex items-center space-x-1.5 px-2 py-1 rounded border transition-colors ${
                         toolMode === 'all'
                           ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
@@ -458,7 +458,7 @@ export const ToolSelectionSection: React.FC<ToolSelectionSectionProps> = ({
                         handleServerToolModeChange(serverName, 'specific');
                       }}
                       disabled={disabled}
-                      title={disabled ? 'Read-only access' : undefined}
+                      title={disabled ? 'Run access' : undefined}
                       className={`flex items-center space-x-1.5 px-2 py-1 rounded border transition-colors ${
                         toolMode === 'specific'
                           ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
@@ -493,7 +493,7 @@ export const ToolSelectionSection: React.FC<ToolSelectionSectionProps> = ({
                             type="button"
                             onClick={() => handleSelectAllServerTools(serverName)}
                             disabled={disabled}
-                            title={disabled ? 'Read-only access' : undefined}
+                            title={disabled ? 'Run access' : undefined}
                             className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1"
                           >
                             {allToolsSelected ? (

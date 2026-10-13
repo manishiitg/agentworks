@@ -41,7 +41,7 @@ export function AdminPanel() {
 
     {!page ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</p> : !(page.people ?? []).length ? <p className="py-8 text-center text-sm text-muted-foreground">No one matches.</p> : <ul className="space-y-3">
       {(page.people ?? []).map(person => <li key={person.username} className="rounded-xl border border-border p-4">
-        <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{person.role}{person.disabled && ' · disabled'} · {(person.agents ?? []).length} agent{(person.agents ?? []).length === 1 ? '' : 's'}</span></p>
+        <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{({ admin: 'Admin', creator: 'Creator', editor: 'Editor', viewer: 'Member' } as Record<string, string>)[person.role] || person.role}{person.disabled && ' · disabled'} · {(person.agents ?? []).length} agent{(person.agents ?? []).length === 1 ? '' : 's'}</span></p>
         {(person.agents ?? []).length > 0 && <ul className="mt-3 divide-y divide-border">
           {(person.agents ?? []).map(agent => <li key={agent.agent_id} className="py-2 text-sm">
             <span className="break-all"><strong>{agent.agent_name}</strong>{(agent.groups ?? []).length > 0 && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">In {(agent.groups ?? []).join(', ')}</span>} · {agent.online ? 'Connected' : agent.attached ? 'Attached, offline' : 'Offline'}{agent.provider && ' · ' + agent.provider}</span>

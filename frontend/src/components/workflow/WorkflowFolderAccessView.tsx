@@ -199,7 +199,7 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
               title="Attached folders"
               subtitle="Folders on this server and other workflows this workflow can use."
               actions={<>
-                {!canWriteWorkflow && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">Read-only</span>}
+                {!canWriteWorkflow && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">Run</span>}
                 {headerAction}
               </>}
             />
@@ -239,7 +239,7 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
                 {pendingPath && (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="text-xs text-muted-foreground">Alias<Input value={pendingAlias} disabled={!canWriteWorkflow} title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined} onChange={event => setPendingAlias(event.target.value)} className="mt-1" /></label>
-                    <label className="text-xs text-muted-foreground">Access<select value={pendingAccess} disabled={!canWriteWorkflow} title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined} onChange={event => setPendingAccess(event.target.value as 'read_only' | 'read_write')} className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"><option value="read_only">Read only</option><option value="read_write">Read & write</option></select></label>
+                    <label className="text-xs text-muted-foreground">Access<select value={pendingAccess} disabled={!canWriteWorkflow} title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined} onChange={event => setPendingAccess(event.target.value as 'read_only' | 'read_write')} className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"><option value="read_only">Can open</option><option value="read_write">Can open & edit</option></select></label>
                     <label className="text-xs text-muted-foreground sm:col-span-2">Reason (optional)<Input value={pendingReason} disabled={!canWriteWorkflow} title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined} onChange={event => setPendingReason(event.target.value)} className="mt-1" placeholder="Why this workflow needs the folder" /></label>
                     <div className="truncate text-xs text-muted-foreground sm:col-span-2" title={pendingPath}>{pendingPath}</div>
                     <Button type="button" size="sm" disabled={!canWriteWorkflow || !canAdd || saving} title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined} onClick={() => void addGrant()} className="w-fit"><Plus className="h-3.5 w-3.5" />Attach folder</Button>

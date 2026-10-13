@@ -3,7 +3,7 @@ import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { hasWorkflowWriteAccess } from '../utils/workflowPermissions'
 
 /** Tooltip for a control that is disabled because the user has read-only access. */
-export const READ_ONLY_TITLE = 'Read-only access'
+export const READ_ONLY_TITLE = 'Run access'
 
 /**
  * Whether the current user may change workflow-affecting state.

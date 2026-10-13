@@ -631,7 +631,7 @@ function GroupPermissions({
                     {regexRules > 0 && <span className="rounded bg-muted px-2 py-0.5" title="Saved regular-expression conditions">{regexRules} regex {regexRules === 1 ? 'rule' : 'rules'}</span>}
                     {full && (readOnly
                       ? <span className="text-xs text-muted-foreground">{data.readOnlyServers.has(c.ID) ? 'Whole server · read tools only' : 'Whole server · all tools'}</span>
-                      : <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Read tools only: the server's own read-only marks, or your labels on the Servers page. Unmarked tools count as write.">
+                      : <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Reads only: the server's own read marks, or your labels on the Servers page. Unmarked tools count as write.">
                         Whole server
                         <Checkbox checked={data.readOnlyServers.has(c.ID)} disabled={busy !== null}
                           onCheckedChange={v => void run(`level:${c.ID}`, () => attachGroupServer(base, groupId, c.ID, v === true))}

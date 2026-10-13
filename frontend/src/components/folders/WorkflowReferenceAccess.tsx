@@ -99,7 +99,7 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
       <div className="flex items-start gap-2">
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
-          <h3 className="text-sm font-medium text-foreground">Read-only context</h3>
+          <h3 className="text-sm font-medium text-foreground">Context (can open)</h3>
           <p className="mt-1 text-xs text-muted-foreground">Attach workflows, Crews or your other projects as durable context. Access is checked again on every run.</p>
         </div>
       </div>

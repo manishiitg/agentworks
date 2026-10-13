@@ -46,7 +46,7 @@ export function GatewayToolReviewActions({ tool, base, onApprove, approving, acc
         {access && (readOnly
           ? <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{access === 'read' ? 'Read' : 'Write'}</span>
           : <select aria-label={`Read or write: ${tool.PublicName}`} value={label ?? ''} disabled={accessBusy}
-            title="Read-only server grants allow only read tools. Unmarked tools count as write."
+            title="Run server grants allow only tools marked as reads. Unmarked tools count as write."
             className="h-6 rounded border border-border bg-background px-1 text-[11px]"
             onChange={e => {
               const next = e.target.value as 'read' | 'write' | ''

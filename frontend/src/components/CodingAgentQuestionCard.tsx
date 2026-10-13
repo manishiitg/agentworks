@@ -88,7 +88,7 @@ export function CodingAgentQuestionCard({ prompt, onAnswer }: {
       <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>
     </div>
       : <p className="text-xs text-muted-foreground">{prompt.state === 'answered' ? 'Choice submitted' : 'Question interrupted'}</p>}
-    {pending && !onAnswer && <p className="mt-2 text-xs text-muted-foreground">This conversation is read-only.</p>}
+    {pending && !onAnswer && <p className="mt-2 text-xs text-muted-foreground">This conversation cannot be changed.</p>}
     {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
   </section>
 }

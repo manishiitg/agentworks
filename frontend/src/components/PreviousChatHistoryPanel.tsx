@@ -1067,8 +1067,8 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
                         <button
                           type="button"
                           onClick={() => handleSelect(session)}
-                          title={readOnly ? 'Open in new tab' : canResume ? actionLabel : 'Open read-only conversation'}
-                          aria-label={readOnly ? 'Open in new tab' : canResume ? actionLabel : 'Open read-only conversation'}
+                          title={readOnly ? 'Open in new tab' : canResume ? actionLabel : 'Open saved conversation'}
+                          aria-label={readOnly ? 'Open in new tab' : canResume ? actionLabel : 'Open saved conversation'}
                           className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground opacity-80 transition-colors hover:border-primary/40 hover:text-foreground group-hover:opacity-100"
                         >
                           <ActionIcon className="h-3.5 w-3.5" />

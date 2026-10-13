@@ -182,7 +182,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
         <select id="code-local-folder" aria-label="Computer and shared folder" value={draftKey} disabled={busy} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDraftKey(event.target.value); setConfirmServer(false) }}>
           <option value="">Choose a folder…</option>
           {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
-          {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.shell ? folder.writable ? 'Files and commands' : 'Read-only files and commands' : folder.writable ? 'Can edit' : 'Read only'}</option>))}
+          {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.shell ? folder.writable ? 'Files and commands' : 'Can open files and commands' : folder.writable ? 'Can edit' : 'Can open'}</option>))}
         </select>
         {draftResource && draftKey !== selectedKey && <div className="space-y-3 rounded-md bg-muted/40 p-3">
           <p className="text-sm font-medium">{local ? 'Change this chat’s local folder' : 'Use local files for this chat'}</p>

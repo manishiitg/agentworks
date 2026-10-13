@@ -771,7 +771,7 @@ function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; pr
   if (sharedBy) {
     return <ProductChatLandingCard
       title={`Explore ${sharedBy}’s ${product.noun}`}
-      description={`This ${product.noun} is read-only for you. Ask it to:`}
+      description={`This ${product.noun} is shared with you on Run. Ask it to:`}
       examples={[
         `Explain how the ${product.noun} works and what it can do`,
         'Walk through its files, memory, and configuration',
@@ -852,7 +852,7 @@ function WorkTopBarControl({
       label={selected?.identity?.name || selected?.title}
       leading={selected ? <EntityIdentityIcon icon={selected.identity?.icon} label={selected.identity?.name || selected.title} /> : undefined}
       compactOnNarrow
-      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (read-only)` : ''}` : `${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
+      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (Run)` : ''}` : `${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
       placeholder={`${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
       open={open}
       onToggle={() => setOpen(current => !current)}
@@ -930,7 +930,7 @@ function WorkTopBarControl({
           ))}
           {sessions.some(session => session.shared) && (
             <div aria-hidden="true" className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {product.listsSharedProjects && !product.hasIdentity ? 'Shared with you' : 'Shared by others · read-only'}
+              {product.listsSharedProjects && !product.hasIdentity ? 'Shared with you' : 'Shared with you'}
             </div>
           )}
           {sessions.filter(session => session.shared).map(session => (
@@ -1479,7 +1479,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                     { title: 'A coding agent beside you', description: 'Ask it to write, run and fix code here. It can call the Crews and workflows you can use.' },
                     { title: 'Private to you', description: 'Files, chats and credentials belong to your account. Sharing a link does not give another person access.' },
                   ]}
-                  footer={product.hasIdentity ? undefined : `Admins and ${product.noun} reviewers on this server can read your ${product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.`}
+                  footer={product.hasIdentity ? undefined : `Admins and ${product.noun} reviewers on this server can read your ${product.noun} workspaces' chats, files and costs. They can view, not change, and every view is logged.`}
                   createTour={product.hasIdentity ? 'crew-create' : 'code-create'}
                   createLabel={`Create ${sessions.length ? 'another' : 'your first'} ${product.itemNoun}`}
                   onCreate={openCreateProject}
@@ -1502,7 +1502,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   {product.profileId !== 'code' && selected.shared ? (
                     <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
                       <span className="min-w-0 flex-1 text-muted-foreground">
-                        {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · read-only. Your chats stay private to you.
+                        {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · Run. Your chats stay private to you.
                       </span>
                     </div>
                   ) : null}

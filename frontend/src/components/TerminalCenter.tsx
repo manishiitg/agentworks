@@ -1079,7 +1079,7 @@ function terminalStateDescription(terminal: TerminalSnapshot): string {
       return 'Stale: no terminal updates were received for a long time; this pane may have lost its lifecycle event.'
     case 'archived':
       if (isSyntheticTerminal(terminal)) {
-        return 'Completed: the background task finished and this saved result is read-only.'
+        return 'Completed: the background task finished; this saved result cannot be changed.'
       }
       return terminal.close_reason
         ? `Archived terminal capture: ${terminal.close_reason}. The tmux process is closed.`

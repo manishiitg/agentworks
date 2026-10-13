@@ -115,7 +115,7 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
             {openPath ? rel(openPath) : 'Workspace'}
           </p>
           {!openPath && (
-            <p className="text-xs text-muted-foreground">Read-only — owned by another user.</p>
+            <p className="text-xs text-muted-foreground">Shared with you — owned by another user.</p>
           )}
         </div>
         {guideAsk ? null : headerAction}

@@ -658,7 +658,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                 <TooltipTrigger asChild>
                   <div className="flex shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                     <Eye className="w-3 h-3" />
-                    <span className="sr-only">Read-only</span>
+                    <span className="sr-only">Run</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">

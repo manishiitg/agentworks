@@ -123,7 +123,7 @@ function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateId
       <SettingsCard
         icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Access"
-        description="Private to you. Files, chats, credentials and runtime cannot be shared with other users. Admins and Code reviewers on this server can view it, read-only, and every view is logged."
+        description="Private to you. Files, chats, credentials and runtime cannot be shared with other users. Admins and Code reviewers on this server can view it, and every view is logged."
       >
         {null}
       </SettingsCard>
@@ -361,7 +361,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
-        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private Code and Cowork projects: their files, read-only. Local projects are not available.', placeholder: 'Attach a project…', references: codeReferences }] : []}
+        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private Code and Cowork projects: their files (can open). Local projects are not available.', placeholder: 'Attach a project…', references: codeReferences }] : []}
         hideAdd
       />
       <SettingsCard

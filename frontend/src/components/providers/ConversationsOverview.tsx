@@ -120,7 +120,7 @@ export default function ConversationsOverview() {
   const selected = filtered.find(workspace => workspaceKey(workspace) === selectedKey)
   return <div className="mx-auto max-w-6xl">
     <div className="mb-5 flex items-start justify-between gap-3">
-      <div><h2 className="text-xl font-semibold text-foreground">Conversations</h2><p className="mt-1 text-sm text-muted-foreground">Review users’ Code chats by project and person.</p><p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4" />Read-only. Each review is recorded in the audit log.</p></div>
+      <div><h2 className="text-xl font-semibold text-foreground">Conversations</h2><p className="mt-1 text-sm text-muted-foreground">Review users’ Code chats by project and person.</p><p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4" />Each review is recorded in the audit log.</p></div>
       <button type="button" aria-label="Refresh conversations" className={controlClass} onClick={() => { setSelectedKey(''); setWorkspaces(null); setReload(value => value + 1) }}><RefreshCw className="h-4 w-4" /></button>
     </div>
     <div className="mb-4 flex flex-wrap gap-2">

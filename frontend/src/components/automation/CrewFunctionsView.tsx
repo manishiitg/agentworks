@@ -44,6 +44,9 @@ function FieldList({ label, schema }: { label: string; schema?: CrewFunctionSche
 }
 
 export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, onEdit }: {
+  // The same view serves Crew and Code projects; name the product the person
+  // is actually in (profile ids: work = Crew, code = Code).
+
   scope: ProductTriggerScope
   refreshToken?: number
   onCounts?: (counts: { functions: number; running: number }) => void
@@ -96,7 +99,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
 
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4">
-      <p className="text-xs leading-relaxed text-muted-foreground">Functions are internal triggers with checked inputs. Each call runs in a fresh isolated chat and has its own output folder. Calls run in parallel within the running-call limit. Agent conversations use messaging separately. Ask the Crew chat to add or change a function.</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">Functions are internal triggers with checked inputs. Each call runs in a fresh isolated chat and has its own output folder. Calls run in parallel within the running-call limit. Agent conversations use messaging separately. Ask the {scope.profileId === 'code' ? 'Code' : 'Crew'} chat to add or change a function.</p>
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       <div className="min-w-0 max-w-full space-y-2">
         {functions.map(fn => <section key={fn.name} data-testid={`crew-function-${fn.name}`} className="min-w-0 max-w-full space-y-2 overflow-hidden rounded-lg border border-border p-3">
@@ -117,7 +120,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
 
       <section className="space-y-2" data-testid="crew-function-callers">
         <h3 className="text-sm font-medium">Callers</h3>
-        {callers.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Nothing has called this Crew yet.</p>}
+        {callers.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Nothing has called this {scope.profileId === 'code' ? 'Code project' : 'Crew'} yet.</p>}
         {callers.map(caller => <div key={caller.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
           <span className="min-w-0 truncate">{caller.name}<span className="text-muted-foreground"> · {CALLER_KIND[caller.caller?.type ?? ''] ?? 'Caller'}{caller.enabled ? '' : ' · disabled'}</span></span>
           <button type="button" disabled={busy} className={buttonClass} title="Remove this caller's binding; its next call creates a new one" onClick={() => void disconnect(caller.id)}>Disconnect</button>
