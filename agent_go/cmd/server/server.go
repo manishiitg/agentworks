@@ -921,6 +921,10 @@ type QueryRequest struct {
 	// They differ from WorkflowContextPaths for same-account Crew references,
 	// whose durable logical path resolves below _users/<id>/ at authorization.
 	authorizedWorkflowContextReadPaths []string `json:"-"`
+	// omittedWorkflowContextCount is how many saved attachments turn admission
+	// left out (deleted, or not readable by the sender). Count only: the agent
+	// is told something is missing, never what.
+	omittedWorkflowContextCount int `json:"-"`
 	// Conversation JSON selected from /resume or previous chats. Used to seed
 	// native coding-agent resume state from its saved runtime metadata.
 	RestoredConversationPath string `json:"restored_conversation_path,omitempty"`
@@ -7326,6 +7330,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					promptPaths = req.WorkflowContextPaths
 				}
 				promptCtx.WorkflowContext = buildWorkflowContextPromptWithLabels(promptPaths, workflowContextLabels(req.WorkflowContextRefs), referenceSkillName)
+			}
+			if note := omittedWorkflowContextNote(req.omittedWorkflowContextCount); note != "" {
+				promptCtx.WorkflowContext += note
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))

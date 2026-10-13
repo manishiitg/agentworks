@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"log"
@@ -244,9 +245,26 @@ func admitTurnContextPaths(ctx context.Context, req *QueryRequest) error {
 	if err != nil {
 		return err
 	}
+	requested := map[string]bool{}
+	for _, raw := range req.WorkflowContextPaths {
+		requested[strings.TrimSuffix(strings.TrimSpace(raw), "/")] = true
+	}
+	req.omittedWorkflowContextCount = len(requested) - len(contextPaths)
 	req.WorkflowContextPaths = contextPaths
 	req.authorizedWorkflowContextReadPaths = contextReadPaths
 	return nil
+}
+
+// omittedWorkflowContextNote tells the agent that attached context was left
+// out for this person, so it does not answer as if it had the full context.
+func omittedWorkflowContextNote(n int) string {
+	switch {
+	case n <= 0:
+		return ""
+	case n == 1:
+		return "\n\nNote: 1 attached workflow or project was left out because this person cannot open it.\n"
+	}
+	return fmt.Sprintf("\n\nNote: %d attached workflows or projects were left out because this person cannot open them.\n", n)
 }
 
 // workflowContextAuthorizationContext is the identity a turn's attachments

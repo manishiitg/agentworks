@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +56,9 @@ func TestWorkflowContextAccess(t *testing.T) {
 	req := &QueryRequest{WorkflowContextPaths: []string{"Workflow/target"}}
 	if err := admitTurnContextPaths(ctxFor("other"), req); err != nil || len(req.WorkflowContextPaths) != 0 || len(req.authorizedWorkflowContextReadPaths) != 0 {
 		t.Fatalf("unreadable attachment: err=%v paths=%v reads=%v", err, req.WorkflowContextPaths, req.authorizedWorkflowContextReadPaths)
+	}
+	if note := omittedWorkflowContextNote(req.omittedWorkflowContextCount); req.omittedWorkflowContextCount != 1 || !strings.Contains(note, "1 attached") || strings.Contains(note, "target") {
+		t.Fatalf("the agent must be told, by count only, that context was left out: count=%d note=%q", req.omittedWorkflowContextCount, note)
 	}
 }
 
