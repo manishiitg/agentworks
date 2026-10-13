@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 type codeChatAttachment struct {
@@ -44,6 +45,13 @@ func codeChatAttachmentPaths(req QueryRequest, owner, sessionID string) ([]strin
 	}
 	folder := codeChatAttachmentFolder(req.SelectedFolder, sessionID)
 	physical := agentProfileRuntimeWorkspace(owner, folder)
+	// Product admission supplies a physical registry root; upload responses
+	// are user-relative. Derive both spellings from that same admitted root.
+	ref, ok := workspaceref.Parse(physical)
+	if !ok {
+		return nil, fmt.Errorf("attachments must belong to this chat's upload folder")
+	}
+	folder = ref.Logical()
 	seen := map[string]bool{}
 	paths := []string{}
 	for _, file := range req.CodeChatAttachments {
