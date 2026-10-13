@@ -93,8 +93,8 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if preview.ParallelToolCalls || preview.ItemID != "work" || !strings.Contains(preview.SystemPrompt, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
 		t.Fatal("preview omitted current config, selected item, instructions or unresolved context")
 	}
-	if !strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
-		t.Fatal("agent preview omitted runtime function tools")
+	if strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
+		t.Fatal("ordinary step preview exposed Crew function tools")
 	}
 	counts := map[string]int{}
 	for _, skill := range preview.Skills {

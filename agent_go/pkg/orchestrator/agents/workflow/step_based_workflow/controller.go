@@ -64,6 +64,8 @@ type StepBasedWorkflowOrchestrator struct {
 	codeLayoutVersion      atomic.Int32
 	platformStoresDisabled atomic.Bool
 	relayExecution         atomic.Bool
+	stepHasGoal            atomic.Bool
+	stepPulseEnabled       atomic.Bool
 	// testRun is the active test-mode execution (PLAT-562), nil otherwise.
 	// Every tool session this controller sets up while it is set belongs to
 	// the test run.

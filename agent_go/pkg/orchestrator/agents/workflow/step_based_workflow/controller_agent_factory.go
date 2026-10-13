@@ -883,7 +883,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	}
 	for _, required := range []string{
 		"human_tools:human_feedback",
-		"human_tools:notify_user",
 		"human_tools:create_human_input_request",
 	} {
 		if !slices.Contains(enabledTools, required) {
@@ -894,15 +893,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	// DB and cost access come from capabilities, not from whether an explicit
 	// tool list was supplied. Filtering against the actual workspace pool below
 	// cannot introduce a tool withheld by the owning profile.
-	enabledTools = append(enabledTools, "workflow_costs:query_workflow_costs")
 	if hcpo.platformStoresEnabled() {
-		enabledTools = append(enabledTools, "workflow_db:query_workflow_db", "workflow:get_goal_metrics", "workflow:record_goal_observations")
+		enabledTools = append(enabledTools, "workflow_db:query_workflow_db")
+		if hcpo.stepHasGoal.Load() {
+			enabledTools = append(enabledTools, "workflow:get_goal_metrics", "workflow:record_goal_observations")
+		}
 		// A step working on the goal may ask the workflow's Pulse for a
 		// recommendation (PLAT-697 phase 4).
-		enabledTools = append(enabledTools, "workflow:ask_pulse", "workflow:ask_goal_lead")
+		if hcpo.stepHasGoal.Load() && hcpo.stepPulseEnabled.Load() {
+			enabledTools = append(enabledTools, "workflow:ask_pulse", "workflow:ask_goal_lead")
+		}
 	}
 	if hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite {
-		enabledTools = append(enabledTools, "workflow_db:mutate_workflow_db", "workflow_db:apply_workflow_db_migration")
+		enabledTools = append(enabledTools, "workflow_db:mutate_workflow_db")
 	}
 
 	// Explicit custom tool selection cannot broaden the step's KB capability.
@@ -939,6 +942,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	if !hcpo.platformStoresEnabled() {
 		tools, executors = withoutPlatformStoreTools(tools, executors)
 	}
+	tools, executors = hcpo.filterOrdinaryStepTools(tools, executors)
 	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered custom tools: %d tools enabled from %d entries: %v", len(tools), len(enabledTools), enabledTools))
 	return tools, executors
 }
@@ -1501,13 +1505,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 
 	// 6. Use base factory! (This handles all setup automatically)
-	if planStep != nil && planStep.StepType() == StepTypeAgent {
-		var err error
-		toolsToRegister, executorsToUse, err = hcpo.appendAgentFunctionTools(ctx, config.MCPSessionID, stepID, toolsToRegister, executorsToUse)
-		if err != nil {
-			return nil, err
-		}
-	}
 	pathInfo := parseStepPath(stepPath)
 	parentStepIndex := parentStepIndexFromContext(ctx, pathInfo.ParentStepNumber-1)
 	if parentStepIndex < 0 {
@@ -1937,14 +1934,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		toolsToRegister = filteredTools
 		executorsToUse = filteredExecutors
 		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered out human tools for todo task orchestrator agent (no human mode): %d tools remaining", len(toolsToRegister)))
-	}
-
-	{
-		var functionErr error
-		toolsToRegister, executorsToUse, functionErr = hcpo.appendAgentFunctionTools(ctx, config.MCPSessionID, stepID, toolsToRegister, executorsToUse)
-		if functionErr != nil {
-			return nil, functionErr
-		}
 	}
 
 	// IMPORTANT: Inject sub-agent tools for tool-based delegation
