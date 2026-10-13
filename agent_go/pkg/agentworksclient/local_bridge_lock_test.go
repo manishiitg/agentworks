@@ -419,3 +419,32 @@ func TestNewHelperWaitsForTheStoppingHelpersLock(t *testing.T) {
 		t.Fatalf("new helper did not take over: %+v %v", reply, err)
 	}
 }
+
+// A chat whose native-route lookup failed is looked at again only after a wait (lookups scan processes and
+// ran on every hook), but a chat starting can bring its route, so that looks at once: otherwise a chat
+// started just after a failed lookup seems attached but receives nothing for the whole wait.
+func TestRouteLookupWaitsBetweenFailuresButNotAfterAChatStarts(t *testing.T) {
+	var lookups atomic.Int32
+	client, err := New("http://127.0.0.1:1", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{}), options: LocalBridgeOptions{
+		HostAlive:   func(string, string) bool { return true },
+		NativeOffer: func(context.Context, string, LocalBridgeReply) error { return nil },
+		NativeRoute: func(_, _, _, _ string) string { lookups.Add(1); return "" },
+	}}
+	b.sessions[localBridgeKey("claude", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, HostKey: "h", AccountSenders: true, client: client, Offers: map[string]localOffer{}}
+	status := LocalBridgeRequest{Action: "status", Provider: "claude", SessionID: "s1", HostKey: "h"}
+	call := func(in LocalBridgeRequest) { b.handle(context.Background(), context.Background(), in) }
+	call(status)
+	call(status)
+	if lookups.Load() != 1 {
+		t.Fatalf("a second status right after a failed lookup looked again: %d lookups", lookups.Load())
+	}
+	status.RefreshRoute = true // the chat's start hook
+	call(status)
+	if lookups.Load() != 2 {
+		t.Fatalf("a chat starting did not trigger a lookup: %d lookups", lookups.Load())
+	}
+}

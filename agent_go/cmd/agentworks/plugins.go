@@ -225,6 +225,7 @@ func pluginCommand(o *options) *cobra.Command {
 		}
 		if input.Event == "SessionStart" {
 			req.Action = "status"
+			req.RefreshRoute = true // a chat starting can bring its route: look at once
 			out, e := bridgeCall(ctx, root, o, req)
 			if e == nil && out.Offline {
 				if req.Provider != "pi" && reconnectOffline(ctx, root, req) == "" {

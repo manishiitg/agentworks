@@ -25,7 +25,10 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
-	OwnAttach     bool `json:"own_attach,omitempty"`
+	OwnAttach bool `json:"own_attach,omitempty"`
+	// RefreshRoute says something that can create a native route just happened (a chat starting), so the
+	// next lookup runs at once instead of waiting out the retry interval.
+	RefreshRoute  bool `json:"refresh_route,omitempty"`
 	MuseCurrent   bool `json:"muse_current,omitempty"`
 	ReuseIdentity bool `json:"reuse_identity,omitempty"`
 	// SwitchConnection is the person's explicit move of this exact chat to the
@@ -163,6 +166,9 @@ type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
 	NativeRoute func(provider, session, hostKey, remote string) string
 	Notify      func(AgentAttachment, string)
+	// RouteRetry is how long a chat whose native-route lookup failed waits before the bridge looks again
+	// (5 s when zero). Attaching, re-attaching and a chat starting look at once.
+	RouteRetry time.Duration
 	// Version is the build that runs the bridge. A newer CLI replaces a bridge
 	// that reports another version, so hooks never talk to an older helper.
 	Version string
@@ -568,8 +574,12 @@ func (b *localBridge) recoverNativeRoute(s *localSession) bool {
 		return false
 	}
 	// Discovery lists session files and runs a process check for each, and every hook of every
-	// attached chat reaches here while the bridge lock is held: look again at most every 30 s.
-	if time.Since(s.routeTriedAt) < 30*time.Second {
+	// attached chat reaches here while the bridge lock is held: look again at most every 5 s per chat (and at once after an attach or a chat start).
+	retry := b.options.RouteRetry
+	if retry == 0 {
+		retry = 5 * time.Second
+	}
+	if time.Since(s.routeTriedAt) < retry {
 		return false
 	}
 	s.routeTriedAt = time.Now()
@@ -774,6 +784,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != ""}
 			}
 			next := *s
+			next.routeTriedAt = time.Time{} // an attach can create a route: look at once
 			next.HostKey, next.NativeRemote, next.Offline = in.HostKey, in.NativeRemote, false
 			next.OfflineExplicit = false
 			next.LastError, next.nativeStarted, next.cancel = "", false, nil
@@ -1091,6 +1102,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 	if s.client == nil {
 		return LocalBridgeReply{Error: "This chat's connection is not available. Run agentworks login if needed, then type /agentworks attach in the chat."}
+	}
+	if in.RefreshRoute {
+		s.routeTriedAt = time.Time{}
 	}
 	if (in.Action == "status" || in.Action == "drain") && b.recoverNativeRoute(s) {
 		if err := b.save(); err != nil {

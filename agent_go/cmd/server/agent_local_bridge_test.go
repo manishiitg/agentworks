@@ -119,7 +119,10 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var bridgeOptions agentworksclient.LocalBridgeOptions
+	// A chat whose native-route lookup failed is looked at again after a wait (5 s in production). The route phase
+	// below makes a route appear and expects the very next hook call, microseconds after the last lookup, to find
+	// it, so the test turns the wait off (one nanosecond).
+	bridgeOptions := agentworksclient.LocalBridgeOptions{RouteRetry: time.Nanosecond}
 	start := func() (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
