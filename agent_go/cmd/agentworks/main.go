@@ -30,6 +30,9 @@ type options struct {
 	switchPath string
 	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
 	reconnectNote string
+	// reconnectAlt are the other free earlier agents, tried when a bare attach loses a race for the first.
+	reconnectAlt []autoAttachRecord
+	reconnectCwd string
 	// namedLogin is set by login --name so the save rechecks the name under a lock.
 	namedLogin bool
 	// attachedOnly limits live-chat discovery to chats already attached through

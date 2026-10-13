@@ -121,6 +121,7 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, msg)
 				}
 			}
+			detachedName := ""
 			switch req.Action {
 			case "attach":
 				// Strict grammar: attach [NAME] [--on LOGIN]; nothing else.
@@ -165,6 +166,12 @@ func pluginCommand(o *options) *cobra.Command {
 				if req.Action == "agents" {
 					return pluginAgents(ctx, root, o, req)
 				}
+				// Only this agent leaves the folder's memory; its siblings stay reusable.
+				st := req
+				st.Action = "status"
+				if cur, e := bridgeCall(ctx, root, o, st); e == nil {
+					detachedName = cur.Attachment.AgentName
+				}
 			case "auto":
 				on, ok := autoAttachCommand(words)
 				if !ok {
@@ -176,7 +183,7 @@ func pluginCommand(o *options) *cobra.Command {
 			default:
 				return pluginBlock(o, personCommandHelp)
 			}
-			out, err = bridgeCall(ctx, root, o, req)
+			out, err = bridgeAttach(ctx, root, o, &req)
 			if err != nil {
 				return pluginBlock(o, err.Error())
 			}
@@ -184,7 +191,9 @@ func pluginCommand(o *options) *cobra.Command {
 				rememberAutoAttach(root, req.Provider, input.Cwd, out.Attachment, req.ConfigPath)
 			}
 			if words[1] == "detach" && !out.Attached {
-				forgetAutoAttach(root, req.Provider, input.Cwd, "")
+				if detachedName != "" {
+					forgetAutoAttach(root, req.Provider, input.Cwd, detachedName)
+				}
 			}
 			if out.Offline {
 				return pluginBlock(o, "agent:"+out.Attachment.AgentName+" is offline. Type /agentworks attach in this chat to reconnect it.")

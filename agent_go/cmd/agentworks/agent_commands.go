@@ -52,9 +52,8 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 		// A bare attach typed by the person comes back as the folder's most recent
 		// earlier agent that nothing holds, so peers keep the address they know.
 		if free := freeAutoAttachRecords(ctx, root, *req, cwd); len(free) > 0 {
-			r := free[0]
-			req.AgentName, req.Purpose, req.ConfigPath, req.ReuseIdentity = r.Name, r.Purpose, r.ConfigPath, false
-			o.reconnectNote = "Reconnected as agent:" + r.Name + ". Type /agentworks attach NEW-NAME for a new agent."
+			o.reconnectAlt, o.reconnectCwd = free[1:], cwd
+			o.takeReconnect(req, free[0])
 			return nil
 		}
 	}
@@ -75,6 +74,49 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 	}
 	req.ConfigPath, err = filepath.Abs(req.ConfigPath)
 	return err
+}
+
+// takeReconnect points a bare attach at an earlier agent and words the one line
+// that tells the person, naming the login when it is not the current default.
+func (o *options) takeReconnect(req *agentworksclient.LocalBridgeRequest, r autoAttachRecord) {
+	req.AgentName, req.Purpose, req.ConfigPath, req.ReuseIdentity = r.Name, r.Purpose, r.ConfigPath, false
+	login := ""
+	if def, err := o.path(); err == nil {
+		if abs, e := filepath.Abs(def); e != nil || abs != r.ConfigPath {
+			if cfg, e := agentworksclient.LoadConfig(r.ConfigPath); e == nil {
+				login = strings.TrimSuffix(strings.TrimPrefix(loginLabel(cfg.Server), " (login: "), ")")
+			}
+		}
+	}
+	o.reconnectNote = "Reconnected as agent:" + r.Name
+	if login != "" {
+		o.reconnectNote += " on " + login
+	}
+	o.reconnectNote += ". Type /agentworks attach NEW-NAME for a new agent."
+}
+
+// bridgeAttach sends the attach. When a bare attach lost a race for the earlier
+// agent it chose (another chat took the name meanwhile), it moves on to the next
+// free one, and finally to a new automatic name, instead of failing.
+func bridgeAttach(ctx context.Context, root string, o *options, req *agentworksclient.LocalBridgeRequest) (agentworksclient.LocalBridgeReply, error) {
+	out, err := bridgeCall(ctx, root, o, *req)
+	for err != nil && req.Action == "attach" && o.reconnectNote != "" && strings.Contains(err.Error(), "is attached to another chat") {
+		if len(o.reconnectAlt) > 0 {
+			o.takeReconnect(req, o.reconnectAlt[0])
+			o.reconnectAlt = o.reconnectAlt[1:]
+		} else {
+			name, _, e := proposedAgentIdentity(req.Provider, req.SessionID, o.reconnectCwd)
+			cfg, e2 := o.path()
+			if e != nil || e2 != nil {
+				return out, err
+			}
+			abs, _ := filepath.Abs(cfg)
+			req.AgentName, req.Purpose, req.ConfigPath, req.ReuseIdentity = name, "", abs, true
+			o.reconnectNote = ""
+		}
+		out, err = bridgeCall(ctx, root, o, *req)
+	}
+	return out, err
 }
 
 func pluginAgents(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) error {
@@ -468,7 +510,7 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 		req.Setup = false
 		req.OwnAttach = chosen.provider == "codex"
 	}
-	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
+	out, err := bridgeAttach(ctx, root, o, &req)
 	if err != nil {
 		return err
 	}

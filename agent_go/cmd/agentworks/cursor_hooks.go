@@ -153,6 +153,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		req.Action = words[1]
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
 		defer cancel()
+		detachedName := ""
 		if req.Action == "attach" {
 			// attach [NAME] [--on LOGIN]; nothing else.
 			rest, on := words[2:], ""
@@ -172,7 +173,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 				}
 				o.switchPath = path
 			}
-			if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {
+			if err = prepareAttachment(ctx, root, o, &req, cursorFolder(input)); err != nil {
 				return cursorBlock(o, "AgentWorks attachment was not completed. Check the existing login and bridge.")
 			}
 		} else if req.Action == "auto" {
@@ -208,11 +209,12 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 				return cursorBlock(o, "This Cursor chat is not connected. Type /agentworks attach in it.")
 			}
 			req.AttachmentID = state.Attachment.ID
+			detachedName = state.Attachment.AgentName
 			if req.Action == "agents" {
 				req.Action = "peers"
 			}
 		}
-		out, e := bridgeCall(ctx, root, o, req)
+		out, e := bridgeAttach(ctx, root, o, &req)
 		if e != nil {
 			return cursorBlock(o, "AgentWorks command was not completed. Check the local bridge and attachment.")
 		}
@@ -220,7 +222,9 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			rememberAutoAttach(root, "cursor", cursorFolder(input), out.Attachment, req.ConfigPath)
 		}
 		if req.Action == "detach" {
-			forgetAutoAttach(root, "cursor", cursorFolder(input), "")
+			if detachedName != "" {
+				forgetAutoAttach(root, "cursor", cursorFolder(input), detachedName)
+			}
 			return cursorBlock(o, "Handled by AgentWorks. An attachment-fenced detach request was handled; recheck status if the chat was reattached concurrently.")
 		}
 		if !cursorAttached(out, req.SessionID, req.AttachmentID) {
