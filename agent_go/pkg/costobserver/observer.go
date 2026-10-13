@@ -72,6 +72,7 @@ type Observer struct {
 	sourceLabel    string
 	sourceRunID    string
 	launchPath     string
+	attribution    costledger.Attribution
 
 	mu         sync.Mutex
 	sawPerCall bool
@@ -84,6 +85,27 @@ type Observer struct {
 
 // Option configures an Observer at construction time.
 type Option func(*Observer)
+
+// WithProductAttribution receives a server-admitted attribution snapshot.
+// Callers propagate the same context to children rather than accepting fields
+// from model arguments or client JSON.
+func WithProductAttribution(a costledger.Attribution) Option {
+	return func(o *Observer) { o.attribution = a }
+}
+
+type attributionContextKey struct{}
+
+func ContextWithAttribution(ctx context.Context, a costledger.Attribution) context.Context {
+	return context.WithValue(ctx, attributionContextKey{}, a)
+}
+
+func AttributionFromContext(ctx context.Context) costledger.Attribution {
+	if ctx == nil {
+		return costledger.Attribution{}
+	}
+	a, _ := ctx.Value(attributionContextKey{}).(costledger.Attribution)
+	return a
+}
 
 // WithModel records the provider and model the caller requested. The provider
 // may still be overridden per event by what the adapter actually reports.
@@ -468,6 +490,7 @@ func (o *Observer) baseEntry(event *unifiedevents.AgentEvent) costledger.Entry {
 	phase := o.phase
 	o.mu.Unlock()
 	return costledger.Entry{
+		Attribution:    o.attribution,
 		EventID:        storedEventID,
 		IdempotencyKey: idempotencyKey,
 		Timestamp:      event.Timestamp,

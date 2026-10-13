@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"os"
 	"path/filepath"
 	"slices"
@@ -2701,6 +2702,7 @@ const (
 )
 
 func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *ScheduleContext, pulseMode, runStatus, runFolder, runSessionID, scheduleRunID, runFailureReason string) (pulseResult pulseLifecycleResult) {
+	ctx = costActivityContext(ctx, sctx.OwnerUserID, "pulse", "")
 	if sctx.WebhookInput != nil || strings.EqualFold(sctx.Schedule.ScheduleType, "webhook") {
 		return pulseLifecycleNotRun
 	}
@@ -3742,6 +3744,9 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 
 // executeWorkshopJob runs a workflow via the workshop builder path (workflow_phase mode).
 func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, string, error) {
+	if costobserver.AttributionFromContext(ctx).Activity == "" {
+		ctx = costActivityContext(ctx, sctx.OwnerUserID, "scheduled_run", "")
+	}
 	messages := scheduledWorkshopMessages(sctx)
 	if sctx.WebhookInput != nil {
 		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run Pulse, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
@@ -3783,6 +3788,9 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	sessionID := s.newScheduleSessionID(sctx)
 	if sctx.WebhookInput != nil && sctx.Schedule.IsFunctionTrigger() && strings.HasPrefix(sctx.WebhookInput.DeliveryID, "fn-") {
 		ctx = virtualtools.WithFeedbackOperation(ctx, sctx.WebhookInput.DeliveryID)
+		if call := lookupCrewFunctionCall(sctx.WebhookInput.DeliveryID); call != nil {
+			ctx = costActivityContext(ctx, call.UserID, "function_call", call.ID)
+		}
 	}
 	// Mark the complete scheduled-session lifetime in server-owned state so a
 	// late contract migration cannot stamp the workflow after its owning

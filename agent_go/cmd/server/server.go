@@ -331,7 +331,8 @@ type ServerConfig struct {
 
 // ActiveSessionInfo represents an active session for page refresh recovery
 type ActiveSessionInfo struct {
-	SessionID string `json:"session_id"`
+	CostAttribution costledger.Attribution `json:"-"`
+	SessionID       string                 `json:"session_id"`
 	// TurnProvider is the principal the current turn runs as (its claims
 	// provider): the web chat's login provider, "bot_user" for the person's
 	// 1:1 Slack DM, "bot_owner" for their WhatsApp, "bot_route" for a shared
@@ -5268,6 +5269,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			workflowCost := api.costTurnAttribution(r.Context(), req, currentUserID, workflowWorkspacePath, costobserver.ScopeWorkflowExecution)
+			if costobserver.AttributionFromContext(r.Context()).Activity == "" {
+				workflowCost.Activity = "workflow_run"
+			}
+			workflowCtx = costobserver.ContextWithAttribution(workflowCtx, workflowCost)
+			api.setSessionCostAttribution(sessionID, workflowCost)
 			// Register in active executions registry
 			activeExec := &ActiveWorkflowExecution{
 				QueryID:       queryID,
@@ -5725,7 +5732,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Create a detached context for the entire streaming operation.
 		// Execution is stopped by explicit cancellation, not by a wall-clock timeout.
 		streamCtx, cancel := context.WithCancel(productpolicy.WithSelection(context.WithoutCancel(r.Context()), builderProductSelection(GetUserFromContext(r.Context()))))
+		agentModeForScope := req.AgentMode
+		if isWorkflowPhase {
+			agentModeForScope = "workflow_phase"
+		}
+		costScope := chatTurnCostScope(req, agentModeForScope, workflowPhaseID)
+		turnCostAttribution := api.costTurnAttribution(r.Context(), req, currentUserID,
+			costFirstNonEmpty(workflowPhaseFolder, req.SelectedFolder), costScope)
+		api.setSessionCostAttribution(sessionID, turnCostAttribution)
 		streamCtx = queryLogCtx.Context(streamCtx)
+		streamCtx = costobserver.ContextWithAttribution(streamCtx, turnCostAttribution)
 		// Tools that start their own model (generate_text_llm, read_image)
 		// resolve and admit accounts with this turn's scope.
 		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
@@ -7806,11 +7822,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		//     charged every scheduled workflow AND Pulse turn to "chat".
 		//     isWorkflowPhase is captured before that rewrite and is what the
 		//     inference is supposed to see.
-		agentModeForScope := req.AgentMode
-		if isWorkflowPhase {
-			agentModeForScope = "workflow_phase"
-		}
-		costScope := chatTurnCostScope(req, agentModeForScope, workflowPhaseID)
 		costObs := newCostObserver(
 			api.costLedger,
 			sessionID,
@@ -7829,6 +7840,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			withCostSourcePlatform(req.BotPlatform),
 			withCostBillingUser(botTokenOwner),
 			costSourceOption(req),
+			costobserver.WithProductAttribution(turnCostAttribution),
 		)
 		if err := llmAgent.AddObserver(eventObserver); err != nil {
 			sendError(fmt.Sprintf("Failed to attach event observer: %v", err), true)
@@ -8091,6 +8103,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Inject user ID into the agent context
 		agentCtx = context.WithValue(agentCtx, common.UserIDKey, currentUserID)
 		agentCtx = costobserver.ContextWithSourcePlatform(agentCtx, req.BotPlatform)
+		agentCtx = costobserver.ContextWithAttribution(agentCtx, turnCostAttribution)
 		agentCtx = context.WithValue(agentCtx, common.ChatSessionIDKey, sessionID)
 		if dest := notificationDestinationFromQuery(req, currentUserID); dest != nil {
 			virtualtools.RegisterSessionNotificationDestination(sessionID, dest)

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -80,16 +82,17 @@ func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) Q
 // attributes needed to reconstruct and revalidate a delayed turn. It never
 // stores a bearer token or an execution principal.
 type queuedConversationPrincipal struct {
-	ExternalBuilderOperationID string `json:"external_builder_operation_id,omitempty"`
-	FeedbackOperationID        string `json:"feedback_operation_id,omitempty"`
-	Provider                   string `json:"provider,omitempty"`
-	AccessTokenID              string `json:"access_token_id,omitempty"`
-	SlackTrustedApp            bool   `json:"slack_trusted_app,omitempty"`
-	BotRouteGrant              string `json:"bot_route_grant,omitempty"`
-	BotRouteWorkflowID         string `json:"bot_route_workflow_id,omitempty"`
-	BotRouteProfileID          string `json:"bot_route_profile_id,omitempty"`
-	BotRouteConversationKey    string `json:"bot_route_conversation_key,omitempty"`
-	BotRouteWorkspacePath      string `json:"bot_route_workspace_path,omitempty"`
+	CostAttribution            costledger.Attribution `json:"cost_attribution,omitempty"`
+	ExternalBuilderOperationID string                 `json:"external_builder_operation_id,omitempty"`
+	FeedbackOperationID        string                 `json:"feedback_operation_id,omitempty"`
+	Provider                   string                 `json:"provider,omitempty"`
+	AccessTokenID              string                 `json:"access_token_id,omitempty"`
+	SlackTrustedApp            bool                   `json:"slack_trusted_app,omitempty"`
+	BotRouteGrant              string                 `json:"bot_route_grant,omitempty"`
+	BotRouteWorkflowID         string                 `json:"bot_route_workflow_id,omitempty"`
+	BotRouteProfileID          string                 `json:"bot_route_profile_id,omitempty"`
+	BotRouteConversationKey    string                 `json:"bot_route_conversation_key,omitempty"`
+	BotRouteWorkspacePath      string                 `json:"bot_route_workspace_path,omitempty"`
 }
 
 type queuedConversationTurn struct {
@@ -125,6 +128,7 @@ func queuedPrincipalFromContext(ctx context.Context) queuedConversationPrincipal
 		return queuedConversationPrincipal{}
 	}
 	principal := queuedConversationPrincipal{
+		CostAttribution:            costobserver.AttributionFromContext(ctx),
 		ExternalBuilderOperationID: claims.ExternalBuilderOperationID,
 		FeedbackOperationID:        virtualtools.FeedbackOperationFromContext(ctx),
 		Provider:                   claims.Provider, SlackTrustedApp: claims.SlackTrustedApp,
@@ -622,6 +626,7 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 			ID: turn.SubmissionID, Owner: turn.UserID, Session: turn.SessionID, Message: turn.Request.Query,
 		})
 	}
+	ctx = costobserver.ContextWithAttribution(ctx, turn.Principal.CostAttribution)
 	return ctx, nil
 }
 

@@ -598,6 +598,8 @@ chat:
       - bullpen_admin
       # Brain without the app: backup health, Brain's secrets, the person's Organize Brain schedule, what's new.
       - brain_admin
+      # Cross-product recorded token attribution, under current sharing and consent.
+      - costs
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

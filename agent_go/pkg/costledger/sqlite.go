@@ -139,6 +139,21 @@ func NewSQLiteLedger(dbPath string) (*Ledger, error) {
 			return nil, fmt.Errorf("costledger: migrate %s column: %w", column, err)
 		}
 	}
+	if err := ensureCostEventColumn(db, "attribution_version", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("costledger: migrate attribution version: %w", err)
+	}
+	for _, column := range []string{"actor_id", "product_kind", "product_id", "product_owner_id", "product_name", "activity", "origin_dashboard_id", "origin_dashboard_name", "function_call_id", "parent_session_id", "parent_execution_id"} {
+		if err := ensureCostEventColumn(db, column, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("costledger: migrate attribution %s: %w", column, err)
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_events_product_time ON cost_events(product_kind, product_id, occurred_at);
+		CREATE INDEX IF NOT EXISTS idx_cost_events_actor_time ON cost_events(actor_id, occurred_at)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("costledger: index attribution: %w", err)
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_events_billing_user_time ON cost_events(billing_user_id, occurred_at)`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("costledger: index billing_user_id: %w", err)
@@ -186,8 +201,9 @@ INSERT OR IGNORE INTO cost_events (
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
     pricing_source, pricing_version, tool_name, operation_metadata_json, account_id, billing_user_id,
-    source_id, source_label, source_run_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    source_id, source_label, source_run_id, attribution_version,
+    actor_id, product_kind, product_id, product_owner_id, product_name, activity, origin_dashboard_id, origin_dashboard_name, function_call_id, parent_session_id, parent_execution_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	args := []interface{}{
 		e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 		e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
@@ -196,7 +212,9 @@ INSERT OR IGNORE INTO cost_events (
 		e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 		e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
 		e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID, e.BillingUserID,
-		e.SourceID, e.SourceLabel, e.SourceRunID,
+		e.SourceID, e.SourceLabel, e.SourceRunID, e.AttributionVersion,
+		e.ActorID, e.ProductKind, e.ProductID, e.ProductOwnerID, e.ProductName, e.Activity,
+		e.OriginDashboardID, e.OriginDashboardName, e.FunctionCallID, e.ParentSessionID, e.ParentExecutionID,
 	}
 	for attempt := 0; ; attempt++ {
 		_, err = s.db.Exec(insertEvent, args...)

@@ -1250,6 +1250,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			functionCall.SessionID = sessionID
 			functionCall.mu.Unlock()
 			functionCall.persist()
+			runCtx = costActivityContext(runCtx, functionCall.UserID, "function_call", functionCall.ID)
 			common.SetSessionShellEnv(sessionID, structuredFunctionShellEnvironment(functionCall))
 		}
 		defer retireProductCodingCLI(sessionID, "isolated function execution ended")
@@ -1263,6 +1264,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		}
 	}
 
+	if functionCall == nil {
+		runCtx = costActivityContext(runCtx, job.UserID, "scheduled_run", "")
+	}
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, conversation.WorkspacePath)
 	startedAt := time.Now().UTC()
 	entry := &ScheduleRunEntry{

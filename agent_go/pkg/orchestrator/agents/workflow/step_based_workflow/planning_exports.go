@@ -883,6 +883,7 @@ func newWorkshopSessionContext(ctx context.Context, cfg *WorkshopConfig) (contex
 		base = context.WithValue(base, common.UserIDKey, userID)
 	}
 	base = costobserver.ContextWithSourcePlatform(base, platform)
+	base = costobserver.ContextWithAttribution(base, costobserver.AttributionFromContext(ctx))
 	return context.WithCancel(base)
 }
 

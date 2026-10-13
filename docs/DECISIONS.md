@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-13 — MCP explains token use through trusted attribution (PLAT-856)
+
+Add product, originating person and activity snapshots to the existing immutable
+cost ledger at admitted launch sites, preserving runtime identity, event retries,
+pricing and current shared-account accounting. Children inherit the context;
+dashboard origin annotates target events and never adds a duplicate charge.
+MCP costs breakdown/detail use current sharing and existing consent/bounds:
+people see shared product usage across actors and their own personal usage;
+administrators with server-wide consent see all. Historical gaps remain explicit,
+with reliable native workspace/run mapping only. Provider credentials and other
+people's personal account names are absent. No new roles/scopes, payer switching,
+budgets or cost-page changes. Why: one company needs to know where tokens went
+and which activity caused them. Ticket: PLAT-856, issue 856-77.
+
 ## 2026-10-13 — Show pending workflow upgrades above chat (PLAT-861)
 
 The workflow chat shows Update workflow whenever migrations are pending, even
@@ -12,6 +26,7 @@ Why: the description-first migration is pending for runnable v1.0.47 workflows
 and must remain discoverable without opening Identity's Upgrades panel.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-162.
+
 
 ## 2026-10-13 — Shared product guidance covers work products (PLAT-856)
 

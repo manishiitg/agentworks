@@ -14,6 +14,7 @@ import (
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -864,6 +865,12 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		if projectScopedProfile {
 			costWorkspace = subAgentWorkspace
 		}
+		childAttribution := costobserver.AttributionFromContext(ctx)
+		childAttribution.ParentSessionID = sessionID
+		if product := costProductForWorkspace(ctx, costWorkspace); product.ID != "" {
+			childAttribution.ProductKind, childAttribution.ProductID, childAttribution.ProductName, childAttribution.ProductOwnerID = product.Kind, product.ID, product.Name, product.OwnerID
+		}
+		ctx = costobserver.ContextWithAttribution(ctx, childAttribution)
 		subAgentCostObserver := newCostObserver(
 			api.costLedger,
 			sessionID,
@@ -880,6 +887,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			withCostSourcePlatform(parentReq.BotPlatform),
 			withCostBillingUser(parentReq.tokenOwner),
 			costSourceOption(parentReq),
+			costobserver.WithProductAttribution(childAttribution),
 		)
 		if err := subAgent.AddObserver(subAgentCostObserver); err != nil {
 			return "", fmt.Errorf("attach delegation cost observer: %w", err)

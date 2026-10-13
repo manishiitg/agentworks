@@ -267,6 +267,9 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	if failure, ok := reqMap["_bot_prepare_error"].(string); ok {
 		return internalSessionTurnResult{}, fmt.Errorf("prepare conversation: %s", failure)
 	}
+	if automatic, _ := reqMap["is_auto_notification"].(bool); automatic {
+		ctx = costActivityContext(ctx, userID, "background_idle", "")
+	}
 	// Marshal the request map to JSON
 	wireRequest := maps.Clone(reqMap)
 	delete(wireRequest, "_trusted_resume_target")

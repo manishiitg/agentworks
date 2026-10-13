@@ -377,6 +377,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if isExternalCrewTool(tool.Name) && !productEnabled("work") || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
 		return false
 	}
+	if tool.Name == "costs" {
+		return externalCostsAllowed(c)
+	}
 	if tool.actions != nil {
 		return externalMergedAllows(c, tool)
 	}

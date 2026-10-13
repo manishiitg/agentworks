@@ -28,6 +28,7 @@ func (api *StreamingAPI) recordMCPBridgeCall(sessionID, server, tool string) {
 		entry.UserID = active.UserID
 		entry.WorkflowID = active.WorkspacePath
 		entry.SourcePlatform = active.BotPlatform
+		entry.Attribution = active.CostAttribution
 	}
 	if err := api.costLedger.Append(entry); err != nil {
 		log.Printf("[COST_LEDGER] Failed to record MCP call %s/%s: %v", server, tool, err)

@@ -29,6 +29,7 @@ type workspaceAPIResponse struct {
 
 // Entry is one LLM call, paid tool charge, or unpriced MCP activity record.
 type Entry struct {
+	Attribution
 	EventID        string    `json:"event_id,omitempty"`
 	IdempotencyKey string    `json:"idempotency_key,omitempty"`
 	Timestamp      time.Time `json:"ts"`

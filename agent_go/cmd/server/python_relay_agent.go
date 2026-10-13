@@ -202,9 +202,28 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 	if policy := common.GetSessionShellConfig(parent); policy != nil {
 		workflowPath = policy.WorkflowPath
 	}
+	a := costobserver.AttributionFromContext(ctx)
+	if a.ActorID == "" {
+		a.ActorID = sctx.OwnerUserID
+	}
+	if product := costProductForWorkspace(ctx, workflowPath); product.ID != "" {
+		a.ProductKind, a.ProductID, a.ProductName, a.ProductOwnerID = product.Kind, product.ID, product.Name, product.OwnerID
+	}
+	if sctx.WorkflowID != "" {
+		a.ProductKind, a.ProductID = "relay", sctx.WorkflowID
+		a.ProductName = firstNonEmptyTrimmed(sctx.WorkflowLabel, sctx.WorkflowID)
+		a.ProductOwnerID = sctx.OwnerUserID
+	}
+	if a.Activity == "" {
+		a.Activity = "relay_run"
+	}
+	a.AttributionVersion = costledger.AttributionVersion
+	a.ParentSessionID = parent
+	ctx = costobserver.ContextWithAttribution(ctx, a)
 	observer := newCostObserver(ledger, sessionID, sctx.OwnerUserID, "relay",
 		withCostModel(model.Provider, model.ModelID), withCostAccount(costAccountIDFor(model.Provider, model.ConnectionID)),
-		withCostAttribution(costobserver.ScopeWorkflowExecution, workflowPath, path.Base(runPath), sessionID))
+		withCostAttribution(costobserver.ScopeWorkflowExecution, workflowPath, path.Base(runPath), sessionID),
+		costobserver.WithProductAttribution(a))
 	runtime := mcpagent.RuntimeConfig{Model: initialized, MCPConfigPath: api.mcpConfigPath,
 		Generation:    mcpagent.GenerationRuntimeConfig{Provider: provider, APIKeys: keys, MaxTurns: call.MaxTurns, LLM: mcpagent.AgentLLMConfiguration{Primary: mcpagent.LLMModel{Provider: model.Provider, ModelID: model.ModelID, ConnectionID: model.ConnectionID, Options: model.Options}}},
 		Tools:         mcpagent.ToolRuntimeConfig{CodeExecution: true, Discovery: true},

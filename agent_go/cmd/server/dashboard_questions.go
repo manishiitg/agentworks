@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"io"
 	"net/http"
 	"strings"
@@ -182,6 +183,13 @@ func (api *StreamingAPI) dispatchDashboardQuestion(claims UserClaims, turn dashb
 	resolved, err := api.resolveDashboardQuestion(ctx, &claims, turn.ResourceID, turn.Revision)
 	if err != nil || !resolved.Capability.CanAsk {
 		errorCode = "access_revoked"
+	} else {
+		// The target adapter inherits this admitted origin. It annotates the
+		// target's cost events rather than charging a second dashboard event.
+		ctx = costActivityContext(ctx, claims.UserID, "dashboard_question", "")
+		a := costobserver.AttributionFromContext(ctx)
+		a.OriginDashboardID, a.OriginDashboardName = resolved.Resource.ID, resolved.Document.Title
+		ctx = costobserver.ContextWithAttribution(ctx, a)
 	}
 	api.transitionDashboardQuestion(ctx, claims.UserID, turn.ID, "running", "failed", errorCode)
 }

@@ -132,6 +132,7 @@ func recordPricedToolCost(ctx context.Context, workspaceAPIURL, userID string, c
 		defer ledger.Close()
 	}
 	if err := ledger.Append(costledger.Entry{
+		Attribution:       costobserver.AttributionFromContext(ctx),
 		Timestamp:         now,
 		UserID:            userID,
 		WorkflowID:        target.WorkspacePath,

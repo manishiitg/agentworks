@@ -243,6 +243,7 @@ func externalTools() ([]externalTool, error) {
 		externalCodeRunDefinitions(add)
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
+		externalCostsDefinition(add)
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
 		externalBuilderDefinitions(add)
@@ -514,6 +515,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if tool.Name == "costs" {
+		api.externalCostsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "messages" {
