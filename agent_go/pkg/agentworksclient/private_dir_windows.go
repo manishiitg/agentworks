@@ -25,6 +25,14 @@ func protectPrivateDir(path string) error {
 	if err != nil {
 		return err
 	}
+	// Never re-protect a folder that belongs to someone else.
+	owner, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	if sid, _, e := owner.Owner(); e != nil || !privateWindowsSID(sid, user) {
+		return errors.New("the folder is not owned by your account, SYSTEM or Administrators")
+	}
 	sd, err := windows.SecurityDescriptorFromString("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + user.String() + ")")
 	if err != nil {
 		return err

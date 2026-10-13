@@ -34,7 +34,10 @@ func walkAncestors(start, depth int, read func(int) (procEntry, error), visit fu
 		if err != nil {
 			return procEntry{}, errors.New("cannot identify provider ancestor")
 		}
-		if parent.Created != 0 && child.Created != 0 && parent.Created > child.Created {
+		if parent.Created == 0 || child.Created == 0 {
+			return procEntry{}, errors.New("cannot read a process start time; cannot identify the provider ancestor")
+		}
+		if parent.Created > child.Created {
 			return procEntry{}, errors.New("a parent process id was reused; cannot identify the provider ancestor")
 		}
 		if visit(parent) {

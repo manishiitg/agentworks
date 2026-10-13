@@ -27,6 +27,10 @@ func TestWalkAncestorsStopsAtAReusedParentId(t *testing.T) {
 	if e, err := walkAncestors(10, 8, read, isClaude); err == nil {
 		t.Fatalf("followed a reused parent id to %+v", e)
 	}
+	table[8] = procEntry{PID: 8, PPID: 1, Name: "claude.exe"} // start time unreadable: do not follow it unchecked
+	if e, err := walkAncestors(10, 8, read, isClaude); err == nil {
+		t.Fatalf("followed a parent with no start time to %+v", e)
+	}
 	if procBaseName("Claude.EXE") != "claude" {
 		t.Fatal("executable names must match without .exe and case")
 	}
