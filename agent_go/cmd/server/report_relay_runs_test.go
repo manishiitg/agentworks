@@ -138,6 +138,14 @@ func TestReportRelayRunsSharePublishedDiagnosticsAcrossProductMembers(t *testing
 	if w := read("other", "v1"); w.Code != 403 {
 		t.Fatalf("Unrelated user read product: %d %s", w.Code, w.Body.String())
 	}
+	// Even past the route's access check, a caller with no product access (function-only) reads only runs they started.
+	manifest, _, _ := ReadWorkflowManifest(context.Background(), workspace)
+	if _, status, _ := relayRecordedRun(context.Background(), &UserClaims{UserID: "other"}, workspace, manifest, nil, "run-1", "v1"); status != http.StatusNotFound {
+		t.Fatalf("function-only caller read another person's run: %d", status)
+	}
+	if out, status, msg := relayRecordedRun(context.Background(), &UserClaims{UserID: "reader-a"}, workspace, manifest, nil, "run-1", "v1"); status != 0 || msg != "" || out["caller"] != "reader-b" {
+		t.Fatalf("product member must read any run: %d %s %v", status, msg, out)
+	}
 	if w := read("reader-a", "v1&limit=2"); !strings.Contains(w.Body.String(), `"next_before":2`) || strings.Contains(w.Body.String(), `"run_id":"run-1"`) {
 		t.Fatalf("bounded first page: %d %s", w.Code, w.Body.String())
 	}

@@ -545,12 +545,23 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 	if folder == "" {
 		return nil, http.StatusNotFound, "Relay run not found"
 	}
+	// Someone with product access sees every run. A caller who can only call a function sees only the runs they started,
+	// as in the list; a run with no recorded caller stays hidden from them.
+	if !relayRunSeesAll(claims, manifest) {
+		viewer := ""
+		if claims != nil {
+			viewer = claims.UserID
+		}
+		if recorded := relayRunCaller(ctx, rootWorkspace, trace.WorkflowID); recorded == "" || viewer == "" || recorded != viewer {
+			return nil, http.StatusNotFound, "Relay run not found"
+		}
+	}
 	caller, input := relayReportInput(root, guard, trace.WorkflowID)
 	function := relayRunFunction(root, guard, trace.WorkflowID)
 	steps := []map[string]any{}
 	var started, completed float64
 	for _, call := range trace.Calls {
-		step := map[string]any{"name": call.Name, "status": call.Status, "reused": call.Reused}
+		step := map[string]any{"name": relayReportText(call.Name), "status": relayReportText(call.Status), "reused": call.Reused}
 		if call.Started > 0 {
 			step["started_at"] = call.Started
 			if started == 0 || call.Started < started {
@@ -577,10 +588,12 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 	var result any
 	resultPath := path.Join("runs", folder, "relay_result.json")
 	if guard == nil || guard.Allows(resultPath, false) {
-		readReportRelayJSON(root, resultPath, &result)
+		if !readReportRelayJSON(root, resultPath, &result) {
+			result = map[string]any{"unavailable": true, "reason": "not_recorded_or_exceeds_limit"}
+		}
 	}
-	out := map[string]any{"run": folder, "run_id": trace.WorkflowID, "version": version, "function": function, "caller": caller,
-		"input": relayReportValue(input), "status": trace.Status, "attempt": trace.Attempt, "started_at": started,
+	out := map[string]any{"run": folder, "run_id": relayReportText(trace.WorkflowID), "version": version, "function": function, "caller": caller,
+		"input": relayReportValue(input), "status": relayReportText(trace.Status), "attempt": trace.Attempt, "started_at": started,
 		"steps": steps, "result": relayReportValue(result)}
 	if trace.Error != "" {
 		out["error"] = relayReportText(trace.Error)
