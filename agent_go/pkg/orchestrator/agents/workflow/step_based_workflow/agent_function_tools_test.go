@@ -17,7 +17,7 @@ func TestAgentFunctionToolsScopeAndTestModeBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	base.SetWorkspacePath("Workflow/sample")
-	c := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, currentGroupName: "default"}
+	c := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, currentGroupName: "default", selectedRunFolder: "iteration-12-sched/default"}
 	c.SetExecutionOptions(&ExecutionOptions{ExecutionID: "execution-one"})
 	executionID := c.bridgeExecutionID()
 	if executionID == "" {
@@ -25,7 +25,7 @@ func TestAgentFunctionToolsScopeAndTestModeBoundary(t *testing.T) {
 	}
 	called := false
 	bindAgentFunctionTools(c, func(_ context.Context, scope AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
-		if scope.WorkspacePath != "Workflow/sample" || scope.SessionID != "step-session" || scope.StepID != "review" || scope.Group != "default" || scope.ExecutionID != executionID {
+		if scope.WorkspacePath != "Workflow/sample" || scope.SessionID != "step-session" || scope.StepID != "review" || scope.Group != "default" || scope.ExecutionID != executionID || scope.RunFolder != c.selectedRunFolder {
 			t.Fatalf("untrusted or missing execution scope: %+v", scope)
 		}
 		var tools []llmtypes.Tool

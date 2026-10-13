@@ -112,7 +112,7 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := env.api.workflowAgentFunctionToolsForRun(ctx)
-	scope := stepworkflow.AgentFunctionScope{WorkspacePath: "Workflow/reports", ExecutionID: "run-one", StepID: "review", Group: "default", SessionID: "agent-review"}
+	scope := stepworkflow.AgentFunctionScope{WorkspacePath: "Workflow/reports", ExecutionID: "run-one", RunFolder: "iteration-12-sched/default", StepID: "review", Group: "default", SessionID: "agent-review"}
 	tools, executors, err := factory(ctx, scope)
 	if err != nil || len(tools) != 4 {
 		t.Fatalf("execution tool surface: %v %v", tools, err)
@@ -139,6 +139,27 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	source, err := workflowTriggerLinkCaller(scope.WorkspacePath)(ctx)
 	if err != nil || call.CallerKind != triggerCallerWorkflow || call.CallerID != source.Stamp.ID || call.ExecutionScope == "" {
 		t.Fatalf("caller stamp = %+v, %v", call.snapshot(), err)
+	}
+	env.mock.mu.Lock()
+	storedPayload := env.mock.files[linkBetaPath+"/triggers/deliveries/"+call.RunID+".json"]
+	env.mock.mu.Unlock()
+	var delivered map[string]interface{}
+	if err := json.Unmarshal([]byte(storedPayload), &delivered); err != nil {
+		t.Fatalf("saved function payload: %v", err)
+	}
+	for key, want := range map[string]string{
+		"workflow_id": source.Stamp.ID, "workflow_run_id": scope.ExecutionID,
+		"workflow_run_folder": scope.RunFolder, "iteration": "iteration-12-sched",
+		"workflow_step_id": scope.StepID, "group": scope.Group,
+	} {
+		if delivered[key] != want {
+			t.Fatalf("function payload %s = %v, want %q", key, delivered[key], want)
+		}
+	}
+	functionPayload, _ := delivered["payload"].(map[string]interface{})
+	functionArgs, _ := functionPayload["args"].(map[string]interface{})
+	if len(functionArgs) != 1 || functionArgs["build"] != "7" {
+		t.Fatalf("caller metadata changed validated function arguments: %v", functionArgs)
 	}
 	// Completed calls and retries survive the same saved-record path as MCP.
 	crewFunctionCalls.Lock()

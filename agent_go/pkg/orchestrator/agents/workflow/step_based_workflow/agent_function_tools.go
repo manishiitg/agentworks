@@ -9,7 +9,7 @@ import (
 
 // AgentFunctionScope comes from the executing controller, never tool arguments.
 type AgentFunctionScope struct {
-	WorkspacePath, ExecutionID, StepID, Group, SessionID string
+	WorkspacePath, ExecutionID, RunFolder, StepID, Group, SessionID string
 }
 
 // AgentFunctionToolFactory binds server function services to one execution agent.
@@ -33,7 +33,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendAgentFunctionTools(ctx context.
 	if opts == nil || opts.AgentFunctionTools == nil {
 		return tools, executors, nil
 	}
-	scope := AgentFunctionScope{WorkspacePath: hcpo.GetWorkspacePath(), ExecutionID: hcpo.bridgeExecutionID(), StepID: stepID, Group: hcpo.currentGroupName, SessionID: sessionID}
+	scope := AgentFunctionScope{WorkspacePath: hcpo.GetWorkspacePath(), ExecutionID: hcpo.bridgeExecutionID(), RunFolder: hcpo.selectedRunFolder, StepID: stepID, Group: hcpo.currentGroupName, SessionID: sessionID}
 	if scope.ExecutionID == "" {
 		scope.ExecutionID = opts.ExecutionID
 	}
