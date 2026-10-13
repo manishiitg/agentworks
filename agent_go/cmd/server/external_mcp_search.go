@@ -30,7 +30,7 @@ func externalMCPSearchTools(args map[string]any, listed []externalTool) *mcp.Cal
 	}
 	limit, ok := externalSearchInt(args, "limit", externalSearchDefaultLimit)
 	if !ok || limit < 1 || limit > externalSearchMaxLimit {
-		return mcp.NewToolResultError("invalid_arguments: limit must be an integer between 10 and 20")
+		return mcp.NewToolResultError("invalid_arguments: limit must be an integer between 1 and 20 (a page is at least 10)")
 	}
 	limit = max(limit, externalSearchDefaultLimit)
 

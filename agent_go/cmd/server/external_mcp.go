@@ -67,7 +67,7 @@ var externalMCPToolSchemas = map[string]map[string]any{
 		"properties": map[string]any{
 			"query":  map[string]any{"type": "string", "maxLength": 512, "description": "Intent or tool-name keywords; omit to list every tool."},
 			"offset": map[string]any{"type": "integer", "minimum": 0},
-			"limit":  map[string]any{"type": "integer", "minimum": 10, "maximum": 20, "default": 10},
+			"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 10, "description": "Page size; a page is at least 10 tools."},
 		},
 		"additionalProperties": false,
 	},
