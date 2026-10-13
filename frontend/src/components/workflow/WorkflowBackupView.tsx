@@ -2,6 +2,7 @@ import React, { useCallback } from 'react'
 import { agentApi } from '../../services/api'
 import type { WorkflowBackupInfoResponse, WorkflowBackupStrategyInfo } from '../../services/api-types'
 import BackupPopupBody from '../backup-publish/BackupPopupBody'
+import { isLocalProductInstallation } from '../../products/productSurfaceConfig'
 
 interface WorkflowBackupViewProps {
   workspacePath: string | null
@@ -32,13 +33,17 @@ const FALLBACK_SUPPORTED_STRATEGIES: WorkflowBackupStrategyInfo[] = [
   }
 ]
 
-const getBackupSummary = (backupInfo: WorkflowBackupInfoResponse | null): string => {
+export const getBackupSummary = (backupInfo: WorkflowBackupInfoResponse | null, localInstall = isLocalProductInstallation()): string => {
   const state = backupInfo?.effective_state
   if (!backupInfo?.config?.enabled) {
-    return 'No backup yet. If this laptop is lost, this workflow is lost. Set one up with /backup in chat.'
+    return localInstall
+      ? 'No backup yet. If this laptop is lost, this workflow is lost. Set one up with /backup in chat.'
+      : 'No backup yet. Backups protect against mistakes and let you restore older versions. Set one up with /backup in chat.'
   }
   if (state === 'local_only') {
-    return 'This backup lives only on this laptop. Add a remote destination with /backup in chat.'
+    return localInstall
+      ? 'This backup lives only on this laptop. Add a remote destination with /backup in chat.'
+      : 'This backup lives only on this server. Add a remote destination with /backup in chat.'
   }
   switch (state) {
     case 'configured_not_verified':

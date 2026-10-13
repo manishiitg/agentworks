@@ -15,7 +15,15 @@ vi.mock('./AskAIButton', () => ({
 }))
 
 import { agentApi } from '../../services/api'
-import WorkflowBackupView from './WorkflowBackupView'
+import WorkflowBackupView, { getBackupSummary } from './WorkflowBackupView'
+
+it('backup summary wording follows hosting', () => {
+  expect(getBackupSummary(null, true)).toContain('this laptop is lost')
+  expect(getBackupSummary(null, false)).toContain('restore older versions')
+  expect(getBackupSummary(null, false)).not.toContain('laptop')
+  const localOnly = { config: { enabled: true }, effective_state: 'local_only' } as never
+  expect(getBackupSummary(localOnly, false)).toContain('only on this server')
+})
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
