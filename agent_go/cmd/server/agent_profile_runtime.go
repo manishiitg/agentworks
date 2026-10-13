@@ -934,6 +934,14 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 	}
+	// The existing Ask read tool also resolves captured published dashboard
+	// source. Ordinary native Crew chats retain their other tools and policy.
+	if activeWorkProject && resolved.Definition.ID == crewProfileID {
+		gate.Declare(crewAskFilesToolName)
+		if err := api.registerCrewAskFilesTool(registrar, userID, workspacePath); err != nil {
+			return err
+		}
+	}
 	// Someone using another user's Crew can leave its owner a suggestion:
 	// a reader in their own chat, or a guest whose call runs as the owner.
 	if readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID {
@@ -964,11 +972,6 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 				log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
 			}
 		} else {
-			// The ask reads project files only through this tool (no shell, no native file tools).
-			gate.Declare(crewAskFilesToolName)
-			if err := api.registerCrewAskFilesTool(registrar, userID, workspacePath); err != nil {
-				return err
-			}
 			gate.Declare("list_functions")
 			if err := api.registerCrewFunctionTools(crewFunctionListOnlyRegistrar{registrar}, userID, sessionID, QueryRequest{SelectedFolder: workspacePath}, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err

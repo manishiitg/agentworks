@@ -4,13 +4,17 @@ import { useChatStore } from '../../../stores/useChatStore'
 import ModalPortal from '../../ui/ModalPortal'
 import { HtmlReportFrame } from './HtmlWidgetFrame'
 import { useReportDataApi } from './reportEmbedContext'
-import { reportContentQuestion, type ReportContentMenu } from './reportContentQuestion'
+import { reportContentQuestion, type ReportContentMenu, type ReportContentContext } from './reportContentQuestion'
 
-type Props = Omit<ComponentProps<typeof HtmlReportFrame>, 'onContentContextMenu'> & { documentPath: string; allowQuestions?: boolean }
+type Props = Omit<ComponentProps<typeof HtmlReportFrame>, 'onContentContextMenu'> & {
+  documentPath: string; allowQuestions?: boolean
+  submitQuestion?: (question: string, context: ReportContentContext, submissionId: string) => Promise<void>
+  publication?: { resourceId: string; revision: string }
+}
 const suggestions = ['Where did this come from?', "Why hasn't this changed?"]
 
 /** Platform-owned question UI: existing HTML dashboards need no modifications. */
-export function ReportQuestionFrame({ documentPath, allowQuestions = true, ...frameProps }: Props) {
+export function ReportQuestionFrame({ documentPath, allowQuestions = true, submitQuestion, publication, ...frameProps }: Props) {
   const dataApi = useReportDataApi()
   const [menu, setMenu] = useState<ReportContentMenu | null>(null)
   const [item, setItem] = useState<ReportContentMenu | null>(null)
@@ -59,6 +63,11 @@ export function ReportQuestionFrame({ documentPath, allowQuestions = true, ...fr
     setBusy(true)
     setError(null)
     try {
+      if (submitQuestion) {
+        await submitQuestion(question, item.context, requestIdRef.current)
+        setItem(null)
+        return
+      }
       const message = reportContentQuestion(question, frameProps.title, documentPath, dataApi.workspacePath, item.context)
       const receipt = await dataApi.sendChatMessage(message, { requestId: requestIdRef.current })
       useChatStore.getState().addToast(receipt.queuedBehindRunningTurn ? 'Question queued behind the current agent turn.' : 'Question queued for the agent.', 'info')
@@ -81,7 +90,7 @@ export function ReportQuestionFrame({ documentPath, allowQuestions = true, ...fr
   }
 
   return <>
-    <HtmlReportFrame {...frameProps} onContentContextMenu={dataApi && allowQuestions ? setMenu : undefined} />
+    <HtmlReportFrame {...frameProps} onContentContextMenu={dataApi && allowQuestions ? captured => setMenu({ ...captured, context: { ...captured.context, ...(publication ? { publication } : {}) } }) : undefined} />
     {menu && <ModalPortal>
       <div className="fixed inset-0 z-[10000]" onPointerDown={() => setMenu(null)}>
       <div ref={menuRef} role="menu" aria-label="Dashboard item actions" onPointerDown={event => event.stopPropagation()} className="fixed rounded-md border border-border bg-background p-1 text-foreground shadow-lg"

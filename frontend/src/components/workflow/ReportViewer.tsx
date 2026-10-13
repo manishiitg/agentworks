@@ -15,6 +15,7 @@ import {
 import ModalPortal from '../ui/ModalPortal'
 import { FilePreviewModal } from './reportWidgets/FilePreviewModal'
 import { ReportQuestionFrame } from './reportWidgets/ReportQuestionFrame'
+import { DashboardQuestionConversation, type DashboardQuestionCapability } from './reportWidgets/DashboardQuestionConversation'
 import { ReportEmbedProvider, type ReportDataApi } from './reportWidgets/reportEmbedContext'
 import { createReportQuery } from './reportWidgets/reportQuery'
 import { isStreamableReportMediaPath } from './reportWidgets/reportMedia'
@@ -37,6 +38,7 @@ type ReportDocument = {
   path: string
   label: string
   html?: string
+  questions?: { resourceId: string; revision: string; projectId: string; workspacePath: string; capability: DashboardQuestionCapability; product: string }
 }
 
 interface ReportViewerProps {
@@ -59,6 +61,7 @@ interface ReportViewProps {
   sendChatMessage?: ReportDataApi['sendChatMessage']
   /** Standalone viewing links have no project chat destination. */
   allowContentQuestions?: boolean
+  dashboardConversation?: boolean
   headerAction?: React.ReactNode
 }
 
@@ -187,10 +190,22 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
   }, [workspacePath])
 }
 
-async function loadReportDocument(workspacePath: string, documentPath = 'db/reports/index.html'): Promise<ReportDocument | null> {
+async function loadReportDocument(workspacePath: string, documentPath = 'db/reports/index.html', dashboardConversation = false): Promise<ReportDocument | null> {
   let allowedDocumentPath = allowedReportPath(documentPath)
   if (!allowedDocumentPath) return null
-  if (allowedDocumentPath.startsWith('db/reports/managed/')) {
+  let questions: ReportDocument['questions']
+  if (dashboardConversation && allowedDocumentPath.startsWith('db/reports/managed/')) {
+    const slug = allowedDocumentPath.split('/')[3]
+    const { data: discovery } = await api.post<{ resource_id?: string }>('/api/dashboards', { workspace: workspacePath, action: 'get', dashboard_id: slug })
+    if (discovery.resource_id) {
+      const { data: view } = await api.get<{ resource_id: string; project_id: string; product: string; dashboard: { published_revision: string }; capability: DashboardQuestionCapability }>(`/api/dashboards/${encodeURIComponent(discovery.resource_id)}`)
+      // Load and capture the same immutable publication. A concurrent publish
+      // may make it older, but cannot relabel the HTML that was actually read.
+      allowedDocumentPath = `db/reports/managed/${slug}/${view.dashboard.published_revision}/index.html`
+      questions = { resourceId: view.resource_id, revision: view.dashboard.published_revision, projectId: view.project_id, workspacePath, capability: view.capability, product: view.product }
+    }
+  }
+  if (!questions && allowedDocumentPath.startsWith('db/reports/managed/')) {
     const { data } = await api.post<{ resolved_path: string }>('/api/dashboards', { workspace: workspacePath, action: 'resolve', document_path: allowedDocumentPath })
     allowedDocumentPath = data.resolved_path
   }
@@ -198,10 +213,10 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   const html = await readWorkspaceText(path)
   if (html == null) return null
   const title = html.match(/<title[^>]*>\s*([^<]+?)\s*<\/title>/i)?.[1]?.trim()
-  return { path, html, label: title || 'Dashboard' }
+  return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, allowContentQuestions = true }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, allowContentQuestions = true, dashboardConversation = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -237,14 +252,14 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     let cancelled = false
     setLoading(true)
     setError(null)
-    void loadReportDocument(workspacePath, selectedDocumentPath).then(next => {
+    void loadReportDocument(workspacePath, selectedDocumentPath, dashboardConversation).then(next => {
       if (cancelled) return
       setReport(next)
     }).catch(reason => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : 'Failed to load report.')
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [refreshNonce, selectedDocumentPath, workspacePath])
+  }, [refreshNonce, selectedDocumentPath, workspacePath, dashboardConversation])
 
   useEffect(() => {
     debugReportView('mounted', { workspacePath })
@@ -300,7 +315,9 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
               </div>
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
-            {report?.html && <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={selectedDocumentPath} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />}
+            {report?.html && (report.questions
+              ? <DashboardQuestionConversation key={report.questions.resourceId} {...report.questions} html={report.html} title={report.label} documentPath={report.path} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />
+              : <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={selectedDocumentPath} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />)}
           </div>
         </div>
         <FilePreviewModal />

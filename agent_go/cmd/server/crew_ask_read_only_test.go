@@ -79,12 +79,13 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 
 // The read-only file tool reaches project files but never the private areas (chats, databases, manifests, hidden folders).
 func TestGuestAskFilesToolRefusesPrivateAreas(t *testing.T) {
+	api := &StreamingAPI{}
 	for _, path := range []string{"builder/conversation/chat.json", "db/db.sqlite", "workflow.json", ".git/config", "../other/file.txt", "/etc/passwd", "schedule-runs.json", "triggers/deliveries/call-1.json", "./Triggers/Deliveries"} {
-		if _, err := crewAskFilesRun(context.Background(), "_users/owner/Chats/Work/projects/alpha", "Crew/alpha", map[string]interface{}{"action": "read", "path": path}); err == nil {
+		if _, err := api.crewAskFilesRun(context.Background(), "_users/owner/Chats/Work/projects/alpha", "Crew/alpha", map[string]interface{}{"action": "read", "path": path}); err == nil {
 			t.Errorf("%s must not be readable by a guest's ask", path)
 		}
 	}
-	if _, err := crewAskFilesRun(context.Background(), "x", "Crew/alpha", map[string]interface{}{"action": "write"}); err == nil {
+	if _, err := api.crewAskFilesRun(context.Background(), "x", "Crew/alpha", map[string]interface{}{"action": "write"}); err == nil {
 		t.Error("the tool has no write action")
 	}
 }

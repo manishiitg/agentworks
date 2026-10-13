@@ -109,7 +109,7 @@ type WorkspacePaneChatRequest = {
  * Dashboard HTML, human decisions, Ask AI, Pulse, and Work-project panes all
  * resolve their destination here and then use the same durable chat queue.
  */
-async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequest): Promise<{ tabId: string; targetTab: ChatTab; reused: boolean }> {
+export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequest): Promise<{ tabId: string; targetTab: ChatTab; reused: boolean }> {
   const workspacePath = 'workspacePath' in request ? request.workspacePath : undefined
   const requestedTabId = 'tabId' in request ? request.tabId : undefined
   const profileId = 'profileId' in request ? request.profileId : undefined

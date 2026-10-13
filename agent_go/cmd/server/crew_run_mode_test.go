@@ -1063,6 +1063,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 		t.Fatalf("reader register: %v", err)
 	}
 	for _, want := range []string{
+		crewAskFilesToolName,
 		"list_accessible_workflows", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
 		"list_project_schedules", "list_project_triggers",
 		"manage_custom_commands", "list_work_folders", "attach_work_folder",

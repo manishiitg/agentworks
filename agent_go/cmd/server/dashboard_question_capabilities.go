@@ -53,6 +53,7 @@ type resolvedDashboardQuestion struct {
 	Resource   dashboardQuestionResource
 	Target     dashboardTarget
 	Document   dashboards.Dashboard
+	Snapshot   *dashboards.Snapshot
 	Capability dashboardQuestionCapability
 }
 
@@ -111,6 +112,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	out.Document = *result.Dashboard
+	out.Snapshot = result.Snapshot
 	askEnabled, owner := true, false
 	switch target.Kind {
 	case "crew":

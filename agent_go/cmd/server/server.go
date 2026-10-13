@@ -14442,6 +14442,11 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	// as Builder while every tool call fails the permission-drift guard
 	// once the folder is backfilled later in handleQuery.
 	api.backfillWorkflowPhaseFolder(ctx, req)
+	// Only the verified Work binding may enter another person's Crew. A
+	// profile-less workflow payload must not bypass Crew access/tool policy.
+	if isCrewProjectPath(req.SelectedFolder) && !crewProjectOwnedByCaller(currentUserID, req.SelectedFolder) && !strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("another person's Crew requires its verified Work conversation")}
+	}
 	access, err := api.conversationTargetAccess(ctx, *req)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err}
