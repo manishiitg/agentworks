@@ -164,7 +164,7 @@ func TestExecutionOnlyPromptsTreatSkillAsAdvisory(t *testing.T) {
 	})
 	systemSnippets := []string{
 		"Treat learnings/skill content as advisory guidance from previous runs",
-		"the system-level Step Charter and current user message (including any parent-agent or human input) are the source of truth",
+		"the task, the standing rules in this prompt and the current user message (including any parent-agent or human input) are the source of truth",
 	}
 	for _, snippet := range systemSnippets {
 		if !strings.Contains(systemPrompt, snippet) {
