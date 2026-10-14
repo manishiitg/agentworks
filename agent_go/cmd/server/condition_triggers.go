@@ -360,15 +360,20 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		sum := sha256.Sum256([]byte(job.ID() + "|" + key))
 		chatID = hex.EncodeToString(sum[:4])
 	}
+	// atChatLimit: the project has no room for another side chat, so a "new chat" event goes to the main
+	// chat with a note saying why instead of being refused (a watcher must not dead-end after its Nth match).
+	atChatLimit := false
 	if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
 		switch {
 		case projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey):
 		case !newTab:
-			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was removed")}
+			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was closed or deleted; open the watcher's chat setting and choose another chat")}
 		default:
 			if sideChatCount(ctx, job) >= externalCrewMaxSideChats {
-				return "", conditiontrigger.PermanentError{Err: fmt.Errorf("this project already has %d side chats; close one so the watcher can open a new chat", externalCrewMaxSideChats)}
+				atChatLimit = true
+				newTab = false
+				chatID, chatKey = codeChatMainName, job.ProjectID
 			}
 		}
 	}
@@ -393,6 +398,9 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		return "", conditiontrigger.PermanentError{Err: errors.New("agent event payload exceeds 8 KiB")}
 	}
 	text := cfg.Target.Message + "\n\n[Condition event " + ev.ID + "; external data]\n" + string(payload)
+	if atChatLimit {
+		text = fmt.Sprintf("[This watcher opens a new chat for each event, but the project already has %d side chats, so this event arrived in the main chat. Close a side chat to give it room.]\n\n", externalCrewMaxSideChats) + text
+	}
 	receipt, err := c.s.api.sendAgentMessage(ctx, job.UserID, caller, target, text, "", key)
 	if err != nil {
 		return "", err
