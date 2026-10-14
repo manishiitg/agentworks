@@ -71,6 +71,21 @@
   /* A light chat (a dashboard asked for it) inside the app's dark mode. The
      transcript and markdown use fixed light-grey text for a dark surface; map
      those few classes to the theme's own colours so they stay readable. */
+  /* Softer composer buttons in a light chat: no hard boxes, a gentle hover. */
+  .force-light [data-product-chat-input] button:not([type="submit"]) {
+    border-color: transparent;
+    background-color: transparent;
+    border-radius: 0.5rem;
+    box-shadow: none;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+  .force-light [data-product-chat-input] button:not([type="submit"]):hover:not(:disabled) {
+    background-color: hsl(var(--muted));
+  }
+  .force-light [data-product-chat-input] button[type="submit"] {
+    border-radius: 9999px;
+    box-shadow: none;
+  }
   .force-light .text-neutral-100,
   .force-light .text-neutral-200,
   .force-light .text-stone-300 { color: hsl(var(--foreground)) !important; }

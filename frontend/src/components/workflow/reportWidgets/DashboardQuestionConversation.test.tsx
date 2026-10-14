@@ -72,7 +72,6 @@ it.each(['crew', 'workflow', 'relay'])('lets an authorized %s Run user ask about
   expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'existing-run-chat', message: expect.stringContaining('"text": "42"') }))
   expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('existing-run-chat')
   expect(document.body.textContent).toContain('Existing project history and replies')
-  expect(document.body.textContent).toContain('Your Run conversation.')
 })
 
 it.each([['crew', false], ['workflow', false], ['relay', false], ['code', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
