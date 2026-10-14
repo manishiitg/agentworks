@@ -1,6 +1,9 @@
 package server
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // Plain status text for the Schedules list, written for people who are not
 // technical. The server decides it (owner rule: the backend decides) so every
@@ -70,4 +73,14 @@ func applyScheduleStatusText(jobs []ScheduledJobResponse, config *SchedulerConfi
 			jobs[i].LastResult = scheduleLastResult(jobs[i])
 		}
 	}
+}
+
+// withScheduleStatusText is applyScheduleStatusText for one job's response, so
+// after enable, disable, create, update or run-now the row is updated from the
+// server and the browser never has to guess.
+func withScheduleStatusText(ctx context.Context, job ScheduledJobResponse) ScheduledJobResponse {
+	config, _ := LoadSchedulerConfig(ctx)
+	jobs := []ScheduledJobResponse{job}
+	applyScheduleStatusText(jobs, config)
+	return jobs[0]
 }

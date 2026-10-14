@@ -739,7 +739,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			runsWorkspace, _ := svc.api.productSchedules.RunsWorkspace(r.Context(), job)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(svc.api.productSchedules.jobResponse(job, runsWorkspace))
+			_ = json.NewEncoder(w).Encode(withScheduleStatusText(r.Context(), svc.api.productSchedules.jobResponse(job, runsWorkspace)))
 			return
 		}
 		if req.WorkspacePath != "" && !requireWorkflowOwner(w, r, req.WorkspacePath) {
@@ -850,6 +850,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		state := svc.GetRuntimeStateForWorkflow(req.WorkspacePath, newSched.ID)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		resp := buildJobResponse(req.WorkspacePath, manifest, newSched, state, missedResolver.get(req.WorkspacePath, newSched))
+		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -881,6 +882,7 @@ func getScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
+		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1103,6 +1105,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		state := svc.GetRuntimeStateForWorkflow(workspacePath, id)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		resp := buildJobResponse(workspacePath, manifest, *sched, state, missedResolver.get(workspacePath, *sched))
+		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1183,6 +1186,7 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
+		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1227,6 +1231,7 @@ func disableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
+		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1341,6 +1346,7 @@ func stopScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, updatedState, missedResolver.get(result.WorkspacePath, sched))
+		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1491,7 +1497,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 	}
 	respond := func(job productScheduleJob) {
 		runsWorkspace, _ := ps.RunsWorkspace(ctx, job)
-		_ = json.NewEncoder(w).Encode(ps.jobResponse(job, runsWorkspace))
+		_ = json.NewEncoder(w).Encode(withScheduleStatusText(ctx, ps.jobResponse(job, runsWorkspace)))
 	}
 	switch action {
 	case "get":
@@ -1628,7 +1634,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			return true
 		}
 		runsWorkspace, _ := ps.RunsWorkspace(ctx, updated)
-		_ = json.NewEncoder(w).Encode(ps.jobResponse(updated, runsWorkspace))
+		_ = json.NewEncoder(w).Encode(withScheduleStatusText(ctx, ps.jobResponse(updated, runsWorkspace)))
 	case "delete":
 		if !projectOK {
 			http.Error(w, "product schedules are declared by the product and cannot be deleted here", http.StatusMethodNotAllowed)
