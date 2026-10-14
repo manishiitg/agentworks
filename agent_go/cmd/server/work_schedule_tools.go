@@ -36,7 +36,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	}
 	projectID := manifest.ID
 	if !readOnly && profileID == "code" {
-		if err := api.registerConditionTools(registrar, userID, profileID, projectID); err != nil {
+		if err := api.registerConditionTools(registrar, userID, profileID, projectID, sessionID); err != nil {
 			return err
 		}
 	}

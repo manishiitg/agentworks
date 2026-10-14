@@ -335,6 +335,19 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 	if err := c.engine.Drain(conditionContext(ctx, job), conditionKey(job), *job.Schedule.Condition, time.Now().UTC()); err != nil {
 		scheduleLogf("[CONDITION] %s dispatch: %v", job.ID(), err)
 	}
+	if job.Schedule.Condition.Once {
+		l, err := c.engine.Read(ctx, conditionKey(job))
+		if err == nil && !l.OnceCompletedAt.IsZero() {
+			if err := c.s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
+				disabled := false
+				st.Enabled = &disabled
+			}); err != nil {
+				scheduleLogf("[CONDITION] %s complete: disable failed: %v", job.ID(), err)
+			} else {
+				scheduleLogf("[CONDITION] %s one-time completed event=%s at=%s", job.ID(), l.OnceEventID, l.OnceCompletedAt.Format(time.RFC3339))
+			}
+		}
+	}
 }
 
 func (c *conditionService) caller(job productScheduleJob) triggerLinkCaller {

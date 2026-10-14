@@ -223,3 +223,85 @@ func TestConditionFullBacklogStillDrainsAndRetentionStaysBounded(t *testing.T) {
 		t.Fatal(len(l.Rows), len(l.Tombstones))
 	}
 }
+
+// One real detector, receipt-write interruption and restarted engine pin the
+// once boundary: no match waits, a batch selects one, and recovery never polls
+// again or starts a different action.
+func TestConditionOncePythonAndRestart(t *testing.T) {
+	ctx, now := context.Background(), time.Now().UTC()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "check.py")
+	write := func(events string) {
+		t.Helper()
+		source := "import json,sys\njson.load(sys.stdin)\nprint('" + `{"events":` + events + `,"state":{}}` + "')\n"
+		if err := os.WriteFile(script, []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`[]`)
+	checks, effects := 0, 0
+	run := func(ctx context.Context, _ Config, state json.RawMessage) ([]byte, error) {
+		checks++
+		if len(state) == 0 {
+			state = json.RawMessage(`{}`)
+		}
+		cmd := exec.CommandContext(ctx, "python3", script)
+		cmd.Stdin = strings.NewReader(string(state))
+		return cmd.Output()
+	}
+	accepted := map[string]bool{}
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("Idempotency-Key")
+		if !accepted[key] {
+			accepted[key] = true
+			effects++
+		}
+		_, _ = w.Write([]byte("accepted"))
+	}))
+	defer target.Close()
+	dispatch := func(ctx context.Context, _ Config, ev Event, key string) (string, error) {
+		if ev.ID != "first" {
+			t.Fatalf("dispatched %s", ev.ID)
+		}
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, target.URL, nil)
+		req.Header.Set("Idempotency-Key", key)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", err
+		}
+		resp.Body.Close()
+		return "accepted", nil
+	}
+	cfg := Config{Once: true, Script: "code/triggers/check.py", SHA256: Hash("source"), Target: Target{Kind: "agent", Message: "go"}}
+	store := &diskStore{path: filepath.Join(dir, "ledger.json")}
+	engine := &Engine{Store: store, Run: run, Dispatch: dispatch}
+	if n, err := engine.Poll(ctx, "once", cfg, now); err != nil || n != 0 {
+		t.Fatal(n, err)
+	}
+	write(`[{"id":"first","payload":{}},{"id":"second","payload":{}}]`)
+	if n, err := engine.Poll(ctx, "once", cfg, now); err != nil || n != 1 {
+		t.Fatal(n, err)
+	}
+	store.failReceipt = true
+	if err := engine.Drain(ctx, "once", cfg, now); err == nil {
+		t.Fatal("expected interrupted receipt write")
+	}
+	engine = &Engine{Store: store, Run: run, Dispatch: dispatch}
+	if n, err := engine.Poll(ctx, "once", cfg, now); err != nil || n != 0 || checks != 2 {
+		t.Fatal(n, err, checks)
+	}
+	if err := engine.Drain(ctx, "once", cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	engine = &Engine{Store: store, Run: run, Dispatch: dispatch}
+	if _, err := engine.Poll(ctx, "once", cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Drain(ctx, "once", cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	l, err := engine.Read(ctx, "once")
+	if err != nil || checks != 2 || effects != 1 || l.OnceEventID != "first" || l.OnceCompletedAt.IsZero() || len(l.Rows) != 2 || l.Rows[1].Status != "skipped" {
+		t.Fatalf("%+v checks=%d effects=%d err=%v", l, checks, effects, err)
+	}
+}

@@ -59,14 +59,20 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
   return <div className="h-full min-w-0 overflow-y-auto p-4" data-testid="condition-triggers">
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">Check a source on a timer using Python. When the condition matches, start this Code&apos;s agent or an existing function or workflow route. Checks with no matches use no AI.</p>
-      {canManage && <button className={buttonClass} onClick={() => void ask('Set up a watcher in this Code project. Find out what source and condition I want to check, and which agent, function or route should run. Use manage_condition_triggers to discover current watchers and authorized targets, save the Python detector, select its required secrets, and configure its schedule. Explain its cursor and duplicate handling.')}>Add in chat</button>}
+      {canManage && <button className={buttonClass} onClick={() => void ask('Set up a watcher in this Code project. Find out what source and condition I want to check, and which agent, function or route should run. Use manage_condition_triggers to discover current watchers and authorized targets, save the Python detector, select its required secrets, and configure its schedule and One time or Keep watching mode. Default to this project and the chat creating it. Explain its cursor and duplicate handling.')}>Add in chat</button>}
     </div>
     {error && <p role="alert" className="mb-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {loaded && triggers.length === 0 && <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No watchers yet. Add one in chat to monitor a source and start work when it matches.</p>}
     <div className="space-y-3">{triggers.map(t => <section key={t.id} className="min-w-0 space-y-2 rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between gap-2"><h3 className="truncate text-sm font-medium">{t.name}</h3><span className="text-xs text-muted-foreground">{t.enabled ? 'Enabled' : 'Paused'}</span></div>
+      <div className="flex items-center justify-between gap-2"><h3 className="truncate text-sm font-medium">{t.name}</h3><span className="text-xs text-muted-foreground">{t.completed_at ? 'Completed' : t.once_status === 'failed' || t.once_status === 'needs_reconciliation' ? 'Needs attention' : t.enabled ? 'Enabled' : 'Paused'}</span></div>
       <p className="break-all text-xs text-muted-foreground">{t.script} · {t.cron_expression} · {t.timezone}</p>
       <p className="break-all text-xs">Starts {targetLabel(t.target, sideChats)}</p>
+      <p className="text-xs text-muted-foreground">{t.once ? 'One time · disables after the first accepted action' : 'Keep watching'}</p>
+      {canManage && !t.completed_at && <label className="flex items-center gap-2 text-xs text-muted-foreground">Mode
+        <select aria-label={`Mode for ${t.name}`} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground" disabled={busy} value={t.once ? 'once' : 'recurring'} onChange={event => void manage('update', t.id, { once: event.target.value === 'once' })}>
+          <option value="recurring">Keep watching</option><option value="once">One time</option>
+        </select>
+      </label>}
       {canManage && t.target.kind === 'agent' && <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Send messages to
         <select
           aria-label={`Chat for ${t.name}`}
@@ -86,7 +92,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
       <div className="flex flex-wrap gap-2">
         {canManage && <>
           <button className={buttonClass} disabled={busy || !t.enabled} onClick={() => void manage('check', t.id)}>Check now</button>
-          <button className={buttonClass} disabled={busy} onClick={() => void manage('update', t.id, { enabled: !t.enabled })}>{t.enabled ? 'Pause' : 'Enable'}</button>
+          {!t.completed_at && <button className={buttonClass} disabled={busy} onClick={() => void manage('update', t.id, { enabled: !t.enabled })}>{t.enabled ? 'Pause' : 'Enable'}</button>}
           <button className={buttonClass} disabled={busy} onClick={() => void ask(`Edit watcher ${t.id}. Read its saved definition using manage_condition_triggers, explain its check and target, then apply the changes I request. Preserve its cursor and history.`)}>Edit in chat</button>
           <button className={buttonClass} disabled={busy} onClick={() => void manage('delete', t.id)}>Remove</button>
         </>}

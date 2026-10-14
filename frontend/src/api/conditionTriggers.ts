@@ -5,6 +5,9 @@ export interface ConditionTrigger {
   id: string
   name: string
   enabled: boolean
+  once?: boolean
+  completed_at?: string
+  once_status?: string
   cron_expression: string
   timezone: string
   script: string

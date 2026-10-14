@@ -212,3 +212,58 @@ func TestConditionAgentTargetChatChoices(t *testing.T) {
 		t.Fatalf("tab name not capped: %d", got)
 	}
 }
+
+func TestConditionOnceDisablesAndAdmitsOnlyAcceptedMessage(t *testing.T) {
+	env, ctx, _ := conditionCodeFixture(t)
+	c := env.svc.conditionService()
+	out, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "create", "request_id": "once-test", "trigger": map[string]interface{}{"name": "One ticket", "once": true, "cron_expression": "*/5 * * * *", "timezone": "UTC", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Review ticket"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := out.(map[string]interface{})["id"].(string)
+	job := mustConditionJob(t, env.svc, ctx, id)
+	c.engine.Run = func(context.Context, conditiontrigger.Config, json.RawMessage) ([]byte, error) {
+		return []byte(`{"events":[{"id":"ticket","payload":{}}],"state":{}}`), nil
+	}
+	calls := 0
+	c.engine.Dispatch = func(context.Context, conditiontrigger.Config, conditiontrigger.Event, string) (string, error) {
+		calls++
+		return "accepted", nil
+	}
+	if _, err := c.engine.Poll(ctx, conditionKey(job), *job.Schedule.Condition, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c.drain(ctx, job)
+	job = mustConditionJob(t, env.svc, ctx, id)
+	if job.Effective().Enabled || calls != 1 {
+		t.Fatal("one-time watcher still enabled", calls)
+	}
+	conversation := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner", ConditionJob: job.ID()}, {UserID: "owner"}}}
+	message := agentMessage{From: 0, Submission: conditiontrigger.Submission(conditionKey(job), "ticket")}
+	if err := env.api.recheckAgentMessageAdmission(ctx, conversation, message); err != nil {
+		t.Fatal("completed action held", err)
+	}
+	message.Submission = "other"
+	if err := env.api.recheckAgentMessageAdmission(ctx, conversation, message); !errors.Is(err, conditiontrigger.ErrPaused) {
+		t.Fatal("unrelated action admitted", err)
+	}
+	c.s.conditions = nil
+	c = env.svc.conditionService()
+	c.drain(ctx, job)
+	out, err = c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := out.(map[string]interface{})["triggers"].([]interface{})[0].(map[string]interface{})
+	if row["completed_at"] == nil || row["enabled"] != false {
+		t.Fatal(row)
+	}
+	// Changing the saved message cannot use the completion exception.
+	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "id": id, "expected_revision": conditionView(job.Schedule)["revision"], "trigger": map[string]interface{}{"target": map[string]interface{}{"kind": "agent", "message": "Different action"}}}); err != nil {
+		t.Fatal(err)
+	}
+	message.Submission = conditiontrigger.Submission(conditionKey(job), "ticket")
+	if err := env.api.recheckAgentMessageAdmission(ctx, conversation, message); !errors.Is(err, conditiontrigger.ErrPaused) {
+		t.Fatal("changed action admitted", err)
+	}
+}

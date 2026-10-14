@@ -1,5 +1,13 @@
 # Decisions and open issues
 
+## 2026-10-14 — One-time Watchers complete after accepted delivery (PLAT-861)
+
+Set `once: true` to wait for the first new matching event in detector order. Persist that selection with the event ledger, stop further detector calls, and retry the same submission until target acceptance. Persist completion with the receipt, then disable the schedule. Other matches in that batch stay visible as not sent. The exact accepted agent message may enter its turn after automatic completion; current source and target access checks still apply. A manual pause before acceptance holds delivery. Completion survives restart and does not automatically rearm on Enable or edit; another one-time wait gets a new watcher. Existing watchers remain recurring by default. Code agent destinations default to the creating chat in the current project.
+
+Why: a person can leave a specific wait behind without ongoing checks or duplicate actions after it fires. Target acceptance, rather than final success, is the completion boundary.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-208.
+
 ## 2026-10-14 — Advisory guidance spans MCP tools and fetched project skills (PLAT-856)
 
 Selected authorized tool schemas map to reusable canonical skill topics. Related

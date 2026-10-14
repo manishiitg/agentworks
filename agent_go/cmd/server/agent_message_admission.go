@@ -31,7 +31,17 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return fmt.Errorf("watcher caller was removed")
 		}
 		if !job.Effective().Enabled {
-			return conditiontrigger.ErrPaused
+			// Automatic completion stops future checks, not the exact action
+			// already accepted by this one-time watcher. All access checks below
+			// still apply; a manual pause before acceptance still holds delivery.
+			l, err := api.productSchedules.conditionService().engine.Read(ctx, conditionKey(job))
+			if err != nil {
+				return conditiontrigger.HoldError{Err: err}
+			}
+			cfg := job.Schedule.Condition
+			if !cfg.Once || l.OnceCompletedAt.IsZero() || l.OnceRevision != cfg.Revision() || m.Submission != conditiontrigger.Submission(conditionKey(job), l.OnceEventID) {
+				return conditiontrigger.ErrPaused
+			}
 		}
 		if err := api.productSchedules.conditionService().authorize(ctx, job, *job.Schedule.Condition); err != nil {
 			var permanent conditiontrigger.PermanentError

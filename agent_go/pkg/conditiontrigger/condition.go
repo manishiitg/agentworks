@@ -55,6 +55,7 @@ type Target struct {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type Config struct {
+	Once    bool     `json:"once,omitempty"`
 	Script  string   `json:"script"`
 	SHA256  string   `json:"sha256"`
 	Secrets []string `json:"secrets,omitempty"`
@@ -126,8 +127,11 @@ type Row struct {
 	NextAttempt time.Time `json:"next_attempt,omitempty"`
 }
 type Ledger struct {
-	State json.RawMessage `json:"state"`
-	Rows  []Row           `json:"events"`
+	OnceEventID     string          `json:"once_event_id,omitempty"`
+	OnceRevision    string          `json:"once_revision,omitempty"`
+	OnceCompletedAt time.Time       `json:"once_completed_at,omitempty"`
+	State           json.RawMessage `json:"state"`
+	Rows            []Row           `json:"events"`
 	// Tombstones are compact identities, retained after full history is pruned.
 	Tombstones map[string]time.Time `json:"tombstones,omitempty"`
 }
@@ -214,6 +218,11 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 	if err != nil {
 		return 0, err
 	}
+	// Selection survives failed delivery and restart; a one-time wait never
+	// runs the detector again once its event is durably queued.
+	if c.Once && l.OnceEventID != "" {
+		return 0, nil
+	}
 	if Pending(l) >= MaxPending {
 		return 0, ErrBacklog
 	}
@@ -261,8 +270,15 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 		if known[ev.ID] || l.Tombstones[Hash(ev.ID)].After(now) {
 			continue
 		}
+		if c.Once && l.OnceEventID != "" {
+			l.Rows = append(l.Rows, Row{Event: ev, Revision: c.Revision(), Status: "skipped", Error: "not sent (one-time watcher)", SeenAt: now})
+			continue
+		}
 		l.Rows = append(l.Rows, Row{Event: ev, Revision: c.Revision(), Status: "seen", SeenAt: now})
 		n++
+		if c.Once {
+			l.OnceEventID, l.OnceRevision = ev.ID, c.Revision()
+		}
 	}
 	if Pending(l) > MaxPending || len(l.Rows) > MaxRows {
 		return 0, ErrBacklog
@@ -286,9 +302,13 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 			m.Unlock()
 			return err
 		}
+		if c.Once && !l.OnceCompletedAt.IsZero() {
+			m.Unlock()
+			return nil
+		}
 		idx := -1
 		for j, r := range l.Rows {
-			if pending(r.Status) && !r.NextAttempt.After(now) {
+			if pending(r.Status) && !r.NextAttempt.After(now) && (!c.Once || l.OnceEventID == "" || r.Event.ID == l.OnceEventID) {
 				idx = j
 				break
 			}
@@ -304,6 +324,9 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 		} else if r.Status == "dispatching" && now.Sub(r.AttemptAt) >= RecoveryWindow {
 			r.Status, r.Error = "needs_reconciliation", "uncertain call exceeded its safe retry window"
 		} else {
+			if c.Once && l.OnceEventID == "" {
+				l.OnceEventID, l.OnceRevision = r.Event.ID, c.Revision()
+			}
 			r.Status = "dispatching"
 			if r.AttemptAt.IsZero() {
 				r.AttemptAt = now
@@ -331,6 +354,9 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 					l.Rows[j].Status = "dispatched"
 					l.Rows[j].Receipt = receipt
 					l.Rows[j].Error = ""
+					if c.Once {
+						l.OnceCompletedAt = now
+					}
 				} else {
 					l.Rows[j].Error = dispatchErr.Error()
 					l.Rows[j].NextAttempt = now.Add(5 * time.Minute)
@@ -347,6 +373,13 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 				break
 			}
 		}
+		if c.Once && !l.OnceCompletedAt.IsZero() {
+			for j := range l.Rows {
+				if pending(l.Rows[j].Status) && l.Rows[j].Event.ID != l.OnceEventID {
+					l.Rows[j].Status, l.Rows[j].Error = "skipped", "not sent (one-time watcher)"
+				}
+			}
+		}
 		err = e.Store.Save(ctx, key, l)
 		m.Unlock()
 		if err != nil {
@@ -354,6 +387,9 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 		}
 		if dispatchErr != nil {
 			return dispatchErr
+		}
+		if c.Once {
+			return nil
 		}
 	}
 	return nil

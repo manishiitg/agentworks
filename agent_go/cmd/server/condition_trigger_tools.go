@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/robfig/cron/v3"
@@ -25,17 +26,20 @@ func conditionToolSchema() map[string]interface{} {
 		"id":                map[string]interface{}{"type": "string", "description": "Exact watcher id from list."},
 		"request_id":        map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Create: stable request id, reuse after uncertain transport to recover the same trigger."},
 		"expected_revision": map[string]interface{}{"type": "string", "description": "Update: revision returned by list; stale edits are refused."},
-		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message and optional chat_id for this Code agent (omit or main = the main chat; the id of an existing side chat; new = a new chat tab for each event), name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
+		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, once (true = first matching event only, then automatically disable after target acceptance; false/default = keep watching), cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message and optional chat_id for this Code agent (omit or main = the main chat; the id of an existing side chat; new = a new chat tab for each event), name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
 	}}
 }
 
-const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. Create with a stable request_id; list first and use expected_revision for updates. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
+const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
 
-func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID string) error {
+func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID, sessionID string) error {
 	if profileID != "code" {
 		return nil
 	}
 	return reg.RegisterCustomTool("manage_condition_triggers", conditionToolDescription, conditionToolSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if chatSessionIDFromContext(ctx) == "" && sessionID != "" {
+			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
+		}
 		out, err := api.productSchedules.conditionService().manage(internalBotRequestContext(ctx, userID), userID, profileID, projectID, args)
 		if err != nil {
 			return "", err
@@ -92,6 +96,24 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			if j.Profile.ID == profile && j.ProjectID == project && j.Schedule.Condition != nil {
 				v := conditionView(j.Schedule)
 				v["enabled"] = j.Effective().Enabled
+				if j.Schedule.Condition.Once {
+					l, err := c.engine.Read(ctx, conditionKey(j))
+					if err != nil {
+						return nil, err
+					}
+					if !l.OnceCompletedAt.IsZero() {
+						v["completed_at"] = l.OnceCompletedAt.Format(time.RFC3339)
+						v["enabled"] = false
+					} else {
+						for _, row := range l.Rows {
+							if row.Event.ID == l.OnceEventID {
+								v["once_status"] = row.Status
+								v["last_error"] = row.Error
+								break
+							}
+						}
+					}
+				}
 				v["last_status"], v["last_error"], v["last_run_at"] = j.State.LastStatus, j.State.LastError, j.State.LastRunAt
 				out = append(out, v)
 			}
@@ -163,7 +185,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		for k, v := range trigger {
 			switch k {
-			case "name", "enabled", "cron_expression", "timezone", "script", "secrets", "target":
+			case "name", "enabled", "once", "cron_expression", "timezone", "script", "secrets", "target":
 				doc[k] = v
 			default:
 				return nil, fmt.Errorf("unknown watcher setting %q", k)
@@ -181,6 +203,15 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			return nil, err
 		}
 		cfg := fields.Config
+		// The tool context supplies the originating chat; it cannot select
+		// another project's conversation. An explicit destination always wins.
+		if action == "create" && cfg.Target.Kind == "agent" && cfg.Target.ChatID == "" {
+			if session := chatSessionIDFromContext(ctx); session != "" {
+				if project, err := c.s.api.codeChatsFor(ctx, owner, session, base.WorkspacePath); err == nil && project.ProjectID == base.ProjectID {
+					cfg.Target.ChatID = project.Self.ID
+				}
+			}
+		}
 		// Pin saved source before validation. A caller cannot choose a hash to run
 		// content that was never read under the source's ownership check.
 		if !strings.HasPrefix(cfg.Script, "code/triggers/") || path.Clean(cfg.Script) != cfg.Script {
@@ -207,6 +238,15 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		enabled := true
 		if fields.Enabled != nil {
 			enabled = *fields.Enabled
+		}
+		if action == "update" && cfg.Once {
+			l, err := c.engine.Read(ctx, conditionKey(job))
+			if err != nil {
+				return nil, err
+			}
+			if !l.OnceCompletedAt.IsZero() {
+				enabled = false
+			}
 		}
 		schedule := productschedule.Schedule{Name: strings.TrimSpace(fields.Name), CronExpression: fields.Cron, Timezone: fields.Timezone, Enabled: enabled, Condition: &cfg}
 		if action == "create" {
