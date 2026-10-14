@@ -2,7 +2,9 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"regexp"
 	"strings"
 	"sync"
@@ -862,6 +864,36 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 			}
 		} else {
 			c.logger.Warn(fmt.Sprintf("⚠️ ContextAwareBridge: Event data %T does not have GetBaseEventData method", event.Data))
+		}
+	}
+
+	// Provider child snapshots are inspection evidence, never parent messages.
+	if hasExecutionOwner && hasStepID {
+		var transcripts []llmtypes.NativeSubagentTranscript
+		switch data := event.Data.(type) {
+		case *events.NativeSubagentTranscriptEvent:
+			transcripts = data.Transcripts
+		case *events.LLMGenerationEndEvent:
+			if raw, err := json.Marshal(data.Metadata["native_subagents"]); err == nil {
+				_ = json.Unmarshal(raw, &transcripts)
+			}
+		}
+		if len(transcripts) > 0 {
+			c.mu.RLock()
+			writer := c.transcriptWriter
+			c.mu.RUnlock()
+			if nativeWriter, ok := writer.(interface {
+				PersistNativeSubagentTranscripts(context.Context, string, string, []llmtypes.NativeSubagentTranscript) error
+			}); ok {
+				sessionID := event.SessionID
+				if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
+					sessionID = strings.TrimSpace(owner)
+				}
+				ownerID := executionOwnerID
+				c.persistTranscriptAsync("native subagent transcripts", func(persistCtx context.Context) error {
+					return nativeWriter.PersistNativeSubagentTranscripts(persistCtx, sessionID, ownerID, transcripts)
+				})
+			}
 		}
 	}
 

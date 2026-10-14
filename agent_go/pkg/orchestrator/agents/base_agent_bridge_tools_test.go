@@ -77,3 +77,21 @@ func TestWorkflowBaseUsesOnDemandTransportSkill(t *testing.T) {
 	}
 	t.Logf("OUTGOING_PROMPT_BYTES=%d", len(prompt))
 }
+
+// Full CLI is a step-execution choice; a Builder/reviewer or a runtime without
+// the dedicated step output link must retain its existing tool mode.
+func TestNativeStepToolsStayScopedToLinkedExecutors(t *testing.T) {
+	for _, kind := range []AgentType{TodoPlannerExecutionAgentType, GenericExecutionAgentType, DelegatingAgentType} {
+		if got := workflowExecutionNativeToolsMode(kind, true, true, true); got != "full" {
+			t.Fatalf("step %s mode=%q", kind, got)
+		}
+		if got := workflowExecutionNativeToolsMode(kind, true, true, false); got != "" {
+			t.Fatalf("unlinked executor %s received native mode", kind)
+		}
+	}
+	for _, kind := range []AgentType{TodoPlannerInteractiveWorkshopAgentType, TodoPlannerExecutionQAAgentType, ConditionalAgentType, TodoPlannerPlanningAgentType} {
+		if got := workflowExecutionNativeToolsMode(kind, true, true, true); got != "" {
+			t.Fatalf("non-executor %s received native mode", kind)
+		}
+	}
+}

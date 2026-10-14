@@ -67,14 +67,15 @@ WORKFLOW_KB alias, not a guessed current directory.
 
 For permitted contributions, prefer an existing topic. Entity-scoped topics use
 an entity slug (company-example.md); cross-cutting observations use pattern-<slug>.
-Read the current topic, then append a dated section with diff_patch_workspace_file,
-including when creating a topic. Never rewrite/delete earlier sections. No shell
-redirection, heredocs, tee, Python or built-in file editors for KB content writes.
+Read the current topic, then append a dated section with your declared native
+file editor or diff_patch_workspace_file, including when creating a topic. Never
+rewrite/delete earlier sections. No shell redirection, heredocs, tee or Python
+for KB content writes.
 Capture concise verified observations from this execution; label uncertainty and
 skip requested facts you cannot verify. Link related topics by slug.
 
 After a note change patch notes/_index.json with size_bytes, section_count,
 last_updated, last_updated_by and merged covers[] entity ids. You may calculate
-values through shell/JQ, but apply the content edit through the patch tool.
+values through the managed shell/JQ, then apply the edit with the same file editor.
 The step is the direct writer; no post-step agent will supply missing notes.
 `

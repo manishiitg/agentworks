@@ -1,5 +1,21 @@
 # Decisions and open issues
 
+## 2026-10-14 — Workflow steps use confined Full CLI with structured transport (PLAT-861)
+
+Workflow execution agents request the existing Full CLI tool mode while keeping
+structured JSON transport. Native tools use the step's current folder grants and
+protected-file exclusions, through the existing Landlock/Seatbelt policy. The
+shared native-shell setting stays unchanged; Pi retains its bridge-only mode.
+Provider-native tool calls appear in the step conversation, and provider-recorded
+subagent conversations save as linked children in the existing execution
+transcript store. Knowledgebase edits use the declared native editor or bridge
+patch tool and keep the existing index bookkeeping.
+
+Why: steps should use the CLI's available file and delegation tools without a
+terminal transport or another permission/storage model.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-203.
+
 ## 2026-10-14 — Dashboard chat is an optional designer-placed widget (PLAT-750)
 
 Managed Crew, workflow and Relay dashboards offer native chat panels and buttons.

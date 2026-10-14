@@ -280,6 +280,7 @@ func NewBaseAgent(
 			Offloading: enableContextOffloading, LargeOutputThreshold: largeOutputThreshold,
 		},
 		Coding: mcpagent.CodingRuntimeConfig{
+			AgentToolsMode:       workflowExecutionNativeToolsMode(agentType, forceStructuredCodingAgent, isolateCodingAgentWorkspace, strings.TrimSpace(codingAgentOutputDir) != ""),
 			BridgeToolAdmit:      selection.AllowsTool,
 			PersistentClaudeCode: codingAgentKeepAlive, PersistentCodex: codingAgentKeepAlive,
 			PersistentCursor: codingAgentKeepAlive, PersistentPi: codingAgentKeepAlive,
@@ -743,4 +744,17 @@ func projectProductTool(selection productpolicy.Selection, tool mcpagent.ToolDef
 		}
 	}
 	return tool, true
+}
+
+// Step executors use the existing confined Full CLI implementation. API models,
+// interactive Builder and review-only agents keep their own runtime selection.
+func workflowExecutionNativeToolsMode(agentType AgentType, structured, isolated, outputLinked bool) string {
+	if !structured || !isolated || !outputLinked {
+		return ""
+	}
+	switch agentType {
+	case TodoPlannerExecutionAgentType, GenericExecutionAgentType, DelegatingAgentType:
+		return "full"
+	}
+	return ""
 }

@@ -48,9 +48,11 @@ type BackgroundAgentTranscript struct {
 	// Status is "running" until MarkTerminal is called with "completed",
 	// "failed", or "canceled". A transcript left at "running" forever is
 	// itself a real signal, same as background_agent_log (PLAT-114).
-	Status string                           `json:"status"`
-	Error  string                           `json:"error,omitempty"`
-	Events []BackgroundAgentTranscriptEvent `json:"events"`
+	Status          string                           `json:"status"`
+	Error           string                           `json:"error,omitempty"`
+	Events          []BackgroundAgentTranscriptEvent `json:"events"`
+	NativeChildren  []NativeChildExecution           `json:"native_children,omitempty"`
+	NativeUpdatedAt time.Time                        `json:"native_updated_at,omitempty"`
 }
 
 // BackgroundAgentTranscriptEvent is one normalized, provider-agnostic
@@ -149,6 +151,9 @@ func (t *BackgroundAgentTranscript) RedactSensitiveText() {
 	}
 	if t.Events == nil {
 		t.Events = []BackgroundAgentTranscriptEvent{}
+	}
+	for index := range t.NativeChildren {
+		t.NativeChildren[index].Name = redaction.Text(t.NativeChildren[index].Name)
 	}
 	t.Name = redaction.Text(t.Name)
 	t.Error = redaction.Text(t.Error)
@@ -280,4 +285,15 @@ func eventTimestamp(evt *events.AgentEvent, dataTimestamp time.Time) time.Time {
 		return dataTimestamp
 	}
 	return evt.Timestamp
+}
+
+// NativeChildExecution links a provider child to the same durable execution
+// transcript contract used by managed delegates.
+type NativeChildExecution struct {
+	AgentID           string    `json:"agent_id"`
+	ParentExecutionID string    `json:"parent_execution_id"`
+	Name              string    `json:"name"`
+	Status            string    `json:"status"`
+	StartedAt         time.Time `json:"started_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }

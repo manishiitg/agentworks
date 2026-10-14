@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/executioninspection"
@@ -130,6 +131,23 @@ func (api *StreamingAPI) handleInspectSessionExecution(w http.ResponseWriter, r 
 			}
 		}
 	}
+	// Native children use the same saved transcript and navigation contract.
+	appendNativeChildren := func(source *orchEvents.BackgroundAgentTranscript) {
+		for _, ref := range source.NativeChildren {
+			duplicate := false
+			for _, existing := range children {
+				if existing.AgentID == ref.AgentID {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			children = append(children, BackgroundAgentLogEntry{WorkspacePath: workspace, SessionID: sessionID, AgentID: ref.AgentID, ParentExecutionID: ref.ParentExecutionID, Name: redaction.Text(ref.Name), Kind: "sub_agent", Status: ref.Status, StartedAt: nativeInspectionTime(ref.StartedAt), CompletedAt: nativeInspectionTime(ref.UpdatedAt), TranscriptPath: orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, ref.AgentID), TranscriptStatus: "ok"})
+		}
+	}
+	appendNativeChildren(transcript)
 	mode, scripts := executioninspection.Records(transcript)
 	if mode == "" && transcript.Kind == "workflow_step" {
 		for _, child := range children {
@@ -229,4 +247,11 @@ func (api *StreamingAPI) inspectionChildConversation(ctx context.Context, worksp
 	}
 	sort.SliceStable(view.Events, func(i, j int) bool { return view.Events[i].Timestamp.Before(view.Events[j].Timestamp) })
 	return view
+}
+
+func nativeInspectionTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.RFC3339)
 }
