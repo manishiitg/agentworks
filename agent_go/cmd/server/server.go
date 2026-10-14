@@ -9795,6 +9795,27 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	}
 	if api.eventStore != nil {
 		api.eventStore.AddEvent(sessionID, event)
+		// End the turn's stream too, as a normal turn does, so the event store logs the turn end and clients leave
+		// their streaming state (a retained turn streamed chunks but its stream was never ended). Same instant as the
+		// completion, so a handler settling on the first terminal event never takes it for a later promoted turn.
+		end := &unifiedevents.StreamingEndEvent{
+			BaseEventData: unifiedevents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{
+				"kind": "terminal", "provider": string(provider), "source": "coding_agent_sidecar", "retained": true,
+			}},
+			Duration:     now.Sub(turnStartedAt).String(),
+			FinishReason: "retained_completion",
+		}
+		api.eventStore.AddEvent(sessionID, events.Event{
+			ID:              fmt.Sprintf("retained-turn-stream-end-%d", now.UnixNano()),
+			Type:            "streaming_end",
+			Timestamp:       now,
+			SessionID:       sessionID,
+			ExecutionID:     executionID,
+			ExecutionKind:   "main_agent",
+			TerminalOwnerID: "main:" + sessionID,
+			TerminalID:      snapshot.TerminalID,
+			Data:            &unifiedevents.AgentEvent{Type: unifiedevents.StreamingEnd, Timestamp: now, SessionID: sessionID, Data: end},
+		})
 		return
 	}
 	api.observeRetainedMainTurnEvent(sessionID, event)

@@ -1,5 +1,15 @@
 # Decisions and open issues
 
+## 2026-10-14 — A retained (live-input) coding-CLI turn ends its stream when it completes (PLAT-856-96)
+
+A turn typed into a running coding-CLI terminal streamed its progress but only emitted a completion, so its stream was
+never ended: the event store logged no turn end, its "still running" heartbeat fired for hours, and a client that leaves
+its streaming state on the stream's end could stay in it while the turn was over. A terminal `streaming_end` now follows
+the completion (mcpagent session close and the server's sidecar close), stamped no later than the completion so the
+handler that settles retained turns on the first terminal event cannot take it for the end of a later promoted turn.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-96.
+
 ## 2026-10-14 — A shared Crew shows its chat and dashboard only (PLAT-750)
 
 A person who uses someone else's Crew sees the Crew's chat and, when it has one, its
