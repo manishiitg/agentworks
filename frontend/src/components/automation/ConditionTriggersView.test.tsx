@@ -23,4 +23,17 @@ describe('ConditionTriggersView', () => {
       expect(api.manage).toHaveBeenCalledWith('project-a', 'check', 'c1', undefined, undefined)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
+
+  it('shows why "Edit in chat" failed instead of doing nothing', async () => {
+    api.list.mockResolvedValue({ triggers: [{ id: 'c1', name: 'Tagged tickets', enabled: true, script: 'code/triggers/n.py', cron_expression: '*/5 * * * *', timezone: 'UTC', target: { kind: 'agent' } }] })
+    const onAsk = vi.fn().mockRejectedValue(new Error('This project chat is not ready.'))
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} onAsk={onAsk} />))
+    try {
+      const edit = Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Edit in chat')!
+      await act(async () => { edit.click(); await Promise.resolve(); await Promise.resolve() })
+      expect(onAsk).toHaveBeenCalled()
+      expect(host.querySelector('[role="alert"]')?.textContent).toContain('This project chat is not ready.')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
 })

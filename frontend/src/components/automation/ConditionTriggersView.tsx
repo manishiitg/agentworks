@@ -24,7 +24,12 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     catch (e) { setError(messageOf(e)) }
   }, [scope.projectId])
   useEffect(() => { setTriggers([]); setHistory({}); setLoaded(false); void refresh() }, [refresh, refreshToken])
-  const ask = onAsk ?? ((message: string) => sendWorkspacePaneMessageToChat({ profileId: scope.profileId, conversationKey: scope.projectId, message }).then(() => undefined))
+  const sendToChat = onAsk ?? ((message: string) => sendWorkspacePaneMessageToChat({ profileId: scope.profileId, conversationKey: scope.projectId, message }).then(() => undefined))
+  // A failed hand-off to the chat must show, not vanish: the buttons call this without awaiting.
+  const ask = async (message: string) => {
+    try { await sendToChat(message); setError('') }
+    catch (e) { setError(messageOf(e)) }
+  }
   const manage = async (action: string, id: string, changes?: Record<string, unknown>) => {
     setBusy(true)
     try { await conditionTriggersApi.manage(scope.projectId, action, id, changes, triggers.find(t => t.id === id)?.revision); await refresh(); setHistory({}) }

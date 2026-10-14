@@ -514,7 +514,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
               triggers: `Help me manage this project's authenticated triggers. Each trigger sends one saved instruction to this ${noun} project.`,
               functions: `Help me with this ${noun}'s functions: typed actions other Crews and workflows can call. List them, explain what each does, and ask what I want to add or change.`,
             }}
-            onAskAI={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+            onAskAI={async message => { await ask(message) }}
           />}
         </Suspense>
       </div>
