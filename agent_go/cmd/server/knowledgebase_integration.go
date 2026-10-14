@@ -139,14 +139,14 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 		p.Owners = []string{owner}
 		p.Audience = append([]string{}, p.Owners...)
 		// A Code project is private to its owner, so its owner is its whole audience; a shared Crew reaches every user
-		// of the Crew product.
-		if !isCodeProjectPath(root) && crewSharedWithOthers(root) {
+		// of the Crew product, a Crew shared with named people only those.
+		if !isCodeProjectPath(root) {
 			directory, err := loadUserDirectory()
 			if err != nil || directory == nil {
 				return nil, fmt.Errorf("Crew audience is unavailable")
 			}
 			for _, user := range directory.Users {
-				if !user.Disabled && userAllowedProduct(&UserClaims{UserID: user.ID, Username: user.Username}, "work") {
+				if !user.Disabled && crewSharedWith(root, user.ID) && userAllowedProduct(&UserClaims{UserID: user.ID, Username: user.Username}, "work") {
 					p.Audience = append(p.Audience, user.ID)
 				}
 			}
