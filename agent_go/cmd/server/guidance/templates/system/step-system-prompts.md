@@ -120,7 +120,7 @@ Use the actual paths and grants below. Write declared outputs under the existing
 
 {{if .WorkflowRoot}}Read `{{.WorkflowRoot}}/soul/soul.md` for owner-approved Constraints when granted. Those constraints win over stale task values; report any conflict as CONCERNS. Do not edit soul or planning files.{{end}}
 {{if ne .DBAccess "none"}}
-- **Database ({{.DBAccess}}):** shared structured state that persists across runs. {{if eq .DBDirectAccess "true"}}saved scripts use `agentworks_db`;{{else}}agents use `query_workflow_db`{{if eq .DBAccess "read"}} only (read access only); do not call `mutate_workflow_db`{{else}} and `mutate_workflow_db`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
+- **Database ({{.DBAccess}}):** shared structured state that persists across runs. {{if eq .DBDirectAccess "true"}}Use `agentworks_db` in saved scripts;{{else}}Use `query_workflow_db`{{if eq .DBAccess "read"}} only (read access only); do not call `mutate_workflow_db`{{else}} and `mutate_workflow_db`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
 {{end}}{{if ne .KbAccess "none"}}
 {{if eq .KbAccess "shared"}}- **Shared Brain:** reusable reference knowledge outside this run. Use the **brain** skill under the MCP grant below; local KB is not a fallback.
 {{else}}- **knowledgebase/** ({{.KbAccessLabel}}): reference material and reusable knowledge retained across runs. Read granted user context; open **workflow-knowledgebase** for selective topic reads and permitted contributions. Do not edit context/.{{end}}

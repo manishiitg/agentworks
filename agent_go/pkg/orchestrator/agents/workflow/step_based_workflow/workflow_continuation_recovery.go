@@ -309,72 +309,40 @@ func (hcpo *StepBasedWorkflowOrchestrator) queueRecoveredDirectKBReview(state *W
 	})
 }
 
+// The persisted phase keeps its old name; it now recovers the merged reflection
+// turn, including knowledgebase-only contributions.
 func (hcpo *StepBasedWorkflowOrchestrator) queueRecoveredDirectLearning(state *WorkflowContinuationState, runtime *workflowContinuationStepRuntime, handle *mcpagent.AgentSessionHandle) {
 	if state == nil || runtime == nil {
 		return
 	}
-	stepCfg := getAgentConfigs(runtime.Step)
-	if !hcpo.shouldDirectWriteLearnings(stepCfg, runtime.Step) {
-		hcpo.recordWorkflowContinuationPhaseForRunFolder(context.Background(), state.RunFolder, state.StepID, state.StepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseDirectLearning, workflowContinuationStatusSkipped, "direct learning gates disabled", nil)
+	run := hcpo.prepareRecoveredReflection(state, runtime, handle)
+	if run == nil {
+		hcpo.recordWorkflowContinuationPhaseForRunFolder(context.Background(), state.RunFolder, state.StepID, state.StepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseDirectLearning, workflowContinuationStatusSkipped, "no reflection contribution due", nil)
 		return
 	}
-	learnObjective := ""
-	if stepCfg != nil {
-		learnObjective = stepCfg.LearningObjective
+	hcpo.startRecoveredDirectContinuation(state, runtime, workflowContinuationPhaseDirectLearning, "Recovered Reflection", run)
+}
+
+// Keep queue admission and the recovered turn together so both use the live
+// contribution gates. Failure belongs to this continuation, not the completed task.
+func (hcpo *StepBasedWorkflowOrchestrator) prepareRecoveredReflection(state *WorkflowContinuationState, runtime *workflowContinuationStepRuntime, handle *mcpagent.AgentSessionHandle) func(context.Context, agents.OrchestratorAgent) (string, error) {
+	cfg := getAgentConfigs(runtime.Step)
+	if BuildStepReflectionTurn(hcpo.stepReflectionTurnInput(runtime.Step, cfg)) == "" {
+		return nil
 	}
-	learnMsg := hcpo.buildLearningsContributionTurn(runtime.Step.GetID(), runtime.Step.GetDescription(), learnObjective, isScriptedStep(runtime.Step, stepCfg))
-	if strings.TrimSpace(learnMsg) == "" {
-		hcpo.recordWorkflowContinuationPhaseForRunFolder(context.Background(), state.RunFolder, state.StepID, state.StepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseDirectLearning, workflowContinuationStatusSkipped, "no direct learning message", nil)
-		return
-	}
-	hcpo.startRecoveredDirectContinuation(state, runtime, workflowContinuationPhaseDirectLearning, "Recovered Direct Learning", func(execCtx context.Context, agent agents.OrchestratorAgent) (string, error) {
+	return func(ctx context.Context, agent agents.OrchestratorAgent) (string, error) {
 		if handle != nil && !handle.Empty() {
-			if base := agent.GetBaseAgent(); base != nil {
-				if err := base.Resume(execCtx, handle); err != nil {
-					return "", fmt.Errorf("resume learning agent: %w", err)
-				}
+			base := agent.GetBaseAgent()
+			if base == nil {
+				return "", fmt.Errorf("reflection agent base is nil")
+			}
+			if err := base.Resume(ctx, handle); err != nil {
+				return "", fmt.Errorf("resume reflection agent: %w", err)
 			}
 		}
-		if cfg := agent.GetConfig(); cfg != nil {
-			globalLearningsPath := fmt.Sprintf("%s/learnings/%s", hcpo.GetWorkspacePath(), GlobalLearningID)
-			restoreDirectLearningTurn := hcpo.prepareDirectLearningTurn(agent, []string{globalLearningsPath})
-			defer restoreDirectLearningTurn()
-		}
-		base := agent.GetBaseAgent()
-		if base == nil {
-			return "", fmt.Errorf("execution agent base is nil")
-		}
-		hcpo.recordWorkflowContinuationPhaseForRunFolder(execCtx, state.RunFolder, state.StepID, state.StepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseDirectLearning, workflowContinuationStatusWaitingForLock, "", agent)
-		learningsGlobalFileMutex.Lock()
-		defer learningsGlobalFileMutex.Unlock()
-		globalLearningsPath := fmt.Sprintf("%s/learnings/%s", hcpo.GetWorkspacePath(), GlobalLearningID)
-		beforeRef := hcpo.snapshotCanonicalArtifactRef(execCtx, globalLearningsPath)
-		result, _, err := hcpo.withWorkshopMessageTarget(execCtx, state.StepID, "recovered-learnings", agent, func() (string, []llmtypes.MessageContent, error) {
-			return base.Execute(execCtx, learnMsg, runtime.ExecutionHistory, "", false)
-		})
-		if err != nil {
-			return "", err
-		}
-		afterRef := hcpo.snapshotCanonicalArtifactRef(execCtx, globalLearningsPath)
-		hasNewLearning, reasoning, confidence := learningArtifactChange(beforeRef, afterRef)
-		if metadataErr := hcpo.updateLearningMetadataWithTurnCount(
-			execCtx,
-			runtime.StepIndex,
-			runtime.StepPath,
-			runtime.LearningPathIdentifier,
-			hasNewLearning,
-			reasoning,
-			confidence,
-			runtime.TurnCount,
-			runtime.Step,
-			true,
-			runtime.ExecutionLLM,
-			runtime.ExecutionLLM,
-		); metadataErr != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to update recovered direct-learning metadata for %s: %v", state.StepID, metadataErr))
-		}
-		return summarizeExecutionResultForNotification(result), nil
-	})
+		reflected := hcpo.runStepReflectionTurn(ctx, runtime.Step, runtime.StepIndex, runtime.StepPath, state.StepID, state.StepPath, cfg, agent, runtime.ExecutionHistory, isScriptedStep(runtime.Step, cfg), runtime.TurnCount, runtime.ExecutionLLM)
+		return reflected.Summary, reflected.Err
+	}
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) startRecoveredDirectContinuation(

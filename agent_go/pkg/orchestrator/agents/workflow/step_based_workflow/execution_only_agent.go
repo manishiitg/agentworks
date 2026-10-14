@@ -467,5 +467,41 @@ func composeStepRuntimeSystemPrompt(core string, supplements []string) string {
 			core += "\n\n" + strings.TrimSpace(supplement)
 		}
 	}
-	return core
+	return compactStepPromptSpacing(core)
+}
+
+// Drop empty template branches without changing spacing inside authored code.
+func compactStepPromptSpacing(prompt string) string {
+	var out []string
+	fence := ""
+	blank := false
+	indented := false
+	for _, line := range strings.Split(prompt, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			n := strings.IndexFunc(trimmed, func(r rune) bool { return r != rune(trimmed[0]) })
+			if n < 0 {
+				n = len(trimmed)
+			}
+			marker := trimmed[:n]
+			if fence == "" {
+				fence = marker
+			} else if marker[0] == fence[0] && len(marker) >= len(fence) && strings.TrimSpace(trimmed[n:]) == "" {
+				fence = ""
+			}
+		}
+		if trimmed != "" {
+			indented = strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t")
+		}
+		if fence == "" && !indented && trimmed == "" {
+			if blank {
+				continue
+			}
+			blank = true
+		} else {
+			blank = false
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }

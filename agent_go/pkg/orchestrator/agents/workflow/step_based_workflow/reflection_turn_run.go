@@ -37,6 +37,37 @@ type stepReflectionTurnResult struct {
 	Summary  string
 	History  []llmtypes.MessageContent
 	Executed bool
+	Err      error
+}
+
+func reflectionContributionPaths(learnings, knowledge bool, learningPath, knowledgePath string) []string {
+	var paths []string
+	if learnings {
+		paths = append(paths, learningPath)
+	}
+	if knowledge {
+		paths = append(paths, knowledgePath)
+	}
+	return paths
+}
+
+// Both new and recovered turns use the same contribution gates and targets.
+func (hcpo *StepBasedWorkflowOrchestrator) stepReflectionTurnInput(step PlanStepInterface, cfg *AgentConfigs) StepReflectionTurnInput {
+	if step == nil {
+		return StepReflectionTurnInput{}
+	}
+	root := hcpo.GetWorkspacePath()
+	input := StepReflectionTurnInput{
+		StepID:              step.GetID(),
+		LearningsTargetPath: filepath.Join(GetPromptDocsRoot(), root, LearningsFolderName, GlobalLearningID),
+		KBNotesTargetPath:   filepath.Join(GetPromptDocsRoot(), root, KnowledgebaseFolderName, KBNotesFolderName),
+		KBAccess:            resolveKnowledgebaseAccess(cfg, hcpo.UseKnowledgebase()),
+		KBContribution:      kbContributionForPrompt(cfg),
+	}
+	if hcpo.shouldDirectWriteLearnings(cfg, step) {
+		input.LearningObjective = cfg.LearningObjective
+	}
+	return input
 }
 
 // runStepReflectionTurn fires the merged post-completion turn for a step.
@@ -64,41 +95,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) runStepReflectionTurn(
 		return result
 	}
 
-	writesLearnings := hcpo.shouldDirectWriteLearnings(stepConfig, step)
-	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	kbContribution := kbContributionForPrompt(stepConfig)
-	writesKB := kbAccessAllowsWrite(kbAccess) && strings.TrimSpace(kbContribution) != ""
-
-	effectiveLearnings := writesLearnings
-
+	input := hcpo.stepReflectionTurnInput(step, stepConfig)
+	effectiveLearnings, writesKB := input.writesLearnings(), input.writesKB()
+	learnObjective := input.LearningObjective
 	baseWorkspace := hcpo.GetWorkspacePath()
 	globalLearningsPath := fmt.Sprintf("%s/learnings/%s", baseWorkspace, GlobalLearningID)
 	kbNotesPath := fmt.Sprintf("%s/%s/%s", baseWorkspace, KnowledgebaseFolderName, KBNotesFolderName)
-
-	learnObjective := ""
-	if stepConfig != nil {
-		learnObjective = stepConfig.LearningObjective
-	}
-	if !effectiveLearnings {
-		learnObjective = ""
-	}
-
-	input := StepReflectionTurnInput{
-		StepID:              step.GetID(),
-		StepDescription:     step.GetDescription(),
-		LearningObjective:   learnObjective,
-		LearningsTargetPath: filepath.Join(GetPromptDocsRoot(), baseWorkspace, "learnings", GlobalLearningID),
-		KBNotesTargetPath:   filepath.Join(GetPromptDocsRoot(), baseWorkspace, KnowledgebaseFolderName, KBNotesFolderName),
-		HasBrowserAccess:    hcpo.HasBrowserCapability(),
-		DBTableNames:        hcpo.reflectionDBTableNames(ctx),
-	}
-	if writesKB {
-		input.KBAccess = kbAccess
-		input.KBContribution = kbContribution
-	}
-	if effectiveLearnings {
-		input.SkillIndexLines = hcpo.reflectionSkillIndexLines(ctx)
-	}
 
 	message := BuildStepReflectionTurn(input)
 	if strings.TrimSpace(message) == "" {
@@ -107,10 +109,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runStepReflectionTurn(
 
 	// Widen only for this turn. Main execution had write access to none of
 	// these paths, and the outer step defer restores session shell config.
-	addedPaths := []string{globalLearningsPath}
-	if writesKB {
-		addedPaths = append(addedPaths, kbNotesPath)
-	}
+	addedPaths := reflectionContributionPaths(effectiveLearnings, writesKB, globalLearningsPath, kbNotesPath)
 
 	hcpo.recordWorkflowContinuationPhase(ctx, artifactStepID, artifactStepPath,
 		workflowContinuationOwnerStepExecution, workflowContinuationPhaseDirectLearning,
@@ -139,6 +138,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runStepReflectionTurn(
 
 		ba := executionAgent.GetBaseAgent()
 		if ba == nil {
+			result.Err = fmt.Errorf("reflection agent base is nil")
 			return
 		}
 		// Reflection was the one phase with no timing log, so its cost was
@@ -216,6 +216,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runStepReflectionTurn(
 		}
 
 		if turnErr != nil {
+			result.Err = turnErr
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Reflection turn failed for step %d: %v (accepting step anyway)", stepIndex+1, turnErr))
 			result.Summary = fmt.Sprintf("CONCERNS: step reflection turn failed for this run: %v\nSTATUS: COMPLETED", turnErr)
 			hcpo.recordWorkflowContinuationPhase(context.Background(), artifactStepID, artifactStepPath,
@@ -342,34 +343,4 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveReflectionTimingLog(
 	}
 	hcpo.GetLogger().Info(fmt.Sprintf("⏱️ Reflection turn for step %s took %dms (llm %dms, %d tool calls)",
 		stepID, durationToMillis(duration), llmTiming.TotalDurationMs, toolTiming.Count))
-}
-
-// reflectionDBTableNames lists the workflow's tables so the routing rule can
-// name real destinations. Best-effort: an unavailable database simply omits the
-// list rather than blocking reflection.
-func (hcpo *StepBasedWorkflowOrchestrator) reflectionDBTableNames(ctx context.Context) []string {
-	if !hcpo.platformStoresEnabled() {
-		return nil
-	}
-	names, err := LoadWorkflowDBTableNames(ctx, hcpo.GetWorkspacePath())
-	if err != nil {
-		hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ Reflection turn omitting DB table list: %v", err))
-		return nil
-	}
-	return names
-}
-
-// reflectionLearningsSizes reports the current index size and the step's own
-// file, so the prompt can state the gap instead of asserting a budget nobody
-// measures.
-func (hcpo *StepBasedWorkflowOrchestrator) reflectionSkillIndexLines(ctx context.Context) int {
-	if !hcpo.platformStoresEnabled() {
-		return 0
-	}
-	base := fmt.Sprintf("%s/learnings/%s", hcpo.GetWorkspacePath(), GlobalLearningID)
-	content, err := hcpo.ReadWorkspaceFile(ctx, base+"/SKILL.md")
-	if err != nil {
-		return 0
-	}
-	return len(strings.Split(strings.TrimRight(content, "\n"), "\n"))
 }

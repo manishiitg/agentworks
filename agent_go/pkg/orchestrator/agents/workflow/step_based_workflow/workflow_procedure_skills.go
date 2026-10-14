@@ -26,6 +26,10 @@ func init() {
 			Content: workflowKnowledgebaseProcedures,
 		},
 		{
+			Name: "workflow-reflection", Description: "Record verified guidance after a workflow step succeeds; use only for the requested contribution stores.",
+			Content: workflowReflectionProcedures,
+		},
+		{
 			Name: "workflow-execution", Description: "Use the workflow HTTP tool bridge or author saved scripts; load only for code execution work.",
 			Content: "# Workflow code execution\n\nFor HTTP tool calls, open builder-reference/references/mcp-bridge.md with read_skill; use the real registered schemas and injected MCP_CUSTOM/MCP_AUTH variables, never guess endpoints. For saved script authoring, open builder-reference/references/code-authoring.md and references/playwright-scripted.md only if browser automation is needed. Runtime paths, parameter contract and repair evidence are supplied in the core prompt. Read variables with os.environ['VAR_NAME'] and secrets with os.environ['SECRET_NAME']; never hardcode values or add defaults. STEP_OUTPUT_DIR already exists. Return real evidence; the controller runs canonical scripts after authoring.\n",
 		},

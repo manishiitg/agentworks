@@ -1,254 +1,138 @@
 package step_based_workflow
 
 import (
-	"fmt"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
-// PLAT-055. These pin the four behaviors that make the merged turn different
-// from the learnings turn it replaced: routing (C), per-step file ownership (D),
-// a measured size signal (E), and compaction (F). Each one exists because its
-// absence produced a specific observed failure.
-
-func reflectionInput() StepReflectionTurnInput {
-	return StepReflectionTurnInput{
-		StepID:            "execute-actions-step-exec-reply-targets",
-		StepDescription:   "post queue-approved replies",
-		LearningObjective: "Capture reply selectors and timing that work reliably.",
-		DBTableNames:      []string{"replies_posted", "tweet_performance", "daily_metrics"},
-		SkillIndexLines:   42,
+// Exercise the real metadata assembler and installed reader, plus the request's
+// contribution gates. This replaces checks that restated every sentence in the
+// formerly inline procedure body.
+func TestReflectionRequestLoadsProceduresOnDemand(t *testing.T) {
+	c := newAgentClosingTestOrchestrator(t)
+	identity, supplements := c.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{}, nil, false, []string{"query_workflow_db"}, false, false)
+	found := false
+	for _, skill := range identity {
+		found = found || skill.Name == "workflow-reflection"
+	}
+	if !found {
+		t.Fatal("reflection procedure skill was not attached")
+	}
+	guide, err := skills.NewInstalledSkillReader("", c.GetWorkspacePath())("workflow-reflection", "SKILL.md")
+	if err != nil || !strings.Contains(guide.Content, "diff_patch_workspace_file") || !strings.Contains(guide.Content, "organized by topic") {
+		t.Fatalf("reflection procedures cannot be opened: %v", err)
+	}
+	if strings.Contains(strings.Join(supplements, "\n"), guide.Content) {
+		t.Fatal("reflection procedures were injected eagerly")
+	}
+	for _, mode := range []string{"learnings", "knowledgebase", "both", "none", "kb-without-write"} {
+		t.Run(mode, func(t *testing.T) {
+			in := StepReflectionTurnInput{StepID: "research", LearningsTargetPath: "/workspace/Workflow/example/learnings/_global", KBNotesTargetPath: "/workspace/Workflow/example/knowledgebase/notes"}
+			if mode == "learnings" || mode == "both" {
+				in.LearningObjective = "Record verified source lookup technique."
+			}
+			if mode == "knowledgebase" || mode == "both" || mode == "kb-without-write" {
+				in.KBContribution = "Record verified domain context."
+				in.KBAccess = KBAccessReadWrite
+				if mode == "kb-without-write" {
+					in.KBAccess = KBAccessRead
+				}
+			}
+			message := BuildStepReflectionTurn(in)
+			if mode == "none" || mode == "kb-without-write" {
+				if message != "" {
+					t.Fatal("unrequested or ungranted reflection was started")
+				}
+				return
+			}
+			if len(message) > 1500 || strings.Contains(message, "old_run_counts") || strings.Contains(message, guide.Content) {
+				t.Fatalf("request repeated task/evidence/procedures: %d bytes", len(message))
+			}
+			if strings.Contains(message, in.LearningsTargetPath) != in.writesLearnings() || strings.Contains(message, in.KBNotesTargetPath) != in.writesKB() || !strings.Contains(message, "nothing new") {
+				t.Fatal("reflection did not preserve actual contribution gates or no-edit outcome")
+			}
+			t.Logf("REFLECTION_REVIEW mode=%s bytes=%d\n%s", mode, len(message), message)
+		})
 	}
 }
 
-func TestReflectionTurnRoutesEachStoreExplicitly(t *testing.T) {
-	msg := BuildStepReflectionTurn(reflectionInput())
-
-	// The routing table is the fix. Social Media's learning_objective already
-	// banned incident narratives and stale counts by name and the agent wrote
-	// them anyway, because the rule named stores the turn could not reach.
-	for _, want := range []string{
-		"Route each thing to the store that owns it",
-		"Pulse Technical Review evaluates it",
-		"soul/soul.md",
-		"Learnings is not a fallback",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("reflection turn missing routing content %q", want)
-		}
-	}
-
-	// The staleness test is the self-checkable version of the rule.
-	if !strings.Contains(msg, "wrong in a month") {
-		t.Error("reflection turn missing the staleness test")
-	}
+// KB-only reflection previously widened the global learnings directory too.
+// Check both the agent and the real per-session shell guard, then restoration.
+type observingReflectionAgent struct {
+	*fakeDirectLearningAgent
+	observe func()
 }
 
-func TestReflectionTurnNamesRealDBTables(t *testing.T) {
-	msg := BuildStepReflectionTurn(reflectionInput())
-
-	// server A Latency pasted percentile tables and cost baselines into learnings
-	// that already existed in latency_baselines and cost_daily_metrics, with
-	// fresher data. Nothing told the step those tables existed, so caching felt
-	// safer than betting a later run would query. Naming them is what makes
-	// "reference the table" actionable rather than aspirational.
-	for _, table := range []string{"replies_posted", "tweet_performance", "daily_metrics"} {
-		if !strings.Contains(msg, table) {
-			t.Errorf("reflection turn did not name existing table %q", table)
-		}
-	}
-	if !strings.Contains(msg, "never paste its values here") {
-		t.Error("reflection turn did not forbid copying DB values into learnings")
-	}
+func (a *observingReflectionAgent) GetBaseAgent() *agents.BaseAgent {
+	a.observe()
+	return nil // Stop at the model boundary, after the real reflection grant was applied.
 }
 
-// PLAT-058. The skill is one shared, topic-organized artifact that every step
-// improves — NOT a per-step file set.
-//
-// An earlier revision told each step to own `references/<step-id>.md`. On its
-// first live run that fragmented the skill by execution structure instead of by
-// subject: it produced `execute-actions-step-exec-reply-targets.md` alongside
-// the 110 KB `reply-target-execution.md` that SKILL.md actually links to, and
-// left four "not yet folded into" pointers behind. Two steps independently
-// filed harness concerns about it, one classifying it `harness_issue` with the
-// exact impact — "new technique notes would silently stop being discoverable
-// via the index, and the two files would drift out of sync."
-//
-// The 48 KB SKILL.md that motivated per-step ownership is prevented by the
-// index-is-an-index and compaction rules instead, which do not require carving
-// the skill up per step.
-func TestReflectionTurnTreatsSkillAsOneSharedTopicOrganisedArtifact(t *testing.T) {
-	msg := BuildStepReflectionTurn(reflectionInput())
-
-	// The step id must never be presented as a write target.
-	if strings.Contains(msg, "references/execute-actions-step-exec-reply-targets.md") {
-		t.Error("reflection turn still names a per-step file as the write target")
-	}
-	for _, want := range []string{
-		"one skill for the whole workflow",
-		"shared by every step",
-		"organized by **topic**",
-		"topic file that owns it",
-		"never for a step, a step id, or a run",
-		"index, not a content home",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("reflection turn missing shared-skill content %q", want)
-		}
-	}
-
-	// Orphans from the retired convention must be folded back in, not left to
-	// rot alongside the topic file — otherwise the fork this replaced survives.
-	if !strings.Contains(msg, "named after a step") || !strings.Contains(msg, "delete the orphan") {
-		t.Error("reflection turn does not instruct folding step-named orphans back into their topic file")
-	}
-
-	// Reads were never the problem, and a shared skill makes them more valuable:
-	// what another step recorded about this surface is exactly what prevents a
-	// duplicate entry.
-	if !strings.Contains(msg, "Read widely before writing") {
-		t.Error("reflection turn does not push the agent to read other steps' contributions")
-	}
+func TestKnowledgeReflectionDoesNotGrantLearnings(t *testing.T) {
+	testKnowledgeReflectionWriteScopes(t, false)
+}
+func TestRecoveredKnowledgeReflectionDoesNotGrantLearnings(t *testing.T) {
+	testKnowledgeReflectionWriteScopes(t, true)
 }
 
-// PLAT-055 follow-up. No fixed line count: an index legitimately grows with
-// the number of contributing steps, so a number sized for a 6-step workflow
-// (upwork's healthy index is ~96 lines) would be actively wrong for a 50-step
-// one. What actually matters is structural — does each entry stay a one-line
-// link, or has real detail (a paragraph, a selector, a timing rule) leaked in
-// — so the same judgment instruction applies at 42 lines and at 510 lines
-// alike; only the reported current count differs.
-func TestReflectionTurnJudgesIndexStructurallyNotBySize(t *testing.T) {
-	small := reflectionInput() // SkillIndexLines: 42
-	large := reflectionInput()
-	large.SkillIndexLines = 510 // server A Latency's actual bloated index size
-
-	for name, in := range map[string]StepReflectionTurnInput{"small index": small, "large index": large} {
-		msg := BuildStepReflectionTurn(in)
-		wantLines := fmt.Sprintf("%d lines", in.SkillIndexLines)
-		if !strings.Contains(msg, wantLines) {
-			t.Errorf("%s: current index size not reported (want %q)", name, wantLines)
+func testKnowledgeReflectionWriteScopes(t *testing.T, recovered bool) {
+	c := newAgentClosingTestOrchestrator(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			http.NotFound(w, r)
+			return
 		}
-		if !strings.Contains(msg, "Judge it structurally, not by size") {
-			t.Errorf("%s: missing the structural-judgment instruction", name)
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{}})
+	}))
+	defer server.Close()
+	c.WorkspaceClient = workspace.NewClient(server.URL)
+	const session = "kb-only-reflection"
+	defer common.ClearSessionShellConfig(session)
+	root := c.GetWorkspacePath()
+	stepPath, learningPath, notesPath := root+"/runs/iteration-0/default/execution/research", root+"/learnings/_global", root+"/knowledgebase/notes"
+	common.SetSessionFolderGuard(session, []string{stepPath}, []string{stepPath})
+	cfg := &agents.OrchestratorAgentConfig{MCPSessionID: session, FolderGuardReadPaths: []string{stepPath}, FolderGuardWritePaths: []string{stepPath}}
+	observed := false
+	agent := &observingReflectionAgent{fakeDirectLearningAgent: &fakeDirectLearningAgent{cfg: cfg}}
+	agent.observe = func() {
+		if !testContainsString(cfg.FolderGuardWritePaths, notesPath) {
+			return
 		}
-		if !strings.Contains(msg, "one line") {
-			t.Errorf("%s: missing the one-line-per-entry rule", name)
-		}
-	}
-}
-
-func TestReflectionTurnRequiresCompactionOverDatedAppends(t *testing.T) {
-	msg := BuildStepReflectionTurn(reflectionInput())
-
-	// Social Media re-documented the same two bugs four times in one day, one
-	// entry admitting "even though this was already documented above".
-	for _, want := range []string{"Update in place", "never the identity"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("reflection turn missing compaction rule %q", want)
+		observed = true
+		for _, writes := range [][]string{cfg.FolderGuardWritePaths, common.GetSessionShellConfig(session).WritePaths} {
+			if !testContainsString(writes, notesPath) || testContainsString(writes, learningPath) {
+				t.Errorf("wrong reflection write grant: %v", writes)
+			}
 		}
 	}
-}
-
-// PLAT-058. Cleanup duty is qualitative and unconditional — every turn, on any
-// file, at any size. A byte threshold is a poor proxy for quality (linkedin's
-// cdp-browser.md is a healthy 23 KB covering all browser automation for that
-// workflow) and per-step sizes are meaningless now that the skill is organized
-// by topic rather than by step.
-func TestReflectionTurnRequiresCleanupJudgmentOnEveryFileItTouches(t *testing.T) {
-	msg := BuildStepReflectionTurn(reflectionInput())
-	for _, want := range []string{
-		"compact, precise, and informative",
-		"Restated facts",
-		"Narrative instead of technique",
-		"someone else's job",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("message missing %q", want)
+	stepCfg := &AgentConfigs{LearningsAccess: LearningsAccessNone, KnowledgebaseAccess: KBAccessReadWrite, KnowledgebaseContribution: "Record verified context."}
+	step := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: "research", Description: "Produce verified research."}, AgentConfigs: stepCfg}
+	if recovered {
+		state := &WorkflowContinuationState{StepID: "research", StepPath: "research"}
+		runtime := &workflowContinuationStepRuntime{Step: step, StepPath: "research", TurnCount: 1}
+		run := c.prepareRecoveredReflection(state, runtime, nil)
+		if run == nil {
+			t.Fatal("recovery skipped a knowledgebase-only contribution")
 		}
+		_, _ = run(t.Context(), agent)
+	} else {
+		c.runStepReflectionTurn(t.Context(), step, 0, "research", "research", "research", stepCfg, agent, nil, false, 1, "")
 	}
-	// The duty must attach to whatever file is touched, not to "your file".
-	if !strings.Contains(msg, "every file you touch") {
-		t.Error("cleanup duty is not scoped to every file the turn touches")
+	if !observed {
+		t.Fatal("real reflection path never applied knowledgebase grant")
 	}
-}
-
-// PLAT-173. The KB half of this same turn had none of the anti-append guidance
-// the learnings half above carries, and the omission produced exactly the
-// failure it would have prevented: customer-login's app-structure.md grew past
-// every stated threshold because each survey cycle appended a fresh dated
-// section instead of correcting the existing one. A step cannot be faulted for
-// stacking sections when the only KB instruction it received was where to write
-// and what to contribute.
-func TestReflectionKBSectionRequiresUpdateInPlaceNotDatedAppends(t *testing.T) {
-	in := reflectionInput()
-	in.KBAccess = KBAccessReadWrite
-	in.KBContribution = "Record the app's durable page and endpoint structure."
-	msg := BuildStepReflectionTurn(in)
-
-	// The same three duties the learnings half states, owed by the KB half too:
-	// read the file before writing it, correct rather than append, and clean up
-	// what is already there regardless of how small this turn's addition is.
-	for _, want := range []string{
-		"Update the existing section in place",
-		"a new dated section",
-		"read the whole topic file",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("KB section missing anti-append rule %q", want)
+	for _, writes := range [][]string{cfg.FolderGuardWritePaths, common.GetSessionShellConfig(session).WritePaths} {
+		if len(writes) != 1 || writes[0] != stepPath {
+			t.Fatalf("reflection grants were not restored: %v", writes)
 		}
-	}
-
-	// Compaction is the writing step's own duty. stores.md claimed notes
-	// "compact themselves" past 20KB/30 sections; no such mechanism exists, and
-	// a step told compaction is automatic has a positive reason to keep
-	// appending. The turn must say plainly that nothing else will do it.
-	if !strings.Contains(msg, "Nothing compacts these files for you") {
-		t.Error("KB section does not tell the step that compaction is its own duty")
-	}
-}
-
-func TestReflectionTurnOmitsSectionsThatDoNotApply(t *testing.T) {
-	// Learnings only.
-	learningsOnly := BuildStepReflectionTurn(reflectionInput())
-	if strings.Contains(learningsOnly, "Knowledgebase — durable business") {
-		t.Error("KB section rendered for a step with no KB contribution")
-	}
-
-	// KB only: a step with no learning objective still routes and contributes.
-	kbOnly := reflectionInput()
-	kbOnly.LearningObjective = ""
-	kbOnly.KBAccess = KBAccessReadWrite
-	kbOnly.KBContribution = "Record durable client-quality signals."
-	msg := BuildStepReflectionTurn(kbOnly)
-	if msg == "" {
-		t.Fatal("KB-only step produced no reflection turn")
-	}
-	if strings.Contains(msg, "Learnings — reusable execution technique") {
-		t.Error("learnings section rendered without an objective")
-	}
-	if !strings.Contains(msg, "Record durable client-quality signals.") {
-		t.Error("KB contribution contract not carried into the turn")
-	}
-}
-
-func TestReflectionTurnSkippedWhenNoStoreIsDue(t *testing.T) {
-	// Neither learnings nor KB due: emitting a turn purely for the concern
-	// outlet would add an LLM call to every read-only learning step
-	// (LinkedIn has 6 of 6 locked), where the previous code emitted nothing.
-	none := reflectionInput()
-	none.LearningObjective = ""
-	if msg := BuildStepReflectionTurn(none); msg != "" {
-		t.Errorf("expected no reflection turn when no store is due, got %d bytes", len(msg))
-	}
-
-	// A KB contribution without write access is not due either.
-	readOnlyKB := reflectionInput()
-	readOnlyKB.LearningObjective = ""
-	readOnlyKB.KBAccess = "read"
-	readOnlyKB.KBContribution = "something"
-	if msg := BuildStepReflectionTurn(readOnlyKB); msg != "" {
-		t.Error("KB contribution without write access should not produce a turn")
 	}
 }
 

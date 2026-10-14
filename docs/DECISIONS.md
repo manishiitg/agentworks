@@ -1,5 +1,22 @@
 # Decisions and open issues
 
+## 2026-10-14 — Reflection requests contributions; procedures are opened as a skill (PLAT-861)
+
+The post-validation reflection message gives its purpose, configured contribution
+objectives and actual target stores. Task description, table/index inventories and
+procedural bodies are not repeated. Agents open workflow-reflection when useful
+notes need recording; no-new-guidance remains valid. Temporary write access is
+added only for contribution stores that are due. Shared locking, patch-only writes,
+continuation/cost tracking and best-effort run completion remain. Restart recovery
+resumes the saved agent and uses the same merged turn, including KB-only
+contributions; the retired standalone learnings request is removed.
+
+Why: a long handbook obscured the purpose of reflection and included unsupported
+claims about evidence being lost or already recorded. Existing conversation and
+artifacts provide evidence; the skill explains how to keep reusable guidance.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-193.
+
 ## 2026-10-14 — Retire owner notifications as a tool; keep applicable step requirements (PLAT-861)
 
 Retire `notify_user` across products. Preserve internal run/Pulse

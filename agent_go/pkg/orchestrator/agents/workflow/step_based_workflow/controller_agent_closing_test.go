@@ -92,9 +92,8 @@ func TestAgentClosingItems(t *testing.T) {
 	if items[0].Message == "" {
 		t.Errorf("reflection item should carry a message")
 	}
-	// The routing rule is the whole point of merging; without it the turn is
-	// just the old learnings turn with extra access.
-	for _, want := range []string{"Route each thing to the store that owns it", "Pulse Technical Review", "not a learning"} {
+	// The request identifies both destinations and points to on-demand routing procedures.
+	for _, want := range []string{"workflow-reflection", "reusable execution technique", "verified business/domain context", "workflow-knowledgebase", "_index.json"} {
 		if !strings.Contains(items[0].Message, want) {
 			t.Errorf("reflection message missing %q", want)
 		}

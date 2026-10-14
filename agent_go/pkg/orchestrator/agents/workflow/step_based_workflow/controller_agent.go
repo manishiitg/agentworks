@@ -245,7 +245,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(ctx context
 	}
 	var items []AgentItem
 	stepID := seq.GetID()
-	desc := seq.GetDescription()
 
 	// PLAT-055. One reflection item, not a learnings item followed by a
 	// knowledgebase item. Appending them separately reproduced the same defect
@@ -261,14 +260,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(ctx context
 
 	input := StepReflectionTurnInput{
 		StepID:              stepID,
-		StepDescription:     desc,
 		LearningsTargetPath: hcpo.directLearningsPromptTargetPath(),
-		HasBrowserAccess:    hcpo.HasBrowserCapability(),
-		DBTableNames:        hcpo.reflectionDBTableNames(ctx),
+		KBNotesTargetPath:   filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), KnowledgebaseFolderName, KBNotesFolderName),
 	}
 	if learningsDue {
 		input.LearningObjective = strings.TrimSpace(cfg.LearningObjective)
-		input.SkillIndexLines = hcpo.reflectionSkillIndexLines(ctx)
 	}
 	if kbDue {
 		input.KBAccess = kbAccess
