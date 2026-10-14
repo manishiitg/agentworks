@@ -98,7 +98,9 @@ type LocalBridgeReply struct {
 	Version           string                `json:"version,omitempty"`
 	Pending           int                   `json:"pending"`
 	// Held counts stored messages the server has left out of this chat's checks so far (they are retried).
-	Held               int `json:"held,omitempty"`
+	Held int `json:"held,omitempty"`
+	// HeldReasons says why, by class (e.g. sender_authorization_failed), as the server reported at the last check.
+	HeldReasons        map[string]int `json:"held_reasons,omitempty"`
 	previousGuidanceAt time.Time
 	guidanceAt         time.Time
 }
@@ -139,15 +141,18 @@ type localSession struct {
 	LastError         string                `json:"last_error,omitempty"`
 	ConfigPath        string                `json:"config_path"`
 	Offers            map[string]localOffer `json:"offers"`
-	client            *Client
-	cancel            context.CancelFunc
-	deliveryCtx       context.Context
-	nativeStarted     bool
-	nativeCalls       int
-	piNextAt          time.Time // Observed SDK consumer, not persisted authority.
-	ServerClosed      bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
-	routeTriedAt      time.Time // Last native-route discovery for this chat; it can run many process checks.
-	switchWarned      string    // Target login the person was already warned about (unread mail does not follow a move).
+	// Retired remembers offers compacted away (id -> when), for a week and at most 2000, so a message the server still
+	// holds as stored is not taken for a new late arrival and delivered a second time.
+	Retired       map[string]time.Time `json:"retired,omitempty"`
+	client        *Client
+	cancel        context.CancelFunc
+	deliveryCtx   context.Context
+	nativeStarted bool
+	nativeCalls   int
+	piNextAt      time.Time // Observed SDK consumer, not persisted authority.
+	ServerClosed  bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
+	routeTriedAt  time.Time // Last native-route discovery for this chat; it can run many process checks.
+	switchWarned  string    // Target login the person was already warned about (unread mail does not follow a move).
 }
 
 type localBridge struct {
@@ -540,7 +545,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					}
 					return nil
 				}
-				if m.Sequence <= s.SeenThrough {
+				if m.Sequence <= s.SeenThrough && !lateButNew(s, m) {
 					return nil
 				}
 				compactLocalOffers(s, false)
@@ -1353,7 +1358,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: "attachment or messages no longer authorized"}
 		}
 		var checked struct {
-			IDs []string `json:"message_ids"`
+			IDs         []string       `json:"message_ids"`
+			HeldReasons map[string]int `json:"held_reasons"`
 		}
 		if json.Unmarshal(raw, &checked) != nil {
 			return LocalBridgeReply{Error: "invalid pending validation"}
@@ -1361,6 +1367,27 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		allowed := map[string]bool{}
 		for _, id := range checked.IDs {
 			allowed[id] = true
+		}
+		if len(allowed) < len(ids) {
+			// Try to release what the server left out once more before saying anything about it.
+			var left []string
+			for _, id := range ids {
+				if !allowed[id] {
+					left = append(left, id)
+				}
+			}
+			if raw2, e := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": left}, true); e == nil {
+				var again struct {
+					IDs         []string       `json:"message_ids"`
+					HeldReasons map[string]int `json:"held_reasons"`
+				}
+				if json.Unmarshal(raw2, &again) == nil {
+					for _, id := range again.IDs {
+						allowed[id] = true
+					}
+					checked.HeldReasons = again.HeldReasons
+				}
+			}
 		}
 		held := 0
 		previous := map[string]localOffer{}
@@ -1392,6 +1419,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		out.Messages = filtered
 		out.Held = held
+		out.HeldReasons = checked.HeldReasons
 		if held > 0 {
 			var left []string
 			for _, m := range previous {
@@ -1427,6 +1455,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 
 			return LocalBridgeReply{Error: err.Error()}
 		}
+		b.acknowledgeStatusLines(s, out.Messages, in.Transport)
 		return out
 	case "ack", "reply":
 		m, ok := s.Offers[in.MessageID]
@@ -1577,11 +1606,29 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 // the received watermark with pending bodies before offering anything. Retiring
 // offered metadata never permits an ambiguous delivery to become a new turn.
 func compactLocalOffers(s *localSession, all bool) {
-
+	now := time.Now()
 	for id, v := range s.Offers {
 		if (v.Offered || v.Suppressed) && (all || len(s.Offers) >= 1000 && v.Delivery == "processed" || !v.OfferedAt.IsZero() && time.Since(v.OfferedAt) > 7*24*time.Hour) {
 			delete(s.Offers, id)
+			if s.Retired == nil {
+				s.Retired = map[string]time.Time{}
+			}
+			s.Retired[id] = now
 		}
+	}
+	for id, at := range s.Retired {
+		if now.Sub(at) > 7*24*time.Hour {
+			delete(s.Retired, id)
+		}
+	}
+	for len(s.Retired) > 2000 {
+		oldestID, oldest := "", now
+		for id, at := range s.Retired {
+			if oldestID == "" || at.Before(oldest) {
+				oldestID, oldest = id, at
+			}
+		}
+		delete(s.Retired, oldestID)
 	}
 }
 
@@ -1980,4 +2027,46 @@ func (b *localBridge) autoUpdateLoop(ctx context.Context) {
 		every := or(b.options.AutoUpdateEvery, 6*time.Hour)
 		wait = every + time.Duration(rand.Int63n(int64(every/12)+1))
 	}
+}
+
+// lateButNew reports whether a stored message below the watermark was probably never seen: the server re-checks a message
+// that failed a check on the next pass, so it can arrive after later ones. It was not known by id, and it was sent within
+// the time offers are kept (so a compacted old offer is not replayed). Without a send time, the watermark decides.
+func lateButNew(s *localSession, m AgentLiveMessage) bool {
+	if _, retired := s.Retired[m.MessageID]; retired {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, m.SentAt)
+	return err == nil && time.Since(t) < 7*24*time.Hour
+}
+
+// A status line written by the server (a message you sent is still waiting) asks nothing of the chat: once it has been
+// handed over the bridge acknowledges it itself, so it is not offered again and the server's record is complete.
+func (b *localBridge) acknowledgeStatusLines(s *localSession, messages []AgentLiveMessage, transport string) {
+	var ids []string
+	for _, m := range messages {
+		if m.Kind == "status" {
+			ids = append(ids, m.MessageID)
+			v := s.Offers[m.MessageID]
+			v.Delivery, v.Message = "processed", ""
+			s.Offers[m.MessageID] = v
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	_ = b.save()
+	client, attachment := s.client, s.Attachment
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		for _, id := range ids {
+			for _, delivery := range []string{"admitted", "processed"} {
+				if _, err := client.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": id, "delivery": delivery, "transport": transport}); err != nil {
+					log.Printf("[BRIDGE] could not acknowledge status line %s: %v", id, err)
+					return
+				}
+			}
+		}
+	}()
 }

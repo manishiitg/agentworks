@@ -301,14 +301,17 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !store.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
+			status := m.Kind == "status" // written by the server for this agent: no sender to check
+			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !status && !store.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
 				continue
 			}
-			if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
-				continue
-			}
-			if e = api.externalAuthorizeMessagePeer(r.Context(), live, source, false); e != nil {
-				continue
+			if !status {
+				if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
+					continue
+				}
+				if e = api.externalAuthorizeMessagePeer(r.Context(), live, source, false); e != nil {
+					continue
+				}
 			}
 			// Resolve the exact generation once more immediately before release.
 			_, _, e = currentAgentAttachment(r.Context(), claims, name, id)
@@ -319,8 +322,11 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			if e = recordAgentMessageOffer(r.Context(), a.ID, id, m.ID); e != nil {
 				return
 			}
-			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery}
-			if person := crossPersonOwner(source, dest.UserID); person != "" {
+			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery, "sent_at": m.SentAt}
+			if status {
+				frame["sender"], frame["sender_id"], frame["kind"] = "AgentWorks", "", "status"
+			}
+			if person := crossPersonOwner(source, dest.UserID); person != "" && !status {
 				frame["from_person"], frame["untrusted"] = person, true
 			}
 			if write(frame) != nil {
@@ -412,6 +418,10 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				src := c.Endpoints[m.From]
+				if m.Kind == "status" {
+					permitted = append(permitted, id)
+					continue
+				}
 				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) {
 					reasons[id] = "share_check_failed"
 					continue

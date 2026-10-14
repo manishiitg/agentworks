@@ -37,6 +37,10 @@ type AgentLiveMessage struct {
 	Message    string `json:"message"`
 	Sequence   int    `json:"sequence"`
 	Delivery   string `json:"delivery"`
+	// Kind is "status" for a line the server wrote itself (a sender is told a message is still waiting): it is shown
+	// as a plain status, needs no reply, and is acknowledged by the bridge. SentAt is when the sender sent the message.
+	Kind   string `json:"kind,omitempty"`
+	SentAt string `json:"sent_at,omitempty"`
 }
 
 type AgentAttachmentOptions struct {
@@ -64,6 +68,9 @@ func (c *Client) AttachAgent(ctx context.Context, opts AgentAttachmentOptions) (
 	return a, nil
 }
 
+// streamIdleLimit is how long a live stream may stay silent before it is dropped and reopened; tests shorten it.
+var streamIdleLimit = 45 * time.Second
+
 // StreamAgentMessages keeps one authenticated connection open. The server
 // pushes on durable writes; this never polls the messages tool. Reconnect and
 // adapter de-duplication belong to the caller, which owns its native session.
@@ -73,6 +80,12 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 		return err
 	}
 	q := url.Values{"agent_name": {attachment.AgentName}, "attachment_id": {attachment.ID}}
+	// The server sends a frame at least every 10 s (heartbeats included). A connection that goes quiet for streamIdleLimit is
+	// half open (sleep, a network change): drop it so the caller reconnects instead of waiting forever.
+	ctx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	idle := time.AfterFunc(streamIdleLimit, cancelStream)
+	defer idle.Stop()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/external/v1/agents/events?"+q.Encode(), nil)
 	if err != nil {
 		return err
@@ -95,6 +108,7 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 4096), 4<<20)
 	for scanner.Scan() {
+		idle.Reset(streamIdleLimit)
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
 			continue

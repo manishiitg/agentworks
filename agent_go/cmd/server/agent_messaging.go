@@ -65,6 +65,8 @@ type agentMessage struct {
 	LiveAttachment     string    `json:"live_attachment,omitempty"`
 	Wakeup             bool      `json:"wakeup,omitempty"`
 	Group              string    `json:"group,omitempty"` // Set when this copy was sent to a whole group.
+	Kind               string    `json:"kind,omitempty"`  // "status": a server-authored line, not a message from a peer
+	NoticeSent         bool      `json:"notice_sent,omitempty"`
 	AdmittedAt         time.Time `json:"admitted_at,omitempty"`
 	ProcessedAt        time.Time `json:"processed_at,omitempty"`
 }
@@ -309,6 +311,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, err
 	}
 	index, side := -1, 0
+	if strings.HasPrefix(inboxID, agentStatusConversationPrefix) || strings.HasPrefix(inboxID, "wakeup-inbox-") {
+		agentMessageMu.Unlock()
+		return nil, fmt.Errorf("status lines and timer wake-ups need no reply")
+	}
 	if inboxID != "" {
 		for i := range s.Conversations {
 			if s.Conversations[i].ID == inboxID {

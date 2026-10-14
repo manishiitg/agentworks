@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
@@ -106,6 +108,11 @@ func agentMessageSenderLine(m agentworksclient.AgentLiveMessage) string {
 // agentMessageBlock renders one message: sender line, fenced body, and the
 // ack/reply addressing line.
 func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string) string {
+	if m.Kind == "status" {
+		// Written by the server, not a peer: a plain status for the chat to pass on. It asks for nothing.
+		body, _ := sanitizeAgentMessageBody(m.Message)
+		return "AgentWorks status (information only, no reply needed):\n" + body
+	}
 	var b strings.Builder
 	b.WriteString(agentMessageSenderLine(m))
 	b.WriteByte('\n')
@@ -120,4 +127,91 @@ func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string)
 	fmt.Fprintf(&b, "reply: inbox %s · ack: message %s · lease %s",
 		inboxID, messageID, sanitizeAgentMessageToken(attachmentID))
 	return b.String()
+}
+
+// agentWaitingLine opens a prompt's delivery text: how many peer messages are being handed over and from whom, so the
+// chat (and its person) sees the backlog at a glance. Server status lines are not messages and are not counted.
+func agentWaitingLine(messages []agentworksclient.AgentLiveMessage, now time.Time) string {
+	count := 0
+	senders := map[string]bool{}
+	var oldest time.Time
+	for _, m := range messages {
+		if m.Kind == "status" {
+			continue
+		}
+		count++
+		if name := sanitizeAgentMessageToken(m.Sender); name != "" {
+			senders[name] = true
+		}
+		if t, err := time.Parse(time.RFC3339Nano, m.SentAt); err == nil && (oldest.IsZero() || t.Before(oldest)) {
+			oldest = t
+		}
+	}
+	if count == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(senders))
+	for n := range senders {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	if len(names) > 3 {
+		names = append(names[:3], fmt.Sprintf("%d more", len(names)-3))
+	}
+	noun := "messages"
+	if count == 1 {
+		noun = "message"
+	}
+	line := fmt.Sprintf("AgentWorks: %d %s waiting", count, noun)
+	if len(names) > 0 {
+		line += " from " + strings.Join(names, ", ")
+	}
+	if !oldest.IsZero() {
+		if age := now.Sub(oldest); age >= time.Minute {
+			line += fmt.Sprintf(" (oldest %s ago)", agentWaitingAge(age))
+		}
+	}
+	return line + "."
+}
+
+func agentWaitingAge(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d h", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d days", int(d.Hours()/24))
+}
+
+// agentHeldLine tells the chat about messages the server has not released, by reason class. Their text is never shown.
+func agentHeldLine(out agentworksclient.LocalBridgeReply) string {
+	if out.Held <= 0 {
+		return ""
+	}
+	classes := map[string]bool{}
+	for reason := range out.HeldReasons {
+		switch reason {
+		case "sender_authorization_failed", "share_check_failed", "admission_recheck_failed":
+			classes["a check on the sender did not pass"] = true
+		case "offered_to_another_lease":
+			classes["they were offered to an earlier connection of this chat"] = true
+		default:
+			classes["the server did not release them"] = true
+		}
+	}
+	why := "the server did not release them"
+	if len(classes) > 0 {
+		list := make([]string, 0, len(classes))
+		for c := range classes {
+			list = append(list, c)
+		}
+		sort.Strings(list)
+		why = strings.Join(list, "; ")
+	}
+	noun := "messages"
+	if out.Held == 1 {
+		noun = "message"
+	}
+	return fmt.Sprintf("AgentWorks is holding %d %s for this chat that it cannot release yet (%s). Their text is not shown. Tell your person to ask the AgentWorks admin.", out.Held, noun, why)
 }
