@@ -9743,6 +9743,9 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	if executionID == "" {
 		executionID = "main:" + sessionID
 	}
+	// This completion is closed by the server's own sidecar, not by an mcpagent Session, so the turn's tokens are not
+	// read from the CLI transcript here (the Session path reports them): say so, so a missing ledger row is explained.
+	log.Printf("[RETAINED_USAGE] sidecar completion: usage not read for session=%s provider=%s status=%s (no mcpagent Session closed this turn)", sessionID, provider, status)
 	finalResult := api.retainedTurnFinalResponse(provider, sessionID, turnStartedAt)
 	if finalResult == "" && status == "completed" {
 		finalResult = api.nativeTerminalFinalResponse(snapshot.TmuxSession)
@@ -10885,18 +10888,22 @@ func (api *StreamingAPI) agentProfileAllowsRetainedLiveInput(userID, sessionID, 
 	currentProfileKey, known := api.lastAgentProfileKeyBySession[sessionID]
 	api.conversationMux.RUnlock()
 	if !known || currentProfileKey == "" {
+		log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: no current agent profile key is recorded for it", sessionID)
 		return false
 	}
 	api.conversationMux.RLock()
 	launched, launchKnown := api.launchedAgentProfileKeyBySession[sessionID]
 	api.conversationMux.RUnlock()
 	if launchKnown {
+		if launched != currentProfileKey {
+			log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: the launched agent profile differs from the current one", sessionID)
+		}
 		return launched == currentProfileKey
 	}
 
 	runtime, ok, err := ReadChatHistoryRuntimeForSession(userID, sessionID, workspacePath)
 	if err != nil || !ok || runtime == nil {
-		log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: current runtime fingerprint is unavailable", sessionID)
+		log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: current runtime fingerprint is unavailable (launched_key_known=false saved_runtime_found=%t read_error=%v)", sessionID, ok, err)
 		return false
 	}
 	if strings.TrimSpace(runtime.AgentProfileKey) != currentProfileKey {

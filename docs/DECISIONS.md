@@ -8,6 +8,27 @@ Why: a person can leave a specific wait behind without ongoing checks or duplica
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-208.
 
+## 2026-10-14 — Every turn a coding CLI runs is recorded, including follow-ups typed into the running terminal (PLAT-856-96)
+
+A follow-up typed into an already-running coding-CLI terminal never passed through the model call that reports usage, so
+the cost ledger, the Costs page, the account token limits that read the ledger and the history showed only the first
+turn. Usage is now read from each CLI's own transcript for every run, message or step nobody reported yet (Muse run
+rows, Claude message ids, Pi messages, AGY steps, Codex cumulative totals) and recorded once, as the person whose chat
+ran the turn. The first reporter of a row wins, whichever path it is, so a live input that settles while the Run is still
+running neither double counts nor loses later rows. Each such ledger row carries `usage_source=retained` and
+`usage_source_id` (the CLI's own run/message id) so it can be traced and a later backfill can skip it. Cursor's transcript
+has no usage, so its live-input turns stay unrecorded (no guessed numbers).
+
+Codex numbers rise: a turn that made several model requests wrote one usage event per request and only the last was
+counted. A turn now counts the growth of Codex's cumulative total, so tool-turn costs and limits for Codex go up to what
+was actually used; earlier rows are not rewritten.
+
+Why: the owner's rule is that costs are complete and attributed (who spent what); under-counted turns also let people run
+past shared-account limits unnoticed. Left: subagent sessions, `triggered_by` for input sent by another agent, and
+saving the reply of a retained turn to history (now logged with the reason when it is skipped).
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-96.
+
 ## 2026-10-14 — Advisory guidance spans MCP tools and fetched project skills (PLAT-856)
 
 Selected authorized tool schemas map to reusable canonical skill topics. Related

@@ -413,6 +413,14 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 	if includes, ok := metadata["prompt_tokens_include_cache"].(bool); ok {
 		entry.OperationMetadata = map[string]interface{}{"prompt_tokens_include_cache": includes}
 	}
+	// A usage row read from the CLI's own transcript (a turn typed into the running terminal) names that run/message,
+	// so the row can be traced to it and a later backfill can skip what is already recorded.
+	if source, id := stringValue(metadata["usage_source"]), stringValue(metadata["usage_source_id"]); source != "" && id != "" {
+		if entry.OperationMetadata == nil {
+			entry.OperationMetadata = map[string]interface{}{}
+		}
+		entry.OperationMetadata["usage_source"], entry.OperationMetadata["usage_source_id"] = source, id
+	}
 	entry.TotalCostUSD = totalCostUSD
 	entry.BillingBasis = billingBasis
 	entry.PricingSource = pricingSource

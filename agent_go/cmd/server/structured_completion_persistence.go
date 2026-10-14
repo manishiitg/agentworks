@@ -50,7 +50,11 @@ func structuredStringValue(value interface{}) string {
 // exact append fails.
 func (api *StreamingAPI) persistRetainedStructuredCompletion(sessionID string, event storeevents.Event) bool {
 	final, turnID, ok := retainedStructuredFinal(event)
-	if api == nil || !ok || strings.TrimSpace(sessionID) == "" {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	if !ok {
+		log.Printf("[CHAT_HISTORY] Retained turn reply not saved session=%s event=%s reason=%s", sessionID, event.ID, retainedFinalMissingReason(event))
 		return false
 	}
 	userID := ""
@@ -65,12 +69,35 @@ func (api *StreamingAPI) persistRetainedStructuredCompletion(sessionID string, e
 		api.activeSessionsMux.RUnlock()
 	}
 	if userID == "" {
+		log.Printf("[CHAT_HISTORY] Retained turn reply not saved session=%s event=%s reason=no owner known for the session", sessionID, event.ID)
 		return false
 	}
 	api.sessionWorkspaceMu.RLock()
 	workspacePath := strings.TrimSpace(api.sessionWorkspaceFolders[sessionID])
 	api.sessionWorkspaceMu.RUnlock()
-	return api.appendStructuredAssistantReply(userID, sessionID, workspacePath, turnID, final, event)
+	saved := api.appendStructuredAssistantReply(userID, sessionID, workspacePath, turnID, final, event)
+	if !saved {
+		log.Printf("[CHAT_HISTORY] Retained turn reply not saved session=%s event=%s turn=%s reason=conversation record not found or not writable (workspace_known=%t final_chars=%d)", sessionID, event.ID, turnID, workspacePath != "", len(final))
+	}
+	return saved
+}
+
+// retainedFinalMissingReason says why a retained-turn completion carried nothing to save (log text only).
+func retainedFinalMissingReason(event storeevents.Event) string {
+	if !strings.EqualFold(strings.TrimSpace(event.Type), string(agentevents.EventTypeUnifiedCompletion)) || event.Data == nil {
+		return "event is not a unified completion"
+	}
+	completion, ok := event.Data.Data.(*agentevents.UnifiedCompletionEvent)
+	if !ok || completion == nil {
+		return "completion payload missing"
+	}
+	if !strings.EqualFold(strings.TrimSpace(completion.Status), "completed") {
+		return "completion status is " + strings.TrimSpace(completion.Status)
+	}
+	if strings.TrimSpace(completion.FinalResult) == "" {
+		return "completion has an empty final result (source=" + structuredStringValue(completion.Metadata["source"]) + ")"
+	}
+	return "no turn id"
 }
 
 func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, workspacePath, turnID, final string, event storeevents.Event) bool {

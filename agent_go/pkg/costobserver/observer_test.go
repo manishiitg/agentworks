@@ -3,6 +3,8 @@ package costobserver
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"fmt"
 	"log"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
+	_ "modernc.org/sqlite"
 )
 
 func TestObserverRecordsOnlyRealInProcessMCPActivity(t *testing.T) {
@@ -195,5 +198,62 @@ func TestObserverPersistsInputCacheConvention(t *testing.T) {
 				t.Fatalf("reporting convention lost: %+v, want input %d", summary.Total, want)
 			}
 		})
+	}
+}
+
+// A chat turn and two follow-ups typed into the running terminal (each reported as its own generation-end event, with
+// no turn number, text or duration) are three ledger rows for the same person, so the Costs page and the token limits
+// that read the ledger count them all.
+func TestObserverRecordsEachReportedRunOfLiveInputTurnsForTheSamePerson(t *testing.T) {
+	dbPath := t.TempDir() + "/costs.sqlite"
+	ledger, err := costledger.NewSQLiteLedger(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	obs := New(ledger, "code:project:demo", "alice", "chat",
+		WithModel("muse-cli", "muse-spark-1.3-contributor"),
+		WithAttribution(ScopeChat, "Chats/Code/projects/demo", "", "execution-1"),
+	)
+	now := time.Now().UTC()
+	end := func(offset time.Duration, prompt, completion int, duration time.Duration) *unifiedevents.AgentEvent {
+		data := &unifiedevents.LLMGenerationEndEvent{
+			BaseEventData: unifiedevents.BaseEventData{Timestamp: now.Add(offset), EventID: unifiedevents.GenerateEventID()},
+			Duration:      duration,
+			UsageMetrics:  unifiedevents.UsageMetrics{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: prompt + completion},
+		}
+		if offset > 0 { // the follow-ups come from the CLI's own transcript and name the run they came from
+			data.Metadata = map[string]interface{}{"usage_source": "retained", "usage_source_id": fmt.Sprintf("run-%d#1-2", prompt)}
+		}
+		return &unifiedevents.AgentEvent{Type: unifiedevents.LLMGenerationEnd, Timestamp: now.Add(offset), SessionID: "code:project:demo", Data: data}
+	}
+	for _, event := range []*unifiedevents.AgentEvent{
+		end(0, 27299, 475, 27*time.Second),
+		end(16*time.Minute, 27913, 924, 0),
+		end(19*time.Minute, 33938, 847, 0),
+	} {
+		if err := obs.HandleEvent(context.Background(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary, err := ledger.Summarize("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Total.CallCount != 3 || summary.Total.PromptTokens != 27299+27913+33938 || summary.Total.CompletionTokens != 475+924+847 {
+		t.Fatalf("a turn and two live-input follow-ups must be three rows, got %+v", summary.Total)
+	}
+	// The ledger keeps the source of a usage row in operation_metadata_json (read-backs expose only cache semantics).
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var traced int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cost_events WHERE json_extract(operation_metadata_json, '$.usage_source') = 'retained' AND json_extract(operation_metadata_json, '$.usage_source_id') LIKE 'run-%'`).Scan(&traced); err != nil {
+		t.Fatal(err)
+	}
+	if traced != 2 {
+		t.Fatalf("the two follow-up rows must name the CLI run they came from, %d did", traced)
 	}
 }
