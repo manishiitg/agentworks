@@ -52,6 +52,32 @@ const SECTION_DEFS = [
   { id: 'chats', label: 'Chats', icon: MessageSquareText },
 ] as const
 
+// The tab a person last chose is remembered per kind of hub (workflow, Relay,
+// or a product such as Code), so coming back to Automation reopens it instead
+// of Schedules. Browser storage can be blocked, so every access is guarded.
+const SECTION_STORAGE_PREFIX = 'automationHub.section.'
+
+function sectionStorageKey(entityType: string, relayMode: boolean, profileId?: string): string {
+  return `${SECTION_STORAGE_PREFIX}${relayMode ? 'relay' : entityType}.${profileId ?? ''}`
+}
+
+function readRememberedSection(key: string): AutomationHubSection | null {
+  try {
+    const value = window.localStorage.getItem(key)
+    return SECTION_DEFS.some(item => item.id === value) ? (value as AutomationHubSection) : null
+  } catch {
+    return null
+  }
+}
+
+function rememberSection(key: string, section: AutomationHubSection) {
+  try {
+    window.localStorage.setItem(key, section)
+  } catch {
+    // Not remembered; the tab still works for this visit.
+  }
+}
+
 const WORKFLOW_SECTION_MESSAGES: Record<AutomationHubSection, string> = {
   schedules: getWorkspaceAskAIMessage('schedules'),
   triggers: getWorkspaceAskAIMessage('webhooks'),
@@ -98,12 +124,16 @@ export function AutomationHubPanel({
     ...(!relayMode && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
     ...(!relayMode && botContent ? ['bots' as const] : []),
   ]), [botContent, chatContent, entityType, productTriggerScope, relayMode])
-  const fallbackSection = availableSections.has(initialSection) ? initialSection : relayMode ? 'triggers' : 'schedules'
+  const storageKey = sectionStorageKey(entityType, relayMode, productTriggerScope?.profileId)
+  const [preferredSection, setPreferredSection] = useState<AutomationHubSection>(() => readRememberedSection(storageKey) ?? initialSection)
+  const fallbackSection = availableSections.has(preferredSection) ? preferredSection : relayMode ? 'triggers' : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
   const selectSection = useCallback((next: AutomationHubSection) => {
     setSection(next)
+    setPreferredSection(next)
+    rememberSection(storageKey, next)
     useWorkflowStore.getState().openWorkspaceView('workshop', next)
-  }, [])
+  }, [storageKey])
 
   useEffect(() => {
     setSection(fallbackSection)

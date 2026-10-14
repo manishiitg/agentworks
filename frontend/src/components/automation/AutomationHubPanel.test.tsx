@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const storeState = { workspaceViewTarget: null as null | { view: string; target: string; token: number } }
 const openWorkspaceView = vi.fn()
@@ -54,6 +54,39 @@ function ChatProbe(props: Record<string, unknown>) {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('AutomationHubPanel', () => {
+  beforeEach(() => window.localStorage.clear())
+
+  it('reopens the sub-tab the person last chose', async () => {
+    const mount = async () => {
+      const host = document.createElement('div')
+      document.body.append(host)
+      const root = createRoot(host)
+      await act(async () => root.render(<AutomationHubPanel
+        entityType="product"
+        workspacePath="Work/projects/release"
+        productTriggerScope={{ profileId: 'work', projectId: 'release' }}
+        chatContent={<div data-testid="chats">Chat history</div>}
+      />))
+      return { host, root }
+    }
+    const first = await mount()
+    const webhooks = Array.from(first.host.querySelectorAll('button')).find(button => button.textContent?.includes('Webhooks'))
+    expect(webhooks).toBeTruthy()
+    await act(async () => { webhooks?.click() })
+    expect(first.host.querySelector('[data-testid="triggers"]')).toBeTruthy()
+    await act(async () => first.root.unmount())
+    first.host.remove()
+
+    const second = await mount()
+    try {
+      expect(second.host.querySelector('[data-testid="triggers"]')).toBeTruthy()
+      expect(second.host.querySelector('[data-testid="schedules"]')).toBeNull()
+    } finally {
+      await act(async () => second.root.unmount())
+      second.host.remove()
+    }
+  })
+
   it('keeps schedules, triggers, bots, and chats in one responsive panel opening on schedules', async () => {
     const host = document.createElement('div')
     document.body.append(host)
