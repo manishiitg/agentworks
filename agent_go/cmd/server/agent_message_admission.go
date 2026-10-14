@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
 
 // Resolve authority again immediately before a queued delivery enters a turn.
@@ -19,11 +21,24 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return fmt.Errorf("condition caller unavailable")
 		}
 		job, err := api.productSchedules.Job(ctx, source.UserID, source.ConditionJob)
-		if err != nil || job.Schedule.Condition == nil || !job.Effective().Enabled {
-			return fmt.Errorf("condition caller is no longer enabled")
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "product schedule ") && strings.HasSuffix(err.Error(), "not found for this user") {
+				return err
+			}
+			return conditiontrigger.HoldError{Err: err}
+		}
+		if job.Schedule.Condition == nil {
+			return fmt.Errorf("condition caller was removed")
+		}
+		if !job.Effective().Enabled {
+			return conditiontrigger.ErrPaused
 		}
 		if err := api.productSchedules.conditionService().authorize(ctx, job, *job.Schedule.Condition); err != nil {
-			return err
+			var permanent conditiontrigger.PermanentError
+			if errors.As(err, &permanent) {
+				return err
+			}
+			return conditiontrigger.HoldError{Err: err}
 		}
 	}
 	if source.ShareID != "" || dest.ShareID != "" {

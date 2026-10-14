@@ -99,6 +99,15 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 			return conditiontrigger.PermanentError{Err: fmt.Errorf("secret %q is no longer selected on this project", n)}
 		}
 	}
+	if len(cfg.Secrets) > 0 {
+		selectedValues := c.s.api.loadSelectedSecrets(ctx, job.UserID, job.WorkspacePath, cfg.Secrets)
+		if err := validateVaultSecretSelection(ctx, job.UserID, selectedValues, &cfg.Secrets); err != nil {
+			if strings.HasPrefix(err.Error(), "Your groups do not have access") {
+				return conditiontrigger.PermanentError{Err: err}
+			}
+			return err
+		}
+	}
 	return nil
 }
 
@@ -110,8 +119,14 @@ func (c *conditionService) current(ctx context.Context, job productScheduleJob, 
 		}
 		return err
 	}
-	if fresh.Schedule.Condition == nil || !fresh.Effective().Enabled || fresh.Schedule.Condition.Revision() != cfg.Revision() {
-		return conditiontrigger.PermanentError{Err: errors.New("condition trigger changed, was paused or was removed")}
+	if fresh.Schedule.Condition == nil {
+		return conditiontrigger.PermanentError{Err: errors.New("condition trigger was removed")}
+	}
+	if !fresh.Effective().Enabled {
+		return conditiontrigger.ErrPaused
+	}
+	if fresh.Schedule.Condition.Revision() != cfg.Revision() {
+		return conditiontrigger.PermanentError{Err: errors.New("condition trigger changed")}
 	}
 	return c.authorize(ctx, fresh, cfg)
 }
@@ -307,6 +322,14 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 }
 
 func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
+	// Refresh the caller before selecting rows: a pause holds them, while an
+	// edited definition follows Engine's revision/reconciliation path.
+	if fresh, err := c.s.Job(conditionContext(ctx, job), job.UserID, job.ID()); err == nil && fresh.Schedule.Condition != nil {
+		if !fresh.Effective().Enabled {
+			return
+		}
+		job = fresh
+	}
 	if err := c.engine.Drain(conditionContext(ctx, job), conditionKey(job), *job.Schedule.Condition, time.Now().UTC()); err != nil {
 		scheduleLogf("[CONDITION] %s dispatch: %v", job.ID(), err)
 	}

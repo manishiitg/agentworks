@@ -139,6 +139,9 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			checks = checks[len(checks)-20:]
 		}
 		pending := conditiontrigger.Pending(l)
+		if l.Rows == nil {
+			l.Rows = []conditiontrigger.Row{}
+		}
 		if len(l.Rows) > 50 {
 			l.Rows = l.Rows[len(l.Rows)-50:]
 		}

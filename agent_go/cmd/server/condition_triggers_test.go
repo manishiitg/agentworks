@@ -56,6 +56,17 @@ func TestConditionCodeManagementAndRuntimeAccess(t *testing.T) {
 	if _, err := c.manage(ctx, "owner", "work", "alpha", args); err == nil {
 		t.Fatal("unsupported source product was admitted")
 	}
+	dispatched := 0
+	c.engine.Run = func(context.Context, conditiontrigger.Config, json.RawMessage) ([]byte, error) {
+		return []byte(`{"events":[{"id":"held-event","payload":{}}],"state":{"cursor":"held-event"}}`), nil
+	}
+	c.engine.Dispatch = func(context.Context, conditiontrigger.Config, conditiontrigger.Event, string) (string, error) {
+		dispatched++
+		return "accepted", nil
+	}
+	if _, err := c.engine.Poll(conditionContext(ctx, job), conditionKey(job), *job.Schedule.Condition, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "expected_revision": conditionView(mustConditionJob(t, env.svc, ctx, id).Schedule)["revision"], "id": id, "trigger": map[string]interface{}{"cron_expression": "* * * * *"}}); err == nil {
 		t.Fatal("one minute poll was admitted")
 	}
@@ -65,10 +76,26 @@ func TestConditionCodeManagementAndRuntimeAccess(t *testing.T) {
 	if err := c.current(ctx, job, *job.Schedule.Condition); err == nil {
 		t.Fatal("paused source still admitted")
 	}
+	c.drain(ctx, job)
+	ledger, err := c.engine.Read(ctx, conditionKey(job))
+	if err != nil || ledger.Rows[0].Status != "seen" || dispatched != 0 {
+		t.Fatal("pause failed queued work", ledger, err, dispatched)
+	}
+	conversation := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner", ConditionJob: job.ID()}, {UserID: "owner"}}}
+	if err := env.api.recheckAgentMessageAdmission(ctx, conversation, agentMessage{From: 0}); !errors.Is(err, conditiontrigger.ErrPaused) {
+		t.Fatal("accepted message wasn't held", err)
+	}
+
 	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "expected_revision": conditionView(mustConditionJob(t, env.svc, ctx, id).Schedule)["revision"], "id": id, "trigger": map[string]interface{}{"enabled": true}}); err != nil {
 		t.Fatal(err)
 	}
 	job, _ = env.svc.Job(ctx, "owner", job.ID())
+	c.drain(ctx, job)
+	ledger, err = c.engine.Read(ctx, conditionKey(job))
+	if err != nil || ledger.Rows[0].Status != "dispatched" || dispatched != 1 {
+		t.Fatal("resume did not dispatch held work", ledger, err, dispatched)
+	}
+
 	if job.Schedule.Condition.Script != "code/triggers/check.py" || job.Schedule.Condition.Target.Message != "Process this ticket" {
 		t.Fatal("partial update erased definition")
 	}

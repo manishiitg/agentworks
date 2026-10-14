@@ -27,6 +27,13 @@ const (
 
 var ErrBacklog = errors.New("condition dispatch backlog full")
 var ErrChecking = errors.New("condition check already running")
+var ErrPaused = errors.New("condition trigger is paused")
+
+// HoldError proves admission stopped before target execution.
+type HoldError struct{ Err error }
+
+func (e HoldError) Error() string { return e.Err.Error() }
+func (e HoldError) Unwrap() error { return e.Err }
 
 type PermanentError struct{ Err error }
 
@@ -291,6 +298,7 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 			return nil
 		}
 		r := l.Rows[idx]
+		previousStatus, previousAttempt := r.Status, r.AttemptAt
 		if r.Revision != c.Revision() {
 			r.Status, r.Error = "needs_reconciliation", "trigger configuration changed before dispatch"
 		} else if r.Status == "dispatching" && now.Sub(r.AttemptAt) >= RecoveryWindow {
@@ -326,6 +334,11 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 				} else {
 					l.Rows[j].Error = dispatchErr.Error()
 					l.Rows[j].NextAttempt = now.Add(5 * time.Minute)
+					if errors.Is(dispatchErr, ErrPaused) {
+						l.Rows[j].Status = previousStatus
+						l.Rows[j].AttemptAt = previousAttempt
+						l.Rows[j].NextAttempt = time.Time{}
+					}
 					var permanent PermanentError
 					if errors.As(dispatchErr, &permanent) {
 						l.Rows[j].Status = "failed"

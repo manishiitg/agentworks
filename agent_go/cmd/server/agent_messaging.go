@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
 
 // Conversations have addresses and messages, never request/result settlement.
@@ -785,7 +787,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), goalLeadTurnHardCap)
 			session, deliveryErr := api.deliverAgentMessage(deliveryCtx, conv, msg)
 			cancel()
-			if deliveryErr != nil {
+			var held conditiontrigger.HoldError
+			hold := errors.Is(deliveryErr, conditiontrigger.ErrPaused) || errors.As(deliveryErr, &held)
+			if deliveryErr != nil && !hold {
 				log.Printf("[AGENT-MESSAGE] delivery %s in %s failed: %v", msg.ID, conv.ID, deliveryErr)
 			}
 			lane.Unlock()
@@ -807,6 +811,10 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 							if deliveryErr != nil {
 								m.Delivery = "undeliverable"
 								m.Error = deliveryErr.Error()
+								if hold {
+									m.Delivery = "pending"
+									m.Error = ""
+								}
 							}
 							break
 						}
@@ -816,6 +824,10 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				_ = saveAgentMessageStore(ctx, s)
 			}
 			agentMessageMu.Unlock()
+			if hold {
+				followPending = false
+				return
+			}
 		}
 	}()
 }
