@@ -9,7 +9,7 @@ import (
 // disabled account gets nothing. Without it a stranger has none (no change).
 func TestWorkflowRunEveryoneGivesReaderOnlyWhenTheOwnerSharedIt(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"stranger","username":"stranger"},{"id":"gone","username":"gone","disabled":true}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"stranger","username":"stranger","products":["agentworks"]},{"id":"nolicense","username":"nolicense"},{"id":"gone","username":"gone","disabled":true}]}`)
 	m := NewWorkflowManifest("Shared run")
 	m.CreatedBy = "owner"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}}
@@ -22,6 +22,9 @@ func TestWorkflowRunEveryoneGivesReaderOnlyWhenTheOwnerSharedIt(t *testing.T) {
 	}
 	if got := workflowAccessForManifest(&UserClaims{UserID: "owner", Username: "owner"}, m); got != WorkflowAccessOwner {
 		t.Fatalf("sharing must not demote the owner, got %v", got)
+	}
+	if got := workflowAccessForManifest(&UserClaims{UserID: "nolicense", Username: "nolicense"}, m); got != WorkflowAccessNone {
+		t.Fatalf("an account without the product gets nothing, got %v", got)
 	}
 	if got := workflowAccessForManifest(&UserClaims{UserID: "gone", Username: "gone"}, m); got != WorkflowAccessNone {
 		t.Fatalf("a disabled account gets nothing, got %v", got)
