@@ -54,7 +54,7 @@ func (c *testUserNotificationConnector) Name() string {
 	if c.name != "" {
 		return c.name
 	}
-	return "test_notify_user"
+	return "test_workflow_notification"
 }
 func (c *testUserNotificationConnector) IsEnabled() bool {
 	return true
@@ -111,23 +111,40 @@ func TestHumanFeedbackDescriptionRequiresForegroundBridgeWait(t *testing.T) {
 	}
 }
 
-func TestNotifyUserDefaultsToBackendOwnedRichSlack(t *testing.T) {
+func TestRetiredNotificationToolHasNoRegistration(t *testing.T) {
+	const retired = "notify_user"
+	for _, tool := range CreateHumanTools() {
+		if tool.Function != nil && tool.Function.Name == retired {
+			t.Fatal("retired notification tool is still advertised")
+		}
+	}
+	if _, ok := CreateHumanToolExecutors()[retired]; ok {
+		t.Fatal("retired notification tool is still callable")
+	}
+	for _, name := range HumanToolImplementationNames() {
+		if name == retired {
+			t.Fatal("retired notification tool is still discoverable")
+		}
+	}
+}
+
+func TestWorkflowNotificationDefaultsToBackendOwnedRichSlack(t *testing.T) {
 	var description string
 	var parameters string
 	for _, tool := range CreateHumanTools() {
-		if tool.Function != nil && tool.Function.Name == "notify_user" {
+		if tool.Function != nil && tool.Function.Name == "record_summary" {
 			description = tool.Function.Description
 			raw, err := json.Marshal(tool.Function.Parameters)
 			if err != nil {
-				t.Fatalf("marshal notify_user parameters: %v", err)
+				t.Fatalf("marshal record_summary parameters: %v", err)
 			}
 			parameters = string(raw)
 			break
 		}
 	}
-	for _, want := range []string{"backend-owned rich Block Kit", "slack_title", "slack_fields", "slack_sections", "Never access a SECRET_* webhook"} {
+	for _, want := range []string{"slack_title", "slack_fields", "slack_sections"} {
 		if !strings.Contains(description+parameters, want) {
-			t.Fatalf("notify_user contract missing %q:\ndescription=%s\nparameters=%s", want, description, parameters)
+			t.Fatalf("record_summary contract missing %q:\ndescription=%s\nparameters=%s", want, description, parameters)
 		}
 	}
 }
@@ -147,22 +164,22 @@ func TestNotificationHistoryToolAndDeliveryModesAreExposed(t *testing.T) {
 		switch tool.Function.Name {
 		case "get_notification_history":
 			foundHistory = strings.Contains(parameters, "exclude_pulse_run_id")
-		case "notify_user":
-			foundDeliveryModes = strings.Contains(parameters, "dashboard_only") && strings.Contains(parameters, "external_only")
+		case "record_summary":
+			foundDeliveryModes = strings.Contains(parameters, "record_only") && strings.Contains(parameters, "deliver_only")
 		}
 	}
 	if !foundHistory {
 		t.Fatal("get_notification_history tool or current-Pulse exclusion is missing")
 	}
 	if !foundDeliveryModes {
-		t.Fatal("notify_user delivery modes are missing")
+		t.Fatal("record_summary delivery modes are missing")
 	}
 	if _, ok := CreateHumanToolExecutors()["get_notification_history"]; !ok {
 		t.Fatal("get_notification_history executor is not registered")
 	}
 }
 
-func TestNotifyUserDeliveryModesSeparateDashboardAndExternalChannels(t *testing.T) {
+func TestWorkflowNotificationDeliveryModesSeparateDashboardAndExternalChannels(t *testing.T) {
 	manager := services.GetNotificationManager()
 	slackCh := make(chan *services.NotificationDestination, 2)
 	dashboardCh := make(chan *services.NotificationDestination, 2)
@@ -181,7 +198,7 @@ func TestNotifyUserDeliveryModesSeparateDashboardAndExternalChannels(t *testing.
 	}
 
 	base["delivery_mode"] = "dashboard_only"
-	if _, err := handleNotifyUser(ctx, base); err != nil {
+	if _, err := DeliverWorkflowNotification(ctx, base); err != nil {
 		t.Fatalf("dashboard-only notification: %v", err)
 	}
 	select {
@@ -197,7 +214,7 @@ func TestNotifyUserDeliveryModesSeparateDashboardAndExternalChannels(t *testing.
 
 	base["delivery_mode"] = "external_only"
 	base["message_for_user"] = "A new blocker needs attention."
-	if _, err := handleNotifyUser(ctx, base); err != nil {
+	if _, err := DeliverWorkflowNotification(ctx, base); err != nil {
 		t.Fatalf("external-only notification: %v", err)
 	}
 	select {
@@ -223,7 +240,7 @@ func TestPublishPulseUpdateIsNotAnAgentTool(t *testing.T) {
 	}
 }
 
-func TestNotifyUserExposesSingleHTMLBodyForGmail(t *testing.T) {
+func TestWorkflowNotificationExposesSingleHTMLBodyForGmail(t *testing.T) {
 	manager := services.GetNotificationManager()
 	manager.RegisterConnector(&testUserNotificationConnector{name: "gmail", ch: make(chan *services.NotificationDestination, 1)})
 	t.Cleanup(func() { manager.UnregisterConnector("gmail") })
@@ -231,25 +248,25 @@ func TestNotifyUserExposesSingleHTMLBodyForGmail(t *testing.T) {
 	var description string
 	var parameters string
 	for _, tool := range CreateHumanTools() {
-		if tool.Function != nil && tool.Function.Name == "notify_user" {
+		if tool.Function != nil && tool.Function.Name == "record_summary" {
 			description = tool.Function.Description
 			raw, err := json.Marshal(tool.Function.Parameters)
 			if err != nil {
-				t.Fatalf("marshal notify_user parameters: %v", err)
+				t.Fatalf("marshal record_summary parameters: %v", err)
 			}
 			parameters = string(raw)
 			break
 		}
 	}
 	if !strings.Contains(parameters, `"email_html"`) {
-		t.Fatalf("notify_user Gmail schema does not expose email_html: %s", parameters)
+		t.Fatalf("record_summary Gmail schema does not expose email_html: %s", parameters)
 	}
 	if strings.Contains(parameters, `"email_body"`) {
-		t.Fatalf("notify_user Gmail schema still exposes retired email_body: %s", parameters)
+		t.Fatalf("record_summary Gmail schema still exposes retired email_body: %s", parameters)
 	}
-	for _, want := range []string{"one inline-styled email_html body", "message_for_user is the automatic fallback"} {
+	for _, want := range []string{"one inline-styled", "email_html"} {
 		if !strings.Contains(description, want) {
-			t.Fatalf("notify_user Gmail description missing %q: %s", want, description)
+			t.Fatalf("record_summary Gmail description missing %q: %s", want, description)
 		}
 	}
 }
@@ -456,8 +473,8 @@ func TestHandleNotifyUserUsesBotDestination(t *testing.T) {
 		Slack: &services.SlackDest{ChannelID: "C123", ThreadTS: "171.1"},
 	})
 
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{"message_for_user": "FYI: done"}); err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{"message_for_user": "FYI: done"}); err != nil {
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 
 	select {
@@ -483,7 +500,7 @@ func TestHandleNotifyUserBuildsChannelNeutralOrgDashboardSummary(t *testing.T) {
 	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
 		WorkspacePath: "Workflow/demo",
 	})
-	_, err := handleNotifyUser(ctx, map[string]interface{}{
+	_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user":  "Run completed with one warning.",
 		"notification_kind": "run_summary",
 		"summary_title":     "Daily run",
@@ -493,7 +510,7 @@ func TestHandleNotifyUserBuildsChannelNeutralOrgDashboardSummary(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 
 	select {
@@ -530,17 +547,17 @@ func TestHandleNotifyUserPreservesWorkspacePathAcrossSessionRegistry(t *testing.
 	t.Cleanup(func() { DeleteSessionNotificationDestination(sessionID) })
 
 	// Custom tools execute through a separate MCP request context. Only the
-	// trusted session ID crosses that boundary, so notify_user must recover the
+	// trusted session ID crosses that boundary, so record_summary must recover the
 	// workflow path from the session destination registry.
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
-	_, err := handleNotifyUser(ctx, map[string]interface{}{
+	_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user":  "Run completed.",
 		"notification_kind": "run_summary",
 		"summary_title":     "Daily run",
 		"summary_status":    "success",
 	})
 	if err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 
 	select {
@@ -607,14 +624,14 @@ func TestChildSessionNotifyUserUsesInheritedWorkspacePath(t *testing.T) {
 	})
 
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, childSessionID)
-	_, err := handleNotifyUser(ctx, map[string]interface{}{
+	_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user":  "Child run completed.",
 		"notification_kind": "run_summary",
 		"summary_title":     "Child run",
 		"summary_status":    "success",
 	})
 	if err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 
 	select {
@@ -664,7 +681,7 @@ func TestHandleNotifyUserSendsWorkflowSlackWebhook(t *testing.T) {
 			URL:        "https://hooks.slack.com/services/T123/B456/secret",
 		},
 	})
-	raw, err := handleNotifyUser(ctx, map[string]interface{}{
+	raw, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user": "Workflow finished",
 		"slack_title":      "QA complete",
 		"slack_color":      "success",
@@ -673,7 +690,7 @@ func TestHandleNotifyUserSendsWorkflowSlackWebhook(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("handleNotifyUser: %v", err)
+		t.Fatalf("DeliverWorkflowNotification: %v", err)
 	}
 	if !called {
 		t.Fatal("workflow Slack webhook was not called")
@@ -727,11 +744,11 @@ func TestHandleNotifyUserUsesSameSessionWebhookAcrossBridgeContext(t *testing.T)
 	// This is the context shape created by mcpagent's per-tool HTTP bridge: it
 	// contains the trusted session identity, not the original agentCtx values.
 	ctx := mcpexecutor.WithSessionID(context.Background(), sessionID)
-	raw, err := handleNotifyUser(ctx, map[string]interface{}{
+	raw, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user": "Same-turn notification",
 	})
 	if err != nil {
-		t.Fatalf("handleNotifyUser: %v", err)
+		t.Fatalf("DeliverWorkflowNotification: %v", err)
 	}
 	if !called {
 		t.Fatalf("Slack webhook was not called; result=%s", raw)
@@ -760,8 +777,8 @@ func TestHandleNotifyUserFansOutToRegisteredConnectors(t *testing.T) {
 		WhatsApp: &services.WhatsAppDest{ChannelID: "919000000000@s.whatsapp.net"},
 	})
 
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{"message_for_user": "FYI: done"}); err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{"message_for_user": "FYI: done"}); err != nil {
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 
 	select {
@@ -796,7 +813,7 @@ func TestHandleNotifyUserEnforcesSummaryChannelRoute(t *testing.T) {
 		RunSummaryChannels:   []string{"slack"},
 		PulseSummaryChannels: []string{"gmail"},
 	})
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
 		"message_for_user":  "Run complete",
 		"notification_kind": "run_summary",
@@ -814,7 +831,7 @@ func TestHandleNotifyUserEnforcesSummaryChannelRoute(t *testing.T) {
 	default:
 	}
 
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
 		"message_for_user":  "Pulse complete",
 		"notification_kind": "pulse_summary",
@@ -852,7 +869,7 @@ func TestHandleNotifyUserSuppressesWorkflowSlackWebhookForGmailOnlyPulse(t *test
 		SlackWebhook:         &services.SlackWebhookDest{URL: "https://hooks.slack.com/services/test"},
 		PulseSummaryChannels: []string{"gmail"},
 	})
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
 		"message_for_user":  "Pulse complete",
 		"notification_kind": "pulse_summary",
@@ -874,7 +891,7 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 		UserID:       "user-1",
 		WorkflowName: "latency-report",
 	})
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user":  "Pulse completed",
 		"notification_kind": "pulse_summary",
 		"email_subject":     "Pulse summary",
@@ -920,7 +937,7 @@ func TestHandleNotifyUserPreservesWorkflowNameThroughSessionDestination(t *testi
 	})
 	t.Cleanup(func() { DeleteSessionNotificationDestination(sessionID) })
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user": "Pulse completed",
 		"email_subject":    "Pulse summary",
 		"email_html":       `<div>Complete.</div>`,
@@ -942,7 +959,7 @@ func TestHandleNotifyUserPreservesWorkflowNameThroughSessionDestination(t *testi
 // The per-workflow recipient lists are the positive counterpart to
 // block_recipients: they say where a summary is emailed. The backend addresses
 // the mail from the list matching notification_kind; the agent cannot name recipients.
-func TestNotifyUserRoutesToConfiguredRecipientsByKind(t *testing.T) {
+func TestWorkflowNotificationRoutesToConfiguredRecipientsByKind(t *testing.T) {
 	baseDest := func() *services.NotificationDestination {
 		return &services.NotificationDestination{
 			UserID:                 "user-1",
@@ -972,12 +989,12 @@ func TestNotifyUserRoutesToConfiguredRecipientsByKind(t *testing.T) {
 			ctx := context.WithValue(context.Background(), common.UserIDKey, "user-1")
 			ctx = context.WithValue(ctx, BotNotificationDestinationKey, baseDest())
 
-			if _, err := handleNotifyUser(ctx, map[string]interface{}{
+			if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 				"email_subject":     "Notification routing test",
 				"message_for_user":  "FYI: done",
 				"notification_kind": tc.kind,
 			}); err != nil {
-				t.Fatalf("handleNotifyUser returned error: %v", err)
+				t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 			}
 
 			select {
@@ -1008,12 +1025,12 @@ func TestConfiguredRecipientsKeepWorkflowDenylist(t *testing.T) {
 		RunSummaryRecipients: []string{"blocked@example.com"},
 	})
 
-	if _, err := handleNotifyUser(ctx, map[string]interface{}{
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
 		"message_for_user":  "FYI: done",
 		"notification_kind": "run_summary",
 	}); err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 
 	select {
@@ -1123,12 +1140,12 @@ func TestHandleNotifyUserEmitsInAppCopyRegardlessOfChannels(t *testing.T) {
 	ctx := context.WithValue(context.Background(), common.UserIDKey, "user-1")
 	ctx = context.WithValue(ctx, SessionEventEmitterKey, emitter)
 
-	raw, err := handleNotifyUser(ctx, map[string]interface{}{
+	raw, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user": "Myra finished fractions today.",
 		"summary_title":    "Check-in",
 	})
 	if err != nil {
-		t.Fatalf("handleNotifyUser returned error: %v", err)
+		t.Fatalf("DeliverWorkflowNotification returned error: %v", err)
 	}
 	if emitter.kind != "notify" {
 		t.Fatalf("interaction kind = %q, want notify", emitter.kind)
@@ -1155,11 +1172,11 @@ func TestHandleNotifyUserEmitsInAppCopyRegardlessOfChannels(t *testing.T) {
 	}
 }
 
-// notify_user cannot name recipients (PLAT-736): an old caller that still passes email_to or email_cc gets a clear
+// record_summary cannot name recipients (PLAT-736): an old caller that still passes email_to or email_cc gets a clear
 // error that points to send_email, never a silent send to the default recipient.
-func TestNotifyUserRejectsRemovedRecipientArguments(t *testing.T) {
+func TestWorkflowNotificationRejectsRemovedRecipientArguments(t *testing.T) {
 	for _, argument := range []string{"email_to", "email_cc"} {
-		_, err := handleNotifyUser(context.Background(), map[string]interface{}{
+		_, err := DeliverWorkflowNotification(context.Background(), map[string]interface{}{
 			"message_for_user": "FYI: done",
 			argument:           []interface{}{"someone@example.com"},
 		})

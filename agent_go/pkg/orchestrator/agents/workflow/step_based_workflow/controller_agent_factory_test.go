@@ -329,7 +329,7 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 	noop := func(context.Context, map[string]interface{}) (string, error) { return "", nil }
 	allHumanTools := []string{
 		"human_feedback",
-		"notify_user",
+		"send_email",
 		"create_human_input_request",
 		"get_notification_history",
 		"send_slack_message",
@@ -362,12 +362,12 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 				names = append(names, definition.Function.Name)
 			}
 		}
-		for _, required := range []string{"human_feedback", "create_human_input_request"} {
+		for _, required := range []string{"human_feedback", "create_human_input_request", "send_email", "send_slack_message"} {
 			if !slices.Contains(names, required) || executors[required] == nil {
 				t.Fatalf("required human tool %q missing: tools=%v", required, names)
 			}
 		}
-		for _, excluded := range append([]string{"notify_user"}, allHumanTools[3:]...) {
+		for _, excluded := range []string{"get_notification_history", "slack", "google_workspace_cli", "get_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"} {
 			if slices.Contains(names, excluded) || executors[excluded] != nil {
 				t.Fatalf("default step tools unexpectedly include human tool %q: tools=%v", excluded, names)
 			}

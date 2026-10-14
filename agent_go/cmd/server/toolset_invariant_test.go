@@ -72,7 +72,7 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 	return registered
 }
 
-// TestToolSetInvariants guards the bug class that hid notify_user: a tool that is
+// TestToolSetInvariants guards mismatched advertisement/registration: a tool that is
 // allow-listed for a mode but never registered (or vice versa), and accidental
 // loss of plan/workflow tools from the workshop allow-list.
 func TestToolSetInvariants(t *testing.T) {
@@ -117,7 +117,7 @@ func TestToolSetInvariants(t *testing.T) {
 			t.Fatalf("filtered workflow pool contains %d definitions for %q", count, name)
 		}
 	}
-	for _, n := range []string{"human_feedback", "notify_user", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed"} {
+	for _, n := range []string{"human_feedback", "record_summary", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed"} {
 		if !pool[n] || cats[n] != "human_tools" {
 			t.Fatalf("workflow pool missing human tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
 		}
@@ -149,7 +149,7 @@ func TestToolSetInvariants(t *testing.T) {
 		}
 
 		// 2. INVARIANT: every allow-listed HUMAN tool must be registerable in the
-		//    workflow pool. (This is exactly what broke for notify_user.)
+		//    workflow pool.
 		for _, n := range allow {
 			if humanNames[n] && !pool[n] {
 				t.Fatalf("mode=%s: human tool %q is allow-listed but NOT in the workflow pool (would be invisible via get_api_spec)", mode, n)
@@ -159,7 +159,7 @@ func TestToolSetInvariants(t *testing.T) {
 		// Broad invariant: if a mode allow-lists a tool, it must have a real
 		// registration path. Most tools come from the workflow pool; workshop
 		// custom/guidance/virtual tools are registered separately and enumerated
-		// above. This guards the same bug class as notify_user and Pulse state
+		// above. This guards the same registration bug class for summaries and Pulse state
 		// tools for future additions.
 		for _, n := range allow {
 			if pool[n] {
@@ -259,8 +259,8 @@ func TestPrimaryWorkflowBuilderChatExcludesBlockingHumanFeedback(t *testing.T) {
 	if agentworksproduct.ChatAllowsTool("builder", "human_feedback") {
 		t.Fatal("Workflow Builder must not expose human_feedback")
 	}
-	if !agentworksproduct.ChatAllowsTool("builder", "notify_user") {
-		t.Fatal("Workflow Builder must retain non-blocking notify_user")
+	if !agentworksproduct.ChatAllowsTool("builder", "record_summary") {
+		t.Fatal("Workflow Builder must retain non-blocking record_summary")
 	}
 	if !agentworksproduct.ChatAllowsTool("run", "human_feedback") {
 		t.Fatal("non-Builder execution contexts must retain human_feedback")

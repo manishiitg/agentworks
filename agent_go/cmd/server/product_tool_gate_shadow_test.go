@@ -18,9 +18,9 @@ func TestShadowGateAdmitsEverythingAndRecordsWhatTheListMisses(t *testing.T) {
 	if !slices.Equal(uniqueSortedToolNames(gate.wouldFilter), []string{"read_workspace_file"}) || gate.profileID != "goals-builder" {
 		t.Fatalf("would-filter = %v, surface = %q", gate.wouldFilter, gate.profileID)
 	}
-	// Regression (2026-10-06 to 10-08): the shadow surface name made every Goals chat and Pulse lose notify_user.
+	// Regression (2026-10-06 to 10-08): the shadow surface name made every Goals chat and Pulse lose record_summary.
 	gate.AllowWorkflowNotifications(true)
-	if !gate.Admit("notify_user") {
+	if !gate.Admit("record_summary") {
 		t.Fatal("a shadow gate must not remove workflow notifications")
 	}
 	enforcing := newProductToolGateForAllowlist("relays", []string{"x"})
@@ -48,7 +48,7 @@ func TestPulseToolGateIsReadOnlyPlusItsRecordsAndTheBuilder(t *testing.T) {
 	if got := agentworksproduct.PulseWritePaths(); len(got) != 2 || got[0] != "pulse/" || got[1] != "memory/" {
 		t.Fatalf("Pulse may write only pulse/ and memory/, product.yaml says %v", got)
 	}
-	for _, name := range []string{"update_step", "add_step", "execute_step", "run_full_workflow", "set_workflow_secret", "set_workflow_llm_config", "install_skill", "update_schedule", "agent_browser", "notify_user"} {
+	for _, name := range []string{"update_step", "add_step", "execute_step", "run_full_workflow", "set_workflow_secret", "set_workflow_llm_config", "install_skill", "update_schedule", "agent_browser", "record_summary"} {
 		if gate.Admit(name) {
 			t.Fatalf("Pulse must not get %s; it asks the Builder chat", name)
 		}

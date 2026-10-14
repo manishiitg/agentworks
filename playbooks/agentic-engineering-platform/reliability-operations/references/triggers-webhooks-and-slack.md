@@ -12,7 +12,7 @@ Senders reuse one idempotency/delivery ID for retries. Handle duplicate, malform
 
 Route approved Slack channels to the Reliability Ops workspace and configure only the skills, MCPs, secrets, and code-execution policy needed there. Use one Slack thread per failure or incident for investigation requests, status questions, plan review, and supported interactive approvals. The bot responds to mentions and can carry blocking approval or human-input events; record decisions in the workflow database with the Slack thread/message reference.
 
-Slack is a collaboration surface, not the incident database. Build status messages from durable incident/action records, keep sensitive evidence behind access-controlled links, and do not treat emoji, silence, or an unrelated reply as approval. A Slack incoming webhook or `notify_user` destination is suitable for one-way updates but cannot answer a blocking approval.
+Slack is a collaboration surface, not the incident database. Build status messages from durable incident/action records, keep sensitive evidence behind access-controlled links, and do not treat emoji, silence, or an unrelated reply as approval. A Slack incoming webhook or summary notification destination is suitable for one-way updates but cannot answer a blocking approval.
 
 ## Validation
 

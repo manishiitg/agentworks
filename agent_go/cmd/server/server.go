@@ -6864,9 +6864,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// Create custom tools for the agent. Workflow-phase (workshop) agents need
-			// the full applicable human-tool set registered — notably notify_user.
+			// the full applicable human-tool set registered including summary tools.
 			// Chat mode stays minimal (workflowMode=false). Without
-			// this, notify_user was never registered as a custom tool, so it never landed
+			// this, the notification implementation was not registered on the serving agent, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
 			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
 			if isWorkflowBuilderPhase && !currentUserIsReadOnly {

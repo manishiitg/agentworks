@@ -9,14 +9,14 @@ import (
 )
 
 // record_summary records what a workflow run or a Pulse review did, and the server delivers it. It replaces the
-// summary use of notify_user (PLAT-736): the agent supplies content (verdict, fields, sections, optional rich email
+// notification tool (PLAT-736): the agent supplies content (verdict, fields, sections, optional rich email
 // and Slack renderings); it cannot name recipients, channels or webhooks. The Activity record and the delivery to the
-// workflow's saved channels, recipients and webhooks (by kind) are the existing notify_user summary path, unchanged,
+// workflow's saved channels, recipients and webhooks (by kind) are the existing summary delivery path, unchanged,
 // so a summary is still recorded when nothing is configured to receive it.
 
 const recordSummaryDescription = "Record what this workflow run or Pulse review did, in the Activity feed, and deliver it to the workflow's saved channels and recipients automatically. You supply the content only: `kind` (run_summary for the execution outcome, pulse_summary for Pulse review and fix activity), a short plain-text `message` (the verdict), a `title` and `status`, and structured `fields` and `sections` (use the labels the workflow's run-summary instructions name). You cannot choose recipients, channels or webhooks: those come from the workflow's saved settings (notifications.run_summary_channels, run_summary_recipients, pulse_summary_recipients). For an unchanged run that should be recorded without notifying anyone, set `delivery` to record_only; for a Pulse update whose results are already in Activity, set it to deliver_only. Read prior summaries first with get_notification_history so you do not repeat an unchanged status. Rich renderings: `email_subject` with one inline-styled `email_html` body, and `slack_title`/`slack_color`/`slack_fields`/`slack_sections`. Reports a receipt per channel. To email or Slack specific people, use send_email or send_slack_message instead."
 
-func createRecordSummaryTool(notifyProps map[string]interface{}) llmtypes.Tool {
+func createRecordSummaryTool(summaryContentProps map[string]interface{}) llmtypes.Tool {
 	props := map[string]interface{}{
 		"kind": map[string]interface{}{
 			"type": "string", "enum": []string{"run_summary", "pulse_summary"},
@@ -27,7 +27,7 @@ func createRecordSummaryTool(notifyProps map[string]interface{}) llmtypes.Tool {
 			"description": "record_and_deliver (default): record in Activity and deliver to the saved channels. record_only: record without emailing or posting (an unchanged run). deliver_only: deliver without a new Activity item (a Pulse update whose results are already projected).",
 		},
 	}
-	// Reuse notify_user's content schemas under shorter names.
+	// Reuse the summary content schemas under shorter names.
 	for newName, oldName := range map[string]string{
 		"message": "message_for_user", "title": "summary_title", "status": "summary_status", "fields": "summary_fields",
 		"sections": "summary_sections", "route": "summary_route", "routes": "summary_routes",
@@ -36,8 +36,19 @@ func createRecordSummaryTool(notifyProps map[string]interface{}) llmtypes.Tool {
 		"slack_sections": "slack_sections", "slack_footer": "slack_footer",
 		"email_subject": "email_subject", "email_html": "email_html", "email_html_file": "email_html_file",
 	} {
-		if schema, ok := notifyProps[oldName]; ok {
-			props[newName] = schema
+		if schema, ok := summaryContentProps[oldName]; ok {
+			if fields, ok := schema.(map[string]interface{}); ok {
+				copy := make(map[string]interface{}, len(fields))
+				for key, value := range fields {
+					copy[key] = value
+				}
+				if description, ok := copy["description"].(string); ok {
+					copy["description"] = strings.NewReplacer("message_for_user", "message", "summary_title", "title", "summary_status", "status", "summary_fields", "fields", "summary_sections", "sections").Replace(description)
+				}
+				props[newName] = copy
+			} else {
+				props[newName] = schema
+			}
 		}
 	}
 	return llmtypes.Tool{
@@ -93,5 +104,5 @@ func handleRecordSummary(ctx context.Context, args map[string]interface{}) (stri
 	default:
 		return "", fmt.Errorf("delivery must be record_and_deliver, record_only or deliver_only")
 	}
-	return handleNotifyUser(ctx, mapped)
+	return DeliverWorkflowNotification(ctx, mapped)
 }

@@ -34,16 +34,13 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"# Step Execution Agent",
+		"# QA Scenario: No Redlines",
 		"## Specialist Delegation",
 		"call_sub_agent",
 		"Prefer direct sub-agent tools whenever the provider exposes them.",
 		"in a bridge-only CLI session",
 		"## Code execution",
-		"{{TOOL_STRUCTURE}}",
-		"`MCP_CUSTOM` / `MCP_AUTH`",
-		"Use this session's declared tools and runtime routing instructions.",
-		"## Workflow execution environment",
+		"workflow-execution",
 		"$STEP_OUTPUT_DIR",
 	}
 	for _, snippet := range requiredSnippets {
@@ -100,13 +97,14 @@ func TestOrchestratorPromptAsksForConcernLines(t *testing.T) {
 }
 
 func TestDelegatingAndPlainAgentsShareSystemPromptBase(t *testing.T) {
-	plain := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{})
+	plain := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{"StepTitle": "Assemble evidence"})
 	delegating := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{
 		"PredefinedRoutes": "- specialist (`specialist`) — type: `agent`",
+		"StepTitle":        "Assemble evidence",
 	})
 
 	for name, prompt := range map[string]string{"plain": plain, "delegating": delegating} {
-		if !strings.HasPrefix(prompt, "# Step Execution Agent") {
+		if !strings.HasPrefix(prompt, "# Assemble evidence") {
 			t.Fatalf("%s sequence does not use the common agent prompt:\n%s", name, prompt)
 		}
 	}

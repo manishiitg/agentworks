@@ -1273,7 +1273,7 @@ audio.fl-viewer-media { background: var(--surface); }
 .fl-act-pin.is-on { background: var(--yellow); border-color: transparent; color: var(--heading); }
 .fl-ws-subject.is-pinned .fl-ws-subject-name { display: inline-flex; align-items: center; gap: 6px; }
 
-/* Messages Quill sent the parent (notify_user): kept on screen until dismissed. */
+/* Messages Quill sent the parent (saved updates): kept on screen until dismissed. */
 .fl-notices { display: flex; flex-direction: column; gap: 8px; padding: 10px 18px 0; }
 .fl-notice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid #f2e2bd; border-radius: 12px; background: #fff7e6; color: var(--heading); }
 .fl-notice-icon { flex: 0 0 auto; margin-top: 2px; color: #8a6d1f; }

@@ -119,8 +119,13 @@ func TestRelayMCPAdmissionIsOwnedByBuilderManifest(t *testing.T) {
 	if again[0] == "changed" {
 		t.Fatal("caller mutated manifest")
 	}
-	if _, err := ChatTools("run"); err == nil {
+	if seen["run_chat"] {
 		t.Fatal("MCP added Run chat")
+	}
+	// PLAT-856-80 added the UI Run chat; MCP admission remains Builder-owned.
+	run, err := ChatTools("run")
+	if err != nil || strings.Join(run, ",") != "read_relay,list_relay_runs,get_relay_run,run_relay" {
+		t.Fatalf("Relay Run chat lost its published-run surface: %v (%v)", run, err)
 	}
 }
 

@@ -28,7 +28,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "human_feedback",
-			Description: "Request urgent, short-lived input that only a human can provide, such as an OTP/2FA code, CAPTCHA completion, explicit approval, a subjective decision, private information, or an explicit test of the human-feedback channel. This tool pauses only the calling agent turn until the human answers directly in the AgentWorks UI. It never sends through notify_user, Gmail, workflow webhooks, or account-level notification connectors. Do not use it for an ordinary Builder/chat question, something another agent can answer, or something that may wait hours or days. Choose the shortest realistic timeout_seconds; use an expiry shown by the external service when available. The tool returns the human's response as text. Bridge-only coding CLIs invoking the HTTP endpoint through execute_shell_command must keep curl in the foreground and wait for the same call to return; never use nohup, append &, delegate/background it, write the result to a temporary file, poll for completion, or ask the user to send another message after responding. Do not set the shell timeout shorter than timeout_seconds. Cursor CLI has an approximately 60-second silent MCP-call ceiling, so Cursor agents must set timeout_seconds to at most 45 seconds and may retry after an explicit expiry only when the input is still required.",
+			Description: "Request urgent, short-lived input that only a human can provide, such as an OTP/2FA code, CAPTCHA completion, explicit approval, a subjective decision, private information, or an explicit test of the human-feedback channel. This tool pauses only the calling agent turn until the human answers directly in the AgentWorks UI. It stays in the AgentWorks UI; Gmail, workflow webhooks and account notification connectors do not carry the answer. Do not use it for an ordinary Builder/chat question, something another agent can answer, or something that may wait hours or days. Choose the shortest realistic timeout_seconds; use an expiry shown by the external service when available. The tool returns the human's response as text. Bridge-only coding CLIs invoking the HTTP endpoint through execute_shell_command must keep curl in the foreground and wait for the same call to return; never use nohup, append &, delegate/background it, write the result to a temporary file, poll for completion, or ask the user to send another message after responding. Do not set the shell timeout shorter than timeout_seconds. Cursor CLI has an approximately 60-second silent MCP-call ceiling, so Cursor agents must set timeout_seconds to at most 45 seconds and may retry after an explicit expiry only when the input is still required.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -63,7 +63,7 @@ func CreateHumanTools() []llmtypes.Tool {
 
 	// The email_* fields are exposed only when Gmail is an enabled channel, so
 	// the agent doesn't see email-specific knobs it can't use.
-	notifyProps := map[string]interface{}{
+	summaryContentProps := map[string]interface{}{
 		"message_for_user": map[string]interface{}{
 			"type":        "string",
 			"description": "Concise plain-text summary sent to every channel and used as the automatic email fallback. When supplying rich Slack or email fields, make this the lead verdict rather than duplicating every detail.",
@@ -170,46 +170,33 @@ func CreateHumanTools() []llmtypes.Tool {
 			"description": "Channel-neutral ordered details persisted for the Org Dashboard. Use for fixes, blockers, decisions, evidence, and next actions.",
 		},
 	}
-	notifyProps["summary_routes"] = notificationRoutesSchema(notifyProps["summary_fields"], notifyProps["summary_sections"])
+	summaryContentProps["summary_routes"] = notificationRoutesSchema(summaryContentProps["summary_fields"], summaryContentProps["summary_sections"])
 	if gmailEnabled() {
-		notifyProps["email_subject"] = map[string]interface{}{
+		summaryContentProps["email_subject"] = map[string]interface{}{
 			"type":        "string",
 			"description": "Required non-empty plain-text subject whenever this notification sends Gmail, including general notifications. summary_title is not a substitute. Omit only when Gmail is excluded or not used. Do not supply MIME-encoded text or line breaks.",
 		}
-		notifyProps["email_attachments"] = map[string]interface{}{
+		summaryContentProps["email_attachments"] = map[string]interface{}{
 			"type":        "array",
 			"items":       map[string]interface{}{"type": "string"},
 			"description": "Optional. Absolute file paths on the server host to attach to the email (Gmail only).",
 		}
-		notifyProps["block_recipients"] = map[string]interface{}{
+		summaryContentProps["block_recipients"] = map[string]interface{}{
 			"type":        "array",
 			"items":       map[string]interface{}{"type": "string"},
 			"description": "Optional one-off email denylist for THIS notification (Gmail only). Addresses listed here are rejected as To or CC recipients, on top of BOTH the account-wide disallowed-recipients list AND the durable per-workflow denylist in workflow.json notifications.block_recipients — it can only block MORE, never unblock a globally-blocked address. Put addresses the workflow must never email in workflow.json notifications.block_recipients (applied automatically); use this arg only for a one-time block beyond that. A blocked address is removed from the To/CC list and the message still goes to the remaining recipients; only when EVERY recipient is blocked is the email skipped entirely. Does not change any account-wide configuration; other channels ignore this.",
 		}
-		notifyProps["email_html"] = map[string]interface{}{
+		summaryContentProps["email_html"] = map[string]interface{}{
 			"type":        "string",
 			"description": "The single rich email body (Gmail only). For workflow/Pulse/Goal Advisor notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. pulse/org-pulse.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
 		}
-		notifyProps["email_html_file"] = map[string]interface{}{
+		summaryContentProps["email_html_file"] = map[string]interface{}{
 			"type":        "string",
 			"description": "Optional. Absolute path to an .html file on the server host to use as the HTML email body (alternative to email_html). The file MUST be email-safe — INLINE styles only; Gmail strips <style>/<head>/class CSS, so a browser-oriented report file (e.g. pulse/org-pulse.html) renders UNSTYLED. Point this at an email-specific inline-styled file, not the full browser report. If the file can't be read, the tool returns an error so you can fix the path.",
 		}
 	}
-	notifyUserTool := llmtypes.Tool{
-		Type: "function",
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "notify_user",
-			Description: buildNotifyDescription(),
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type":       "object",
-				"properties": notifyProps,
-				"required":   []string{"message_for_user"},
-			}),
-		},
-	}
-	humanTools = append(humanTools, notifyUserTool)
 	humanTools = append(humanTools, createSendEmailTool())
-	humanTools = append(humanTools, createRecordSummaryTool(notifyProps))
+	humanTools = append(humanTools, createRecordSummaryTool(summaryContentProps))
 	humanTools = append(humanTools, llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
@@ -240,53 +227,7 @@ func CreateHumanTools() []llmtypes.Tool {
 	return humanTools
 }
 
-// channelLabels maps connector Name() values to human-friendly labels used in
-// the dynamic notify_user description.
-var channelLabels = map[string]string{
-	"slack":         "Slack",
-	"whatsapp":      "WhatsApp",
-	"gmail":         "Gmail (email)",
-	"org_dashboard": "Org Dashboard",
-}
-
 var sendRichSlackIncomingWebhook = services.SendRichSlackIncomingWebhook
-
-const notifyUserPurposeNote = "PREFER record_summary for a workflow run or Pulse summary, and send_email or send_slack_message to reach specific people; use notify_user only for a plain message to the workflow's owner. "
-
-// buildNotifyDescription renders the notify_user description with the set of
-// channels enabled when the tool list is built (per session/run), so the agent
-// knows where its message will actually land. The always-on web UI connector is
-// not framed as an external channel.
-func buildNotifyDescription() string {
-	base := "Send one non-blocking notification through the configured providers. Gmail, Slack, and WhatsApp are external delivery providers; Org Dashboard durably records run_summary and pulse_summary notifications for the current workflow. Use this for FYIs, progress updates, alerts, and completion notices when you do not need to wait for a reply. For workflow, Pulse, Goal Advisor, and other structured summaries, always set the channel-neutral summary_title, summary_status, summary_fields, and summary_sections, plus summary_routes for route-specific actions and review outcomes (major routing choices are sub-workflows; branch choices are not). Keep one digest per existing notification kind, shared work at the top level, and distinct route statuses; do not infer Pulse coverage from the schedule. summary_status must plainly describe what the workflow is doing now; explain why in the title, message, facts, or sections. Channel-specific rich fields may improve presentation but must not contain facts omitted from the neutral summary. If the workflow has a Slack Incoming Webhook configured, the backend sends a backend-owned rich Block Kit card there instead of using the global Slack connector. Excluding slack suppresses both delivery paths. Never access a SECRET_* webhook variable, construct a webhook payload in shell, post with curl, disable notify_user to avoid duplication, or ask for the URL after an encrypted webhook reference is configured—the backend exclusively owns delivery. If you need the human to answer before continuing, use human_feedback instead. Returns a JSON delivery result — status (delivered|partial|failed|no_recipient|no_channels_configured) plus delivered/skipped/failed channel lists. Report it honestly to the user: do NOT claim an external message was sent when only Org Dashboard succeeded."
-
-	var labels []string
-	gmailOn := false
-	if nm := services.GetNotificationManager(); nm != nil {
-		for _, name := range nm.ListEnabledConnectors() {
-			if name == "web_simulator" {
-				continue
-			}
-			if name == "gmail" {
-				gmailOn = true
-			}
-			if l, ok := channelLabels[name]; ok {
-				labels = append(labels, l)
-			} else {
-				labels = append(labels, name)
-			}
-		}
-	}
-
-	if len(labels) == 0 {
-		return notifyUserPurposeNote + base + " NOTE: No notification providers are currently enabled. A configured workflow Slack webhook may still receive the message."
-	}
-	desc := base + " Currently enabled delivery channels: " + strings.Join(labels, ", ") + ". The message is delivered to all enabled channels — you do not choose which."
-	if gmailOn {
-		desc += " Gmail is enabled, so email_subject, email_html, email_html_file, and email_attachments are available for the email rendering (other channels ignore these). For workflow, Pulse, org pulse, and Goal Advisor notifications, treat email as the default rich rendering: set email_subject and one inline-styled email_html body on the same notify_user call unless the user's notification preference explicitly says not to email. Do not write a separate plain email body; message_for_user is the automatic fallback. notify_user tells the owner through the configured channels and cannot name recipients: the workflow's saved recipients (notifications.run_summary_recipients / pulse_summary_recipients) apply by notification_kind. To email specific people, use the send_email tool."
-	}
-	return notifyUserPurposeNote + desc
-}
 
 // gmailEnabled reports whether the Gmail connector is currently an enabled
 // delivery channel.
@@ -301,8 +242,8 @@ func gmailEnabled() bool {
 	return false
 }
 
-// gmailContentFromArgs builds the per-channel Gmail content from notify_user
-// tool args, or (nil, nil) if no email-specific fields were provided. Returns an
+// gmailContentFromArgs builds the per-channel Gmail content from summary
+// delivery arguments, or (nil, nil) if no email-specific fields were provided. Returns an
 // error (surfaced to the agent) when a referenced file can't be read.
 func gmailContentFromArgs(args map[string]interface{}) (*services.GmailContent, error) {
 	subject, _ := args["email_subject"].(string)
@@ -421,7 +362,7 @@ func IsHumanToolCategory(category string) bool {
 // assembled into the human_tools category. It is not a chat admission list;
 // AgentWorks product.yaml owns Builder/Run admission.
 func HumanToolImplementationNames() []string {
-	return []string{"human_feedback", "notify_user", "send_email", "record_summary", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "withdraw_human_input_request"}
+	return []string{"human_feedback", "send_email", "record_summary", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "withdraw_human_input_request"}
 }
 
 // CreateHumanToolExecutors creates the execution functions for human tools
@@ -429,7 +370,6 @@ func CreateHumanToolExecutors() map[string]func(ctx context.Context, args map[st
 	executors := make(map[string]func(ctx context.Context, args map[string]interface{}) (string, error))
 
 	executors["human_feedback"] = handleHumanFeedback
-	executors["notify_user"] = handleNotifyUser
 	executors["send_email"] = handleSendEmail
 	executors["record_summary"] = handleRecordSummary
 	executors["get_notification_history"] = handleGetNotificationHistory
@@ -491,7 +431,9 @@ func handleGetNotificationHistory(ctx context.Context, args map[string]interface
 	return string(b), nil
 }
 
-func handleNotifyUser(ctx context.Context, args map[string]interface{}) (string, error) {
+// DeliverWorkflowNotification is the internal delivery path for server run notifications
+// and recorded summaries. It is not registered as an agent tool.
+func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{}) (string, error) {
 	messageForUser, _ := args["message_for_user"].(string)
 	messageForUser = strings.TrimSpace(messageForUser)
 	if messageForUser == "" {
@@ -503,12 +445,12 @@ func handleNotifyUser(ctx context.Context, args map[string]interface{}) (string,
 		return "", fmt.Errorf("notification manager not available")
 	}
 
-	// notify_user cannot name recipients any more (PLAT-736): fail loudly rather than ignore an old caller.
+	// Summary delivery uses saved recipients; reject direct addressing rather than silently ignoring it.
 	if _, ok := args["email_to"]; ok {
-		return "", fmt.Errorf("email_to was removed from notify_user: it tells the owner through the configured channels. To email specific people use send_email; to change the saved recipients set notifications.run_summary_recipients in workflow.json")
+		return "", fmt.Errorf("summary delivery uses the workflow's saved recipients. To email specific people use send_email; to change the saved recipients set notifications.run_summary_recipients in workflow.json")
 	}
 	if _, ok := args["email_cc"]; ok {
-		return "", fmt.Errorf("email_cc was removed from notify_user: use send_email to email specific people with cc")
+		return "", fmt.Errorf("summary delivery does not accept email_cc: use send_email to email specific people with cc")
 	}
 	dest := NotificationDestinationFromContext(ctx)
 	// Optional one-off email denylist for this send, unioned with both the

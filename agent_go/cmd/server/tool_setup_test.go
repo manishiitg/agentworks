@@ -213,7 +213,7 @@ func TestCustomToolBundleIncludesHumanTools(t *testing.T) {
 	if _, ok := executors["submit_human_answer"]; ok {
 		t.Fatal("chat/workflow-builder bundle must not include removed submit_human_answer executor")
 	}
-	for _, name := range []string{"human_feedback", "notify_user"} {
+	for _, name := range []string{"human_feedback", "record_summary"} {
 		if !chatToolDefs[name] {
 			t.Fatalf("chat/workflow-builder bundle missing %s", name)
 		}
@@ -234,7 +234,7 @@ func TestCustomToolBundleIncludesHumanTools(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"human_feedback", "notify_user"} {
+	for _, name := range []string{"human_feedback", "record_summary"} {
 		if !workflowToolDefs[name] {
 			t.Fatalf("workflow bundle tool definitions missing %q", name)
 		}

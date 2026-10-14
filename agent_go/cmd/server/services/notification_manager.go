@@ -175,7 +175,7 @@ func (nm *NotificationManager) SendUserNotification(ctx context.Context, message
 // SendUserNotificationSync sends to every enabled user-notification connector
 // SYNCHRONOUSLY and returns a per-connector result. Unlike SendUserNotification
 // (fire-and-forget, swallows errors), this waits for delivery so the caller — e.g.
-// the notify_user tool — can report real status back to the agent.
+// the workflow summary delivery tool — can report real status back to the agent.
 //
 // Each send runs on a context that is DETACHED from the caller's cancellation
 // (context.WithoutCancel) but time-bounded, so it is not killed when the agent's

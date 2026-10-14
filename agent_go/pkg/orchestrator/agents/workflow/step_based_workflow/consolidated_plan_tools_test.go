@@ -202,7 +202,7 @@ func TestBackgroundReadOnlyAccessRejectsEscalationAndWriterTools(t *testing.T) {
 	if ok, err := parseBackgroundReadOnlyAccess(map[string]interface{}{"access_mode": "read_only"}, "executor"); err != nil || !ok {
 		t.Fatal("read-only executor unavailable")
 	}
-	for _, n := range []string{"add_step", "update_step", "execute_step", "run_full_workflow", "run_in_background", "write_workspace_file", "record_pulse_finding", "record_plan_drift_review", "slack", "notify_user", "set_workflow_secret"} {
+	for _, n := range []string{"add_step", "update_step", "execute_step", "run_full_workflow", "run_in_background", "write_workspace_file", "record_pulse_finding", "record_plan_drift_review", "slack", "send_email", "set_workflow_secret"} {
 		if readOnlyBackgroundToolAllowed(n) {
 			t.Errorf("writer tool allowed: %s", n)
 		}

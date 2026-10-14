@@ -9,7 +9,7 @@ import (
 )
 
 // Compare the real renderer and identity assembler against the committed
-// pre-extraction slice. This runs only on CI; no local build is authorized by
+// parent revision. This runs only on CI; no local build is authorized by
 // repository policy. Temporary checkouts and fixture files are removed afterward.
 func TestStepPromptBeforeAfter(t *testing.T) {
 	if os.Getenv("CI") == "" {
@@ -26,9 +26,9 @@ func TestStepPromptBeforeAfter(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	root := run("", "git", "rev-parse", "--show-toplevel")
-	baseline := run(root, "git", "log", "-1", "--format=%H", "--grep=^PLAT-861: keep ordinary step tools within their runtime role$")
+	baseline := run(root, "git", "rev-parse", "HEAD^")
 	if baseline == "" {
-		t.Fatal("pre-extraction baseline is missing")
+		t.Fatal("parent baseline is missing")
 	}
 	old := filepath.Join(t.TempDir(), "before")
 	run(root, "git", "worktree", "add", "--detach", old, baseline)
@@ -48,7 +48,7 @@ func TestStepPromptBeforeAfter(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, line := range strings.Split(out, "\n") {
-			if strings.Contains(line, "PROMPT_SIZE ") {
+			if strings.Contains(line, "PROMPT_SIZE ") || strings.Contains(line, "PROMPT_REVIEW ") {
 				t.Logf("%s %s", item.label, strings.TrimSpace(line))
 			}
 		}
@@ -57,6 +57,7 @@ func TestStepPromptBeforeAfter(t *testing.T) {
 
 const stepPromptSizeRemoteFixture = `package step_based_workflow
 import (
+ "encoding/json"
  "strings"
  "testing"
  "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
@@ -74,6 +75,8 @@ func TestPrintRemotePromptFixture(t *testing.T) {
   vars["KBGuidanceBlock"]=BuildStepKBGuidanceWithTarget(KBAccessReadWrite,"Record verified audience facts.","/workspace/Workflow/demo/knowledgebase/notes")
   core:=(&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(vars)
   total:=core+strings.Join(supplements,"\n")
+  rendered,_:=json.Marshal(core)
+  t.Logf("PROMPT_REVIEW role=%s core=%s",role,rendered)
   t.Logf("PROMPT_SIZE role=%s core_chars=%d system_and_supplements_chars=%d skills=%v",role,len([]rune(core)),len([]rune(total)),names)
  }
 }

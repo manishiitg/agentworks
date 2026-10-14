@@ -80,8 +80,8 @@ These are served to the UI by `getBuilderDoc(workspace, "card-health"|"card-prog
 The same verdicts, decisions, and cards Pulse produces while reviewing and fixing are what surface here —
 *#2 is #1 seen again*, never a separate analysis.
 
-- **Notifications — `notify_user`** (active, "you need to know this"). Fans out to connected
-  channels: **Gmail** (one **inline-styled** `email_html` body; `message_for_user`
+- **Notifications — server summary delivery** (active, "you need to know this"). Fans out to connected
+  channels: **Gmail** (one **inline-styled** `email_html` body; `message`
   is the automatic plain fallback because Gmail strips `<style>`/`<head>`),
   **WhatsApp**, **Slack**. Deliberately
   **sparing** — only on a decision-worthy transition (broke / recovered / new finding);
@@ -119,7 +119,7 @@ also where the user *decides* (approve a replan, act on a recommendation), not j
 | Finding/fix/verification/impact state | Pulse worklist, finding lifecycle, review log, and impact ledger | `pulse_consolidation.md`, `pulse_v2_proof_carrying_architecture.md` |
 | improve.html dashboard | Dashboard stage; served via `auto_improvement_endpoints.go` | guidance `review-improve-log.md` |
 | Dashboard cards | card writes in loop prompts (`scheduler.go`); `getBuilderDoc` card kinds (`auto_improvement_endpoints.go`) | `org_dashboard_design.md` |
-| Notifications | `virtual-tools/human_tools.go` (`notify_user`), `services/gmail_service.go` | (this doc) |
+| Notifications | `virtual-tools/human_tools.go` (internal delivery), `services/gmail_service.go` | (this doc) |
 | Org dashboard UI | `frontend/.../org/OrgDashboard.tsx`, `EmployeeDashboard.tsx`, `OrgHtmlPanels.tsx` | `org_dashboard_design.md` |
 | Org Pulse (CoS) | `builtin_schedules.go` | guidance `org-pulse.md`, `org-html.md` |
 | Monitoring overview | — | `workflow_monitoring.md` |

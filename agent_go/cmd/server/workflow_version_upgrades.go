@@ -389,7 +389,7 @@ const upgradeActivityTabFromRunSummary = `WORKFLOW CONTRACT UPGRADE: THE ACTIVIT
 
 Do only this one-time review. Nothing here is mandatory — the point is to offer the parent a simpler option and let them choose.
 
-Every notify_user(notification_kind="run_summary") call already writes a structured row — title, status, message, fields, timestamp — into the org_dashboard_notifications table in this workflow's own db/db.sqlite, the same file the report queries. The required activity tab (Daily Action / Recent Activity) can therefore read ` + "`SELECT ... FROM org_dashboard_notifications WHERE notification_kind = 'run_summary' ORDER BY created_at DESC`" + ` with no step, table, or column of its own. The message is markdown: render it with window.report.renderMarkdown.
+Every record_summary(kind="run_summary") call already writes a structured row — title, status, message, fields, timestamp — into the org_dashboard_notifications table in this workflow's own db/db.sqlite, the same file the report queries. The required activity tab (Daily Action / Recent Activity) can therefore read ` + "`SELECT ... FROM org_dashboard_notifications WHERE notification_kind = 'run_summary' ORDER BY created_at DESC`" + ` with no step, table, or column of its own. The message is markdown: render it with window.report.renderMarkdown.
 
 If db/reports/index.html does not exist, this is a no-op — do not create a report in this migration.
 

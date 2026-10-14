@@ -26,7 +26,7 @@ const (
 )
 
 // SlackWebhookContent is the safe, presentation-only Slack shape exposed by
-// notify_user. Agents choose content and hierarchy; the backend owns the
+// workflow summary delivery. Agents choose content and hierarchy; the backend owns the
 // webhook URL and converts this typed structure into valid Block Kit JSON.
 type SlackWebhookContent struct {
 	Title    string
@@ -55,7 +55,7 @@ var slackWebhookHTTPClient = &http.Client{
 
 // ValidateSlackIncomingWebhookURL accepts only Slack's official Incoming
 // Webhook endpoints. This strict allow-list prevents a workflow secret from
-// turning notify_user into a general-purpose server-side HTTP request.
+// turning workflow summary delivery into a general-purpose server-side HTTP request.
 func ValidateSlackIncomingWebhookURL(raw string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -82,7 +82,7 @@ func ValidateSlackIncomingWebhookURL(raw string) error {
 
 // SendSlackIncomingWebhook sends a one-way workflow notification using a safe
 // default Block Kit card. It remains as the plain-call compatibility wrapper;
-// all new notify_user calls flow through SendRichSlackIncomingWebhook.
+// all new workflow summary delivery calls flow through SendRichSlackIncomingWebhook.
 func SendSlackIncomingWebhook(ctx context.Context, webhookURL, message string) (string, error) {
 	return SendRichSlackIncomingWebhook(ctx, webhookURL, message, SlackWebhookContent{})
 }

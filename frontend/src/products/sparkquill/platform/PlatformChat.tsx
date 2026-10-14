@@ -132,7 +132,7 @@ type Props = {
   landing: ReactNode
   onInteraction: (e: ProductInteraction) => void
   onPresentation: (p: ProductPresentation) => void
-  /** Every notify_user message in the conversation so far (the app keeps them on screen until dismissed). */
+  /** Every saved update in the conversation so far (the app keeps them on screen until dismissed). */
   onNotifications?: (n: ProductNotification[]) => void
 }
 

@@ -207,7 +207,7 @@ func TestStepTestModeContainsExternalEffects(t *testing.T) {
 	if out := customCall(testSession, "query_workflow_db", map[string]interface{}{"sql": "SELECT status FROM proposals WHERE job_id = 'job-2'"}); !strings.Contains(out["result"].(string), "claimed") {
 		t.Fatalf("the test session reads its own write from the copy: %v", out)
 	}
-	if out := customCall(testSession, "notify_user", map[string]interface{}{"message": "bid sent"}); !strings.Contains(out["result"].(string), "TEST MODE") {
+	if out := customCall(testSession, "send_email", map[string]interface{}{"message": "bid sent"}); !strings.Contains(out["result"].(string), "TEST MODE") {
 		t.Fatalf("a tool not on the test-mode list must be stubbed: %v", out)
 	}
 
@@ -246,7 +246,7 @@ func TestStepTestModeContainsExternalEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"tool": "submit_bid"`, `"tool": "agent_browser"`, `"tool": "notify_user"`, `"tool": "mutate_workflow_db"`, `"decision": "redirected"`} {
+	for _, want := range []string{`"tool": "submit_bid"`, `"tool": "agent_browser"`, `"tool": "send_email"`, `"tool": "mutate_workflow_db"`, `"decision": "redirected"`} {
 		if !strings.Contains(string(record), want) {
 			t.Fatalf("test_mode.json lacks %s:\n%s", want, record)
 		}

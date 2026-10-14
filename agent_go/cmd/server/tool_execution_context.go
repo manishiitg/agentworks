@@ -168,7 +168,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 
 		action := ""
 		switch tool {
-		case "notify_user":
+		case "record_summary":
 			action = "notify"
 		case "publish_dashboard", "publish_relay":
 			action = "publish"

@@ -166,7 +166,7 @@ Per-step and workflow-default turn-limit properties are retired. Legacy `executi
 |-------|------|---------|---------|
 | `selected_servers` | `string[]` | `[]` | MCP servers to use for this step (subset of preset servers) |
 | `selected_tools` | `string[]` | `[]` | Specific tools (format: `"server:tool"` or `"server:*"` for all tools) |
-| `enabled_custom_tools` | `string[]` | `[]` | Optional additions in `"category:tool"` or `"category:*"` format. Execution agents automatically receive `workspace_advanced` plus `human_feedback`, `notify_user`, and `create_human_input_request`. Name any additional `human_tools` entry explicitly. Legacy `human_tools:*` is normalized to the same three-tool baseline. |
+| `enabled_custom_tools` | `string[]` | `[]` | Optional additions in `"category:tool"` or `"category:*"` format. Execution agents automatically receive `workspace_advanced` plus `human_feedback`, `create_human_input_request`, `send_email` and `send_slack_message`. Name any additional `human_tools` entry explicitly. Legacy `human_tools:*` is normalized to the same baseline. |
 | `enabled_custom_tool_categories` | `string[]` | `[]` | **Legacy format**: Tool categories (e.g., `["workspace_tools", "human_tools"]`) - deprecated, use `enabled_custom_tools` instead |
 
 ### Validation Configuration

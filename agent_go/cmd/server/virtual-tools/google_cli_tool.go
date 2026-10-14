@@ -16,7 +16,7 @@ import (
 // gogcli for explicitly authorized Gmail reads/drafts/sends/replies and the
 // Google Workspace services a connection was authorized for (Drive, Sheets,
 // Docs, Slides, Calendar) — see
-// services/google_services.go. Unlike notify_user (a fixed send operation),
+// services/google_services.go. Unlike summary delivery (a fixed send operation),
 // there is no single obvious operation for these services, so the agent
 // drives the CLI itself rather than calling a bespoke tool per operation.
 //
@@ -30,7 +30,7 @@ func createGoogleCLITool() llmtypes.Tool {
 	serviceNames := "gmail, " + strings.Join(sortedGoogleServiceCatalogKeys(), ", ")
 	description := fmt.Sprintf(
 		"Run a gogcli (`gog`) command against a Google account connection the user has authorized for a specific service. "+
-			"Use this for Gmail search/message retrieval and, when the connection explicitly enables agent writes, Gmail drafts and send/reply; also use it for Google Drive, Sheets, Docs, Slides, and Calendar. notify_user remains the fixed notification-send path. "+
+			"Use this for Gmail search/message retrieval and, when the connection explicitly enables agent writes, Gmail drafts and send/reply; also use it for Google Drive, Sheets, Docs, Slides, and Calendar. Workflow summaries use the saved notification channels automatically. "+
 			"Before calling this tool, check installed skills; if necessary install `https://github.com/openclaw/gogcli` with `install_skill`, then load `gog` and the relevant `gog-*` service skill with `read_skill`. Those versioned skills, not this description, define current command syntax. "+
 			"args is the argument list to pass to `gog`, EXCLUDING the `gog` binary name and any account or authentication flags. "+
 			"The FIRST element must be one of: %s — whichever the connection was authorized for. "+

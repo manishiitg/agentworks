@@ -505,7 +505,7 @@ curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_MCP/{server_nam
 
 ` + "`$MCP_AUTH`" + ` is already the complete ` + "`Authorization: Bearer ...`" + ` header. Never prepend another header or Bearer prefix. ` + "`--json`" + ` already selects POST and Content-Type, so do not add ` + "`-X POST`" + `, another Content-Type header, or ` + "`--data`" + `. Keep the call unpiped so curl's nonzero HTTP-failure status reaches ` + "`execute_shell_command`" + `.
 
-Use ` + "`$MCP_MCP`" + ` only for real MCP servers from the workflow's selected server list. Built-in/custom categories such as ` + "`human_tools`" + `, ` + "`workflow`" + `, ` + "`workspace_advanced`" + `, ` + "`auto_improvement`" + `, and ` + "`knowledgebase_tools`" + ` are not MCP servers; call them as ` + "`$MCP_CUSTOM/{tool_name}`" + ` with no category segment. Example: ` + "`$MCP_CUSTOM/notify_user`" + `, never ` + "`$MCP_MCP/human_tools/notify_user`" + `.
+Use ` + "`$MCP_MCP`" + ` only for real MCP servers from the workflow's selected server list. Built-in/custom categories such as ` + "`human_tools`" + `, ` + "`workflow`" + `, ` + "`workspace_advanced`" + `, ` + "`auto_improvement`" + `, and ` + "`knowledgebase_tools`" + ` are not MCP servers; call them as ` + "`$MCP_CUSTOM/{tool_name}`" + ` with no category segment. Example: ` + "`$MCP_CUSTOM/send_email`" + `, never ` + "`$MCP_MCP/human_tools/send_email`" + `.
 
 Pre-set environment for scripts:
 - ` + "`$MCP_MCP`" + `, ` + "`$MCP_CUSTOM`" + `, ` + "`$MCP_VIRTUAL`" + ` — short bridge endpoint bases

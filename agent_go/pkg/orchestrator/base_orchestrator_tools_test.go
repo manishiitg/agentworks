@@ -26,7 +26,7 @@ func TestBuilderHumanToolSelectionsComeFromProductYAMLWithoutWildcard(t *testing
 	if slices.Contains(selections, "human_tools:*") {
 		t.Fatal("Builder human-tool selection must not use a category wildcard")
 	}
-	if !slices.Contains(selections, "human_tools:notify_user") || !slices.Contains(selections, "human_tools:get_notification_history") {
+	if !slices.Contains(selections, "human_tools:record_summary") || !slices.Contains(selections, "human_tools:get_notification_history") {
 		t.Fatalf("Builder selections are missing product-declared notification tools: %v", selections)
 	}
 	if slices.Contains(selections, "human_tools:human_feedback") {
@@ -38,7 +38,7 @@ func TestHumanToolsCategoryIncludesDurableWorkflowDecisionTools(t *testing.T) {
 	names := getToolNamesByCategory("human_tools")
 	for _, name := range []string{
 		"human_feedback",
-		"notify_user",
+		"record_summary",
 		"get_human_input_request",
 		"create_human_input_request",
 		"answer_human_input_request",

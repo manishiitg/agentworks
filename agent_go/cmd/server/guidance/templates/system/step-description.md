@@ -208,9 +208,11 @@ runtime supplies short workflow-database, workflow-knowledgebase, agent-browser
 and workflow-execution skill listings when applicable. The agent opens a relevant
 skill on demand; do not paste these procedures into descriptions, system_rules
 or verification messages. Keep enabled_skills for useful task/domain skills.
-Ordinary steps do not have notify_user, query_workflow_costs,
+Ordinary steps do not have query_workflow_costs,
 apply_workflow_db_migration or function-service tools. Report results through the
-run summary and workflow notifications; use human_feedback for a needed answer.
+run summary and workflow notifications. The baseline includes send_email and
+send_slack_message for task-required sends, subject to actual connection/access
+gates; use human_feedback for a needed answer.
 Schema changes belong to Builder; external function-service work belongs to Crew.
 Goal metrics require a real soul objective, and Pulse questions also require Pulse
 on. The runtime supplies bounded goal/position/parent context separately; do not

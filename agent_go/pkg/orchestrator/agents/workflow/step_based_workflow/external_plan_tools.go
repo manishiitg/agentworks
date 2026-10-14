@@ -64,7 +64,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"enabled_custom_tools": map[string]interface{}{
 				"type":        "array",
 				"items":       map[string]interface{}{"type": "string"},
-				"description": "Optional workspace/custom tools to add (format: 'category:tool' or 'category:*'). Every execution agent already receives workspace_advanced plus the narrow human baseline: human_feedback, notify_user, and create_human_input_request. Name any additional human tool explicitly. Legacy human_tools:* is normalized to the same three-tool baseline and does not grant the complete category. workspace_browser:agent_browser enables browser automation.",
+				"description": "Optional workspace/custom tools to add (format: 'category:tool' or 'category:*'). Every execution agent already receives workspace_advanced plus the human baseline: human_feedback, create_human_input_request, send_email and send_slack_message. Name any additional human tool explicitly. Legacy human_tools:* is normalized to the same baseline and does not grant the complete category. workspace_browser:agent_browser enables browser automation.",
 			},
 			"enabled_skills": map[string]interface{}{
 				"type":        "array",

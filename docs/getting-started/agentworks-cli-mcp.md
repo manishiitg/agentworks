@@ -396,7 +396,7 @@ notifications. Only account-scoped tools are withheld from direct calls:
 `google_workspace_cli` (arbitrary commands against the account's Google
 connection) is unavailable to token-backed sessions, including `chat`.
 Deliberately kept: `send_slack_message`
-(configured workflow routes only), `notify_user` (the user's own
+(configured workflow routes only), `record_summary` (the workflow's saved
 channels), and `trigger_schedule` (this workflow's own schedules).
 
 ## Chatting with the workflow assistant

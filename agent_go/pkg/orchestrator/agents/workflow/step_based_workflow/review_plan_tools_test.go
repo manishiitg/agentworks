@@ -18,14 +18,14 @@ func TestEveryReadOnlyBackgroundReviewerGetsQueryButNotMutation(t *testing.T) {
 		WorkspaceTools: []llmtypes.Tool{
 			tool("execute_shell_command"),
 			tool("human_feedback"),
-			tool("notify_user"),
+			tool("record_summary"),
 			tool("query_workflow_db"),
 			tool("mutate_workflow_db"),
 		},
 		WorkspaceToolExecutors: map[string]interface{}{
 			"execute_shell_command": noop,
 			"human_feedback":        noop,
-			"notify_user":           noop,
+			"record_summary":        noop,
 			"query_workflow_db":     noop,
 			"mutate_workflow_db":    noop,
 		},
@@ -47,7 +47,7 @@ func TestEveryReadOnlyBackgroundReviewerGetsQueryButNotMutation(t *testing.T) {
 	if slices.Contains(names, "human_feedback") || executors["human_feedback"] != nil {
 		t.Fatalf("Builder reviewer received run-only human_feedback: tools=%v executors=%v", names, executors)
 	}
-	if !slices.Contains(names, "notify_user") || executors["notify_user"] == nil {
-		t.Fatalf("Builder reviewer missing product-declared notify_user: tools=%v executors=%v", names, executors)
+	if !slices.Contains(names, "record_summary") || executors["record_summary"] == nil {
+		t.Fatalf("Builder reviewer missing product-declared record_summary: tools=%v executors=%v", names, executors)
 	}
 }

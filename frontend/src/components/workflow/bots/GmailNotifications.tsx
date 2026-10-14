@@ -147,7 +147,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
           </FormSection>
           <FormSection
             title="Delivery settings"
-            description={<>Account-wide one-way email delivery, used by <code>notify_user</code> in workflows. This setting controls workflow notification emails; connected Google accounts and their read/write permissions are managed above. Email replies do not resume an agent.</>}
+            description={<>Account-wide one-way email delivery, used for workflow run and Pulse summaries. This setting controls workflow notification emails; connected Google accounts and their read/write permissions are managed above. Email replies do not resume an agent.</>}
           >
             {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change shared Gmail delivery settings or send a test email.</p>}
             {gmailError && <StatusBanner tone="error">{gmailError}</StatusBanner>}
@@ -155,7 +155,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
             <Card className="p-4">
               <ToggleRow
                 label="Workflow email notifications"
-                description="Turns on automatically after Gmail sign-in, unless previously turned off. Controls notify_user emails in workflows."
+                description="Turns on automatically after Gmail sign-in, unless previously turned off. Controls workflow summary emails."
                 checked={gmailConfig.enabled}
                 onCheckedChange={checked => setGmailConfig({ ...gmailConfig, enabled: checked })}
                 disabled={gmailSettingsReadOnly || (!gmailConfig.enabled && !gmailCanEnable)}

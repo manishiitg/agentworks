@@ -12,14 +12,10 @@ import (
 	llmtypes "github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// send_email emails the people the caller names, and only by Gmail. It is the
-// counterpart of notify_user, which tells the workflow's owner through their
-// configured channels: notify_user fans one message out to every channel, so it
-// cannot require a recipient, and a call that named none went to the account's
-// default recipient (PLAT-736). Here the recipient is mandatory, there is one
-// channel and one receipt, and the Outward permission can hold the whole tool.
+// send_email addresses named people through Gmail. Summary delivery uses the
+// workflow's saved notification settings independently.
 
-const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This is the tool for emailing specific people; to tell the workflow's owner through their configured channels (Gmail, Slack, WhatsApp), use notify_user instead. Refused when the Outward permission is ask for this turn."
+const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients. Workflow run and Pulse summaries use the saved notification settings automatically. Refused when the Outward permission is ask for this turn."
 
 func createSendEmailTool() llmtypes.Tool {
 	list := func(description string) map[string]interface{} {
@@ -52,7 +48,7 @@ func createSendEmailTool() llmtypes.Tool {
 func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, error) {
 	to := emailListFromArg(args["to"])
 	if len(to) == 0 {
-		return "", fmt.Errorf("to is required: name at least one recipient address. To tell the workflow's owner through their configured channels, use notify_user instead")
+		return "", fmt.Errorf("to is required: name at least one recipient address. Workflow summaries use the saved notification settings automatically")
 	}
 	subject, _ := args["subject"].(string)
 	subject = strings.TrimSpace(subject)
@@ -77,7 +73,7 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 	// Emailing people the agent chose is an Outward action: with the permission at ask (Pulse Goal Work) the owner
 	// decides first. The tool is held whole, not argument by argument.
 	if common.OutwardHeld(ctx) {
-		return "", fmt.Errorf("send_email refused: the Outward permission is ask for this turn (pulse.autonomy). Create a decision request (create_human_input_request) for sending to anyone else, or use notify_user to reach the owner's configured channels")
+		return "", fmt.Errorf("send_email refused: the Outward permission is ask for this turn (pulse.autonomy). Create a decision request (create_human_input_request) for sending to anyone else")
 	}
 	nm := services.GetNotificationManager()
 	if nm == nil {

@@ -97,7 +97,7 @@ Configured `human_input` plan steps use the same direct request store, UI card, 
 - Notification previews use generic text and do not expose the question or answer.
 - The Electron dock badge stays active while the displayed request is pending.
 - Configured interactive connectors are notified immediately for these short-lived requests.
-- Workflow Slack Incoming Webhooks are not used here. They are one-way `notify_user` destinations and cannot submit the correlated answer this blocking flow requires.
+- Workflow Slack Incoming Webhooks are not used here. They are one-way summary destinations and cannot submit the correlated answer this blocking flow requires.
 - The older `ScheduleNotification` helper still supports a two-minute reminder for legacy/non-urgent callers; direct human-input paths use `ScheduleNotificationAfter(..., 0)`.
 
 An app-wide durable Electron notification inbox is a separate capability. This flow uses the current event renderer, native notification, badge, and connector infrastructure.

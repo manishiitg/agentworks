@@ -81,15 +81,16 @@ servers from the workflow's selected server list. Call their tools through
 `$MCP_CUSTOM/{tool_name}` with no category segment in the URL.
 
 ```bash
-payload='{"message_for_user":"Workflow completed successfully.","slack_title":"Workflow complete","slack_color":"success","slack_fields":[{"label":"Status","value":"Passed"}]}'
-curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/notify_user"
+payload='{"kind":"run_summary","message":"Workflow completed successfully.","slack_title":"Workflow complete","slack_color":"success","slack_fields":[{"label":"Status","value":"Passed"}]}'
+curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/record_summary"
 ```
 
-`notify_user` owns Slack delivery and renders Block Kit in the backend. For structured
+When `record_summary` is listed for this session, it records a run/Pulse summary;
+the backend applies saved destinations and renders Slack Block Kit. For structured
 summaries, use `slack_title`, `slack_color`, `slack_fields`, `slack_sections`, and
 `slack_footer`; never read a webhook secret or post to a webhook with shell commands.
 
-Do not call `notify_user` as `$MCP_MCP/human_tools/notify_user`; that treats
+Do not call `record_summary` as `$MCP_MCP/human_tools/record_summary`; that treats
 `human_tools` as a real MCP server and can be blocked by the session MCP
 server allowlist.
 

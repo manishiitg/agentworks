@@ -110,7 +110,7 @@ var goalWorkNeverTools = map[string]bool{
 
 // goalWorkOutwardTools post or send beyond the workflow by name alone. Tools
 // whose effect depends on their arguments (slack, google_workspace_cli,
-// notify_user with other recipients) are held inside the tool through
+// workflow summary delivery with other recipients) are held inside the tool through
 // common.WithOutwardHeld.
 var goalWorkOutwardTools = map[string]bool{"send_slack_message": true}
 

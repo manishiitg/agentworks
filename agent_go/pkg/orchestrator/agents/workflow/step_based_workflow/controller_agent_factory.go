@@ -852,7 +852,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) disableParentAgentTimeout(config *age
 func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentConfigs) ([]llmtypes.Tool, map[string]interface{}) {
 	// Explicit selection narrows optional tools. Defaults and explicit lists
 	// share the same capability-derived additions below. Human tools are named
-	// individually: a step needs immediate feedback, notifications, and durable
+	// individually: a step needs feedback, addressed email/Slack sends and durable
 	// decision creation, not every administrative/connector tool that happens to
 	// share the human_tools registry.
 	enabledTools := []string{"workspace_advanced:*"}
@@ -884,6 +884,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	for _, required := range []string{
 		"human_tools:human_feedback",
 		"human_tools:create_human_input_request",
+		"human_tools:send_email",
+		"human_tools:send_slack_message",
 	} {
 		if !slices.Contains(enabledTools, required) {
 			enabledTools = append(enabledTools, required)

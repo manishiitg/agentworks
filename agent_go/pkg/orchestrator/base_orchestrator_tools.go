@@ -67,7 +67,7 @@ func AgentWorksChatHumanToolSelections(mode string) []string {
 //   - "workspace_tools:execute_shell_command" → specific tool
 //   - "human_tools:*" → all tools from HumanToolImplementationNames()
 //   - "human_tools:human_feedback" → specific blocking tool
-//   - "human_tools:notify_user" → specific non-blocking bot notification tool
+//   - "human_tools:send_email" → email to named recipients
 //
 // Category identification uses the actual tool creation functions as the source of truth
 // If enabledTools is empty, return all tools (backward compatible - default behavior)

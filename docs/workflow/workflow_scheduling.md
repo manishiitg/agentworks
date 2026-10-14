@@ -253,7 +253,7 @@ profile:
       timezone: Asia/Kolkata
       messages:
         - Review what changed since your last check-in and note anything worth flagging.
-        - Send the summary with notify_user.
+        - Record the summary with record_summary; the server delivers it through the saved channels.
 ```
 
 The definition and the timing rule live in `agent_go/pkg/productschedule`

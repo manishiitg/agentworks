@@ -84,7 +84,7 @@ profile:
     # schedule/route tools,
     # pulse/improvement tools, workflow-step orchestration, media-generation tools,
     # workflow configuration, and human_feedback /
-    # notify_user. mcpagent's own intrinsic tools (get_api_spec,
+    # summary delivery. mcpagent's own intrinsic tools (get_api_spec,
     # read_skill) are injected by mcpagent
     # itself and are not governed by this list.
   # Slash commands Crew ships with itself. The prompt lives in its own file

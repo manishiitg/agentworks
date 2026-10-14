@@ -26,7 +26,7 @@ Workshop; executing a workflow does not authorize changing its plan.
 | A report action should hand a specific task to the agent now | Report `sendChatMessage` | The action queues its message directly in an existing workflow chat, creating one only if none exists. Save an existing business approval first when the request depends on it. |
 | The user corrects an execution already running | `send_step_message` | Forward to the exact active execution, live or at the next safe agent boundary. This does not start, restart, or resume completed work. |
 
-`notify_user`, Daily Actions, and Pulse summaries are notifications/evidence,
+Recorded run summaries, Daily Actions, and Pulse summaries are notifications/evidence,
 not response or approval mechanisms. A notification delivery receipt does not
 mean the human agreed. Route selection is also not blanket authorization for
 every side effect on that route.

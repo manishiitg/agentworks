@@ -134,20 +134,20 @@ get_api_spec(tool_name) → authorize → schema cache → internal route</pre>
 
   <!-- 06 -->
   <h2 id="bug"><span class="n">06</span>How this explains the bug</h2>
-  <p class="lead">Symptom: a tool (<code>notify_user</code>) is registered in the session, yet the CLI agent can't see or call it; <code>get_api_spec</code> omits it from <code>human_tools</code>.</p>
+  <p class="lead">Symptom: a tool (<code>record_summary</code>) is registered in the session, yet the CLI agent can't see or call it; <code>get_api_spec</code> omits it from <code>human_tools</code>.</p>
   <ol class="seq">
     <li><b>The CLI sees one agent's registry.</b> <code>get_api_spec</code> is tagged with <code>X-Virtual-Scope-ID</code> → the Go server returns the <code>a.customTools</code> of <b>that one scoped instance</b> (the conversational/workshop "parent" agent), not the union of all agents in the session.</li>
     <li><b>The tool registered on a different instance.</b> Logs show <code>Registered custom tool … notify …</code> for the session — but on the <b>child / step-execution agents</b> (their default tool set is <code>workspace_advanced:* + human_tools:*</code>), not the scoped parent.</li>
     <li><b>So it's "registered" and "invisible" at once.</b> The scope routing is exactly the mechanism that lets both be true: present on the children, absent from the parent the CLI is pinned to.</li>
     <li><b>The monitor is the clean proof.</b> Its scoped agent registered <b>zero</b> human tools, so <code>notify</code> could never appear there regardless.</li>
   </ol>
-  <div class="note bad"><b>Root cause:</b> <code>notify_user</code> is not in the <code>a.customTools</code> of the <b>scoped (parent/conversational) agent</b> that serves <code>get_api_spec</code>. The allow-list fix (gate 2, since removed) was necessary but not sufficient — the tool must be <b>registered onto that parent agent</b> (gate 1).</div>
+  <div class="note bad"><b>Root cause:</b> <code>record_summary</code> is not in the <code>a.customTools</code> of the <b>scoped (parent/conversational) agent</b> that serves <code>get_api_spec</code>. The allow-list fix (gate 2, since removed) was necessary but not sufficient — the tool must be <b>registered onto that parent agent</b> (gate 1).</div>
 
   <!-- 07 -->
   <h2 id="fix"><span class="n">07</span>The fix</h2>
   <p class="lead">Register the human <i>notification</i> tool onto the workshop/phase (parent) agent's tool set, so it lands in that agent's <code>a.customTools</code> → appears in <code>get_api_spec</code> → callable.</p>
-  <p>The parent agent's tools come from <code>PreparePhaseAgentTools()</code> (<code>base_orchestrator_tools.go</code>), which selects <code>["workspace_advanced:execute_shell_command", "human_tools:*"]</code>. The fix ensures the phase-agent path actually carries <code>notify_user</code> through to registration on the parent and that it is allow-listed for <code>workshop</code>/<code>run</code> modes.</p>
-  <div class="note ok"><b>Verify with the diagnostic, not the agent:</b> the temporary <code>🔬 [TOOLINDEX_DIAG]</code> log prints the scoped agent's full <code>a.customTools</code> with <code>agent_ptr</code>, category, and allow-state — confirming <code>notify_user</code> is present on the instance that serves <code>get_api_spec</code>. Then in a fresh chat: <code>get_api_spec</code> should list it under <code>human_tools</code>, and a call should execute.</p></div>
+  <p>The parent agent's tools come from <code>PreparePhaseAgentTools()</code> (<code>base_orchestrator_tools.go</code>), which selects <code>["workspace_advanced:execute_shell_command", "human_tools:*"]</code>. The fix ensures the phase-agent path actually carries <code>record_summary</code> through to registration on the parent and that it is allow-listed for <code>workshop</code>/<code>run</code> modes.</p>
+  <div class="note ok"><b>Verify with the diagnostic, not the agent:</b> the temporary <code>🔬 [TOOLINDEX_DIAG]</code> log prints the scoped agent's full <code>a.customTools</code> with <code>agent_ptr</code>, category, and allow-state — confirming <code>record_summary</code> is present on the instance that serves <code>get_api_spec</code>. Then in a fresh chat: <code>get_api_spec</code> should list it under <code>human_tools</code>, and a call should execute.</p></div>
 
   <!-- 08 -->
   <h2 id="debug"><span class="n">08</span>Debug checklist — "agent can't call tool X"</h2>
@@ -172,7 +172,7 @@ get_api_spec(tool_name) → authorize → schema cache → internal route</pre>
       <tr><td>Child (step) agent tools</td><td><code>…/step_based_workflow/controller_agent_factory.go</code> · <code>prepareCustomTools</code></td></tr>
       <tr><td>Tool registration on an agent</td><td><code>agent_go/pkg/orchestrator/base_orchestrator_agent_factory.go</code> · <code>registerCustomToolsForAgent</code></td></tr>
       <tr><td>Workshop-mode allow-list</td><td><code>…/step_based_workflow/interactive_workshop_manager.go</code> · <code>GetToolsForWorkshopMode</code></td></tr>
-      <tr><td>Notify tool</td><td><code>agent_go/cmd/server/virtual-tools/human_tools.go</code> · <code>notify_user</code></td></tr>
+      <tr><td>Notify tool</td><td><code>agent_go/cmd/server/virtual-tools/human_tools.go</code> · <code>record_summary</code></td></tr>
     </tbody>
   </table>
 

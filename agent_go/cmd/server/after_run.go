@@ -348,8 +348,7 @@ func afterRunNotifyExternally(ctx context.Context, workspacePath, scheduleID, ru
 	return previous == nil || previous.Status != status
 }
 
-// sendAfterRunNotification sends the run summary through the same path an
-// agent's notify_user call takes, without an agent.
+// sendAfterRunNotification uses the internal summary delivery path without an agent.
 func (s *SchedulerService) sendAfterRunNotification(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, runID, status, errMsg string, duration time.Duration) error {
 	if s == nil || s.api == nil || sctx == nil || manifest == nil {
 		return fmt.Errorf("scheduler not available")
@@ -366,12 +365,8 @@ func (s *SchedulerService) sendAfterRunNotification(ctx context.Context, sctx *S
 	if dest != nil {
 		nctx = context.WithValue(nctx, virtualtools.BotNotificationDestinationKey, dest)
 	}
-	notify := virtualtools.CreateHumanToolExecutors()["notify_user"]
-	if notify == nil {
-		return fmt.Errorf("notify_user is not available")
-	}
 	external := afterRunNotifyExternally(ctx, sctx.WorkspacePath, sctx.Schedule.ID, runID, status)
-	_, err := notify(nctx, afterRunNotificationArgs(firstNonEmptyString(manifest.Label, sctx.WorkflowLabel), sctx.Schedule.Name, status, errMsg, duration, external))
+	_, err := virtualtools.DeliverWorkflowNotification(nctx, afterRunNotificationArgs(firstNonEmptyString(manifest.Label, sctx.WorkflowLabel), sctx.Schedule.Name, status, errMsg, duration, external))
 	return err
 }
 

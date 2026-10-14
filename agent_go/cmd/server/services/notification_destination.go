@@ -26,7 +26,7 @@ type NotificationDestination struct {
 	ExcludeChannels []string
 
 	// Summary-specific allowlists. Empty means inherit the existing workflow
-	// routing. notify_user selects one by notification_kind and enforces it in
+	// routing. workflow summary delivery selects one by notification_kind and enforces it in
 	// the backend, including the workflow Slack webhook.
 	RunSummaryChannels   []string
 	PulseSummaryChannels []string

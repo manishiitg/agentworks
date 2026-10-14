@@ -2,13 +2,10 @@ import { useMemo } from 'react'
 import { useProductInteractions } from '../interactions/useProductInteractions'
 
 /**
- * A message the agent sent the user through notify_user. The tool delivers
- * to whatever external channels are configured and, on the same call,
- * emits the in-app copy as a product_interaction of kind `notify` — the
- * generic side channel every product.yaml UI tool uses (pins, scenes,
- * suggestions), so a surface can keep the message on screen until the
- * user dismisses it. Read from the session's event stream: it fires
- * because the tool ran, whichever coding CLI drove the turn.
+ * A product update received as a `notify` interaction event. Summary delivery
+ * emits this in-app copy independently of external channels. The event ID
+ * remains stable across hydration so the surface can retain dismissal state.
+ * Historical messages remain visible until the user dismisses them.
  */
 export type ProductNotification = {
   /** The interaction event id: stable across hydration, so a dismissal can be remembered. */

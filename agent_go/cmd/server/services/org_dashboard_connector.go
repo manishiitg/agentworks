@@ -21,7 +21,7 @@ import (
 const orgDashboardHistoryLimitPerKind = 50
 
 // OrgDashboardNotification is the durable, channel-neutral record rendered by
-// the Organization page. It is written by notify_user through the
+// the Organization page. It is written by workflow summary delivery through the
 // org_dashboard connector, never by parsing an email or Slack payload.
 type OrgDashboardNotification struct {
 	ID            string                       `json:"id"`

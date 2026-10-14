@@ -46,7 +46,7 @@ func TestSlackWorkflowPrecedenceAndExclusions(t *testing.T) {
 			if tc.exclude {
 				args["exclude_channels"] = []string{" SLACK "}
 			}
-			result, err := handleNotifyUser(context.WithValue(context.Background(), BotNotificationDestinationKey, dest), args)
+			result, err := DeliverWorkflowNotification(context.WithValue(context.Background(), BotNotificationDestinationKey, dest), args)
 			if err != nil {
 				t.Fatal(err)
 			}

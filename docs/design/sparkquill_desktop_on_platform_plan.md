@@ -404,7 +404,7 @@ harmless 404 in M1 (~1 GB stays resident while hidden); add `/api/voice/unload` 
 - **Live Electron E2E** (project rule: LLM-driven paths verified only by a live run with agentic sign-off): fresh install
   → onboarding shows engine detection, child, PIN; run with a **copied** real `~/.sunlit-learning` → migration log,
   marker, backup, `product.json` + `keys/`, archived conversations; parent turn with tool rows + pills; handoff → child
-  turn with celebrate/scene; from the child shell assert `keys/` unreachable; check-in "run now" → one `notify_user`;
+  turn with celebrate/scene; from the child shell assert `keys/` unreachable; check-in "run now" → one saved check-in summary;
   relaunch restores history; AgentWorks + SparkQuill simultaneously (distinct ports/userData/docs roots, no browser
   kill cross-fire, tmux intact); hide → `/api/voice/unload`, show → `/warm`.
 

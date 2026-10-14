@@ -31,7 +31,7 @@ func TestChatDefinitions(t *testing.T) {
 		t.Fatal("answer_human_input_request must be builder-only")
 	}
 	for _, mode := range []string{"builder", "run"} {
-		for _, name := range []string{"notify_user", "get_notification_history"} {
+		for _, name := range []string{"record_summary", "get_notification_history"} {
 			if !ChatAllowsTool(mode, name) {
 				t.Fatalf("%s chat is missing %s", mode, name)
 			}

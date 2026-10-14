@@ -9,7 +9,7 @@ import (
 // Markers that are effectively never ordinary prose: a message containing one
 // is quoting a command or a tool call wherever it appears.
 var scheduleProcedureSubstrings = []string{
-	"sqlite3 ", "curl ", "execute_step(", "notify_user", "backup/",
+	"sqlite3 ", "curl ", "execute_step(", "record_summary(", "backup/",
 }
 
 // Bare SQL and shell verbs cannot be told from prose by the verb alone.

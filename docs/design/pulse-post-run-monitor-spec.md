@@ -1056,14 +1056,14 @@ dashboard recommendation or human-input request rather than creating a new one
 each run.
 
 When Gmail/email is available, default to rich email: set `email_subject` and
-one compact, inline-styled `email_html` body on the same `notify_user` call.
+one compact, inline-styled `email_html` body on the same `record_summary` call.
 Use readable sections for **Pulse verdict**, **Reviews completed**, **Issues
 found this pass**, **Fixed by Pulse**, **Still pending**, **Needs your
 decision**, and **Operations**. Omit an empty decision section, but do not omit
 the issues/fixes/pending outcome: state “none” where that is the truthful result.
-Do not produce a separate plain email body; `message_for_user` is the automatic
-fallback. Use `email_to` only when the user's preference replaces the default
-To recipient. Use `email_cc` only when requested.
+Do not produce a separate plain email body; `message` is the automatic
+fallback. Recipients come from the saved summary settings. Use `send_email` for an explicitly
+requested message to named recipients.
 For Slack, default to the backend-owned rich rendering on that same call: set `slack_title`, a factual `slack_color`, compact `slack_fields`, relevant `slack_sections`, and `slack_footer`. Never read a webhook secret or post Block Kit JSON directly.
 
 ## Style

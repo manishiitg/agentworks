@@ -80,7 +80,7 @@ func TestStepExecutionSurfaceFollowsTheToolsHeld(t *testing.T) {
 			name:    "human-in-the-loop follows urgent feedback capability",
 			doc:     "human-in-the-loop",
 			with:    StepExecutionSignals{ToolNames: []string{"human_feedback"}},
-			without: StepExecutionSignals{ToolNames: []string{"notify_user"}},
+			without: StepExecutionSignals{ToolNames: []string{"send_email"}},
 		},
 		{
 			name:    "human-in-the-loop follows durable decision capability",

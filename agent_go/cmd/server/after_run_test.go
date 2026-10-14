@@ -1,6 +1,49 @@
 package server
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+)
+
+type afterRunSummaryConnector struct {
+	received chan *services.NotificationDestination
+}
+
+func (*afterRunSummaryConnector) Name() string    { return "test_after_run_summary" }
+func (*afterRunSummaryConnector) IsEnabled() bool { return true }
+func (*afterRunSummaryConnector) SendNotification(context.Context, string, string, string, *services.ButtonOptions, *services.NotificationDestination) (string, error) {
+	return "", nil
+}
+func (c *afterRunSummaryConnector) SendUserNotification(_ context.Context, _, _ string, dest *services.NotificationDestination) (string, error) {
+	c.received <- dest
+	return "summary-receipt", nil
+}
+
+// Exercise the scheduler's real internal delivery path after the agent tool is
+// removed. The connector is local and records delivery without contacting anyone.
+func TestAfterRunSummaryDeliveryIsIndependentOfAgentTool(t *testing.T) {
+	api, ctx, _ := gmailTriggerFixture(t)
+	connector := &afterRunSummaryConnector{received: make(chan *services.NotificationDestination, 1)}
+	manager := services.GetNotificationManager()
+	manager.RegisterConnector(connector)
+	t.Cleanup(func() { manager.UnregisterConnector(connector.Name()) })
+	sctx := &ScheduleContext{OwnerUserID: "owner", WorkspacePath: "Workflow/mail", Schedule: WorkflowSchedule{ID: "daily", Name: "Daily"}}
+	err := api.scheduler.sendAfterRunNotification(ctx, sctx, &WorkflowManifest{Label: "Example workflow"}, "run-1", "error", "Missing input", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case dest := <-connector.received:
+		if dest.WorkspacePath != "Workflow/mail" || dest.Content == nil || dest.Content.Summary == nil || dest.Content.Summary.Kind != "run_summary" || dest.Content.Summary.Status != "failed" {
+			t.Fatalf("run summary lost its scope or outcome: %+v", dest)
+		}
+	default:
+		t.Fatal("server run summary was not delivered")
+	}
+}
 
 // PLAT-697 phase 0: pulse_mode leaves schedules. Each schedule keeps exactly
 // the backup, publish and notify its mode did (basic, and the retired full,

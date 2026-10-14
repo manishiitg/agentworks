@@ -301,7 +301,7 @@ in the workspace's `ui_presentations` table, which the parent profile's
 initializer creates; `suggest_actions`, `celebrate` and `show_scene` emit one
 new generic event, `product_interaction`, that any product surface can
 render; `find_image` uses the Wikimedia search now shared in
-`pkg/commonsimages` with the family server. Secrets and `notify_user` were
+`pkg/commonsimages` with the family server. Secrets and notification delivery were
 already platform tools and are simply allowlisted. The parent profile moved
 to project scope with a fixed root so the folder guard, the strict sandbox
 and workspace secrets apply to it (global scope gets none of those). Not yet
@@ -1331,7 +1331,7 @@ Child prompt (`prompts/child.md`) after review: the tool roster, the
 raw-HTML colour instruction are gone (the shared markdown renderer does not
 render raw HTML); the two skill-file reads are replaced by the rules that
 mattered (JSXGraph for figures, self-contained pages, `SQ.choose` buttons,
-`<div class="q">`); notify_user has a rule (upset, or stuck a long time);
+`<div class="q">`); parent updates have a rule (upset, or stuck a long time);
 the handoff opening message is named; sections reordered to identity →
 answers → activity → showing things → format.
 
@@ -1448,7 +1448,7 @@ a view that is not on screen. `open_workspace_view` never refreshes.
 
 ### 2026-09-03 — Daily Action tab defaults to the run summaries, not a bespoke step
 
-Every `notify_user(notification_kind="run_summary")` call (required at the
+Every `record_summary(kind="run_summary")` call (required at the
 end of a Pulse cycle, normal after an ordinary run) already writes a
 structured row into `org_dashboard_notifications` in the workflow's own
 `db/db.sqlite` — the same file its report queries. The required activity/

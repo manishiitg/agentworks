@@ -65,14 +65,14 @@ Trend ●●🔴🟢🟢                                          → click: imp
   store. Full history stays in `improve.html` / `org-pulse.html`.
 
 ## Mechanism — how a loop updates the dashboard
-Parallel to `notify_user`: a tool (e.g. **`update_org_dashboard`**) each loop calls with
+Parallel to summary delivery: a tool (e.g. **`update_org_dashboard`**) each loop calls with
 its card fields. Important cadence difference from notify:
 ```
 Pulse run → improve.html (detailed log)
           → update_org_dashboard(health + cost cards) ← ALWAYS (keeps dashboard live)
-          → notify_user(email/whatsapp)          ← ONLY on a decision-worthy change
+          → server summary delivery(email/whatsapp)          ← ONLY on a decision-worthy change
 ```
-`notify_user` is sparing (don't spam); the **card updates every run** so the dashboard is
+External summary delivery is sparing (don't spam); the **card updates every run** so the dashboard is
 always current, not "last time something was notable." Auto-improve does the same for its
 `progress` card.
 

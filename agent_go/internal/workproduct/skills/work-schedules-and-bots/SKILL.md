@@ -92,7 +92,7 @@ servers, and available secrets.
   reconnect flow. Do not install a Gmail MCP server as a workaround.
 - Agent draft creation and send/reply require both
   `allow_agent_write_access` and an observed Google `gmail.compose` grant.
-  This is off by default and separate from `notify_user`; never remove the
+  This is off by default and separate from workflow run summaries; never remove the
   Gmail send guard or treat `gmail.send` alone as agent-write permission.
 - Gmail notifications and agent-authored sends are outbound operations.
   Incoming Gmail uses `get_gmail_trigger` and `manage_gmail_trigger`. If receiving

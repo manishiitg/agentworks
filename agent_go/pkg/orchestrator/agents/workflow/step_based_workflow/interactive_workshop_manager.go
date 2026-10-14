@@ -4340,7 +4340,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if slackWebhookSecretName == "" {
 				sb.WriteString("- Slack Incoming Webhook: not configured\n")
 			} else {
-				sb.WriteString(fmt.Sprintf("- Slack Incoming Webhook: configured via encrypted secret **%s** (one-way notify_user delivery; URL hidden)\n", slackWebhookSecretName))
+				sb.WriteString(fmt.Sprintf("- Slack Incoming Webhook: configured via encrypted secret **%s** (one-way workflow summary delivery delivery; URL hidden)\n", slackWebhookSecretName))
 			}
 			if runNotificationInstructions == "" {
 				sb.WriteString("- Workflow run summary instructions: not configured\n")
@@ -4666,7 +4666,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"slack_webhook_secret_name": map[string]interface{}{
 					"type":        "string",
-					"description": "Name of an existing encrypted secret containing a complete Slack Incoming Webhook URL. This converts the credential into backend-only notification configuration and removes it from selected_secrets, selected_global_secret_names, and SECRET_* injection. notify_user sends a rich Block Kit card to it automatically and applies the change in the current builder turn; human_feedback never does because webhooks are one-way. Pass an empty string to disable workflow webhook delivery. Never put the URL itself in workflow.json or post to it directly.",
+					"description": "Name of an existing encrypted secret containing a complete Slack Incoming Webhook URL. This converts the credential into backend-only notification configuration and removes it from selected_secrets, selected_global_secret_names, and SECRET_* injection. The server sends a rich Block Kit card to it automatically and applies the change in the current builder turn; human_feedback never does because webhooks are one-way. Pass an empty string to disable workflow webhook delivery. Never put the URL itself in workflow.json or post to it directly.",
 				},
 				"run_notification_instructions": map[string]interface{}{
 					"type":        "string",
@@ -4731,7 +4731,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"notification_gmail_connection_id": map[string]interface{}{
 					"type":        "string",
-					"description": "One enabled Gmail connection ID to send this workflow's notify_user emails FROM, for both run and Pulse summaries. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
+					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM, for both run and Pulse summaries. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
 				},
 
 				"browser_mode": map[string]interface{}{
@@ -4765,7 +4765,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"enabled_custom_tools": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Workflow-level optional workspace/custom tools (stored in execution_defaults, applies to EVERY step unless a step sets its own enabled_custom_tools). Execution agents already receive workspace_advanced plus human_feedback, notify_user, and create_human_input_request. Add only capabilities nearly every step needs and name additional human tools explicitly. Legacy human_tools:* is normalized to the same three-tool baseline. Prefer per-step tuning otherwise. Pass an empty array to clear the workflow-level additions.",
+					"description": "Workflow-level optional workspace/custom tools (stored in execution_defaults, applies to EVERY step unless a step sets its own enabled_custom_tools). Execution agents already receive workspace_advanced plus human_feedback, create_human_input_request, send_email and send_slack_message. Add only capabilities nearly every step needs and name additional human tools explicitly. Legacy human_tools:* is normalized to the same baseline. Prefer per-step tuning otherwise. Pass an empty array to clear the workflow-level additions.",
 				},
 				"advisor_specialization_approval_input_id": map[string]interface{}{
 					"type":        "string",
@@ -5594,7 +5594,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 				// Refresh the current builder turn immediately. The agent still never
-				// sees the URL; only notify_user's destination context receives it.
+				// sees the URL; only workflow summary delivery's destination context receives it.
 				if destination, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && destination != nil {
 					if secretName == "" {
 						destination.SlackWebhook = nil
@@ -5610,9 +5610,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 				anyChanged = true
 				if secretName == "" {
-					sb.WriteString("\n### Slack Incoming Webhook (disabled)\nWorkflow notify_user calls no longer send to a dedicated Slack webhook. Interactive Slack bot behavior is unchanged.\n")
+					sb.WriteString("\n### Slack Incoming Webhook (disabled)\nWorkflow workflow summary delivery calls no longer send to a dedicated Slack webhook. Interactive Slack bot behavior is unchanged.\n")
 				} else {
-					sb.WriteString(fmt.Sprintf("\n### Slack Incoming Webhook (configured)\n- Encrypted backend-only secret: %s\n- Applies immediately to notify_user in this builder turn and to future workflow runs. notify_user renders rich Block Kit by default; the agent never receives the URL. It is one-way and is not used for human_feedback.\n", secretName))
+					sb.WriteString(fmt.Sprintf("\n### Slack Incoming Webhook (configured)\n- Encrypted backend-only secret: %s\n- Applies to recorded summaries and future workflow runs. workflow summary delivery renders rich Block Kit by default; the agent never receives the URL. It is one-way and is not used for human_feedback.\n", secretName))
 				}
 				logger.Info(fmt.Sprintf("Updated workflow Slack webhook secret reference: configured=%v", secretName != ""))
 			}
@@ -5773,7 +5773,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 
-				// Apply to the live builder turn so a test notify_user right after
+				// Apply to the live builder turn so a test workflow summary delivery right after
 				// this call already posts to the newly chosen channels.
 				toWebhookDests := func(names []string, values map[string]string) []services.SlackWebhookDest {
 					var dests []services.SlackWebhookDest

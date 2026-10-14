@@ -244,7 +244,7 @@ func (g *productToolGate) allowsLocked(name string) bool {
 	if !(productpolicy.Selection{}).AllowsTool(name) {
 		return false
 	}
-	if (name == "notify_user" || name == "send_email" || name == "record_summary") && !g.workflowNotifications {
+	if (name == "send_email" || name == "record_summary") && !g.workflowNotifications {
 		return false
 	}
 	if g.deny != nil && g.deny(name) {

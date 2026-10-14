@@ -33,13 +33,15 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}))
 	defer s.Close()
 	c.WorkspaceClient = workspace.NewClient(s.URL)
-	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "notify_user", "query_workflow_costs", "apply_workflow_db_migration", "list_functions", "call_function", "get_function_call", "reply_function_call", "get_goal_metrics", "record_goal_observations", "ask_pulse", "ask_goal_lead"}
+	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "list_functions", "call_function", "get_function_call", "reply_function_call", "get_goal_metrics", "record_goal_observations", "ask_pulse", "ask_goal_lead", "send_email", "send_slack_message"}
 	c.WorkspaceToolExecutors = map[string]interface{}{}
 	cfg := &AgentConfigs{}
 	for _, name := range names {
 		c.WorkspaceTools = append(c.WorkspaceTools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name}})
 		c.WorkspaceToolExecutors[name] = name
-		cfg.EnabledCustomTools = append(cfg.EnabledCustomTools, "workflow:"+name)
+		if name != "send_email" && name != "send_slack_message" {
+			cfg.EnabledCustomTools = append(cfg.EnabledCustomTools, "workflow:"+name)
+		}
 	}
 	for _, test := range []struct {
 		name, manifest, soul string
@@ -57,19 +59,19 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 			}
 			tools, executors := c.prepareCustomTools(cfg)
 			managerTools, managerExecutors := c.prepareOrchestratorCustomTools(cfg, c.resolveDBAccess(cfg))
-			for _, name := range names[5:12] {
+			for _, name := range names[5:11] {
 				if slices.Contains(registeredToolNames(managerTools), name) || managerExecutors[name] != nil {
 					t.Fatalf("manager re-added %s", name)
 				}
 			}
 			got := registeredToolNames(tools)
-			for _, name := range names[5:12] {
+			for _, name := range names[5:11] {
 				if slices.Contains(got, name) || executors[name] != nil {
 					t.Fatalf("ordinary agent retained %s", name)
 				}
 			}
-			for _, name := range []string{"execute_shell_command", "human_feedback", "create_human_input_request"} {
-				if !slices.Contains(got, name) || executors[name] != name {
+			for _, name := range []string{"execute_shell_command", "human_feedback", "create_human_input_request", "send_email", "send_slack_message"} {
+				if !slices.Contains(got, name) || executors[name] != name || !slices.Contains(registeredToolNames(managerTools), name) || managerExecutors[name] != name {
 					t.Fatalf("baseline lost %s", name)
 				}
 			}

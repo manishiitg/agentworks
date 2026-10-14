@@ -923,7 +923,7 @@ export default function LearningApp() {
       return next
     })
   }
-  // Messages Quill sent the parent (notify_user: a check-in's summary, a
+  // Messages Quill sent the parent (saved updates: a check-in's summary, a
   // heads-up). They stay on screen until the parent dismisses them; the
   // dismissals are remembered per event id so a relaunch does not bring a
   // message back. A message that arrives while the app is open also goes to

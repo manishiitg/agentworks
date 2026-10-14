@@ -39,7 +39,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) refreshStepGoalPolicy(ctx context.Con
 // This leaves the general step baseline and the owning pool's access ceiling intact.
 func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmtypes.Tool, executors map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}) {
 	blocked := map[string]bool{
-		"notify_user": true, "query_workflow_costs": true, "apply_workflow_db_migration": true,
+		"query_workflow_costs": true, "apply_workflow_db_migration": true,
 		"list_functions": true, "call_function": true, "get_function_call": true, "reply_function_call": true,
 		"get_goal_metrics": !hcpo.stepHasGoal.Load(), "record_goal_observations": !hcpo.stepHasGoal.Load(),
 		"ask_pulse": !hcpo.stepPulseEnabled.Load(), "ask_goal_lead": !hcpo.stepPulseEnabled.Load(),

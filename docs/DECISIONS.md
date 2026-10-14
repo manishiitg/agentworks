@@ -1,5 +1,26 @@
 # Decisions and open issues
 
+## 2026-10-14 — Retire owner notifications as a tool; keep applicable step requirements (PLAT-861)
+
+Retire `notify_user` across products. Preserve internal run/Pulse
+summary delivery and record_summary, with their history, receipts and saved routing.
+Workflow agents receive send_email and send_slack_message in the shared baseline,
+subject to owning product, connection and autonomy gates. No workflow upgrade pass.
+
+Remove generic role/task paragraphs, absent-tool lists, conversation-order advice,
+the blanket repeat-action restriction and the forced turn-loop paragraph. Use the
+actual step title and explain workflow/run/workspace meaning before paths and
+requirements. Describe granted DB/KB resources by purpose and explain read/write
+scope; keep detailed procedures in on-demand skills. Runtime registration
+enforces tool availability and sends task/follow-up turns; authored `system_rules`
+keeps task-specific policies. Retain actual grants, output/completion requirements
+and conditional preparation-only guidance while caller input is pending.
+
+Why: the removed prose duplicated runtime behavior and could obstruct legitimate
+multi-action tasks without describing that step's requirements.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-191.
+
 ## 2026-10-14 — The CLI updates itself by default; breaking releases are announced, not installed (PLAT-861)
 
 The local helper checks the default login's server a few minutes after it starts and then every few hours, and installs the offered CLI build when no chat is being delivered to. Turn it off with `agentworks update --auto off` or `AGENTWORKS_AUTO_UPDATE=0`. Releases carry a compatibility epoch (`deploy/cli-release.json`, built into the CLI too): a CLI installs automatically only a release of its own epoch. Bumping the epoch, with a one-line reason, is the act of marking a release breaking; the chat then tells the person why, at most once a day, and the manual update command. Later releases keep the new epoch, so clients on it update by themselves again with nothing to reset. A failed install or helper restart rolls back to the kept previous program and that build is not tried again until another is offered. An offer that has not changed since the last check is not installed again, so manual updates are not undone. Other servers only produce a notice. Windows only notifies until its bridge has run for real users. There is no minimum-compatible version: builds are commit hashes with no order, so compatibility is an epoch id, not a number comparison.
@@ -2127,6 +2148,8 @@ Ticket: [PLAT-740](https://github.com/runloop-workflows/deployments/blob/main/ti
   plain message to the owner is added: only workflow chats could call `notify_user`, and a summary covers them.
 - **Still open.** `notify_user` remains (deprecated) until the live scripted steps that call it through the custom tool
   endpoint, such as server A-data-reports, have moved to `record_summary` or `send_email`; then it is removed.
+
+Superseded 2026-10-14 (861-191): the deprecated tool is removed globally; internal summary delivery remains, with `record_summary` for agent-authored summaries.
 
 ### 2026-10-09 — send_email: emailing named people is its own tool; notify_user tells the owner
 

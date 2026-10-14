@@ -105,7 +105,7 @@ func InheritSessionNotificationDestination(parentSessionID, childSessionID strin
 }
 
 // UpdateSessionSlackWebhook applies a workflow webhook change immediately to
-// subsequent notify_user calls in the same coding-agent session. The URL stays
+// subsequent workflow summary delivery calls in the same coding-agent session. The URL stays
 // in backend memory and is never returned to the model.
 func UpdateSessionSlackWebhook(sessionID string, webhook *services.SlackWebhookDest) {
 	sessionID = strings.TrimSpace(sessionID)

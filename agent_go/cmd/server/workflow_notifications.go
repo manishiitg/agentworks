@@ -125,7 +125,7 @@ func resolveSlackNotificationState(id, label string, capabilities WorkflowCapabi
 	}
 
 	destination.State = workflowNotificationStateReady
-	destination.Summary = "notify_user calls are delivered here automatically by the backend."
+	destination.Summary = "Run and Pulse summaries are delivered here automatically."
 	return destination
 }
 
@@ -222,7 +222,7 @@ func notificationAccountChannels(ctx context.Context, selectedSenderID string) [
 	return accountChannels
 }
 
-// effectiveNotificationState reports whether notify_user has at least one
+// effectiveNotificationState reports whether workflow summary delivery has at least one
 // usable delivery path for this scope. Account-level channels such as Gmail
 // are inherited automatically; a workflow does not need a redundant Gmail
 // field in workflow.json. A broken explicitly configured Slack destination

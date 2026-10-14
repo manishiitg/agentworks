@@ -1039,7 +1039,7 @@ func shouldAutoEnableGmail(cfg *GmailConfig, st GmailAuthStatus) bool {
 
 // EnableIfAuthenticated switches the Gmail channel on when the effective
 // sending account is authenticated with the Gmail scope, persists that, and
-// registers the connector with the live NotificationManager so notify_user
+// registers the connector with the live NotificationManager so workflow summary delivery
 // offers Gmail on the next turn without a restart. Reports whether it did.
 func (g *GmailService) EnableIfAuthenticated(ctx context.Context) (bool, error) {
 	cfg := g.GetConfig()

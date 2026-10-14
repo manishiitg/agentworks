@@ -33,7 +33,7 @@ func TestNotifyRouteDigestAcrossSessionAndDurableProvider(t *testing.T) {
 	RegisterSessionNotificationDestination(session, &services.NotificationDestination{WorkspacePath: "Workflow/routes", RouteSelections: map[string]string{"router": "publish"}})
 	t.Cleanup(func() { DeleteSessionNotificationDestination(session) })
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, session)
-	_, err := handleNotifyUser(ctx, map[string]interface{}{
+	_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"message_for_user": "Shared work checked.", "notification_kind": "pulse_summary", "summary_status": "blocked",
 		"exclude_channels": []interface{}{"gmail", "slack", "whatsapp"},
 		"summary_routes": []interface{}{
@@ -100,7 +100,7 @@ func TestPulseNotificationDoesNotInheritExecutionRoute(t *testing.T) {
 		WorkspacePath: "Workflow/routes", RouteSelections: map[string]string{"router": "publish"},
 	})
 	for _, kind := range []string{"run_summary", "pulse_summary"} {
-		_, err := handleNotifyUser(ctx, map[string]interface{}{"message_for_user": "Current evidence", "notification_kind": kind, "summary_status": "informational", "exclude_channels": []interface{}{"gmail", "slack", "whatsapp"}})
+		_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{"message_for_user": "Current evidence", "notification_kind": kind, "summary_status": "informational", "exclude_channels": []interface{}{"gmail", "slack", "whatsapp"}})
 		if err != nil {
 			t.Fatal(err)
 		}

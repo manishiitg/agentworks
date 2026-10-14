@@ -90,7 +90,8 @@ if len(config.SelectedServers) > 0 {
       "workspace_advanced:*",
       "workspace_advanced:execute_shell_command",
       "human_tools:human_feedback",
-      "human_tools:notify_user",
+      "human_tools:send_email",
+      "human_tools:send_slack_message",
       "human_tools:create_human_input_request"
     ]
   }
@@ -109,7 +110,7 @@ if len(config.SelectedServers) > 0 {
 - `workspace_tools`: Backward-compatible alias for the current workspace registry.
 - `workspace_advanced`: Current workspace tools (`execute_shell_command`, `diff_patch_workspace_file`, `read_image`, `generate_text_llm`, `search_web_llm`, plus the media generators `image_gen` / `image_edit` / `generate_video` / `text_to_speech` / `speech_to_text` / `generate_music`)
 - Legacy basic file tools such as `list_workspace_files`, `read_workspace_file`, `update_workspace_file`, `delete_workspace_file`, and `move_workspace_file` are not part of the current workflow-builder registry. Use shell and diff tools instead.
-- `human_tools`: workflow execution agents receive only the narrow baseline: `human_feedback` (short-lived blocking input), `notify_user` (non-blocking notification), and `create_human_input_request` (durable non-blocking decision). Administrative, decision-consumer, Slack, and Google Workspace tools must be selected explicitly. Legacy `human_tools:*` step configuration is normalized to the same three-tool baseline rather than expanding the category.
+- `human_tools`: workflow execution agents receive only the narrow baseline: `human_feedback` (short-lived blocking input), `create_human_input_request` (durable decision), `send_email` and `send_slack_message` (addressed sends). Administrative, decision-consumer, Slack CLI and Google Workspace tools must be selected explicitly. The owning pool and connection/access gates still apply. Legacy `human_tools:*` step configuration is normalized to the same baseline rather than expanding the category.
 - `workspace_browser`: `agent_browser`
 
 ### 🛠️ Common Issues & Solutions
@@ -160,7 +161,7 @@ Tool availability is decided by **two independent gates**. Section 1 above is on
 
 A tool can be **registered** (layer 1) yet still **blocked** (layer 2). This has happened in production twice:
 
-- `notify_user` was registered via `human_tools:*`, but `GetToolsForWorkshopMode` did not list it, so every workflow-phase agent (including the post-run monitor) was denied it.
+- The retired notification tool was registered via `human_tools:*`, but `GetToolsForWorkshopMode` did not list it, so every workflow-phase agent (including the post-run monitor) was denied it.
 - Pulse state tools (`get_pulse_module_state`, `record_pulse_worklist`, `mark_pulse_module_result`) were registered in the workflow tool pool, but not allow-listed for workshop mode, so Pulse/module turns could be instructed to call them and then report that they were not callable.
 
 - **Layer 2 source of truth:** `GetToolsForWorkshopMode` in [`interactive_workshop_manager.go`](../../agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/interactive_workshop_manager.go). The `system` slice is "always available regardless of mode"; the `switch mode` adds the rest. To make a tool available to the builder/monitor, add its name here.
