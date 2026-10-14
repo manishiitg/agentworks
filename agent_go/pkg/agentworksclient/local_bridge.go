@@ -805,12 +805,18 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 	}
 	if in.Action == "attach" {
-		if in.OwnAttach && in.Provider == "codex" && s != nil && !in.SwitchConnection {
-			if in.AgentName != "" && in.AgentName != s.Attachment.AgentName || !s.AccountSenders || s.client == nil {
-				return LocalBridgeReply{Error: "own attach cannot rename or take over an existing Codex attachment"}
+		// A lease the server closed cannot be repaired in place: the chat's plain attach under its own name starts a fresh
+		// one through the normal path below (a name another live chat holds is still refused there and by the server).
+		closedSameName := s != nil && s.ServerClosed && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName)
+		if in.OwnAttach && in.Provider == "codex" && s != nil && !in.SwitchConnection && !closedSameName {
+			if in.AgentName != "" && in.AgentName != s.Attachment.AgentName {
+				return LocalBridgeReply{Error: "This chat is attached as agent:" + s.Attachment.AgentName + ". Another name has to be chosen by the person in the app."}
+			}
+			if !s.AccountSenders || s.client == nil {
+				return LocalBridgeReply{Error: "This chat's saved connection is incomplete. Reconnect it from the app's AgentWorks attachment command."}
 			}
 			if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-				return LocalBridgeReply{Error: "existing Codex lease is unavailable; use the person attachment command"}
+				return LocalBridgeReply{Error: "AgentWorks could not check this chat's connection just now. Try /agentworks attach again; if it keeps failing, reconnect from the app's AgentWorks attachment command."}
 			}
 			if in.HostKey == "" {
 				return LocalBridgeReply{Error: "own attach needs a verified process binding"}

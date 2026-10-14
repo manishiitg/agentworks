@@ -128,7 +128,7 @@ func TestAgentStatusNoticeTellsTheSenderOnceThatAMessageIsWaiting(t *testing.T) 
 	drain := chat
 	drain.Action, drain.Transport = "drain", "muse_hook"
 	got := call(drain).Messages
-	if len(got) != 1 || got[0].Kind != "status" || got[0].Sender != "AgentWorks" || !strings.Contains(got[0].Message, "detached has not read your message") || !strings.Contains(got[0].Message, "offline") {
+	if len(got) != 1 || got[0].Kind != "status" || got[0].Sender != "AgentWorks" || !strings.Contains(got[0].Message, "detached has not read your message") || !strings.Contains(got[0].Message, "no chat is attached to this name") {
 		t.Fatalf("the status line is wrong: %+v", got)
 	}
 	// Reported once: a second sweep adds nothing, and the line is not offered again.
@@ -136,5 +136,43 @@ func TestAgentStatusNoticeTellsTheSenderOnceThatAMessageIsWaiting(t *testing.T) 
 	time.Sleep(300 * time.Millisecond)
 	if again := call(drain).Messages; len(again) != 0 {
 		t.Fatalf("the notice was repeated or a notice was written about the notice: %+v", again)
+	}
+}
+
+// A recipient that wrote back has read the earlier message, so its sender is not told it is unread; a name nobody is
+// attached to is called that, not "connected".
+func TestAgentStatusSweepSkipsRepliedMessagesAndNamesDeadNames(t *testing.T) {
+	now := time.Now().UTC()
+	ep := func(id string) agentMessageEndpoint {
+		return agentMessageEndpoint{UserID: "alice", NamedAgentID: id, Label: id}
+	}
+	msg := func(id string, from int, at time.Time) agentMessage {
+		return agentMessage{ID: id, From: from, SentAt: at, Delivery: "stored"}
+	}
+	s := agentMessageStore{
+		Agents: []namedMessageAgent{{ID: "a", UserID: "alice", Name: "a"}, {ID: "b", UserID: "alice", Name: "b"}, {ID: "dead", UserID: "alice", Name: "dead"}},
+		Conversations: []agentConversation{
+			{ID: "c1", Endpoints: [2]agentMessageEndpoint{ep("a"), ep("b")}, Messages: []agentMessage{msg("msg-1", 0, now.Add(-10*time.Minute))}},
+			{ID: "c2", Endpoints: [2]agentMessageEndpoint{ep("b"), ep("a")}, Messages: []agentMessage{msg("msg-2", 0, now.Add(-5*time.Minute))}},
+			{ID: "c3", Endpoints: [2]agentMessageEndpoint{ep("a"), ep("dead")}, Messages: []agentMessage{msg("msg-3", 0, now.Add(-10*time.Minute))}},
+		},
+	}
+	if !sweepAgentStatusNotices(&s, now) {
+		t.Fatal("expected the store to change")
+	}
+	if got := s.Conversations[0].Messages[0]; got.Delivery != "stored" || !got.AdmittedAt.IsZero() || !got.NoticeSent {
+		t.Fatalf("a replied-to message gets no notice but must stay undelivered-state stored, got %+v", got)
+	}
+	var text string
+	for _, c := range s.Conversations {
+		if c.ID == agentStatusConversationPrefix+"a" {
+			text = c.Messages[0].Text
+		}
+	}
+	if !strings.Contains(text, "no chat is attached to this name") || strings.Contains(text, "your message 1") || strings.Contains(text, "b has not read") {
+		t.Fatalf("unexpected notice: %q", text)
+	}
+	if sweepAgentStatusNotices(&s, now.Add(time.Minute)) {
+		t.Fatal("a message must be reported once only")
 	}
 }

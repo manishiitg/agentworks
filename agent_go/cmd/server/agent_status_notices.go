@@ -24,6 +24,8 @@ var agentStatusNoticeAfter = 3 * time.Minute
 type agentStatusEntry struct {
 	label   string
 	online  bool
+	nobody  bool // no chat is attached to this name any more
+	others  []string
 	count   int
 	oldest  time.Time
 	oldest8 string
@@ -35,6 +37,24 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 	type key struct{ agentID, userID string }
 	senders := map[key]map[string]*agentStatusEntry{}
 	endpoints := map[key]agentMessageEndpoint{}
+	// A recipient that has written to the sender since is evidently in touch, so the sender is not told it is unread.
+	// This only silences the notice; it is never a receipt. The latest such reply per (recipient, sender) pair.
+	type pair struct{ from, to string }
+	lastReply := map[pair]time.Time{}
+	for ci := range s.Conversations {
+		c := &s.Conversations[ci]
+		for mi := range c.Messages {
+			m := &c.Messages[mi]
+			a, b := c.Endpoints[m.From].NamedAgentID, c.Endpoints[1-m.From].NamedAgentID
+			if m.Kind != "" || m.Wakeup || a == "" || b == "" {
+				continue
+			}
+			if p := (pair{a, b}); m.SentAt.After(lastReply[p]) {
+				lastReply[p] = m.SentAt
+			}
+		}
+	}
+	changed := false
 	for ci := range s.Conversations {
 		c := &s.Conversations[ci]
 		if strings.HasPrefix(c.ID, agentStatusConversationPrefix) || strings.HasPrefix(c.ID, "wakeup-inbox-") {
@@ -49,6 +69,10 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 			if src.NamedAgentID == "" || dest.NamedAgentID == "" {
 				continue
 			}
+			if lastReply[pair{dest.NamedAgentID, src.NamedAgentID}].After(m.SentAt) {
+				m.NoticeSent, changed = true, true // only the notice is dropped: delivery state is untouched, so the message is still offered
+				continue
+			}
 			k := key{src.NamedAgentID, src.UserID}
 			if senders[k] == nil {
 				senders[k] = map[string]*agentStatusEntry{}
@@ -58,7 +82,10 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 			e := senders[k][label]
 			if e == nil {
 				agent, _ := s.destAgentOf(dest)
-				e = &agentStatusEntry{label: label, online: agent != nil && namedAgentOnline(*agent)}
+				e = &agentStatusEntry{label: label, online: agent != nil && namedAgentOnline(*agent), nobody: agent == nil || agent.Attachment == nil}
+				if e.nobody && agent != nil {
+					e.others = currentAgentNames(s, agent.UserID, agent.ID)
+				}
 				senders[k][label] = e
 			}
 			e.count++
@@ -69,7 +96,7 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 		}
 	}
 	if len(senders) == 0 {
-		return false
+		return changed
 	}
 	keys := make([]key, 0, len(senders))
 	for k := range senders {
@@ -89,16 +116,39 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 			if e.online {
 				state = "it is connected but has not picked it up yet"
 			}
+			tail := "It is stored and will be read when its person next uses that chat."
+			if e.nobody {
+				state = "no chat is attached to this name; it may have been renamed or retired"
+				tail = "It is stored but nobody will read it unless a chat takes that name again."
+				if len(e.others) > 0 {
+					tail += " Names connected now for the same person: " + strings.Join(e.others, ", ") + "."
+				}
+			}
 			what := fmt.Sprintf("your message %s (sent %s)", shortMessageID(e.oldest8), e.oldest.UTC().Format("15:04 UTC"))
 			if e.count > 1 {
 				what = fmt.Sprintf("%d of your messages (the oldest sent %s)", e.count, e.oldest.UTC().Format("15:04 UTC"))
 			}
-			lines = append(lines, fmt.Sprintf("%s has not read %s: %s. It is stored and will be read when its person next uses that chat.", l, what, state))
+			lines = append(lines, fmt.Sprintf("%s has not read %s: %s. %s", l, what, state, tail))
 		}
 		text := strings.Join(lines, "\n") + "\nStatus only: you do not need to resend or reply. You can tell your person it is waiting."
 		appendAgentStatusMessage(s, endpoints[k], text, now)
 	}
 	return true
+}
+
+// currentAgentNames lists up to five other names of one person that have a chat attached right now.
+func currentAgentNames(s *agentMessageStore, userID, except string) []string {
+	var out []string
+	for _, a := range s.Agents {
+		if a.UserID == userID && a.ID != except && a.Attachment != nil && namedAgentOnline(a) {
+			out = append(out, a.Name)
+		}
+	}
+	sort.Strings(out)
+	if len(out) > 5 {
+		out = out[:5]
+	}
+	return out
 }
 
 func shortMessageID(id string) string {

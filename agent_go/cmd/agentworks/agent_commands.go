@@ -1417,7 +1417,34 @@ func bridgeCall(ctx context.Context, root string, o *options, req agentworksclie
 		}
 		return out, errStillConnecting
 	}
-	return out, err
+	return out, namedLoginFailure(o, req, err)
+}
+
+// namedLoginFailure says which login file and server a failed sign-in belongs to, so a stale or unreachable login
+// (for example AGENTWORKS_CONFIG pointing at a dead local server) is not an anonymous "connection refused". It never
+// switches to another login: that could deliver to a different server or account without the person knowing.
+func namedLoginFailure(o *options, req agentworksclient.LocalBridgeRequest, err error) error {
+	if err == nil || !(strings.Contains(err.Error(), "refresh browser login") || strings.Contains(err.Error(), "run agentworks login")) {
+		return err
+	}
+	path := req.ConfigPath
+	if path == "" {
+		if p, e := o.path(); e == nil {
+			path = p
+		}
+	}
+	if path == "" {
+		return err
+	}
+	server := "unknown server"
+	if cfg, e := agentworksclient.LoadConfig(path); e == nil && cfg.Server != "" {
+		server = cfg.Server
+	}
+	fix := "Run agentworks login for that server, or point this chat at a working login."
+	if o.getenv != nil && o.getenv("AGENTWORKS_CONFIG") != "" {
+		fix = "AGENTWORKS_CONFIG selects this login; unset it or point it at a working login (agentworks logins lists them)."
+	}
+	return fmt.Errorf("The login %s (server %s) cannot be used: %w. %s", path, server, err, fix)
 }
 
 func bridgeCallOnce(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) (agentworksclient.LocalBridgeReply, error) {
