@@ -28,8 +28,10 @@ describe('resolveOverallSummary', () => {
     expect((summary?.totalInputTokens ?? 0) - (summary?.cacheReadTokens ?? 0) - (summary?.cacheWriteTokens ?? 0)).toBe(7155250 + 231000 - 5100000)
   })
 
-  it('treats input as fresh-only when cache reads exceed it (live numbers)', () => {
-    const rows = [daily({ totalCost: 4.7578, totalTokens: 7280000 + 322254, totalInputTokens: 7280000, totalOutputTokens: 322254, cacheReadTokens: 46710000, cacheWriteTokens: 0 })]
+  it('trusts the ledger-normalized total input (live numbers)', () => {
+    // input_tokens from the API already includes cache reads exactly once
+    // (normalized per provider); the header must not re-add cache.
+    const rows = [daily({ totalCost: 4.7578, totalTokens: 53990000 + 322254, totalInputTokens: 53990000, totalOutputTokens: 322254, cacheReadTokens: 46710000, cacheWriteTokens: 0 })]
     const summary = resolveOverallSummary(null, null, null, rows, totalTokens, inputTokens)
     expect(summary?.totalInputTokens).toBe(53990000)
     expect(summary?.cacheReadTokens).toBe(46710000)

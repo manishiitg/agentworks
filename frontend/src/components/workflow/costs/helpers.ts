@@ -197,11 +197,6 @@ type PhaseLike = { totalCost: number; totalTokens: number; totalInputTokens: num
  * run artifacts) are the only token source, so the header sums those rows.
  */
 
-/** Total input for one row/source, whichever way its provider reports cache. */
-function totalInputFor(rawInput: number, cacheRead: number, cacheWrite: number): number {
-  return cacheRead > rawInput ? rawInput + cacheRead + cacheWrite : rawInput
-}
-
 export function resolveOverallSummary(
   scopedCosts: ScopedCostsLike,
   aggregate: AggregateLike,
@@ -213,11 +208,10 @@ export function resolveOverallSummary(
   const hasScopes = !!scopedCosts && Object.keys(scopedCosts.by_scope || {}).length > 0
   const ledgerTokens = hasScopes ? tokensOf(scopedCosts!.total) : 0
   if (hasScopes && ledgerTokens > 0) {
-    const ledgerInput = totalInputFor(inputOf(scopedCosts!.total), scopedCosts!.total.cache_read_tokens || 0, scopedCosts!.total.cache_write_tokens || 0)
     return {
       totalCost: scopedCosts!.total.total_cost_usd || 0,
-      totalTokens: ledgerInput + (scopedCosts!.total.completion_tokens || 0),
-      totalInputTokens: ledgerInput,
+      totalTokens: ledgerTokens,
+      totalInputTokens: inputOf(scopedCosts!.total),
       totalOutputTokens: scopedCosts!.total.completion_tokens || 0,
       cacheReadTokens: scopedCosts!.total.cache_read_tokens || 0,
       cacheWriteTokens: scopedCosts!.total.cache_write_tokens || 0,
@@ -225,7 +219,7 @@ export function resolveOverallSummary(
     }
   }
   const dailyOutput = daily.reduce((sum, entry) => sum + (entry.totalOutputTokens || 0), 0)
-  const dailyInput = daily.reduce((sum, entry) => sum + totalInputFor(entry.totalInputTokens || 0, entry.cacheReadTokens || 0, entry.cacheWriteTokens || 0), 0)
+  const dailyInput = daily.reduce((sum, entry) => sum + (entry.totalInputTokens || 0), 0)
   const dailyTokens = dailyInput + dailyOutput
   if (dailyTokens > 0) {
     return {
@@ -250,8 +244,10 @@ export function resolveOverallSummary(
     }
   }
   if (!aggregate && !phase) return null
-  const artifactInput = totalInputFor(aggregate?.totalInputTokens || 0, aggregate?.totalCacheReadTokens || 0, aggregate?.totalCacheWriteTokens || 0)
-    + totalInputFor(phase?.totalInputTokens || 0, phase?.totalCacheReadTokens || 0, phase?.totalCacheWriteTokens || 0)
+  // Per source: unnormalized run-file usage can have cache above input.
+  const sourceInput = (input: number, cached: number, writes: number) => cached > input ? input + cached + writes : input
+  const artifactInput = sourceInput(aggregate?.totalInputTokens || 0, aggregate?.totalCacheReadTokens || 0, aggregate?.totalCacheWriteTokens || 0)
+    + sourceInput(phase?.totalInputTokens || 0, phase?.totalCacheReadTokens || 0, phase?.totalCacheWriteTokens || 0)
   return {
     totalCost: (aggregate?.totalCost || 0) + (phase?.totalCost || 0),
     totalTokens: artifactInput + (aggregate?.totalOutputTokens || 0) + (phase?.totalOutputTokens || 0),
