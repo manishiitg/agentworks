@@ -186,6 +186,8 @@ interface ChatInputProps {
   hideRuntimeStatus?: boolean
   showProductSteerAction?: boolean
   showProductTerminalControl?: boolean
+  /** A chat-specific slash list (for example a dashboard's project functions). When set, only these commands are offered; personal and global commands are not. */
+  slashCommands?: CommandDefinition[]
 }
 
 function isAutoNotificationMessage(msg: string): boolean {
@@ -422,6 +424,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   hideRuntimeStatus = false,
   showProductSteerAction = false,
   showProductTerminalControl = false,
+  slashCommands,
   onNewChat,
 }) => {
   const isProductSurface = surfaceVariant === 'product'
@@ -1867,6 +1870,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // Profile products configure MCP servers and skills in their right-side
     // Setup panels. Their slash menu is likewise manifest-owned: a product
     // with no product.yaml commands must not fall through to legacy globals.
+    if (slashCommands && (trigger?.kind === '!' || trigger?.kind === '$')) trigger = null
     if (isProductProfile && (trigger?.kind === '!' || trigger?.kind === '$' || (trigger?.kind === '/' && !productCommandsAvailable))) trigger = null
     if (trigger && isDismissedComposerTrigger(trigger, dismissedTriggerRef.current)) trigger = null
     else dismissedTriggerRef.current = null
@@ -1893,7 +1897,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       case '$':
         setDollarPosition(trigger.start); setServerPopupSearchQuery(trigger.query); setServerPopupPosition(position); break
     }
-  }, [localCodeMode, isProductProfile, isWorkflowPhaseChat, productCommandsAvailable])
+  }, [localCodeMode, isProductProfile, isWorkflowPhaseChat, productCommandsAvailable, slashCommands])
 
   // Memoized handlers to prevent re-creation
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2088,10 +2092,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const commandArgs = (firstSpace >= 0 ? withoutSlash.slice(firstSpace + 1) : '').trim()
     if (!commandName) return false
 
-    const cmd = useProductCommandCatalog
-      ? findProductOrUserCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-      : findCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-    if (!cmd && !useProductCommandCatalog) {
+    const cmd = slashCommands
+      ? slashCommands.find(c => c.command === commandName)
+      : useProductCommandCatalog
+        ? findProductOrUserCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+        : findCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+    if (!cmd && !useProductCommandCatalog && !slashCommands) {
       const modeScopedCommand = findCommandAnyMode(commandName)
       if (modeScopedCommand && commandModeCategory) {
         if (commandModeCategory === 'workflow' && modeScopedCommand.modes?.includes('workflow')) {
@@ -2129,7 +2135,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     clearInputState()
     cmd.execute(ctx)
     return true
-  }, [localCodeMode, activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog])
+  }, [localCodeMode, activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog, slashCommands])
 
   const getSubmitBlockReason = useCallback((): string | null => {
     if (!queryToSubmit?.trim()) return null
@@ -2395,10 +2401,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     closeComposerPickers()
 
     // Look up and execute the command from the registry
-    const cmd = useProductCommandCatalog
-      ? findProductOrUserCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-      : findCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-    if (!cmd && findCommandAnyMode(command)) {
+    const cmd = slashCommands
+      ? slashCommands.find(c => c.command === command)
+      : useProductCommandCatalog
+        ? findProductOrUserCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+        : findCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+    if (!cmd && !slashCommands && findCommandAnyMode(command)) {
       addToast('This command is unavailable for your current mode or workflow access.', 'info')
       if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
       return
@@ -2436,7 +2444,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
     else setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog])
+  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog, slashCommands])
 
   // Command management callbacks
   const handleEditCommand = useCallback((cmd: CommandDefinition) => {
@@ -3700,7 +3708,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         canWriteWorkflow={canWriteCommandWorkflow}
         agentProfileId={isRelaySurface && isWorkflowMode ? 'relays' : activeTab?.metadata?.agentProfileId}
         workspacePath={customCommandWorkspacePath}
-        {...(isWorkflowMode && !canWriteCommandWorkflow ? {} : {
+        commands={slashCommands}
+        {...(slashCommands || (isWorkflowMode && !canWriteCommandWorkflow) ? {} : {
           onCreateCommand: handleCreateCommand,
           onEditCommand: handleEditCommand,
           onDeleteCommand: handleDeleteCommand,

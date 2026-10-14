@@ -25,6 +25,8 @@ interface CommandSelectionDialogProps extends ComposerPickerProps {
   onCreateCommand?: () => void
   onEditCommand?: (command: CommandDefinition) => void
   onDeleteCommand?: (command: CommandDefinition) => void
+  /** A chat-specific list (for example a dashboard's project functions). It replaces the global and personal commands. */
+  commands?: CommandDefinition[]
 }
 
 export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
@@ -41,7 +43,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   onCreateCommand,
   onEditCommand,
   onDeleteCommand, inputRef, listId, onActiveOptionChange,
-  standalone = false, onSearchQueryChange, triggerRef
+  standalone = false, onSearchQueryChange, triggerRef, commands
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const revision = useSyncExternalStore(subscribeCommands, getCommandRevision)
@@ -57,16 +59,16 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   }, [isOpen, standalone])
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !commands) {
       loadAndRegisterUserCommands(workspacePath).catch(() => {})
     }
-  }, [isOpen, workspacePath])
+  }, [isOpen, workspacePath, commands])
 
   // Filter commands based on search query and current mode
   const filteredCommands = useMemo(() => {
-    const allCommands = agentProfileId
+    const allCommands = commands ?? (agentProfileId
       ? getProductAndUserCommands(modeCategory, workshopMode, canWriteWorkflow)
-      : getCommands(modeCategory, workshopMode, canWriteWorkflow)
+      : getCommands(modeCategory, workshopMode, canWriteWorkflow))
 
     if (!searchQuery.trim()) {
       return allCommands
@@ -95,7 +97,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
     })
 
     return filtered
-  }, [agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision])
+  }, [agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands])
 
   useEffect(() => { setSelectedIndex(0) }, [searchQuery, isOpen, filteredCommands])
   useEffect(() => {
@@ -117,7 +119,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
         event.preventDefault()
         // Exact retained shortcuts remain directly executable even though the
         // search results point to the consolidated command's focus picker.
-        const shortcut = agentProfileId
+        const shortcut = commands ? undefined : agentProfileId
           ? findProductOrUserCommand(searchQuery.trim(), modeCategory, workshopMode, canWriteWorkflow)
           : findCommand(searchQuery.trim(), modeCategory, workshopMode, canWriteWorkflow)
         if (selectedIndex === 0 && shortcut?.menuHidden) {
@@ -138,7 +140,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [agentProfileId, isOpen, onClose, onSelectCommand, filteredCommands, selectedIndex, searchQuery, modeCategory, workshopMode, canWriteWorkflow, pickerInputRef])
+  }, [agentProfileId, isOpen, onClose, onSelectCommand, filteredCommands, selectedIndex, searchQuery, modeCategory, workshopMode, canWriteWorkflow, pickerInputRef, commands])
 
   // Scroll selected item into view
   useEffect(() => {

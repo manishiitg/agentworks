@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
-import { MessageCircle, X } from 'lucide-react'
+import { MessageCircle, X, Zap } from 'lucide-react'
 import api from '../../../services/api'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import { openProjectAskConversation } from '../../../utils/projectAskConversation'
 import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
 import ModalPortal from '../../ui/ModalPortal'
+import type { CommandDefinition } from '../../../commands'
 import { ReportEmbedProvider, useReportDataApi } from './reportEmbedContext'
 import { installDashboardChatWidgets, type ChatWidgetSlot } from './dashboardChatWidgets'
 import { installDashboardActionButtons, type ActionRequest } from './reportActionButtons'
@@ -43,6 +44,30 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   // Function buttons run the project's published functions as this person; the
   // server resolves the project from the dashboard record (Crew and workflow).
   const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'workflow'].includes(product))
+  // "/" in this chat lists the project's published functions (not the person's own
+  // commands); choosing one opens the same form as a function button.
+  const [functionList, setFunctionList] = useState<{ name: string; description?: string }[]>([])
+  const chatOpen = Boolean(bound)
+  useEffect(() => {
+    if (!canUseFunctions || !chatOpen) { setFunctionList([]); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await api.get<{ functions?: { name: string; description?: string }[] }>(`/api/dashboards/${encodeURIComponent(resourceId)}/functions`)
+        if (!cancelled) setFunctionList(response?.data?.functions ?? [])
+      } catch {
+        if (!cancelled) setFunctionList([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [canUseFunctions, chatOpen, resourceId, viewer])
+  const slashCommands = useMemo<CommandDefinition[]>(() => functionList.map(fn => ({
+    command: fn.name,
+    description: (fn.description || 'Run this function').split('\n')[0].slice(0, 120),
+    icon: <Zap className="h-3.5 w-3.5" />,
+    source: 'product' as const,
+    execute: () => setAction({ name: fn.name, label: fn.name.replace(/_/g, ' ') }),
+  })), [functionList])
   useEffect(() => {
     generation.current++
     setBound(null); setPopup(false); setSlots([]); setAuthored(false); setError(null); setAction(null)
@@ -103,7 +128,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     }
   }
   const conversation = canAsk && bound && bound.viewer === viewer && bound.resourceId === resourceId
-    ? <div className="flex h-full min-h-0 flex-col"><p className="shrink-0 px-2 py-1 text-xs text-muted-foreground">{capability.mode === 'owner' ? 'Your Builder conversation.' : 'Your Run conversation.'}</p><div className="min-h-0 flex-1"><Suspense fallback={<p>Opening chat…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} landingContent={<div />} composerPlaceholder="Ask a question…" /></Suspense></div></div>
+    ? <div className="flex h-full min-h-0 flex-col"><p className="shrink-0 px-2 py-1 text-xs text-muted-foreground">{capability.mode === 'owner' ? 'Your Builder conversation.' : 'Your Run conversation.'}</p><div className="min-h-0 flex-1"><Suspense fallback={<p>Opening chat…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} landingContent={<div />} slashCommands={slashCommands} composerPlaceholder="Ask a question…" /></Suspense></div></div>
     : <p role="status">{canAsk ? error || 'Opening chat…' : 'Chat is unavailable for this dashboard.'}</p>
   return <ReportEmbedProvider value={runtime}>
     <div ref={container} className="relative overflow-hidden">

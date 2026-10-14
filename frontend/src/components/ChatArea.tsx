@@ -510,6 +510,8 @@ interface ChatAreaProps {
   showProductSteerAction?: boolean
   // Product surfaces normally hide the retained terminal; Work exposes it.
   showProductTerminalControl?: boolean
+  /** A chat-specific slash list; when set only these commands are offered (a dashboard chat lists its project's functions). */
+  slashCommands?: import('../commands').CommandDefinition[]
   // Product chats otherwise have no generic header in which to start fresh.
   showNewChatAction?: boolean
   /** Product-specific composer placeholder (the product variant otherwise says "Describe what you want to create…"). */
@@ -535,7 +537,7 @@ let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands} = props
   useMcpOAuthChatNotifications(tabId)
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
@@ -3844,6 +3846,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           hideRuntimeStatus={hideRuntimeStatus}
           showProductSteerAction={showProductSteerAction}
           showProductTerminalControl={showProductTerminalControl}
+          slashCommands={slashCommands}
           showNewChatAction={showNewChatAction}
           placeholderOverride={composerPlaceholder}
           pendingNativeChoice={pendingCodingAgentChoice}
