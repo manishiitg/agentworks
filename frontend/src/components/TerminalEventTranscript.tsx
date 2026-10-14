@@ -7,7 +7,7 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Terminal as TerminalIcon, XCircle } from 'lucide-react'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
@@ -32,6 +32,7 @@ import {
 import { withToolCallVisibility } from '../utils/toolCallVisibility'
 import { PulseIcon } from './workflow/pulseIcon'
 import { formatDurationCompact } from '../utils/duration'
+import { formatElapsed, turnDoneWord } from './chat/workingWords'
 import { liveUsageSummary, type LiveUsageSummary } from './terminalUsage'
 import { formatToolCallArguments, formatToolCallResult } from '../utils/toolCallFormatting'
 import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
@@ -389,36 +390,29 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   )
 }
 
-// The turn's header line: who spoke, turn, duration, time. It sits at the top
+// The turn's header line: who spoke, when a product names it. It sits at the top
 // of the agent's block, which starts at the turn's first tool call when there
 // is one, so tool work reads as part of the reply rather than a stray chip.
-const AssistantTurnHeader = memo(function AssistantTurnHeader({ event, timestamp, label = 'Agent', icon }: { event?: PollingEvent; timestamp: string; label?: string; icon?: React.ReactNode }) {
-  const fields = event ? transcriptEventPayload(event) : {}
-  // Only a reply event's duration describes the turn. When the header falls
-  // back to the block's first tool call, that event's duration is one shell
-  // command (e.g. "281ms" on a 92-second turn), so say nothing rather than
-  // something misleading. The backend's zero-based `turn` counter is an
-  // internal index that disagrees between event types for the same reply
-  // ("Turn 0" on tool events, "Turn 1" on llm_generation_end); it never
-  // meant anything to a reader and is not shown.
-  const duration = event && AGENT_RESPONSE_EVENT_TYPES.has(event.type || '') && typeof fields.duration === 'number' && fields.duration > 0
-    ? formatDurationCompact(fields.duration)
-    : ''
-  const metadata = [duration, timestamp].filter(Boolean).join(' · ')
-  // The turn is identified by its mark, not an all-caps word: the default
-  // agent gets the Bot glyph alone, while a product override (e.g. Quill's
-  // logo + name) keeps its explicit label beside its mark.
-  const mark = icon ?? <Bot className="h-4 w-4" aria-hidden="true" />
+const AssistantTurnHeader = memo(function AssistantTurnHeader({ label = 'Agent' }: { event?: PollingEvent; timestamp?: string; label?: string; icon?: React.ReactNode }) {
+  // The header names the speaker only when a product gives one; there is no robot mark, and the timing lives in the
+  // closing summary line (TurnDoneSummary). With nothing to say the row is empty and takes no space.
+  if (label === 'Agent') return <div data-testid="terminal-clear-assistant-header" aria-label={label} />
   return (
     <div data-testid="terminal-clear-assistant-header" aria-label={label} className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground [&>img]:h-4 [&>img]:w-4 [&>svg]:h-4 [&>svg]:w-4" aria-hidden="true">{mark}</span>
-      {label !== 'Agent' && <span>{label}</span>}
-      {metadata && <>
-        <span className="h-1 w-1 rounded-full bg-muted-foreground/60" />
-        <span className="normal-case font-medium tracking-normal text-muted-foreground">{metadata}</span>
-      </>}
+      <span>{label}</span>
     </div>
   )
+})
+
+// "✻ Brewed for 1m 12s · done 8:05 PM": one muted line closing a finished turn. The duration and the finish time are the
+// server's own (the reply event's duration and timestamp); with no duration only "done 8:05 PM" is shown. The word is
+// fixed per turn (from its event id), so it never changes on a redraw.
+const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone }) {
+  const finished = new Date(done.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const text = done.durationNs > 0
+    ? `${turnDoneWord(done.key)} for ${formatElapsed(done.durationNs / 1_000_000)} · done ${finished}`
+    : `done ${finished}`
+  return <div data-testid="terminal-clear-turn-done" className="mt-2 text-[11px] text-muted-foreground">✻&#xFE0E; {text}</div>
 })
 
 // Keep the shared AgentWorks/Work conversation rail close to the pane edge.
@@ -440,7 +434,8 @@ function useDisclosure(key: string, initial = false) {
 
 // Where an item sits in its agent turn. A turn is everything between two user
 // messages: tool batches, thoughts, replies, presentation and activity rows.
-type TurnSlot = { agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean }
+type TurnDone = { key: string; durationNs: number; at: string }
+type TurnSlot = { agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone }
 
 // Agent turns share one clock: the first turn, and any turn more than this
 // long after the previous labelled one. User rows always carry their own
@@ -497,6 +492,22 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
     }
     const item = data[index]
     slot.header = item.kind === 'event' ? item.event : item.kind === 'live' ? undefined : item.events[0]
+  })
+  // The turn's closing summary: the last reply of the block, with the server's own duration and finish time.
+  slots.forEach((slot, index) => {
+    if (!slot.agent || !slot.last) return
+    for (let j = index; j >= 0 && slots[j]?.agent; j--) {
+      const item = data[j]
+      if (item.kind === 'event' && isAgentResponseEvent(item.event)) {
+        const payload = transcriptEventPayload(item.event)
+        const at = item.event.timestamp || (typeof payload.timestamp === 'string' ? payload.timestamp : '')
+        if (at && Number.isFinite(Date.parse(at))) {
+          slot.done = { key: item.event.id || at, durationNs: typeof payload.duration === 'number' && payload.duration > 0 ? payload.duration : 0, at }
+        }
+        return
+      }
+      if (slots[j]?.first) return
+    }
   })
   return slots
 }
@@ -1044,6 +1055,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     [items, streamingStatus, streamingText, runtimeActivity?.state],
   )
   const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])
+  const workingNow = runtimeActivity !== undefined && runtimeActivity.state !== 'ready'
 
   const keys = useMemo(() => listData.map(item => item.key), [listData])
   const [pagination, setPagination] = useState(() => ({ keys, first: 1_000_000 }))
@@ -1235,8 +1247,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           return (
             <div data-transcript-key={item.key} data-testid={testId} className="flow-root px-2">
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
-                {slot.first && <AssistantTurnHeader event={slot.header} timestamp={slot.showTime && slot.header ? transcriptTimestamp(slot.header) : ''} label={assistantLabel} icon={assistantIcon} />}
+                {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
                 {body}
+                {slot.last && slot.done && !(workingNow && index === turnSlots.length - 1) && <TurnDoneSummary done={slot.done} />}
               </div>
             </div>
           )

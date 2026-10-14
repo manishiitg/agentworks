@@ -69,3 +69,13 @@ export function formatElapsed(ms: number): string {
   if (minutes < 60) return `${minutes}m ${String(total % 60).padStart(2, '0')}s`
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
 }
+
+// Past-tense words for the line that closes a finished turn ("Brewed for 1m 12s"). Plain and friendly; none reads as a status.
+export const TURN_DONE_WORDS = ['Brewed', 'Baked', 'Crafted', 'Polished', 'Worked', 'Cooked', 'Stitched', 'Wove', 'Sketched', 'Tinkered', 'Gathered', 'Pondered', 'Mulled', 'Shaped', 'Assembled', 'Sorted', 'Sifted', 'Mapped', 'Tuned', 'Folded', 'Whittled', 'Simmered', 'Steeped', 'Kneaded', 'Drafted', 'Pieced it together', 'Figured it out', 'Thought it through', 'Put it together', 'Worked it out'] as const
+
+// The same turn always gets the same word.
+export function turnDoneWord(key: string): string {
+  let hash = 0
+  for (let index = 0; index < key.length; index += 1) hash = (hash * 31 + key.charCodeAt(index)) >>> 0
+  return TURN_DONE_WORDS[hash % TURN_DONE_WORDS.length]
+}

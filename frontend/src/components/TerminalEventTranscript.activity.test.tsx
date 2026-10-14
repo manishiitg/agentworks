@@ -147,7 +147,7 @@ describe('activity belongs to the current agent turn', () => {
     expect(indicators(host)).toHaveLength(1)
     await act(async () => { useChatStore.setState({ tabEvents: { 'chat-a': [user, completed] } }) })
     expect(indicators(host)).toHaveLength(0)
-    expect(headers(host)[0].textContent).toContain('32.1s')
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')?.textContent).toContain('for 32s')
     await act(async () => {
       useChatStore.setState({ tabEvents: { 'chat-a': [user, completed, event('next-user', 'user_message', { content: 'Check again' })] } })
     })
@@ -184,7 +184,7 @@ describe('activity belongs to the current agent turn', () => {
   it('never animates earlier replies while a new reply is pending', async () => {
     const { host } = await mount({ events: [user, completed, event('next-user', 'user_message', { content: 'Check again' })], runtimeActivity: running })
     expect(headers(host)).toHaveLength(2)
-    expect(headers(host)[0].textContent).toContain('32.1s')
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')?.textContent).toContain('for 32s')
     expect(headers(host)[0].querySelector('[role="status"]')).toBeNull()
     expect(headers(host)[1].querySelector('[role="status"]')).toBeNull()
     expect(indicators(host)).toHaveLength(1)
@@ -195,7 +195,7 @@ describe('activity belongs to the current agent turn', () => {
     await render({ events: [user, completed], streamingText: 'Checked the project', runtimeActivity: { state: 'ready', label: 'idle' } })
     expect(headers(host)).toHaveLength(1)
     expect(indicators(host)).toHaveLength(0)
-    expect(headers(host)[0].textContent).toContain('32.1s')
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')?.textContent).toContain('for 32s')
     expect(host.querySelector('[data-testid="terminal-clear-live-assistant-message"]')).toBeNull()
   })
   it('shows accessible amber waiting instead of a spinner', async () => {
@@ -219,7 +219,7 @@ describe('activity belongs to the current agent turn', () => {
     const { host } = await mount({ events: [user, completed] })
     expect(indicators(host)).toHaveLength(0)
     expect(footer(host).textContent).toBe('')
-    expect(headers(host)[0].textContent).toContain('32.1s')
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')?.textContent).toContain('for 32s')
   })
 })
 

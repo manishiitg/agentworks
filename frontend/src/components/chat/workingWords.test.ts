@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { currentTurnStartedAt } from '../../utils/turnStart'
-import { WORKING_GLYPH_FRAMES, WORKING_GLYPH_STATIC, WORKING_WORDS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
+import { TURN_DONE_WORDS, turnDoneWord, WORKING_GLYPH_FRAMES, WORKING_GLYPH_STATIC, WORKING_WORDS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
 
 describe('working status', () => {
   it('shows the real status from the server instead of a playful word', () => {
@@ -41,5 +41,10 @@ describe('working status', () => {
       expect(frame).not.toMatch(/[\u2733\u2734]/)
       expect(frame.endsWith('\uFE0E')).toBe(true)
     }
+  })
+
+  it('gives a finished turn the same past-tense word every time', () => {
+    expect(turnDoneWord('event-42')).toBe(turnDoneWord('event-42'))
+    expect(TURN_DONE_WORDS).toContain(turnDoneWord('another-event'))
   })
 })
