@@ -95,9 +95,13 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			return err
 		}
 	} else {
-		// Run and Pulse conversations can exchange explicit messages without
-		// acquiring Builder authoring or structured-function capabilities.
+		// Run and Pulse conversations keep native messaging without Builder tools.
 		if err := api.registerAgentMessagingTools(definitionAgent, userID, sessionID, syntheticReq, workflowTriggerLinkCaller(phaseWorkspacePath), nil); err != nil {
+			return err
+		}
+	}
+	if policy.Mode == "run" && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && phaseTemplateVars["WorkflowKind"] != "relay" {
+		if err := api.registerWorkflowPublishedFunctionTools(ctx, definitionAgent, userID, sessionID, phaseWorkspacePath); err != nil {
 			return err
 		}
 	}

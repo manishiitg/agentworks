@@ -107,6 +107,9 @@ func TestNativeWorkflowPromptDoesNotInstructHTTPDiscovery(t *testing.T) {
 	if strings.Contains(got, "All other workflow tools are HTTP-backed") || strings.Contains(got, "$MCP_CUSTOM") {
 		t.Fatal("native tool-calling prompt must use supplied schemas, not the CLI bridge")
 	}
+	if rule := publishedFunctionAskGuidance("workflow", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call"); !strings.Contains(got, rule) || !strings.Contains(rule, "Unknown means ask, not run") {
+		t.Fatal("workflow Run must use the same function-first and action confirmation rule as Crew Ask")
+	}
 }
 
 func TestAuthenticatedChatUserPrompt(t *testing.T) {

@@ -394,6 +394,10 @@ chat:
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
+      - list_workflow_functions
+      - call_workflow_function
+      - get_workflow_function_call
+      - reply_workflow_function_call
       # Coding providers reach the admitted APIs through the guarded shell.
       # These bridge tools stay out of the direct external Run API below.
       - execute_shell_command

@@ -174,7 +174,7 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 }
 
 // MCP/CLI: list shows the function; a call missing a required input is
-// refused before anything runs; readers cannot call.
+// refused before anything runs; Run users can call published functions too.
 func TestExternalWorkflowFunctions(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
@@ -210,8 +210,8 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 	if code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input PR_NUMBER") {
 		t.Fatalf("missing input = %d %v", code, out)
 	}
-	if code, _ := request("call_workflow_function", map[string]any{"function": "review_pr"}, WorkflowAccessRead); code != 403 {
-		t.Fatalf("reader call = %d, want 403", code)
+	if code, out := request("call_workflow_function", map[string]any{"function": "review_pr"}, WorkflowAccessRead); code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input") {
+		t.Fatalf("Run call must reach input validation: %d %v", code, out)
 	}
 	if code, _ := request("call_workflow_function", map[string]any{"function": "nope"}, WorkflowAccessOwner); code != 404 {
 		t.Fatalf("unknown function = %d, want 404", code)

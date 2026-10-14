@@ -1,5 +1,24 @@
 # Decisions and open issues
 
+## 2026-10-14 — Workflow Run Ask can call its published functions (PLAT-750)
+
+Workflow Run conversations list, call, poll and answer pending inputs for their
+own enabled function triggers through the same typed-call path as MCP. Product
+Run access suffices; token callers still need execution consent, and each
+function's caller policy and input schema still apply. Calls retain the caller's
+identity and stable submission ID while the workflow supplies its configured
+execution policy and credentials. Run gains no authoring tools or other
+products' function access. Only the person who started a call may answer it.
+
+Crew and workflow Ask share one runtime guidance helper: check functions before
+answering from files; call directly only when the description explicitly says
+the function only reads; otherwise explain the action and wait for a clear yes.
+This applies to the existing Ask path across channels, including dashboards.
+Why: asking a shared workflow should use its published capabilities just as
+asking a Crew does, without granting access to change its implementation.
+
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md), issue 750-21.
+
 ## 2026-10-14 — Dashboard Ask uses the project's existing Builder or Run conversation (PLAT-750)
 
 Crew, workflow and Relay managed dashboards, including shared links, offer Ask

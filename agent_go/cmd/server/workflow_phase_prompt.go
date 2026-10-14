@@ -59,6 +59,9 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 		return strings.Join(parts, "\n\n"), nil, nil, nil
 	}
 	parts := &workflowPromptParts{parts: []string{workflow.PhaseChatSystemPrompt(phase, vars)}}
+	if phase == "workflow-builder" && vars["WorkshopMode"] == "run" {
+		parts.parts = append(parts.parts, publishedFunctionAskGuidance("workflow", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call"))
+	}
 	// Other phase templates keep their existing reference contract. Builder
 	// (including Run) is the skill-backed surface migrated here.
 	if phase != "workflow-builder" {

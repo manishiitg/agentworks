@@ -15,6 +15,15 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	manifest := selected.Manifest
+	if claims == nil || manifest == nil || access == WorkflowAccessNone {
+		externalError(w, 403, "forbidden", "You can no longer use this workflow.")
+		return
+	}
+	if token := claims.AccessToken; token != nil && (!token.AllowsWorkflow(manifest.ID) ||
+		(name == "call_workflow_function" || name == "reply_workflow_function_call") && !token.Allows("runs:execute")) {
+		externalError(w, 403, "forbidden", "This connection cannot run this workflow's functions.")
+		return
+	}
 	switch name {
 	case "list_workflow_functions":
 		functions := workflowFunctions(manifest)
@@ -39,10 +48,6 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			return
 		}
 		if name == "reply_workflow_function_call" {
-			if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
-				externalError(w, 403, "forbidden", "Answering a workflow function needs owner or editor access.")
-				return
-			}
 			requestID, _ := args["request_id"].(string)
 			response, _ := args["response"].(string)
 			replyFunctionCallInput(w, call, strings.TrimSpace(requestID), response)
@@ -52,20 +57,27 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		if !api.externalFunctionReadDetails(w, ctx, args, call, out) {
 			return
 		}
-		out["can_reply"] = access == WorkflowAccessOwner || access == WorkflowAccessWrite
+		out["can_reply"] = mine
 		externalJSON(w, out)
 	case "call_workflow_function":
-		if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
-			externalError(w, 403, "forbidden", "Calling a workflow function needs owner or editor access to the workflow.")
-			return
-		}
 		fnName, _ := args["function"].(string)
 		fn, found := findCrewFunction(workflowFunctions(manifest), fnName)
 		if !found {
 			externalError(w, 404, "not_found", "The workflow has no function "+strings.TrimSpace(fnName)+"; see list_workflow_functions.")
 			return
 		}
+		if manifest.Kind != "relay" {
+			schedule, err := findWorkflowFunctionTrigger(manifest, fn.Name)
+			if err != nil || !workflowFunctionCallerAllowed(schedule.Function, externalCrewCaller(claims).Stamp) {
+				externalError(w, 403, "forbidden", "This function does not allow you to call it.")
+				return
+			}
+		}
 		callArgs, _ := args["args"].(map[string]interface{})
+		if raw, present := args["args"]; present && raw != nil && callArgs == nil {
+			externalError(w, 400, "invalid_arguments", "args must be a JSON object.")
+			return
+		}
 		target := triggerTarget{Kind: triggerCallerWorkflow, Path: selected.WorkspacePath, Label: firstNonEmptyTrimmed(manifest.Label, manifest.ID), Manifest: manifest}
 		submissionID, _ := args["submission_id"].(string)
 		call, err := api.startCrewFunctionCall(context.WithoutCancel(ctx), claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout, submissionID)
