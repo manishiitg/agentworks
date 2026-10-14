@@ -959,6 +959,9 @@ func (es *EventStore) AddEvent(sessionID string, event Event) {
 // acceptance boundary. Canonical producer bridges use this method so a failed
 // append can stop or retry upstream delivery.
 func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
+	if isUsageOnlyEvent(event) {
+		return nil // for the cost ledger only; never a chat event (see usage_only_event.go)
+	}
 	if es.holdForDeferredSteer(sessionID, event) {
 		return nil
 	}
