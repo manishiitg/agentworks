@@ -161,12 +161,26 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
                 DBOS.logger.info("Restarting agent with saved tool results: " + (kwargs.get("name") or key))
         durable_write(sdk, marker, {"signature": signature})
         before = len(raw_calls)
+        started = time.time()
         try:
-            fn = context.call_agent if kind == "agent" else context.call_mcp
+            fn = {"agent": context.call_agent, "mcp": context.call_mcp,
+                  "classifier": context.call_classifier}[kind]
             output = await fn(**kwargs)
             if restart:
                 durable_write(sdk, result_file, {"output": output})
             return output
+        except BaseException as error:
+            if kind == "classifier" and len(raw_calls) == before:
+                # Invalid input or a missing selected credential still belongs
+                # to a Classifier step in the recorded graph.
+                raw_calls.append({"id": "classifier-" + key, "type": "classifier",
+                                  "name": kwargs.get("name", "Classify"),
+                                  "provider": "cloudflare", "model": kwargs.get("model", "clef-flash"),
+                                  "categories": kwargs.get("categories"),
+                                  "instructions": kwargs.get("instructions"),
+                                  "status": "failed", "error": str(error), "tools": [],
+                                  "started_at": started, "completed_at": time.time()})
+            raise
         finally:
             if len(raw_calls) > before:
                 record = copy.deepcopy(raw_calls[-1])
@@ -193,11 +207,17 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
     async def mcp(*, replay_safe=False, **kwargs):
         return await bridge("mcp", kwargs, replay_safe)
 
+    async def classifier(**kwargs):
+        # Inference reads content and returns a decision; it has no service write
+        # to reconcile. DBOS still owns checkpoints and the step's retry policy.
+        return await bridge("classifier", kwargs, True)
+
     # A module with only platform capabilities; no workflow/step decorators.
     import types
     import sys
     platform = types.ModuleType("agentworks")
     platform.agent, platform.mcp, platform.tool = agent, mcp, tool
+    platform.classifier = classifier
     platform.vault, platform.variables = context.vault, data["variables"]
     platform.run_dir, platform.admit = run_dir, admit
     sys.modules["agentworks"] = platform
@@ -237,7 +257,12 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
                     "checkpoint_reused": step_id in previous,
                     "output": step.get("output"),
                     "tools": [tool for record in detail for tool in record.get("tools", [])],
-                    "agent_calls": detail}
+                    "agent_calls": [record for record in detail if record.get("type") != "classifier"]}
+            classifications = [record for record in detail if record.get("type") == "classifier"]
+            if classifications:
+                call.update(type="classifier", classifier_calls=classifications,
+                            categories=classifications[0]["categories"],
+                            instructions=classifications[0]["instructions"])
             for field in ("provider", "model"):
                 if detail and field in detail[0]:
                     call[field] = detail[0][field]

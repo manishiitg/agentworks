@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { parseRelaySourceGraph } from './relayGraphAnnotations'
+import { graphFromDBOSHistory } from './relayDBOSGraph'
 
 it('reads real comments and branch labels while ignoring quoted examples, docstrings and inline strings', () => {
   const source = `"""
@@ -33,4 +34,13 @@ raise RuntimeError("Never execute this")`)
   expect(graph.errors.join('\n')).toContain('Duplicate node id')
   expect(graph.errors.join('\n')).toContain('unknown node')
   expect(graph.errors.join('\n')).toContain('tools must be a list')
+})
+
+it('keeps a recorded classifier separate from agents despite having a provider and model', () => {
+  const graph = graphFromDBOSHistory([
+    { id: 'step-1', name: 'choose_team', type: 'classifier', status: 'completed', provider: 'cloudflare', model: 'clef-flash', categories: { billing: 'Payments' }, instructions: 'Choose a team' },
+    { id: 'step-2', name: 'billing_reply', status: 'completed', provider: 'provider', model: 'model' },
+  ])
+  expect(graph.nodes[1]).toMatchObject({ type: 'classifier', model: 'clef-flash', categories: { billing: 'Payments' }, instructions: 'Choose a team' })
+  expect(graph.nodes[2].type).toBe('agent')
 })

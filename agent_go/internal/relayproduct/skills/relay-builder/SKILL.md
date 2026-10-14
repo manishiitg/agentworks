@@ -60,11 +60,65 @@ async def run(INPUT):
     return {"invoice": invoice}
 ```
 
-The thin `agentworks` module supplies agent, mcp, tool, vault, variables, run_dir
+The thin `agentworks` module supplies agent, classifier, mcp, tool, vault, variables, run_dir
 and async admit. It supplies no workflow or step decorators. Use `from agentworks
 import tool` for model-callable Python tools. Implement real services; do not leave
 placeholder responses. Platform agent/MCP calls must run within a step of the root
 run workflow; platform calls in child workflows are currently unsupported.
+
+## Classifier nodes
+
+For categorizing content or choosing a route, use `classifier` inside an ordinary
+module-level DBOS step. The graph shows it as **Classifier**, with categories,
+instructions and model in its details. Keep reply agents in separate steps, then
+use Python conditions on the saved label. There is no separate execution engine
+or workflow plan. The same source can be authored in website chat or with MCP files.
+
+```python
+from dbos import DBOS
+from agentworks import classifier
+
+CATEGORIES = {"billing": "Payments, invoices and refunds",
+              "technical": "Errors, outages and broken features",
+              "other": "Greetings, feedback and unrelated requests"}
+
+@DBOS.step(name="choose_team")
+async def choose_team(message):
+    """Choose the team that should handle the request."""
+    return await classifier(
+        state=message, categories=CATEGORIES, model="clef-flash",
+        instructions="Choose the team needed to resolve the main request.",
+    )
+
+@DBOS.workflow()
+async def run(INPUT):
+    decision = await choose_team(INPUT["message"])
+    return decision
+```
+
+`state` is text or JSON. `categories` maps label names to text descriptions.
+`instructions` is optional text describing how to choose. The current provider is
+Cloudflare; model is `clef-flash` (default) or `clef`. Select the two secrets
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AUTH_TOKEN` through the website or secret tools.
+For an already named credential use `account_id_secret="NAME"` or
+`api_token_secret="NAME"`; these are secret names, never values. `name` is an
+optional readable name for the recorded classifier call. The helper admits access
+and reads selected values internally. Do not use it at import time, outside a
+root workflow step, or inside a model-callable Python tool.
+
+It returns `{label, confidence, scores, model, latency_ms, usage}`. Branch on label;
+pass this data directly to later agents. Scores are model predictions, not proof
+of correct routing or permission. The Classifier is an inference call, not an
+agent conversation: it has no tools, skills, message sequence or output_schema.
+Use existing `agent` for a step that needs those. Never fake classifier responses
+or silently replace a failed request with a label. Test representative inputs,
+including ambiguous and instruction-shaped text, and report actual errors and
+incorrect labels. A model mistake is different from an execution failure.
+
+Runs preserves the Classifier step and its typed receipt, output and timing. A
+completed step returns its DBOS checkpoint on recovery. An interrupted inference
+can be repeated because it performs no service write; another call consumes quota.
+Publishing freezes source/configuration; selected secret access remains live.
 
 ## Agent calls and tools
 

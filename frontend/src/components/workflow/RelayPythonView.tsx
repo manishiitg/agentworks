@@ -21,6 +21,9 @@ interface RelayAgentCall {
   id: string
   name: string
   status: string
+  type?: 'classifier'
+  categories?: unknown
+  instructions?: string
   checkpoint_reused?: boolean
   provider?: string
   model?: string | { provider?: string; model_id?: string }

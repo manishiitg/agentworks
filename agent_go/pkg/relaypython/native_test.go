@@ -11,6 +11,63 @@ import (
 	"testing"
 )
 
+func TestDBOSNativeClassifierReceiptSurvivesCheckpointRecovery(t *testing.T) {
+	c, cfg := dbosFixture(t, `import io, json, os, urllib.request
+from dbos import DBOS
+from agentworks import classifier, run_dir
+
+def inference(request, timeout):
+    assert request.full_url.endswith("/ai/run/@cf/cloudflare/clef-flash")
+    assert request.get_header("Authorization") == "Bearer fixture-selected-token"
+    assert json.loads(request.data)["questions"]["category"]["criteria"] == {"billing": "Payments", "other": "Other"}
+    counter = run_dir / "inference-count.txt"
+    counter.write_text(str(int(counter.read_text() if counter.exists() else "0") + 1))
+    return io.BytesIO(json.dumps({"success": True, "result": {"model": "clef-flash", "answers": {"category": {
+        "choice": "billing", "confidence": 0.8, "probabilities": {"billing": 0.9, "other": 0.1}
+    }}, "usage": {"input_tokens": 10, "output_tokens": 0}}}).encode())
+urllib.request.urlopen = inference
+
+@DBOS.step(name="choose_team")
+async def choose_team(message):
+    return await classifier(state=message, categories={"billing": "Payments", "other": "Other"})
+
+@DBOS.workflow()
+async def run(INPUT):
+    result = await choose_team(INPUT["message"])
+    if os.environ.get("FAULT_AFTER_CHECKPOINT") == "1":
+        os._exit(97)
+    return result
+`, map[string]interface{}{"message": "Refund the duplicate charge"})
+	cfg.Env = map[string]string{"SECRET_CLOUDFLARE_AUTH_TOKEN": "fixture-selected-token", "SECRET_CLOUDFLARE_ACCOUNT_ID": "fixture-account", "FAULT_AFTER_CHECKPOINT": "1"}
+	if err := runDBOS(t, cfg); !IsInterrupted(err) {
+		t.Fatalf("classifier checkpoint interruption: %v", err)
+	}
+	delete(cfg.Env, "FAULT_AFTER_CHECKPOINT")
+	if err := runDBOS(t, cfg); err != nil {
+		t.Fatal(err)
+	}
+	count, _ := os.ReadFile(filepath.Join(c.root, cfg.RunPath, "inference-count.txt"))
+	if string(count) != "1" {
+		t.Fatalf("completed classification repeated: %s", count)
+	}
+	raw, _ := os.ReadFile(filepath.Join(c.root, cfg.RunPath, "relay_trace.json"))
+	var trace struct {
+		Calls []struct {
+			Type            string
+			Provider        string
+			Reused          bool              `json:"checkpoint_reused"`
+			ClassifierCalls []json.RawMessage `json:"classifier_calls"`
+			AgentCalls      []json.RawMessage `json:"agent_calls"`
+		}
+	}
+	if err := json.Unmarshal(raw, &trace); err != nil || len(trace.Calls) != 1 || trace.Calls[0].Type != "classifier" || trace.Calls[0].Provider != "cloudflare" || !trace.Calls[0].Reused || len(trace.Calls[0].ClassifierCalls) != 1 || len(trace.Calls[0].AgentCalls) != 0 {
+		t.Fatalf("typed classifier history lost: %s (%v)", raw, err)
+	}
+	if strings.Contains(string(raw), "fixture-selected-token") || strings.Contains(string(raw), "fixture-account") {
+		t.Fatal("classifier trace contains credential values")
+	}
+}
+
 func TestDBOSNativeWorkflowHistoryRecoversAgentWithoutRelayAnnotations(t *testing.T) {
 	c, cfg := dbosFixture(t, `import os
 from dbos import DBOS

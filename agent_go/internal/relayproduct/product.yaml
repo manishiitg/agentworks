@@ -95,7 +95,7 @@ profile:
       description: Build or refine your Relay in chat
       icon: git-branch
       prompt: |
-        Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. For native DBOS source use from dbos import DBOS, @DBOS.workflow() async def run(INPUT), readable module-level @DBOS.step() functions and fresh calls to agentworks.agent with exact authored prompts and explicit JSON returns. The Graph is derived from the Python AST; do not add @relay comments or require relay.md. Keep existing legacy source on its declared contract unless the user requests migration. Preserve user choices. Explain it for a user who does not program. Test with a supplied example before claiming it works.
+        Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. For native DBOS source use from dbos import DBOS, @DBOS.workflow() async def run(INPUT), readable module-level @DBOS.step() functions, Classifier nodes using agentworks.classifier with user-defined categories/instructions, and fresh calls to agentworks.agent with exact authored prompts and explicit JSON returns. The Graph is derived from the Python AST; do not add @relay comments or require relay.md. Keep existing legacy source on its declared contract unless the user requests migration. Preserve user choices. Explain it for a user who does not program. Test with a supplied example before claiming it works.
         {{context}}
     - name: design-dashboard
       description: Create or update this Relay's live Dashboard

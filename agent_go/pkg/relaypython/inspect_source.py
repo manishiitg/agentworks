@@ -23,7 +23,8 @@ def inspect_source(source):
         if names == ["INPUT", "ctx"]:
             return graph
         graph["native"] = True
-        dbos_names, agent_names = {"DBOS"}, {"agent"}
+        dbos_names, agent_names, classifier_names, platform_names = {"DBOS"}, {"agent"}, set(), set()
+        constants = {}
         for node in tree.body:
             if isinstance(node, ast.ImportFrom):
                 for name in node.names:
@@ -31,6 +32,34 @@ def inspect_source(source):
                         dbos_names.add(name.asname or name.name)
                     if node.module == "agentworks" and name.name == "agent":
                         agent_names.add(name.asname or name.name)
+                    if node.module == "agentworks" and name.name == "classifier":
+                        classifier_names.add(name.asname or name.name)
+            if isinstance(node, ast.Import):
+                for name in node.names:
+                    if name.name == "agentworks":
+                        platform_names.add(name.asname or name.name)
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                constants[node.targets[0].id] = node.value
+
+        def platform_call(item, names, member):
+            if not isinstance(item, ast.Call):
+                return False
+            target = item.func
+            return (isinstance(target, ast.Name) and target.id in names or
+                    isinstance(target, ast.Attribute) and target.attr == member and
+                    isinstance(target.value, ast.Name) and target.value.id in platform_names)
+
+        def display_value(value):
+            # Resolve only literal constants. Never evaluate authored expressions.
+            original = value
+            seen = set()
+            while isinstance(value, ast.Name) and value.id in constants and value.id not in seen:
+                seen.add(value.id)
+                value = constants[value.id]
+            try:
+                return ast.literal_eval(value)
+            except (ValueError, TypeError):
+                return ast.unparse(original)
 
         def decorator(fn, kind):
             for item in fn.decorator_list:
@@ -87,9 +116,16 @@ def inspect_source(source):
                     for keyword in decoration.keywords:
                         if keyword.arg == "name" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
                             name = keyword.value.value
-                kind = "agent" if any(isinstance(item, ast.Call) and isinstance(item.func, ast.Name) and item.func.id in agent_names for item in ast.walk(fn)) else "script"
+                classifiers = [item for item in ast.walk(fn) if platform_call(item, classifier_names, "classifier")]
+                kind = "classifier" if classifiers else "agent" if any(platform_call(item, agent_names, "agent") for item in ast.walk(fn)) else "script"
+                fields = {}
+                if classifiers:
+                    fields = {keyword.arg: display_value(keyword.value) for keyword in classifiers[0].keywords
+                              if keyword.arg in ("model", "categories", "instructions")}
+                    fields.setdefault("model", "clef-flash")
+                    fields["provider"] = "cloudflare"
                 id = add_node(fn.name[:48] + "-" + str(call.lineno), kind, readable(name), call.lineno,
-                              call=name, description=ast.get_docstring(fn) or "", input=ast.unparse(call)[:500])
+                              call=name, description=ast.get_docstring(fn) or "", input=ast.unparse(call)[:500], **fields)
                 connect(tails, id)
                 tails = [(id, "")]
             return tails

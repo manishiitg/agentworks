@@ -62,4 +62,31 @@ async def run(INPUT):
 	if inspect("async def run(INPUT, *args):\n    return INPUT\n")["validation_error"] == nil {
 		t.Fatal("variadic entry accepted")
 	}
+
+	classifier := inspect(`raise RuntimeError("Never execute classifier source during inspection")
+from dbos import DBOS
+from agentworks import classifier as choose
+import agentworks as platform
+LABELS = {"billing": "Payments", "other": "Other requests"}
+MODEL = "clef-flash"
+@DBOS.step(name="choose_team")
+async def classify(message):
+    return await choose(state=message, categories=LABELS, model=MODEL, instructions="Choose the team")
+@DBOS.step()
+async def classify_again(message):
+    return await platform.classifier(state=message, categories=LABELS)
+@DBOS.workflow()
+async def run(INPUT):
+    decision = await classify(INPUT["message"])
+    return await classify_again(decision)
+`)
+	encoded, _ = json.Marshal(classifier)
+	if len(classifier["errors"].([]interface{})) != 0 || strings.Count(string(encoded), `"type":"classifier"`) != 2 {
+		t.Fatalf("classifier aliases not recognized: %s", encoded)
+	}
+	for _, want := range []string{`"categories":{"billing":"Payments","other":"Other requests"}`, `"model":"clef-flash"`, `"instructions":"Choose the team"`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Fatalf("classifier details missing %s: %s", want, encoded)
+		}
+	}
 }

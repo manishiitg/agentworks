@@ -6,8 +6,10 @@ agent to draft a reply, and return JSON. All inference is real.
 
 The program uses the existing native DBOS workflow and steps, platform agent
 calls, selected secrets, graph inspection, run history and published versions.
-Clef-flash is an HTTP call inside `classify_request`; it is not a new platform runtime.
-The graph shows **Classify request**, then the four agent branches.
+`agentworks.classifier` runs inside the ordinary `classify_request` DBOS step.
+The graph shows a dedicated **Classifier** node, then the four agent branches.
+Selecting it shows the model, categories and instructions. Runs records its scores
+and timing with the same step history as agents and scripts.
 
 ## Set it up in chat
 
@@ -26,8 +28,8 @@ already creates an enabled function with required object `INPUT`.
 Create a free Cloudflare account, open Workers AI, and choose **Use REST API**.
 Create a Workers AI API token using its prefilled permissions. Copy the account ID.
 Add **CLOUDFLARE_AUTH_TOKEN** and **CLOUDFLARE_ACCOUNT_ID** in this Relay's Secrets.
-The code reads them with `vault`; keep the token out of source, sample inputs and
-logs. Use the website Secrets panel or the authorized secret tools to add it.
+The classifier reads those selected secrets internally; keep the token out of
+source, sample inputs and logs. Use the website Secrets panel or the authorized secret tools to add it.
 
 Cloudflare offers **10,000 neurons per day** on Workers Free, with no credit card
 required. The allowance is shared across the account's Workers AI use; once it

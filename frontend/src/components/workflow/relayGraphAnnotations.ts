@@ -1,5 +1,5 @@
 /** Display metadata only. These records never change Python execution. */
-export type RelayNodeKind = 'input' | 'agent' | 'script' | 'decision' | 'output'
+export type RelayNodeKind = 'input' | 'agent' | 'classifier' | 'script' | 'decision' | 'output'
 export interface RelaySourceNode {
   id: string
   type: RelayNodeKind
@@ -12,6 +12,9 @@ export interface RelaySourceNode {
   user_message?: string
   messages?: string[]
   model?: unknown
+  provider?: string
+  categories?: unknown
+  instructions?: string
   tools?: string[]
   skills?: string[]
   mcp?: unknown
@@ -19,7 +22,7 @@ export interface RelaySourceNode {
 }
 export interface RelaySourceEdge { from: string; to: string; label?: string; line: number }
 export interface RelaySourceGraph { nodes: RelaySourceNode[]; edges: RelaySourceEdge[]; errors: string[]; native?: boolean }
-const kinds: RelayNodeKind[] = ['input', 'agent', 'script', 'decision', 'output']
+const kinds: RelayNodeKind[] = ['input', 'agent', 'classifier', 'script', 'decision', 'output']
 const validID = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z][\w-]{0,63}$/.test(value)
 const stringList = (value: unknown) => Array.isArray(value) && value.every(item => typeof item === 'string')
 

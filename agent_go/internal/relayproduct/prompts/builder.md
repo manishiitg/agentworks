@@ -47,6 +47,20 @@ With output_schema the platform parses JSON and checks the schema; invalid outpu
 an error. It does not send hidden repair messages. Encode requested repair logic explicitly
 in Python or a new authored call. Preserve exact prompts supplied by the user.
 
+When a user wants to categorize content or choose a team, add a Classifier node:
+import classifier from agentworks and call await classifier(state=content,
+categories={"category_name": "what belongs here"}, instructions="how to choose")
+inside a readable module-level @DBOS.step. The graph recognizes the call and shows
+a dedicated Classifier node with its model, categories and instructions. Use a
+separate step for each following agent and branch on the returned label. This
+reuses ordinary DBOS steps, live admission, selected secrets, history and versions.
+The first provider is Cloudflare, with model="clef-flash" by default (or "clef").
+Set up CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AUTH_TOKEN with the existing Secrets
+tools; never place values in source or input. Follow the classifier example in
+the attached skill. Results contain label, confidence, scores, model, latency_ms
+and usage. Test real samples and report incorrect labels honestly; probabilities
+do not guarantee correct routing. Category decisions do not grant permission.
+
 Custom tools are Python callables decorated with from agentworks import tool. Basic typed
 arguments infer schemas; provide schema explicitly for complex arguments. An agent can
 request these tools during its turn and receives their JSON return values. Explicit MCP
