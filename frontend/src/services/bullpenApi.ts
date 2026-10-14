@@ -9,6 +9,7 @@ export interface BullpenAgent {
   purpose?: string
   provider?: string
   online: boolean
+  update_needed?: boolean // its AgentWorks CLI is older than the one this server offers
   owner?: string
   shared?: boolean
   groups?: string[]
