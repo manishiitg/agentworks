@@ -63,7 +63,7 @@ function sectionStorageKey(entityType: string, relayMode: boolean, profileId?: s
 
 function readRememberedSection(key: string): AutomationHubSection | null {
   try {
-    const value = window.localStorage.getItem(key)
+    const value = localStorage.getItem(key)
     return SECTION_DEFS.some(item => item.id === value) ? (value as AutomationHubSection) : null
   } catch {
     return null
@@ -72,7 +72,7 @@ function readRememberedSection(key: string): AutomationHubSection | null {
 
 function rememberSection(key: string, section: AutomationHubSection) {
   try {
-    window.localStorage.setItem(key, section)
+    localStorage.setItem(key, section)
   } catch {
     // Not remembered; the tab still works for this visit.
   }

@@ -54,7 +54,11 @@ function ChatProbe(props: Record<string, unknown>) {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('AutomationHubPanel', () => {
-  beforeEach(() => window.localStorage.clear())
+  // Node's own localStorage is unusable in CI; give each test an empty in-memory one.
+  beforeEach(() => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => { values.set(k, v) }, removeItem: (k: string) => { values.delete(k) }, clear: () => values.clear() })
+  })
 
   it('reopens the sub-tab the person last chose', async () => {
     const mount = async () => {

@@ -1,13 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { conditionTriggersApi, type ConditionTrigger, type ConditionHistory } from '../../api/conditionTriggers'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { useChatStore } from '../../stores/useChatStore'
+import { isWorkSideChatTab, workSideChatKey } from '../../products/work/workTabs'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 function messageOf(error: unknown) { return axios.isAxiosError(error) && typeof error.response?.data === 'string' ? error.response.data : error instanceof Error ? error.message : 'Watcher request failed' }
-function targetLabel(t: ConditionTrigger['target']) {
-  if (t.kind === 'agent') return `Code agent · ${t.chat_id || 'main chat'}`
+type SideChat = { id: string; name: string }
+const NEW_CHAT = 'new'
+const MAIN_CHAT = 'main'
+function chatChoice(t: ConditionTrigger['target']) { return !t.chat_id || t.chat_id === MAIN_CHAT ? MAIN_CHAT : t.chat_id }
+function chatLabel(chatId: string | undefined, sideChats: SideChat[]) {
+  if (!chatId || chatId === MAIN_CHAT) return 'main chat'
+  if (chatId === NEW_CHAT) return 'a new chat for each event'
+  return sideChats.find(chat => chat.id === chatId)?.name || `chat ${chatId}`
+}
+function targetLabel(t: ConditionTrigger['target'], sideChats: SideChat[] = []) {
+  if (t.kind === 'agent') return `Code agent · ${chatLabel(t.chat_id, sideChats)}`
   if (t.kind === 'function') return `${t.name} · ${t.function}`
   if (t.kind === 'route') return `${t.name} · ${Object.values(t.route_selections || {}).join(', ') || 'full workflow'}`
   return `${t.name} · trigger ${t.trigger_id}`
@@ -24,6 +35,11 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     catch (e) { setError(messageOf(e)) }
   }, [scope.projectId])
   useEffect(() => { setTriggers([]); setHistory({}); setLoaded(false); void refresh() }, [refresh, refreshToken])
+  // The Code chats a watcher can send to: the open side chats of this project (the main chat and "a new chat" are always offered).
+  const chatTabs = useChatStore(state => state.chatTabs)
+  const sideChats = useMemo<SideChat[]>(() => Object.values(chatTabs)
+    .filter(tab => isWorkSideChatTab(tab, scope.projectId))
+    .map(tab => ({ id: String(tab.metadata?.agentProfileConversationKey).slice(workSideChatKey(scope.projectId, '').length), name: tab.name })), [chatTabs, scope.projectId])
   const sendToChat = onAsk ?? ((message: string) => sendWorkspacePaneMessageToChat({ profileId: scope.profileId, conversationKey: scope.projectId, message }).then(() => undefined))
   // A failed hand-off to the chat must show, not vanish: the buttons call this without awaiting.
   const ask = async (message: string) => {
@@ -50,7 +66,21 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     <div className="space-y-3">{triggers.map(t => <section key={t.id} className="min-w-0 space-y-2 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2"><h3 className="truncate text-sm font-medium">{t.name}</h3><span className="text-xs text-muted-foreground">{t.enabled ? 'Enabled' : 'Paused'}</span></div>
       <p className="break-all text-xs text-muted-foreground">{t.script} · {t.cron_expression} · {t.timezone}</p>
-      <p className="break-all text-xs">Starts {targetLabel(t.target)}</p>
+      <p className="break-all text-xs">Starts {targetLabel(t.target, sideChats)}</p>
+      {canManage && t.target.kind === 'agent' && <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Send messages to
+        <select
+          aria-label={`Chat for ${t.name}`}
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+          disabled={busy}
+          value={chatChoice(t.target)}
+          onChange={event => void manage('update', t.id, { target: { ...t.target, chat_id: event.target.value === MAIN_CHAT ? '' : event.target.value } })}
+        >
+          <option value={MAIN_CHAT}>Main chat</option>
+          {sideChats.map(chat => <option key={chat.id} value={chat.id}>{chat.name}</option>)}
+          {chatChoice(t.target) !== MAIN_CHAT && chatChoice(t.target) !== NEW_CHAT && !sideChats.some(chat => chat.id === t.target.chat_id) && <option value={t.target.chat_id}>{`Chat ${t.target.chat_id}`}</option>}
+          <option value={NEW_CHAT}>A new chat for each event</option>
+        </select>
+      </label>}
       {t.last_status && <p className="text-xs text-muted-foreground">Last check: {t.last_status}{t.last_run_at ? ` · ${new Date(t.last_run_at).toLocaleString()}` : ''}</p>}
       {t.last_error && <p className="text-xs text-destructive">{t.last_error}</p>}
       <div className="flex flex-wrap gap-2">

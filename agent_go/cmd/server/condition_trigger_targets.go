@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
@@ -52,10 +53,16 @@ func (c *conditionService) resolveTarget(ctx context.Context, job productSchedul
 	return resolveFunctionTarget(ctx, &UserClaims{UserID: job.UserID}, c.caller(job), name)
 }
 
+// conditionChatIDPattern is what a Code agent target's chat_id may be: main, new, or a side chat id.
+var conditionChatIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 func (c *conditionService) validateTarget(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
 	if cfg.Target.Kind == "agent" {
 		if cfg.Target.Name != "" {
 			return errors.New("Code agent targets stay in this project; use chat_id for its side chats")
+		}
+		if id := strings.TrimSpace(cfg.Target.ChatID); id != "" && !conditionChatIDPattern.MatchString(id) {
+			return errors.New("chat_id must be main, new (a new chat for each event) or the id of an existing side chat")
 		}
 		return nil
 	}

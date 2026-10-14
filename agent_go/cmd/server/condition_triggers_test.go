@@ -186,3 +186,29 @@ func mustConditionJob(t *testing.T, s *ProductScheduleService, ctx context.Conte
 	}
 	return j
 }
+
+// A Code watcher may send to the main chat, to an existing side chat, or open a
+// new chat for each event ("new"); anything that is not a chat id is refused.
+func TestConditionAgentTargetChatChoices(t *testing.T) {
+	env, ctx, _ := conditionCodeFixture(t)
+	c := env.svc.conditionService()
+	job := productScheduleJob{UserID: "owner", ProjectID: "checks"}
+	for _, chatID := range []string{"", "main", "new", "NEW", "373a2ae1"} {
+		cfg := conditiontrigger.Config{Target: conditiontrigger.Target{Kind: "agent", Message: "go", ChatID: chatID}}
+		if err := c.validateTarget(ctx, job, cfg); err != nil {
+			t.Fatalf("chat_id %q refused: %v", chatID, err)
+		}
+	}
+	for _, chatID := range []string{"a:b", "../x", "two words"} {
+		cfg := conditiontrigger.Config{Target: conditiontrigger.Target{Kind: "agent", Message: "go", ChatID: chatID}}
+		if err := c.validateTarget(ctx, job, cfg); err == nil {
+			t.Fatalf("chat_id %q was admitted", chatID)
+		}
+	}
+	if name := newWatcherChatName("Tagged tickets", "ticket-123"); name != "Tagged tickets · ticket-123" {
+		t.Fatalf("tab name %q", name)
+	}
+	if got := len([]rune(newWatcherChatName(strings.Repeat("w", 200), "e"))); got != 120 {
+		t.Fatalf("tab name not capped: %d", got)
+	}
+}

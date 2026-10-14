@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -351,10 +353,23 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	}
 	chatID := firstNonEmptyTrimmed(cfg.Target.ChatID, codeChatMainName)
 	chatKey := job.ProjectID
+	// chat_id "new" opens one side chat (tab) per event. Its id comes from the event's stable key, so a
+	// retried dispatch finds the same tab instead of opening another.
+	newTab := strings.EqualFold(chatID, conditionNewChatTab)
+	if newTab {
+		sum := sha256.Sum256([]byte(job.ID() + "|" + key))
+		chatID = hex.EncodeToString(sum[:4])
+	}
 	if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
-		if !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
+		switch {
+		case projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey):
+		case !newTab:
 			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was removed")}
+		default:
+			if sideChatCount(ctx, job) >= externalCrewMaxSideChats {
+				return "", conditiontrigger.PermanentError{Err: fmt.Errorf("this project already has %d side chats; close one so the watcher can open a new chat", externalCrewMaxSideChats)}
+			}
 		}
 	}
 	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, chatKey)
@@ -367,6 +382,9 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	}
 	if c.s.api.codeLocalSession(conversation.SessionID) {
 		return "", conditiontrigger.PermanentError{Err: errors.New("watcher targets require a server Code chat")}
+	}
+	if newTab {
+		_ = RenameChatHistorySession(job.UserID, conversation.SessionID, job.WorkspacePath, newWatcherChatName(job.Schedule.Name, ev.ID))
 	}
 	chat := codeChat{Key: chatKey, ID: chatID, Name: "Code agent", SessionID: conversation.SessionID}
 	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)
@@ -381,4 +399,31 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	}
 	b, _ := json.Marshal(receipt)
 	return string(b), nil
+}
+
+// conditionNewChatTab as a Code agent target's chat_id opens a new side chat for each event.
+const conditionNewChatTab = "new"
+
+// sideChatCount is how many side chats the Code project has open.
+func sideChatCount(ctx context.Context, job productScheduleJob) int {
+	chats, err := defaultProductConversationRegistryStore().projectChats(ctx, job.UserID, job.Profile.ID, job.ProjectID)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, chat := range chats {
+		if strings.HasPrefix(chat.ConversationKey, job.ProjectID+codeChatSideMarker) {
+			count++
+		}
+	}
+	return count
+}
+
+// newWatcherChatName is the tab name of a chat a watcher opened: the watcher and the event.
+func newWatcherChatName(watcher, eventID string) string {
+	name := strings.TrimSpace(strings.TrimSpace(watcher) + " · " + strings.TrimSpace(eventID))
+	if runes := []rune(name); len(runes) > 120 {
+		name = string(runes[:120])
+	}
+	return name
 }

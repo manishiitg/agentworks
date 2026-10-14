@@ -36,4 +36,20 @@ describe('ConditionTriggersView', () => {
       expect(host.querySelector('[role="alert"]')?.textContent).toContain('This project chat is not ready.')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
+
+  it('lets the person pick the chat a watcher sends to: main, an open tab, or a new chat for each event', async () => {
+    api.list.mockResolvedValue({ triggers: [{ id: 'c1', name: 'Tagged tickets', enabled: true, revision: 'r1', script: 'code/triggers/n.py', cron_expression: '*/5 * * * *', timezone: 'UTC', target: { kind: 'agent', message: 'go', chat_id: '373a2ae1' } }] })
+    api.manage.mockResolvedValue({})
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
+    try {
+      const select = host.querySelector('select[aria-label="Chat for Tagged tickets"]') as HTMLSelectElement
+      expect(select.value).toBe('373a2ae1')
+      expect(Array.from(select.options).map(option => option.value)).toEqual(['main', '373a2ae1', 'new'])
+      await act(async () => { select.value = 'new'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
+      expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: 'new' } }, 'r1')
+      await act(async () => { select.value = 'main'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
+      expect(api.manage).toHaveBeenLastCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: '' } }, 'r1')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
 })
