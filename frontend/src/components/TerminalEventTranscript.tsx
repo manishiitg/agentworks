@@ -283,6 +283,10 @@ const TranscriptEvent: React.FC<{
     return <AssistantTranscriptMessage event={event} content={responseContent} timestamp={timestamp} framed={!inTurn} label={assistantLabel} icon={assistantIcon} />
   }
 
+  // A generation that ended with no text (the turn only ran tools) has nothing
+  // to show; its usage is summarised on the turn, not as a debug card.
+  if (event.type === 'llm_generation_end') return null
+
   if (isExecutionPromptTranscriptMessage(event)) {
     return <EventDispatcher event={event} onSendMessage={onSendMessage} compact hideOrchestratorContext />
   }
