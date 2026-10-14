@@ -178,7 +178,18 @@ func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, works
 			_ = json.Unmarshal(encoded, &persistedUIEvents)
 		}
 	}
-	record["ui_events"] = mergeChatHistoryUIEvents(persistedUIEvents, []storeevents.Event{event})
+	// The turn's tool calls and messages happened after the Run's own save: store everything the live session still
+	// holds (as the Run's save does), not only the completion, or a live-input turn's tool calls vanish from history.
+	liveEvents := []storeevents.Event{event}
+	if api.eventStore != nil {
+		if all := trimChatHistoryUIEvents(api.eventStore.GetAllEventsRaw(sessionID)); len(all) > 0 {
+			liveEvents = all
+			if !chatHistoryEventsContain(all, event.ID) {
+				liveEvents = append(liveEvents, event)
+			}
+		}
+	}
+	record["ui_events"] = mergeChatHistoryUIEvents(persistedUIEvents, liveEvents)
 	advanceChatConversationRevision(record)
 	encoded, err := json.MarshalIndent(record, "", "  ")
 	if err != nil || writeRawFileToWorkspace(context.Background(), conversationPath, string(encoded)) != nil {
@@ -212,4 +223,13 @@ func messageContentText(message llmtypes.MessageContent) string {
 		}
 	}
 	return strings.Join(texts, "\n")
+}
+
+func chatHistoryEventsContain(events []storeevents.Event, id string) bool {
+	for _, e := range events {
+		if e.ID == id {
+			return true
+		}
+	}
+	return false
 }

@@ -166,3 +166,60 @@ func TestStructuredCompletionFindsProjectTranscriptWithoutWorkspace(t *testing.T
 		t.Fatal("reply not saved into the project transcript")
 	}
 }
+
+// The tool calls of a live-input turn happen after the Run's save; they must reach the stored events with the reply.
+func TestStructuredCompletionStoresTheTurnsToolEvents(t *testing.T) {
+	const (
+		userID       = "alice"
+		sessionID    = "retained-tools"
+		workspaceDir = "Workflow/project"
+	)
+	conversation := workspaceDir + "/builder/conversation/2026-09-21/" + chatHistoryConversationFileName(sessionID)
+	raw, _ := json.Marshal(map[string]interface{}{
+		"session_id": sessionID, "user_id": userID,
+		"conversation_history": []map[string]interface{}{{"Role": "human", "Parts": []map[string]string{{"Text": "go"}}}},
+	})
+	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+
+	store := storeevents.NewEventStore(100)
+	api := &StreamingAPI{eventStore: store}
+	at := time.Date(2026, 9, 21, 10, 59, 0, 0, time.UTC)
+	for _, id := range []string{"tool-start", "tool-end"} {
+		store.AddEvent(sessionID, storeevents.Event{ID: id, Type: "tool_call_start", Timestamp: at, SessionID: sessionID})
+	}
+	event := retainedCompletionEvent(sessionID, "turn-1", "completion-1", "done")
+	store.AddEvent(sessionID, event)
+	if !api.appendStructuredAssistantReply(userID, sessionID, workspaceDir, "turn-1", "done", event) {
+		t.Fatal("reply not saved")
+	}
+	var persisted struct {
+		UIEvents []storeevents.Event `json:"ui_events"`
+	}
+	if err := json.Unmarshal([]byte(workspace.files[conversation]), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.UIEvents) != 3 {
+		t.Fatalf("stored events = %d, want the 2 tool events and the completion", len(persisted.UIEvents))
+	}
+	// A second live-input completion merges the whole store again; the first turn's events must not double.
+	event2 := retainedCompletionEvent(sessionID, "turn-2", "completion-2", "done again")
+	store.AddEvent(sessionID, event2)
+	if !api.appendStructuredAssistantReply(userID, sessionID, workspaceDir, "turn-2", "done again", event2) {
+		t.Fatal("second reply not saved")
+	}
+	if err := json.Unmarshal([]byte(workspace.files[conversation]), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	tools := 0
+	for _, e := range persisted.UIEvents {
+		if e.Type == "tool_call_start" {
+			tools++
+		}
+	}
+	if tools != 2 || len(persisted.UIEvents) != 4 {
+		t.Fatalf("after a second turn: %d tool events of %d stored, want 2 of 4", tools, len(persisted.UIEvents))
+	}
+}
