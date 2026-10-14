@@ -70,7 +70,7 @@ it('builds the graph from source, keeps code optional, and matches recorded call
   expect(host.textContent).toContain('Published graph')
   const node = host.querySelector('[aria-label="Select extract"]') as HTMLButtonElement
   await act(async () => node.click())
-  expect(host.querySelector('[aria-label="Relay node details"]')?.textContent).toContain('call-1')
+  expect(host.querySelector('[aria-label="Relay node details"]')?.textContent).toContain('Result 1 · completed')
   expect(host.querySelector('[aria-label="Relay node details"]')?.textContent).toContain('lookup_customer')
   expect(fixture.paths.some(path => path.endsWith('relay.md'))).toBe(false)
   const version = host.querySelector('#relay-python-version') as HTMLSelectElement
@@ -99,7 +99,7 @@ it('offers chat guidance when existing Python has no graph comments', async () =
 it('derives the native overview from AST inspection without requiring Relay annotations', async () => {
   fixture.native = true
   await act(async () => root.render(<RelayPythonView workspacePath="Workflow/native" relayID="id" onBuild={() => {}} />))
-  expect(host.textContent).toContain('Python source overview')
+  expect(host.textContent).toContain('Overview of possible paths')
   expect(host.textContent).toContain('Check order')
   expect(host.textContent).not.toContain('Add graph in chat')
   const code = Array.from(host.querySelectorAll('[role="tab"]')).find(button => button.textContent === 'Code') as HTMLButtonElement
