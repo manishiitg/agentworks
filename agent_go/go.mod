@@ -18,7 +18,7 @@ require (
 	github.com/k2-fsa/sherpa-onnx-go v1.13.5
 	github.com/manishiitg/coding-agent-loop/mcpoauth v0.0.0
 	github.com/manishiitg/coding-agent-loop/workspace v0.0.0
-	github.com/manishiitg/mcpagent v1.7.12-0.20261014074421-07bb553153fe
+	github.com/manishiitg/mcpagent v1.7.12-0.20261014075600-8c69ba23d15e
 	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261013122550-9c08d3758f1c
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/openai/openai-go/v3 v3.36.0
