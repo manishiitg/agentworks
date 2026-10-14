@@ -357,10 +357,14 @@ func TestCanRetryUncertainChatSubmissionIgnoresALiveTerminalThatStartedLater(t *
 
 	for name, tc := range map[string]struct {
 		tmuxStartedAt string
+		activeTurn    bool
 		want          bool
 	}{
-		"live terminal started before the submission may hold it": {"2026-09-19T08:30:00Z", false},
-		"live terminal started after the submission cannot":       {"2026-09-19T09:05:00Z", true},
+		"live terminal started before the submission may hold it": {"2026-09-19T08:30:00Z", false, false},
+		"live terminal started after the submission cannot":       {"2026-09-19T09:05:00Z", false, true},
+		// PLAT-861-116: the newer terminal belongs to a running turn whose own
+		// prompt paste is in flight; re-sending the message into it duplicates it.
+		"newer live terminal with a turn in flight keeps it uncertain": {"2026-09-19T09:05:00Z", true, false},
 	} {
 		started, err := time.Parse(time.RFC3339, tc.tmuxStartedAt)
 		if err != nil {
@@ -368,9 +372,20 @@ func TestCanRetryUncertainChatSubmissionIgnoresALiveTerminalThatStartedLater(t *
 		}
 		store := terminals.NewStore()
 		store.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(started, sessionID, "main:"+sessionID, "mlp-codex-cli-int-later"))
-		api := &StreamingAPI{terminalStore: store}
+		api := &StreamingAPI{terminalStore: store, agentCancelFuncs: map[string]context.CancelFunc{}}
+		if tc.activeTurn {
+			api.agentCancelFuncs[sessionID] = func() {}
+		}
 		if got := api.canRetryUncertainChatSubmission(context.Background(), record); got != tc.want {
 			t.Errorf("%s: canRetry = %v, want %v", name, got, tc.want)
+		}
+		if tc.activeTurn {
+			// The submission is not dropped: once the turn ends, the next
+			// reconcile (the client's same-key Resend) sees it as retryable.
+			delete(api.agentCancelFuncs, sessionID)
+			if !api.canRetryUncertainChatSubmission(context.Background(), record) {
+				t.Errorf("%s: still not retryable after the turn ended", name)
+			}
 		}
 	}
 }

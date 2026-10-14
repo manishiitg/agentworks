@@ -416,6 +416,16 @@ func replayChatSubmissionOutcome(w http.ResponseWriter, record chatSubmissionRec
 // or continued beyond it: once the session is closed, absence of the exact
 // human prompt means the provider never accepted that submission. Missing
 // transcript evidence, an active turn, or a live tmux remains uncertain.
+// sessionHasActiveTurn reports a foreground turn in flight for the session,
+// from the server's cancel registry or the retained mcpagent session.
+func (api *StreamingAPI) sessionHasActiveTurn(sessionID string) bool {
+	if api.hasActiveTurnCancel(sessionID) {
+		return true
+	}
+	retainedSession, ok := mcpagent.LookupSession(sessionID)
+	return ok && retainedSession.ActiveTurnID() != ""
+}
+
 func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, record chatSubmissionRecord) bool {
 	if api == nil || strings.TrimSpace(record.Session) == "" || strings.TrimSpace(record.Message) == "" {
 		return false
@@ -432,13 +442,13 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 		if snapshot.CreatedAt.IsZero() || !snapshot.CreatedAt.After(recordTime) {
 			return false
 		}
-	} else {
-		if api.hasActiveTurnCancel(record.Session) {
-			return false
-		}
-		if retainedSession, ok := mcpagent.LookupSession(record.Session); ok && retainedSession.ActiveTurnID() != "" {
-			return false
-		}
+	}
+	// A running turn owns the session's one input box whatever terminal it runs
+	// in, including a terminal newer than this record. Re-sending the message as
+	// a live steer into that turn races its own prompt paste and delivers the
+	// text twice (PLAT-861-116).
+	if api.sessionHasActiveTurn(record.Session) {
+		return false
 	}
 
 	raw, err := ReadChatHistoryConversation(record.Owner, record.Session, record.Project)

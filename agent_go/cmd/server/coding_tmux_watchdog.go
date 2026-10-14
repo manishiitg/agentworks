@@ -166,6 +166,14 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 			delete(streak, watchdogKey)
 			continue
 		}
+		// A limit wall matters to the turn that is waiting on it. With no turn in
+		// flight, limit-like text is history in the pane (an earlier turn's error
+		// redrawn): confirming it cancelled the session runtime every minute while
+		// a chat message was starting a new turn (PLAT-861-206).
+		if codingAgentSnapshotIsMainAgent(snap) && !api.sessionHasActiveTurn(sessionID) {
+			delete(streak, watchdogKey)
+			continue
+		}
 		stillLimited[watchdogKey] = true
 		observation := streak[watchdogKey]
 		if observation.evidence == evidence {

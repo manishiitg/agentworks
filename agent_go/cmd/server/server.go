@@ -2722,6 +2722,20 @@ func runServer(cmd *cobra.Command, args []string) {
 	// which the per-tool handler reads as a fallback when body session_id is empty.
 	sessionToolsRouter := router.PathPrefix("/s/{session_id}/tools").Subrouter()
 	sessionToolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
+	// A coding CLI that does not stream (AGY) shows its work only through the
+	// bridge calls it makes. Count each one, at start and at end, as session
+	// progress so the turn-inactivity wait does not cancel a turn that is
+	// busy running tools (a bot turn cancelled after 10 min, PLAT-861-206).
+	sessionToolsRouter.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sid := mux.Vars(r)["session_id"]
+			if r.Method == http.MethodPost && sid != "" {
+				api.updateSessionActivity(sid)
+				defer api.updateSessionActivity(sid)
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 	sessionToolsRouter.HandleFunc("/browser/packages/{package}", api.handlePlaywrightPackage).Methods("GET")
 	sessionToolsRouter.HandleFunc("/browser/live", api.handlePlaywrightPublisher).Methods("GET")
 	sessionToolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
