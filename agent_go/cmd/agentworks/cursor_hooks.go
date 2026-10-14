@@ -294,7 +294,13 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	if text == "" {
 		return nil
 	}
-	return json.NewEncoder(o.stdout).Encode(map[string]any{"followup_message": text})
+	if err := json.NewEncoder(o.stdout).Encode(map[string]any{"followup_message": text}); err != nil {
+		return err
+	}
+	if err == nil {
+		admitAfterEmit(cmd.Context(), root, o, req, out.Messages)
+	}
+	return nil
 }
 
 func cursorPinSession(pin string, context liveAgentSession) error {

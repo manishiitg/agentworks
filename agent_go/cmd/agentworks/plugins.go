@@ -286,10 +286,16 @@ func pluginCommand(o *options) *cobra.Command {
 		if req.Provider == "muse" && out.SetupContext != "" && !out.MonitorActive {
 			text += "\n" + museMonitorSetup
 		}
+		var written error
 		if input.Event == "Stop" {
-			return json.NewEncoder(o.stdout).Encode(map[string]any{"decision": "block", "reason": text})
+			written = json.NewEncoder(o.stdout).Encode(map[string]any{"decision": "block", "reason": text})
+		} else {
+			written = json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": text}})
 		}
-		return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": text}})
+		if written == nil && req.Provider != "muse" {
+			admitAfterEmit(ctx, root, o, req, out.Messages)
+		}
+		return written
 	}}
 	root.AddCommand(hook)
 	root.AddCommand(&cobra.Command{Use: "mcp PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
@@ -321,6 +327,25 @@ func pluginCommand(o *options) *cobra.Command {
 		return server.NewStdioServer(bridge).Listen(ctx, o.stdin, o.stdout)
 	}})
 	return root
+}
+
+// admitAfterEmit tells the server a hook-delivered message was admitted, but only once the hook has written the
+// message text out and returned success: a hook that crashed or timed out first leaves the message stored. Muse is
+// left out (its receive tool result can be lost and is handed out again until acknowledged). Best effort: the agent's
+// own acknowledgement still works if this one fails, and "processed" always needs the agent.
+func admitAfterEmit(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest, messages []agentworksclient.AgentLiveMessage) {
+	ackCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	for _, m := range messages {
+		if m.Kind == "status" {
+			continue // the helper already acknowledged those as processed
+		}
+		ack := req
+		ack.Action, ack.Delivery, ack.MessageID, ack.WantNotice = "ack", "admitted", m.MessageID, false
+		if _, err := bridgeCall(ackCtx, root, o, ack); err != nil {
+			return
+		}
+	}
 }
 
 func pluginBlock(o *options, text string) error {
