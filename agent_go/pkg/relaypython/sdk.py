@@ -63,6 +63,7 @@ class Context:
         self.variables = variables
         self._ipc = run_dir / ".relay_ipc"
         self._sequence = 0
+        self._classifier_sequence = 0
         self._lock = asyncio.Lock()
         self._in_tool = contextvars.ContextVar("relay_tool_callback", default=False)
         self._trace = {"version": 1, "status": "running", "started_at": _recorded_started_at(run_dir) or time.time(), "calls": []}
@@ -118,8 +119,10 @@ class Context:
                 raise RuntimeError("Could not reach Cloudflare. Try the request again.") from None
 
         async with self._lock:
-            self._sequence += 1
-            call = {"id": "call-" + str(self._sequence), "name": name,
+            # Classification executes here, without a mailbox request. Keep its
+            # receipts out of the contiguous admission/agent/MCP request IDs.
+            self._classifier_sequence += 1
+            call = {"id": "classifier-" + str(self._classifier_sequence), "name": name,
                     "type": "classifier", "provider": "cloudflare", "model": model,
                     "categories": categories, "instructions": question["instructions"],
                     "status": "running", "started_at": time.time(), "tools": []}

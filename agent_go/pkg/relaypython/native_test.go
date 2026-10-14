@@ -14,7 +14,7 @@ import (
 func TestDBOSNativeClassifierReceiptSurvivesCheckpointRecovery(t *testing.T) {
 	c, cfg := dbosFixture(t, `import io, json, os, urllib.request
 from dbos import DBOS
-from agentworks import classifier, run_dir
+from agentworks import classifier, agent, run_dir
 
 def inference(request, timeout):
     assert request.full_url.endswith("/ai/run/@cf/cloudflare/clef-flash")
@@ -31,14 +31,27 @@ urllib.request.urlopen = inference
 async def choose_team(message):
     return await classifier(state=message, categories={"billing": "Payments", "other": "Other"})
 
+@DBOS.step(name="reply")
+async def reply(label):
+    return await agent(system_prompt="Draft a reply", user_message=label)
+
 @DBOS.workflow()
 async def run(INPUT):
     result = await choose_team(INPUT["message"])
+    await reply(result["label"])
     if os.environ.get("FAULT_AFTER_CHECKPOINT") == "1":
         os._exit(97)
     return result
 `, map[string]interface{}{"message": "Refund the duplicate charge"})
 	cfg.Env = map[string]string{"SECRET_CLOUDFLARE_AUTH_TOKEN": "fixture-selected-token", "SECRET_CLOUDFLARE_ACCOUNT_ID": "fixture-account", "FAULT_AFTER_CHECKPOINT": "1"}
+	agentCalls := 0
+	cfg.CallAgent = func(ctx context.Context, call Call, tool ToolCaller) (interface{}, error) {
+		agentCalls++
+		if len(call.Messages) != 1 || call.Messages[0] != "billing" {
+			t.Fatalf("classifier result did not reach the agent: %+v", call)
+		}
+		return map[string]interface{}{"reply": "Billing reply"}, nil
+	}
 	if err := runDBOS(t, cfg); !IsInterrupted(err) {
 		t.Fatalf("classifier checkpoint interruption: %v", err)
 	}
@@ -50,6 +63,9 @@ async def run(INPUT):
 	if string(count) != "1" {
 		t.Fatalf("completed classification repeated: %s", count)
 	}
+	if agentCalls != 1 {
+		t.Fatalf("Classifier to Agent chain failed or repeated: %d agent calls", agentCalls)
+	}
 	raw, _ := os.ReadFile(filepath.Join(c.root, cfg.RunPath, "relay_trace.json"))
 	var trace struct {
 		Calls []struct {
@@ -60,7 +76,7 @@ async def run(INPUT):
 			AgentCalls      []json.RawMessage `json:"agent_calls"`
 		}
 	}
-	if err := json.Unmarshal(raw, &trace); err != nil || len(trace.Calls) != 1 || trace.Calls[0].Type != "classifier" || trace.Calls[0].Provider != "cloudflare" || !trace.Calls[0].Reused || len(trace.Calls[0].ClassifierCalls) != 1 || len(trace.Calls[0].AgentCalls) != 0 {
+	if err := json.Unmarshal(raw, &trace); err != nil || len(trace.Calls) != 2 || trace.Calls[0].Type != "classifier" || trace.Calls[0].Provider != "cloudflare" || !trace.Calls[0].Reused || len(trace.Calls[0].ClassifierCalls) != 1 || len(trace.Calls[0].AgentCalls) != 0 || len(trace.Calls[1].AgentCalls) != 1 {
 		t.Fatalf("typed classifier history lost: %s (%v)", raw, err)
 	}
 	if strings.Contains(string(raw), "fixture-selected-token") || strings.Contains(string(raw), "fixture-account") {
