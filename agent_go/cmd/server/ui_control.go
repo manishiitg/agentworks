@@ -73,11 +73,14 @@ type uiControlBroker struct {
 	bindings map[string]*uiBinding
 	actions  map[string]*uiAction
 	scopes   map[string]string
-	now      func() time.Time
+	// scopeUsed is when a chat's scope was last set or read; idle, unbound scopes are dropped.
+	scopeUsed      map[string]time.Time
+	lastScopePrune time.Time
+	now            func() time.Time
 }
 
 func newUIControlBroker() *uiControlBroker {
-	return &uiControlBroker{bindings: map[string]*uiBinding{}, actions: map[string]*uiAction{}, scopes: map[string]string{}, now: time.Now}
+	return &uiControlBroker{bindings: map[string]*uiBinding{}, actions: map[string]*uiAction{}, scopes: map[string]string{}, scopeUsed: map[string]time.Time{}, now: time.Now}
 }
 func (api *StreamingAPI) uiBroker() *uiControlBroker {
 	api.uiControlOnce.Do(func() { api.uiControl = newUIControlBroker() })
@@ -99,18 +102,74 @@ func (b *uiControlBroker) setScope(session, workspace string) {
 		}
 	}
 	// Registration is server-owned. Scope must never come from a browser body.
-	if len(b.scopes) < 4096 || b.scopes[session] != "" {
-		b.scopes[session] = workspace
+	if b.scopes[session] == "" && len(b.scopes) >= uiControlScopeSoftCap {
+		b.evictOldestIdleScope()
 	}
+	b.scopes[session] = workspace
+	b.scopeUsed[session] = b.now()
 }
 func (b *uiControlBroker) scope(session string) string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if _, ok := b.scopes[session]; ok {
+		b.scopeUsed[session] = b.now()
+	}
 	return b.scopes[session]
 }
 
-const uiControlBindingLease = 6 * time.Minute
+// The browser renews every 5 minutes; hidden tabs throttle timers, so the lease is three times that.
+const uiControlBindingLease = 15 * time.Minute
+const uiControlScopeIdle = time.Hour
+const uiControlScopeSoftCap = 4096
 
+// busySessions lists chats that still have a bound browser or a pending action (one pass).
+func (b *uiControlBroker) busySessions() map[string]bool {
+	busy := map[string]bool{}
+	for _, c := range b.bindings {
+		busy[c.session] = true
+	}
+	for _, a := range b.actions {
+		if !uiTerminal(a.Status) {
+			busy[a.session] = true
+		}
+	}
+	return busy
+}
+
+func (b *uiControlBroker) dropScope(session, why string) {
+	log.Printf("[UI-CONTROL] session=%s scope evicted (%s, idle %s)", session, why, b.now().Sub(b.scopeUsed[session]).Round(time.Second))
+	delete(b.scopes, session)
+	delete(b.scopeUsed, session)
+}
+
+// pruneScopes runs at most once a minute.
+func (b *uiControlBroker) pruneScopes() {
+	now := b.now()
+	if now.Sub(b.lastScopePrune) < time.Minute {
+		return
+	}
+	b.lastScopePrune = now
+	busy := b.busySessions()
+	for session := range b.scopes {
+		if now.Sub(b.scopeUsed[session]) > uiControlScopeIdle && !busy[session] {
+			b.dropScope(session, "idle")
+		}
+	}
+}
+
+// evictOldestIdleScope makes room at the soft cap; a new chat is never refused.
+func (b *uiControlBroker) evictOldestIdleScope() {
+	busy := b.busySessions()
+	oldest, at := "", time.Time{}
+	for session := range b.scopes {
+		if used := b.scopeUsed[session]; (oldest == "" || used.Before(at)) && !busy[session] {
+			oldest, at = session, used
+		}
+	}
+	if oldest != "" {
+		b.dropScope(oldest, "cap")
+	}
+}
 func uiTerminal(status string) bool { return status != "accepted" && status != "applying" }
 func (b *uiControlBroker) finish(a *uiAction, status, code string) {
 	if uiTerminal(a.Status) {
@@ -122,6 +181,7 @@ func (b *uiControlBroker) finish(a *uiAction, status, code string) {
 }
 func (b *uiControlBroker) prune() {
 	now := b.now()
+	b.pruneScopes()
 	for id, c := range b.bindings {
 		// The pane renews every 5 minutes (not every 10s): the agent's
 		// explicit commands arrive over the chat's SSE, so the lease only

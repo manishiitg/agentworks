@@ -9,7 +9,7 @@ import { UI_CONTROL_CONTRACT } from './contract.generated'
 import { applyUIAction, workspaceHost, type UIAction, type UISnapshot } from './client'
 
 const kinds = ['workflow.ui-action']
-// Lease renewal only (server lease: 6 min). The agent's explicit view
+// Lease renewal only (server lease: 15 min). The agent's explicit view
 // commands wake the pane over the chat SSE and the per-tab live feed
 // (`ui_control` notice naming this session); the pane never polls the chat.
 export const UI_CONTROL_BACKUP_POLL_MS = 5 * 60_000

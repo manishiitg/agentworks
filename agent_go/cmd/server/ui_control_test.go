@@ -370,6 +370,7 @@ func TestUIControlRevisionAndLeaseExpiry(t *testing.T) {
 	if _, err := b.result(c.session, a.RequestID); err == nil {
 		t.Fatal("unbounded retention")
 	}
+	now = now.Add(uiControlBindingLease)
 	if _, err := b.snapshot(c.session); err == nil {
 		t.Fatal("expired browser")
 	}
@@ -506,5 +507,34 @@ func TestPerformUIActionWakesOwnerThroughLiveFeed(t *testing.T) {
 	}
 	if raw, _ := json.Marshal(wake); strings.Contains(string(raw), "user-a") || strings.Contains(string(raw), "flow") {
 		t.Fatalf("notice leaks owner or action data: %s", raw)
+	}
+}
+
+func TestUIControlScopesAreEvictedNotRefused(t *testing.T) {
+	b := newUIControlBroker()
+	now := time.Unix(1_000_000, 0)
+	b.now = func() time.Time { return now }
+	b.setScope("bound", "Workflow/a")
+	bound, err := b.bind("bound")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < uiControlScopeSoftCap+1; i++ {
+		now = now.Add(time.Second)
+		b.setScope(fmt.Sprintf("chat-%d", i), "Workflow/a")
+	}
+	if b.scope("chat-4096") == "" {
+		t.Fatal("a new chat past the cap got no scope")
+	}
+	if b.scope("chat-0") != "" {
+		t.Fatal("oldest idle scope was kept at the cap")
+	}
+	now = now.Add(uiControlScopeIdle + time.Minute)
+	b.mu.Lock()
+	b.bindings[bound.id].seen = now
+	b.prune()
+	b.mu.Unlock()
+	if b.scope("chat-4000") != "" || b.scope("bound") == "" {
+		t.Fatal("idle unbound scope kept, or a bound scope dropped")
 	}
 }
