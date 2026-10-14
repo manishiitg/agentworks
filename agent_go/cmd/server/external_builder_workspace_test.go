@@ -16,6 +16,11 @@ import (
 )
 
 func TestExternalBuilderManagedFileTools(t *testing.T) {
+	// Shared source authority checks the current manifest through the workspace
+	// API even when the actual file edit uses its local mount.
+	server, store := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	store.files["Workflow/test/workflow.json"] = `{"schema_version":1,"id":"test","kind":"relay"}`
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))

@@ -186,7 +186,12 @@ platform helpers from agentworks, change run to one argument and enable DBOS.
 
 ## Build, test and publish
 
-Use workspace diff_patch/execute_shell_command to save source and helpers. Package
+In website Builder chat, use workspace diff_patch/execute_shell_command to save
+source and helpers. In an external model-mediated Builder turn, use read_file,
+list_files, search_files and write_file with the current revision to edit the
+draft. After saving, describe the change and let the calling client use relay
+action=test and action=get_run to check it; execution and publication are direct
+Relay actions for that client. Package
 installation uses the existing sandbox dependency mechanism; never install into a
 published snapshot. Preserve Python whitespace and literal escapes.
 

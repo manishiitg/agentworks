@@ -59,6 +59,20 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if !gate.Admit("test_relay") || !gate.Admit("publish_relay") || !gate.Admit("preview_report") || !gate.Admit("query_workflow_db") || gate.Admit("create_slack_bot_route") {
 		t.Fatal("Relay tool admission differs from product.yaml")
 	}
+	// The deployed MCP Builder could read its skill but could not edit relay.py:
+	// the product allowlist dropped all four existing managed file tools.
+	claims := &UserClaims{ExternalBuilderOperationID: "operation"}
+	gate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
+	for _, name := range []string{"read_file", "list_files", "search_files", "write_file"} {
+		if !gate.Admit(name) {
+			t.Errorf("Relay MCP Builder lost managed file tool %s", name)
+		}
+	}
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "test_relay", "publish_relay"} {
+		if gate.Admit(name) {
+			t.Errorf("managed editing granted external Builder tool %s", name)
+		}
+	}
 }
 
 func TestRelayBuilderChatIsSeparateFromRunChat(t *testing.T) {

@@ -20,6 +20,11 @@ chat:
       file: prompts/builder.md
     skills: [relay-builder, relay-dashboard]
     tools:
+      # MCP Builder turns use the shared guarded revision/audit file tools.
+      - read_file
+      - list_files
+      - search_files
+      - write_file
       - execute_shell_command
       - diff_patch_workspace_file
       - get_workflow_config
