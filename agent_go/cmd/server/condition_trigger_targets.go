@@ -44,7 +44,7 @@ func (c *conditionService) resolveTarget(ctx context.Context, job productSchedul
 		}
 	}
 	if len(matches) > 1 {
-		return triggerTarget{}, conditiontrigger.PermanentError{Err: errors.New("condition target is ambiguous; use the exact workspace path")}
+		return triggerTarget{}, conditiontrigger.PermanentError{Err: errors.New("watcher target is ambiguous; use the exact workspace path")}
 	}
 	if len(matches) == 1 {
 		return matches[0], nil
@@ -110,7 +110,7 @@ func (c *conditionService) dispatchTarget(ctx context.Context, job productSchedu
 		}
 		fn, found := findCrewFunction(functions, cfg.Target.Function)
 		if !found {
-			return "", errors.New("condition function was removed")
+			return "", errors.New("watcher function was removed")
 		}
 		args := map[string]interface{}{}
 		for k, v := range ev.Payload {
@@ -161,7 +161,7 @@ func (c *conditionService) dispatchTarget(ctx context.Context, job productSchedu
 		}
 		return result.RunID, nil
 	}
-	return "", errors.New("unknown condition target")
+	return "", errors.New("unknown watcher target")
 }
 
 func conditionRouteSchedule(job productScheduleJob, cfg conditiontrigger.Config) WorkflowSchedule {
@@ -170,13 +170,13 @@ func conditionRouteSchedule(job productScheduleJob, cfg conditiontrigger.Config)
 
 func (s *SchedulerService) conditionRoute(ctx context.Context, workspacePath, id string, input *WorkflowWebhookDelivery) (*WorkflowSchedule, error) {
 	if input.ConditionCaller == nil || s.api.productSchedules == nil {
-		return nil, errors.New("condition route caller unavailable")
+		return nil, errors.New("watcher route caller unavailable")
 	}
 	b := input.ConditionCaller
 	ctx = internalBotRequestContext(ctx, b.OwnerID)
 	job, err := s.api.productSchedules.Job(ctx, b.OwnerID, b.JobID)
 	if err != nil || job.Schedule.Condition == nil {
-		return nil, errors.New("condition route caller was removed")
+		return nil, errors.New("watcher route caller was removed")
 	}
 	c := s.api.productSchedules.conditionService()
 	cfg := *job.Schedule.Condition
@@ -184,18 +184,18 @@ func (s *SchedulerService) conditionRoute(ctx context.Context, workspacePath, id
 		return nil, err
 	}
 	if cfg.Revision() != b.Revision || cfg.Target.Kind != "route" {
-		return nil, errors.New("condition route binding changed")
+		return nil, errors.New("watcher route binding changed")
 	}
 	if err := c.validateTarget(ctx, job, cfg); err != nil {
 		return nil, err
 	}
 	t, err := c.resolveTarget(ctx, job, cfg.Target.Name)
 	if err != nil || t.Path != workspacePath {
-		return nil, errors.New("condition route target changed")
+		return nil, errors.New("watcher route target changed")
 	}
 	sched := conditionRouteSchedule(job, cfg)
 	if sched.ID != id {
-		return nil, errors.New("condition route identity mismatch")
+		return nil, errors.New("watcher route identity mismatch")
 	}
 	return &sched, nil
 }

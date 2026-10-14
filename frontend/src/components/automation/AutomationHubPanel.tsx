@@ -46,7 +46,7 @@ type AutomationHubPanelProps = {
 const SECTION_DEFS = [
   { id: 'schedules', label: 'Schedules', icon: CalendarClock },
   { id: 'triggers', label: 'Webhooks', icon: Webhook },
-  { id: 'conditions', label: 'Condition triggers', icon: Zap },
+  { id: 'conditions', label: 'Watchers', icon: Zap },
   { id: 'functions', label: 'Functions', icon: Braces },
   { id: 'bots', label: 'Bots', icon: Bot },
   { id: 'chats', label: 'Chats', icon: MessageSquareText },
@@ -58,7 +58,7 @@ const WORKFLOW_SECTION_MESSAGES: Record<AutomationHubSection, string> = {
   functions: getWorkspaceAskAIMessage('webhooks'),
   chats: getWorkspaceAskAIMessage('workshop'),
   bots: getWorkspaceAskAIMessage('workshop'),
-  conditions: 'Explain the saved condition triggers, what each checks and which work it starts.',
+  conditions: 'Explain the saved watchers, what each checks and which work it starts.',
 }
 
 export function AutomationHubPanel({
@@ -123,7 +123,7 @@ export function AutomationHubPanel({
   // standard pair (Ask AI left, refresh right). The bots tab has no
   // refreshable list, so it keeps Ask AI alone.
   const refreshAction = section === 'conditions'
-    ? { label: 'Refresh condition triggers', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
+    ? { label: 'Refresh watchers', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
     : section === 'schedules'
     ? { label: 'Refresh schedules', run: () => setSchedulesRefreshToken(token => token + 1), spinning: schedulesStatus?.isLoading }
     : section === 'triggers'

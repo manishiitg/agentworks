@@ -168,7 +168,7 @@ var featureCatalog = map[string]featureDefinition{
 		Dependencies:    []string{"schedules"},
 		Tools:           []string{"manage_condition_triggers"},
 		Skills:          []string{"work-schedules-and-bots"},
-		PromptExtension: "Condition triggers run saved Python checks on a timer without a model turn. Configure them with manage_condition_triggers; they appear in the Condition triggers pane. Read work-schedules-and-bots before authoring a detector. Checks print bounded events and cursor JSON; dispatch targets and selected credentials are owner configuration, never chosen by event data.",
+		PromptExtension: "Watchers run saved Python checks on a timer without a model turn. Configure them with manage_condition_triggers; they appear in the Watchers pane. Read work-schedules-and-bots before authoring a detector. Checks print bounded events and cursor JSON; dispatch targets and selected credentials are owner configuration, never chosen by event data.",
 	},
 	"schedules": {
 		Tools:           []string{"list_project_schedules", "create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule"},

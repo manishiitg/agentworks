@@ -18,7 +18,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
 	if source.ConditionJob != "" {
 		if api.productSchedules == nil {
-			return fmt.Errorf("condition caller unavailable")
+			return fmt.Errorf("watcher caller unavailable")
 		}
 		job, err := api.productSchedules.Job(ctx, source.UserID, source.ConditionJob)
 		if err != nil {
@@ -28,7 +28,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return conditiontrigger.HoldError{Err: err}
 		}
 		if job.Schedule.Condition == nil {
-			return fmt.Errorf("condition caller was removed")
+			return fmt.Errorf("watcher caller was removed")
 		}
 		if !job.Effective().Enabled {
 			return conditiontrigger.ErrPaused

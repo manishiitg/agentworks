@@ -114,7 +114,7 @@ func Validate(s Schedule) error {
 	}
 	if s.Condition != nil {
 		if len(s.Messages) != 0 {
-			return fmt.Errorf("condition triggers cannot contain agent schedule messages")
+			return fmt.Errorf("watchers cannot contain agent schedule messages")
 		}
 		return s.Condition.Validate()
 	}

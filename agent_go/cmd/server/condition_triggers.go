@@ -66,11 +66,11 @@ func conditionContext(ctx context.Context, job productScheduleJob) context.Conte
 // merely writing a condition field never grants an unsupported product access.
 func (c *conditionService) authorize(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
 	if c.s.api == nil || job.Profile.ID != codeproduct.ProfileID || job.ProjectID == "" {
-		return errors.New("condition triggers are currently available in Code")
+		return errors.New("watchers are currently available in Code")
 	}
 	claims := &UserClaims{UserID: job.UserID}
 	if userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, codeproduct.ProfileID) {
-		return conditiontrigger.PermanentError{Err: errors.New("condition owner no longer has Code access")}
+		return conditiontrigger.PermanentError{Err: errors.New("watcher owner no longer has Code access")}
 	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: codeproduct.ProfileID}, Path: job.WorkspacePath}
 	if err := authorizeOwnedCodeCaller(ctx, job.UserID, job.UserID, caller); err != nil {
@@ -81,7 +81,7 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 		return err
 	}
 	if !workspacePathsMatchForUser(job.UserID, binding.WorkspacePath, job.WorkspacePath) {
-		return conditiontrigger.PermanentError{Err: errors.New("condition source project changed")}
+		return conditiontrigger.PermanentError{Err: errors.New("watcher source project changed")}
 	}
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -120,13 +120,13 @@ func (c *conditionService) current(ctx context.Context, job productScheduleJob, 
 		return err
 	}
 	if fresh.Schedule.Condition == nil {
-		return conditiontrigger.PermanentError{Err: errors.New("condition trigger was removed")}
+		return conditiontrigger.PermanentError{Err: errors.New("watcher was removed")}
 	}
 	if !fresh.Effective().Enabled {
 		return conditiontrigger.ErrPaused
 	}
 	if fresh.Schedule.Condition.Revision() != cfg.Revision() {
-		return conditiontrigger.PermanentError{Err: errors.New("condition trigger changed")}
+		return conditiontrigger.PermanentError{Err: errors.New("watcher changed")}
 	}
 	return c.authorize(ctx, fresh, cfg)
 }
@@ -136,7 +136,7 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 	case c.capacity <- struct{}{}:
 		defer func() { <-c.capacity }()
 	default:
-		return "", errors.New("condition checks are at capacity")
+		return "", errors.New("watcher checks are at capacity")
 	}
 	key := job.UserID + "\x1f" + job.ID()
 	ctx, cancel := context.WithTimeout(conditionContext(ctx, job), 60*time.Second)
@@ -225,7 +225,7 @@ func (c *conditionService) pauseNotification(ctx context.Context, job productSch
 		return
 	}
 	emitter := &sessionEventEmitter{eventStore: c.s.api.eventStore, sessionID: chat.SessionID}
-	emitter.EmitProductInteraction("notify", map[string]interface{}{"title": "Condition trigger paused", "message": fmt.Sprintf("Condition trigger %q paused after five failed checks. %s. Open Condition triggers to inspect and enable it after fixing the script or connection.", job.Schedule.Name, detail)})
+	emitter.EmitProductInteraction("notify", map[string]interface{}{"title": "Watcher paused", "message": fmt.Sprintf("Watcher %q paused after five failed checks. %s. Open Watchers to inspect and enable it after fixing the script or connection.", job.Schedule.Name, detail)})
 }
 
 // Cursor is stdin. The pinned script gets selected credentials only, no MCP
@@ -244,13 +244,13 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	root := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
 	source, found, err := c.s.readFile(ctx, path.Join(root, cfg.Script))
 	if err != nil || !found {
-		return nil, errors.New("condition script is unavailable")
+		return nil, errors.New("watcher script is unavailable")
 	}
 	if conditiontrigger.Hash(source) != cfg.SHA256 {
-		return nil, errors.New("condition script changed; save the trigger again to accept this version")
+		return nil, errors.New("watcher script changed; save the trigger again to accept this version")
 	}
 	if len(source) > conditiontrigger.MaxOutput {
-		return nil, errors.New("condition script exceeds 64 KiB")
+		return nil, errors.New("watcher script exceeds 64 KiB")
 	}
 	env := map[string]string{}
 	secrets := c.s.api.loadSelectedSecrets(ctx, job.UserID, root, cfg.Secrets)
@@ -311,11 +311,11 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		if len(detail) > 600 {
 			detail = detail[len(detail)-600:]
 		}
-		return nil, fmt.Errorf("condition Python check failed: %s", detail)
+		return nil, fmt.Errorf("watcher Python check failed: %s", detail)
 	}
 	for n, value := range env {
 		if strings.HasPrefix(n, "SECRET_") && len(value) >= 4 && strings.Contains(result.Stdout, value) {
-			return nil, errors.New("condition output contains a selected credential; remove it from events and state")
+			return nil, errors.New("watcher output contains a selected credential; remove it from events and state")
 		}
 	}
 	return []byte(result.Stdout), nil
@@ -354,7 +354,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
 		if !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
-			return "", conditiontrigger.PermanentError{Err: errors.New("condition target chat was removed")}
+			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was removed")}
 		}
 	}
 	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, chatKey)
@@ -366,7 +366,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		return "", err
 	}
 	if c.s.api.codeLocalSession(conversation.SessionID) {
-		return "", conditiontrigger.PermanentError{Err: errors.New("condition targets require a server Code chat")}
+		return "", conditiontrigger.PermanentError{Err: errors.New("watcher targets require a server Code chat")}
 	}
 	chat := codeChat{Key: chatKey, ID: chatID, Name: "Code agent", SessionID: conversation.SessionID}
 	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)

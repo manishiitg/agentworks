@@ -5,7 +5,7 @@ import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
-function messageOf(error: unknown) { return axios.isAxiosError(error) && typeof error.response?.data === 'string' ? error.response.data : error instanceof Error ? error.message : 'Condition trigger request failed' }
+function messageOf(error: unknown) { return axios.isAxiosError(error) && typeof error.response?.data === 'string' ? error.response.data : error instanceof Error ? error.message : 'Watcher request failed' }
 function targetLabel(t: ConditionTrigger['target']) {
   if (t.kind === 'agent') return `Code agent · ${t.chat_id || 'main chat'}`
   if (t.kind === 'function') return `${t.name} · ${t.function}`
@@ -38,10 +38,10 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
   return <div className="h-full min-w-0 overflow-y-auto p-4" data-testid="condition-triggers">
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">Check a source on a timer using Python. When the condition matches, start this Code&apos;s agent or an existing function or workflow route. Checks with no matches use no AI.</p>
-      {canManage && <button className={buttonClass} onClick={() => void ask('Set up a condition trigger in this Code project. Find out what source and condition I want to check, and which agent, function or route should run. Use manage_condition_triggers to discover current triggers and authorized targets, save the Python detector, select its required secrets, and configure its schedule. Explain its cursor and duplicate handling.')}>Add in chat</button>}
+      {canManage && <button className={buttonClass} onClick={() => void ask('Set up a watcher in this Code project. Find out what source and condition I want to check, and which agent, function or route should run. Use manage_condition_triggers to discover current watchers and authorized targets, save the Python detector, select its required secrets, and configure its schedule. Explain its cursor and duplicate handling.')}>Add in chat</button>}
     </div>
     {error && <p role="alert" className="mb-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
-    {loaded && triggers.length === 0 && <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No condition triggers yet. Add one in chat to monitor a source and start work when it matches.</p>}
+    {loaded && triggers.length === 0 && <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No watchers yet. Add one in chat to monitor a source and start work when it matches.</p>}
     <div className="space-y-3">{triggers.map(t => <section key={t.id} className="min-w-0 space-y-2 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2"><h3 className="truncate text-sm font-medium">{t.name}</h3><span className="text-xs text-muted-foreground">{t.enabled ? 'Enabled' : 'Paused'}</span></div>
       <p className="break-all text-xs text-muted-foreground">{t.script} · {t.cron_expression} · {t.timezone}</p>
@@ -52,7 +52,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
         {canManage && <>
           <button className={buttonClass} disabled={busy || !t.enabled} onClick={() => void manage('check', t.id)}>Check now</button>
           <button className={buttonClass} disabled={busy} onClick={() => void manage('update', t.id, { enabled: !t.enabled })}>{t.enabled ? 'Pause' : 'Enable'}</button>
-          <button className={buttonClass} disabled={busy} onClick={() => void ask(`Edit condition trigger ${t.id}. Read its saved definition using manage_condition_triggers, explain its check and target, then apply the changes I request. Preserve its cursor and history.`)}>Edit in chat</button>
+          <button className={buttonClass} disabled={busy} onClick={() => void ask(`Edit watcher ${t.id}. Read its saved definition using manage_condition_triggers, explain its check and target, then apply the changes I request. Preserve its cursor and history.`)}>Edit in chat</button>
           <button className={buttonClass} disabled={busy} onClick={() => void manage('delete', t.id)}>Remove</button>
         </>}
         <button className={buttonClass} disabled={busy} onClick={() => void inspect(t.id)}>History</button>

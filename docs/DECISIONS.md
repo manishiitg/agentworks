@@ -76,9 +76,11 @@ request; consecutive system snapshots also looked like duplicate instructions.
 
 Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-195.
 
-## 2026-10-14 — Condition triggers are person-owned callers, enabled in Code first (PLAT-861)
+## 2026-10-14 — Watchers are person-owned callers, enabled in Code first (PLAT-861)
 
-Reuse the product scheduler to run saved Python checks in the owning product's server sandbox without a model turn. A check reads its previous cursor on stdin and returns bounded events plus the next cursor. Persist events and cursor together before dispatch; a separate durable queue calls an owner-configured agent conversation, function or route with stable retry IDs. Recheck source access, selected credentials and target access at execution. The caller admits the call; targets keep their authored execution policy and credentials. Changes to the saved script require accepting its new hash. Uncertain dispatches beyond the safe retry horizon need reconciliation, never blind replay. External effects still require target/service deduplication. Code is the first source surface, not a separate architecture; Relays remain published-function targets without timers. Show these in their own Condition triggers section. Why: deterministic source conditions should start existing shared work without paying for an agent on each check.
+Reuse the product scheduler to run saved Python checks in the owning product's server sandbox without a model turn. A check reads its previous cursor on stdin and returns bounded events plus the next cursor. Persist events and cursor together before dispatch; a separate durable queue calls an owner-configured agent conversation, function or route with stable retry IDs. Recheck source access, selected credentials and target access at execution. The caller admits the call; targets keep their authored execution policy and credentials. Changes to the saved script require accepting its new hash. Uncertain dispatches beyond the safe retry horizon need reconciliation, never blind replay. External effects still require target/service deduplication. Code is the first source surface, not a separate architecture; Relays remain published-function targets without timers. Show these in their own Watchers section. Why: deterministic source conditions should start existing shared work without paying for an agent on each check.
+
+The product-facing name is **Watchers**. The existing `manage_condition_triggers` tool, `/api/condition-triggers` endpoints, feature keys and saved trigger IDs stay compatible.
 
 Ticket: PLAT-861, issue 861-194.
 

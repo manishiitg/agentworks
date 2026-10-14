@@ -158,7 +158,7 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 	}
 	if name == "manage_condition_triggers" {
 		if api.productSchedules == nil {
-			externalError(w, 503, "conditions_unavailable", "Condition triggers unavailable")
+			externalError(w, 503, "conditions_unavailable", "Watchers unavailable")
 			return
 		}
 		out, err := api.productSchedules.conditionService().manage(internalBotRequestContext(ctx, claims.UserID), claims.UserID, "code", projectID, args)

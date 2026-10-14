@@ -51,7 +51,7 @@ func TestConditionCodeManagementAndRuntimeAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := c.manage(ctx, "other", "code", "checks", map[string]interface{}{"action": "list"}); err == nil {
-		t.Fatal("another account read private condition triggers")
+		t.Fatal("another account read private watchers")
 	}
 	if _, err := c.manage(ctx, "owner", "work", "alpha", args); err == nil {
 		t.Fatal("unsupported source product was admitted")
@@ -172,7 +172,7 @@ func TestConditionBackpressureDoesNotPauseButScriptFailuresNotify(t *testing.T) 
 	}
 	visible := env.api.eventStore.GetEvents(chat.SessionID, internalevents.GetEventsOptions{})
 	b, _ := json.Marshal(visible.Events)
-	if !strings.Contains(string(b), "Condition trigger paused") || !strings.Contains(string(b), "source unavailable") {
+	if !strings.Contains(string(b), "Watcher paused") || !strings.Contains(string(b), "source unavailable") {
 		t.Fatalf("pause wasn't visible in main Code chat: %s", b)
 	}
 

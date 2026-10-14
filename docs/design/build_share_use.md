@@ -20,7 +20,7 @@ Every product follows the same three stages.
 |---|---|---|
 | **Build** | The website Builder | MCP: coding agents (Claude Code, Codex, Cursor and others) using AgentWorks tools |
 | **Share** | App chat, dashboards and shared links, Slack, WhatsApp (Gmail planned) | The MCP network, webhooks |
-| **Use** | Asking or pressing published actions through those channels | Their own agents over MCP, schedules, condition triggers, other products |
+| **Use** | Asking or pressing published actions through those channels | Their own agents over MCP, schedules, Watchers, other products |
 
 ### Build
 
@@ -39,7 +39,7 @@ for something that already works elsewhere is configuration, not a rebuild.
 ### Use
 
 People use what was shared through those channels, and through callers they
-own: their agents over MCP, their schedules and their condition triggers. A
+own: their agents over MCP, their schedules and their Watchers. A
 schedule or a trigger is a caller owned by a person. It runs with that person's
 current access and selected secrets, can call only what is shared with them,
 and its cost is attributed to them. The target keeps its own execution rules
@@ -98,8 +98,9 @@ product's files or internals directly.
   published Relay functions; Slack and WhatsApp connectors; dashboard Ask for
   Crew, workflow and Relay dashboards and shared links; the Run-mode ask
   checking functions first; agent-to-agent messages.
-- In progress: condition triggers (person-owned Python checks that call a
-  shared entry point without a model turn), switched on in Code first.
+- Available in Code: Watchers, person-owned Python checks that start a Code
+  agent or call an authorized function, workflow route or internal trigger
+  without a model turn for the check. Crew and workflow sources follow.
 - Planned: Gmail as a channel, with every shared agent getting its own inbox;
   Ask on Code dashboards; per-product schedules, webhooks and Slack wiring
   converging on the shared entry points.

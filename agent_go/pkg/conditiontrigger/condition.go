@@ -25,9 +25,9 @@ const (
 	RecoveryWindow = 6 * 24 * time.Hour
 )
 
-var ErrBacklog = errors.New("condition dispatch backlog full")
-var ErrChecking = errors.New("condition check already running")
-var ErrPaused = errors.New("condition trigger is paused")
+var ErrBacklog = errors.New("watcher dispatch backlog full")
+var ErrChecking = errors.New("watcher check already running")
+var ErrPaused = errors.New("watcher is paused")
 
 // HoldError proves admission stopped before target execution.
 type HoldError struct{ Err error }
@@ -68,7 +68,7 @@ func (c Config) Validate() error {
 		return errors.New("script must be a Python file under code/triggers")
 	}
 	if b, err := hex.DecodeString(c.SHA256); err != nil || len(b) != sha256.Size {
-		return errors.New("save the script's SHA256 before enabling the condition trigger")
+		return errors.New("save the script's SHA256 before enabling the watcher")
 	}
 	if len(c.Secrets) > 20 {
 		return errors.New("select at most 20 secrets")
@@ -167,16 +167,16 @@ func Pending(l Ledger) int {
 func Parse(raw []byte) (Output, error) {
 	var o Output
 	if len(raw) > MaxOutput {
-		return o, errors.New("condition output exceeds 64 KiB")
+		return o, errors.New("watcher output exceeds 64 KiB")
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&o); err != nil {
-		return o, fmt.Errorf("condition output must be {events: [...], state: {...}}: %w", err)
+		return o, fmt.Errorf("watcher output must be {events: [...], state: {...}}: %w", err)
 	}
 	// Reject trailing JSON/text as well as multiple documents.
 	if json.Valid(raw) == false {
-		return o, errors.New("condition output must be one JSON document")
+		return o, errors.New("watcher output must be one JSON document")
 	}
 	if o.Events == nil || len(o.Events) > MaxEvents {
 		return o, errors.New("events must be an array of at most 20 items")

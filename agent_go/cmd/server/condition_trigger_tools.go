@@ -22,14 +22,14 @@ var conditionConfigMu sync.Mutex
 func conditionToolSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 		"action":            map[string]interface{}{"type": "string", "enum": []interface{}{"list", "create", "update", "delete", "history", "check"}},
-		"id":                map[string]interface{}{"type": "string", "description": "Exact condition trigger id from list."},
+		"id":                map[string]interface{}{"type": "string", "description": "Exact watcher id from list."},
 		"request_id":        map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Create: stable request id, reuse after uncertain transport to recover the same trigger."},
 		"expected_revision": map[string]interface{}{"type": "string", "description": "Update: revision returned by list; stale edits are refused."},
 		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message/chat_id for this Code agent, name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
 	}}
 }
 
-const conditionToolDescription = "Manage this project's Condition triggers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. Create with a stable request_id; list first and use expected_revision for updates. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_NAME); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
+const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. Create with a stable request_id; list first and use expected_revision for updates. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
 
 func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID string) error {
 	if profileID != "code" {
@@ -47,7 +47,7 @@ func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, use
 
 func (c *conditionService) source(ctx context.Context, owner, profile, project string) (productScheduleJob, error) {
 	if profile != "code" {
-		return productScheduleJob{}, errors.New("condition triggers are currently available in Code")
+		return productScheduleJob{}, errors.New("watchers are currently available in Code")
 	}
 	p, b, m, err := c.s.projectManifest(ctx, owner, profile, project)
 	if err != nil {
@@ -101,11 +101,11 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 	job := base
 	if action != "create" {
 		if id == "" {
-			return nil, errors.New("id is required; list condition triggers first")
+			return nil, errors.New("id is required; list watchers first")
 		}
 		job, err = c.s.Job(ctx, owner, projectScheduleJobID(profile, project, id))
 		if err != nil || job.Schedule.Condition == nil {
-			return nil, errors.New("condition trigger not found")
+			return nil, errors.New("watcher not found")
 		}
 	}
 	switch action {
@@ -116,7 +116,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		return map[string]interface{}{"deleted": true}, nil
 	case "check":
 		if !job.Effective().Enabled {
-			return nil, errors.New("enable the condition trigger before checking and dispatching")
+			return nil, errors.New("enable the watcher before checking and dispatching")
 		}
 		_, err := c.poll(ctx, job, "manual", time.Time{})
 		return map[string]interface{}{"checked": err == nil}, err
@@ -150,7 +150,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if action == "update" {
 			expected, _ := args["expected_revision"].(string)
 			if expected == "" || expected != conditionView(job.Schedule)["revision"] {
-				return nil, errors.New("condition trigger changed or expected_revision is missing; list before updating")
+				return nil, errors.New("watcher changed or expected_revision is missing; list before updating")
 			}
 		}
 		trigger, ok := args["trigger"].(map[string]interface{})
@@ -166,7 +166,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			case "name", "enabled", "cron_expression", "timezone", "script", "secrets", "target":
 				doc[k] = v
 			default:
-				return nil, fmt.Errorf("unknown condition setting %q", k)
+				return nil, fmt.Errorf("unknown watcher setting %q", k)
 			}
 		}
 		b, _ := json.Marshal(doc)
@@ -188,7 +188,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		source, found, err := c.s.readFile(ctx, path.Join(base.WorkspacePath, cfg.Script))
 		if err != nil || !found {
-			return nil, errors.New("save the Python script before creating the condition trigger")
+			return nil, errors.New("save the Python script before creating the watcher")
 		}
 		cfg.SHA256 = conditiontrigger.Hash(source)
 		if err := c.authorize(ctx, base, cfg); err != nil {
@@ -231,14 +231,14 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			next := parsed.Next(at)
 			after := parsed.Next(next)
 			if after.Sub(next) < 5*time.Minute {
-				return nil, errors.New("condition checks must be at least 5 minutes apart")
+				return nil, errors.New("watcher checks must be at least 5 minutes apart")
 			}
 			at = next
 		}
 		if action == "create" {
 			if prior, lookupErr := c.s.Job(ctx, owner, projectScheduleJobID(profile, project, schedule.ID)); lookupErr == nil {
 				if prior.Schedule.Condition == nil || prior.Schedule.Condition.Revision() != cfg.Revision() || prior.Schedule.Name != schedule.Name || prior.Schedule.CronExpression != schedule.CronExpression || prior.Schedule.Timezone != schedule.Timezone || prior.Schedule.Enabled != schedule.Enabled {
-					return nil, errors.New("request_id already belongs to a different condition trigger")
+					return nil, errors.New("request_id already belongs to a different watcher")
 				}
 				return conditionView(prior.Schedule), nil
 			} else if !strings.HasPrefix(lookupErr.Error(), "product schedule ") || !strings.HasSuffix(lookupErr.Error(), "not found for this user") {
@@ -271,7 +271,7 @@ func (s *ProductScheduleService) conditionHTTP(w http.ResponseWriter, r *http.Re
 	if r.Method != http.MethodGet {
 		r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 		if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
-			http.Error(w, "invalid condition request", 400)
+			http.Error(w, "invalid watcher request", 400)
 			return
 		}
 	}
