@@ -20,7 +20,7 @@ describe('ConditionTriggersView', () => {
       await act(async () => { find('History').click(); await Promise.resolve() })
       expect(api.history).toHaveBeenCalledWith('project-a', 'c1'); expect(host.textContent).toContain('ticket-123'); expect(host.textContent).toContain('fn-123')
       await act(async () => { find('Check now').click(); await Promise.resolve() })
-      expect(api.manage).toHaveBeenCalledWith('project-a', 'check', 'c1', undefined)
+      expect(api.manage).toHaveBeenCalledWith('project-a', 'check', 'c1', undefined, undefined)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 })

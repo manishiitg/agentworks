@@ -8,24 +8,28 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/robfig/cron/v3"
 )
 
+var conditionConfigMu sync.Mutex
+
 func conditionToolSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-		"action":  map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete", "history", "check"}},
-		"id":      map[string]interface{}{"type": "string", "description": "Exact condition trigger id from list."},
-		"trigger": map[string]interface{}{"type": "object", "description": "For create/update: name, cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message/chat_id for this Code agent, name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
+		"action":            map[string]interface{}{"type": "string", "enum": []interface{}{"list", "create", "update", "delete", "history", "check"}},
+		"id":                map[string]interface{}{"type": "string", "description": "Exact condition trigger id from list."},
+		"request_id":        map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Create: stable request id, reuse after uncertain transport to recover the same trigger."},
+		"expected_revision": map[string]interface{}{"type": "string", "description": "Update: revision returned by list; stale edits are refused."},
+		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message/chat_id for this Code agent, name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
 	}}
 }
 
-const conditionToolDescription = "Manage this project's Condition triggers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. List first. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_NAME); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
+const conditionToolDescription = "Manage this project's Condition triggers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. Create with a stable request_id; list first and use expected_revision for updates. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_NAME); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
 
 func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID string) error {
 	if profileID != "code" {
@@ -62,15 +66,21 @@ func conditionView(s productschedule.Schedule) map[string]interface{} {
 	out := map[string]interface{}{}
 	_ = json.Unmarshal(b, &out)
 	out["id"], out["name"], out["enabled"], out["cron_expression"], out["timezone"] = s.ID, s.Name, s.Enabled, s.CronExpression, s.Timezone
+	revision, _ := json.Marshal(s)
+	out["revision"] = conditiontrigger.Hash(string(revision))
 	return out
 }
 
 func (c *conditionService) manage(ctx context.Context, owner, profile, project string, args map[string]interface{}) (interface{}, error) {
+	action, _ := args["action"].(string)
+	if action == "create" || action == "update" || action == "delete" {
+		conditionConfigMu.Lock()
+		defer conditionConfigMu.Unlock()
+	}
 	base, err := c.source(ctx, owner, profile, project)
 	if err != nil {
 		return nil, err
 	}
-	action, _ := args["action"].(string)
 	id, _ := args["id"].(string)
 	if action == "list" {
 		jobs, err := c.s.JobsForUser(ctx, owner)
@@ -80,7 +90,8 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		out := []interface{}{}
 		for _, j := range jobs {
 			if j.Profile.ID == profile && j.ProjectID == project && j.Schedule.Condition != nil {
-				v := conditionView(j.Effective())
+				v := conditionView(j.Schedule)
+				v["enabled"] = j.Effective().Enabled
 				v["last_status"], v["last_error"], v["last_run_at"] = j.State.LastStatus, j.State.LastError, j.State.LastRunAt
 				out = append(out, v)
 			}
@@ -133,6 +144,12 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		return map[string]interface{}{"events": l.Rows, "checks": checks, "pending": pending}, nil
 	case "create", "update":
+		if action == "update" {
+			expected, _ := args["expected_revision"].(string)
+			if expected == "" || expected != conditionView(job.Schedule)["revision"] {
+				return nil, errors.New("condition trigger changed or expected_revision is missing; list before updating")
+			}
+		}
 		trigger, ok := args["trigger"].(map[string]interface{})
 		if !ok {
 			return nil, errors.New("trigger definition is required")
@@ -190,7 +207,11 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		schedule := productschedule.Schedule{Name: strings.TrimSpace(fields.Name), CronExpression: fields.Cron, Timezone: fields.Timezone, Enabled: enabled, Condition: &cfg}
 		if action == "create" {
-			schedule.ID = uuid.NewString()
+			requestID, _ := args["request_id"].(string)
+			if strings.TrimSpace(requestID) == "" || len(requestID) > 128 {
+				return nil, errors.New("create needs a stable request_id (1–128 bytes)")
+			}
+			schedule.ID = "cond-" + conditiontrigger.Hash(owner + "\x00" + profile + "\x00" + project + "\x00" + requestID)[:32]
 		} else {
 			schedule.ID = job.Schedule.ID
 			schedule.CreatedAt = job.Schedule.CreatedAt
@@ -212,6 +233,14 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			at = next
 		}
 		if action == "create" {
+			if prior, lookupErr := c.s.Job(ctx, owner, projectScheduleJobID(profile, project, schedule.ID)); lookupErr == nil {
+				if prior.Schedule.Condition == nil || prior.Schedule.Condition.Revision() != cfg.Revision() || prior.Schedule.Name != schedule.Name || prior.Schedule.CronExpression != schedule.CronExpression || prior.Schedule.Timezone != schedule.Timezone || prior.Schedule.Enabled != schedule.Enabled {
+					return nil, errors.New("request_id already belongs to a different condition trigger")
+				}
+				return conditionView(prior.Schedule), nil
+			} else if !strings.HasPrefix(lookupErr.Error(), "product schedule ") || !strings.HasSuffix(lookupErr.Error(), "not found for this user") {
+				return nil, lookupErr
+			}
 			job, err = c.s.CreateProjectSchedule(ctx, owner, profile, project, schedule)
 		} else {
 			job, err = c.s.UpdateProjectSchedule(ctx, owner, job.ID(), func(s *productschedule.Schedule) { *s = schedule })

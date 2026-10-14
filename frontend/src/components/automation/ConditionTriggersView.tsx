@@ -27,7 +27,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
   const ask = onAsk ?? ((message: string) => sendWorkspacePaneMessageToChat({ profileId: scope.profileId, conversationKey: scope.projectId, message }).then(() => undefined))
   const manage = async (action: string, id: string, changes?: Record<string, unknown>) => {
     setBusy(true)
-    try { await conditionTriggersApi.manage(scope.projectId, action, id, changes); await refresh(); setHistory({}) }
+    try { await conditionTriggersApi.manage(scope.projectId, action, id, changes, triggers.find(t => t.id === id)?.revision); await refresh(); setHistory({}) }
     catch (e) { setError(messageOf(e)) }
     finally { setBusy(false) }
   }

@@ -44,7 +44,7 @@ func (c *conditionService) resolveTarget(ctx context.Context, job productSchedul
 		}
 	}
 	if len(matches) > 1 {
-		return triggerTarget{}, errors.New("condition target is ambiguous; use the exact workspace path")
+		return triggerTarget{}, conditiontrigger.PermanentError{Err: errors.New("condition target is ambiguous; use the exact workspace path")}
 	}
 	if len(matches) == 1 {
 		return matches[0], nil
@@ -70,7 +70,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 			return err
 		}
 		if _, found := findCrewFunction(functions, cfg.Target.Function); !found {
-			return fmt.Errorf("target has no published function %q", cfg.Target.Function)
+			return conditiontrigger.PermanentError{Err: fmt.Errorf("target has no published function %q", cfg.Target.Function)}
 		}
 	case "route":
 		if t.Manifest == nil || t.Manifest.Kind == "relay" {
@@ -96,7 +96,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 
 func (c *conditionService) dispatchTarget(ctx context.Context, job productScheduleJob, caller triggerLinkCaller, cfg conditiontrigger.Config, ev conditiontrigger.Event, key string) (string, error) {
 	if err := c.validateTarget(ctx, job, cfg); err != nil {
-		return "", conditiontrigger.PermanentError{Err: err}
+		return "", err
 	}
 	t, err := c.resolveTarget(ctx, job, cfg.Target.Name)
 	if err != nil {
@@ -122,6 +122,15 @@ func (c *conditionService) dispatchTarget(ctx context.Context, job productSchedu
 		if t.Kind == triggerCallerCrew {
 			if problems := validateCrewFunctionValue(fn.InputSchema, args); len(problems) > 0 {
 				return "", conditiontrigger.PermanentError{Err: fmt.Errorf("function inputs: %s", strings.Join(problems, "; "))}
+			}
+		}
+		if t.Manifest != nil && t.Manifest.Kind != "relay" {
+			sched, err := findWorkflowFunctionTrigger(t.Manifest, fn.Name)
+			if err != nil {
+				return "", conditiontrigger.PermanentError{Err: err}
+			}
+			if _, _, err := workflowFunctionArgs(*sched, args); err != nil {
+				return "", conditiontrigger.PermanentError{Err: err}
 			}
 		}
 		call, err := c.s.api.startCrewFunctionCall(ctx, job.UserID, caller, t, fn, args, triggerTargetDefaultTimeout, key)

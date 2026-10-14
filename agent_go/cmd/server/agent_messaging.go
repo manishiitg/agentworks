@@ -391,7 +391,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		// Internal contacts reuse the exact two endpoints. External callers create
 		// a fresh inbox unless they explicitly select their previously returned one.
-		if !e.External {
+		if !e.External || e.ConditionJob != "" {
 			for i := range s.Conversations {
 				c := &s.Conversations[i]
 				if c.Endpoints[0] == e && sameAgentMessageContact(c.Endpoints[1], dest) {

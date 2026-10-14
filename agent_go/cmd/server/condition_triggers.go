@@ -10,9 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -71,15 +70,18 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 	}
 	claims := &UserClaims{UserID: job.UserID}
 	if userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, codeproduct.ProfileID) {
-		return errors.New("condition owner no longer has Code access")
+		return conditiontrigger.PermanentError{Err: errors.New("condition owner no longer has Code access")}
 	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: codeproduct.ProfileID}, Path: job.WorkspacePath}
 	if err := authorizeOwnedCodeCaller(ctx, job.UserID, job.UserID, caller); err != nil {
 		return err
 	}
 	_, binding, manifest, err := c.s.projectManifest(ctx, job.UserID, job.Profile.ID, job.ProjectID)
-	if err != nil || !workspacePathsMatchForUser(job.UserID, binding.WorkspacePath, job.WorkspacePath) {
-		return errors.New("condition source project is unavailable")
+	if err != nil {
+		return err
+	}
+	if !workspacePathsMatchForUser(job.UserID, binding.WorkspacePath, job.WorkspacePath) {
+		return conditiontrigger.PermanentError{Err: errors.New("condition source project changed")}
 	}
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -94,7 +96,7 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 	}
 	for _, n := range cfg.Secrets {
 		if !selected[n] {
-			return fmt.Errorf("secret %q is no longer selected on this project", n)
+			return conditiontrigger.PermanentError{Err: fmt.Errorf("secret %q is no longer selected on this project", n)}
 		}
 	}
 	return nil
@@ -102,8 +104,14 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 
 func (c *conditionService) current(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
 	fresh, err := c.s.Job(ctx, job.UserID, job.ID())
-	if err != nil || fresh.Schedule.Condition == nil || !fresh.Effective().Enabled || fresh.Schedule.Condition.Revision() != cfg.Revision() {
-		return errors.New("condition trigger changed, was paused or was removed")
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "product schedule ") && strings.HasSuffix(err.Error(), "not found for this user") {
+			return conditiontrigger.PermanentError{Err: err}
+		}
+		return err
+	}
+	if fresh.Schedule.Condition == nil || !fresh.Effective().Enabled || fresh.Schedule.Condition.Revision() != cfg.Revision() {
+		return conditiontrigger.PermanentError{Err: errors.New("condition trigger changed, was paused or was removed")}
 	}
 	return c.authorize(ctx, fresh, cfg)
 }
@@ -179,15 +187,30 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 }
 
 func (c *conditionService) pauseNotification(ctx context.Context, job productScheduleJob, detail string) {
-	ctx = context.WithValue(ctx, common.UserIDKey, job.UserID)
-	ctx = context.WithValue(ctx, virtualtools.BotNotificationDestinationKey, &services.NotificationDestination{UserID: job.UserID, WorkspacePath: job.WorkspacePath, WorkflowName: job.ProjectTitle})
-	_, err := virtualtools.DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"notification_kind": "run_summary", "delivery_mode": "dashboard_only", "summary_title": "Condition trigger paused",
-		"summary_status": "failed", "message_for_user": fmt.Sprintf("Condition trigger %q paused after five failed checks. %s. Open Condition triggers to inspect and enable it after fixing the script or connection.", job.Schedule.Name, detail),
-	})
-	if err != nil {
-		scheduleLogf("[CONDITION] pause notification unavailable: %v", err)
+	// Persist the product chat's notification event without waking a model or
+	// forwarding private Code details to the company notification feed.
+	if c.s.api.eventStore == nil {
+		scheduleLogf("[CONDITION] pause notice event store unavailable")
+		return
 	}
+	ctx = conditionContext(ctx, job)
+	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, job.ProjectID)
+	if err != nil {
+		scheduleLogf("[CONDITION] pause chat unavailable")
+		return
+	}
+	chat, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, job.UserID, job.Profile, binding, "")
+	if err != nil {
+		scheduleLogf("[CONDITION] pause chat unavailable")
+		return
+	}
+	c.s.api.eventStore.SetSessionOwner(chat.SessionID, job.UserID)
+	if err := c.s.api.eventStore.SetSessionPersistenceClass(chat.SessionID, internalevents.SessionPersistenceInteractiveChat); err != nil {
+		scheduleLogf("[CONDITION] pause notice persistence unavailable")
+		return
+	}
+	emitter := &sessionEventEmitter{eventStore: c.s.api.eventStore, sessionID: chat.SessionID}
+	emitter.EmitProductInteraction("notify", map[string]interface{}{"title": "Condition trigger paused", "message": fmt.Sprintf("Condition trigger %q paused after five failed checks. %s. Open Condition triggers to inspect and enable it after fixing the script or connection.", job.Schedule.Name, detail)})
 }
 
 // Cursor is stdin. The pinned script gets selected credentials only, no MCP
@@ -232,7 +255,7 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if len(state) == 0 {
 		state = json.RawMessage(`{}`)
 	}
-	runRoot := path.Join(root, "condition-runs", uuid.NewString())
+	runRoot := path.Join(root, ".condition-runs", uuid.NewString())
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(job.UserID), workspace.WithExtraEnv(env))
 	if err := client.CreateFolder(ctx, runRoot); err != nil {
 		return nil, err
@@ -290,13 +313,14 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 }
 
 func (c *conditionService) caller(job productScheduleJob) triggerLinkCaller {
+	// Code uses the platform's existing project/Crew caller stamp convention.
 	return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, Path: job.WorkspacePath, Label: "Condition: " + job.Schedule.Name}
 }
 
 func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Config, ev conditiontrigger.Event, key string) (string, error) {
 	job := ctx.Value(conditionJobContext{}).(productScheduleJob)
 	if err := c.current(ctx, job, cfg); err != nil {
-		return "", conditiontrigger.PermanentError{Err: err}
+		return "", err
 	}
 	caller := c.caller(job)
 	if cfg.Target.Kind != "agent" {

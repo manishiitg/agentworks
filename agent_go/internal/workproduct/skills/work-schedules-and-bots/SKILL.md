@@ -5,19 +5,21 @@ description: Manage {{product}}'s message-only project schedules, authenticated 
 
 # {{product}} schedules and bots
 
-## Project schedules
-
 <!-- product:code -->
 ## Condition triggers
 
 Use `manage_condition_triggers` for scheduled Python checks that start existing work only when a condition matches. These have their own **Condition triggers** pane beside Schedules and Webhooks. Code is the first source surface; the runner and caller contract are shared.
 
-1. List existing condition triggers before editing. Save a Python file under `code/triggers/` using normal workspace tools. It reads its previous state object from stdin and prints exactly one JSON document: `{"events":[{"id":"stable-source-id","payload":{"ticket_id":"123"}}],"state":{"last_id":"123"}}`. Use `events: []` for no matches. Advance a source cursor and paginate correctly; distinguish new tickets from a newly added tag if that matters. Do not rediscover old items after history retention.
+1. List existing condition triggers before editing; pass their revision as expected_revision on updates. Pass a stable request_id on create and reuse it after an uncertain response. Save a Python file under `code/triggers/` using normal workspace tools. It reads its previous state object from stdin and prints exactly one JSON document: `{"events":[{"id":"stable-source-id","payload":{"ticket_id":"123"}}],"state":{"last_id":"123"}}`. Use `events: []` for no matches. Advance a source cursor and paginate correctly; distinguish new tickets from a newly added tag if that matters. Do not rediscover old items after history retention.
 2. Configure a name, five-field cron (at least five minutes between checks), timezone, script path, explicitly selected project secrets, and a fixed target. The platform pins the current script hash. Credentials arrive as `SECRET_NAME` environment variables; the script has no model or MCP bridge. Standard Python runs in a network-enabled sandbox with only a temporary scratch folder available. Keep detection reads in the script and updates/replies in the target.
 3. Targets: `agent` with a saved `message` and optional same-project `chat_id`; `function` with an authorized target `name`, published `function` and optional constant `arguments`; `route` with a workflow `name`, saved `route_selections` and `group_names`; or `trigger` with a target `name` and an existing caller-bound internal `trigger_id`. Discover actual names/contracts before saving. For function calls the event payload supplies arguments, with saved constant arguments taking precedence. Routes/triggers receive event JSON as payload, not variable/identity overrides. Relays are published function targets and acquire no timers.
 4. Event ids deduplicate bounded recent history; accepted function/run/message receipts are stored in history. The queue retries uncertain delivery using the same key within its safe recovery window, then holds it for reconciliation. External writes still need service-side deduplication. Source and target permissions are rechecked at runtime. A paused/removed source cannot dispatch queued work. Agent message receipts mean accepted delivery, not final completion.
 5. `history` shows recent checks/events and errors. `check` runs and dispatches immediately; use it only when requested. A paused trigger must be enabled first. `update` preserves omitted fields and its cursor/history; accepting changed source pins its new hash, and changed target/configuration holds old events for reconciliation. Five genuine check failures pause it and produce a run notification; a full queue merely defers checks. Native Gmail filters/rules remain preferable for simple inbound sender/content conditions.
 <!-- /product -->
+
+## Project schedules
+
+
 
 - A {{product}} schedule contains exactly one message sent to this project's chat.
   It is not an AgentWorks workflow, route, phase, or execution.<!-- product:code --> In a Code, a

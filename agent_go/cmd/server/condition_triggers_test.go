@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
@@ -22,7 +23,7 @@ func conditionCodeFixture(t *testing.T) (triggerLinkEnv, context.Context, string
 	env.api.agentProfiles = env.svc.registry
 	root := "_users/owner/Chats/Code/projects/checks"
 	env.mock.mu.Lock()
-	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"code","id":"checks","title":"Checks"}`
+	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"code","id":"checks","title":"Checks","session_id":"sess-condition-main"}`
 	env.mock.files[root+"/code/triggers/check.py"] = "import json\nprint(json.dumps({'events': [], 'state': {}}))\n"
 	env.mock.mu.Unlock()
 	return env, internalBotRequestContext(context.Background(), "owner"), root
@@ -31,12 +32,17 @@ func conditionCodeFixture(t *testing.T) (triggerLinkEnv, context.Context, string
 func TestConditionCodeManagementAndRuntimeAccess(t *testing.T) {
 	env, ctx, root := conditionCodeFixture(t)
 	c := env.svc.conditionService()
-	args := map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Tagged tickets", "cron_expression": "*/5 * * * *", "timezone": "Asia/Kolkata", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Process this ticket"}}}
+	args := map[string]interface{}{"action": "create", "request_id": "create-check", "trigger": map[string]interface{}{"name": "Tagged tickets", "cron_expression": "*/5 * * * *", "timezone": "Asia/Kolkata", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Process this ticket"}}}
 	out, err := c.manage(ctx, "owner", "code", "checks", args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := out.(map[string]interface{})["id"].(string)
+	duplicate, err := c.manage(ctx, "owner", "code", "checks", args)
+	if err != nil || duplicate.(map[string]interface{})["id"] != id {
+		t.Fatal("create retry duplicated trigger", duplicate, err)
+	}
+
 	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("code", "checks", id))
 	if err != nil {
 		t.Fatal(err)
@@ -50,16 +56,16 @@ func TestConditionCodeManagementAndRuntimeAccess(t *testing.T) {
 	if _, err := c.manage(ctx, "owner", "work", "alpha", args); err == nil {
 		t.Fatal("unsupported source product was admitted")
 	}
-	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "id": id, "trigger": map[string]interface{}{"cron_expression": "* * * * *"}}); err == nil {
+	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "expected_revision": conditionView(mustConditionJob(t, env.svc, ctx, id).Schedule)["revision"], "id": id, "trigger": map[string]interface{}{"cron_expression": "* * * * *"}}); err == nil {
 		t.Fatal("one minute poll was admitted")
 	}
-	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "id": id, "trigger": map[string]interface{}{"enabled": false}}); err != nil {
+	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "expected_revision": conditionView(mustConditionJob(t, env.svc, ctx, id).Schedule)["revision"], "id": id, "trigger": map[string]interface{}{"enabled": false}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.current(ctx, job, *job.Schedule.Condition); err == nil {
 		t.Fatal("paused source still admitted")
 	}
-	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "id": id, "trigger": map[string]interface{}{"enabled": true}}); err != nil {
+	if _, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "update", "expected_revision": conditionView(mustConditionJob(t, env.svc, ctx, id).Schedule)["revision"], "id": id, "trigger": map[string]interface{}{"enabled": true}}); err != nil {
 		t.Fatal(err)
 	}
 	job, _ = env.svc.Job(ctx, "owner", job.ID())
@@ -86,7 +92,7 @@ func TestConditionCodeManagementAndRuntimeAccess(t *testing.T) {
 func TestConditionBackpressureDoesNotPauseButScriptFailuresNotify(t *testing.T) {
 	env, ctx, _ := conditionCodeFixture(t)
 	c := env.svc.conditionService()
-	out, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Check", "cron_expression": "*/5 * * * *", "timezone": "UTC", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Handle"}}})
+	out, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "create", "request_id": "create-check", "trigger": map[string]interface{}{"name": "Check", "cron_expression": "*/5 * * * *", "timezone": "UTC", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Handle"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +105,11 @@ func TestConditionBackpressureDoesNotPauseButScriptFailuresNotify(t *testing.T) 
 		return "receipt", nil
 	}
 	notices := 0
-	c.notifyPause = func(context.Context, productScheduleJob, string) { notices++ }
+	env.api.eventStore = openClientIdentityTestStore(t, "condition-pause")
+	c.notifyPause = func(ctx context.Context, j productScheduleJob, detail string) {
+		notices++
+		c.pauseNotification(ctx, j, detail)
+	}
 	for i := 0; i < 6; i++ {
 		_, _ = c.poll(ctx, job, "test", time.Time{})
 	}
@@ -122,4 +132,30 @@ func TestConditionBackpressureDoesNotPauseButScriptFailuresNotify(t *testing.T) 
 	if job.Effective().Enabled || job.State.ConsecutiveFailures != 5 || notices != 1 {
 		t.Fatal("script failures did not pause/notify", job.State, notices)
 	}
+	if job.State.LastError != "source unavailable" {
+		t.Fatal(job.State.LastError)
+	}
+	binding, err := resolveProductConversationBinding(ctx, "owner", job.Profile, job.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", job.Profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible := env.api.eventStore.GetEvents(chat.SessionID, internalevents.GetEventsOptions{})
+	b, _ := json.Marshal(visible.Events)
+	if !strings.Contains(string(b), "Condition trigger paused") || !strings.Contains(string(b), "source unavailable") {
+		t.Fatalf("pause wasn't visible in main Code chat: %s", b)
+	}
+
+}
+
+func mustConditionJob(t *testing.T, s *ProductScheduleService, ctx context.Context, id string) productScheduleJob {
+	t.Helper()
+	j, err := s.Job(ctx, "owner", projectScheduleJobID("code", "checks", id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return j
 }

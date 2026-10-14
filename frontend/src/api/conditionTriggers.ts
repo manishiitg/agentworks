@@ -9,6 +9,7 @@ export interface ConditionTrigger {
   timezone: string
   script: string
   sha256: string
+  revision: string
   secrets?: string[]
   target: { kind: 'agent' | 'function' | 'route' | 'trigger'; name?: string; function?: string; chat_id?: string; message?: string; trigger_id?: string; route_selections?: Record<string, string>; group_names?: string[] }
   last_status?: string
@@ -26,6 +27,6 @@ function config() {
 }
 export const conditionTriggersApi = {
   list: (projectId: string) => axios.get<{ triggers: ConditionTrigger[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId } }).then(r => r.data),
-  manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>) => axios.post('/api/condition-triggers', { project_id: projectId, action, id, ...(trigger ? { trigger } : {}) }, config()).then(r => r.data),
+  manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string) => axios.post('/api/condition-triggers', { project_id: projectId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
   history: (projectId: string, id: string) => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId } }).then(r => r.data),
 }
