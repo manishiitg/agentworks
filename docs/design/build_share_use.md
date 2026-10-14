@@ -4,6 +4,14 @@ Status: product model, 2026-10-14. Applies to Goals/workflows, Crew, Relays and
 Code. New features are designed against it; existing per-product wiring
 converges on it over time.
 
+The goal is that people go from Build to Share to Use as quickly as possible.
+Judge every feature by whether it shortens that path; anything that slows it
+down is a cost. Runs are real work: running a step or a workflow, from the
+Builder, MCP or a schedule, has real effects, with no simulation or dry-run
+mode unless someone asks for one. Protection comes from the existing access
+rules (sharing, Builder/Run, Vault, connection scopes), not from extra gates,
+confirmations or holds added on top. Ship and fix forward.
+
 ## The model
 
 Every product follows the same three stages.
