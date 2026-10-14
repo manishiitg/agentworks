@@ -427,7 +427,8 @@ cmd_userns() {
 # Retire the older per-product profiles, but only once the running services already attach to the standard one: AppArmor attaches at
 # exec, so removing a loaded profile under a process that still runs with it leaves that process on the stock restricted profile
 # until it restarts. Run after the release is activated (the services re-exec). Nothing is removed while any process of this
-# product's releases still lacks the standard profile.
+# product's releases still lacks the standard profile. The refusal and the stale pid go to standard output, so a deploy log (also the
+# SSM path, which shows only standard output on success) names why nothing was retired.
 cmd_userns_retire() {
   [[ -d /sys/kernel/security/apparmor ]] || { echo "AppArmor is not active here: nothing to retire."; return 0; }
   [[ -f "$USERNS_PROFILE" ]] || { echo "the standard profile $USERNS_PROFILE is not installed: nothing retired." >&2; return 1; }
@@ -439,9 +440,9 @@ cmd_userns_retire() {
       case "$exe" in "$HOME_DIR"/releases/*/bin/"$PRODUCT"-workspace|"$HOME_DIR"/releases/*/bin/"$PRODUCT"-agent) ;; *) continue ;; esac
       attr="$(cat "/proc/$pid/attr/current" 2>/dev/null || true)"
       # A profile is named by the path it attaches to: the standard one shows as "<HOME_DIR>/releases/**/bin/<binary> (unconfined)".
-      case "$attr" in "$HOME_DIR/releases/**/bin/"*) ;; *) echo "pid $pid ($exe) still runs under '${attr:-no profile}': restart the services first." >&2; stale=1 ;; esac
+      case "$attr" in "$HOME_DIR/releases/**/bin/"*) ;; *) echo "pid $pid ($exe) still runs under '${attr:-no profile}': restart the services first."; stale=1 ;; esac
     done
-    [[ $stale == 0 ]] || { echo "not retiring $legacy yet; run userns-retire again after the services restart." >&2; return 0; }
+    [[ $stale == 0 ]] || { echo "not retiring $legacy yet; run userns-retire again after the services restart."; return 0; }
     apparmor_parser -R "/etc/apparmor.d/$legacy" 2>/dev/null || true
     rm -f "/etc/apparmor.d/$legacy" && echo "retired /etc/apparmor.d/$legacy (the standard profile covers it)"
   done
