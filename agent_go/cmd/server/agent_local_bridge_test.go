@@ -545,9 +545,20 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out := local(resume); !out.Attached || out.Attachment.SessionID != base.SessionID {
 		t.Fatal("person-confirmed exact resume failed")
 	}
-	offlineOffer := wait(offlineMessage["message_id"].(string))
-	if len(offlineOffer.Messages) != 1 || offlineOffer.Messages[0].AttachmentID != local(statusOffline).Attachment.ID {
-		t.Fatal("offline catch-up did not use the renewed lease", offlineOffer)
+	// A renewed lease starts with no memory of earlier offers, so messages handed over earlier but never acknowledged
+	// come again with the new one (the hook acknowledges admitted once it has written a message out, which stops this
+	// in practice). What matters: the offline message arrives, and everything arrives under the renewed lease.
+	sawOffline := false
+	for deadline := time.Now().Add(5 * time.Second); !sawOffline; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("hook never received the message stored while offline")
+		}
+		for _, m := range local(drain).Messages {
+			sawOffline = sawOffline || m.MessageID == offlineMessage["message_id"].(string)
+			if m.AttachmentID != local(statusOffline).Attachment.ID {
+				t.Fatal("offline catch-up did not use the renewed lease", m)
+			}
+		}
 	}
 	firstLease := local(statusOffline).Attachment.ID
 	if got := local(resume); got.Attachment.ID != firstLease {
