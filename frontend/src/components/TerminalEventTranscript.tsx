@@ -47,8 +47,6 @@ import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/W
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 
-// Tip selection and catalog loading are needed only while a turn is Working.
-const WorkingTip = React.lazy(() => import('./chat/WorkingTip'))
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
 // a bigger reading size (SparkQuill's Child Mode "T" button sets it on the
@@ -82,8 +80,8 @@ const TranscriptHistoryHeader = ({ context }: { context?: TranscriptHistoryConte
 }
 
 // The agent's working state sits under the last message, inside the scroller, so it is visible while
-// reading the end of a very long reply (at the top of the turn it scrolled out of sight). The row keeps
-// the same height whether or not the agent is working, so it appearing never moves the list.
+// reading the end of a very long reply (at the top of the turn it scrolled out of sight). The row has the
+// same minimum height whether or not the agent is working; it grows by one small line only when a tip appears.
 const ACTIVITY_TEXT: Record<string, string> = {
   running: 'Working…',
   'background running': 'Background agent running…',
@@ -91,12 +89,12 @@ const ACTIVITY_TEXT: Record<string, string> = {
 }
 // The right side of the same row carries the coding CLI's live context fill and
 // a plan-limit warning (PLAT-554). Both are single truncating lines inside the
-// fixed h-7 row, so updates never change the list height.
+// min-h-7 row; it grows by one small line only when a tip appears under the working line.
 const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryContext }) => {
   const activity = context?.activity
   const working = activity !== undefined && activity.state !== 'ready'
   const usage = context?.usage
-  return <div data-testid="transcript-activity-footer" className="flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
+  return <div data-testid="transcript-activity-footer" className="flex min-h-7 min-w-0 items-center gap-2 px-3 py-0.5 text-xs text-muted-foreground">
     {working && <>
       {activity.label === 'running'
         // The twinkling star is the motion here, so no separate spinner.
@@ -105,7 +103,6 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
           <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
           <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
         </>}
-      {activity.label === 'running' && <React.Suspense fallback={null}><WorkingTip /></React.Suspense>}
     </>}
     {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
       {usage.warning && <span data-testid="transcript-usage-warning" className="truncate font-medium text-amber-500" title="Plan usage is high">

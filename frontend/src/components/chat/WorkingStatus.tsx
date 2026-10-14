@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { WORKING_ACCESSIBLE_LABEL, WORKING_GLYPH_FRAMES, WORKING_GLYPH_INTERVAL_MS, WORKING_GLYPH_STATIC, WORKING_WORDS, WORKING_WORD_INTERVAL_MS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
+
+// Tip selection and catalog loading are needed only while a turn is Working.
+const WorkingTip = lazy(() => import('./WorkingTip'))
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -50,13 +53,14 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
   const { text } = resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
   const elapsed = startedAt !== undefined && now >= startedAt ? ` (${formatElapsed(now - startedAt)})` : ''
   return (
-    <span className={className} data-testid="working-status">
+    <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>
-      <span aria-hidden="true">
+      <span aria-hidden="true" className="truncate">
         <WorkingGlyph reduced={reduced} />{' '}
         <span data-testid="working-word">{text}</span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
       </span>
+      <Suspense fallback={null}><WorkingTip /></Suspense>
     </span>
   )
 }
