@@ -232,21 +232,22 @@ func dashboardError(w http.ResponseWriter, err error) {
 // The authenticated transport supplies claims; JSON cannot set roles or draft rights.
 func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request) {
 	var args struct {
-		Workspace string            `json:"workspace"`
-		Action    string            `json:"action"`
-		ID        string            `json:"dashboard_id"`
-		Title     string            `json:"title"`
-		Files     map[string]string `json:"files"`
-		Remove    []string          `json:"remove"`
-		Expected  string            `json:"expected_revision"`
-		Revision  string            `json:"revision"`
-		Document  string            `json:"document_path"`
-		Theme     string            `json:"theme"`
-		Width     string            `json:"width"`
-		Limit     int               `json:"limit"`
-		Offset    int               `json:"offset"`
-		Mode      string            `json:"mode"`
-		Emails    []string          `json:"emails"`
+		Workspace    string            `json:"workspace"`
+		Action       string            `json:"action"`
+		ID           string            `json:"dashboard_id"`
+		Title        string            `json:"title"`
+		Files        map[string]string `json:"files"`
+		Remove       []string          `json:"remove"`
+		Expected     string            `json:"expected_revision"`
+		Revision     string            `json:"revision"`
+		Document     string            `json:"document_path"`
+		Theme        string            `json:"theme"`
+		Width        string            `json:"width"`
+		Limit        int               `json:"limit"`
+		Offset       int               `json:"offset"`
+		Mode         string            `json:"mode"`
+		SharedWithMe bool              `json:"shared_with_me"`
+		Emails       []string          `json:"emails"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
 	decoder.DisallowUnknownFields()
@@ -261,7 +262,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" && args.Workspace == "" {
-		api.listAccessibleDashboards(w, r, args.Limit, args.Offset)
+		api.listAccessibleDashboards(w, r, args.Limit, args.Offset, args.SharedWithMe)
 		return
 	}
 	target, err := api.dashboardTarget(r.Context(), claims, args.Workspace)

@@ -26,6 +26,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		required := []string{}
 		if action == "list" {
 			props["limit"] = externalInteger(1, 200)
+			props["shared_with_me"] = map[string]any{"type": "boolean", "description": "true lists only dashboards other people shared with you."}
 			props["offset"] = externalInteger(0, 10000)
 			required = nil
 			props["workspace"] = externalString("Optional project root. Omit (and workflow_id/crew_id) to discover dashboards across accessible projects.")
@@ -187,7 +188,7 @@ func parseDashboardURL(raw, p string) (string, error) {
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
-func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http.Request, limit, offset int) {
+func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http.Request, limit, offset int, sharedOnly bool) {
 	claims := GetUserFromContext(r.Context())
 	roots := []string{}
 	discovered, err := DiscoverWorkflowManifests(r.Context())
@@ -242,10 +243,16 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			failed = append(failed, target.Root)
 			continue
 		}
+		// "Shared with me": someone else's project that its owner shared with this caller.
+		sharedWithMe := target.Kind != "code" && !api.dashboardShareOwner(r.Context(), claims, target)
+		if sharedOnly && !sharedWithMe {
+			continue
+		}
 		for _, d := range result.Dashboards {
 			viewTarget := target
 			viewTarget.Edit = dashboardAuthoringAllowed(claims, &target)
 			row := dashboardDiscoveryRow(viewTarget, d)
+			row["shared_with_me"] = sharedWithMe
 			resources = append(resources, dashboardQuestionDiscovery{viewTarget, d, row})
 			rows = append(rows, row)
 		}
