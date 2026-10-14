@@ -42,6 +42,7 @@ type agentSequenceRuntimeSessionOverride struct {
 type agentSequenceSession struct {
 	PromptContract            string `json:"prompt_contract,omitempty"`
 	SystemRules               string `json:"system_rules,omitempty"`
+	TaskContextInConversation bool   `json:"task_context_in_conversation,omitempty"`
 	pendingInitialInstruction bool
 	initialStep               *AgentPlanStep
 	SessionID                 string                    `json:"session_id"`
@@ -114,7 +115,7 @@ type agentSequenceDelegation struct {
 	// every turn of the sequence.
 	CreateAgent func(ctx context.Context) (agents.OrchestratorAgent, error)
 	// TurnVars returns the orchestrator's template variables for one turn. The
-	// durable description remains in the common system prompt; every item is
+	// durable description is opening user context; every later item is
 	// carried as a user message.
 	TurnVars func(item AgentItem, message string, opening bool) map[string]string
 	// LogTurn persists one turn in the todo_task execution-log shape. turnNumber
@@ -1145,6 +1146,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 		session.referencedGuides = &guides
 	}
 	templateVars["ReferencedGuides"] = *session.referencedGuides
+	if !step.AuthoredPrompt {
+		if !agentDescriptionFirst(step) && len(session.ConversationHistory) == 0 {
+			templateVars["InitialTaskDescription"] = ResolveVariables(agentTaskDescription(step), hcpo.variableValues)
+		} else if !session.TaskContextInConversation && len(session.ConversationHistory) > 0 {
+			resolved := *step
+			resolved.Description = ResolveVariables(step.Description, hcpo.variableValues)
+			resolved.SystemRules = ResolveVariables(step.SystemRules, hcpo.variableValues)
+			if retained := missingAgentTaskContext(&resolved, session.ConversationHistory); retained != "" {
+				templateVars["FollowUpMessage"] = "## Retained task context\n" + ResolveVariables(retained, hcpo.variableValues) + "\n\n## Current instruction\n" + templateVars["FollowUpMessage"]
+			}
+		}
+	}
 	if agentDescriptionFirst(step) && item.ID == AgentDescriptionTurnID && session.pendingInitialInstruction {
 		templateVars["PendingInvocationInput"] = "true"
 	}
@@ -1252,6 +1265,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 		return "", err
 	}
 	session.ConversationHistory = history
+	if !step.AuthoredPrompt {
+		session.TaskContextInConversation = true
+	}
 	session.LastRuntimeContext = ""
 	trimmedResult := strings.TrimSpace(result)
 	// Freshness: agent is the primary execution path, so its synthetic

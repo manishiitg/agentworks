@@ -44,7 +44,7 @@ func TestExecutionOnlyPromptAsksForConcernLines(t *testing.T) {
 	for _, want := range []string{
 		"consequential non-fatal evidence",
 		"`CONCERNS: <what happened, the exact affected artifact or operation, and the evidence>`",
-		"do not classify, deduplicate or file it anywhere else",
+		"omit it when there is none",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("execution prompt missing concern handoff %q:\n%s", want, prompt)
@@ -71,10 +71,10 @@ func TestExecutionOnlyPromptUsesManagedWorkflowDBTools(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"agents use `query_workflow_db`",
+		"Use `query_workflow_db`",
 		"and `mutate_workflow_db`",
 		"Open **workflow-database**",
-		"persist results with `mutate_workflow_db`",
+		"Use the database only when the task requests it",
 	}
 	for _, snippet := range requiredSnippets {
 		if !strings.Contains(prompt, snippet) {
@@ -134,8 +134,7 @@ func TestExecutionOnlyUserPromptIncludesWorkshopHumanInput(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"## Human Input (Highest Priority)",
-		"execute_step(..., human_input=...)",
+		"## Caller input",
 		"post RCA q-20260509T124321-rslat as wiki page",
 	}
 	for _, snippet := range requiredSnippets {
@@ -183,8 +182,7 @@ func TestExecutionOnlyPromptsTreatSkillAsAdvisory(t *testing.T) {
 		"IsScriptedMode":      "false",
 		"LearningHistory":     "Use the legacy selector.",
 	})
-	if !strings.Contains(userPrompt, "Read **Skill files** as guidance only") ||
-		!strings.Contains(userPrompt, "The current step description is the main source of truth") {
+	if userPrompt != "Use the current report endpoint.\n" {
 		t.Fatalf("expected user prompt to treat skill as advisory\n\nPrompt:\n%s", userPrompt)
 	}
 }
@@ -244,6 +242,7 @@ func TestContributionTurnUserMessageDropsExecutionScaffolding(t *testing.T) {
 	contribution := agent.executionOnlyUserMessageProcessor(map[string]string{
 		"StepDescription":    contribMsg,
 		"IsContributionTurn": "true",
+		"IsScriptedMode":     "true",
 		"StepContextOutput":  "",
 	})
 	for _, forbidden := range []string{"Execution Checklist", "Create the output file", "MODE NOTE", "### Inputs", "### Output", "Verify the required outputs"} {
@@ -260,10 +259,8 @@ func TestContributionTurnUserMessageDropsExecutionScaffolding(t *testing.T) {
 		"StepContextOutput": "report.json",
 		"StepExecutionPath": "execution/step-1",
 	})
-	for _, want := range []string{"Execution Checklist", "report.json", "execution/step-1/", "Verify the required outputs", "### Inputs", "### Output"} {
-		if !strings.Contains(normal, want) {
-			t.Fatalf("a normal execution turn must keep its scaffolding %q:\n%s", want, normal)
-		}
+	if normal != "Fetch and persist the report.\n" {
+		t.Fatalf("normal user turn must carry its task without repeating system mechanics: %q", normal)
 	}
 }
 
@@ -279,7 +276,7 @@ func TestExecutionOnlyUserMessagePreservesSequenceFollowUp(t *testing.T) {
 	}
 }
 
-func TestExecutionOnlySystemPromptContainsStepCharter(t *testing.T) {
+func TestExecutionOnlyTaskIsUserContext(t *testing.T) {
 	agent := &WorkflowExecutionOnlyAgent{}
 	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{
 		"StepTitle":               "Research the account",
@@ -287,10 +284,17 @@ func TestExecutionOnlySystemPromptContainsStepCharter(t *testing.T) {
 		"StepContextDependencies": "- account.json — resolved dependency",
 	})
 
-	for _, want := range []string{"## Step Charter", "**Title:** Research the account", "Produce an evidence-backed account brief", "## Declared Inputs", "account.json — resolved dependency"} {
+	for _, want := range []string{"# Research the account", "## Declared Inputs", "account.json — resolved dependency"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("system prompt missing step charter content %q:\n%s", want, prompt)
 		}
+	}
+	if strings.Contains(prompt, "Produce an evidence-backed account brief") {
+		t.Fatal("task duplicated into system")
+	}
+	user := agent.executionOnlyUserMessageProcessor(map[string]string{"StepDescription": "Produce an evidence-backed account brief and fail closed when sources disagree."})
+	if !strings.Contains(user, "Produce an evidence-backed account brief") {
+		t.Fatal("task missing from user message")
 	}
 }
 

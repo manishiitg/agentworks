@@ -27,7 +27,7 @@ first and plan to repair the graph afterward.
 agents can own many actions and long tool sessions, so the strongest shape is
 one conversation that executes the complete `description` as its first user turn
 ALONE, then automatically validates and repairs configured checks. Put binding
-policies in `system_rules`; use `prompt_contract="description-first-v1"` for new
+policies in the description's Rules section; use `prompt_contract="description-first-v1"` for new
 or reviewed migrated agents. `items[]` is optional: zero items is valid. Builder
 adds later semantic verification or a real phase only when it improves this task;
 never mandate generic execute/verify/repair messages. Improve the runnable task,

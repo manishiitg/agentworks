@@ -257,12 +257,7 @@ func testModePromptSection(run *testmode.Run) string {
 		return ""
 	}
 	return "## TEST MODE\n" +
-		"This is a test run (" + run.ID + ") to verify the step without real-world side effects. Reads are real. " +
-		"Actions with external effects (sending or posting messages, submitting forms, clicking in the browser, " +
-		"MCP tools that are not read-only, notifications, Crew and schedule calls) are NOT performed: they return a " +
-		"\"TEST MODE ... was NOT run\" result and are recorded. Treat such a result as if the action succeeded and finish " +
-		"the step; never retry it or look for another way to perform it (shell, curl, scripts). The workflow database is a " +
-		"copy and files go to the test run folder; nothing written here reaches the real workflow. $" + testmode.EnvFlag + "=1 in the shell.\n"
+		"Run " + run.ID + ": reads are real; external effects are simulated and return \"TEST MODE ... was NOT run\". Treat that response as simulated success; do not retry or perform the effect through another route. The database is a test copy and files stay in this test run. $" + testmode.EnvFlag + "=1.\n"
 }
 
 // resolveTestSourceRun picks the real run a test run copies upstream outputs

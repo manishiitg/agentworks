@@ -196,7 +196,7 @@ context dependencies, and guidance that execution actually receives. Assess:
 - precise wording, no conflicting/stale instructions, needless repetition,
   copied shared policy, or micromanaged procedure without a correctness reason;
 - enough context and accessible references to execute the task without guessing;
-- for description-first-v1 agents, a runnable description and preserved system_rules,
+- for description-first-v1 agents, a runnable description with all task rules preserved once in its Rules section,
   with zero items allowed. Verify-only follow-ups are valid because the description
   has already performed the work. Flag redundant execution items that could repeat
   side effects; do not require a generic verification/repair sequence. Builder

@@ -90,7 +90,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if strings.Contains(result, "synthetic-secret-for-preview") || strings.Contains(result, "private runtime topic") {
 		t.Fatal("preview exposed a secret or resolved variable value")
 	}
-	if preview.ParallelToolCalls || preview.ItemID != "work" || !strings.Contains(preview.SystemPrompt, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
+	if preview.ParallelToolCalls || preview.ItemID != "work" || !strings.Contains(preview.UserMessage, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
 		t.Fatal("preview omitted current config, selected item, instructions or unresolved context")
 	}
 	if strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
@@ -158,7 +158,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if err := json.Unmarshal([]byte(result), &preview); err != nil {
 		t.Fatal(err)
 	}
-	if preview.ItemID != AgentDescriptionTurnID || preview.UserMessage != "Research <VARIABLE:TOPIC>." || strings.Contains(preview.SystemPrompt, "Research <VARIABLE:TOPIC>.") || !strings.Contains(preview.SystemPrompt, "No paid calls.") {
+	if preview.ItemID != AgentDescriptionTurnID || preview.UserMessage != "Research <VARIABLE:TOPIC>.\n\n## Rules\nNo paid calls." || strings.Contains(preview.SystemPrompt, "Research <VARIABLE:TOPIC>.") || strings.Contains(preview.SystemPrompt, "No paid calls.") {
 		t.Fatal("description-only preview has wrong task/rules")
 	}
 	// Invalid persisted config is reported rather than silently repaired.
@@ -187,13 +187,13 @@ func TestStepPromptsRespectExplicitPermissionsAndScriptedDBHelpers(t *testing.T)
 			t.Fatal("runtime supplements disappeared or grew across prompt renders")
 		}
 		user := renderer.executionOnlyUserMessageProcessor(vars)
-		if !strings.Contains(system, "never attempt a prohibited write") || strings.Contains(system, `Never conclude "read-only" or "not allowed" from the instructions`) {
+		if !strings.Contains(system, "never try a forbidden action to test it") || strings.Contains(system, `Never conclude "read-only" or "not allowed" from the instructions`) {
 			t.Fatalf("access %s conflicts with explicit restrictions", access)
 		}
 		if strings.Contains(system+user, "persist through the absolute `$DB_PATH`") || strings.Contains(user, "persist scripted results through `$DB_PATH`") || strings.Contains(user, "6. Create the output file.") {
 			t.Fatalf("access %s retained conflicting persistence/output instructions", access)
 		}
-		if access == DBAccessReadWrite && (!strings.Contains(system, "persist through the `agentworks_db` helper API") || !strings.Contains(user, "`agentworks_db`")) {
+		if access == DBAccessReadWrite && !strings.Contains(system, "Use `agentworks_db` in saved scripts") {
 			t.Fatal("scripted persistence must consistently use the helper")
 		}
 		if access == DBAccessNone && strings.Contains(user, "persist results with `mutate_workflow_db`") {

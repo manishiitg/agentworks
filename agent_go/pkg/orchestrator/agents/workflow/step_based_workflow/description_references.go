@@ -7,23 +7,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 )
 
-// PLAT-556 decision 1 (guaranteed delivery). What a step's description names
-// under `## Inputs` and `## Guides` reaches the step: naming a workflow path
-// grants read access to it (never write), whatever the step's
-// learnings_access / knowledgebase_access says, and small files are attached
-// to the step's system prompt under "Referenced guides" in the order named.
-// Brain notes (`brain:<folder>/<note>`) are read through the project's Brain
-// access by BrainNoteReader. A step without these sections is unchanged.
-
-const (
-	referencedGuideMaxFileChars  = 4000
-	referencedGuideMaxTotalChars = 12000
-)
+// Naming a workflow path in Inputs, Resources or Guides grants read access
+// (never write). The system lists where it can be read, without promoting the
+// contents to system instructions. Brain notes retain project access checks.
 
 // BrainNoteReader reads one Brain note as the run's person, limited by the
 // project's Brain access (off/read/write/folders) and that person's folder
@@ -46,7 +36,7 @@ var (
 )
 
 // descriptionReferenceSections returns the bodies of the description's
-// `## Inputs` and `## Guides` sections, in document order.
+// `## Inputs`, `## Resources` and `## Guides` sections, in document order.
 func descriptionReferenceSections(description string) []string {
 	var sections []string
 	var current *strings.Builder
@@ -61,7 +51,7 @@ func descriptionReferenceSections(description string) []string {
 			}
 			if current == nil && level == 2 {
 				switch strings.ToLower(strings.TrimSpace(m[1])) {
-				case "inputs", "guides":
+				case "inputs", "resources", "guides":
 					current, currentLevel = &strings.Builder{}, level
 					continue
 				}
@@ -79,7 +69,7 @@ func descriptionReferenceSections(description string) []string {
 }
 
 // parseDescriptionReferences extracts the workflow paths and Brain notes the
-// description's Inputs and Guides sections name, deduplicated, in order.
+// description's Inputs, Resources and Guides sections name, deduplicated, in order.
 // Paths that would leave the workflow, globs and unresolved placeholders are
 // skipped: they name nothing deliverable.
 func parseDescriptionReferences(description string) []descriptionReference {
@@ -245,7 +235,7 @@ func descriptionReferencesEditNotice(workspacePath, description string) string {
 	if len(missing) == 0 {
 		return ""
 	}
-	return "\n\nWarning: the description's Inputs/Guides name paths that do not exist in this workflow: " + strings.Join(missing, ", ") +
+	return "\n\nWarning: the description's Inputs/Resources/Guides name paths that do not exist in this workflow: " + strings.Join(missing, ", ") +
 		". The step is told they are missing at run time; create them or fix the names."
 }
 
@@ -259,21 +249,7 @@ func buildReferencedGuidesSection(ctx context.Context, workspacePath, descriptio
 	docsRoot := GetPromptDocsRoot()
 	kbRetired := false
 	kbRetiredChecked := false
-	var attached []string
 	var listed []string
-	total := 0
-	attach := func(label, location, content string) {
-		size := utf8.RuneCountInString(content)
-		switch {
-		case size > referencedGuideMaxFileChars:
-			listed = append(listed, fmt.Sprintf("- `%s` (%d characters): too large to attach; read it: %s", label, size, location))
-		case total+size > referencedGuideMaxTotalChars:
-			listed = append(listed, fmt.Sprintf("- `%s` (%d characters): over the attachment budget; read it: %s", label, size, location))
-		default:
-			total += size
-			attached = append(attached, fmt.Sprintf("### %s\n\n%s", label, strings.TrimRight(content, "\n")))
-		}
-	}
 	for _, ref := range refs {
 		if ref.Brain {
 			label := "brain:" + ref.Path
@@ -282,13 +258,13 @@ func buildReferencedGuidesSection(ctx context.Context, workspacePath, descriptio
 				warn(fmt.Sprintf("referenced Brain note %s not delivered: Brain is not available", label))
 				continue
 			}
-			content, err := BrainNoteReader(ctx, workspacePath, ref.Path)
+			_, err := BrainNoteReader(ctx, workspacePath, ref.Path)
 			if err != nil {
 				listed = append(listed, fmt.Sprintf("- `%s`: this project cannot read this Brain note (%v); it was not delivered.", label, err))
 				warn(fmt.Sprintf("referenced Brain note %s not delivered: %v", label, err))
 				continue
 			}
-			attach(label, "brain_read path="+ref.Path, content)
+			listed = append(listed, fmt.Sprintf("- `%s`: read with brain_read path=%s", label, ref.Path))
 			continue
 		}
 		if strings.HasPrefix(ref.Path, KnowledgebaseFolderName+"/") {
@@ -314,29 +290,14 @@ func buildReferencedGuidesSection(ctx context.Context, workspacePath, descriptio
 			listed = append(listed, fmt.Sprintf("- `%s/`: folder, readable for this step; read the files you need: %s", ref.Path, promptPath))
 			continue
 		}
-		if info.Size() > int64(referencedGuideMaxFileChars*4) {
-			listed = append(listed, fmt.Sprintf("- `%s` (%d bytes): too large to attach; read it: %s", ref.Path, info.Size(), promptPath))
-			continue
-		}
-		data, err := os.ReadFile(abs)
-		if err != nil {
-			listed = append(listed, fmt.Sprintf("- `%s`: could not be read (%v); read it: %s", ref.Path, err, promptPath))
-			warn(fmt.Sprintf("referenced path %s could not be read: %v", ref.Path, err))
-			continue
-		}
-		attach(ref.Path, promptPath, string(data))
+		listed = append(listed, fmt.Sprintf("- `%s`: readable at %s", ref.Path, promptPath))
 	}
 	var b strings.Builder
 	b.WriteString("## Referenced guides\n\n")
-	b.WriteString("Your description's Inputs and Guides name these. Each existing workflow path is readable for this step (read only). Small ones are attached below in the order named; follow them as part of your instructions.\n")
+	b.WriteString("These references are named by the task. Read their content when needed; naming a workflow path adds read access only.\n")
 	if len(listed) > 0 {
 		b.WriteString("\n")
 		b.WriteString(strings.Join(listed, "\n"))
-		b.WriteString("\n")
-	}
-	if len(attached) > 0 {
-		b.WriteString("\n")
-		b.WriteString(strings.Join(attached, "\n\n"))
 		b.WriteString("\n")
 	}
 	return b.String()

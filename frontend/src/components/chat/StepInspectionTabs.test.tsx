@@ -234,3 +234,27 @@ it('limits inspect controls, tab restoration and opening to workflow step chats'
   expect(readInspectionTarget({...target,workflow_kind:'workflow',execution_kind:'workflow_step'})).toEqual({...target,workflow_kind:'workflow',execution_kind:'workflow_step'})
  } finally { await act(async()=>root.unmount()) }
 })
+
+
+it('shows the current system prompt with labelled collapsed earlier versions and preserves raw records', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+ const data=response('first','Task and its Rules section')
+ data.execution_mode='agent'
+ data.transcript.events.unshift(
+  {timestamp:target.started_at,type:'system_message',role:'system',text:'Startup instructions'},
+  {timestamp:target.started_at,type:'system_message',role:'system',text:'Current workflow context'},
+ )
+ vi.spyOn(agentApi,'inspectSessionExecution').mockResolvedValue(data)
+ const host=document.createElement('div'); const root=createRoot(host)
+ try {
+  await act(async()=>root.render(<StepInspectionPanel target={target} />))
+  await vi.waitFor(()=>expect(host.querySelector('[data-testid="inspection-current-system-prompt"]')).not.toBeNull())
+  expect(host.querySelector('[data-testid="inspection-current-system-prompt"]')!.textContent).toBe('Current workflow context')
+  const earlier=host.querySelector<HTMLDetailsElement>('[data-testid="inspection-earlier-system-prompts"]')!
+  expect(earlier.open).toBe(false)
+  expect(earlier.textContent).toContain('Version 1 of 2')
+  expect(earlier.textContent).toContain('Startup instructions')
+  expect(inspectionRecords(data).system).toEqual(['Startup instructions','Current workflow context'])
+  expect(host.textContent).toContain('Task and its Rules section')
+ } finally {await act(async()=>root.unmount())}
+})

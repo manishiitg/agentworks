@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 const AgentDescriptionFirstContractVersion = "1.0.48"
@@ -21,6 +23,7 @@ func initializeNewAgentPromptContracts(step PlanStepInterface) {
 	if !ok || agent == nil {
 		return
 	}
+	normalizeAgentTaskRules(agent)
 	if !agent.AuthoredPrompt && agent.PromptContract == "" {
 		agent.PromptContract = AgentDescriptionFirstPromptContract
 	}
@@ -30,11 +33,98 @@ func initializeNewAgentPromptContracts(step PlanStepInterface) {
 }
 
 func agentDescriptionItem(step *AgentPlanStep) AgentItem {
-	item := AgentItem{ID: AgentDescriptionTurnID, Type: "user_message", Kind: "execution", Message: step.Description, Synthetic: true}
+	item := AgentItem{ID: AgentDescriptionTurnID, Type: "user_message", Kind: "execution", Message: agentTaskDescription(step), Synthetic: true}
 	if step.InitialWriteAccess != nil {
 		item.WriteAccess = *step.InitialWriteAccess
 	}
 	return item
+}
+
+// Retain older system_rules as task content without copying them into the system.
+// New/updated plans store this content only in the description's Rules section.
+func agentTaskDescription(step *AgentPlanStep) string {
+	if step == nil {
+		return ""
+	}
+	return mergeTaskRules(step.Description, step.SystemRules)
+}
+
+func normalizeAgentTaskRules(step *AgentPlanStep) {
+	if step == nil || step.AuthoredPrompt {
+		return
+	}
+	step.Description = agentTaskDescription(step)
+	step.SystemRules = ""
+}
+
+func mergeTaskRules(description, rules string) string {
+	rules = strings.TrimSpace(rules)
+	if rules == "" {
+		return description
+	}
+	lines := strings.Split(description, "\n")
+	start, end := -1, len(lines)
+	fence := ""
+	for i, line := range lines {
+		text := strings.TrimSpace(line)
+		if strings.HasPrefix(text, "```") || strings.HasPrefix(text, "~~~") {
+			n := strings.IndexFunc(text, func(r rune) bool { return r != rune(text[0]) })
+			if n < 0 {
+				n = len(text)
+			}
+			marker := text[:n]
+			if fence == "" {
+				fence = marker
+			} else if marker[0] == fence[0] && len(marker) >= len(fence) && strings.TrimSpace(text[n:]) == "" {
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue
+		}
+		heading := descriptionSectionHeading.FindStringSubmatch(text)
+		if heading == nil {
+			continue
+		}
+		level := len(text) - len(strings.TrimLeft(text, "#"))
+		if start >= 0 && level <= 2 {
+			end = i
+			break
+		}
+		if level == 2 && strings.EqualFold(strings.TrimSpace(heading[1]), "Rules") {
+			start = i + 1
+		}
+	}
+	if start < 0 {
+		var missing []string
+		text := strings.Join(strings.Fields(description), " ")
+		for _, block := range strings.Split(rules, "\n\n") {
+			if block = strings.TrimSpace(block); block != "" && !strings.Contains(text, strings.Join(strings.Fields(block), " ")) {
+				missing = append(missing, block)
+			}
+		}
+		if len(missing) == 0 {
+			return description
+		}
+		return strings.TrimRight(description, "\n") + "\n\n## Rules\n" + strings.Join(missing, "\n\n")
+	}
+	body := strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+	normalize := func(text string) string { return strings.Join(strings.Fields(text), " ") }
+	for _, block := range strings.Split(rules, "\n\n") {
+		if block = strings.TrimSpace(block); block != "" && !strings.Contains(normalize(body), normalize(block)) {
+			if body != "" {
+				body += "\n\n"
+			}
+			body += block
+		}
+	}
+	if normalize(body) == normalize(strings.Join(lines[start:end], "\n")) {
+		return description
+	}
+	rebuilt := append(append([]string{}, lines[:start]...), body, "")
+	rebuilt = append(rebuilt, lines[end:]...)
+	return strings.Join(rebuilt, "\n")
 }
 
 // Apply the same authority layout to ordinary, delegating and preview renderers.
@@ -45,7 +135,8 @@ func applyAgentPromptContract(vars map[string]string, step *AgentPlanStep, value
 	}
 	vars["DescriptionFirst"] = "true"
 	vars["StepDescription"] = ""
-	vars["StepSystemRules"] = ResolveVariables(step.SystemRules, values)
+	// Task rules are carried once by the opening user description.
+	vars["StepSystemRules"] = ""
 }
 
 // A stamp proves all live agent definitions were reviewed, including routes and
@@ -103,4 +194,37 @@ func ValidateAgentDescriptionFirstContractStamp(content string) error {
 		}
 	}
 	return nil
+}
+
+// A saved conversation from before task rules moved roles can lack that user
+// context. Supply only missing content alongside the requested continuation;
+// never restart the configured queue. New sessions already have the opener.
+func missingAgentTaskContext(step *AgentPlanStep, history []llmtypes.MessageContent) string {
+	var user strings.Builder
+	for _, message := range history {
+		if message.Role != llmtypes.ChatMessageTypeHuman {
+			continue
+		}
+		for _, part := range message.Parts {
+			if text, ok := part.(llmtypes.TextContent); ok {
+				user.WriteString(text.Text)
+				user.WriteByte('\n')
+			}
+		}
+	}
+	normalized := strings.Join(strings.Fields(user.String()), " ")
+	description := strings.TrimSpace(step.Description)
+	if description != "" && !strings.Contains(normalized, strings.Join(strings.Fields(description), " ")) {
+		return agentTaskDescription(step)
+	}
+	var missing []string
+	for _, block := range strings.Split(strings.TrimSpace(step.SystemRules), "\n\n") {
+		if block = strings.TrimSpace(block); block != "" && !strings.Contains(normalized, strings.Join(strings.Fields(block), " ")) {
+			missing = append(missing, block)
+		}
+	}
+	if len(missing) == 0 {
+		return ""
+	}
+	return "## Rules\n" + strings.Join(missing, "\n\n")
 }

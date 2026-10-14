@@ -1,5 +1,26 @@
 # Decisions and open issues
 
+## 2026-10-14 — Task rules belong in the user task; procedures are opened when needed (PLAT-861)
+
+The description carries the task, task-specific Rules and named Resources.
+The system explains the workflow, plan position and enforced runtime scope.
+Preserve saved system_rules in the opening user task without exact repeats;
+new and updated authoring stores them only in the description. Existing queues,
+validation gates, tool grants and completion parsing remain. A resumed older
+conversation receives missing task context once with its requested continuation.
+Delegated tasks keep their own description and caller instruction.
+
+Named resources remain readable under existing grants; list their locations
+instead of promoting their contents to system instructions. The compact tool list remains;
+HTTP procedures are opened through runtime-http-tools.
+Database access alone does not require database persistence. Inspector system
+prompt disclosure shows the current snapshot first with labelled earlier versions.
+
+Why: duplicating task policies and procedural bodies obscured the executable
+request; consecutive system snapshots also looked like duplicate instructions.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-195.
+
 ## 2026-10-14 — Condition triggers are person-owned callers, enabled in Code first (PLAT-861)
 
 Reuse the product scheduler to run saved Python checks in the owning product's server sandbox without a model turn. A check reads its previous cursor on stdin and returns bounded events plus the next cursor. Persist events and cursor together before dispatch; a separate durable queue calls an owner-configured agent conversation, function or route with stable retry IDs. Recheck source access, selected credentials and target access at execution. The caller admits the call; targets keep their authored execution policy and credentials. Changes to the saved script require accepting its new hash. Uncertain dispatches beyond the safe retry horizon need reconciliation, never blind replay. External effects still require target/service deduplication. Code is the first source surface, not a separate architecture; Relays remain published-function targets without timers. Show these in their own Condition triggers section. Why: deterministic source conditions should start existing shared work without paying for an agent on each check.

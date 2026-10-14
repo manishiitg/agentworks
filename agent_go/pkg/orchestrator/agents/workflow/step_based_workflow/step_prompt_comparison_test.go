@@ -69,7 +69,7 @@ func TestPrintRemotePromptFixture(t *testing.T) {
  var names []string
  for _, s:=range identity {names=append(names,s.Name)}
  for _, role:=range []string{"direct","manager","child"} {
-  vars:=map[string]string{"DescriptionFirst":"true","StepTitle":"Research","DBAccess":DBAccessReadWrite,"KbAccess":KBAccessReadWrite,"KbAccessLabel":"read-write","WorkspacePath":"/workspace/Workflow/demo/runs/iteration-0/default/execution","WorkflowRoot":"/workspace/Workflow/demo","StepExecutionPath":"/workspace/Workflow/demo/runs/iteration-0/default/execution/research","DBPath":"/workspace/Workflow/demo/db","KnowledgebasePath":"/workspace/Workflow/demo/knowledgebase","FolderGuardReadPaths":"/workspace/Workflow/demo/soul, /workspace/Workflow/demo/db/README.md, /workspace/Workflow/demo/knowledgebase, /workspace/Workflow/demo/learnings, /workspace/Workflow/demo/runs/iteration-0/default/execution/fetch","FolderGuardWritePaths":"/workspace/Workflow/demo/runs/iteration-0/default/execution/research, /workspace/Workflow/demo/knowledgebase/notes","StepContextOutput":"result.json","PlanPosition":"Goal: Produce verified evidence.\nPosition: step 2 of 3.\nBefore: Fetch evidence — Verified raw.json.\nAfter: Report.","StepContextDependencies":"/workspace/Workflow/demo/runs/iteration-0/default/execution/fetch/raw.json"}
+  vars:=map[string]string{"DescriptionFirst":"true","StepTitle":"Research","DBAccess":DBAccessReadWrite,"KbAccess":KBAccessReadWrite,"KbAccessLabel":"read-write","WorkspacePath":"/workspace/Workflow/demo/runs/iteration-0/default/execution","WorkflowRoot":"/workspace/Workflow/demo","StepExecutionPath":"/workspace/Workflow/demo/runs/iteration-0/default/execution/research","DBPath":"/workspace/Workflow/demo/db","KnowledgebasePath":"/workspace/Workflow/demo/knowledgebase","FolderGuardReadPaths":"/workspace/Workflow/demo/soul, /workspace/Workflow/demo/db/README.md, /workspace/Workflow/demo/knowledgebase, /workspace/Workflow/demo/learnings, /workspace/Workflow/demo/runs/iteration-0/default/execution/fetch","FolderGuardWritePaths":"/workspace/Workflow/demo/runs/iteration-0/default/execution/research, /workspace/Workflow/demo/knowledgebase/notes","StepSystemRules":"Use verified sources only.","FollowUpMessage":"Research current facts.\n\n## Rules\nUse verified sources only.","StepContextOutput":"result.json","PlanPosition":"Goal: Produce verified evidence.\nPosition: step 2 of 3.\nBefore: Fetch evidence — Verified raw.json.\nAfter: Report.","StepContextDependencies":"/workspace/Workflow/demo/runs/iteration-0/default/execution/fetch/raw.json"}
   if role=="manager" {vars["PredefinedRoutes"]="- Worker (worker) — type: agent"}
   if role=="child" {vars["PlanPosition"]+="\nParent: Research manager\nDelegated task: Verify source evidence."}
   vars["KBGuidanceBlock"]=BuildStepKBGuidanceWithTarget(KBAccessReadWrite,"Record verified audience facts.","/workspace/Workflow/demo/knowledgebase/notes")
@@ -77,6 +77,8 @@ func TestPrintRemotePromptFixture(t *testing.T) {
   total:=core+strings.Join(supplements,"\n")
   rendered,_:=json.Marshal(core)
   t.Logf("PROMPT_REVIEW role=%s core=%s",role,rendered)
+  user,_:=json.Marshal((&WorkflowExecutionOnlyAgent{}).executionOnlyUserMessageProcessor(vars))
+  t.Logf("PROMPT_REVIEW role=%s user=%s",role,user)
   t.Logf("PROMPT_SIZE role=%s core_chars=%d system_and_supplements_chars=%d skills=%v",role,len([]rune(core)),len([]rune(total)),names)
  }
 }

@@ -1506,11 +1506,11 @@ func getAddAgentStepSchema() string {
 		"properties": {
 			"id": {"type": "string", "description": "REQUIRED: Stable URL-friendly step ID."},
 			"title": {"type": "string", "description": "REQUIRED: Short title for the agent step."},
-			"description": {"type": "string", "description": "REQUIRED: The executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put binding policies in system_rules. items[] are optional subsequent turns, not a repeated execution instruction."},
+			"description": {"type": "string", "description": "REQUIRED: The executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put task-specific policies in the description's Rules section. items[] are optional subsequent turns, not a repeated execution instruction."},
 			"authored_prompt": {"type": "boolean", "description": "Relay agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
 			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
-            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
             "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
             "required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "REQUIRED: Prior context files this sequence depends on. Use [] if none."},
@@ -1566,11 +1566,11 @@ func getUpdateAgentStepSchema() string {
 		"properties": {
 			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the agent step to update. Legacy non-scripted steps are accepted and atomically upgraded to agent because that is already their effective runtime type."},
 			"title": {"type": "string", "description": "OPTIONAL: New title. Omit to preserve the existing title."},
-			"description": {"type": "string", "description": "OPTIONAL: Replaces the executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Put binding policies in system_rules. items[] are optional subsequent turns, not a repeated execution instruction. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
+			"description": {"type": "string", "description": "OPTIONAL: Replaces the executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Put task-specific policies in the description's Rules section. items[] are optional subsequent turns, not a repeated execution instruction. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
 			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
 			"system_prompt": {"type": "string", "description": "Replace the authored system prompt. Supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
-            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
             "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
             "required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "OPTIONAL: Replaces the full list of prior context files this sequence depends on. Omit to preserve the existing list."},
@@ -1942,7 +1942,7 @@ func getAddAgentRouteSchema() string {
 							"script_parameters": {"type": "object", "description": "For scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 							"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 							"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
-            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
             "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
             "items": {"type": "array", "description": "Optional when type='agent': follow-ups after the description turn; [] is valid.", "items": {"type": "object"}},
 							"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
@@ -2004,7 +2004,7 @@ func getUpdateAgentRouteSchema() string {
 					"script_parameters": {"type": "object", "description": "For scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
 					"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
 					"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
-            "system_rules": {"type":"string", "description":"Binding agent rules and business policies applied in the system prompt on every turn. Keep the executable task in description. Preserve approval, send-once, spend, scope and evidence rules during migration."},
+            "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
             "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
             "items": {"type": "array", "description": "Optional when type='agent'. Replaces all subsequent turns; [] clears them. The description executes alone first under description-first-v1. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
 					"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
@@ -4209,9 +4209,9 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 				target, _, _ = findStepByID(plan.OrphanSteps, partialUpdate.ExistingStepID)
 			}
 			if agent, ok := target.(*AgentPlanStep); ok && !agentDescriptionFirst(agent) {
-				for _, field := range []string{"description", "system_rules", "items"} {
+				for _, field := range []string{"description", "items"} {
 					if _, provided := args[field]; !provided {
-						return "", fmt.Errorf("description-first migration requires a reviewed description, system_rules and items (including []); missing %s", field)
+						return "", fmt.Errorf("description-first migration requires a reviewed description and items (including []); missing %s", field)
 					}
 				}
 			}
@@ -4234,6 +4234,23 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 			updatedStep, _, _ = findStepByID(plan.OrphanSteps, partialUpdate.ExistingStepID)
 		}
 		if sequenceStep, ok := updatedStep.(*AgentPlanStep); ok {
+			if !sequenceStep.AuthoredPrompt && sequenceStep.SystemRules != "" {
+				beforeDescription, beforeRules := sequenceStep.Description, sequenceStep.SystemRules
+				normalizeAgentTaskRules(sequenceStep)
+				for _, change := range []PlanFieldChange{{StepID: sequenceStep.ID, Field: "description", OldValue: beforeDescription, NewValue: sequenceStep.Description}, {StepID: sequenceStep.ID, Field: "system_rules", OldValue: beforeRules, NewValue: ""}} {
+					found := false
+					for i := range fieldChanges {
+						if fieldChanges[i].StepID == change.StepID && fieldChanges[i].Field == change.Field {
+							fieldChanges[i].NewValue = change.NewValue
+							found = true
+							break
+						}
+					}
+					if !found && change.OldValue != change.NewValue {
+						fieldChanges = append(fieldChanges, change)
+					}
+				}
+			}
 			if err := validateAgentStepFieldsTyped(sequenceStep); err != nil {
 				return "", fmt.Errorf("validation failed: %w", err)
 			}
@@ -5702,7 +5719,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_agent_step",
-		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the complete executable task in description, sent alone as the first user turn; put standing policies in system_rules. Items are optional subsequent phases, with retained_reason on the first explaining why it adds value without repeating work. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
+		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the complete executable task in description, sent alone as the first user turn; put task-specific policies in its Rules section. Items are optional subsequent phases, with retained_reason on the first explaining why it adds value without repeating work. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
 		agentSequenceParams,
 		createAddAgentStepExecutor(workspacePath, logger, readFile, writeFile, moveFile),
 		"workflow",
@@ -6403,6 +6420,9 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 			updatedSubAgentStep, err := convertMapToStep(mergedSubAgentStepRaw)
 			if err != nil {
 				return "", fmt.Errorf("failed to parse sub_agent_step: %w", err)
+			}
+			if agent, ok := updatedSubAgentStep.(*AgentPlanStep); ok {
+				normalizeAgentTaskRules(agent)
 			}
 			routeToUpdate.SubAgentStep = updatedSubAgentStep
 			if _, isScripted := updatedSubAgentStep.(*ScriptedPlanStep); isScripted && !existingWasScripted {

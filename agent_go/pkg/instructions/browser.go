@@ -56,11 +56,7 @@ func BuildBrowserRuntimeInstructions(cfg BrowserConfig) string {
 	if len(endpoints) > 0 {
 		fmt.Fprintf(&sb, "- Authorized CDP endpoint(s): `%s`.\n", strings.Join(endpoints, "`, `"))
 	}
-	if mode == "auto" {
-		sb.WriteString("- Before the first action and after an availability error, call `agent_browser` status. Follow its live `effective_mode`; never infer CDP reachability from this prompt or probe Chrome through shell.\n")
-	}
-	sb.WriteString("- For repeatable browser tests, read `builder-reference/references/playwright-scripted.md`; use @agentworks/playwright for JS/TS or agentworks-playwright for Python when available. Its live view is watch-only; this runtime configuration concerns managed agent-browser.\n")
-	sb.WriteString("- Before interactive browser work, read the projected `agent-browser` skill when attached; otherwise read `builder-reference/references/browser-usage.md`. Those references contain the managed HTTP bridge, current skill-loading, tab ownership, cleanup, and safety contracts.\n")
+	sb.WriteString("Open agent-browser when browser work is needed; its status reports live availability. For saved browser scripts, open builder-reference/references/playwright-scripted.md.\n")
 	return sb.String()
 }
 

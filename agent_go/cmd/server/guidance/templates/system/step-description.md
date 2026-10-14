@@ -10,9 +10,10 @@ For ordinary `agent` steps using `prompt_contract="description-first-v1"`, the
 `description` is the executable first user turn, sent ALONE. Finish that turn
 before sending any authored sequence instruction. `items[]` are optional later
 turns; zero items is valid and is the default for a coherent one-turn task.
-The system prompt carries platform/agent instructions and `system_rules` for
-binding business policies. Existing agents with no prompt_contract retain their
-saved system-charter semantics until their description and items are reviewed.
+The system prompt explains the workflow, this step's place in it and effective
+runtime access. Task-specific rules belong only in the description. Saved
+`system_rules` content is preserved there by the runtime; do not author it twice.
+Existing agent item queues keep their reviewed ordering.
 Custom `authored_prompt` agents retain their explicit system/user messages.
 
 ### Check what the runtime already supplies
@@ -55,9 +56,9 @@ new steps have no saved prompt until execution starts.
 
 Write a complete runnable task: objective, inputs/evidence, scope, durable result,
 success boundary and valid no-op/failure behavior. The description must be enough
-to perform the coherent outcome without an execution item. Put binding approval,
-idempotency, spending, access and business policies in `system_rules`, which is
-supplied on every turn. Keep the task's constraints explicit; never demote or
+to perform the coherent outcome without an execution item. Put task-specific approval,
+idempotency, spending, access and business policies in the description's Rules
+section, once. Keep the task's constraints explicit; never demote or
 lose an inline policy merely to shorten the description.
 
 Builder decides whether a later turn adds value. Keep `items` empty when the
@@ -77,7 +78,7 @@ caller-specific evidence before acting, declare input variables/dependencies in
 the description and preserve that ordering during migration.
 
 Migration must review old first items: remove redundant execution; fold unique
-requirements into description/system_rules; retain genuinely subsequent phases
+requirements into description; retain genuinely subsequent phases
 with their IDs, contracts and access narrowing. Do not regex-delete items or
 blindly move policies. Script prerequisites required by the opener belong in
 upstream scripted steps, not in a batch scheduled after description execution.
@@ -93,30 +94,38 @@ only when it has nothing to say; do not add other sections.
 
 ```
 ## Goal       — what the step achieves, in one to three sentences
-## Inputs     — what it reads: prior step outputs, DB tables, KB notes by name
+## Inputs     — prior step outputs, caller input and evidence needed for the task
+## Resources  — which KB/Brain notes, DB tables and learnings to read or update; say none when unused
 ## Output     — what it produces and where; the shape stays in validation_schema
 ## Rules      — binding business constraints, approval limits, actions outside its authority
 ## Done when  — the success boundary, including what counts as a valid no-op
 ## Guides     — the skill/learning references to use, named only, never copied
 ```
 
-Binding policies in ## Rules must also be represented in `system_rules` so they remain system instructions.
+Keep task rules only in ## Rules. Do not copy them into `system_rules`, skills or platform instructions.
+
+Resources specify intent, not access grants: name the exact knowledge sources and
+tables this task uses, and whether to read or update them. Say `Knowledgebase: none`,
+`Database: none` or `Learnings: none` when relevant to avoid unintended use.
+Separate using existing learnings from contributing new guidance after validation.
+Configure access consistently with these intentions; the runtime enforces it.
+Do not list every available resource just because the step can access it.
 
 Everything else belongs somewhere else: optional later phases in `items[]`, reusable
 procedures in skills and learnings, domain facts and decisions in the
 knowledgebase, platform mechanics nowhere (the runtime supplies them).
 
-Naming a path in Inputs or Guides delivers it: a workflow path under
+Naming a path in Inputs, Resources or Guides makes it readable: a workflow path under
 `learnings/`, `knowledgebase/`, `code/shared/`, `soul/` or `db/README.md`
 becomes readable for that step (never writable) whatever its learnings and
-knowledgebase access, and small files (up to 4,000 characters, 12,000 in total)
-are attached to its prompt.<!-- product:knowledgebase --> Name Brain notes as `brain:<folder>/<note>`.<!-- /product --> A named
+knowledgebase access, and the runtime lists where to read it. Its contents are not pasted into the
+system prompt.<!-- product:knowledgebase --> Name Brain notes as `brain:<folder>/<note>`.<!-- /product --> A named
 path that does not exist is reported to the step and in the plan edit response.
 
 <!-- product:knowledgebase -->Brain use is part of the charter, in plain words; there is no folder binding
 to configure. The workflow's Brain access (Off, Read, Read & write) and the
 owner's folder roles bound what is possible; the step's sections say what this
-step does within that. Name what it reads under Inputs or Guides
+step does within that. Name what it reads under Inputs, Resources or Guides
 (`brain:server A/Latency/runbooks/deploy.md`, delivered read-only), what it writes
 under Output ("add one line per incident to `brain:server A/Latency/Incidents/`"),
 and any limit under Rules ("never write to Brain outside `server A/Latency/`").

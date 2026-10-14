@@ -14,12 +14,12 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 		"VariableNames":         "",
 		"VariableValues":        "",
 		"LearningHistory":       "",
-		"StepExecutionPath":     "/app/workspace-docs/Workflow/customer-oi/runs/iteration-0/default/execution/step-qa-no-redlines",
-		"DownloadsPath":         "/app/workspace-docs/Workflow/customer-oi/runs/iteration-0/default/execution/Downloads",
-		"ExecutionFolderPath":   "/app/workspace-docs/Workflow/customer-oi/runs/iteration-0/default/execution",
-		"WorkspacePath":         "/app/workspace-docs/Workflow/customer-oi",
-		"WorkflowRoot":          "/app/workspace-docs/Workflow/customer-oi",
-		"KnowledgebasePath":     "/app/workspace-docs/Workflow/customer-oi/knowledgebase",
+		"StepExecutionPath":     "/app/workspace-docs/Workflow/example/runs/iteration-0/default/execution/step-qa-no-redlines",
+		"DownloadsPath":         "/app/workspace-docs/Workflow/example/runs/iteration-0/default/execution/Downloads",
+		"ExecutionFolderPath":   "/app/workspace-docs/Workflow/example/runs/iteration-0/default/execution",
+		"WorkspacePath":         "/app/workspace-docs/Workflow/example",
+		"WorkflowRoot":          "/app/workspace-docs/Workflow/example",
+		"KnowledgebasePath":     "/app/workspace-docs/Workflow/example/knowledgebase",
 		"FolderGuardReadPaths":  "",
 		"FolderGuardWritePaths": "",
 		"ShowToolsSection":      "false",
@@ -41,7 +41,7 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 		"in a bridge-only CLI session",
 		"## Code execution",
 		"workflow-execution",
-		"$STEP_OUTPUT_DIR",
+		"STEP_OUTPUT_DIR",
 	}
 	for _, snippet := range requiredSnippets {
 		if !strings.Contains(prompt, snippet) {
@@ -184,8 +184,7 @@ func TestDelegatingAgentUserPromptIncludesWorkshopHumanInput(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"## Human Input (Highest Priority)",
-		"execute_step(..., human_input=...)",
+		"## Caller input",
 		"focus on production incidents from the last hour",
 	}
 	for _, snippet := range requiredSnippets {

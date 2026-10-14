@@ -10,7 +10,7 @@ external_note: "External mapping: plan and step edits go through builder action=
 
 ## AGENT STEP
 
-Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. For `prompt_contract="description-first-v1"`, the description executes ALONE as the first user turn; each optional `items[]` entry is a subsequent turn after it finishes. `system_rules` carries binding agent/business policies on every turn. Empty items is valid. Saved agents without this contract keep their legacy charter semantics until reviewed migration; authored_prompt retains explicit prompts.
+Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. For `prompt_contract="description-first-v1"`, the description executes ALONE as the first user turn; each optional `items[]` entry is a subsequent turn after it finishes. Task-specific policies live in the description's Rules section only. Empty items is valid. Saved agents without this contract keep their legacy charter semantics until reviewed migration; authored_prompt retains explicit prompts.
 
 An agent step may declare `predefined_routes`. When routes exist, the agent gets
 bounded sub-agent tools and decides at runtime whether, when, and how often to

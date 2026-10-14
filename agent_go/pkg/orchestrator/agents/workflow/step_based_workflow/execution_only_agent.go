@@ -21,51 +21,24 @@ import (
 var executionOnlySystemTemplate = MustRegisterTemplate("executionOnlySystem", guidance.StepSystemPromptTemplate("execution"))
 var agentDelegationSystemTemplate = MustRegisterTemplate("agentDelegationSystem", guidance.StepSystemPromptTemplate("agent-delegation"))
 
-var executionOnlyUserTemplate = MustRegisterTemplate("executionOnlyUser", `{{if eq .IsContributionTurn "true"}}{{.BaseDescription}}{{else}}{{if .OrchestratorInstructions}}## Orchestrator Instructions (HIGHEST PRIORITY)
+var executionOnlyUserTemplate = MustRegisterTemplate("executionOnlyUser", `{{.BaseDescription}}
+{{if .OrchestratorInstructions}}
+## Delegated instruction
 {{.OrchestratorInstructions}}
-{{else}}**DESCRIPTION**: {{.BaseDescription}}
-{{end}}{{if eq .IsScriptedMode "true"}}**MODE NOTE (scripted)**: Implement the task below as reusable Python code. Use the exact main.py path in the **Code Execution Mode** section: canonical workflow code for version 1, or the run's code/main.py for legacy workflows. Never guess the source path. Treat the resolved **Inputs** list and declared tools as the source of truth. Adapt hardcoded sibling step paths into declared input arguments.
-{{else}}**MODE NOTE (agentic)**: This step is running in normal `+"`"+`agentic`+"`"+` mode, not `+"`"+`scripted`+"`"+`. **Tool calls come first.** Call the available tools and APIs directly to inspect state, fetch data, and produce outputs. Do **not** try to write one large reusable Python script for the whole task — that is what `+"`"+`scripted`+"`"+` mode is for, which this step is not in. Use short one-off shell or Python snippets via `+"`"+`execute_shell_command`+"`"+` only when consolidating several tool calls into one materially helps a specific subtask (e.g. batching API calls, parsing JSON with `+"`"+`jq`+"`"+`). A single tool call is a perfectly valid step.
-{{end}}**LOCATION**: {{.StepExecutionPath}}/ (Workspace: {{.WorkspacePath}})
-
-{{if .PreviousIterationOutput}}
-### Previous Attempt Results
+{{end}}{{if eq .IsScriptedMode "true"}}
+Implement this task as reusable Python at the exact main.py path supplied in Code Execution Mode. Use the resolved inputs as script arguments.
+{{end}}{{if .PreviousIterationOutput}}
+## Previous attempt
 {{.PreviousIterationOutput}}
-*Adjust your approach to avoid repeating previous failures.*
-{{end}}
-
-{{if .WorkshopHumanInput}}
-## Human Input (Highest Priority)
-The operator supplied this input with execute_step(..., human_input=...).
-You MUST incorporate it into this run. It takes priority over the default step description where they conflict.
-
+{{end}}{{if .WorkshopHumanInput}}
+## Caller input
 {{.WorkshopHumanInput}}
-{{end}}
-
-{{/* Only renders on scripted retries. Pure agentic pre-validation failures
-     take the continuation path (buildValidationContinuationUserMessage), which
-     sends a follow-up user message instead of re-rendering this template. */}}
-{{if .ValidationFeedback}}
-### Validation Issues
+{{end}}{{if .ValidationFeedback}}
+## Validation issues to repair
 {{.ValidationFeedback}}
-*Fix these errors in your next execution.*
-{{end}}
-
-### Inputs
-{{if .StepContextDependencies}}{{.StepContextDependencies}}{{else}}None{{end}}
-
-### Output
-{{if .StepContextOutput}}- **Output File**: {{.StepContextOutput}} (Create in '{{.StepExecutionPath}}/'){{else}}{{if eq .DBAccess "read"}}- **No output file** — read-only DB access; do not persist database changes.{{else if eq .DBAccess "none"}}- **No output file** — return the result as your final answer.{{else if eq .DBDirectAccess "true"}}- **No output file** — persist scripted results through the `+"`"+`agentworks_db`+"`"+` helper API; do not open the DB file directly.{{else}}- **No output file** — persist results with `+"`mutate_workflow_db`"+`.{{end}}{{end}}
-
-{{if .ScriptedPriorContext}}{{.ScriptedPriorContext}}
-{{end}}### Execution Checklist
-1. Review all **Inputs** above. Inlined files are ready to use. For any marked "read via tool", read them first.
-{{if .HasSkill}}2. Read **Skill files** as guidance only. The current step description is the main source of truth; use or ignore skill guidance depending on whether it matches this step.
-{{else}}2. Treat the current step description as the main source of truth. If you consult learnings files manually, use them only as advisory guidance and ignore stale or conflicting notes.
-{{end}}3. Execute the task using tool calls. Do NOT stop mid-task with a text message.
-4. **NO FABRICATED DATA**: Every value in the output must come from a real data source (MCP tools, APIs, or input files). Do NOT hardcode or invent output data.
-5. Verify the required outputs are fully produced before finishing.
-6. {{if .StepContextOutput}}Create the declared output file.{{else}}Complete the declared result contract; no output file is required.{{end}}{{end}}`)
+{{end}}{{if .ScriptedPriorContext}}
+{{.ScriptedPriorContext}}
+{{end}}`)
 
 // WorkflowExecutionOnlyTemplate holds template variables for execution-only agent prompts
 type WorkflowExecutionOnlyTemplate struct {
@@ -394,6 +367,19 @@ func browserAuthoringRulesForExecution(templateVars map[string]string, useProjec
 
 // executionOnlyUserMessageProcessor generates the user message for execution-only agent
 func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlyUserMessageProcessor(templateVars map[string]string) string {
+	if templateVars["IsContributionTurn"] == "true" {
+		if message := templateVars["FollowUpMessage"]; message != "" {
+			return message
+		}
+		return templateVars["StepDescription"]
+	}
+	if task := strings.TrimSpace(templateVars["InitialTaskDescription"]); task != "" {
+		instruction := strings.TrimSpace(templateVars["FollowUpMessage"])
+		if instruction == "" || instruction == task {
+			return task
+		}
+		return task + "\n\n## Current instruction\n" + instruction
+	}
 	// Message-sequence turns after the opener are already fully authored user
 	// messages. Preserve them verbatim instead of re-rendering the opening task
 	// envelope on every turn.

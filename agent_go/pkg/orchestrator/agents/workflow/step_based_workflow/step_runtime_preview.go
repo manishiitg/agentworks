@@ -185,12 +185,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		readPaths, writePaths = hcpo.setupAgentFolderGuard(step.GetID(), step.GetID(), stepConfig, access, true)
 		vars = hcpo.buildAgentTemplateVars(ctx, agent, *item, max(info.TopIndex-1, 0), step.GetID(), ResolveVariables(item.Message, values), readPaths, writePaths, access, values)
 		result.ItemID = item.ID
+		if !agentDescriptionFirst(agent) && (itemID == "" || (len(agent.Items) > 0 && item.ID == agent.Items[0].ID)) {
+			vars["InitialTaskDescription"] = ResolveVariables(agentTaskDescription(agent), values)
+		}
 		if len(agent.PredefinedRoutes) > 0 {
 			readPaths, writePaths = hcpo.setupOrchestratorFolderGuard(step, step.GetID())
 			vars = hcpo.buildOrchestratorTemplateVars(ctx, agent, max(info.TopIndex-1, 0), step.GetID(), nil, nil, plan.Steps, "", nil, values)
 			vars["StepContextDependencies"] = strings.Join(step.GetContextDependencies(), "\n")
 			vars["FollowUpMessage"] = ResolveVariables(item.Message, values)
 			applyAgentPromptContract(vars, agent, values)
+			if !agentDescriptionFirst(agent) && (itemID == "" || (len(agent.Items) > 0 && item.ID == agent.Items[0].ID)) {
+				vars["InitialTaskDescription"] = ResolveVariables(agentTaskDescription(agent), values)
+			}
 			result.InvocationTools = registeredToolNames(virtualtools.CreateSubAgentTools())
 			result.Unresolved = append(result.Unresolved, "Conditional specialist call tools require an admitted owning invocation; child call paths and inputs resolve at runtime.")
 		}

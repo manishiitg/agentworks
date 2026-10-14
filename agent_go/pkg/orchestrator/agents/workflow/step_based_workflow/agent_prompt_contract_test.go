@@ -83,20 +83,20 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 					renderer := &WorkflowExecutionOnlyAgent{}
 					user := renderer.executionOnlyUserMessageProcessor(vars)
 					system := renderer.executionOnlySystemPromptProcessor(vars)
-					if contract != "" && (strings.Contains(system, step.Description) || !strings.Contains(system, step.SystemRules)) {
+					if strings.Contains(system, step.Description) || strings.Contains(system, step.SystemRules) {
 						t.Fatal("task or rules have the wrong prompt authority")
 					}
 					if pending && calls == 0 {
-						if user != step.Description || len(history) != 0 || vars["PendingInvocationInput"] != "true" || !strings.Contains(system, "prepare local context only: no external actions") {
+						if user != agentTaskDescription(step) || len(history) != 0 || vars["PendingInvocationInput"] != "true" || !strings.Contains(system, "prepare local context only: no external actions") {
 							t.Fatal("pending scope was combined with the opening task or its preparation-only rule was lost")
 						}
 						calls++
 						return "Ready for scope.", append(history, llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, user), llmtypes.TextParts(llmtypes.ChatMessageTypeAI, "Ready for scope.")), nil
 					}
 					if effects == 0 {
-						want := step.Description
+						want := agentTaskDescription(step)
 						if contract == "" {
-							want = step.Items[0].Message
+							want += "\n\n## Current instruction\n" + step.Items[0].Message
 						}
 						wantHistory := 0
 						if pending {
@@ -119,7 +119,7 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 							if err := os.WriteFile(output, []byte(`{"ready":true}`), 0600); err != nil {
 								t.Fatal(err)
 							}
-						} else if user != "Check the evidence without repeating the action." {
+						} else if user != "Check the evidence without repeating the action." && user != "## Retained task context\n## Rules\n"+step.SystemRules+"\n\n## Current instruction\nCheck the evidence without repeating the action." {
 							t.Fatalf("unexpected follow-up %q", user)
 						}
 					}
@@ -154,6 +154,12 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 				// Resume through the route executor with the starting task snapshot.
 				// A later plan edit must neither replay the opener nor change the
 				// binding policies of this already-running conversation.
+				if contract == AgentDescriptionFirstPromptContract && scenario == "no-followup" {
+					// Simulate an older saved conversation: rules were only in its
+					// system, while the opening user turn held the bare description.
+					history = append([]llmtypes.MessageContent(nil), history...)
+					history[0] = llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, step.Description)
+				}
 				pinned := *step
 				session := &agentSequenceSession{
 					PromptContract: contract, SystemRules: step.SystemRules,
@@ -260,3 +266,38 @@ func TestDescriptionFirstContractStampAndAuthoring(t *testing.T) {
 	}
 }
 func ptrDescriptionContract(s string) *string { return &s }
+
+// Preserve saved policy exactly once, including markdown examples, without
+// changing optional items or granting access through prose.
+func TestTaskRulesPreservedOnceInDescriptionAndContinuation(t *testing.T) {
+	description := "## Goal\nProduce the report.\n\n## Rules\nNo paid calls.\n\n## Done when\nEvidence is saved."
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{Description: description}, SystemRules: "No paid calls.\n\nUse verified sources."}
+	task := agentTaskDescription(step)
+	if strings.Count(task, "No paid calls.") != 1 || strings.Count(task, "Use verified sources.") != 1 || strings.Index(task, "Use verified sources.") > strings.Index(task, "## Done when") {
+		t.Fatal(task)
+	}
+	normalizeAgentTaskRules(step)
+	if step.SystemRules != "" || step.Description != task || agentTaskDescription(step) != task {
+		t.Fatal("normalization lost or repeated rules")
+	}
+	legacy := &AgentPlanStep{CommonStepFields: CommonStepFields{Description: description}, SystemRules: "Use verified sources."}
+	history := []llmtypes.MessageContent{llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, description)}
+	missing := missingAgentTaskContext(legacy, history)
+	if missing != "## Rules\nUse verified sources." {
+		t.Fatalf("old continuation context = %q", missing)
+	}
+	history = append(history, llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, missing))
+	if got := missingAgentTaskContext(legacy, history); got != "" {
+		t.Fatalf("continuation repeated context: %q", got)
+	}
+	// An example's heading is not the actual Rules section.
+	fenced := "## Goal\nExample:\n````md\n## Rules\n```\n````\n\n## Rules\nNo paid calls."
+	if got := mergeTaskRules(fenced, "Use verified sources."); !strings.HasSuffix(got, "No paid calls.\n\nUse verified sources.\n") {
+		t.Fatal(got)
+	}
+	renderer := &WorkflowExecutionOnlyAgent{}
+	delegated := renderer.executionOnlyUserMessageProcessor(map[string]string{"StepDescription": task + "\n\n## Orchestrator Instructions\n\nCheck the selected record."})
+	if !strings.Contains(delegated, "Use verified sources.") || !strings.Contains(delegated, "Check the selected record.") {
+		t.Fatal("child lost its own task or caller input")
+	}
+}

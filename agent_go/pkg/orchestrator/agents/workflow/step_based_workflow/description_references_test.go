@@ -16,7 +16,7 @@ import (
 // PLAT-556 decision 1: naming a guide in Inputs/Guides delivers it. Pins the
 // security rule (a named path becomes readable even with learnings and KB
 // access off, never writable) and what the step's system prompt carries.
-func TestDescriptionNamedGuidesAreReadableAndAttached(t *testing.T) {
+func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	const workflow = "Workflow/upwork"
@@ -40,9 +40,9 @@ func TestDescriptionNamedGuidesAreReadableAndAttached(t *testing.T) {
 	t.Cleanup(func() { BrainNoteReader = previous })
 
 	description := "## Goal\nPick one job. Mentions learnings/_global/SKILL.md outside the sections.\n\n" +
-		"## Inputs\n- `Workflow/upwork/knowledgebase/notes/positioning.md`\n- knowledgebase/notes/missing.md\n\n" +
+		"## Resources\n- `Workflow/upwork/knowledgebase/notes/positioning.md`\n- knowledgebase/notes/missing.md\n\n" +
 		"## Rules\n- Never bid twice.\n\n" +
-		"## Guides\n- learnings/_global/references/job-selection.md\n- brain:people/manish\n"
+		"## Guides\n- learnings/_global/references/job-selection.md\n- brain:people/example\n"
 
 	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestDescriptionNamedGuidesAreReadableAndAttached(t *testing.T) {
 		}
 	}
 
-	// System prompt: small guide attached, large one listed, missing and
+	// System prompt: resources listed without content, missing and
 	// unreadable Brain note reported, in the order named.
 	prompt := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{
 		"StepTitle":        "Pick",
@@ -78,16 +78,16 @@ func TestDescriptionNamedGuidesAreReadableAndAttached(t *testing.T) {
 	})
 	section := prompt[strings.Index(prompt, "## Referenced guides"):]
 	for _, want := range []string{
-		"`knowledgebase/notes/positioning.md` (5000 characters): too large to attach; read it: " + filepath.Join(docs, workflow, "knowledgebase/notes/positioning.md"),
+		"`knowledgebase/notes/positioning.md`: readable at " + filepath.Join(docs, workflow, "knowledgebase/notes/positioning.md"),
 		"`knowledgebase/notes/missing.md`: does not exist in this workflow.",
-		"`brain:people/manish.md`: this project cannot read this Brain note (Brain access is off for this project)",
-		"### learnings/_global/references/job-selection.md\n\nSkip jobs under $500.",
+		"`brain:people/example.md`: this project cannot read this Brain note (Brain access is off for this project)",
+		"`learnings/_global/references/job-selection.md`: readable at " + filepath.Join(docs, workflow, "learnings/_global/references/job-selection.md"),
 	} {
 		if !strings.Contains(section, want) {
 			t.Fatalf("referenced guides missing %q:\n%s", want, section)
 		}
 	}
-	if strings.Contains(section, "not named, never attached") {
+	if strings.Contains(section, "not named, never attached") || strings.Contains(section, "Skip jobs under $500.") || strings.Contains(section, strings.Repeat("x", 5000)) {
 		t.Fatalf("a path outside Inputs/Guides was attached:\n%s", section)
 	}
 
