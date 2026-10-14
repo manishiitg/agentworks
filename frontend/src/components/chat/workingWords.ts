@@ -10,11 +10,27 @@ export const WORKING_WORDS = [
   'Measuring', 'Weighing', 'Comparing', 'Matching', 'Sifting', 'Panning for gold', 'Following leads', 'Connecting threads',
   'Peeking around', 'Looking closer', 'Reading carefully', 'Taking notes', 'Making a list', 'Checking twice', 'Rolling up sleeves', 'Clearing the desk',
   'Opening drawers', 'Flipping pages', 'Browsing shelves', 'Counting things', 'Lining up ducks', 'Drawing a map', 'Plotting a course', 'Finding a way',
-  'Making sense of it', 'Sleeping on it', 'Chewing it over', 'Turning it over', 'Trying a few ideas', 'Almost there', 'Hang tight',
+  'Making sense of it', 'Sleeping on it', 'Chewing it over', 'Turning it over', 'Trying a few ideas', 'Almost there', 'Hang tight', 'Musing',
+  'Wondering', 'Reflecting', 'Ruminating', 'Contemplating', 'Considering', 'Imagining', 'Dreaming up ideas', 'Brainstorming',
+  'Sleuthing', 'Investigating', 'Scouting', 'Surveying', 'Wandering', 'Strolling', 'Meandering', 'Roaming',
+  'Trekking', 'Navigating', 'Charting', 'Orienting', 'Finding my footing', 'Getting my bearings', 'Settling in', 'Stretching',
+  'Limbering up', 'Loosening up', 'Taking a breath', 'Taking a moment', 'Taking it slow', 'Easing in', 'Pacing myself', 'Steadying',
+  'Centering', 'Focusing', 'Zooming in', 'Zooming out', 'Squinting', 'Peering', 'Glancing', 'Scanning',
+  'Skimming', 'Leafing through', 'Thumbing through', 'Paging through', 'Combing through', 'Rummaging', 'Foraging', 'Gleaning',
+  'Collecting thoughts', 'Gathering threads', 'Untying knots', 'Smoothing things out', 'Ironing out wrinkles', 'Tidying up', 'Dusting off ideas', 'Polishing the details',
+  'Buffing', 'Trimming', 'Pruning', 'Shaping up', 'Molding', 'Sculpting', 'Carving', 'Chiseling',
+  'Forging ahead', 'Hammering it out', 'Gluing pieces', 'Bolting things together', 'Wiring things up', 'Tuning in', 'Dialing in', 'Calibrating',
+  'Adjusting', 'Aligning', 'Straightening', 'Leveling', 'Stacking', 'Arranging', 'Organizing', 'Filing',
+  'Labeling', 'Cataloging', 'Shelving', 'Bundling', 'Packing', 'Wrapping up details', 'Tying ribbons', 'Stirring the pot',
+  'Letting it simmer', 'Letting it rise', 'Letting it steep', 'Steeping', 'Marinating', 'Percolating', 'Ripening', 'Germinating',
+  'Taking root', 'Unfolding', 'Unwrapping', 'Unraveling', 'Decoding', 'Deciphering', 'Translating', 'Piecing clues',
+  'Following the thread', 'Chasing ideas', 'Catching up', 'Lining up thoughts', 'Setting the table', 'Laying groundwork', 'Laying it out', 'Roughing it in',
+  'Drafting', 'Outlining', 'Penciling in', 'Inking', 'Coloring in', 'Shading', 'Framing', 'Composing',
+  'Arranging notes', 'Humming along', 'Whistling', 'Warming the engine', 'Gathering steam', 'Picking up speed', 'Rounding the corner', 'Nearly done',
+  'Just a moment', 'One moment', 'Bear with me',
 ] as const
 
 export const WORKING_WORD_INTERVAL_MS = 3500
-export const WORKING_TONE_COUNT = 5
 const RECENT_WORDS_TO_AVOID = 8
 
 // A random word that is not one of the last few shown. Pure (the random source is passed in) so it can be tested.
@@ -25,9 +41,12 @@ export function nextWorkingWordIndex(recent: readonly number[], random: () => nu
   return choices[Math.floor(random() * choices.length)]
 }
 
-// The glyph twinkles through these shapes and back (about 130 ms a frame); reduced motion shows the last one, still.
-export const WORKING_GLYPH_FRAMES = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'] as const
-export const WORKING_GLYPH_STATIC = '✽'
+// The glyph twinkles through these shapes and back (about 130 ms a frame); reduced motion shows one still star.
+// Every glyph carries the text presentation selector (U+FE0E) and none has an emoji form that could replace it:
+// U+2733 (eight spoked asterisk) and U+2734 render as colour emoji (a green square) on Apple systems, so they are not used.
+const TEXT = '\uFE0E'
+export const WORKING_GLYPH_FRAMES = ['·', '✢', '✶', '✻', '✽', '✻', '✶', '✢'].map((glyph) => glyph + TEXT) as readonly string[]
+export const WORKING_GLYPH_STATIC = '✽' + TEXT
 export const WORKING_GLYPH_INTERVAL_MS = 130
 export const WORKING_ACCESSIBLE_LABEL = 'Working…'
 

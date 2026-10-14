@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { currentTurnStartedAt } from '../../utils/turnStart'
-import { WORKING_WORDS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
+import { WORKING_GLYPH_FRAMES, WORKING_GLYPH_STATIC, WORKING_WORDS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
 
 describe('working status', () => {
   it('shows the real status from the server instead of a playful word', () => {
@@ -9,7 +9,9 @@ describe('working status', () => {
     // A bare "busy" carries no information, so the friendly word is used.
     expect(resolveWorkingLabel('Working…', 'Pondering')).toEqual({ text: 'Pondering…', real: false })
     expect(resolveWorkingLabel(undefined, 'Pondering').real).toBe(false)
-    expect(new Set(WORKING_WORDS).size).toBeGreaterThanOrEqual(80)
+    expect(new Set(WORKING_WORDS).size).toBeGreaterThanOrEqual(190)
+    // Nothing that could read as a real status or an error.
+    expect(WORKING_WORDS.filter((word) => /fail|error|delet|send|deploy|cancel|stopp/i.test(word))).toEqual([])
     // A new word is never one of the last few shown.
     const recent = [0, 1, 2, 3, 4, 5, 6, 7]
     for (let n = 0; n < 50; n += 1) expect(recent).not.toContain(nextWorkingWordIndex(recent))
@@ -31,5 +33,13 @@ describe('working status', () => {
       { type: 'user_message', timestamp: '2026-10-14T09:00:00Z' },
       { type: 'tool_call_start', timestamp: '2026-10-14T09:00:02Z' },
     ])).toBeUndefined()
+  })
+
+  it('uses only text-form star glyphs, never one with a colour-emoji form', () => {
+    // U+2733 and U+2734 render as a green emoji square on Apple systems.
+    for (const frame of [...WORKING_GLYPH_FRAMES, WORKING_GLYPH_STATIC]) {
+      expect(frame).not.toMatch(/[\u2733\u2734]/)
+      expect(frame.endsWith('\uFE0E')).toBe(true)
+    }
   })
 })
