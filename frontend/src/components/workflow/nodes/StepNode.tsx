@@ -5,6 +5,7 @@ import type { StepNodeData } from '../hooks/usePlanToFlow'
 import type { ChangeType } from '../hooks/usePlanData'
 import { getExecutionModeVisuals } from './executionModeVisuals'
 import { effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
+import { planStepTypeLabel } from '../canvas/scriptedStepPresentation'
 
 interface StepNodeProps {
   data: StepNodeData
@@ -54,6 +55,9 @@ export const StepNode = memo(({ data, selected }: StepNodeProps) => {
   const defaultTopHandleColor = isSubAgent ? '!bg-indigo-400 dark:!bg-indigo-600' : '!bg-gray-400 dark:!bg-gray-500'
   const modeHandleColor = executionModeVisuals.handleClassName || defaultTopHandleColor
   const showFooterMetadata = Boolean(statusIcon)
+  // Simple title-only cards still say what kind of step they are.
+  const label = step?.type ? planStepTypeLabel(step.type) : ''
+  const typeLabel = label === 'Agent' || label === 'Script' ? label : ''
 
   return (
     <div className={`
@@ -122,6 +126,11 @@ export const StepNode = memo(({ data, selected }: StepNodeProps) => {
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white leading-relaxed">
               {title}
             </h3>
+            {typeLabel && (
+              <span className="mt-1 inline-block rounded bg-gray-200/70 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700/60 dark:text-gray-300">
+                {typeLabel}
+              </span>
+            )}
           </div>
         </div>
         {showFooterMetadata && (
