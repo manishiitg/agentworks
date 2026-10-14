@@ -175,4 +175,21 @@ func TestAgentStatusSweepSkipsRepliedMessagesAndNamesDeadNames(t *testing.T) {
 	if sweepAgentStatusNotices(&s, now.Add(time.Minute)) {
 		t.Fatal("a message must be reported once only")
 	}
+	// A mailbox-only name (no attached chat, but it sends and reads) is not called retired.
+	s2 := agentMessageStore{
+		Agents: []namedMessageAgent{{ID: "a", UserID: "alice", Name: "a"}, {ID: "box", UserID: "alice", Name: "box"}},
+		Conversations: []agentConversation{
+			{ID: "c1", Endpoints: [2]agentMessageEndpoint{ep("a"), ep("box")}, Messages: []agentMessage{msg("msg-1", 0, now.Add(-10*time.Minute))}},
+			{ID: "c2", Endpoints: [2]agentMessageEndpoint{ep("box"), ep("a")}, Messages: []agentMessage{{ID: "msg-0", From: 0, SentAt: now.Add(-2 * time.Hour), Delivery: "processed"}}},
+		},
+	}
+	sweepAgentStatusNotices(&s2, now)
+	for _, c := range s2.Conversations {
+		if c.ID == agentStatusConversationPrefix+"a" {
+			text = c.Messages[0].Text
+		}
+	}
+	if !strings.Contains(text, "reads its mailbox") || strings.Contains(text, "retired") {
+		t.Fatalf("a mailbox-only name was called retired: %q", text)
+	}
 }

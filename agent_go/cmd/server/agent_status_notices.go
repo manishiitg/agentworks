@@ -18,6 +18,9 @@ import (
 const agentStatusConversationPrefix = "status-inbox-"
 const agentStatusNoticeMaxAge = 24 * time.Hour
 
+// agentMailboxRecent is how recently a name must have used its mailbox to count as a mailbox-only agent, not a retired name.
+const agentMailboxRecent = 7 * 24 * time.Hour
+
 // agentStatusNoticeAfter is how long a stored message waits before its sender is told; tests shorten it.
 var agentStatusNoticeAfter = 3 * time.Minute
 
@@ -25,6 +28,7 @@ type agentStatusEntry struct {
 	label   string
 	online  bool
 	nobody  bool // no chat is attached to this name any more
+	mailbox bool // ...but the name has used its mailbox recently, so it is not retired
 	others  []string
 	count   int
 	oldest  time.Time
@@ -41,6 +45,13 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 	// This only silences the notice; it is never a receipt. The latest such reply per (recipient, sender) pair.
 	type pair struct{ from, to string }
 	lastReply := map[pair]time.Time{}
+	// When each name last used its mailbox: sent a message, or had one read (any receipt, or a mailbox read).
+	lastActive := map[string]time.Time{}
+	touch := func(id string, at time.Time) {
+		if id != "" && at.After(lastActive[id]) {
+			lastActive[id] = at
+		}
+	}
 	for ci := range s.Conversations {
 		c := &s.Conversations[ci]
 		for mi := range c.Messages {
@@ -48,6 +59,12 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 			a, b := c.Endpoints[m.From].NamedAgentID, c.Endpoints[1-m.From].NamedAgentID
 			if m.Kind != "" || m.Wakeup || a == "" || b == "" {
 				continue
+			}
+			touch(a, m.SentAt)
+			touch(b, m.AdmittedAt)
+			touch(b, m.ProcessedAt)
+			if m.Delivery == "delivered" || m.Delivery == "admitted" || m.Delivery == "processed" {
+				touch(b, m.SentAt)
 			}
 			if p := (pair{a, b}); m.SentAt.After(lastReply[p]) {
 				lastReply[p] = m.SentAt
@@ -84,7 +101,11 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 				agent, _ := s.destAgentOf(dest)
 				e = &agentStatusEntry{label: label, online: agent != nil && namedAgentOnline(*agent), nobody: agent == nil || agent.Attachment == nil}
 				if e.nobody && agent != nil {
-					e.others = currentAgentNames(s, agent.UserID, agent.ID)
+					if now.Sub(lastActive[agent.ID]) < agentMailboxRecent {
+						e.mailbox = true
+					} else {
+						e.others = currentAgentNames(s, agent.UserID, agent.ID)
+					}
 				}
 				senders[k][label] = e
 			}
@@ -117,7 +138,10 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 				state = "it is connected but has not picked it up yet"
 			}
 			tail := "It is stored and will be read when its person next uses that chat."
-			if e.nobody {
+			if e.nobody && e.mailbox {
+				state = "no live chat is attached to this name, but it reads its mailbox"
+				tail = "It is stored in its mailbox; it reads it when it next checks."
+			} else if e.nobody {
 				state = "no chat is attached to this name; it may have been renamed or retired"
 				tail = "It is stored but nobody will read it unless a chat takes that name again."
 				if len(e.others) > 0 {
