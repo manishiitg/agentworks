@@ -1352,6 +1352,14 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		}
 	}
 	if sched == nil {
+		if input != nil && input.ConditionCaller != nil {
+			sched, err = s.conditionRoute(ctx, workspacePath, scheduleID, input)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	if sched == nil {
 		return "", fmt.Errorf("schedule %s not found in manifest at %s", scheduleID, workspacePath)
 	}
 	if input != nil && (input.gmailRuleID != "" || sched.IsGmailTrigger() && sched.Gmail != nil && len(sched.Gmail.Rules) > 0) {

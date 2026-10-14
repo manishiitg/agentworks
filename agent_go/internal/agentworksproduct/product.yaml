@@ -526,6 +526,7 @@ chat:
       - query_database
       - run_after_run
       - manage_messaging
+      - manage_condition_triggers
       - list_files
       - search_files
       - list_step_code

@@ -48,16 +48,17 @@ type WorkflowWebhookValueMapping = workflowtrigger.ValueMapping
 type WorkflowWebhookPayloadMappings = workflowtrigger.PayloadMappings
 
 type WorkflowWebhookDelivery struct {
-	gmailRuleID     string            // Internal admission metadata, never decoded from a request.
-	Group           string            `json:"group,omitempty"`
-	Variables       map[string]string `json:"variables,omitempty"`
-	RunID           string            `json:"run_id"`
-	DeliveryID      string            `json:"delivery_id"`
-	Event           string            `json:"event,omitempty"`
-	ReceivedAt      time.Time         `json:"received_at"`
-	Payload         json.RawMessage   `json:"payload"`
-	RouteSelections map[string]string `json:"route_selections,omitempty"`
-	StepID          string            `json:"step_id,omitempty"`
+	ConditionCaller *conditionRouteCaller `json:"condition_caller,omitempty"`
+	gmailRuleID     string                // Internal admission metadata, never decoded from a request.
+	Group           string                `json:"group,omitempty"`
+	Variables       map[string]string     `json:"variables,omitempty"`
+	RunID           string                `json:"run_id"`
+	DeliveryID      string                `json:"delivery_id"`
+	Event           string                `json:"event,omitempty"`
+	ReceivedAt      time.Time             `json:"received_at"`
+	Payload         json.RawMessage       `json:"payload"`
+	RouteSelections map[string]string     `json:"route_selections,omitempty"`
+	StepID          string                `json:"step_id,omitempty"`
 }
 
 // WebhookRunMetadata is bounded delivery context for history; it never includes

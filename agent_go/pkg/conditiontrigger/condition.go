@@ -25,6 +25,14 @@ const (
 	RecoveryWindow = 6 * 24 * time.Hour
 )
 
+var ErrBacklog = errors.New("condition dispatch backlog full")
+var ErrChecking = errors.New("condition check already running")
+
+type PermanentError struct{ Err error }
+
+func (e PermanentError) Error() string { return e.Err.Error() }
+func (e PermanentError) Unwrap() error { return e.Err }
+
 type Target struct {
 	Kind      string                 `json:"kind"` // agent, function, trigger
 	Name      string                 `json:"name,omitempty"`
@@ -33,6 +41,8 @@ type Target struct {
 	ChatID    string                 `json:"chat_id,omitempty"`
 	Message   string                 `json:"message,omitempty"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
+	Routes    map[string]string      `json:"route_selections,omitempty"`
+	Groups    []string               `json:"group_names,omitempty"`
 }
 
 // Payload becomes named function arguments, or event data for messages/triggers.
@@ -65,8 +75,8 @@ func (c Config) Validate() error {
 	}
 	switch c.Target.Kind {
 	case "agent":
-		if strings.TrimSpace(c.Target.Message) == "" || len(c.Target.Message) > MaxPayload {
-			return errors.New("agent target needs a saved message of at most 16 KiB")
+		if strings.TrimSpace(c.Target.Message) == "" || len(c.Target.Message) > 8*1024 {
+			return errors.New("agent target needs a saved message of at most 8 KiB")
 		}
 	case "function":
 		if c.Target.Name == "" || c.Target.Function == "" {
@@ -76,8 +86,12 @@ func (c Config) Validate() error {
 		if c.Target.Name == "" || c.Target.TriggerID == "" {
 			return errors.New("route target needs name and an existing internal trigger_id")
 		}
+	case "route":
+		if c.Target.Name == "" || len(c.Target.Groups) == 0 {
+			return errors.New("route target needs a workflow name and saved group_names")
+		}
 	default:
-		return errors.New("target kind must be agent, function or trigger")
+		return errors.New("target kind must be agent, function, route or trigger")
 	}
 	return nil
 }
@@ -186,7 +200,7 @@ func Parse(raw []byte) (Output, error) {
 func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) (int, error) {
 	m := e.lock(key)
 	if !m.TryLock() {
-		return 0, errors.New("condition check already running")
+		return 0, ErrChecking
 	}
 	defer m.Unlock()
 	l, err := e.Store.Load(ctx, key)
@@ -194,7 +208,7 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 		return 0, err
 	}
 	if Pending(l) >= MaxPending {
-		return 0, errors.New("condition dispatch backlog full")
+		return 0, ErrBacklog
 	}
 	raw, err := e.Run(ctx, c, l.State)
 	if err != nil {
@@ -208,8 +222,8 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 		l.Tombstones = map[string]time.Time{}
 	}
 	rows := l.Rows[:0]
-	for _, r := range l.Rows {
-		if !pending(r.Status) && r.Status != "needs_reconciliation" && now.Sub(r.SeenAt) > 30*24*time.Hour {
+	for index, r := range l.Rows {
+		if !pending(r.Status) && r.Status != "needs_reconciliation" && (now.Sub(r.SeenAt) > 30*24*time.Hour || index < len(l.Rows)-200) {
 			l.Tombstones[Hash(r.Event.ID)] = r.SeenAt.Add(120 * 24 * time.Hour)
 		} else {
 			rows = append(rows, r)
@@ -220,6 +234,16 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 		if now.After(until) {
 			delete(l.Tombstones, id)
 		}
+	}
+	for len(l.Tombstones) > 8192 {
+		var oldest string
+		var at time.Time
+		for id, until := range l.Tombstones {
+			if oldest == "" || until.Before(at) {
+				oldest, at = id, until
+			}
+		}
+		delete(l.Tombstones, oldest)
 	}
 	known := map[string]bool{}
 	for _, r := range l.Rows {
@@ -233,8 +257,8 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 		l.Rows = append(l.Rows, Row{Event: ev, Revision: c.Revision(), Status: "seen", SeenAt: now})
 		n++
 	}
-	if Pending(l) > MaxPending || len(l.Rows)+len(l.Tombstones) > MaxRows {
-		return 0, errors.New("condition ledger full; checkpoint was not advanced")
+	if Pending(l) > MaxPending || len(l.Rows) > MaxRows {
+		return 0, ErrBacklog
 	}
 	l.State = o.State
 	return n, e.Store.Save(ctx, key, l)
@@ -302,6 +326,10 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 				} else {
 					l.Rows[j].Error = dispatchErr.Error()
 					l.Rows[j].NextAttempt = now.Add(5 * time.Minute)
+					var permanent PermanentError
+					if errors.As(dispatchErr, &permanent) {
+						l.Rows[j].Status = "failed"
+					}
 				}
 				break
 			}

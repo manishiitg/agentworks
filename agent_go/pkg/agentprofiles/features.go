@@ -164,6 +164,12 @@ var featureCatalog = map[string]featureDefinition{
 		UIPanels:        []string{"models"},
 		PromptExtension: "Project model selection is enabled. Read the attached `work-integrations` skill before changing provider or model configuration. Use the configured provider and model for this conversation; never claim another runtime based on model self-identification.",
 	},
+	"condition-triggers": {
+		Dependencies:    []string{"schedules"},
+		Tools:           []string{"manage_condition_triggers"},
+		Skills:          []string{"work-schedules-and-bots"},
+		PromptExtension: "Condition triggers run saved Python checks on a timer without a model turn. Configure them with manage_condition_triggers; they appear in the Condition triggers pane. Read work-schedules-and-bots before authoring a detector. Checks print bounded events and cursor JSON; dispatch targets and selected credentials are owner configuration, never chosen by event data.",
+	},
 	"schedules": {
 		Tools:           []string{"list_project_schedules", "create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule"},
 		Skills:          []string{"work-schedules-and-bots"},

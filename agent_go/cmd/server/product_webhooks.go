@@ -138,6 +138,8 @@ func validateProductWebhook(trigger productWebhookTrigger) error {
 var productWebhookConfigMu sync.Mutex
 
 func ProductWebhookRoutes(router *mux.Router, svc *ProductScheduleService) {
+	router.HandleFunc("/api/condition-triggers", svc.conditionHTTP).Methods("GET", "POST")
+	router.HandleFunc("/api/condition-triggers/{id}/history", svc.conditionHTTP).Methods("GET")
 	router.HandleFunc("/api/product-webhooks", svc.listProductWebhooks).Methods("GET")
 	router.HandleFunc("/api/product-webhooks", svc.saveProductWebhook).Methods("POST")
 	router.HandleFunc("/api/product-webhooks/{id}", svc.saveProductWebhook).Methods("PUT")

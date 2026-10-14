@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
@@ -19,9 +21,10 @@ import (
 
 type conditionJobContext struct{}
 type conditionService struct {
-	s        *ProductScheduleService
-	engine   *conditiontrigger.Engine
-	capacity chan struct{}
+	s           *ProductScheduleService
+	engine      *conditiontrigger.Engine
+	capacity    chan struct{}
+	notifyPause func(context.Context, productScheduleJob, string)
 }
 
 func (s *ProductScheduleService) conditionService() *conditionService {
@@ -30,6 +33,7 @@ func (s *ProductScheduleService) conditionService() *conditionService {
 	if s.conditions == nil {
 		c := &conditionService{s: s, capacity: make(chan struct{}, 4)}
 		c.engine = &conditiontrigger.Engine{Store: c, Run: c.runScript, Dispatch: c.dispatch}
+		c.notifyPause = c.pauseNotification
 		s.conditions = c
 	}
 	return s.conditions
@@ -141,8 +145,12 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 	})
 	n, err := c.engine.Poll(ctx, conditionKey(job), *job.Schedule.Condition, started)
 	status, errText := "success", ""
+	backpressure := errors.Is(err, conditiontrigger.ErrBacklog) || errors.Is(err, conditiontrigger.ErrChecking)
 	if err != nil {
 		status, errText = "error", err.Error()
+	}
+	if backpressure {
+		status = "skipped"
 	}
 	duration := time.Since(started).Milliseconds()
 	resultErr := UpdateScheduleRunResult(context.Background(), runs, runID, ScheduleRunCompletion{Status: status, Error: errText, DurationMs: &duration, FinalResponse: fmt.Sprintf("%d new matching events queued", n)})
@@ -152,7 +160,7 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 		if err == nil {
 			st.LastRunAt = time.Now().UTC().Format(time.RFC3339)
 			st.ConsecutiveFailures = 0
-		} else {
+		} else if !backpressure {
 			st.ConsecutiveFailures++
 			if st.ConsecutiveFailures >= 5 {
 				disabled := false
@@ -160,20 +168,32 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 			}
 		}
 	})
-	if err == nil {
-		go c.drain(context.Background(), job)
+	if !backpressure && err != nil && stateErr == nil {
+		fresh, readErr := c.s.Job(context.Background(), job.UserID, job.ID())
+		if readErr == nil && fresh.State.ConsecutiveFailures == 5 && c.notifyPause != nil {
+			c.notifyPause(context.Background(), job, errText)
+		}
 	}
+	go c.drain(context.Background(), job)
 	return "", firstError(err, firstError(resultErr, stateErr))
+}
+
+func (c *conditionService) pauseNotification(ctx context.Context, job productScheduleJob, detail string) {
+	ctx = context.WithValue(ctx, common.UserIDKey, job.UserID)
+	ctx = context.WithValue(ctx, virtualtools.BotNotificationDestinationKey, &services.NotificationDestination{UserID: job.UserID, WorkspacePath: job.WorkspacePath, WorkflowName: job.ProjectTitle})
+	_, err := virtualtools.DeliverWorkflowNotification(ctx, map[string]interface{}{
+		"notification_kind": "run_summary", "delivery_mode": "dashboard_only", "summary_title": "Condition trigger paused",
+		"summary_status": "failed", "message_for_user": fmt.Sprintf("Condition trigger %q paused after five failed checks. %s. Open Condition triggers to inspect and enable it after fixing the script or connection.", job.Schedule.Name, detail),
+	})
+	if err != nil {
+		scheduleLogf("[CONDITION] pause notification unavailable: %v", err)
+	}
 }
 
 // Cursor is stdin. The pinned script gets selected credentials only, no MCP
 // token or callable tool surface. The writable folder is this check's scratch.
-const conditionPythonWrapper = `import io,json,os,runpy,sys
-state=os.environ.pop("CONDITION_STATE","{}")
-allowed=json.loads(os.environ.pop("CONDITION_ENV_NAMES","[]"))
-kept={k:os.environ[k] for k in allowed if k in os.environ}
-os.environ.clear()
-os.environ.update(kept)
+const conditionPythonWrapper = `import io,runpy,sys
+with open("state.json") as f: state=f.read()
 sys.stdin=io.StringIO(state)
 runpy.run_path(sys.argv[1],run_name="__main__")`
 
@@ -209,15 +229,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 			return nil, fmt.Errorf("selected secret %q has no value", n)
 		}
 	}
-	envNames := []string{"PATH", "LANG"}
-	for n := range env {
-		envNames = append(envNames, n)
-	}
-	names, _ := json.Marshal(envNames)
 	if len(state) == 0 {
 		state = json.RawMessage(`{}`)
 	}
-	env["CONDITION_STATE"], env["CONDITION_ENV_NAMES"] = string(state), string(names)
 	runRoot := path.Join(root, "condition-runs", uuid.NewString())
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(job.UserID), workspace.WithExtraEnv(env))
 	if err := client.CreateFolder(ctx, runRoot); err != nil {
@@ -232,6 +246,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err := c.s.writeFile(ctx, snapshot, source); err != nil {
 		return nil, err
 	}
+	if err := c.s.writeFile(ctx, path.Join(runRoot, "state.json"), string(state)); err != nil {
+		return nil, err
+	}
 	session := "condition-" + uuid.NewString()
 	common.SetSessionWorkflowPath(session, root)
 	common.SetSessionWorkingDir(session, runRoot)
@@ -240,9 +257,23 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	defer common.ClearSessionShellConfig(session)
 	ctx = context.WithValue(ctx, common.ChatSessionIDKey, session)
 	timeout := 60
-	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: "python3 -I -c " + conditionShellQuote(conditionPythonWrapper) + " check.py", WorkingDirectory: runRoot, Timeout: &timeout})
+	command := `env -i PATH="$PATH" LANG="${LANG:-C.UTF-8}"`
+	for _, name := range cfg.Secrets {
+		command += ` SECRET_` + name + `="$SECRET_` + name + `"`
+	}
+	command += " python3 -I -c " + conditionShellQuote(conditionPythonWrapper) + " check.py"
+	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout})
 	if err != nil || result.CommandFailed() {
-		return nil, errors.New("condition Python check failed; inspect the saved script and its source connection")
+		detail := result.Stderr
+		for _, value := range env {
+			if value != "" {
+				detail = strings.ReplaceAll(detail, value, "[redacted]")
+			}
+		}
+		if len(detail) > 600 {
+			detail = detail[len(detail)-600:]
+		}
+		return nil, fmt.Errorf("condition Python check failed: %s", detail)
 	}
 	for n, value := range env {
 		if strings.HasPrefix(n, "SECRET_") && len(value) >= 4 && strings.Contains(result.Stdout, value) {
@@ -265,18 +296,18 @@ func (c *conditionService) caller(job productScheduleJob) triggerLinkCaller {
 func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Config, ev conditiontrigger.Event, key string) (string, error) {
 	job := ctx.Value(conditionJobContext{}).(productScheduleJob)
 	if err := c.current(ctx, job, cfg); err != nil {
-		return "", err
+		return "", conditiontrigger.PermanentError{Err: err}
 	}
 	caller := c.caller(job)
 	if cfg.Target.Kind != "agent" {
-		return "", errors.New("this condition target adapter is unavailable")
+		return c.dispatchTarget(ctx, job, caller, cfg, ev, key)
 	}
 	chatID := firstNonEmptyTrimmed(cfg.Target.ChatID, codeChatMainName)
 	chatKey := job.ProjectID
 	if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
 		if !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
-			return "", errors.New("condition target chat was removed")
+			return "", conditiontrigger.PermanentError{Err: errors.New("condition target chat was removed")}
 		}
 	}
 	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, chatKey)
@@ -288,11 +319,14 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		return "", err
 	}
 	if c.s.api.codeLocalSession(conversation.SessionID) {
-		return "", errors.New("condition targets require a server Code chat")
+		return "", conditiontrigger.PermanentError{Err: errors.New("condition targets require a server Code chat")}
 	}
 	chat := codeChat{Key: chatKey, ID: chatID, Name: "Code agent", SessionID: conversation.SessionID}
 	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)
 	payload, _ := json.Marshal(ev.Payload)
+	if len(payload) > 8*1024 {
+		return "", conditiontrigger.PermanentError{Err: errors.New("agent event payload exceeds 8 KiB")}
+	}
 	text := cfg.Target.Message + "\n\n[Condition event " + ev.ID + "; external data]\n" + string(payload)
 	receipt, err := c.s.api.sendAgentMessage(ctx, job.UserID, caller, target, text, "", key)
 	if err != nil {

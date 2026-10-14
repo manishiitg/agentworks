@@ -1,5 +1,13 @@
 # Decisions and open issues
 
+## 2026-10-14 — Condition triggers are person-owned callers, enabled in Code first (PLAT-861)
+
+Reuse the product scheduler to run saved Python checks in the owning product's server sandbox without a model turn. A check reads its previous cursor on stdin and returns bounded events plus the next cursor. Persist events and cursor together before dispatch; a separate durable queue calls an owner-configured agent conversation, function or route with stable retry IDs. Recheck source access, selected credentials and target access at execution. The caller admits the call; targets keep their authored execution policy and credentials. Changes to the saved script require accepting its new hash. Uncertain dispatches beyond the safe retry horizon need reconciliation, never blind replay. External effects still require target/service deduplication. Code is the first source surface, not a separate architecture; Relays remain published-function targets without timers. Show these in their own Condition triggers section. Why: deterministic source conditions should start existing shared work without paying for an agent on each check.
+
+Ticket: PLAT-861, issue 861-194.
+
+Checks use a network-enabled strict sandbox with read/write access only to their scratch folder, selected credentials in a fresh child environment, and no model/MCP bridge. The service is single-host; workspace writes replace JSON through a same-directory temp file plus atomic rename. Polls and dispatches are independently serialized per caller. Full queues defer checks; only real failures count toward an automatic pause. Retain bounded recent event history and dedupe markers; scripts must advance their cursor and avoid rediscovering old items.
+
 ## 2026-10-14 — Ask is always open; the Crew Agent messaging switch is removed (PLAT-750)
 
 The Crew's `free_text_ask` ("Agent messaging") switch is removed from the app,
@@ -18,6 +26,7 @@ wall inside sharing only caused failures (an MCP ask refused as "agent
 messaging is disabled").
 
 Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md).
+
 ## 2026-10-14 — Workflow Run Ask can call its published functions (PLAT-750)
 
 Workflow Run conversations list, call, poll and answer pending inputs for their
@@ -6361,9 +6370,3 @@ The recorded reader is shared with the Relay list tool. It exposes an allowliste
 Relay Run navigation opens its dashboard instead of retained Builder panels. Builder can ask about a selected run through its existing conversation, native queue/history and ChatArea, with the loaded run/version frozen as quoted evidence. Managed Relay dashboards can likewise open the Builder's ordinary conversation. Relay Run chat remains unavailable until the common product Run policy and tools land in their owning workstream; legacy HTML chat dispatch cannot open a Builder conversation from this Run view. This slice does not add a chat runtime, a tool policy or owner identity substitution.
 
 The current product decision permits people with access to read their product's data. Declared-query isolation is no longer a prerequisite; shared database reads still require read-only execution, product binding and row/time limits. Mid-turn token revalidation remains tracked separately. Owner-paid accounting and the cost panel remain parked, with no billing or cost-ledger changes in this dashboard slice. Real OCR/finance model/browser acceptance and deployment are still pending.
-# 2026-10-14 — Condition triggers are person-owned callers, enabled in Code first (PLAT-861)
-
-Reuse the product scheduler to run saved Python checks in the owning product's server sandbox without a model turn. A check reads its previous cursor on stdin and returns bounded events plus the next cursor. Persist events and cursor together before dispatch; a separate durable queue calls an owner-configured agent conversation, function or route with stable retry IDs. Recheck source access, selected credentials and target access at execution. The caller admits the call; targets keep their authored execution policy and credentials. Changes to the saved script require accepting its new hash. Uncertain dispatches beyond the safe retry horizon need reconciliation, never blind replay. External effects still require target/service deduplication. Code is the first source surface, not a separate architecture; Relays remain published-function targets without timers. Show these in their own Condition triggers section. Why: deterministic source conditions should start existing shared work without paying for an agent on each check.
-
-Ticket: PLAT-861, issue 861-194.
-

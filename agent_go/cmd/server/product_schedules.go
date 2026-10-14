@@ -1483,6 +1483,9 @@ func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspa
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
 	}
+	if sched.Condition != nil {
+		resp.Kind = "condition"
+	}
 	if sched.CronExpression == "" && sched.CadenceHours > 0 {
 		// The cadence form has no cron line; describe it so the UI shows something.
 		resp.Description = strings.TrimSpace(resp.Description + fmt.Sprintf(" (every %dh)", sched.CadenceHours))

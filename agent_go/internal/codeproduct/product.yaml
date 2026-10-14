@@ -52,6 +52,7 @@ profile:
       options: {mode: message_only}
     - id: triggers
       options: {mode: message_only}
+    - condition-triggers
     - dashboard
     # No project Memory (user, 2026-09-28): a Code keeps notes in its files.
     - costs

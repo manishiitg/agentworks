@@ -35,6 +35,11 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return fmt.Errorf("invalid project manifest")
 	}
 	projectID := manifest.ID
+	if !readOnly && profileID == "code" {
+		if err := api.registerConditionTools(registrar, userID, profileID, projectID); err != nil {
+			return err
+		}
+	}
 	// Crew Run mode: readers list the crew's own schedules and triggers,
 	// resolved under the crew owner. Mutations below are owner-only.
 	listUserID := userID
@@ -67,7 +72,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		}
 		var out []ScheduledJobResponse
 		for _, job := range jobs {
-			if strings.EqualFold(job.Profile.ID, profileID) && job.ProjectID == projectID {
+			if strings.EqualFold(job.Profile.ID, profileID) && job.ProjectID == projectID && job.Schedule.Condition == nil {
 				runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
 				out = append(out, api.productSchedules.jobResponse(job, runsWorkspace))
 			}

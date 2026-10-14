@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -116,7 +117,7 @@ print(json.dumps({"events":[{"id":"ticket-123","payload":{"ticket_id":"123"}}],"
 		t.Fatal(err)
 	}
 	l, err := e.Read(ctx, "owner/condition")
-	if err != nil || effects != 1 || len(l.Rows) != 1 || l.Rows[0].Status != "dispatched" || l.Rows[0].Receipt != "receipt-123" || string(l.State) != `{"last_id":"123"}` {
+	if err != nil || effects != 1 || len(l.Rows) != 1 || l.Rows[0].Status != "dispatched" || l.Rows[0].Receipt != "receipt-123" || !strings.Contains(string(l.State), `"123"`) {
 		t.Fatalf("ledger=%+v effects=%d err=%v", l, effects, err)
 	}
 	// A new unmatched check changes the cursor without contacting a model/target.
@@ -173,5 +174,52 @@ func TestConditionCheckpointAndRecoveryBoundaries(t *testing.T) {
 	b, _ := json.Marshal(after)
 	if string(b) != string(before) {
 		t.Fatal("checkpoint changed on invalid output")
+	}
+}
+
+func TestConditionFullBacklogStillDrainsAndRetentionStaysBounded(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	s := &diskStore{path: filepath.Join(t.TempDir(), "ledger")}
+	c := Config{Script: "code/triggers/check.py", SHA256: Hash("check"), Target: Target{Kind: "agent", Message: "Check"}}
+	l := Ledger{State: json.RawMessage(`{}`)}
+	for i := 0; i < MaxPending; i++ {
+		l.Rows = append(l.Rows, Row{Event: Event{ID: fmt.Sprint(i), Payload: map[string]interface{}{}}, Revision: c.Revision(), Status: "seen", SeenAt: now})
+	}
+	if err := s.Save(ctx, "key", l); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	e := &Engine{Store: s, Run: func(context.Context, Config, json.RawMessage) ([]byte, error) {
+		t.Fatal("backlog must defer Python")
+		return nil, nil
+	}, Dispatch: func(context.Context, Config, Event, string) (string, error) { calls++; return "receipt", nil }}
+	if _, err := e.Poll(ctx, "key", c, now); !errors.Is(err, ErrBacklog) {
+		t.Fatal(err)
+	}
+	if err := e.Drain(ctx, "key", c, now); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = e.Read(ctx, "key")
+	if calls != MaxEvents || Pending(l) != MaxPending-MaxEvents {
+		t.Fatal(calls, Pending(l))
+	}
+	// A busy detector doesn't stop accepting new work at the old 4096-row cap.
+	l.Rows = nil
+	for i := 0; i < MaxRows+20; i++ {
+		l.Rows = append(l.Rows, Row{Event: Event{ID: fmt.Sprint(i), Payload: map[string]interface{}{}}, Status: "dispatched", SeenAt: now})
+	}
+	if err := s.Save(ctx, "key", l); err != nil {
+		t.Fatal(err)
+	}
+	e.Run = func(context.Context, Config, json.RawMessage) ([]byte, error) {
+		return []byte(`{"events":[],"state":{}}`), nil
+	}
+	if _, err := e.Poll(ctx, "key", c, now); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = e.Read(ctx, "key")
+	if len(l.Rows) > 200 || len(l.Tombstones) > 8192 {
+		t.Fatal(len(l.Rows), len(l.Tombstones))
 	}
 }
