@@ -93,6 +93,15 @@ the signed-in person's existing conversation on both app dashboards and shared
 published links. Right-click Ask about a value still requires explicit Submit
 and captures the selected value and dashboard publication.
 
+Style a panel with optional attributes on its container: `data-report-chat-palette`
+(`anthropic`, `warm`, `cool` or `brand`, the app's report themes; they follow the
+app's light or dark mode), `data-report-chat-radius` (for example `6px` or
+`0.75rem`) and `data-report-chat-vars`, a JSON object of colours (`#rrggbb` or
+`H S% L%`) for `background`, `foreground`, `card`, `primary`, `primary-foreground`,
+`muted`, `muted-foreground`, `accent`, `border`, `input` and `ring`. Other
+properties and invalid values are ignored. The panel's size and position remain
+yours, in the dashboard's CSS.
+
 Preview has no conversation: `chat.available` is false. Code has no native
 project Ask adapter yet; leave its chat widgets unavailable. Check availability
 before calling widget controls. These widgets require the managed dashboard

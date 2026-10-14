@@ -2,7 +2,58 @@ import type { ReportChatWidgetApi } from './reportEmbedContext'
 
 export const CHAT_PANEL_ATTR = 'data-report-chat-panel'
 export const CHAT_BUTTON_ATTR = 'data-report-chat-button'
-export type ChatWidgetSlot = { key: number; left: number; top: number; width: number; height: number; visible: boolean; clipPath: string }
+export type ChatWidgetSlot = { key: number; left: number; top: number; width: number; height: number; visible: boolean; clipPath: string; palette?: string; vars?: Record<string, string> }
+
+export const CHAT_PALETTE_ATTR = 'data-report-chat-palette'
+export const CHAT_VARS_ATTR = 'data-report-chat-vars'
+export const CHAT_RADIUS_ATTR = 'data-report-chat-radius'
+// The app's own report themes; each follows the app's light/dark mode.
+const PALETTES = new Set(['anthropic', 'warm', 'cool', 'brand'])
+// Only these theme tokens can be set, and only to a colour (hex or "H S% L%"); never URLs or arbitrary CSS.
+const COLOR_TOKENS = new Set(['background', 'foreground', 'card', 'card-foreground', 'popover', 'popover-foreground', 'primary', 'primary-foreground', 'secondary', 'secondary-foreground', 'muted', 'muted-foreground', 'accent', 'accent-foreground', 'border', 'input', 'ring', 'destructive', 'destructive-foreground'])
+
+function hexToTriplet(hex: string): string {
+  const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex
+  const r = parseInt(full.slice(0, 2), 16) / 255, g = parseInt(full.slice(2, 4), 16) / 255, b = parseInt(full.slice(4, 6), 16) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2
+  const d = max - min
+  let h = 0, sat = 0
+  if (d) {
+    sat = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+    h *= 60
+  }
+  return `${Math.round(h)} ${Math.round(sat * 100)}% ${Math.round(l * 100)}%`
+}
+
+function colorToken(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  if (/^\d{1,3}(\.\d+)?\s+\d{1,3}(\.\d+)?%\s+\d{1,3}(\.\d+)?%$/.test(text)) return text
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text)
+  return hex ? hexToTriplet(hex[1]) : null
+}
+
+/** A designer's styling for one chat panel: a built-in palette, a corner radius and a few colours. Invalid values are ignored. */
+export function readChatStyle(el: Element): { palette?: string; vars?: Record<string, string> } {
+  const palette = (el.getAttribute(CHAT_PALETTE_ATTR) || '').trim().toLowerCase()
+  const vars: Record<string, string> = {}
+  const radius = (el.getAttribute(CHAT_RADIUS_ATTR) || '').trim()
+  if (/^\d{1,2}(\.\d+)?(px|rem)$/.test(radius)) vars['--radius'] = radius
+  const raw = el.getAttribute(CHAT_VARS_ATTR)
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+          const token = COLOR_TOKENS.has(name) ? colorToken(value) : null
+          if (token) vars[`--${name}`] = token
+        }
+      }
+    } catch { /* ignore malformed JSON */ }
+  }
+  return { palette: PALETTES.has(palette) ? palette : undefined, vars: Object.keys(vars).length ? vars : undefined }
+}
 type Options = {
   available: boolean; container: HTMLElement; openConversation: () => Promise<unknown>
   changed: (slots: ChatWidgetSlot[], authored: boolean) => void; popup: (open: boolean) => void; error: (message: string) => void
@@ -65,12 +116,12 @@ export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: O
       }
       const visible = el.getAttribute('data-report-chat-state') !== 'closed' && !el.hidden && style.display !== 'none' && style.visibility !== 'hidden' && clipRight > clipLeft && clipBottom > clipTop
       const clipPath = `inset(${Math.max(0, clipTop - top)}px ${Math.max(0, left + width - clipRight)}px ${Math.max(0, top + height - clipBottom)}px ${Math.max(0, clipLeft - left)}px)`
-      slots.push({ key: keys.get(el)!, left: left - hostBox.left, top: top - hostBox.top, width, height, visible, clipPath })
+      slots.push({ key: keys.get(el)!, left: left - hostBox.left, top: top - hostBox.top, width, height, visible, clipPath, ...readChatStyle(el) })
     }
     const authored = panels.length + buttons.length > 0
     const unchanged = lastSlots && lastAuthored === authored && lastSlots.length === slots.length && slots.every((slot, i) => {
       const previous = lastSlots![i]
-      return slot.key === previous.key && slot.left === previous.left && slot.top === previous.top && slot.width === previous.width && slot.height === previous.height && slot.visible === previous.visible && slot.clipPath === previous.clipPath
+      return slot.key === previous.key && slot.left === previous.left && slot.top === previous.top && slot.width === previous.width && slot.height === previous.height && slot.visible === previous.visible && slot.clipPath === previous.clipPath && slot.palette === previous.palette && JSON.stringify(slot.vars) === JSON.stringify(previous.vars)
     })
     if (!unchanged) { lastSlots = slots; lastAuthored = authored; options.changed(slots, authored) }
     if (slots.some(slot => slot.visible) && options.available && !requested) {
@@ -119,7 +170,7 @@ export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: O
     void openImpl(button.getAttribute('data-report-chat-target') || undefined).catch(reason => { if (!disposed) options.error(reason instanceof Error ? reason.message : 'Could not open chat.') })
   }
   const mutation = new MutationObserver(scheduleMeasure)
-  mutation.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: [CHAT_PANEL_ATTR, CHAT_BUTTON_ATTR, 'data-report-chat-state', 'style', 'class', 'hidden'] })
+  mutation.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: [CHAT_PANEL_ATTR, CHAT_BUTTON_ATTR, CHAT_PALETTE_ATTR, CHAT_VARS_ATTR, CHAT_RADIUS_ATTR, 'data-report-chat-state', 'style', 'class', 'hidden'] })
   doc.addEventListener('click', click)
   win.addEventListener('scroll', scheduleMeasure, true); win.addEventListener('resize', scheduleMeasure)
   window.addEventListener('scroll', scheduleMeasure, true); window.addEventListener('resize', scheduleMeasure)

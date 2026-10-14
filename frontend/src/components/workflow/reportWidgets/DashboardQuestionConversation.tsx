@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties } from 'react'
 import { MessageCircle, X, Zap } from 'lucide-react'
 import api from '../../../services/api'
 import { useAuthStore } from '../../../stores/useAuthStore'
@@ -136,7 +136,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       {!authored && canAsk && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
         <MessageCircle className="h-4 w-4" /> Ask
       </button>}
-      {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} className="absolute z-30 overflow-hidden bg-background text-foreground" style={{ left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' }}>{conversation}</section>)}
+      {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} data-report-theme={slot.palette} className="absolute z-30 overflow-hidden bg-background text-foreground" style={{ ...slot.vars, left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' } as CSSProperties}>{conversation}</section>)}
       {error && <p role="alert" className="absolute bottom-2 left-2 z-40 rounded-md border border-border bg-background px-2 py-1 text-sm text-destructive">{error}</p>}
     </div>
     {popup && canAsk && <ModalPortal><dialog ref={dialog} aria-label="Dashboard chat" onCancel={() => setPopup(false)} className="m-auto h-[min(80vh,42rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-background p-3 text-foreground shadow-xl backdrop:bg-black/50">

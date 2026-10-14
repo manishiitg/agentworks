@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
-import { installDashboardChatWidgets, type ChatWidgetSlot } from './dashboardChatWidgets'
+import { installDashboardChatWidgets, readChatStyle, type ChatWidgetSlot } from './dashboardChatWidgets'
 
 const dispose: (() => void)[] = []
 afterEach(() => { dispose.splice(0).forEach(fn => fn()); document.body.replaceChildren(); vi.restoreAllMocks() })
@@ -56,4 +56,15 @@ it('keeps unavailable widgets disabled, scopes selectors, and refuses a script p
   const input = document.createElement('input'); document.body.append(input); input.focus()
   await expect(f.api.open()).rejects.toThrow('Finish editing')
   expect(f.popup).not.toHaveBeenCalled()
+})
+
+it('reads a designer chat style: a built-in palette, a radius and colours, and ignores anything else', () => {
+  const el = document.createElement('section')
+  el.setAttribute('data-report-chat-palette', 'Anthropic')
+  el.setAttribute('data-report-chat-radius', '6px')
+  el.setAttribute('data-report-chat-vars', JSON.stringify({ background: '#ffffff', primary: '#1f883d', border: '208 14% 82%', 'font-family': 'x', foreground: 'url(javascript:1)', unknown: '#000' }))
+  expect(readChatStyle(el)).toEqual({ palette: 'anthropic', vars: { '--radius': '6px', '--background': '0 0% 100%', '--primary': '137 63% 33%', '--border': '208 14% 82%' } })
+  const bad = document.createElement('section')
+  bad.setAttribute('data-report-chat-palette', 'x'); bad.setAttribute('data-report-chat-radius', '99999px'); bad.setAttribute('data-report-chat-vars', '{oops')
+  expect(readChatStyle(bad)).toEqual({ palette: undefined, vars: undefined })
 })
