@@ -107,7 +107,7 @@ it('explains scripted execution and human branch choice using their own saved co
   await inspect({ id: 'script', title: 'Build evidence', type: 'scripted', script_only: true,
     description: 'Build the evidence file.', has_loop: true, loop_condition: 'More records remain', max_iterations: 3,
   }, host => {
-    expect(host.textContent).toContain('scripted step')
+    expect(host.textContent).toContain('Script')
     expect(host.textContent).toContain('Errors fail the step; automatic repair is off.')
     expect(host.textContent).not.toContain('Errors stop the Relay')
     expect(host.textContent).toContain('Script loop')
