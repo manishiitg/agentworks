@@ -42,6 +42,8 @@ type clientChatTelemetryEvent struct {
 }
 
 var allowedClientChatTelemetryPhases = map[string]bool{
+	"send_decision":    true, // where a send went (server, blocked), logged before any await
+	"send_staged":      true, // the visible row was staged and the send entered the submission lane
 	"submitted":        true,
 	"api_acknowledged": true,
 	"api_failed":       true,

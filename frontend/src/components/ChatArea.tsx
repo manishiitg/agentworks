@@ -3340,6 +3340,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         )
         captured.optimisticUserEventId = optimistic.id
         store.addTabEvents(sourceTab.sessionId, [optimistic])
+        recordChatSubmissionTelemetry('send_staged', sourceTab.sessionId, submissionId, { tabId: sourceTab.tabId })
       }
 
       return (isChatIdentityCurrent(identity)

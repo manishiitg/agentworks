@@ -58,15 +58,6 @@ export function shouldRouteChatInputToLiveTransport({
   return hasSession && !usesStructuredTransport && (isCodingAgentProvider || isWorkflowMode)
 }
 
-// Once a chat has a session, every send goes to the server, whose durable
-// conversation-turn dispatcher decides live delivery vs queueing (PLAT-178).
-// Only a chat with no session yet may hold a message in this browser while a
-// turn streams. A tab's local "streaming" belief can go stale (event stream
-// dropped during a server restart) and must never strand sends.
-export function shouldHoldSendInBrowser({ isStreaming, routeLiveInputToCLI, hasSession }: { isStreaming: boolean; routeLiveInputToCLI: boolean; hasSession: boolean }): boolean {
-  return isStreaming && !routeLiveInputToCLI && !hasSession
-}
-
 // A rapid Enter/double-click can invoke ChatInput twice before the first
 // response clears the draft. Share the complete submission promise
 // for that exact session + message so the HTTP mutation, optimistic event, and

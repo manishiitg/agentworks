@@ -106,4 +106,19 @@ describe('chat delivery telemetry', () => {
     ])
     expect(JSON.stringify(batches)).not.toContain('message')
   })
+
+  it('records where a send went and when its row was staged, before the request exists', async () => {
+    vi.useFakeTimers()
+    const batches: ChatDeliveryTelemetryBatch[] = []
+    configureChatDeliveryTelemetryTransport(async batch => { batches.push(batch) })
+
+    recordChatSubmissionTelemetry('send_decision', 'session-hold', 'submission-9', { tabId: 'tab-9', transport: 'server', observedPerformanceMS: 10 })
+    recordChatSubmissionTelemetry('send_staged', 'session-hold', 'submission-9', { tabId: 'tab-9', observedPerformanceMS: 12 })
+    await vi.advanceTimersByTimeAsync(101)
+
+    expect(batches.flatMap(batch => batch.events)).toMatchObject([
+      { phase: 'send_decision', submission_id: 'submission-9', transport: 'server' },
+      { phase: 'send_staged', submission_id: 'submission-9' },
+    ])
+  })
 })

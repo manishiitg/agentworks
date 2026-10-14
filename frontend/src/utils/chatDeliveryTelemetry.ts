@@ -1,6 +1,8 @@
 import type { PollingEvent } from '../services/api-types'
 
 export type ChatDeliveryTelemetryPhase =
+  | 'send_decision'
+  | 'send_staged'
   | 'submitted'
   | 'api_acknowledged'
   | 'api_failed'
@@ -118,6 +120,8 @@ type ChatSubmissionTelemetryDetails = {
   deliveryStatus?: string
   provider?: string
   deliverySource?: string
+  /** Where a send went: server, server:new, blocked:init, blocked:no-target (send_decision). */
+  transport?: string
   serverReceivedAt?: string
   cliAcceptedAt?: string
   serverToCLIMS?: number
@@ -125,7 +129,7 @@ type ChatSubmissionTelemetryDetails = {
 
 /** Record content-free send-to-CLI milestones correlated by submission ID. */
 export function recordChatSubmissionTelemetry(
-  phase: Extract<ChatDeliveryTelemetryPhase, 'submitted' | 'api_acknowledged' | 'api_failed'>,
+  phase: Extract<ChatDeliveryTelemetryPhase, 'send_decision' | 'send_staged' | 'submitted' | 'api_acknowledged' | 'api_failed'>,
   sessionId: string,
   submissionId: string,
   details: ChatSubmissionTelemetryDetails = {},
@@ -140,6 +144,7 @@ export function recordChatSubmissionTelemetry(
     phase,
     session_id: sessionId,
     event_type: 'chat_submission',
+    transport: details.transport,
     tab_id: details.tabId,
     client_time: new Date().toISOString(),
     performance_ms: Math.round((details.observedPerformanceMS ?? performance.now()) * 1000) / 1000,

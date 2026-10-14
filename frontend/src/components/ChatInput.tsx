@@ -53,7 +53,8 @@ import { captureChatDraft, updateOwnedChatDraft } from '../utils/chatDraftOwners
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import type { ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { liveTerminalControlKey } from '../utils/liveTerminalKeys'
-import { shouldHoldSendInBrowser, chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
+import { recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
+import { chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
 import { effectiveLLMUnderLock, effectiveProviderUnderLock, runtimeStatusLLMChoice } from '../utils/effectiveLLM'
 import { normalizeEventViewMode, type ChatTabConfig } from '../stores/useChatStore'
 import { getComposerTrigger, replaceComposerTrigger, formatFileReference, removeFileReferences, reconcileFileReferences, isPlainPickerKey, type ComposerTrigger } from '../utils/composerReferences'
@@ -1111,24 +1112,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setTabConfig(activeTabId, { queuedMessages: updated, queuedSubmission: updated.length ? current?.queuedSubmission : undefined, queueError: undefined })
   }, [activeTabId, queuedMessages, setTabConfig])
 
-  const queueStreamingMessage = useCallback((msg: string) => {
-    const trimmed = msg.trim()
-    if (!activeTabId || !trimmed) return
-    const currentQueued = useChatStore.getState().getTabConfig(activeTabId)?.queuedMessages || []
-    setTabConfig(activeTabId, {
-      inputText: '',
-      queuedMessages: [...currentQueued, trimmed]
-    })
-    window.setTimeout(() => {
-      const chatStore = useChatStore.getState()
-      const tab = chatStore.chatTabs[activeTabId]
-      if (!tab?.isStreaming) return
-      chatStore.getActiveSessions(true).catch(error => {
-        console.warn('[ChatInput] Failed to refresh active sessions after queueing message', error)
-      })
-    }, 0)
-  }, [activeTabId, setTabConfig])
-
   const handleSteerQueuedMessage = useCallback(async (index: number, msg: string) => {
     if (!(canShowSteer || showProductSteerAction) || !tabSessionId || !activeTabId || !isChatIdentityCurrent(composerIdentityRef.current) || useChatStore.getState().getTab(activeTabId)?.sessionId !== tabSessionId) return
     const identity = composerIdentityRef.current
@@ -1677,15 +1660,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // empty builder tabs just because reports/session rehydration are still loading.
   const canBootstrapWorkflowPhaseTab = isWorkflowMode && isWorkflowPhaseChat && !!activeTab && !isViewOnly
   const hasSubmitTarget = Boolean(tabSessionId || canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)
-  const canQueueWhileStreaming = useMemo(() => {
-    return Boolean(queryToSubmit?.trim() && isStreaming && tabSessionId)
-  }, [queryToSubmit, isStreaming, tabSessionId])
-
   const canSubmitImmediately = useMemo(() => {
     return Boolean(queryToSubmit?.trim() && !isStreaming && hasSubmitTarget)
   }, [queryToSubmit, isStreaming, hasSubmitTarget])
-
-  const canSubmit = canSubmitImmediately || canQueueWhileStreaming
 
   // tmux-transport coding CLIs keep a persistent session, so input should go to
   // the backend immediately rather than the local queue. Workflow chat tabs also
@@ -2008,19 +1985,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       // SINGLE-ENTRY routing: the backend resolves tmux liveness, provider input
       // semantics, and any turn-boundary fallback. Do not duplicate that policy
       // in the command UI.
-      if (routeLiveInputToCLI) {
-        onSubmit(trimmed)
-        return
-      }
-      if (isStreaming) {
-        const currentQueued = tabConfig?.queuedMessages || []
-        setTabConfig(activeTabId, {
-          inputText: '',
-          queuedMessages: [...currentQueued, trimmed]
-        })
-        addToast('Builder is busy — message queued for the next turn', 'info')
-        return
-      }
       onSubmit(trimmed)
     }
 
@@ -2175,12 +2139,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // during a server restart). The local queue is only for a chat that has no
     // session yet.
     const sendToServer = routeLiveInputToCLI || Boolean(tabSessionId)
-    if (shouldHoldSendInBrowser({ isStreaming, routeLiveInputToCLI, hasSession: Boolean(tabSessionId) })) {
-      clearInputState()
-      queueStreamingMessage(query)
-      addToast('Agent is busy — message queued for the next turn', 'info')
-      return
-    }
+    // The backend decides; the browser holds nothing. Log which way this send went (before any await), so a message
+    // that never reaches the server can be traced from the delivery timeline (decision -> staged -> submitted -> acknowledged).
+    const submissionId = crypto.randomUUID()
+    recordChatSubmissionTelemetry('send_decision', tabSessionId || `pending:${activeTabId ?? 'tab'}`, submissionId, {
+      tabId: activeTabId || undefined,
+      transport: sendToServer ? (hasSubmitTarget ? 'server' : 'blocked:no-target') : (canSubmitImmediately ? 'server:new' : 'blocked:init'),
+    })
 
     if (sendToServer) {
       if (hasSubmitTarget) {
@@ -2199,6 +2164,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
             deliveryMode,
+            submissionId,
           })
         } catch (error) {
           console.error('[ChatInput] Live message submission failed', error)
@@ -2226,7 +2192,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const submittedDraft = captureChatDraft(submittedTabId)
       let accepted: boolean | void
       try {
-        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode })
+        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode, submissionId })
       } catch (error) {
         console.error('[ChatInput] Message submission failed', error)
         accepted = false
@@ -2245,14 +2211,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       } else if (accepted === false) {
         addToast('Message was not accepted. Your draft was kept.', 'warning')
       }
-    } else if (canSubmit && isStreaming) {
-      clearInputState()
-      queueStreamingMessage(query)
     } else {
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, canSubmit, isStreaming, isUploadingFiles, queueStreamingMessage, pendingNativeChoice])
+  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
   // SparkQuill's voice auto-send: handleVoiceText already merged the
   // transcript into localInputText, but queryToSubmit (which also layers in
