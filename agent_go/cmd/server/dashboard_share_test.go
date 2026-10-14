@@ -13,17 +13,17 @@ func TestWorkflowRunEveryoneGivesReaderOnlyWhenTheOwnerSharedIt(t *testing.T) {
 	m := NewWorkflowManifest("Shared run")
 	m.CreatedBy = "owner"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}}
-	if got := workflowAccessForManifest(&UserClaims{UserID: "stranger"}, m); got != WorkflowAccessNone {
+	if got := workflowAccessForManifest(&UserClaims{UserID: "stranger", Username: "stranger"}, m); got != WorkflowAccessNone {
 		t.Fatalf("an unshared workflow must stay closed to a stranger, got %v", got)
 	}
 	m.Access.RunEveryone = true
-	if got := workflowAccessForManifest(&UserClaims{UserID: "stranger"}, m); got != WorkflowAccessRead {
+	if got := workflowAccessForManifest(&UserClaims{UserID: "stranger", Username: "stranger"}, m); got != WorkflowAccessRead {
 		t.Fatalf("a workflow shared with everyone is a reader for any account, got %v", got)
 	}
-	if got := workflowAccessForManifest(&UserClaims{UserID: "owner"}, m); got != WorkflowAccessOwner {
+	if got := workflowAccessForManifest(&UserClaims{UserID: "owner", Username: "owner"}, m); got != WorkflowAccessOwner {
 		t.Fatalf("sharing must not demote the owner, got %v", got)
 	}
-	if got := workflowAccessForManifest(&UserClaims{UserID: "gone"}, m); got != WorkflowAccessNone {
+	if got := workflowAccessForManifest(&UserClaims{UserID: "gone", Username: "gone"}, m); got != WorkflowAccessNone {
 		t.Fatalf("a disabled account gets nothing, got %v", got)
 	}
 }
