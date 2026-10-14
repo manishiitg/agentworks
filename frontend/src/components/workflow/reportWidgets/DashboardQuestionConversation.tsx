@@ -7,6 +7,8 @@ import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat
 import ModalPortal from '../../ui/ModalPortal'
 import { ReportEmbedProvider, useReportDataApi } from './reportEmbedContext'
 import { installDashboardChatWidgets, type ChatWidgetSlot } from './dashboardChatWidgets'
+import { installDashboardActionButtons, type ActionRequest } from './reportActionButtons'
+import { ReportActionDialog } from './ReportActionDialog'
 import { ReportQuestionFrame } from './ReportQuestionFrame'
 import { reportContentQuestion, type ReportContentContext } from './reportContentQuestion'
 
@@ -23,6 +25,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const [popup, setPopup] = useState(false)
   const [slots, setSlots] = useState<ChatWidgetSlot[]>([])
   const [authored, setAuthored] = useState(false)
+  const [action, setAction] = useState<ActionRequest | null>(null)
   const data = useReportDataApi()
   const boundRef = useRef(bound)
   boundRef.current = bound
@@ -37,9 +40,12 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   // Native project chat enforces Builder/Run permissions on every request.
   // Code has no project Ask adapter yet.
   const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'workflow', 'relay'].includes(product))
+  // Function buttons run the project's published functions as this person; the
+  // server resolves the project from the dashboard record (Crew and workflow).
+  const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'workflow'].includes(product))
   useEffect(() => {
     generation.current++
-    setBound(null); setPopup(false); setSlots([]); setAuthored(false); setError(null)
+    setBound(null); setPopup(false); setSlots([]); setAuthored(false); setError(null); setAction(null)
     accepted.current.clear(); opening.current = null
     return () => { generation.current++ }
   }, [viewer, resourceId])
@@ -71,10 +77,11 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       available: canAsk, container: container.current!, openConversation: () => opener.current(),
       changed: (next, hasWidgets) => { setSlots(next); setAuthored(hasWidgets) }, popup: setPopup, error: setError,
     })
+    const buttons = installDashboardActionButtons(frame, { available: canUseFunctions, open: setAction })
     widgetApi.current = binding.api
     revealWidgets.current = binding.reveal
-    return { api: binding.api, dispose: () => { binding.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
-  }, [canAsk, viewer, resourceId])
+    return { api: binding.api, dispose: () => { binding.dispose(); buttons.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
+  }, [canAsk, canUseFunctions, viewer, resourceId])
   const runtime = useMemo(() => data ? { data, chatWidgets } : null, [data, chatWidgets])
   useEffect(() => { if (popup) dialog.current?.showModal() }, [popup])
 
@@ -113,5 +120,6 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
         <div className="min-h-0 flex-1">{conversation}</div>
       </div>
     </dialog></ModalPortal>}
+    {action && canUseFunctions && <ReportActionDialog resourceId={resourceId} request={action} onClose={() => setAction(null)} />}
   </ReportEmbedProvider>
 }
