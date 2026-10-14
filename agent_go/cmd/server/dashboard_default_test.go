@@ -2,6 +2,7 @@ package server
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -31,4 +32,35 @@ func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 	if defaultDashboardHTML(defaultDashboardInfo{Kind: "relay", Title: "Invoices"}) != relay {
 		t.Fatal("the same declarations must give the same page, so an unchanged product is not rewritten")
 	}
+}
+
+// Two first opens of the same product must not both create the default: the
+// lock for one project root is exclusive, and different projects do not wait.
+func TestDefaultDashboardLockIsExclusivePerProject(t *testing.T) {
+	var inside, worst int
+	var guard sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			unlock := lockDefaultDashboard("Crew/one")
+			guard.Lock()
+			inside++
+			if inside > worst {
+				worst = inside
+			}
+			guard.Unlock()
+			guard.Lock()
+			inside--
+			guard.Unlock()
+			unlock()
+		}()
+	}
+	wg.Wait()
+	if worst != 1 {
+		t.Fatalf("two opens held the same project's lock at once (%d)", worst)
+	}
+	unlockOther := lockDefaultDashboard("Crew/two")
+	unlockOther()
 }
