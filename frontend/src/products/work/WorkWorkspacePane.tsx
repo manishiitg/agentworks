@@ -104,14 +104,15 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     : isCode
       ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
       : OPS_BUTTONS
+  // Someone else's Crew shows its dashboard (and the chat beside it); Files, Memory and the terminal are the owner's.
   const visibleViews = (readOnly
-    ? viewButtons.filter(item => item.id === 'memory' && (!enabledPanels || enabledPanels.has('memory')))
+    ? viewButtons.filter(item => item.id === 'dashboard' && (!enabledPanels || enabledPanels.has('dashboard')))
     : enabledPanels ? viewButtons.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : viewButtons)
     .filter(item => isWorkWorkspaceViewEnabled(item.id, undefined, localCodeSession))
     .filter(item => item.id !== 'suggestions' || hasSuggestions)
   const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly && hasSuggestions, view)
   const visibleOps = (readOnly
-    ? opsButtons.filter(item => item.id === 'files' || item.id === 'shell')
+    ? []
     : enabledPanels ? opsButtons.filter(item => item.id === 'shell' || enabledPanels.has(item.id)) : opsButtons)
     .filter(item => item.id !== 'shell' || (showShell && !isCowork))
     .filter(item => !localCodeSession)
@@ -362,7 +363,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   if (view === 'shell' && !showShell) {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">The terminal is only available to the owner of this Code.</div>
   }
-  if (readOnly && view !== 'memory' && view !== 'files' && view !== 'shell') {
+  if (readOnly && view !== 'dashboard') {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the {noun} owner.</div>
   }
 

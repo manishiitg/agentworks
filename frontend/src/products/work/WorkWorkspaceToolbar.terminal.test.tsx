@@ -72,3 +72,9 @@ it('a Cowork project leads with Dashboard, Browser and Automation, keeps Files, 
   expect(labels.findIndex(label => label.includes('Browser'))).toBeLessThan(labels.findIndex(label => label.includes('Files')))
   useChatStore.setState({ chatTabs: {} })
 })
+
+it("offers someone else's Crew only its dashboard: no Files, Memory or Terminal", () => {
+  render(CREW_PRODUCT, { readOnly: true, showShell: true, enabledPanels: new Set(['dashboard']) })
+  const names = Array.from(host.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent || '').join('|')
+  expect(names).not.toMatch(/Files|Memory|Terminal/)
+})
