@@ -66,6 +66,8 @@ interface ReportViewProps {
   dashboardConversation?: boolean
   defaultRelayDashboard?: boolean
   headerAction?: React.ReactNode
+  /** Standalone dashboard pages show the dashboard alone, without the app's help, refresh and close buttons. */
+  hideToolbar?: boolean
 }
 
 const normalizeSource = normalizeReportSource
@@ -219,7 +221,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, allowContentQuestions = true, dashboardConversation = false, defaultRelayDashboard = false }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, defaultRelayDashboard = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -277,14 +279,14 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   return (
     <ReportEmbedProvider value={runtime}>
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
-        <div className="absolute right-3 top-3 z-20 flex gap-1">
+        {!hideToolbar && <div className="absolute right-3 top-3 z-20 flex gap-1">
           {guideAsk ? null : headerAction}
           <WorkspacePanelGuideButton topic="Dashboard" ask={guideAsk} />
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
           {onClose && <button type="button" onClick={onClose} aria-label="Close dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-lg text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">×</button>}
-        </div>
+        </div>}
         <div
           tabIndex={0}
           aria-label="Dashboard content"

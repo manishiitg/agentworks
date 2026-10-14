@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../components/workflow/ReportViewer", () => ({
-  ReportView: ({ workspacePath, allowContentQuestions }: { workspacePath: string; allowContentQuestions?: boolean }) => <div data-questions={String(allowContentQuestions)}>Dashboard runtime {workspacePath}</div>,
+  ReportView: ({ workspacePath, allowContentQuestions, hideToolbar }: { workspacePath: string; allowContentQuestions?: boolean; hideToolbar?: boolean }) => <div data-questions={String(allowContentQuestions)} data-toolbar-hidden={String(hideToolbar)}>Dashboard runtime {workspacePath}</div>,
 }));
 
 import { ReportPage } from "./ReportPage";
@@ -28,6 +28,8 @@ describe("standalone report page", () => {
       expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
       expect(view.host.querySelector('[data-questions]')?.getAttribute('data-questions')).toBe('false');
       expect(view.host.textContent).not.toContain("Live Dashboard");
+      // A shared link shows the dashboard alone: no help, refresh or close buttons around it.
+      expect(view.host.querySelector('[data-toolbar-hidden]')?.getAttribute('data-toolbar-hidden')).toBe('true');
     } finally {
       await act(async () => view.root.unmount());
     }

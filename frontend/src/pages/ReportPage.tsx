@@ -56,7 +56,7 @@ export function ReportPage({ encodedPath, ownerUid, currentUserId, onBack }: Rep
 
   return (
     <div className="h-screen min-h-screen overflow-hidden bg-background text-foreground">
-      <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation onClose={onBack} />
+      <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
     </div>
   );
 }
