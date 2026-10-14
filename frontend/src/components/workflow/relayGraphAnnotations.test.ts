@@ -44,3 +44,19 @@ it('keeps a recorded classifier separate from agents despite having a provider a
   expect(graph.nodes[1]).toMatchObject({ type: 'classifier', model: 'clef-flash', categories: { billing: 'Payments' }, instructions: 'Choose a team' })
   expect(graph.nodes[2].type).toBe('agent')
 })
+
+it('shows the observed sequence including repeated steps and never marks a failed run as a returned result', () => {
+  const calls = [
+    { id: 'step-1', name: 'reply', status: 'completed', provider: 'provider' },
+    { id: 'step-2', name: 'reply', status: 'failed', provider: 'provider' },
+  ]
+  const graph = graphFromDBOSHistory(calls, { status: 'failed', resultRecorded: false })
+  expect(graph.recorded).toBe(true)
+  expect(graph.nodes.slice(1, -1).map(node => [node.id, node.call, node.sequence, node.status])).toEqual([
+    ['history-0', 'step-1', 1, 'completed'], ['history-1', 'step-2', 2, 'failed'],
+  ])
+  expect(graph.nodes.at(-1)).toMatchObject({ label: 'Run stopped', status: 'failed' })
+  expect(graphFromDBOSHistory(calls.slice(0, 1), { status: 'running', resultRecorded: false }).nodes.at(-1)).toMatchObject({ label: 'Waiting for result', status: undefined })
+  expect(graphFromDBOSHistory(calls.slice(0, 1), { status: 'completed', resultRecorded: false }).nodes.at(-1)).toMatchObject({ label: 'Finished without a result', status: undefined })
+  expect(graphFromDBOSHistory(calls.slice(0, 1), { status: 'completed', resultRecorded: true }).nodes.at(-1)).toMatchObject({ label: 'Final result', status: 'completed' })
+})
