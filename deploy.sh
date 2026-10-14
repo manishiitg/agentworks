@@ -246,16 +246,21 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   [[ ! -f "$PRODUCT_DIR/nginx-site.conf" ]] || nginx_site_b64="$(base64 < "$PRODUCT_DIR/nginx-site.conf" | tr -d '\n')"
   ssh "${SSH_OPTS[@]}" "${HOST_SETUP_USER:?HOST_SETUP_SCRIPT needs HOST_SETUP_USER}@$HOST_IP" \
     "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$([[ -f "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" ]] && echo "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" || echo "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT")"
-  # Every prepared host also gets the user-namespace exception the sandbox needs (a no-op where AppArmor does not restrict it),
-  # scoped to this product's own launcher and nothing else. The activation then proves the sandbox works, or stops the deploy.
-  echo "==> [$PRODUCT] Allowing the sandbox's user namespaces for this product's launcher only"
-  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
   # Per-user Linux accounts: every account in the user directory gets its own slot, on every deploy (a new account is covered by
   # the next deploy). The deploy's final check fails if any account still has none.
   if [[ "${SLOTS_ENABLED:-false}" == true ]]; then
     echo "==> [$PRODUCT] Giving every account its own Linux slot"
     ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
   fi
+fi
+
+# Every Linux server gets the same user-namespace exception the sandbox needs (owner, 2026-10-14), scoped to this product's own
+# launcher and nothing else, on every deploy: HOST_SETUP_USER (root through sudo) is all it takes, a HOST_SETUP_SCRIPT is optional.
+# A server without one is provisioned by its operator with provision-slots.sh userns. The activation then proves the sandbox
+# works, or stops the deploy.
+if [[ -n "${HOST_SETUP_USER:-}" ]]; then
+  echo "==> [$PRODUCT] Allowing the sandbox's user namespaces for this product's launcher only"
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
 fi
 
 echo "==> [$PRODUCT] Checking deployment configuration"
@@ -391,6 +396,12 @@ fi
 # drain). The owner asked for forced deploys for now (2026-10-03), so it defaults to 0: restart at once. Set
 # DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
 "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${ACTIVATE_MEMORY_MAX:-6G} -p CPUQuota=${ACTIVATE_CPU_QUOTA:-300%} -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+
+# The release is live and the services have re-exec'd under the standard profile: only now retire an older per-product profile
+# (it refuses while any service process still runs without the standard one).
+if [[ -n "${HOST_SETUP_USER:-}" ]]; then
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT APP_DIR=${APP_DIR:-} bash -s -- userns-retire" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh" || echo "WARN userns-retire did not run; the older profile stays."
+fi
 
 echo "==> [$PRODUCT] Verifying"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"

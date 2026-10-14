@@ -406,10 +406,14 @@ $HOME_DIR/releases/**/bin/workspace-security.test flags=(unconfined) {
 PROFILE
 }
 
+# The same profile on every Linux server (owner, 2026-10-14): installed wherever AppArmor is active, also where the host does not
+# restrict user namespaces today (harmless there, and a kernel or sysctl change later cannot break the sandbox). Older per-product
+# profiles that only covered the workspace binary are retired by `userns-retire`, after the services run under the standard one.
+LEGACY_USERNS_PROFILES="${LEGACY_USERNS_PROFILES:-video-studio-userns}"
 cmd_userns() {
   if [[ "${1:-}" == --print ]]; then userns_profile; return; fi
-  if [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" != 1 ]]; then
-    echo "AppArmor does not restrict unprivileged user namespaces here: nothing to allow."
+  if [[ ! -d /sys/kernel/security/apparmor ]]; then
+    echo "AppArmor is not active here: nothing to allow."
     return 0
   fi
   command -v apparmor_parser >/dev/null || { echo "apparmor_parser is missing: cannot install the user-namespace exception." >&2; exit 1; }
@@ -418,6 +422,28 @@ cmd_userns() {
   install -o root -g root -m 0644 "$USERNS_PROFILE.new" "$USERNS_PROFILE" && rm -f "$USERNS_PROFILE.new"
   apparmor_parser -r "$USERNS_PROFILE"
   echo "installed $USERNS_PROFILE"
+}
+
+# Retire the older per-product profiles, but only once the running services already attach to the standard one: AppArmor attaches at
+# exec, so removing a loaded profile under a process that still runs with it leaves that process on the stock restricted profile
+# until it restarts. Run after the release is activated (the services re-exec). Nothing is removed while any process of this
+# product's releases still lacks the standard profile.
+cmd_userns_retire() {
+  [[ -d /sys/kernel/security/apparmor ]] || { echo "AppArmor is not active here: nothing to retire."; return 0; }
+  [[ -f "$USERNS_PROFILE" ]] || { echo "the standard profile $USERNS_PROFILE is not installed: nothing retired." >&2; return 1; }
+  local legacy stale=0 pid exe attr
+  for legacy in $LEGACY_USERNS_PROFILES; do
+    [[ "/etc/apparmor.d/$legacy" != "$USERNS_PROFILE" && -f "/etc/apparmor.d/$legacy" ]] || continue
+    for pid in $(pgrep -f "$HOME_DIR/releases/" 2>/dev/null); do
+      exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+      case "$exe" in "$HOME_DIR"/releases/*/bin/"$PRODUCT"-workspace|"$HOME_DIR"/releases/*/bin/"$PRODUCT"-agent) ;; *) continue ;; esac
+      attr="$(cat "/proc/$pid/attr/current" 2>/dev/null || true)"
+      case "$attr" in *"$PRODUCT-slot-userns"*) ;; *) echo "pid $pid ($exe) still runs under '${attr:-no profile}': restart the services first." >&2; stale=1 ;; esac
+    done
+    [[ $stale == 0 ]] || { echo "not retiring $legacy yet; run userns-retire again after the services restart." >&2; return 0; }
+    apparmor_parser -R "/etc/apparmor.d/$legacy" 2>/dev/null || true
+    rm -f "/etc/apparmor.d/$legacy" && echo "retired /etc/apparmor.d/$legacy (the standard profile covers it)"
+  done
 }
 
 # Make the host match its user directory: slots exist, every account has one, and the service sees its slot groups. Safe to run
@@ -470,6 +496,7 @@ PY
 case "${1:-}" in
   ensure) cmd_ensure ;;
   userns) shift; cmd_userns "$@" ;;
+  userns-retire) shift; cmd_userns_retire "$@" ;;
   init) cmd_init ;;
   shared) cmd_shared ;;
   docker) shift; cmd_docker "$@" ;;
@@ -477,5 +504,5 @@ case "${1:-}" in
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | ensure | userns [--print] | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | ensure | userns [--print] | userns-retire | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac
