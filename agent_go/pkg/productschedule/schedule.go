@@ -11,6 +11,7 @@ package productschedule
 
 import (
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"strings"
 	"time"
 
@@ -22,10 +23,11 @@ import (
 // ("every 24 hours, around 8am"), the cron form the one a product author
 // writes in product.yaml.
 type Schedule struct {
-	ID          string `json:"id" yaml:"id"`
-	Name        string `json:"name" yaml:"name"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	Enabled     bool   `json:"enabled" yaml:"enabled"`
+	Condition   *conditiontrigger.Config `json:"condition,omitempty" yaml:"condition,omitempty"`
+	ID          string                   `json:"id" yaml:"id"`
+	Name        string                   `json:"name" yaml:"name"`
+	Description string                   `json:"description,omitempty" yaml:"description,omitempty"`
+	Enabled     bool                     `json:"enabled" yaml:"enabled"`
 	// CreatedAt anchors the first cron occurrence. Without a stable anchor, a
 	// never-run cron schedule would recompute "next" from every scheduler tick
 	// and could therefore never become due.
@@ -109,6 +111,12 @@ func Validate(s Schedule) error {
 	}
 	if s.QuietMinutes < 0 || s.MaxDeferralHours < 0 {
 		return fmt.Errorf("schedule %q: quiet_minutes and max_deferral_hours must not be negative", s.ID)
+	}
+	if s.Condition != nil {
+		if len(s.Messages) != 0 {
+			return fmt.Errorf("condition triggers cannot contain agent schedule messages")
+		}
+		return s.Condition.Validate()
 	}
 	if len(s.Messages) == 0 {
 		return fmt.Errorf("schedule %q: at least one message is required", s.ID)

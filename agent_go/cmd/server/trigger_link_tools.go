@@ -73,6 +73,8 @@ func (t triggerTarget) describe() map[string]interface{} {
 
 // triggerLinkCaller identifies the calling Crew or workflow.
 type triggerLinkCaller struct {
+	// ConditionJob is stamped only by the deterministic caller service.
+	ConditionJob string
 	NamedAgentID string // Selected from an authorized account registration, never a display label.
 	// OwnerAuthority is true only for the person's own unrestricted external connection, decided from the validated
 	// token when the message is sent (externalOwnerAuthority); never set from arguments or a label.

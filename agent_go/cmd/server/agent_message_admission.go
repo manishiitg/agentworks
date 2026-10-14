@@ -14,6 +14,18 @@ import (
 // continue an account inbox, but cannot revive an old revoked submission.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
+	if source.ConditionJob != "" {
+		if api.productSchedules == nil {
+			return fmt.Errorf("condition caller unavailable")
+		}
+		job, err := api.productSchedules.Job(ctx, source.UserID, source.ConditionJob)
+		if err != nil || job.Schedule.Condition == nil || !job.Effective().Enabled {
+			return fmt.Errorf("condition caller is no longer enabled")
+		}
+		if err := api.productSchedules.conditionService().authorize(ctx, job, *job.Schedule.Condition); err != nil {
+			return err
+		}
+	}
 	if source.ShareID != "" || dest.ShareID != "" {
 		store, err := readAgentMessageStore(ctx)
 		if err != nil {

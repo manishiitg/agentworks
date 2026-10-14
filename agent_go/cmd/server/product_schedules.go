@@ -244,8 +244,9 @@ type ProductScheduleService struct {
 	queued map[string][]productScheduleQueuedRun
 	// deferred holds the quiet-rule reason for jobs currently held back, so
 	// the UI can say "waiting for a quiet moment" instead of showing nothing.
-	deferred map[string]string
-	stateMu  sync.Mutex
+	deferred   map[string]string
+	stateMu    sync.Mutex
+	conditions *conditionService
 }
 
 // productInteractions is the shared record of who last used which product;
@@ -876,6 +877,9 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 			if pauseConfig.ProductPaused(job.Profile.ID) {
 				continue
 			}
+			if job.Schedule.Condition != nil && job.Effective().Enabled {
+				go s.conditionService().drain(context.Background(), job)
+			}
 			activatedAt := job.activatedAt()
 			if strings.TrimSpace(job.Schedule.CronExpression) != "" && job.lastRun().IsZero() && strings.TrimSpace(job.State.ActivatedAt) == "" {
 				// Persist the baseline once. Using this tick's Now without saving it
@@ -1005,6 +1009,9 @@ func (s *ProductScheduleService) Stop(userID, jobID string) bool {
 // record a run, send every message in turn, then record the outcome.
 // onStarted, when given, is called once the session id is known.
 func (s *ProductScheduleService) Run(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, onStarted ...func(sessionID string)) (string, error) {
+	if job.Schedule.Condition != nil {
+		return s.conditionService().poll(ctx, job, triggerSource, scheduledFor)
+	}
 	return s.runWithOptions(ctx, job, triggerSource, scheduledFor, productScheduleRunOptions{}, onStarted...)
 }
 

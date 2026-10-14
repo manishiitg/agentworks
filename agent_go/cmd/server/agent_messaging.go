@@ -27,6 +27,7 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	ConditionJob   string `json:"condition_job,omitempty"`
 	NamedAgentID   string `json:"named_agent_id,omitempty"`
 	UserID         string `json:"user_id"`
 	Kind           string `json:"kind"`
@@ -221,6 +222,10 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
 	e.NamedAgentID = c.NamedAgentID
+	e.ConditionJob = c.ConditionJob
+	if c.ConditionJob != "" {
+		e.External = true
+	}
 	e.OwnerAuthority = c.OwnerAuthority
 	if c.Chat != nil {
 		e.Session = c.Chat.SessionID
@@ -340,7 +345,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			}
 		}
 	} else {
-		if caller.isTarget(target) && caller.Chat == nil {
+		if caller.isTarget(target) && caller.Chat == nil && caller.ConditionJob == "" {
 			agentMessageMu.Unlock()
 			return nil, fmt.Errorf("choose another agent or chat")
 		}
