@@ -1,0 +1,34 @@
+# Example nginx site in front of an AgentWorks gateway (adapt the names and ports; the real per-server file lives in the
+# private deployments repository).
+#
+# Never write the sign-in token to the access log. The browser puts it in the URL of server-sent-event and WebSocket
+# requests (?token=...), so a default access log holds a live token (valid for 7 days) on every such request. Log the
+# request line with the token replaced by REDACTED. log_format and map belong to http{}; sites-enabled files are included
+# there, so they can sit at the top of this file.
+map $request_uri $example_logged_uri {
+    ~^(?<before>.*[?&]token=)[^&]*(?<after>.*)$  "${before}REDACTED${after}";
+    default                                    $request_uri;
+}
+log_format example_redacted '$remote_addr - $remote_user [$time_local] "$request_method $example_logged_uri $server_protocol" '
+                            '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
+
+map $http_upgrade $example_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name agents.example.com;
+    access_log /var/log/nginx/access.log example_redacted;
+
+    location / {
+        proxy_pass http://127.0.0.1:25080;   # the gateway, never the agent port
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $example_connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_buffering off;                  # server-sent events
+        proxy_read_timeout 3600s;
+    }
+}
