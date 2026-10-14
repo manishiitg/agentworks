@@ -297,11 +297,11 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"StepNumber":                stepNumber,
 		"StepExecutionPath":         stepExecutionPath,
 		"PreviousStepsSummary":      previousStepsSummary,
-		"PlanPosition":              templateVars["PlanPosition"],            // Where this step sits in the plan — steps cannot read planning/plan.json
-		"ValidationSchema":          validationSchema,                        // Validation schema JSON string
-		"PriorValidationFailures":   templateVars["PriorValidationFailures"], // Unresolved prevalidation concerns from earlier runs of this step
-		"KnowledgebasePath":         knowledgebasePath,                       // Knowledgebase folder path
-		"DBPath":                    dbPath,                                  // DB folder path (always enabled)
+		"PlanPosition":              templateVars["PlanPosition"],              // Where this step sits in the plan — steps cannot read planning/plan.json
+		"ValidationSchema":          compactValidationSchema(validationSchema), // Validation schema JSON string
+		"PriorValidationFailures":   templateVars["PriorValidationFailures"],   // Unresolved prevalidation concerns from earlier runs of this step
+		"KnowledgebasePath":         knowledgebasePath,                         // Knowledgebase folder path
+		"DBPath":                    dbPath,                                    // DB folder path (always enabled)
 		"DBAccess":                  dbAccess,
 		"DBDirectAccess":            dbDirectAccess,
 		"KbAccess":                  templateVars["KbAccess"],                  // "read" | "write" | "read-write" | "none"

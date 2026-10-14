@@ -74,13 +74,24 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildStepPlacement(ctx context.Contex
 	return strings.Join(lines, "\n")
 }
 
+var placementLogToken = regexp.MustCompile(`\[[A-Za-z_-]+\][^.\n]*\.?`)
+
+// placementLine keeps a placement line to whole sentences (or at least whole words) and drops log fragments such as
+// "[preflight] ..." that leak in from step outcomes.
 func placementLine(value string, limit int) string {
-	line := strings.Join(strings.Fields(value), " ")
+	line := strings.Join(strings.Fields(placementLogToken.ReplaceAllString(value, "")), " ")
 	runes := []rune(line)
-	if len(runes) > limit {
-		return string(runes[:limit-1]) + "…"
+	if len(runes) <= limit {
+		return line
 	}
-	return line
+	cut := string(runes[:limit])
+	if i := strings.LastIndexAny(cut, ".!?"); i >= limit/2 {
+		return cut[:i+1]
+	}
+	if i := strings.LastIndex(cut, " "); i > 0 {
+		cut = cut[:i]
+	}
+	return strings.TrimRight(cut, " ,;:-—") + "…"
 }
 
 var placementResultName = regexp.MustCompile(`^execution-attempt-[0-9]+-iteration-[0-9]+\.json$`)

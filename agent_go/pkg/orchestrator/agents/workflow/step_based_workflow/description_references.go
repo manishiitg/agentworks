@@ -294,7 +294,7 @@ func buildReferencedGuidesSection(ctx context.Context, workspacePath, descriptio
 	}
 	var b strings.Builder
 	b.WriteString("## Referenced guides\n\n")
-	b.WriteString("These references are named by the task. Read their content when needed; naming a workflow path adds read access only.\n")
+	b.WriteString("These references are named by the task. Read their content when needed.\n")
 	if len(listed) > 0 {
 		b.WriteString("\n")
 		b.WriteString(strings.Join(listed, "\n"))

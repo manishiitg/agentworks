@@ -2,6 +2,7 @@ package step_based_workflow
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1553,5 +1554,24 @@ func TestFolderGuardPromptTextIsShortAndRelative(t *testing.T) {
 	write := folderGuardPromptText("Workflow/demo", []string{"Workflow/demo/runs/iteration-0/default", "Workflow/demo/runs/iteration-0/default/execution/s1", "Workflow/demo/reports", "Workflow/demo/db/assets"}, true)
 	if strings.Contains(write, "/docs/") || !strings.Contains(write, "runs/iteration-0/default/") || strings.Contains(write, "execution/s1") || !strings.Contains(write, "code/ (Builder only)") {
 		t.Fatalf("write summary wrong: %s", write)
+	}
+}
+
+// The prompt shows a compact field list for the validation schema and whole-sentence placement lines without log text.
+func TestStepPromptTextIsCompact(t *testing.T) {
+	min := 1
+	raw, _ := json.Marshal(ValidationSchema{Files: []FileValidationRule{{FileName: "out.json", MustExist: true, JSONChecks: []JSONValidationCheck{{Path: "$.status", MustExist: true, ValueType: "string", Pattern: "^(ok|failed)$"}, {Path: "$.items", ValueType: "array", MinLength: &min}}}}})
+	got := compactValidationSchema(string(raw))
+	for _, want := range []string{"File `out.json` (required)", "`$.status`: string, required, matches", "`$.items`: array, length >= 1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("compact schema lacks %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "{") || len(got) >= len(raw) {
+		t.Errorf("compact schema is not smaller or still JSON: %s", got)
+	}
+	line := placementLine("Measured followers. [preflight] Python bundle syntax ok and more log text here. Second sentence that is quite long and goes past the limit of the line so it must be cut.", 80)
+	if strings.Contains(line, "preflight") || strings.HasSuffix(line, "so it must be") || !strings.HasSuffix(line, ".") && !strings.HasSuffix(line, "…") {
+		t.Errorf("placement line not tidy: %q", line)
 	}
 }

@@ -1781,23 +1781,28 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(ctx context.Co
 	return applySharedKBPrompt(hcpo.GetWorkspacePath(), vars)
 }
 
+// buildAgentAccessNote adds only what the Allowed READ/WRITE lines cannot say: how database rows are reached and which
+// extra stores this item may write. It never restates the folder scope (that was a second, stale version of it).
 func buildAgentAccessNote(writeAccess AgentWriteAccess, dbAccess string) string {
-	// No platform stores (a Relay): the folder grants are the step folder and
-	// Downloads only; name no database, knowledgebase or learnings.
+	// No platform stores (a Relay): nothing to add; name no database, knowledgebase or learnings.
 	if dbAccess == DBAccessNone {
-		return "Writes for this item are limited to: step folder, Downloads. Readable folders are listed in Allowed READ."
+		return ""
 	}
-	grants := []string{"step folder", "Downloads", "db/assets/"}
+	var extras []string
 	if writeAccess.DB {
-		grants = append(grants, "database rows via mutate_workflow_db")
+		extras = append(extras, "database rows via mutate_workflow_db")
 	}
 	if writeAccess.Knowledgebase {
-		grants = append(grants, "knowledgebase/notes/")
+		extras = append(extras, "knowledgebase/notes/")
 	}
 	if writeAccess.Learnings {
-		grants = append(grants, "learnings/_global/")
+		extras = append(extras, "learnings/_global/")
 	}
-	return "Database files: db/README.md is read-only; db/assets/ is readable and writable. Use query_workflow_db/mutate_workflow_db for database rows; other db/ files are not granted. Other readable folders are listed in Allowed READ. Writes for this item are limited to: " + strings.Join(grants, ", ") + "."
+	note := "Database rows go through query_workflow_db/mutate_workflow_db; the raw database file is not readable."
+	if len(extras) > 0 {
+		note += " Besides the Write folders, this item may write: " + strings.Join(extras, ", ") + "."
+	}
+	return note
 }
 
 // agentSequenceAbsPath lifts a WORKFLOW-ROOT-RELATIVE path (e.g.
