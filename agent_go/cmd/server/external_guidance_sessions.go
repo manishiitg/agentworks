@@ -7,11 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"path"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
 )
 
 type externalGuidanceHandleKey struct{}
@@ -19,10 +21,82 @@ type externalGuidanceHandleKey struct{}
 // Topics belong to canonical operations. Every adapter resolves merged actions
 // before this lookup. Further products can add topics without changing sessions.
 func externalToolGuidance(name string) []string {
-	if isDashboardTool(name) && dashboardActions[name] != "list" && dashboardActions[name] != "get" && dashboardActions[name] != "link" {
-		return []string{"dashboard-authoring"}
+	var names []string
+	for _, topic := range externalGuidanceTopics {
+		for _, pattern := range topic.Tools {
+			if matched, _ := path.Match(pattern, name); matched {
+				names = append(names, topic.Name)
+				break
+			}
+		}
 	}
-	return nil
+	if len(names) == 0 {
+		names = []string{productguide.SkillName}
+	}
+	return names
+}
+
+func externalToolGuidanceFor(claims *UserClaims, name string) []string {
+	var names []string
+	for _, topic := range externalToolGuidance(name) {
+		if source := externalGuidanceTopicByName(topic); source != nil && externalTopicVisible(claims, *source) {
+			names = append(names, topic)
+		}
+	}
+	if len(names) == 0 {
+		names = []string{productguide.SkillName}
+	}
+	return names
+}
+
+// Schemas use only this connection's allowed members, including hidden aliases.
+// Related operations share a skill; an unrelated tool uses the common MCP guide.
+func externalSchemaGuidance(claims *UserClaims, name string) []string {
+	tool, ok := externalCatalogTool(name)
+	if !ok || tool.actions == nil {
+		return externalToolGuidanceFor(claims, name)
+	}
+	seen := map[string]bool{}
+	for _, spec := range tool.actions {
+		for _, memberName := range externalMemberNames(spec) {
+			if member, found := externalCatalogTool(memberName); found && externalTokenAllows(claims, member) {
+				for _, topic := range externalToolGuidanceFor(claims, memberName) {
+					seen[topic] = true
+				}
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for topic := range seen {
+		names = append(names, topic)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func externalOperationHasGuidance(tool externalTool, args map[string]any) bool {
+	if isDashboardTool(tool.Name) && dashboardActions[tool.Name] != "list" && dashboardActions[tool.Name] != "get" && dashboardActions[tool.Name] != "link" {
+		return dashboardActions[tool.Name] != "validate" && dashboardActions[tool.Name] != "preview"
+	}
+	if tool.Name == "call_crew_function" || tool.Name == "ask_crew" {
+		return true
+	}
+	if !tool.mutates && !tool.executes {
+		return false
+	}
+	// Compound tools keep their native action schemas. Their inspection actions
+	// do not need per-call reminders even when other actions change state.
+	action := externalArg(args, "action")
+	for _, prefix := range []string{"list_", "get_", "read_", "search_", "inspect_"} {
+		if strings.HasPrefix(action, prefix) {
+			return false
+		}
+	}
+	switch action {
+	case "list", "get", "read", "search", "browse", "inspect", "status", "history", "runs", "calls", "catalog", "discover", "diagnostics", "validate", "preview", "usage", "export", "check", "backup_status", "secrets_list", "schedule_status", "whats_new":
+		return false
+	}
+	return true
 }
 
 func externalGuidanceCaller(r *http.Request) string {
@@ -87,48 +161,48 @@ func externalGuidanceVersions(claims *UserClaims, names []string) map[string]str
 // full help fetch ignores the receipt, so a compacted context can reload it.
 func (api *StreamingAPI) externalPrepareGuidance(r *http.Request, value map[string]any, handle string) {
 	topics := []string{}
+	requirements := map[string][]string{}
 	schemas, _ := value["schemas"].(map[string]any)
 	for name := range schemas {
-		topics = append(topics, externalToolGuidance(name)...)
-		if name == "dashboard" {
-			definition, _ := schemas[name].(map[string]any)
-			schema, _ := definition["inputSchema"].(map[string]any)
-			properties, _ := schema["properties"].(map[string]any)
-			action, _ := properties["action"].(map[string]any)
-			raw, _ := json.Marshal(action["enum"])
-			var actions []string
-			_ = json.Unmarshal(raw, &actions)
-			for _, item := range actions {
-				if item != "list" && item != "get" && item != "link" {
-					topics = append(topics, "dashboard-authoring")
-					break
-				}
-			}
-		}
+		requirements[name] = externalSchemaGuidance(GetUserFromContext(r.Context()), name)
+		topics = append(topics, requirements[name]...)
 	}
 	versions := externalGuidanceVersions(GetUserFromContext(r.Context()), topics)
 	if len(versions) == 0 {
 		return
 	}
-	receipt := api.guidanceReceipt(r, handle, true, versions, nil, false)
+	receipt := api.guidanceReceipt(r, handle, false, versions, nil, false)
+	allowFallback := receipt.SessionID != ""
+	if receipt.SessionID == "" {
+		for topic := range versions {
+			if topic != productguide.SkillName {
+				receipt = api.guidanceReceipt(r, handle, true, versions, nil, false)
+				break
+			}
+		}
+	}
 	files := []map[string]any{}
 	delivered := map[string]bool{}
 	for _, item := range receipt.Topics {
+		if item.Name == productguide.SkillName && !allowFallback {
+			continue
+		}
 		if item.Status == "delivered_to_client" {
 			continue
 		}
 		topic := externalGuidanceTopicByName(item.Name)
-		body, err := externalGuidanceSkillContent(GetUserFromContext(r.Context()), *topic)
+		body, err := externalGuidanceSkillFiles(GetUserFromContext(r.Context()), *topic)
 		if err != nil {
 			continue
 		}
-		files = append(files, map[string]any{"name": item.Name, "version": item.Version, "files": []any{map[string]any{"path": "SKILL.md", "content": body}}})
+		files = append(files, map[string]any{"name": item.Name, "version": item.Version, "files": body})
 		delivered[item.Name] = true
 	}
 	if len(delivered) > 0 {
 		receipt = api.guidanceReceipt(r, receipt.SessionID, false, versions, delivered, false)
 	}
 	value["guidance"] = receipt
+	value["guidance_requirements"] = requirements
 	if len(files) > 0 {
 		value["guidance_skills"] = files
 	}
@@ -136,14 +210,21 @@ func (api *StreamingAPI) externalPrepareGuidance(r *http.Request, value map[stri
 
 // One response decorator covers REST, CLI, stdio and remote MCP execution.
 // Existing fields and status codes survive; ordinary operations never get bodies.
-func (api *StreamingAPI) externalGuidanceResponse(w http.ResponseWriter, r *http.Request, name, handle string) (http.ResponseWriter, func()) {
+func (api *StreamingAPI) externalGuidanceResponse(w http.ResponseWriter, r *http.Request, name, handle string, arguments ...map[string]any) (http.ResponseWriter, func()) {
+	var args map[string]any
+	if len(arguments) > 0 {
+		args = arguments[0]
+	}
 	rec := &externalMCPRecorder{header: http.Header{}}
 	return rec, func() {
 		var value map[string]any
 		decoder := json.NewDecoder(bytes.NewReader(rec.body.Bytes()))
 		decoder.UseNumber() // preserve domain IDs and counters above 2^53
 		if decoder.Decode(&value) == nil && value != nil {
-			topics := externalToolGuidance(name)
+			topics := externalToolGuidanceFor(GetUserFromContext(r.Context()), name)
+			if name == "get_guidance_topic" || name == "get_guidance_skills" || externalProjectSkillFetch(name, args) {
+				topics = nil
+			}
 			delivered := map[string]bool{}
 			if rec.status >= 200 && rec.status < 300 && name == "get_guidance_topic" {
 				topic, _ := value["topic"].(string)
@@ -173,10 +254,20 @@ func (api *StreamingAPI) externalGuidanceResponse(w http.ResponseWriter, r *http
 				}
 			}
 			versions := externalGuidanceVersions(GetUserFromContext(r.Context()), topics)
+			var resource map[string]any
+			if rec.status >= 200 && rec.status < 300 && value["error"] == nil {
+				if topic, version, source := externalDeliveredProjectSkill(name, args, value); topic != "" {
+					versions[topic], delivered[topic], resource = version, true, source
+				}
+			}
 			if len(versions) > 0 {
 				failure, _ := value["error"].(map[string]any)
 				receipt := api.guidanceReceipt(r, handle, len(delivered) > 0, versions, delivered, failure["code"] == "invalid_arguments" || failure["code"] == "invalid_dashboard" || value["valid"] == false)
-				if name == "get_guidance_topic" || name == "get_guidance_skills" {
+				if resource != nil {
+					receipt.Fetch = "Reuse this delivered skill in this conversation. Fetch it again through the original authorized skill/package or file tool after context loss or a version change."
+					value["guidance_resources"] = []any{resource}
+				}
+				if name == "get_guidance_topic" || name == "get_guidance_skills" || resource != nil {
 					value["guidance"] = receipt
 				} else {
 					value["guidance"] = externalCompactGuidance(receipt)
@@ -215,6 +306,14 @@ func (api *StreamingAPI) closeGuidanceSessions() {
 // Ordinary authoring replies need only a topic/version/status. Handles and
 // timestamps belong in preparation, not twenty repeated operation responses.
 func externalCompactGuidance(receipt guidancesessions.Receipt) string {
+	if len(receipt.Topics) > 1 {
+		for _, topic := range receipt.Topics {
+			if topic.Status != "delivered_to_client" {
+				return topic.Status + " get_guidance_skills"
+			}
+		}
+		return "skills current"
+	}
 	parts := make([]string, 0, len(receipt.Topics))
 	for _, topic := range receipt.Topics {
 		status := topic.Status

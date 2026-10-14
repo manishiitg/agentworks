@@ -214,7 +214,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	other, _ := agentworksclient.New(srv.URL, "another-connection")
 	other.WithGuidanceSession(handle, nil)
-	raw, err = other.Call(ctx, "validate_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "guide"})
+	raw, err = other.Call(ctx, "create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "connection-probe", "title": "Connection probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status(call("validate_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "guide"}, handle)) != "stale" {
+	if status(call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "stale-probe", "title": "Stale probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)) != "stale" {
 		t.Fatal("stale receipt not flagged")
 	}
 	refreshed := decode(callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "dashboard", "guidance_session_id": handle}))
@@ -260,7 +260,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	// Decorating domain data must not round integer IDs through float64.
 	precise := httptest.NewRecorder()
-	wrapped, finish := f.api.externalGuidanceResponse(precise, req, "validate_dashboard", handle)
+	wrapped, finish := f.api.externalGuidanceResponse(precise, req, "create_dashboard", handle)
 	_, _ = wrapped.Write([]byte(`{"id":9007199254740993,"nested":{"values":[9007199254740995]}}`))
 	finish()
 	if !strings.Contains(precise.Body.String(), `"id":9007199254740993`) || !strings.Contains(precise.Body.String(), `[9007199254740995]`) {
@@ -271,7 +271,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if id(reloaded) != handle || status(reloaded) != "delivered_to_client" {
 		t.Fatal("explicit context-loss reload failed")
 	}
-	_, err = rest.Call(ctx, "validate_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "guide", "unknown": true})
+	_, err = rest.Call(ctx, "create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "invalid-probe", "title": "Invalid probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}, "unknown": true})
 	if err == nil {
 		t.Fatal("domain validator bypassed")
 	}
@@ -302,8 +302,12 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if id(stdioGuide) != handle {
 		t.Fatal("stdio did not return prepared handle")
 	}
-	stdioList := decode(callRemoteTool(t, ctx, stdio, "dashboard", map[string]any{"action": "validate", "workflow_id": "invoices", "dashboard_id": "guide", "guidance_session_id": handle}))
-	if status(stdioList) != "delivered_to_client" {
+	stdioValidation := decode(callRemoteTool(t, ctx, stdio, "dashboard", map[string]any{"action": "validate", "workflow_id": "invoices", "dashboard_id": "guide", "guidance_session_id": handle}))
+	if stdioValidation["guidance"] != nil {
+		t.Fatal("stdio validation includes unnecessary guidance")
+	}
+	stdioCreated := decode(callRemoteTool(t, ctx, stdio, "dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "stdio-probe", "title": "Stdio probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}, "guidance_session_id": handle}))
+	if status(stdioCreated) != "delivered_to_client" {
 		t.Fatal("stdio lost common envelope")
 	}
 	_ = writeIn.Close()
@@ -339,7 +343,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if err = f.api.guidanceStore.Close(); err != nil {
 		t.Fatal(err)
 	}
-	fallback := call("validate_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "guide"}, handle)
+	fallback := call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "unavailable-probe", "title": "Unavailable probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)
 	if status(fallback) != "unavailable" {
 		t.Fatal("storage failure refused ordinary operation")
 	}

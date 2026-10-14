@@ -2,6 +2,7 @@
 name: "crew-authoring"
 description: "Author a Crew over MCP: create and update, typed functions with input and result schemas, isolated calls and result files, messages and memory, files and shared folders, schedules and settings."
 external: true
+external_tools: ["*crew*"]
 external_scopes: ["crews:write"]
 ---
 # Authoring a Crew over MCP

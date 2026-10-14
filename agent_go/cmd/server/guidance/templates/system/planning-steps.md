@@ -2,7 +2,8 @@
 name: "planning-steps"
 description: "Workshop plan composition: take-action-by-default discipline, step-type selection, validation_schema requirements, forward-only context flow. Load before adding or editing plan steps."
 external: true
-external_note: "External mapping: read_skill is not in your catalog; the readable reference surface is list_guidance_topics/get_guidance_topic."
+external_tools: ["plan", "get_plan", "execute_step", "run_full_workflow"]
+external_note: "External mapping: discover current tool schemas before acting. Use plan action=list for native plan and step operations; read get_plan for expected_revision, then pass a stable request_id and listed native arguments. Internal operation names are plan action values, not standalone external tools. Settings uses settings get/update. For skill wiring, use list_workflow_knowledge and read_workflow_knowledge, Crew package actions and Brain skill packages under their existing roles and file/folder grants. Fetch referenced guidance by its listed topic name. Server-only scripts, bridge variables and internal URLs are not external client credentials."
 ---
 ## Planning Steps
 

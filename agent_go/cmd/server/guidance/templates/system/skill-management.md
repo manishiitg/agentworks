@@ -2,7 +2,8 @@
 name: "skill-management"
 description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills."
 external: true
-external_note: "External mapping: for workflows, install_skill, import_skill, uninstall_skill, update_workflow_config, and update_step_config remain unavailable as direct tools; list_skills and search_skills use runs:execute. Use list_workflow_knowledge to inspect workflow wiring. For a Crew, use crew_skills action=list/search/install/import/uninstall with crew_id, then existing settings to select installed skills. Crew package changes require its owner and crews:write; reads require crews:read. Read the crew-authoring topic for folder guards and package boundaries."
+external_tools: ["crew_skills", "list_skills", "search_skills", "list_workflow_knowledge", "read_workflow_knowledge"]
+external_note: "External mapping: discover current tool schemas before acting. Use plan action=list for native plan and step operations; read get_plan for expected_revision, then pass a stable request_id and listed native arguments. Internal operation names are plan action values, not standalone external tools. Settings uses settings get/update. For skill wiring, use list_workflow_knowledge and read_workflow_knowledge, Crew package actions and Brain skill packages under their existing roles and file/folder grants. Fetch referenced guidance by its listed topic name. Server-only scripts, bridge variables and internal URLs are not external client credentials."
 ---
 ## Skill Management — install skills and attach them to workflows
 

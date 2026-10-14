@@ -525,8 +525,8 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if len(handle) > 256 {
 		handle = ""
 	} // malformed receipt is missing, not authorization
-	if len(externalToolGuidance(tool.Name)) > 0 || tool.Name == "get_guidance_topic" || tool.Name == "get_guidance_skills" {
-		decorated, finish := api.externalGuidanceResponse(w, r, tool.Name, handle)
+	if externalOperationHasGuidance(*tool, call.Arguments) || externalProjectSkillFetch(tool.Name, call.Arguments) || tool.Name == "get_guidance_topic" || tool.Name == "get_guidance_skills" {
+		decorated, finish := api.externalGuidanceResponse(w, r, tool.Name, handle, call.Arguments)
 		w = decorated
 		defer finish()
 	}

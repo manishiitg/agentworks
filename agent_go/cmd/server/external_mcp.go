@@ -93,7 +93,7 @@ var externalMCPToolSchemas = map[string]map[string]any{
 }
 
 var externalMCPToolDescriptions = map[string]string{
-	externalMCPToolSpec:   "Discover AgentWorks tools. Call with no arguments to list every available tool name with a one-line description; call with names (a string or an array of strings) to get full JSON schemas for those tools. Only tools this connection may use are listed. Selected dashboard schemas also return canonical guidance and a guidance_session_id. Retain it per conversation and pass it to later schema/call_tool requests; after context loss reload with help action=skills. Then execute with call_tool.",
+	externalMCPToolSpec:   "Discover AgentWorks tools. Call with no arguments to list every available tool name with a one-line description; call with names (a string or an array of strings) to get full JSON schemas for those tools. Only tools this connection may use are listed. Selected schemas also return relevant canonical skill packages and a guidance_session_id. Retain it per conversation and pass it to later schema/call_tool requests; after context loss reload with help action=skills. Then execute with call_tool.",
 	externalMCPToolSearch: "Find AgentWorks tools by intent or name (for example \"dashboard\" or \"vault\"). Returns tool names with one-line descriptions, ten per page (use next_offset for more), not schemas. Then call get_api_spec with the names and run them with call_tool. Only tools this connection may use are found; searching grants nothing.",
 	externalMCPToolCall:   "Execute one AgentWorks tool by name. Get its schema first with get_api_spec. Arguments must match the tool's schema; workflow tools need the workflow_id from list_workflows.",
 }

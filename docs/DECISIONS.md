@@ -1,5 +1,31 @@
 # Decisions and open issues
 
+## 2026-10-14 — Advisory guidance spans MCP tools and fetched project skills (PLAT-856)
+
+Selected authorized tool schemas map to reusable canonical skill topics. Related
+tools share one delivered version per caller/connection-bound guidance session.
+The common MCP usage fallback is fetched explicitly or prepared with an existing
+session; schema requests without a handle return its requirements/fetch hint.
+Mapped product preparation retains its existing first-fetch behavior.
+
+Successful full Crew/workflow SKILL.md reads and Brain skill-package fetches also
+record delivery in that session, as does the explicit hosted bootstrap skill.
+Source/project/location and file/package
+coverage distinguish identities; package versions cover all returned files.
+Only opaque identity/version hashes enter the store. The existing product/file/
+folder handlers authorize each fetch. Explicit fetches remain full reloads after
+context loss; metadata and client version claims are not delivery.
+
+Mutation/execution reminders stay compact; ordinary reads/discovery/inspection
+omit them. Receipts are advisory, grant no access, and prove neither reading nor
+retention. Shared guide/client skill versions advance; Brain starter content
+continues to preserve existing user content.
+
+Why: agents need reusable guidance across a task without repeated skill bodies
+or inferred conversation identity from a shared login.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-95.
+
 ## 2026-10-14 — Workflow steps use confined Full CLI with structured transport (PLAT-861)
 
 Workflow execution agents request the existing Full CLI tool mode while keeping

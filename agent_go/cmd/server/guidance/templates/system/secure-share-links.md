@@ -2,6 +2,7 @@
 name: "secure-share-links"
 description: "Share existing workflow files and folders with authenticated links: path rules and the difference between access-controlled sharing and public publishing."
 external: true
+external_tools: ["get_file_link"]
 external_note: "External mapping: get_file_link IS in your catalog: pass exactly one of workflow_id (files:read) or crew_id (crews:read), plus a canonical project-relative path; current project visibility, connection bounds and file guards apply. Its links grant no access; the dashboard tool (action=link) requires dashboards:read and returns authenticated URLs without starting a Run chat. manage_internet_share is not available. Use files download for local copies."
 ---
 # Secure file and folder share links

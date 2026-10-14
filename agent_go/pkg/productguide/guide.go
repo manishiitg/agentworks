@@ -15,7 +15,7 @@ import (
 // Bump the corresponding semantic version when changing either source.
 // Fingerprints additionally identify the exact installation-specific content.
 const GuideVersion = "1.0.1"
-const SkillVersion = "1.0.1"
+const SkillVersion = "1.0.2"
 const SkillName = "agentworks-mcp"
 const SkillDescription = "Choose AgentWorks products and use their live MCP tools, guidance and Brain knowledge with the current connection's permissions."
 

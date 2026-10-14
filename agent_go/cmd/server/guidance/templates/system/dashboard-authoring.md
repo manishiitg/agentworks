@@ -2,6 +2,7 @@
 name: "dashboard-authoring"
 description: "Dashboard MCP operations, revisioned bundles, live HTML data APIs, Python/JS scripts, validation, preview and authenticated team links."
 external: true
+external_tools: ["*dashboard*", "get_report_link"]
 ---
 # Dashboard API usage
 

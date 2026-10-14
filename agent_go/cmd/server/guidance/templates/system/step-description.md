@@ -2,7 +2,8 @@
 name: "step-description"
 description: "How to write an optimized step description and validation_schema: earn every word, let the schema name the output shape. Load before writing or editing any step description."
 external: true
-external_note: "External mapping: get_step_prompts uses a workflow Run session when runs:execute is allowed. Use runs action=get/logs and guarded file reads for saved-run evidence. It does not preview unsaved plan edits; delegate those through builder action=chat when available."
+external_tools: ["get_step_prompts"]
+external_note: "External mapping: discover current tool schemas before acting. Use plan action=list for native plan and step operations; read get_plan for expected_revision, then pass a stable request_id and listed native arguments. Internal operation names are plan action values, not standalone external tools. Settings uses settings get/update. For skill wiring, use list_workflow_knowledge and read_workflow_knowledge, Crew package actions and Brain skill packages under their existing roles and file/folder grants. Fetch referenced guidance by its listed topic name. Server-only scripts, bridge variables and internal URLs are not external client credentials."
 ---
 ## Writing Optimized Step Descriptions (Prompt Engineering)
 

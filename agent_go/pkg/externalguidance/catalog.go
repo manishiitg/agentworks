@@ -16,6 +16,7 @@ type Topic struct {
 	ExternalDescription string   `yaml:"external_description"`
 	ExternalNote        string   `yaml:"external_note"`
 	Scopes              []string `yaml:"external_scopes"`
+	Tools               []string `yaml:"external_tools"`
 	Content             string   `yaml:"-"`
 }
 

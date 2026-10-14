@@ -42,7 +42,7 @@ func externalGuidanceVersionFor(claims *UserClaims) string {
 
 func externalTopicVersionFor(claims *UserClaims, topic externalGuidanceTopic) string {
 	h := sha256.New()
-	h.Write([]byte(topic.Name + "\n" + topic.Description + "\n" + externalTopicNoteFor(claims, topic) + "\n" + strings.Join(topic.Scopes, ",") + "\n"))
+	h.Write([]byte(topic.Name + "\n" + topic.Description + "\n" + externalTopicNoteFor(claims, topic) + "\n" + strings.Join(topic.Scopes, ",") + "\n" + strings.Join(topic.Tools, ",") + "\n"))
 	if _, body, err := externalGuidanceContentForProducts(topic.Name, builderProductSelection(claims)); err == nil {
 		h.Write([]byte(body))
 	}
@@ -61,6 +61,7 @@ type externalGuidanceTopic struct {
 	Source string
 	// Scopes the token must allow for the topic to be listed and served.
 	Scopes        []string
+	Tools         []string
 	Content       string
 	SourceVersion string
 }
@@ -268,7 +269,7 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 				}
 			}
 			seen[item.Name] = true
-			topics = append(topics, externalGuidanceTopic{Name: item.Name, Description: item.Description, ExternalNote: item.ExternalNote, Scopes: item.Scopes, Source: source.name, Content: item.Content})
+			topics = append(topics, externalGuidanceTopic{Name: item.Name, Description: item.Description, ExternalNote: item.ExternalNote, Scopes: item.Scopes, Tools: item.Tools, Source: source.name, Content: item.Content})
 		}
 	}
 	topics = append(topics,

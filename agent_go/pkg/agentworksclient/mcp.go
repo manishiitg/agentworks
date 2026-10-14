@@ -58,7 +58,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 			break
 		}
 	}
-	instructions += " Dashboard preparation: fetch help action=skills topics=[\"dashboard-authoring\"] before building. Retain its guidance_session_id per conversation, pass it as an optional common argument on later tools, and omit known_versions to reload after context loss. Advisory receipts record delivery, not reading; current permissions still apply."
+	instructions += " Prepare relevant skills with selected tool schemas or help action=skills. Retain guidance_session_id per conversation and pass it on later tools. Related tools reuse one topic/version; explicit full Crew/project SKILL.md reads and Brain skill-package fetches also record delivery. Reload full skills after context loss (omit known_versions); metadata alone does not count. Advisory receipts record delivery, not reading, and grant no permissions."
 	opts := []server.ServerOption{server.WithToolCapabilities(false), server.WithElicitation(), server.WithInstructions(instructions)}
 	s := server.NewMCPServer("AgentWorks", "1.0.0", append(opts, extra...)...)
 	available := make(map[string]bool, len(definitions))
