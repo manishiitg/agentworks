@@ -32,6 +32,7 @@ vi.mock('../workflow/WorkflowFunctionsView', () => ({ default: (props: Record<st
   triggersPanelProps.current = props
   return <div data-testid="relay-triggers">Relay API triggers</div>
 } }))
+vi.mock('./ConditionTriggersView', () => ({ default: () => <div data-testid="conditions">Condition triggers</div> }))
 vi.mock('./CrewFunctionsView', () => ({ default: () => <div data-testid="functions">Function content</div> }))
 vi.mock('./TriggerDeliveryHistoryPanel', () => ({ TriggerDeliveryHistoryPanel: () => <div data-testid="delivery-history" /> }))
 const { askAIProps } = vi.hoisted(() => ({ askAIProps: { current: null as null | Record<string, unknown> } }))
@@ -91,6 +92,15 @@ describe('AutomationHubPanel', () => {
       await act(async () => root.unmount())
       host.remove()
     }
+  })
+})
+
+describe('Code condition section', () => {
+  it('opens a dedicated condition section beside the existing automation tabs', async () => {
+    const host = document.createElement('div'); const root = createRoot(host)
+    await act(async () => root.render(<AutomationHubPanel entityType="product" workspacePath="Chats/Code/projects/app" productTriggerScope={{ profileId: 'code', projectId: 'app' }} initialSection="conditions" />))
+    try { expect(host.querySelector('[data-testid="conditions"]')).not.toBeNull(); expect(host.querySelector('[aria-label="Automation center"]')?.textContent).toContain('Condition triggers') }
+    finally { await act(async () => root.unmount()) }
   })
 })
 
