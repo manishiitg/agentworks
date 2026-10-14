@@ -11,7 +11,7 @@ import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { normalizeEventViewMode, useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { hasSavedWorkflowWorkspaceView, useWorkflowStore } from '../../stores/useWorkflowStore'
-import { loadWorkspaceLandingView } from './workspaceLandingView'
+import { ensureDefaultDashboard, loadWorkspaceLandingView } from './workspaceLandingView'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { resolveWorkflowHistoryPath } from '../../utils/workflowHistoryPath'
@@ -875,6 +875,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
   }, [activePresetId, isRelaySurface, selectedModeCategory, workspacePath])
 
+  // Someone who can only run this product (not edit it) lands on its dashboard.
+  const runsOnly = workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === workspacePath)?.my_access === 'read'
   const initializedRelayViewPresetRef = useRef<string | null>(null)
   useEffect(() => {
     if (!relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath) return
@@ -882,15 +884,21 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     const firstVisit = initializedRelayViewPresetRef.current !== activePresetId
     initializedRelayViewPresetRef.current = activePresetId
     if ((firstVisit && !hasSavedWorkflowWorkspaceView(activePresetId)) || !RELAY_WORKSPACE_VIEWS.has(currentView)) {
+      if (runsOnly) {
+        void ensureDefaultDashboard(workspacePath).then(() => {
+          if (useGlobalPresetStore.getState().activePresetIds.workflow === activePresetId) useWorkflowStore.getState().openWorkspaceView('report')
+        })
+        return
+      }
       useWorkflowStore.getState().openWorkspaceView('flow')
     }
-  }, [activePresetId, lastCanvasView, relayMode, selectedModeCategory, workflowWorkspaceView, workspacePath])
+  }, [activePresetId, lastCanvasView, relayMode, runsOnly, selectedModeCategory, workflowWorkspaceView, workspacePath])
 
   useEffect(() => {
     if (relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath || hasSavedWorkflowWorkspaceView(activePresetId)) return
     let cancelled = false
     const presetId = activePresetId
-    void loadWorkspaceLandingView(workspacePath).then(landing => {
+    void (runsOnly ? ensureDefaultDashboard(workspacePath) : Promise.resolve()).then(() => loadWorkspaceLandingView(workspacePath)).then(landing => {
       if (cancelled || useGlobalPresetStore.getState().activePresetIds.workflow !== presetId || hasSavedWorkflowWorkspaceView(presetId)) return
       const view = landing === 'dashboard' ? 'report' : landing === 'plan' ? 'flow' : 'identity'
       useAppStore.getState().setWorkspaceMinimized(true)
@@ -901,7 +909,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       })
     })
     return () => { cancelled = true }
-  }, [activePresetId, relayMode, selectedModeCategory, workspacePath])
+  }, [activePresetId, relayMode, runsOnly, selectedModeCategory, workspacePath])
 
   const activeWorkflowChatTabId = useChatStore(state => {
     const tabId = activeWorkflowTabIdForPreset(state.activeTabId, activePresetId, state.chatTabs)

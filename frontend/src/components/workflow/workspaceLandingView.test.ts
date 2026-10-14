@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { loadCatalog, readFile } = vi.hoisted(() => ({
+const { loadCatalog, readFile, post } = vi.hoisted(() => ({
   loadCatalog: vi.fn(),
   readFile: vi.fn(),
+  post: vi.fn(),
 }))
 
 vi.mock('./reportDocuments', () => ({ loadReportDocumentCatalog: loadCatalog }))
-vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent: readFile } }))
+vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent: readFile }, default: { post } }))
 
-import { loadWorkspaceLandingView } from './workspaceLandingView'
+import { ensureDefaultDashboard, loadWorkspaceLandingView } from './workspaceLandingView'
 
 describe('workspace landing view', () => {
   beforeEach(() => {
@@ -46,5 +47,13 @@ describe('workspace landing view', () => {
     expect(await loadWorkspaceLandingView('Workflow/example')).toBe('identity')
     readFile.mockRejectedValue(new Error('network error'))
     expect(await loadWorkspaceLandingView('Workflow/example')).toBe('identity')
+  })
+
+  it('asks the server for the default dashboard and survives a failed request', async () => {
+    post.mockResolvedValueOnce({ data: { dashboard_id: 'overview', generated: true } })
+    await ensureDefaultDashboard('Workflow/demo')
+    expect(post).toHaveBeenCalledWith('/api/dashboards/default', { workspace: 'Workflow/demo' })
+    post.mockRejectedValueOnce(new Error('offline'))
+    await expect(ensureDefaultDashboard('Workflow/demo')).resolves.toBeUndefined()
   })
 })

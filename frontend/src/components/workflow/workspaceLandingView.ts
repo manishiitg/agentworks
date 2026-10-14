@@ -1,4 +1,4 @@
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import { responseContent } from '../../utils/plannerFiles'
 import { loadReportDocumentCatalog } from './reportDocuments'
 
@@ -30,4 +30,15 @@ export async function loadWorkspaceLandingView(workspacePath: string, options: {
       .catch(() => false),
   ])
   return dashboard ? 'dashboard' : plan ? 'plan' : 'identity'
+}
+
+/**
+ * A person who only runs someone else's product lands on its dashboard. When
+ * the owner built none, the server writes the default one from what the
+ * product declares; a failed request just leaves the person on today's view.
+ */
+export async function ensureDefaultDashboard(workspacePath: string): Promise<void> {
+  try {
+    await api.post('/api/dashboards/default', { workspace: workspacePath })
+  } catch { /* the usual landing view still works */ }
 }
