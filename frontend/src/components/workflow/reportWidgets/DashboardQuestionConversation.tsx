@@ -77,7 +77,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       {error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
       {open && canAsk && bound && bound.viewer === viewer && bound.resourceId === resourceId && <section aria-label="Project Ask conversation" className="mt-3">
         <p className="mb-2 text-xs text-muted-foreground">Your existing project conversation. Questions use your account and the project’s normal Ask permissions.</p>
-        <div className="h-[min(65vh,40rem)] min-h-80"><Suspense fallback={<p>Opening project Ask…</p>}><ChatArea tabId={bound.tabId} compact hideHeader inputVariant="product" previousChatsWorkspacePath={workspacePath} composerPlaceholder="Ask a follow-up…" /></Suspense></div>
+        <div className="h-[min(65vh,40rem)] min-h-80"><Suspense fallback={<p>Opening project Ask…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} composerPlaceholder="Ask a follow-up…" /></Suspense></div>
       </section>}
     </div>
   </>
