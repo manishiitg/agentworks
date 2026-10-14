@@ -7,7 +7,7 @@ import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat
 import ModalPortal from '../../ui/ModalPortal'
 import type { CommandDefinition } from '../../../commands'
 import { ReportEmbedProvider, useReportDataApi } from './reportEmbedContext'
-import { installDashboardChatWidgets, type ChatWidgetSlot } from './dashboardChatWidgets'
+import { installDashboardChatWidgets, type ChatWidgetSlot, type ReportTheme } from './dashboardChatWidgets'
 import { installDashboardActionButtons, type ActionRequest } from './reportActionButtons'
 import { ReportActionDialog } from './ReportActionDialog'
 import { ReportQuestionFrame } from './ReportQuestionFrame'
@@ -27,6 +27,8 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const [slots, setSlots] = useState<ChatWidgetSlot[]>([])
   const [authored, setAuthored] = useState(false)
   const [action, setAction] = useState<ActionRequest | null>(null)
+  const [theme, setTheme] = useState<ReportTheme>({ vars: {} })
+  const modeClass = (mode?: string) => mode === 'light' ? 'force-light' : mode === 'dark' ? 'dark' : ''
   const data = useReportDataApi()
   const boundRef = useRef(bound)
   boundRef.current = bound
@@ -100,7 +102,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const chatWidgets = useCallback((frame: HTMLIFrameElement) => {
     const binding = installDashboardChatWidgets(frame, {
       available: canAsk, container: container.current!, openConversation: () => opener.current(),
-      changed: (next, hasWidgets) => { setSlots(next); setAuthored(hasWidgets) }, popup: setPopup, error: setError,
+      changed: (next, hasWidgets) => { setSlots(next); setAuthored(hasWidgets) }, popup: setPopup, error: setError, themeChanged: setTheme,
     })
     const buttons = installDashboardActionButtons(frame, { available: canUseFunctions, open: setAction })
     widgetApi.current = binding.api
@@ -136,15 +138,15 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       {!authored && canAsk && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
         <MessageCircle className="h-4 w-4" /> Ask
       </button>}
-      {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} data-report-theme={slot.palette} className="absolute z-30 overflow-hidden bg-background text-foreground" style={{ ...slot.vars, left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' } as CSSProperties}>{conversation}</section>)}
+      {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} data-report-theme={slot.palette} className={`absolute z-30 overflow-hidden bg-background text-foreground ${modeClass(slot.mode)}`} style={{ ...slot.vars, left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' } as CSSProperties}>{conversation}</section>)}
       {error && <p role="alert" className="absolute bottom-2 left-2 z-40 rounded-md border border-border bg-background px-2 py-1 text-sm text-destructive">{error}</p>}
     </div>
-    {popup && canAsk && <ModalPortal><dialog ref={dialog} aria-label="Dashboard chat" onCancel={() => setPopup(false)} className="m-auto h-[min(80vh,42rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-background p-3 text-foreground shadow-xl backdrop:bg-black/50">
+    {popup && canAsk && <ModalPortal><dialog ref={dialog} aria-label="Dashboard chat" style={theme.vars as CSSProperties} onCancel={() => setPopup(false)} className={`${modeClass(theme.mode)} m-auto h-[min(80vh,42rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-background p-3 text-foreground shadow-xl backdrop:bg-black/50`}>
       <div className="flex h-full min-h-0 flex-col">
         <header className="mb-2 flex items-center justify-between"><span>Ask</span><button type="button" aria-label="Close chat" onClick={() => setPopup(false)}><X className="h-4 w-4" /></button></header>
         <div className="min-h-0 flex-1">{conversation}</div>
       </div>
     </dialog></ModalPortal>}
-    {action && canUseFunctions && <ReportActionDialog resourceId={resourceId} request={action} onClose={() => setAction(null)} />}
+    {action && canUseFunctions && <ReportActionDialog resourceId={resourceId} request={action} theme={theme} onClose={() => setAction(null)} />}
   </ReportEmbedProvider>
 }

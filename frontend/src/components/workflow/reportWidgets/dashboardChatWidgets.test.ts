@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
-import { installDashboardChatWidgets, readChatStyle, type ChatWidgetSlot } from './dashboardChatWidgets'
+import { installDashboardChatWidgets, readChatStyle, readReportTheme, type ChatWidgetSlot } from './dashboardChatWidgets'
 
 const dispose: (() => void)[] = []
 afterEach(() => { dispose.splice(0).forEach(fn => fn()); document.body.replaceChildren(); vi.restoreAllMocks() })
@@ -67,4 +67,13 @@ it('reads a designer chat style: a built-in palette, a radius and colours, and i
   const bad = document.createElement('section')
   bad.setAttribute('data-report-chat-palette', 'x'); bad.setAttribute('data-report-chat-radius', '99999px'); bad.setAttribute('data-report-chat-vars', '{oops')
   expect(readChatStyle(bad)).toEqual({ palette: undefined, vars: undefined })
+})
+
+it("reads the dashboard's own --report-* theme and the fit-to-window option", () => {
+  const css: Record<string, string> = { '--report-background': '#fff', '--report-primary': 'rgb(31, 136, 61)', '--report-border': '208 14% 82%', '--report-radius': '8px', '--report-foreground': 'url(x)', '--report-unknown': '#000' }
+  css['--report-mode'] = 'light'
+  expect(readReportTheme(name => css[name] ?? '')).toEqual({ vars: { '--background': '0 0% 100%', '--primary': '137 63% 33%', '--border': '208 14% 82%', '--radius': '8px' }, mode: 'light' })
+  const el = document.createElement('section')
+  el.setAttribute('data-report-chat-fit', 'viewport'); el.setAttribute('data-report-chat-theme', 'DARK')
+  expect(readChatStyle(el)).toMatchObject({ fit: 'viewport', mode: 'dark' })
 })

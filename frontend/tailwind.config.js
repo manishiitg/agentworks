@@ -2,7 +2,10 @@ import tailwindcssAnimate from "tailwindcss-animate"
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: 'class',
+  // Same as 'class' (a descendant of .dark), except inside a .force-light surface,
+  // so a dashboard can ask for a light chat while the app itself is dark. The
+  // :where() keeps the specificity identical to the plain class strategy.
+  darkMode: ['variant', '&:is(.dark *):not(:where(.force-light *))'],
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",

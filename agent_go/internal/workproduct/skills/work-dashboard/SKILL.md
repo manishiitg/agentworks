@@ -102,6 +102,14 @@ app's light or dark mode), `data-report-chat-radius` (for example `6px` or
 properties and invalid values are ignored. The panel's size and position remain
 yours, in the dashboard's CSS.
 
+Set the look once for the whole dashboard in its own CSS: define `--report-background`,
+`--report-foreground`, `--report-primary`, `--report-border`, `--report-muted` (colours as
+`#rrggbb`, `rgb(...)` or `H S% L%`) and `--report-radius` on `:root`; the chat and the
+function form follow them, and the per-panel attributes above override them. Set `--report-mode: light` (or `dark`) on `:root`, or `data-report-chat-theme="light"` on a
+panel, to make the chat light or dark whatever the app's own mode is. Add
+`data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
+composer never sits below the fold.
+
 Preview has no conversation: `chat.available` is false. Code has no native
 project Ask adapter yet; leave its chat widgets unavailable. Check availability
 before calling widget controls. These widgets require the managed dashboard

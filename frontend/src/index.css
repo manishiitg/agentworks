@@ -20,7 +20,8 @@
 
 @layer base {
   /* ===== DEFAULT THEME (VS Code Light) ===== */
-  :root {
+  :root,
+  .force-light {
     --runloop-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
     /* VS Code Light Theme Colors */
@@ -65,6 +66,8 @@
   }
   
   /* ===== DARK THEME ===== */
+  .force-light { color-scheme: light; }
+
   .dark {
     color-scheme: dark;
     /* Deep dark app palette */
@@ -160,7 +163,8 @@
      stat/table-only report reads as warm paper. The base font-family switches to
      a humanist sans; serif-heading application lands in the widget components
      (which read --report-font-serif). */
-  [data-report-theme="anthropic"] {
+  [data-report-theme="anthropic"],
+  .dark .force-light[data-report-theme="anthropic"] {
     --background: 48 33% 95%;        /* #F5F4EE warm ivory */
     --foreground: 40 8% 12%;         /* #1A1915 warm near-black */
     --card: 45 30% 98%;              /* #FCFBF8 */
@@ -229,7 +233,8 @@
   /* Warm — sunset reds/oranges. Tints primary, accent, and the card/muted
      surfaces so the theme is visible even in chart-light reports (a report
      with only stat + table widgets still picks up the warm accents). */
-  [data-report-theme="warm"] {
+  [data-report-theme="warm"],
+  .dark .force-light[data-report-theme="warm"] {
     --chart-1: 0 70% 55%;
     --chart-2: 20 75% 55%;
     --chart-3: 35 80% 55%;
@@ -252,7 +257,8 @@
   }
 
   /* Cool — blues / teals. Same shape as warm. */
-  [data-report-theme="cool"] {
+  [data-report-theme="cool"],
+  .dark .force-light[data-report-theme="cool"] {
     --chart-1: 200 70% 45%;
     --chart-2: 180 60% 45%;
     --chart-3: 220 65% 50%;

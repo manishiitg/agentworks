@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { X } from 'lucide-react'
 import api from '../../../services/api'
 import { useAuthStore } from '../../../stores/useAuthStore'
@@ -16,7 +16,7 @@ const waiting = (call: CallState) => Boolean(call.pending_inputs && call.pending
 /** Native form for one published function of the dashboard's own project. The
  * server resolves the project from the dashboard record; this component only
  * names the function. Submit runs it as the signed-in person. */
-export function ReportActionDialog({ resourceId, request, onClose }: { resourceId: string; request: ActionRequest; onClose: () => void }) {
+export function ReportActionDialog({ resourceId, request, theme, onClose }: { resourceId: string; request: ActionRequest; theme?: { vars: Record<string, string>; mode?: string }; onClose: () => void }) {
   const user = useAuthStore(state => state.user)
   const dialog = useRef<HTMLDialogElement>(null)
   const alive = useRef(true)
@@ -76,7 +76,7 @@ export function ReportActionDialog({ resourceId, request, onClose }: { resourceI
   const statusLine = !call ? '' : terminal(call.status) ? (call.status === 'failed' ? 'Failed' : 'Done') : waiting(call) ? 'Waiting for an answer in the app' : 'Running…'
 
   return <ModalPortal>
-    <dialog ref={dialog} aria-label={request.label} data-testid="report-action-dialog" onCancel={onClose} className="m-auto max-h-[85vh] w-[calc(100%_-_2rem)] max-w-xl overflow-y-auto rounded-xl border border-border bg-background p-4 text-foreground shadow-xl backdrop:bg-black/50">
+    <dialog ref={dialog} aria-label={request.label} data-testid="report-action-dialog" style={theme?.vars as CSSProperties | undefined} onCancel={onClose} className={`${theme?.mode === 'light' ? 'force-light ' : theme?.mode === 'dark' ? 'dark ' : ''}m-auto max-h-[85vh] w-[calc(100%_-_2rem)] max-w-xl overflow-y-auto rounded-xl border border-border bg-background p-4 text-foreground shadow-xl backdrop:bg-black/50`}>
       <header className="mb-3 flex items-start justify-between gap-3">
         <div><h2 className="text-base font-semibold">{request.label}</h2><p className="text-xs text-muted-foreground">Runs as {runsAs}</p></div>
         <button type="button" aria-label="Close" onClick={onClose}><X className="h-4 w-4" /></button>
