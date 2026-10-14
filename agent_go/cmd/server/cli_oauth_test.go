@@ -244,3 +244,14 @@ func TestCLIOAuthMayPostTheBrainSecretRoute(t *testing.T) {
 		t.Fatal("more of the Brain secret path is open to the CLI token than the one POST")
 	}
 }
+
+// `agentworks secret set|import` posts to this route over the CLI sign-in. It was missing from the path list (403
+// invalid_target on a server), and only that one POST is open.
+func TestCLIOAuthMayPostTheSecretsRoute(t *testing.T) {
+	if !cliOAuthAllowedPath("POST", "/api/external/v1/secrets") {
+		t.Fatal("the CLI sign-in cannot reach the secrets route")
+	}
+	if cliOAuthAllowedPath("GET", "/api/external/v1/secrets") || cliOAuthAllowedPath("POST", "/api/external/v1/secrets/other") {
+		t.Fatal("more of the secrets path is open to the CLI token than the one POST")
+	}
+}
