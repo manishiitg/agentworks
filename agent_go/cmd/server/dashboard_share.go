@@ -228,7 +228,6 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 	default:
 		return runShareState{}, dashboardFailure(404, "sharing is not available for this kind of project")
 	}
-	return api.readRunShare(ctx, claims, target)
 }
 
 func unknownSuffix(unknown []string) string {
