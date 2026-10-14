@@ -107,6 +107,9 @@ deploy_rts() {
   SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$SSH_KEY_PATH" "video-studio@$HOST_IP")
   rts_cleanup() { rm -rf "$STAGING"; "${SSH[@]}" "rm -rf '$REMOTE_JOB'" >/dev/null 2>&1 || true; }
   trap rts_cleanup EXIT
+  # The same standard user-namespace profile as every other server, through SSM (this host has no sudo over ssh).
+  rts_userns() { echo "==> [rts] userns: $1"; AWS_PROFILE_NAME="$AWS_PROFILE_NAME" AWS_REGION="$AWS_REGION" STACK_NAME="$STACK_NAME" "$RTS_DIR/slots-admin.sh" "$1" || echo "WARN userns $1 via SSM did not run; the host's operator runs deploy/aws-ec2/slots-admin.sh $1"; }
+  rts_userns userns
   local repo url prebuilt_name=""
   if [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]]; then
     # Build once on the Hetzner box (or reuse the build of these revisions); RTS only copies it after verifying the manifest.
@@ -146,6 +149,8 @@ deploy_rts() {
   # Keep builds below ~3/4 of a 4 GB host (RTS_BUILD_MEMORY_MAX overrides, e.g. 6G on a larger instance) and two CPU
   # cores while tests keep running; swap absorbs the rest, so a build is slower, not killed.
   "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+  # The release is live and its services re-exec'd: retire an older per-product profile (refuses while any service still lacks the standard one).
+  rts_userns userns-retire
 }
 
 # Read-only CloudFront usage for RTS against the always-free tier (1 TB out,
@@ -261,6 +266,8 @@ fi
 if [[ -n "${HOST_SETUP_USER:-}" ]]; then
   echo "==> [$PRODUCT] Allowing the sandbox's user namespaces for this product's launcher only"
   ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- userns" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+else
+  echo "==> [$PRODUCT] userns: skipped (no HOST_SETUP_USER); the host's operator runs provision-slots.sh userns"
 fi
 
 echo "==> [$PRODUCT] Checking deployment configuration"
@@ -400,7 +407,10 @@ fi
 # The release is live and the services have re-exec'd under the standard profile: only now retire an older per-product profile
 # (it refuses while any service process still runs without the standard one).
 if [[ -n "${HOST_SETUP_USER:-}" ]]; then
+  echo "==> [$PRODUCT] userns-retire: removing an older profile once the services run under the standard one"
   ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT APP_DIR=${APP_DIR:-} bash -s -- userns-retire" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh" || echo "WARN userns-retire did not run; the older profile stays."
+else
+  echo "==> [$PRODUCT] userns-retire: skipped (no HOST_SETUP_USER)"
 fi
 
 echo "==> [$PRODUCT] Verifying"
