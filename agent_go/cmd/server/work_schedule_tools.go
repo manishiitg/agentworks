@@ -74,7 +74,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		for _, job := range jobs {
 			if strings.EqualFold(job.Profile.ID, profileID) && job.ProjectID == projectID && job.Schedule.Condition == nil {
 				runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
-				out = append(out, api.productSchedules.jobResponse(job, runsWorkspace))
+				out = append(out, withScheduleStatusText(ctx, api.productSchedules.jobResponse(job, runsWorkspace)))
 			}
 		}
 		encoded, err := json.MarshalIndent(map[string]interface{}{"schedules": out}, "", "  ")
@@ -135,7 +135,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				return "", err
 			}
 			runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
-			encoded, err := json.MarshalIndent(api.productSchedules.jobResponse(job, runsWorkspace), "", "  ")
+			encoded, err := json.MarshalIndent(withScheduleStatusText(ctx, api.productSchedules.jobResponse(job, runsWorkspace)), "", "  ")
 			return string(encoded), err
 		}); err != nil {
 			return err
@@ -191,7 +191,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				return "", err
 			}
 			runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
-			encoded, err := json.MarshalIndent(api.productSchedules.jobResponse(job, runsWorkspace), "", "  ")
+			encoded, err := json.MarshalIndent(withScheduleStatusText(ctx, api.productSchedules.jobResponse(job, runsWorkspace)), "", "  ")
 			return string(encoded), err
 		}); err != nil {
 			return err
