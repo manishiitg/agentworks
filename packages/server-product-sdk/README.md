@@ -31,7 +31,7 @@ provide account isolation from malicious same-origin code. Never install
 unreviewed assets under this boundary. Third-party server products are prohibited
 until their UI uses a separate origin and explicit API boundary. Product responses
 cannot grant cross-origin access with `Access-Control-*` headers. See the PLAT-869 entry in
-[Decisions](../../docs/DECISIONS.md).
+the decisions log.
 
 Configure the same product-specific secret in the platform proxy and composed
 host, independently of the Vault admin secret:

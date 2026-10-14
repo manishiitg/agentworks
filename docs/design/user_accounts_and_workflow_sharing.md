@@ -237,7 +237,7 @@ organisations, multiple server replicas.
 > **Removed 2026-10-01.** The invitation email, the resend route and the per-deployment
 > `USER_INVITE_EMAILS` switch no longer exist, and a sign-in no longer creates an account: an
 > administrator adds every person (and, later, assigns their slot). The section below is kept
-> as history. See `docs/DECISIONS.md`.
+> as history. See the decisions log.
 
 Adding a person by email (Access → Users, or the top-bar Users page) sends
 them an invitation through the same Supabase project that handles Google

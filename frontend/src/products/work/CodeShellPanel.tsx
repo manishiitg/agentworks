@@ -51,7 +51,7 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
 const toolbarButton = 'inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40'
 
 // A Code workspace's terminal: a real shell in this Code's folder, run as your own account where the server has per-user accounts
-// (see docs/DECISIONS.md, 2026-10-03). It looks like the coding-tool terminals (same theme and font) and adds the usual comforts:
+// (see the decisions log, 2026-10-03). It looks like the coding-tool terminals (same theme and font) and adds the usual comforts:
 // clickable links, search (Ctrl/Cmd+F), copy and paste, font size, fullscreen, and a quiet reconnect. It keeps running while the panel
 // is closed and stops after 30 idle minutes, on Stop, or when the Code is deleted.
 // Up to SHELL_MAX_TABS terminals per Code, each its own shell (same sandbox, same home). The tab strip sits above the active one;

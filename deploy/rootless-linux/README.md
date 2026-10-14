@@ -199,7 +199,7 @@ every deploy:
 ```
 
 Do not assign a slot to anyone on a server whose self-test fails. A slot command never receives a browser profile, a browser
-socket folder or the app state (see `docs/DECISIONS.md`); it uses the project's browser through the platform.
+socket folder or the app state (see the decisions log); it uses the project's browser through the platform.
 
 ## Managed Chrome under the shell sandbox
 

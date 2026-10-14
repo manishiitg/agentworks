@@ -10,7 +10,7 @@ import (
 // default; AGENTWORKS_PROJECT_SHARING=off makes every project private to its owner, as Code workspaces always
 // are. It is a variable so tests can switch it. A Crew's owner can also make one Crew private (crewSharedWithOthers).
 // Why: Crew turns run on the app account (2026-10-04), so a reader does not need to work inside the owner's
-// slot folder, and Crews listed by list_crews must also open (docs/DECISIONS.md, 2026-10-08).
+// slot folder, and Crews listed by list_crews must also open (the decisions log, 2026-10-08).
 var projectSharingEnabled = func() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_PROJECT_SHARING")), "off")
 }

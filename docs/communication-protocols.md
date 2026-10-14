@@ -137,7 +137,7 @@ How the pieces fit:
   oldest first in batches of 20 for authorized senders in the same account.
   Existing restricted attachments wait for a person to confirm `/agentworks attach`
   before accepting all account senders. Upgrade the server before the CLI. Rationale:
-  [the 2026-10-11 bridge decision](DECISIONS.md)
+  the 2026-10-11 bridge decision (decisions log)
   ("Person-attached plugins use a durable local message bridge").
 - The person signs in once. Each attached agent gets its own revocable
   connection created by the CLI.

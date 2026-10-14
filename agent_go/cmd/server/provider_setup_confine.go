@@ -16,7 +16,7 @@ import (
 // the CLI's own install, so the terminal cannot read another user's folders or the server's secret files.
 // Before this, the terminal ran the coding CLI as the platform account with only the CLI's own flags
 // (--sandbox read-only, --disable-shell) between a user and every file that account can read, and Pi and Agy
-// opened unrestricted (docs/DECISIONS.md, 2026-10-01). Only a personal account is confined; the server's own
+// opened unrestricted (the decisions log, 2026-10-01). Only a personal account is confined; the server's own
 // account is administered by an admin and keeps its service home.
 //
 // userAccount says the terminal belongs to a personal account (it has its own private HOME). On a host that

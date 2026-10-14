@@ -225,7 +225,7 @@ func ResolveUserPath(docsDir, requestedPath, userID string) (string, error) {
 	// and stamps X-User-ID: Code collaborators, Crew owners and administrators legitimately read another
 	// user's folder), so a path is not refused for naming another user. What is refused, in
 	// IsValidFilePath, is a symlink carrying a path from one tree into another, which would let a link
-	// planted in the caller's own folder read someone else's (docs/DECISIONS.md, 2026-10-01).
+	// planted in the caller's own folder read someone else's (the decisions log, 2026-10-01).
 	return resolved, nil
 }
 

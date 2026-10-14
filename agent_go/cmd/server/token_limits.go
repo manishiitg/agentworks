@@ -19,7 +19,7 @@ import (
 )
 
 // Per-user daily and weekly token limits on the shared server accounts
-// (PLAT-683, docs/DECISIONS.md 2026-10-07).
+// (PLAT-683, the decisions log 2026-10-07).
 //
 // Each shared account (global:<provider>) has its own per-person default
 // (provider-account-settings.json token_limits) and a person may have an
@@ -40,7 +40,7 @@ import (
 // absent) is unlimited. In a person's override of one shared account
 // (account_token_limits) a field may also be TokenLimitUnlimited (-1):
 // unlimited even when the account has a default, where 0 falls back to the
-// default (docs/DECISIONS.md 2026-10-07, PLAT-693). Anywhere else -1 is the
+// default (the decisions log 2026-10-07, PLAT-693). Anywhere else -1 is the
 // same as 0.
 type UserTokenLimits struct {
 	Daily  int64 `json:"daily,omitempty"`

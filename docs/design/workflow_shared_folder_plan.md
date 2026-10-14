@@ -39,7 +39,7 @@ policy drops initial and attached-folder workspace writes, leaving the private
 runtime writable. Backend workflow execution may still perform its authorized
 business actions and persist outputs; that is separate from the chat CLI's
 ability to edit configuration. Existing Landlock blocked-path and host-grant
-limitations remain as listed in `DECISIONS.md`.
+limitations remain as listed in the decisions log.
 
 `AGENTWORKS_ISOLATE_WORKFLOW_CLI=false` remains a transitional Builder rollback.
 Run always isolates: the launcher automatically grants cwd writes, so using the

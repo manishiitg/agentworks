@@ -31,7 +31,7 @@ func encode(req ExecRequest) ([]byte, error) {
 // is switched off (safe.directory=*). It also guarded against a repository whose own configuration runs
 // code, so the two ways a repository does that without being asked, hooks and a file-system monitor,
 // are switched off too (core.hooksPath, core.fsmonitor). A shared folder's author cannot get code run
-// as another user's slot through git. Recorded in docs/DECISIONS.md.
+// as another user's slot through git. Recorded in the decisions log.
 func GitSlotEnv() []string {
 	return []string{
 		"GIT_CONFIG_COUNT=3",

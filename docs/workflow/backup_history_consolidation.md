@@ -6,7 +6,7 @@ not exist yet (changelog entries are not tagged with backup commit refs, and the
 are no builder hooks for "risky bulk op").
 
 > 2026-09-30: the ZIP workspace export/import endpoints and the `local_zip`
-> strategy were removed (see `docs/DECISIONS.md`). References to them below
+> strategy were removed (see the decisions log). References to them below
 > describe the pre-removal design.
 
 Implemented so far:

@@ -11,7 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 )
 
-// Allowed models per provider account (docs/DECISIONS.md, 2026-10-03).
+// Allowed models per provider account (the decisions log, 2026-10-03).
 //
 // Every account (the installed or admin-managed "global:<provider>" account
 // and every personal account) may carry a list of model ids. An empty list is
