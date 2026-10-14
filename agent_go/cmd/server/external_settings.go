@@ -285,7 +285,7 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	removeValues := externalSettingsList(args, "secrets", "remove")
 	if len(values) > 0 || len(removeValues) > 0 {
 		if !t.owner {
-			return nil, nil, &externalSettingsError{403, "forbidden", "Only an owner can set or remove secret values."}
+			return nil, nil, &externalSettingsError{403, "forbidden", "Only the project's owner can set or remove secret values. Ask the owner to give you the value, or to run `agentworks secret set NAME` for this project in their terminal."}
 		}
 		named := append([]string{}, removeValues...)
 		for key := range values {

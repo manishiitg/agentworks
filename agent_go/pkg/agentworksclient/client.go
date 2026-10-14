@@ -227,6 +227,25 @@ func (c *Client) BrainSecretSet(ctx context.Context, name, value string) (json.R
 	}{name, value}, true)
 }
 
+// SecretTarget names where secrets go: kind is vault, workflow, relay or crew.
+type SecretTarget struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id,omitempty"`
+}
+
+// SecretsImport stores secret values (or, with dryRun, only checks the names) over the person's own sign-in. The answer
+// lists names and outcomes, never a value. It is not an MCP tool, so a value in the CLI goes file to server directly.
+func (c *Client) SecretsImport(ctx context.Context, target SecretTarget, secrets map[string]string, names []string, overwrite, dryRun bool) (json.RawMessage, error) {
+	body := struct {
+		Target    SecretTarget      `json:"target"`
+		Secrets   map[string]string `json:"secrets,omitempty"`
+		Names     []string          `json:"names,omitempty"`
+		Overwrite bool              `json:"overwrite,omitempty"`
+		DryRun    bool              `json:"dry_run,omitempty"`
+	}{target, secrets, names, overwrite, dryRun}
+	return c.request(ctx, http.MethodPost, "/api/external/v1/secrets", body, true)
+}
+
 func (c *Client) Login(ctx context.Context, provider, username, password string) (string, error) {
 	data, err := c.request(ctx, http.MethodPost, "/api/auth/login", struct {
 		Provider string `json:"provider,omitempty"`

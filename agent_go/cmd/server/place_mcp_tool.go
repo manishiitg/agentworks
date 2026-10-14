@@ -22,7 +22,7 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 			"list: the catalog and this Code's connections. <!-- product:mcp-gateway -->Also shows the signed-in user's Vault groups, permitted MCPs/tools and secret names (never values).<!-- /product --> Inspect this live inventory before proposing setup. "+
 			"connect: add a catalog server (catalog) or an https URL (name + url) to this Code with the owner's own login, and return the sign-in link for them to open. "+
 			"remove: detach a connection from this Code. <!-- product:mcp-gateway -->Vault MCPs are available automatically through the signed-in user/group permissions; select/deselect are obsolete for Vault. Shared connections and grants are managed in Vault.<!-- /product --> "+
-			"Never ask for passwords, API keys or OAuth client secrets in chat; when a provider needs the user's own OAuth app, send them to the Integrations > Available to finish. Changes apply from the user's next message.",
+			"Never ask for passwords or OAuth sign-ins in chat; send them to the sign-in link. When the user gives you an API key or OAuth client secret, store it as a secret by name with the secret tools and never repeat it; when a provider needs the user's own OAuth app, send them to the Integrations > Available to finish. Changes apply from the user's next message.",
 		map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{

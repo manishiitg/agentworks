@@ -248,6 +248,32 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 				return
 			}
 			path, method, payload = "/api/admin/groups/"+url.PathEscape(group)+"/secrets", http.MethodPost, map[string]any{"name": secret, "allowed": allow}
+		case "set_value":
+			values := map[string]string{}
+			if raw, ok := args["values"].(map[string]any); ok {
+				for key, value := range raw {
+					text, _ := value.(string)
+					values[strings.TrimSpace(key)] = text
+				}
+			}
+			if len(values) == 0 {
+				fail("set_value requires values: {NAME: value}.")
+				return
+			}
+			overwrite, _ := args["overwrite"].(bool)
+			results, err := api.importVaultSecrets(r.Context(), claims.UserID, values, overwrite, false)
+			if err != nil {
+				status := 403
+				if !errors.Is(err, errGlobalAdmin) {
+					status = 400
+				}
+				externalError(w, status, "forbidden", err.Error())
+				return
+			}
+			summary := summarizeSecretResults(results)
+			logSecretWrite(claims.UserID, "vault", len(results), summary, requestLogID(r))
+			externalJSON(w, map[string]any{"results": results, "summary": summary, "note": "Values are stored and never shown. Refer to each secret by name only."})
+			return
 		case "share":
 			api.vaultShareProjectSecret(w, r, claims, args)
 			return

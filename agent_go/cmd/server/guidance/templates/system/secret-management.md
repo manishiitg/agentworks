@@ -3,7 +3,7 @@
 Secrets are credentials (API keys, tokens, passwords). Keep project-specific credentials in the project secret store:
 
 - **Workflow secrets** — shared with users who have workflow access, AES-GCM encrypted, scoped only to one workflow or product project. Use these by default for workflow-specific credentials when the workflow secret tools are available.
-<!-- product:mcp-gateway -->- **Vault secrets** — shared across projects, with group permissions. They are added, rotated, shared and deleted in Vault (its Secrets panel, its chat, or Vault's MCP tools), not from a Builder chat. `GLOBAL_SECRET_*` environment entries remain operator-managed.<!-- /product -->
+<!-- product:mcp-gateway -->- **Vault secrets** — shared across projects, with group permissions. They are added, rotated, shared and deleted in Vault (its Secrets panel, its chat, or Vault's MCP tools: `manage_vault_secret_access` operation `set_value`), by a Vault administrator. `GLOBAL_SECRET_*` environment entries remain operator-managed.<!-- /product -->
 
 ### Tools
 
@@ -17,6 +17,10 @@ Secrets are credentials (API keys, tokens, passwords). Keep project-specific cre
 2. In a workflow builder/workshop chat, prefer `set_workflow_secret(name, value)` for workflow-only credentials.<!-- product:mcp-gateway --> For credentials shared across workflows, point the user to Vault.<!-- /product -->
 3. In a workflow-builder session, `set_workflow_secret` automatically attaches and injects a newly stored value. For an already-stored secret, attach it with the workflow config tool (for example `update_workflow_config(add_secrets=["NAME"])`). The attached value becomes immediately available to the builder shell and workflow steps as `$SECRET_<NAME>` without revealing plaintext to the model.
 4. Confirm success. Do NOT echo the plaintext value back to the user — acknowledge by name only.
+
+### Adding a secret value
+
+A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`set_workflow_secret`, the settings tool's `secrets.set` for a workflow, Relay or Crew owner, `manage_vault_secret_access` `set_value` for Vault, or `manage_my_vaults` `set_secret` for a vault you own), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
 
 ### Safety rules
 
@@ -43,8 +47,7 @@ secret into Vault is done in Vault, by a Vault administrator: the
 `manage_vault_secret_access(operation=share)` over MCP. The copy is made inside
 the backend (the value never passes through a model), the project copy stays,
 and the chosen groups get access. Copies rotate independently. From a Builder
-chat, tell the user where to do it; do not fetch, print or pass a secret value
-to do it yourself. Ordinary owners and readers cannot manage Vault values or
+chat, tell the user where to do it; to share a project secret, never fetch, print or pass its value yourself. Ordinary owners and readers cannot manage Vault values or
 grants. There is no per-user secret bucket: project secrets and Vault secrets
 are the platform model.
 

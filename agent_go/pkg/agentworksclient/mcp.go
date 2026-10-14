@@ -54,7 +54,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 	}
 	for _, definition := range definitions {
 		if definition.Name == "manage_vault_access" {
-			instructions += " Exception: authorized Vault management may make changes. Use manage_vault_access for connections/tool/regex permissions, manage_vault_groups for membership, and manage_vault_secret_access for secret names/group grants. No workflow_id is needed. Secret values are never returned. The same Vault management tools are declared in Vault product.yaml for builder and MCP. Use query_vault_db/mutate_vault_db for guarded governance SQL, list_vault_mcp_servers for setup inventory and call_vault_mcp_tool for approved upstream setup calls as this administrator. Ordinary Vault MCP runtime remains group scoped."
+			instructions += " Exception: authorized Vault management may make changes. Use manage_vault_access for connections/tool/regex permissions, manage_vault_groups for membership, and manage_vault_secret_access for secret names/group grants and storing a secret value the person gives you (operation=set_value; never repeat the value). No workflow_id is needed. Secret values are never returned. The same Vault management tools are declared in Vault product.yaml for builder and MCP. Use query_vault_db/mutate_vault_db for guarded governance SQL, list_vault_mcp_servers for setup inventory and call_vault_mcp_tool for approved upstream setup calls as this administrator. Ordinary Vault MCP runtime remains group scoped."
 			break
 		}
 	}

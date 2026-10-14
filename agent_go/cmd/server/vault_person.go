@@ -65,9 +65,10 @@ const manageMyVaultsDescription = "Create vaults and share MCP connections throu
 	"add_member / remove_member {vault_id, email}; add_owner / remove_owner {vault_id, email}; " +
 	"connect {vault_id, provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {vault_id, connection_id} to sign a connection in again; promote {vault_id, name, confirm} to move a sign-in connection that already works in this Crew, Code or workflow (exact name from list_mcp_servers) into your vault with its existing sign-in, no second sign-in (call once without confirm for the explanation, then with confirm=true); " +
-	"promote_secret {vault_id, name, confirm} copies a secret of this Crew, Code or workflow into your vault server-side (you never see the value; confirm as for promote); remove_secret {vault_id, name}; " +
+	"promote_secret {vault_id, name, confirm} copies a secret of this Crew, Code or workflow into your vault server-side (you never see the value; confirm as for promote); " +
+	"set_secret {vault_id, name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {vault_id, name}; " +
 	"sync {vault_id, connection_id}; remove_connection {vault_id, connection_id}; delete {vault_id} (only when it holds no connections or secrets). " +
-	"Members get a connection's tools as soon as it is in the vault. Secret values are never taken in chat: an owner types one into the vault screen, or promotes an existing one."
+	"Members get a connection's tools as soon as it is in the vault. A vault owner can give you a secret value to store with set_secret, or type it on the vault screen, or run `agentworks secret set NAME` in their terminal, or promote an existing one."
 
 func manageMyVaultsParameters() map[string]interface{} {
 	str := func(desc string) map[string]interface{} {
@@ -77,7 +78,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "promote_secret", "remove_secret", "sync", "remove_connection", "delete"}},
+			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
 			"vault_id":      str("The vault's ID from list."),
 			"name":          str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
 			"description":   str("create: what the vault is for."),
@@ -86,6 +87,8 @@ func manageMyVaultsParameters() map[string]interface{} {
 			"label":         str("connect: an account label, e.g. Notion · Engineering."),
 			"connection_id": str("The connection's ID (c-...) from inspect."),
 			"confirm":       map[string]interface{}{"type": "boolean", "description": "promote: true after the explanation has been shown."},
+			"value":         str("set_secret: the secret value the person gave you. Stored on the server; never repeat it."),
+			"replace":       map[string]interface{}{"type": "boolean", "description": "set_secret: replace an existing secret with this name."},
 		},
 	}
 }
@@ -230,6 +233,20 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			return "", err
 		}
 		return api.promoteSecretToVault(ctx, person, vaultID, argString(args, "name"), args["confirm"] == true)
+	case "set_secret":
+		if err := needVault(); err != nil {
+			return "", err
+		}
+		name := argString(args, "name")
+		replace := args["replace"] == true
+		rawValue, _ := args["value"].(string)
+		if err := api.setVaultSecret(ctx, person, vaultID, name, rawValue, replace); err != nil {
+			return "", err
+		}
+		if replace {
+			return "Stored " + name + " in the vault (replaced if it existed). The value is not shown again.", nil
+		}
+		return "Stored " + name + " in the vault. The value is not shown again.", nil
 	case "remove_secret":
 		if err := needVault(); err != nil {
 			return "", err
