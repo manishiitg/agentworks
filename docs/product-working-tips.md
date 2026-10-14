@@ -26,17 +26,15 @@ feature: quick-switcher, panel-switcher, toolbar-hide, chat-tab-keys or
 chat-tab-new. `when.code_tabs.min` and `.max` are optional inclusive bounds.
 Keep an id when editing its wording so an already-seen tip stays suppressed.
 
-Tips appear only after ten seconds of continuous Working. New product viewers
-get a 30-minute minimum gap until two tips have been shown in that product.
-The gap then becomes one hour until four tips, two hours until six, and four
-hours thereafter. Continuous work may show another tip once it becomes due.
-Selection takes the first eligible unseen definition; exhausting the list
-stops tips until new definitions are added or context changes.
-
-Seen ids are shared across products for each signed-in account in that browser;
-cadence counters and timestamps are per account and product. This prevents
-shared tips repeating as the account switches products. Anonymous/local use
-keeps its prior browser history. Signed-in users start their own history
-because the previous browser-wide records cannot identify their owner.
-The existing used-feature suppression remains browser-local; history is not
-synced across browsers or devices.
+After ten seconds of continuous Working in a turn the app asks the server for
+that turn's tip (`GET /api/product-tips/next?surface=...&code_tabs=...&used=...&turn=...`)
+and shows it under the working line as `└ Tip: ...` for the rest of the turn. The
+SERVER chooses: tips the person has never seen come first, in YAML order; a shown
+tip stays off for three days; a tip is skipped when the browser reports its
+`skip_if_used` feature as used or the Code tab count is out of range; when
+everything is cooling down no tip is shown. The same turn asking again gets the same
+tip. The choice and the shown times are stored per signed-in person on the server
+(`preferences/product-tips.json` in their workspace area), so they follow the
+person across browsers. A person can turn tips off in the account menu (`Tips: on/off`,
+`GET/PUT /api/product-tips/preference`). The browser sends only facts only it has (open
+Code tabs, features used) and holds no selection logic or tip text.

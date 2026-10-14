@@ -60,7 +60,7 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
         <span data-testid="working-word">{text}</span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
       </span>
-      <Suspense fallback={null}><WorkingTip /></Suspense>
+      <Suspense fallback={null}><WorkingTip turnKey={startedAt} /></Suspense>
     </span>
   )
 }

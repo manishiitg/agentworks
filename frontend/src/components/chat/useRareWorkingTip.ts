@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
-import { claimWorkingTip, hasUnseenEligibleTip, workingTipDelayMs, type ProductTipCatalog } from '../../products/productTips'
+import { useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
-import { useAuthStore } from '../../stores/useAuthStore'
+import { usedFeatures } from '../../utils/featureUsage'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useChatStore } from '../../stores/useChatStore'
 
@@ -20,40 +19,32 @@ function activeCodeProjectTabs(): number {
   }).length || 1
 }
 
-/** YAML-defined hints beside Working, slowing down as this viewer learns the product. */
-export function useRareWorkingTip(working: boolean): string | null {
+/**
+ * The server's working tip for this turn, asked for once after ten seconds of work. The server chooses it (eligibility,
+ * what this person has seen, a cooldown, their on/off setting), records it as shown and gives the same tip again if
+ * the same turn asks twice. The browser only reports the facts it alone has (open Code tabs, features already used)
+ * and shows the answer.
+ */
+export function useRareWorkingTip(working: boolean, turnKey?: string | number): string | null {
   const surface = useProductSurfaceStore(state => state.productSurface)
-  const userId = useAuthStore(state => state.user?.id)
   const [tip, setTip] = useState<string | null>(null)
+  const fallbackTurn = useRef(`mount-${Math.random().toString(36).slice(2)}`)
+  const turn = String(turnKey ?? fallbackTurn.current)
   useEffect(() => {
     setTip(null)
     if (!working) return
     let stopped = false
-    let timer: number
     const controller = new AbortController()
-    const context = () => ({ surface, userId, codeTabs: surface === 'code' ? activeCodeProjectTabs() : 1 })
-    const schedule = () => { timer = window.setTimeout(() => { void showTip() }, Math.max(WORKING_TIP_DELAY_MS, workingTipDelayMs(context()))) }
-    const showTip = async () => {
+    const timer = window.setTimeout(async () => {
       try {
-        const response = await api.get<{ tips: ProductTipCatalog }>('/api/product-tips', { skipSessionContext: true, timeout: 5000, signal: controller.signal })
-        if (stopped) return
-        const definitions = response.data.tips[surface] || []
-        const next = claimWorkingTip(context(), Date.now(), definitions)
-        if (!next) {
-          // Another chat may have claimed this slot, moving our due time
-          // forward: retry then while unseen eligible tips remain. Two tabs
-          // can still claim at once; localStorage is not atomic.
-          if (hasUnseenEligibleTip(context(), definitions)) schedule()
-          return
-        }
-        setTip(next)
-        schedule()
-      } catch {
-        if (!stopped) timer = window.setTimeout(() => { void showTip() }, 60_000)
-      }
-    }
-    schedule()
+        const response = await api.get<{ tip: { id: string; text: string } | null }>('/api/product-tips/next', {
+          params: { surface, code_tabs: surface === 'code' ? activeCodeProjectTabs() : 1, used: usedFeatures().join(','), turn },
+          skipSessionContext: true, timeout: 5000, signal: controller.signal,
+        })
+        if (!stopped) setTip(response.data.tip?.text ?? null)
+      } catch { /* a tip is never worth an error on screen */ }
+    }, WORKING_TIP_DELAY_MS)
     return () => { stopped = true; window.clearTimeout(timer); controller.abort() }
-  }, [working, surface, userId])
+  }, [working, surface, turn])
   return working ? tip : null
 }

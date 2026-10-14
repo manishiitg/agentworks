@@ -4,6 +4,7 @@ import { HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import NotificationsControl from './NotificationsControl'
+import TipsToggle from './TipsToggle'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import { APP_VERSION } from '../../version'
 
@@ -97,6 +98,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             Keyboard shortcuts
           </button>}
           {<NotificationsControl menuItem />}
+          <TipsToggle />
           <div role="separator" className="my-1 border-t border-border" />
           {isMultiUserMode && passwordSignIn && <button
             type="button"
