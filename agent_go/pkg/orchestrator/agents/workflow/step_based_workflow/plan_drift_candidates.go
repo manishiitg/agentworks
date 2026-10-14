@@ -391,6 +391,14 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 	// raw plan even when the typed decode failed.
 	descriptions, descErr := planStepDescriptionsFromPlanJSON(planRaw)
 
+	// Resources (contract 1.0.49): objective structure and agreement with the step's access settings.
+	var intentProblems map[string]string
+	var intentEvaluated map[string]bool
+	if root := refMapRoot(workspacePath); workflowAtContract(root, ResourceIntentContractVersion) {
+		stepConfigRaw, _ := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json"))
+		intentProblems, intentEvaluated = ResourceIntentProblems(planRaw, string(stepConfigRaw))
+	}
+
 	candidates := make([]PlanDriftCandidate, 0, len(pendingStepIDs)+1)
 	for _, stepID := range pendingStepIDs {
 		checks := []StepDriftCheck{reportCheck, readmeCheck}
@@ -399,6 +407,9 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 		}
 		if descErr == nil {
 			checks = append(checks, checkDescriptionLayout(descriptions, stepID))
+		}
+		if intentEvaluated != nil {
+			checks = append(checks, checkResourceIntentDrift(intentProblems, intentEvaluated, stepID))
 		}
 
 		scriptedCheck, _ := CheckScriptedCodeDBQueries(ctx, workspacePath, stepID, planDriftPlainFileReader)

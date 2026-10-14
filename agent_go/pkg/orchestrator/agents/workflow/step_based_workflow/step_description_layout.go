@@ -147,3 +147,19 @@ func validateStepDescriptionLayoutStamp(version, workflowDir string) error {
 	return fmt.Errorf("%d of %d plan steps are not in the description layout:\n%s\nConvert each (one step at a time, check_plan_no_loss after each) before stamping %s",
 		len(failing), len(ids), strings.Join(failing, "\n"), version)
 }
+
+const resourceIntentDriftCheckID = "resource_intent"
+
+// checkResourceIntentDrift is the Plan Drift check for one agent step's ## Resources section (contract 1.0.49).
+func checkResourceIntentDrift(problems map[string]string, evaluated map[string]bool, stepID string) StepDriftCheck {
+	if !evaluated[stepID] {
+		return StepDriftCheck{CheckID: resourceIntentDriftCheckID, Status: stepDriftCheckStatusPass,
+			Evidence: "The Resources check applies to ordinary agent steps on contract 1.0.49 or later."}
+	}
+	if reason, bad := problems[stepID]; bad {
+		return StepDriftCheck{CheckID: resourceIntentDriftCheckID, Status: stepDriftCheckStatusFail,
+			Evidence: "The description's ## Resources section is not right: " + reason + ". Fix it in this review: rewrite the four lines from what the step really reads and writes (db/README.md writers, its Output, its scripts and its access settings), in plain words for the workflow's owner; change no access; then run check_plan_no_loss and record it fixed."}
+	}
+	return StepDriftCheck{CheckID: resourceIntentDriftCheckID, Status: stepDriftCheckStatusPass,
+		Evidence: "The ## Resources section states the knowledge base, database, Brain and learnings use and agrees with the step's access settings. Whether each line is true to what the step does is a judgement for step_prompt_quality."}
+}

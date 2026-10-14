@@ -30,12 +30,17 @@ import (
 
 const referenceMapFlagsFile = "reference_map_flags.json"
 
+// flagOnlyStrictKinds are breaks that make Plan Drift look at the step once even when they are old, but that must never
+// block a run (unlike graphStrictKinds, which GraphPreflight also enforces): a step that tells its agent to read a file
+// that does not exist is the owner's problem to see and Plan Drift's to repair or ask about.
+var flagOnlyStrictKinds = map[string]bool{"missing_file": true}
+
 // referenceMapFlagsVersion changes whenever the flagging rules change, so a
 // workflow whose files did not change is still re-evaluated once under the new
 // rules (PLAT-582 added old unreadable inputs; without this they were never seen
 // on an unchanged workflow; version 4 added removed_tool, version 5
-// header_time_conversion, 2026-10-07).
-const referenceMapFlagsVersion = 5
+// header_time_conversion, 2026-10-07; version 6 added Resources problems and old missing files named by a step).
+const referenceMapFlagsVersion = 6
 
 type referenceMapFlag struct {
 	FlaggedAt string   `json:"flagged_at"`
@@ -93,7 +98,7 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 		var strictNow []string
 		var current []string
 		for _, issue := range report.Issues {
-			strict := graphStrictKinds[issue.Kind] && strings.HasPrefix(issue.Source, "step:")
+			strict := (graphStrictKinds[issue.Kind] || flagOnlyStrictKinds[issue.Kind]) && strings.HasPrefix(issue.Source, "step:")
 			if issue.Severity != refSeverityBreak && !strict {
 				continue
 			}
@@ -138,6 +143,26 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 						}
 						state.Flags[id] = flag
 					}
+				}
+			}
+		}
+		// A step whose Resources section lost the 1.0.49 contract, or contradicts its own access settings.
+		if workflowAtContract(root, ResourceIntentContractVersion) {
+			if raw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "plan.json")); err == nil {
+				configRaw, _ := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json"))
+				problems, _ := ResourceIntentProblems(raw, string(configRaw))
+				for id, reason := range problems {
+					key := "resource_intent|step:" + id
+					strictNow = append(strictNow, key)
+					if strictSeen[key] {
+						continue
+					}
+					flag := state.Flags[id]
+					flag.FlaggedAt = now
+					if len(flag.Reasons) < 3 {
+						flag.Reasons = append(flag.Reasons, reason)
+					}
+					state.Flags[id] = flag
 				}
 			}
 		}
@@ -229,6 +254,11 @@ func referenceMapFingerprint(root string) string {
 // workflowOnLayoutContract reports whether the workflow's workflow.json is at or
 // past the step description layout contract.
 func workflowOnLayoutContract(root string) bool {
+	return workflowAtContract(root, StepDescriptionLayoutContractVersion)
+}
+
+// workflowAtContract reports whether workflow.json is at or past the given contract version.
+func workflowAtContract(root, minimum string) bool {
 	raw, err := os.ReadFile(filepath.Join(root, "workflow.json"))
 	if err != nil {
 		return false
@@ -239,7 +269,7 @@ func workflowOnLayoutContract(root string) bool {
 	if json.Unmarshal(raw, &manifest) != nil {
 		return false
 	}
-	return contractVersionAtLeast(manifest.Version, StepDescriptionLayoutContractVersion)
+	return contractVersionAtLeast(manifest.Version, minimum)
 }
 
 func contractVersionAtLeast(version, minimum string) bool {

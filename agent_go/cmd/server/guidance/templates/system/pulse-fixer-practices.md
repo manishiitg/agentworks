@@ -47,9 +47,9 @@ For each actionable finding:
    - a technique, procedure, selector or phrasing rule goes to a skill reference
      (`learnings/_global/references/<topic>.md`, correcting an existing topic in
      place) named in the step description's `## Guides`;
-   - a business rule or decision goes to the knowledge layer (a local
-     `knowledgebase/` note, <!-- product:knowledgebase -->or Brain for shared facts<!-- /product -->) or to the description's
-     `## Rules` when it is that step's own constraint;
+   - a step's own business rule stays once in the description's `## Rules`;
+     only a fact or decision several steps share goes to the knowledge layer (a
+     local `knowledgebase/` note, <!-- product:knowledgebase -->or Brain for shared facts<!-- /product -->);
    - the evidence and history of the repair (dates, run ids, what failed) go to
      the change `reason`, never into the description or a guide.
    If the passage you change sits in dated or duplicated text, move or delete

@@ -91,9 +91,17 @@ plan.json could not be read) and already carrying Go-computed results for:
 - `description_layout` — the step description carries the `## Goal`,
   `## Inputs`, `## Output` and `## Done when` layout headings. Fix a `fail` in
   this review: convert that step to the layout (`references/step-description.md`)
-  with no behaviour, output, dependency, validation or item change, move binding
-  rules to the knowledgebase and reusable HOW to a learnings skill named under
-  Guides, then run `check_plan_no_loss` and record it `fixed`.
+  with no behaviour, output, dependency, validation or item change. A step's own
+  binding rules stay once in its `## Rules` (only facts several steps share belong
+  in the knowledgebase) and reusable HOW goes to a learnings skill named under
+  Guides; then run `check_plan_no_loss` and record it `fixed`.
+- `resource_intent` — on workflows at contract 1.0.49 or later: the agent's
+  `## Resources` section states its knowledge base, database, Brain and learnings use
+  (or `none`), never says `none` for a reference the description names, and never
+  describes use of a store its own configuration switches off (an explicit `none`;
+  unset access defaults to read). Fix a `fail` in this review: rewrite the four
+  lines from what the step really reads and writes (see the next section), change
+  no access, then run `check_plan_no_loss` and record it `fixed`.
 
 Read `plan_drift_candidates_note` for the exact coverage boundary. Treat a
 precomputed `fail` as real evidence — do not re-derive it, and do not accept a
@@ -105,7 +113,15 @@ that no longer resolve (dependencies no step produces or stages, removed step
 ids and step folders, missing files and eval routes) in steps, evals, KB
 notes, soul.md and guides. Breaks naming a due step or what it changed are
 dependents to fix or file in this review; `get_plan_prompt_health` has the
-full list.
+full list. A step that tells its agent to read a file that does not exist
+(`missing_file`) makes the step due once even when the break is old, because the
+agent would be reading nothing. Repair it as a safe workflow-owned fix: when the
+workflow clearly holds the real equivalent (for example a note under
+`knowledgebase/notes/` that covers the same facts), repoint the step's reference to
+it and say which file you chose and why; when no equivalent clearly exists, do
+not guess: file one plain question for the owner ("this step expects company
+background in X, which is empty; where is it, or should it go without it?") and
+leave the text as it is.
 
 ### New broken references (any candidate, including the workflow-level one)
 
@@ -196,6 +212,20 @@ context dependencies, and guidance that execution actually receives. Assess:
 - precise wording, no conflicting/stale instructions, needless repetition,
   copied shared policy, or micromanaged procedure without a correctness reason;
 - enough context and accessible references to execute the task without guessing;
+- for description-first-v1 agents on contract 1.0.49 or later, `## Resources` lines
+  that are TRUE to what the step really reads and writes: compare each with the
+  writers and readers in `db/README.md`, the step's Output, its scripts and its
+  access settings. A summary or report file is not a database write; a step that
+  changes the status of findings or releases says so; evidence files kept under
+  `db/assets` are mentioned in a few words. Fix an untrue line directly: rewrite
+  it, add the table or store it misses, remove one it never uses. Change no
+  access, and ask the owner only when the real behaviour is unclear;
+- plain words for a non-technical owner (AGENTS.md "Audience") in the Goal and
+  Resources lines: what the step looks at or records and why, not internal terms
+  such as writer ownership, append-only logs, hashes or "under the existing
+  contract". Exact table names and file names stay under Inputs and Output, and
+  Inputs and Resources do not repeat each other. Rewrite wording that fails this
+  without changing any rule, number or limit;
 - for description-first-v1 agents, a runnable description with all task rules preserved once in its Rules section,
   with zero items allowed. Verify-only follow-ups are valid because the description
   has already performed the work. Flag redundant execution items that could repeat

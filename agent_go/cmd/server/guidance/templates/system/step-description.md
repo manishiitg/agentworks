@@ -113,6 +113,15 @@ guidance after validation; global learnings are deprecated. Say read or write ex
 as the step's grants allow, and describe a resource by purpose when the step does not
 already name its path (naming a path grants read access, see below). Configure access
 consistently with these intentions; the runtime enforces it.
+
+Write the Resources lines in plain words for the workflow's owner (AGENTS.md
+"Audience"): what the step looks at or records and why. The exact table and file
+names belong under Inputs and Output, and Inputs and Resources must not repeat
+each other. Check every Database line against the step's real outputs and the
+writers listed in `db/README.md`: a summary or report file is not a database
+write, and a step that changes the status of findings or releases says so. Mention
+other things the step keeps, such as evidence files under `db/assets`, in a few
+words.
 Do not list every available resource just because the step can access it.
 
 Everything else belongs somewhere else: optional later phases in `items[]`, reusable

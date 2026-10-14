@@ -189,17 +189,15 @@ func ValidateResourceIntentContractStamp(content string) error {
 	return nil
 }
 
-// ValidateResourceIntentAgainstStepConfig refuses a Resources line that claims use of a store the step's own
-// configuration explicitly switches off (knowledgebase_access or learnings_access "none"). Unset access defaults to
-// read for both stores, so only an explicit "none" is a contradiction; this compares a configured value with the
-// line, never its wording. Steps without a config entry, or a missing file, are not checked.
-func ValidateResourceIntentAgainstStepConfig(planContent, stepConfigContent string) error {
+// explicitNoneAccess lists, by step id, the stores (kb, learnings) a step's configuration explicitly switches off.
+// Unset access defaults to read for both, so only an explicit "none" counts.
+func explicitNoneAccess(stepConfigContent string) map[string]map[string]bool {
 	if strings.TrimSpace(stepConfigContent) == "" {
 		return nil
 	}
 	configs, err := ParseStepConfigContent(stepConfigContent)
 	if err != nil {
-		return nil // the config's own validators report a broken file; this check is only for a clear contradiction
+		return nil // the config's own validators report a broken file
 	}
 	off := map[string]map[string]bool{}
 	for _, config := range configs {
@@ -217,6 +215,88 @@ func ValidateResourceIntentAgainstStepConfig(planContent, stepConfigContent stri
 			off[config.ID] = kinds
 		}
 	}
+	return off
+}
+
+// resourceLineContradictsConfig returns the label of a store whose Resources line describes use while that store's
+// access is switched off in the step's configuration, or "".
+func resourceLineContradictsConfig(description string, off map[string]bool) string {
+	if len(off) == 0 {
+		return ""
+	}
+	section, _ := descriptionSectionBody(description, "Resources")
+	for _, line := range strings.Split(section, "\n") {
+		label, value, ok := resourceIntentLine(line)
+		if !ok {
+			continue
+		}
+		for _, kind := range resourceKinds {
+			if !off[kind.key] || statesNoUse(value) {
+				continue
+			}
+			for _, synonym := range kind.synonyms {
+				if label == synonym || strings.HasPrefix(label, synonym+" ") || strings.HasPrefix(label, synonym+"(") {
+					return strings.ToLower(kind.label)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// walkPlanAgents calls visit for every live and orphan step, routed sub-agents included.
+func walkPlanAgents(plan *PlanningResponse, visit func(PlanStepInterface)) {
+	var walk func(PlanStepInterface)
+	walk = func(step PlanStepInterface) {
+		if step == nil {
+			return
+		}
+		visit(step)
+		if agent, ok := step.(*AgentPlanStep); ok {
+			for _, route := range agent.PredefinedRoutes {
+				walk(route.SubAgentStep)
+			}
+		}
+	}
+	for _, steps := range [][]PlanStepInterface{plan.Steps, plan.OrphanSteps} {
+		for _, step := range steps {
+			walk(step)
+		}
+	}
+}
+
+// ResourceIntentProblems evaluates every ordinary agent against the 1.0.49 Resources contract: the section states all
+// four resources, none says "none" for a reference the description names, and none describes use of a store its
+// configuration switches off. It returns the failing steps with a plain reason, and every agent it evaluated. Plan Drift
+// and the Go-side due flags use it so a step edited out of the contract is looked at, not only stamped once.
+func ResourceIntentProblems(planContent []byte, stepConfigContent string) (problems map[string]string, evaluated map[string]bool) {
+	problems, evaluated = map[string]string{}, map[string]bool{}
+	var plan PlanningResponse
+	if json.Unmarshal(planContent, &plan) != nil || resolvePlanOrphanStepRefs(&plan) != nil {
+		return problems, evaluated
+	}
+	off := explicitNoneAccess(stepConfigContent)
+	walkPlanAgents(&plan, func(step PlanStepInterface) {
+		agent, ok := step.(*AgentPlanStep)
+		if !ok || agent.AuthoredPrompt {
+			return
+		}
+		evaluated[agent.ID] = true
+		if reason := checkResourceIntent(agent.Description); reason != "" {
+			problems[agent.ID] = reason
+		} else if store := resourceLineContradictsConfig(agent.Description, off[agent.ID]); store != "" {
+			problems[agent.ID] = "## Resources describes " + store + " use, but this step's configuration sets that access to none"
+		}
+	})
+	return problems, evaluated
+}
+
+// ValidateResourceIntentAgainstStepConfig refuses a Resources line that claims use of a store the step's own
+// configuration explicitly switches off (knowledgebase_access or learnings_access "none"). Unset access defaults to
+// read for both stores, so only an explicit "none" is a contradiction; this compares a configured value with the
+// line, never its wording. Steps without a config entry, or a missing file, are not checked.
+func ValidateResourceIntentAgainstStepConfig(planContent, stepConfigContent string) error {
+	off := explicitNoneAccess(stepConfigContent)
 	if len(off) == 0 {
 		return nil
 	}
@@ -227,46 +307,15 @@ func ValidateResourceIntentAgainstStepConfig(planContent, stepConfigContent stri
 	if err := resolvePlanOrphanStepRefs(&plan); err != nil {
 		return err
 	}
-	var check func(PlanStepInterface) error
-	check = func(step PlanStepInterface) error {
-		if step == nil {
-			return nil
+	var failure error
+	walkPlanAgents(&plan, func(step PlanStepInterface) {
+		agent, ok := step.(*AgentPlanStep)
+		if failure != nil || !ok || agent.AuthoredPrompt || off[agent.ID] == nil {
+			return
 		}
-		agent, isAgent := step.(*AgentPlanStep)
-		if isAgent && !agent.AuthoredPrompt && off[step.GetID()] != nil {
-			section, _ := descriptionSectionBody(step.GetDescription(), "Resources")
-			for _, line := range strings.Split(section, "\n") {
-				label, value, ok := resourceIntentLine(line)
-				if !ok {
-					continue
-				}
-				for _, kind := range resourceKinds {
-					if !off[step.GetID()][kind.key] || statesNoUse(value) {
-						continue
-					}
-					for _, synonym := range kind.synonyms {
-						if label == synonym || strings.HasPrefix(label, synonym+" ") || strings.HasPrefix(label, synonym+"(") {
-							return fmt.Errorf("step %q: ## Resources describes %s use, but its step configuration sets that access to none; say none, or change the access deliberately (the upgrade never does) before stamping %s", step.GetID(), strings.ToLower(kind.label), ResourceIntentContractVersion)
-						}
-					}
-				}
-			}
+		if store := resourceLineContradictsConfig(agent.Description, off[agent.ID]); store != "" {
+			failure = fmt.Errorf("step %q: ## Resources describes %s use, but its step configuration sets that access to none; say none, or change the access deliberately (the upgrade never does) before stamping %s", agent.ID, store, ResourceIntentContractVersion)
 		}
-		if isAgent {
-			for _, route := range agent.PredefinedRoutes {
-				if err := check(route.SubAgentStep); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-	for _, steps := range [][]PlanStepInterface{plan.Steps, plan.OrphanSteps} {
-		for _, step := range steps {
-			if err := check(step); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	})
+	return failure
 }

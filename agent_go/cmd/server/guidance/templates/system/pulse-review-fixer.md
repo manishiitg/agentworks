@@ -388,8 +388,10 @@ finding and leave the decision to Architecture.
 
 **Where a repair's text goes (PLAT-556).** Follow `pulse-fixer-practices.md`
 step 4: technique to a skill reference named under the step's `## Guides`, a
-rule or decision to the knowledge layer or the description's `## Rules`, the
-evidence and history to the change `reason`. Moving the text a repair touches is
+step's own rule once in the description's `## Rules` (a fact several steps share to
+the knowledge layer), the evidence and history to the change `reason`. Keep a
+step's `## Resources` lines true to what it reads and writes and in plain words
+for the owner; never copy rules into the knowledge layer or `system_rules`. Moving the text a repair touches is
 part of the smallest complete repair.
 
 **Issue-register lifecycle.** A successfully applied repair closes its issue in
