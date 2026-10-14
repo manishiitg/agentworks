@@ -313,10 +313,10 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 	for _, update := range installedPluginUpdates(home, onPath, read) {
 		if old[update.Provider] && switchSource && (update.Disabled || strings.Contains(strings.ToLower(pluginListBlock(ctx, update.Provider)), "disabled")) {
 			// Moving the source reinstalls the plugin, which would turn it back on.
-			fmt.Fprintf(o.stderr, "Your %s plugin is turned off, so its source was not switched (that would turn it on). Turn it on, then run agentworks update --switch-plugin-source.\n", update.Provider)
+			fmt.Fprintf(o.stderr, "Your %s plugin is turned off, so its source was not switched (that would turn it on). Turn it on, then run agentworks update again.\n", update.Provider)
 		} else if old[update.Provider] {
 			if !switchSource {
-				fmt.Fprintf(o.stderr, "Your %s plugin still updates from the large repository. Run agentworks update --switch-plugin-source to move it (about a minute; reload the app afterwards).\n", update.Provider)
+				fmt.Fprintf(o.stderr, "Your %s plugin still updates from the large repository. Run agentworks update (without --keep-plugin-source) to move it (about a minute; reload the app afterwards).\n", update.Provider)
 			} else if migrateMarketplace(ctx, update.Provider) {
 				fmt.Fprintf(o.stderr, "Switched the %s plugin source to the small plugins repository (%s).\n", update.Provider, pluginsRepo)
 			} else {

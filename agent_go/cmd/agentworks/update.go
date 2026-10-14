@@ -72,7 +72,7 @@ type cliRelease struct {
 }
 
 func updateCommand(o *options) *cobra.Command {
-	var check, force, switchSource, autoRun bool
+	var check, force, switchSource, keepSource, autoRun bool
 	var auto string
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -86,7 +86,8 @@ func updateCommand(o *options) *cobra.Command {
 			if autoRun {
 				return runAutoUpdate(o)
 			}
-			return runUpdate(o, check, force, switchSource)
+			// The plugins move to the small plugins repository by default; --keep-plugin-source leaves them where they are.
+			return runUpdate(o, check, force, switchSource || !keepSource)
 		},
 	}
 	cmd.Flags().StringVar(&auto, "auto", "", "Turn automatic updates on or off, or show their state: on, off or status")
@@ -94,7 +95,9 @@ func updateCommand(o *options) *cobra.Command {
 	_ = cmd.Flags().MarkHidden("auto-run")
 	cmd.Flags().BoolVar(&check, "check", false, "Only report whether an update is available")
 	cmd.Flags().BoolVar(&force, "force", false, "Reinstall even when versions match")
-	cmd.Flags().BoolVar(&switchSource, "switch-plugin-source", false, "Move the AgentWorks coding-CLI plugins from the large repository to the small plugins repository (about a minute; reload the app afterwards)")
+	cmd.Flags().BoolVar(&switchSource, "switch-plugin-source", false, "Move the AgentWorks coding-CLI plugins to the small plugins repository (now the default, so this flag changes nothing)")
+	_ = cmd.Flags().MarkHidden("switch-plugin-source")
+	cmd.Flags().BoolVar(&keepSource, "keep-plugin-source", false, "Leave the AgentWorks coding-CLI plugins on the large repository instead of moving them to the small plugins repository")
 	return cmd
 }
 
