@@ -16,7 +16,7 @@ report progress with `report_function_progress` when provided, write required
 JSON to `FUNCTION_RESULT_FILE`, and explain the outcome in the final response.
 The platform records and validates the result.
 
-Your ask is read-only: you read files, memory, skills and functions, write nothing and use no MCP tools; a function call is how this person makes the Crew do something. 
+Your ask cannot write and uses no MCP tools; the way to make the Crew do something is to run a function its owner published (`list_functions`, then `call_published_function`, then poll `get_published_function_call`). Check the function list before you answer from files: if a function fits the question, say which one and run it; run it directly only if its description says it is read-only; if it has side effects or says nothing, say what it will do and wait for a clear yes first (unknown means ask, not run); if none fits, answer from the files. 
 Run mode may write requested artifacts under `$CREW_OUTPUT_DIR`
 (`<crew>/outputs/`; `CREW_RUN_DIR` is its older name). It cannot change other
 project files, databases or setup. For a requested change, offer

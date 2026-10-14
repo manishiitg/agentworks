@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-14 — A Run-mode ask checks the Crew's functions before answering from files (PLAT-856)
+
+A non-owner's free-text ask (the app chat, also opened from a dashboard, an MCP ask,
+a Slack channel mention) already acts only by running a function the owner
+published. It now first calls `list_functions` and checks whether a function
+answers the question better than the Crew's files, and prefers it. It runs a
+function directly only when its description says it is read-only; otherwise
+(side effects, or no statement) it tells the person what it will do and waits for
+a clear yes. Unknown means ask, not run. The prompt and the crew-run skill no
+longer say a free-text ask only reads. Calls still run with the owner's authority
+and the owner's published list decides what is reachable; calls to other Crews stay
+off for an ask.
+
+Why: a person pasting a ticket or an id into a dashboard Ask or a Slack thread
+expects the Crew to do the work its functions exist for, not to explain them.
+The old prompt text said the ask only reads, so it answered from files even when a
+function fit.
+
 ## 2026-10-14 — Reflection requests contributions; procedures are opened as a skill (PLAT-861)
 
 The post-validation reflection message gives its purpose, configured contribution

@@ -186,7 +186,7 @@ func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
 	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["call_function"] {
 		t.Error("no shell and no calls to other Crews or workflows in a non-owner's chat")
 	}
-	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, crewPublishedCallToolName) || !strings.Contains(notice, "Run mode") {
+	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, crewPublishedCallToolName) || !strings.Contains(notice, "Run mode") || !strings.Contains(notice, "check whether one of the Crew's functions answers the question better") || !strings.Contains(notice, "Unknown means ask, not run") {
 		t.Fatalf("the notice must teach the published-function tool:\n%s", notice)
 	}
 }
