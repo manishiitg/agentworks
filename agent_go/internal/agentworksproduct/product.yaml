@@ -510,6 +510,8 @@ chat:
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
+      - get_dashboard_share
+      - share_dashboard
       - list_workflows
       - get_workflow
       - get_settings
