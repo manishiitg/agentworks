@@ -61,7 +61,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	}
 }
 
-func TestRelayHasOnlyBuilderChat(t *testing.T) {
+func TestRelayBuilderChatIsSeparateFromRunChat(t *testing.T) {
 	prompt, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", map[string]string{
 		"WorkflowKind": "relay", "WorkspacePath": "Workflow/relay-test", "WorkshopMode": "run",
 	}, promptContext{})
@@ -71,7 +71,10 @@ func TestRelayHasOnlyBuilderChat(t *testing.T) {
 	if !strings.Contains(prompt, "You are the Relay Builder") {
 		t.Fatal("Relay prompt changed with shared workflow mode")
 	}
-	if _, err := relayproduct.ChatPrompt("run"); err == nil {
-		t.Fatal("Relay unexpectedly declares a Run chat")
+	// Everyone except the Builder has a Run chat (PLAT-856-80); it is a
+	// separate prompt, never the Builder's.
+	run, err := relayproduct.ChatPrompt("run")
+	if err != nil || strings.Contains(run, "You are the Relay Builder") {
+		t.Fatalf("Relay Run chat missing or reuses the Builder prompt: %v", err)
 	}
 }
