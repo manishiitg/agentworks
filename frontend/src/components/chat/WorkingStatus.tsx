@@ -56,7 +56,7 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>
       <span aria-hidden="true">
         <WorkingGlyph reduced={reduced} />{' '}
-        <span className="working-shimmer" data-testid="working-word">{text}</span>
+        <span data-testid="working-word">{Array.from(text).map((letter, position) => <span key={`${position}-${letter}`} className="working-letter" style={{ '--i': position } as CSSProperties}>{letter}</span>)}</span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
       </span>
     </span>

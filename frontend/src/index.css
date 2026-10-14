@@ -24,11 +24,11 @@
   .force-light {
     /* Working-line palette (warm to fresh): the star and the shimmer move through these, one per new word.
        Light variants keep at least 4.5:1 against the light backgrounds. */
-    --working-tone-0: 21 90% 40%;   /* orange */
-    --working-tone-1: 36 92% 34%;   /* amber */
-    --working-tone-2: 142 64% 28%;  /* green */
-    --working-tone-3: 172 70% 26%;  /* teal */
-    --working-tone-4: 12 76% 42%;   /* coral */
+    --working-tone-0: 21 55% 42%;   /* orange (muted) */
+    --working-tone-1: 36 55% 38%;   /* amber (muted) */
+    --working-tone-2: 142 32% 34%;  /* green (muted) */
+    --working-tone-3: 172 36% 32%;  /* teal (muted) */
+    --working-tone-4: 12 48% 46%;   /* coral (muted) */
     --runloop-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
     /* VS Code Light Theme Colors */
@@ -114,11 +114,11 @@
 
   .dark {
     color-scheme: dark;
-    --working-tone-0: 24 95% 62%;
-    --working-tone-1: 42 96% 60%;
-    --working-tone-2: 142 60% 55%;
-    --working-tone-3: 172 66% 52%;
-    --working-tone-4: 14 88% 66%;
+    --working-tone-0: 24 58% 68%;
+    --working-tone-1: 42 60% 66%;
+    --working-tone-2: 142 34% 64%;
+    --working-tone-3: 172 38% 62%;
+    --working-tone-4: 14 54% 70%;
     /* Deep dark app palette */
     --background: 220 13% 6%;             /* #0d0f12 - app background */
     --foreground: 220 16% 91%;            /* #e4e7ec - primary text */
@@ -1764,21 +1764,20 @@
   to { opacity: 0.35; }
 }
 
-/* The working line's word: a gentle colour sweep across the text, taken from the working-tone theme tokens. */
-.working-shimmer {
-  background-image: linear-gradient(90deg, hsl(var(--working-tone)) 0%, hsl(var(--working-tone) / 0.55) 45%, hsl(var(--working-tone)) 90%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: working-shimmer 2s linear infinite;
+/* The working line's word: a gentle colour wave along the letters, from the working-tone theme tokens. Each letter
+   only changes its own text colour, so nothing can paint a filled background behind the word. */
+.working-letter {
+  white-space: pre;
+  color: hsl(var(--working-tone));
+  animation: working-letter 2s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 60ms);
 }
-@keyframes working-shimmer {
-  from { background-position: 110% 0; }
-  to { background-position: -110% 0; }
+@keyframes working-letter {
+  0%, 100% { color: hsl(var(--working-tone) / 0.72); }
+  50% { color: hsl(var(--working-tone)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .working-shimmer { animation: none; background-image: none; background-clip: border-box; -webkit-background-clip: border-box; color: hsl(var(--working-tone)); }
+  .working-letter { animation: none; color: hsl(var(--working-tone)); }
 }
 
 /* Discrete low/medium/high reasoning-effort slider (ReasoningEffortControl). */
