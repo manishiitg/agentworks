@@ -80,6 +80,11 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	// Saying "none" for a resource the description itself names is a contradiction, not a review.
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-contradiction", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none\n\n## Guides\nknowledgebase/tone.md", "reason": "Resource intent review."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
+	// A line that claims use of a store the step's own configuration switches off is a contradiction too.
+	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[{"id":"chat","agent_configs":{"knowledgebase_access":"none"}}]}`)
+	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-config-contradiction", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: reads the tone guide\n- Database: none\n- Brain: none\n- Learnings: none", "reason": "Resource intent review."}}}, 200)
+	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
 	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-reviewed", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none", "reason": "Resource intent review."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", intentStamp, 200)

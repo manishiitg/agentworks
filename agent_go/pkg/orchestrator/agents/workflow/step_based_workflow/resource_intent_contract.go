@@ -188,3 +188,85 @@ func ValidateResourceIntentContractStamp(content string) error {
 	}
 	return nil
 }
+
+// ValidateResourceIntentAgainstStepConfig refuses a Resources line that claims use of a store the step's own
+// configuration explicitly switches off (knowledgebase_access or learnings_access "none"). Unset access defaults to
+// read for both stores, so only an explicit "none" is a contradiction; this compares a configured value with the
+// line, never its wording. Steps without a config entry, or a missing file, are not checked.
+func ValidateResourceIntentAgainstStepConfig(planContent, stepConfigContent string) error {
+	if strings.TrimSpace(stepConfigContent) == "" {
+		return nil
+	}
+	configs, err := ParseStepConfigContent(stepConfigContent)
+	if err != nil {
+		return nil // the config's own validators report a broken file; this check is only for a clear contradiction
+	}
+	off := map[string]map[string]bool{}
+	for _, config := range configs {
+		if config.AgentConfigs == nil {
+			continue
+		}
+		kinds := map[string]bool{}
+		if config.AgentConfigs.KnowledgebaseAccess == "none" {
+			kinds["kb"] = true
+		}
+		if config.AgentConfigs.LearningsAccess == "none" {
+			kinds["learnings"] = true
+		}
+		if len(kinds) > 0 {
+			off[config.ID] = kinds
+		}
+	}
+	if len(off) == 0 {
+		return nil
+	}
+	var plan PlanningResponse
+	if err := json.Unmarshal([]byte(planContent), &plan); err != nil {
+		return err
+	}
+	if err := resolvePlanOrphanStepRefs(&plan); err != nil {
+		return err
+	}
+	var check func(PlanStepInterface) error
+	check = func(step PlanStepInterface) error {
+		if step == nil {
+			return nil
+		}
+		agent, isAgent := step.(*AgentPlanStep)
+		if isAgent && !agent.AuthoredPrompt && off[step.GetID()] != nil {
+			section, _ := descriptionSectionBody(step.GetDescription(), "Resources")
+			for _, line := range strings.Split(section, "\n") {
+				label, value, ok := resourceIntentLine(line)
+				if !ok {
+					continue
+				}
+				for _, kind := range resourceKinds {
+					if !off[step.GetID()][kind.key] || statesNoUse(value) {
+						continue
+					}
+					for _, synonym := range kind.synonyms {
+						if label == synonym || strings.HasPrefix(label, synonym+" ") || strings.HasPrefix(label, synonym+"(") {
+							return fmt.Errorf("step %q: ## Resources describes %s use, but its step configuration sets that access to none; say none, or change the access deliberately (the upgrade never does) before stamping %s", step.GetID(), strings.ToLower(kind.label), ResourceIntentContractVersion)
+						}
+					}
+				}
+			}
+		}
+		if isAgent {
+			for _, route := range agent.PredefinedRoutes {
+				if err := check(route.SubAgentStep); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	for _, steps := range [][]PlanStepInterface{plan.Steps, plan.OrphanSteps} {
+		for _, step := range steps {
+			if err := check(step); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
