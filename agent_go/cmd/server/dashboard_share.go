@@ -40,6 +40,8 @@ type runShareState struct {
 	Mode    string           `json:"mode"`
 	People  []runSharePerson `json:"people,omitempty"`
 	Unknown []string         `json:"unknown_emails,omitempty"`
+	// Previous is who had access before this change, so the owner or agent sees exactly who was removed.
+	Previous *runShareState `json:"previous,omitempty"`
 }
 
 func dashboardShareAction(action string) bool { return action == "share" || action == "share_status" }
@@ -138,6 +140,15 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	if !api.dashboardShareOwner(ctx, claims, target) {
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
+	before, _ := api.readRunShare(ctx, claims, target)
+	state, err := api.applyRunShareChange(ctx, claims, target, mode, emails)
+	if err == nil {
+		state.Previous = &before
+	}
+	return state, err
+}
+
+func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (runShareState, error) {
 	switch target.Kind {
 	case "crew":
 		if mode == runSharePeople {
