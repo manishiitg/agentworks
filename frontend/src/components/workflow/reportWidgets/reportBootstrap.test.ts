@@ -6,8 +6,10 @@ describe('withReportBootstrap', () => {
     const win: Record<string, unknown> = {}
     const stub = withReportBootstrap('<div></div>').match(/<script>([\s\S]*?)<\/script>/)![1]
     new Function('window', stub)(win)
-    const api = win.report as { sendChatMessage: (message: string) => Promise<unknown> }
+    const api = win.report as { sendChatMessage: (message: string) => Promise<unknown>; chat: { available: boolean; open: () => Promise<void> } }
     await expect(api.sendChatMessage('Apply item 42')).rejects.toThrow('not ready')
+    expect(api.chat.available).toBe(false)
+    await expect(api.chat.open()).rejects.toThrow('not ready')
     expect(win.__reportPendingCalls).toEqual([])
   })
   it('injects the stub immediately after <head> so it precedes any author script', () => {

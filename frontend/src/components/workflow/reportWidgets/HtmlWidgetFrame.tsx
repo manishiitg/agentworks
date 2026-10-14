@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { useReportDataApi } from './reportEmbedContext'
+import { useReportDataApi, useReportChatWidgetFactory } from './reportEmbedContext'
 import { readReportTabSelection, restoreReportTabSelection, type ReportTabSelection } from './reportTabSelection'
 import { bindReportContentMenu, type ReportContentMenu } from './reportContentQuestion'
 import {
@@ -119,6 +119,8 @@ function HtmlReportFrameComponent({
   onContentContextMenu?: (menu: ReportContentMenu) => void
 }) {
   const dataApi = useReportDataApi()
+  const chatWidgetFactory = useReportChatWidgetFactory()
+  const chatBindingRef = useRef<{ document: Document; factory: typeof chatWidgetFactory; binding: ReturnType<NonNullable<typeof chatWidgetFactory>> } | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const observerRef = useRef<ResizeObserver | null>(null)
   const appliedHtmlRef = useRef<string | null>(null)
@@ -228,9 +230,14 @@ function HtmlReportFrameComponent({
       debugReportFrame('report:data dispatched', title, { firstInjectionForDocument, dataApiChanged, refreshRequested, refreshToken })
     }
 
+    if (chatBindingRef.current?.document !== doc || chatBindingRef.current?.factory !== chatWidgetFactory) {
+      chatBindingRef.current?.binding.dispose()
+      chatBindingRef.current = chatWidgetFactory ? { document: doc, factory: chatWidgetFactory, binding: chatWidgetFactory(frame) } : null
+    }
     installReportHost(frame, {
       title,
       dataApi,
+      chatApi: chatBindingRef.current?.binding.api,
       tokenSource: frame,
       theme: currentAppTheme(),
       dispatchData,
@@ -255,7 +262,7 @@ function HtmlReportFrameComponent({
         /* ResizeObserver unavailable — height stays at last measure */
       }
     }
-  }, [dataApi, autoHeight, resize, refreshToken, title])
+  }, [dataApi, chatWidgetFactory, autoHeight, resize, refreshToken, title])
 
   // The ResizeObserver above watches elements inside the iframe's own
   // document. When an ancestor OUTSIDE the iframe (e.g. the workflow layout's
@@ -321,6 +328,7 @@ function HtmlReportFrameComponent({
   // Disconnect the observer on unmount.
   useEffect(() => () => observerRef.current?.disconnect(), [])
   useEffect(() => () => contentMenuCleanupRef.current?.(), [])
+  useEffect(() => () => chatBindingRef.current?.binding.dispose(), [])
 
   return (
     <iframe

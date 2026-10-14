@@ -111,6 +111,48 @@ The reference covers both paths using available capabilities; it prescribes no v
   route as clean, or copy a workflow total into each route. No extra plan step
   or workflow-owned activity table is needed.
 
+## Optional native chat widgets
+
+In a managed Crew, workflow or Relay dashboard, the designer may add an open
+chat panel, a button, or both. Choose the placement, size, label, visibility and
+responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
+For example (dimensions are only an example):
+
+```html
+<section id="questions" data-report-chat-panel style="height:420px"></section>
+<button data-report-chat-button data-report-chat-target="#questions">Ask</button>
+```
+
+Give panel containers a nonzero width and height. The host renders native chat
+above that rectangle and follows scrolling, resizing and visibility. Keep the
+container empty; author help text or other controls outside it. To start closed,
+add `data-report-chat-state="closed"`. A button without `data-report-chat-target`
+opens a native chat dialog. Button text and its location are the designer's choice.
+
+After the runtime is ready, `window.report.chat` exposes only:
+
+- `available`: whether this dashboard can open native project Ask.
+- `mount('#questions')`: register an existing div/section as a panel.
+- `open('#questions')`: open that panel; omit the selector to use the first
+  panel, or a dialog if there is no panel.
+- `close('#questions')`: hide that panel; without a selector, close the dialog
+  and the first panel.
+
+Call these from `window.report.ready` or an explicit button action and catch
+rejections. Do not repeatedly open chat on data refresh. Opening/mounting only
+opens the conversation; it never submits a question. The person types and sends
+through the native composer. There is no widget `send`/`ask(text)` method.
+Selectors resolve within this dashboard, and callers cannot choose another
+project, account or chat. Native Ask rechecks current project access and uses
+the signed-in person's existing conversation on both app dashboards and shared
+published links. Right-click Ask about a value still requires explicit Submit
+and captures the selected value and dashboard publication.
+
+Preview has no conversation: `chat.available` is false. Code has no native
+project Ask adapter yet; leave its chat widgets unavailable. Check availability
+before calling widget controls. These widgets require the managed dashboard
+viewer; loose HTML documents do not acquire native chat through markup alone.
+
 ### Responding to `report:focus` (tabbed Dashboards)
 
 A Dashboard with top-level tabs should let the agent point the reader at one:

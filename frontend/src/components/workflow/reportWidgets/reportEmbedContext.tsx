@@ -77,6 +77,15 @@ export interface ReportDataApi {
 
 export interface ReportRuntime {
   data: ReportDataApi
+  chatWidgets?: (frame: HTMLIFrameElement) => { api: ReportChatWidgetApi; dispose: () => void }
+}
+
+/** Designer controls only; identity, history and native UI stay in the host. */
+export interface ReportChatWidgetApi {
+  available: boolean
+  mount: (selector: string) => Promise<void>
+  open: (selector?: string) => Promise<void>
+  close: (selector?: string) => void
 }
 
 const ReportRuntimeContext = createContext<ReportRuntime | null>(null)
@@ -86,4 +95,8 @@ export const ReportEmbedProvider = ReportRuntimeContext.Provider
 // HTML data injection: returns the live data API, or null outside a report.
 export function useReportDataApi(): ReportDataApi | null {
   return useContext(ReportRuntimeContext)?.data ?? null
+}
+
+export function useReportChatWidgetFactory() {
+  return useContext(ReportRuntimeContext)?.chatWidgets
 }

@@ -279,6 +279,7 @@ window.report.ready(async function(){
   var rows = await window.report.query('SELECT 1');
   var x = await window.report.fetchTable('t');
   var y = await report.getRows('t');
+  await window.report.chat.send('Do it');
 });
 </script></body></html>`
 	result := validateReport(t, html, ReportHTMLValidationHooks{})
@@ -286,6 +287,7 @@ window.report.ready(async function(){
 		`"valid": false`,
 		`window.report.fetchTable does not exist`,
 		`window.report.getRows does not exist`,
+		`window.report.chat.send does not exist`,
 		`available methods`,
 	} {
 		if !strings.Contains(result, want) {
@@ -304,6 +306,9 @@ func TestValidateHTMLReportCompositionWidgets(t *testing.T) {
 window.report.ready(async function(){
   await window.report.renderTable('#leads', {query: 'SELECT 1'});
   await window.report.renderActivity('#activity');
+  await window.report.chat.mount('#leads');
+  await report.chat . open('#leads');
+  window.report.chat.close('#leads');
 });
 </script></body></html>`
 	result := validateReport(t, composed, ReportHTMLValidationHooks{})

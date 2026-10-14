@@ -974,11 +974,12 @@ var reportKnownReportMethods = []string{
 	"updateField", "updateFields", "run", "getGoalMetrics", "renderGoalProgress",
 	"getCosts", "getRelayRuns", "renderCosts", "renderTable", "renderActivity",
 	"sendChatMessage", "ready",
+	"chat.mount", "chat.open", "chat.close",
 }
 
 var (
-	reportJSWindowReportCallPattern = regexp.MustCompile(`\bwindow\s*\.\s*report\s*\.\s*([A-Za-z_$][\w$]*)\s*\(`)
-	reportJSBareReportCallPattern   = regexp.MustCompile(`(?:^|[^\w$.])report\s*\.\s*([A-Za-z_$][\w$]*)\s*\(`)
+	reportJSWindowReportCallPattern = regexp.MustCompile(`\bwindow\s*\.\s*report\s*\.\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)?)\s*\(`)
+	reportJSBareReportCallPattern   = regexp.MustCompile(`(?:^|[^\w$.])report\s*\.\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)?)\s*\(`)
 	reportJSReadyArgPattern         = regexp.MustCompile(`\bready\(\s*([A-Za-z_$][\w$]*)\s*\)`)
 	reportJSListenerArgPattern      = regexp.MustCompile(`\baddEventListener\(\s*[^,()]*,\s*([A-Za-z_$][\w$]*)\s*[,)]`)
 	reportJSTimerArgPattern         = regexp.MustCompile(`\b(?:setTimeout|setInterval|requestAnimationFrame|queueMicrotask)\(\s*([A-Za-z_$][\w$]*)\s*[,)]`)
@@ -1107,7 +1108,7 @@ func validateReportJS(content string, blocks []reportScriptBlock) (errors, warni
 		}
 		for _, re := range []*regexp.Regexp{reportJSWindowReportCallPattern, reportJSBareReportCallPattern} {
 			for _, loc := range re.FindAllStringSubmatchIndex(u.stripped, -1) {
-				method := u.stripped[loc[2]:loc[3]]
+				method := strings.Join(strings.Fields(u.stripped[loc[2]:loc[3]]), "")
 				if knownReport[method] || seenReportMethod[method] {
 					continue
 				}

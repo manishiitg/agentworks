@@ -9,7 +9,7 @@
 import { getReportCosts, renderReportCosts } from './reportOperationalMetrics'
 import type { ReportActivityOptions, ReportTableOptions } from './reportComposition'
 import { renderReportActivity, renderReportTable } from './reportComposition'
-import type { ReportCostOptions, ReportDataApi } from './reportEmbedContext'
+import type { ReportChatWidgetApi, ReportCostOptions, ReportDataApi } from './reportEmbedContext'
 import { getReportGoalMetrics, renderReportGoalProgress } from './reportGoalProgress'
 import { REPORT_OPEN_ATTR, REPORT_SRC_ATTR } from './reportMarkdownLinks'
 import { reportDaisyUiHead } from './reportDaisyUi'
@@ -91,6 +91,12 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
   // Actions must not be replayed from a render/initialization callback.
   api.sendChatMessage = function(){
     return Promise.reject(new Error('Dashboard chat is not ready. Try again after the dashboard loads.'));
+  };
+  api.chat = {
+    available: false,
+    mount: queueCall('chat.mount'),
+    open: function(){ return Promise.reject(new Error('Dashboard chat is not ready. Open it after the dashboard loads.')); },
+    close: function(){}
   };
   var theme = 'light';
   try {
@@ -250,6 +256,7 @@ export interface ReportHostInstallOptions {
   title: string
   /** The live data API; null renders the HTML standalone with no window.report. */
   dataApi: ReportDataApi | null
+  chatApi?: ReportChatWidgetApi
   /** Element whose computed `--token` custom properties are the app palette
    * (the themed app root, or the frame itself in the app). */
   tokenSource: HTMLElement | null
@@ -475,6 +482,12 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   const renderActivity = (target: string | HTMLElement, activityOptions?: ReportActivityOptions) => renderReportActivity(doc, dataApi, target, activityOptions)
 
   win.report = {
+    chat: options.chatApi ?? {
+      available: false,
+      mount: async () => { throw new Error('Chat widgets require an authenticated project dashboard. Preview does not open conversations.') },
+      open: async () => { throw new Error('Chat widgets require an authenticated project dashboard. Preview does not open conversations.') },
+      close: () => {},
+    },
     getCosts, getRelayRuns, renderCosts,
     getGoalMetrics,
     renderGoalProgress,
@@ -539,6 +552,16 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   win.__reportPendingCalls = []
   const replayed: Promise<unknown>[] = []
   pendingCalls.forEach(({ name, args, resolve, reject }) => {
+    if (name === 'chat.mount') {
+      const selector = args[0]
+      if (!options.chatApi || typeof selector !== 'string') {
+        reject(new Error('Chat widgets are unavailable or their container selector is invalid.'))
+      } else {
+        const settled = options.chatApi.mount(selector).then(resolve, reject)
+        replayed.push(settled)
+      }
+      return
+    }
     if (name === 'openFile') {
       try {
         dataApi.openFile(...(args as Parameters<typeof dataApi.openFile>))

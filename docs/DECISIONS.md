@@ -1,5 +1,24 @@
 # Decisions and open issues
 
+## 2026-10-14 — Dashboard chat is an optional designer-placed widget (PLAT-750)
+
+Managed Crew, workflow and Relay dashboards offer native chat panels and buttons.
+The author chooses their layout, dimensions, labels and responsive behavior in
+HTML/CSS. The host aligns its native conversation to authored panel rectangles;
+a button may instead open a native dialog. A visible panel loads conversation
+history on mount without submitting a message or focusing the composer. The
+widget API exposes availability,
+mount, open and close only. It never submits a message or accepts project/session
+identifiers. Questions are sent explicitly through the native composer or the
+selected-value question form, under current shared-product access. Preview and
+Code without an Ask adapter remain unavailable.
+
+Why: dashboards need reusable chat controls while their designer owns the layout.
+This does not change the existing report iframe's origin isolation; that remains
+a separate security follow-up.
+
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md), issues 750-23 and 750-24.
+
 ## 2026-10-14 — Steps and full workflows always perform real work (PLAT-861)
 
 Remove the separate simulated execution mode, copied databases, test-only grants,

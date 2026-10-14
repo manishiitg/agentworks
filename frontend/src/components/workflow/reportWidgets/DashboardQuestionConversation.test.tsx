@@ -19,7 +19,7 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi
 const revision = 'a'.repeat(64)
 const view = { project_id: 'project-1', product: 'workflow', capability: { can_view: true, can_ask: true, mode: 'owner' } }
 
-async function mount(product = 'workflow', mode = 'owner', canAsk = true) {
+async function mount(product = 'workflow', mode = 'owner', canAsk = true, markup = '<p id="total">42</p>') {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
@@ -31,7 +31,10 @@ async function mount(product = 'workflow', mode = 'owner', canAsk = true) {
   }
   await render()
   const frame = host.querySelector('iframe')!
-  frame.contentDocument!.body.innerHTML = '<p id="total">42</p>'
+  frame.contentDocument!.body.innerHTML = markup
+  vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 600, height: 500, right: 600, bottom: 500 } as DOMRect)
+  const slot = frame.contentDocument!.querySelector('[data-report-chat-panel]')
+  if (slot) vi.spyOn(slot, 'getBoundingClientRect').mockReturnValue({ left: 200, top: 20, width: 360, height: 350, right: 560, bottom: 370 } as DOMRect)
   await act(async () => frame.dispatchEvent(new Event('load')))
   return { host, frame, render }
 }
@@ -44,10 +47,10 @@ function click(text: string) {
 it('opens a managed Relay dashboard in the Builder’s existing normal conversation', async () => {
   get.mockResolvedValue({ data: { ...view, product: 'relay' } }); openAsk.mockResolvedValue('relay-builder-chat')
   const current = await mount('relay')
-  await act(async () => click('Open project Ask'))
+  await act(async () => click('Ask'))
   expect(openAsk).toHaveBeenCalledWith({ product: 'relay', projectId: 'project-1', workspacePath: 'Workflow/demo' })
-  expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-builder-chat')
-  expect(current.host.textContent).toContain('Your Builder conversation.')
+  expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-builder-chat')
+  expect(current.host.textContent).not.toContain('Open project Ask')
   expect(send).not.toHaveBeenCalled()
 })
 async function editQuestion(frame: HTMLIFrameElement) {
@@ -67,16 +70,14 @@ it.each(['crew', 'workflow', 'relay'])('lets an authorized %s Run user ask about
   await editQuestion(current.frame); await submit()
   expect(openAsk).toHaveBeenCalledWith({ product, projectId: 'project-1', workspacePath: 'Workflow/demo' })
   expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'existing-run-chat', message: expect.stringContaining('"text": "42"') }))
-  expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('existing-run-chat')
-  expect(current.host.textContent).toContain('Existing project history and replies')
-  expect(current.host.textContent).toContain('Your Run conversation.')
+  expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('existing-run-chat')
+  expect(document.body.textContent).toContain('Existing project history and replies')
+  expect(document.body.textContent).toContain('Your Run conversation.')
 })
 
 it.each([['crew', false], ['workflow', false], ['relay', false], ['code', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
   const current = await mount(product, 'question_only', canAsk)
-  const button = [...current.host.querySelectorAll('button')].find(item => item.textContent?.includes('Open project Ask'))!
-  expect(button.disabled).toBe(true)
-  await act(async () => button.click())
+  expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
   expect(get).not.toHaveBeenCalled(); expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
 })
 
@@ -97,9 +98,9 @@ it('uses the existing Ask tab and preserves the clicked publication across refre
   await submit()
   expect(send.mock.calls[1][0]).toEqual(original)
   expect(openAsk).toHaveBeenCalledWith({ product: 'workflow', projectId: 'project-1', workspacePath: 'Workflow/demo' })
-  expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('existing-project-chat')
-  expect(current.host.textContent).toContain('Existing project history and replies')
-  expect(document.querySelector('dialog')).toBeNull()
+  expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('existing-project-chat')
+  expect(document.body.textContent).toContain('Existing project history and replies')
+  expect(document.querySelector('dialog form')).toBeNull()
 })
 
 it('rechecks Ask availability before opening or submitting to the project chat', async () => {
@@ -108,7 +109,7 @@ it('rechecks Ask availability before opening or submitting to the project chat',
   await editQuestion(current.frame); await submit()
   expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
   expect(document.querySelector('[role="alert"]')?.textContent).toContain('no longer available')
-  expect(current.host.querySelector('[data-native-tab]')).toBeNull()
+  expect(document.querySelector('[data-native-tab]')).toBeNull()
 })
 
 it('does not show a previous account’s Ask after an in-flight conversation lookup', async () => {
@@ -116,10 +117,22 @@ it('does not show a previous account’s Ask after an in-flight conversation loo
   let finish!: (id: string) => void
   openAsk.mockImplementation(() => new Promise<string>(resolve => { finish = resolve }))
   const current = await mount()
-  await act(async () => click('Open project Ask'))
+  await act(async () => click('Ask'))
   auth.id = 'other'
   await current.render()
   await act(async () => finish('previous-account-chat'))
-  expect(current.host.querySelector('[data-native-tab]')).toBeNull()
+  expect(document.querySelector('[data-native-tab]')).toBeNull()
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('renders native chat in a designer-selected slot in the host document without appending a layout', async () => {
+  get.mockResolvedValue({ data: view }); openAsk.mockResolvedValue('designer-chat')
+  const current = await mount('workflow', 'owner', true, '<p id="total">42</p><section id="custom" data-report-chat-panel></section><button data-report-chat-button data-report-chat-target="#custom">Help</button>')
+  expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
+  expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('designer-chat')
+  expect(current.frame.contentDocument!.querySelector('[data-native-tab]')).toBeNull()
+  expect(current.host.querySelector<HTMLElement>('[aria-label="Dashboard chat widget"]')?.style.left).toBe('200px')
+  expect(current.host.querySelector<HTMLElement>('[aria-label="Dashboard chat widget"]')?.style.width).toBe('360px')
+  expect(current.host.textContent).toContain('Your Builder conversation.')
   expect(send).not.toHaveBeenCalled()
 })
