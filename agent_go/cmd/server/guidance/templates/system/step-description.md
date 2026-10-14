@@ -105,11 +105,14 @@ only when it has nothing to say; do not add other sections.
 
 Keep task rules only in ## Rules. Do not copy them into `system_rules`, skills or platform instructions.
 
-Resources specify intent, not access grants: name the exact knowledge sources and
-tables this task uses, and whether to read or update them. Say `Knowledgebase: none`,
-`Database: none` or `Learnings: none` when relevant to avoid unintended use.
-Separate using existing learnings from contributing new guidance after validation.
-Configure access consistently with these intentions; the runtime enforces it.
+Resources specify intent, not access grants: state one line each for
+`Knowledge base:`, `Database:`, `Brain:` and `Learnings:`, saying what the task reads
+or updates and why, or `none`. Workflow contract 1.0.49 stamps only agents whose
+Resources do this. Separate using existing per-workflow learnings from contributing new
+guidance after validation; global learnings are deprecated. Say read or write exactly
+as the step's grants allow, and describe a resource by purpose when the step does not
+already name its path (naming a path grants read access, see below). Configure access
+consistently with these intentions; the runtime enforces it.
 Do not list every available resource just because the step can access it.
 
 Everything else belongs somewhere else: optional later phases in `items[]`, reusable

@@ -141,6 +141,23 @@ identity from a shared login or repeating full instructions on every call.
 
 Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-84.
 
+## 2026-10-14 — Workflow contract 1.0.49: every agent description states its resource intent (PLAT-861)
+
+A description is the task, its resource intent and its Rules. Contract 1.0.49 asks
+the Builder to review every ordinary agent (top-level, routed, orphan) and state under
+`## Resources` one line each for knowledge base, database, Brain and learnings (use or
+`none`). It also corrects the 1.0.48 text, which still asked for separate `system_rules`:
+task rules live only in the description. The review is definitions only: no new or wider
+grant (naming a path in Inputs/Resources/Guides already grants read, so the text forbids
+adding one), no data moves, no schema change, no learnings rewrite, and per-workflow
+learnings only. It runs per workflow when the owner starts it; workflows on 1.0.48 keep
+running until then. The stamp refuses only on structure (a resource line missing) or a
+direct contradiction (`none` for a resource the description itself names), never on wording.
+
+Why: people and agents could not tell from a description which stores a step touches.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-209.
+
 ## 2026-10-14 — Task rules belong in the user task; procedures are opened when needed (PLAT-861)
 
 The description carries the task, task-specific Rules and named Resources.

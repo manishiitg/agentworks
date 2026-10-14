@@ -30,7 +30,11 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 // managed database script migration, and 1.0.45 workflows the step description
 // layout migration.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
-	return strings.TrimSpace(version) == workflowContractUnifiedAgentVersion || strings.TrimSpace(version) == workflowContractDescriptionFirstVersion
+	switch strings.TrimSpace(version) {
+	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion:
+		return true
+	}
+	return false
 }
 
 // goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
@@ -134,6 +138,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractStepDescriptionLayoutVersion,
 		workflowContractUnifiedAgentVersion,
 		workflowContractDescriptionFirstVersion,
+		workflowContractResourceIntentVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -601,6 +606,9 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 47 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractDescriptionFirstVersion, label: "upgrade-description-first", query: upgradeDescriptionFirst})
 	}
+	if rank < 48 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractResourceIntentVersion, label: "upgrade-resource-intent", query: upgradeResourceIntent})
+	}
 	// Attached here rather than at the call site so the turn text is identical
 	// wherever it is built. The version pair used to be added only on the Pulse
 	// delivery path, which meant the blocking preflight — the one that actually
@@ -633,6 +641,23 @@ Do only this migration; never run the workflow or its side-effecting tools. Read
 
 The description executes as the first user turn ALONE, before any sequence item. The first item is a later turn, never combined with the description. Zero items is valid. Builder chooses useful next phases or semantic checks when automated validation cannot prove the business evidence; do not require generic execute/verify/repair turns. Automatic final validation and its repair loop remain.
 
-For each ordinary agent, use update_step(step_id=..., changes={...}) to supply prompt_contract="description-first-v1", a runnable description, system_rules containing binding policies/approval/idempotency/scope constraints, and reviewed items. Drop old items that repeat task execution; fold any unique requirements from them into the description or rules. Keep genuinely subsequent phases and their IDs/order, store narrowing, scripts, intermediate gates and output contracts. On the first retained item, set retained_reason to explain the distinct subsequent phase, why the automatic gate cannot cover it, and how it avoids repeating initial work. This is a saved review note, not a user turn. For side-effecting tasks, make verifiers evidence-only: no new send, claim, purchase, browser action, post or publish to repair ambiguous confirmation; report that gap. Replace legacy references to executing a system charter with this task. If a first execute item had narrowed writes, preserve them with initial_write_access. Do not infer edits by regex or blindly drop default-looking instructions. Review script-first ordering: prerequisites needed before task execution belong upstream, not after the new opener. Preserve live input semantics, route re-entry continuity, and reference/read permissions. Do not change scripts, validation schemas, access or external behavior just to stamp.
+For each ordinary agent, use update_step(step_id=..., changes={...}) to supply prompt_contract="description-first-v1", a runnable description whose ## Rules section holds the binding policies, approval, idempotency and scope constraints, and reviewed items. Do not author system_rules: task rules live only in the description, and any saved or supplied system_rules is merged into its Rules. Drop old items that repeat task execution; fold any unique requirements from them into the description (its Rules). Keep genuinely subsequent phases and their IDs/order, store narrowing, scripts, intermediate gates and output contracts. On the first retained item, set retained_reason to explain the distinct subsequent phase, why the automatic gate cannot cover it, and how it avoids repeating initial work. This is a saved review note, not a user turn. For side-effecting tasks, make verifiers evidence-only: no new send, claim, purchase, browser action, post or publish to repair ambiguous confirmation; report that gap. Replace legacy references to executing a system charter with this task. If a first execute item had narrowed writes, preserve them with initial_write_access. Do not infer edits by regex or blindly drop default-looking instructions. Review script-first ordering: prerequisites needed before task execution belong upstream, not after the new opener. Preserve live input semantics, route re-entry continuity, and reference/read permissions. Do not change scripts, validation schemas, access or external behavior just to stamp.
 
 Check preview_step_runtime for the description turn (default) and retained items. Read back the plan and compare the complete diff, including send-once/claims/spend/provider-call boundaries. Resolve any real business ambiguity with the operator. Once every ordinary agent is reviewed, call set_workflow_contract_version(version="1.0.48"). The stamp refuses unmigrated definitions. Existing old-contract plans remain executable with their saved semantics until migrated; active runs keep their loaded plan. Stop after stamping.`
+
+const upgradeResourceIntent = `WORKFLOW CONTRACT UPGRADE: RESOURCE INTENT IN STEP DESCRIPTIONS (1.0.49).
+
+Do only this migration; never run the workflow or its side-effecting tools. Read builder-reference/references/step-description.md. This is a definitions-only review: the only thing you change is description text, through update_step.
+
+GRANT WARNING: naming a workflow path (learnings/, knowledgebase/, code/shared/, soul/, db/README.md) or a brain: note in a step's Inputs, Resources or Guides GIVES that step read access. Describe a resource by purpose ("the company policy notes") and never add such a reference to a step that does not already name it. This review must not add or widen any access.
+
+A description is the task, its resource intent and its Rules. Review EVERY ordinary agent: each top-level step, each predefined route's sub-agent at any depth, and each orphan agent. Custom authored_prompt agents keep their explicit prompts. For each one, read its description, items, scripts, validation schema and effective access (preview_step_runtime with include_prompt=false), then make its ## Resources section state, one line each:
+- Knowledge base: what it reads or writes and why, or none
+- Database: what it reads or writes and why, or none
+- Brain: what it reads or writes and why, or none
+- Learnings: what it reads or contributes and why, or none
+Say read or write exactly as the step's actual grants allow; never claim a write the grant does not permit. A resource the step merely could reach but does not use is none. Describe per-workflow learnings only: global learnings are deprecated. Keep Goal, Inputs, Output, Rules, Done when and Guides as they are; procedural how-to stays in skills, not here. Scripted, routing and Crew steps keep short descriptions with no required section; if a scripted step's code uses the workflow database or a knowledge base, say so in one short line.
+
+LIMITS. (1) No new access. Describe only resources the step already has. Naming a workflow path (learnings/, knowledgebase/, code/shared/, soul/, db/README.md) or a brain: note in Inputs, Resources or Guides grants read access, so do not write such a reference in a step that does not already name it; describe the resource by purpose instead. Never edit access, grants, store modes or secret selections. If a description needs a resource the step cannot reach, do not fix it: report it to the operator. (2) Definitions only: no data moves between stores, no database schema change, no learnings rewrite. (3) Do not change scripts, validation, wiring, routes, items, ordering or optional sequence semantics. (4) Existing wording and policies in each description stay unless they contradict a grant.
+
+Read back the plan and show the operator the full description diff before stamping. Once every ordinary agent is reviewed, call set_workflow_contract_version(version="1.0.49"). The stamp refuses an agent whose ## Resources does not state all four resources, or says none for a resource its Inputs, Resources or Guides name; it does not judge your wording. Workflows on 1.0.48 keep running until migrated. Stop after stamping.`

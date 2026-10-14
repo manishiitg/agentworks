@@ -177,6 +177,15 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 			return err
 		}
 	}
+	if version == ResourceIntentContractVersion {
+		content, err := readPlan()
+		if err != nil {
+			return err
+		}
+		if err := ValidateResourceIntentContractStamp(content); err != nil {
+			return err
+		}
+	}
 	if version == AgentStepContractVersion {
 		content, err := readPlan()
 		if err != nil {

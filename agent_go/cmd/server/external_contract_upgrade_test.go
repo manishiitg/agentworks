@@ -68,6 +68,21 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "review-description-first", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"prompt_contract": "description-first-v1", "description": "Greet the person once.", "system_rules": "Never repeat the greeting to validate it.", "items": []any{}, "reason": "Reviewed description-first task; remove redundant execution item."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", nextStamp, 200)
+	// A workflow already on 1.0.48 owes the resource-intent review (1.0.49).
+	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
+	if !strings.Contains(after, `upgrade-resource-intent`) {
+		t.Fatalf("resource-intent migration should be due after 1.0.48: %s", after)
+	}
+	intentStamp := map[string]any{"action": "stamp", "version": "1.0.49", "confirm": "invoices"}
+	// Refused while the description says nothing about the four resources.
+	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
+	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	// Saying "none" for a resource the description itself names is a contradiction, not a review.
+	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-contradiction", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none\n\n## Guides\nknowledgebase/tone.md", "reason": "Resource intent review."}}}, 200)
+	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
+	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-reviewed", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none", "reason": "Resource intent review."}}}, 200)
+	f.call(t, owner, "workflow_upgrade", intentStamp, 200)
 	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
 	if !strings.Contains(after, `"pending":[]`) {
 		t.Fatalf("reviewed migration remains due: %s", after)
