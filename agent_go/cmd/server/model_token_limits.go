@@ -77,7 +77,7 @@ func modelLimitRefusal(provider, model string, limit int64, weekly bool) error {
 	if weekly {
 		period, resets = "this week's", "resets Monday 00:00 UTC"
 	}
-	return &sharedAccountTokenLimitError{fmt.Sprintf("You have used %s %s tokens of %s on the shared %s account (%s), and no other allowed model is available. Ask an admin to raise it.", period, formatTokenAmount(limit), model, sharedAccountLabel(provider), resets)}
+	return &sharedAccountTokenLimitError{fmt.Sprintf("You have used %s %s tokens of %s on the shared %s account (%s), and no other allowed model is available. This is the per-model limit an admin set on the shared account; your own accounts are not affected. Ask an admin to raise it or switch to your own account.", period, formatTokenAmount(limit), model, sharedAccountLabel(provider), resets)}
 }
 
 // isServerAccountConnection reports whether connectionID names the provider's
