@@ -37,6 +37,7 @@ func (e *APIError) Error() string {
 }
 
 type Client struct {
+	guidance      guidanceSession
 	baseURL       string
 	token         string
 	tokenProvider func(context.Context) (string, error)
@@ -205,10 +206,16 @@ func (c *Client) Call(ctx context.Context, name string, arguments map[string]any
 	if arguments == nil {
 		arguments = map[string]any{}
 	}
-	return c.request(ctx, http.MethodPost, "/api/external/v1/call", struct {
-		Name      string         `json:"name"`
-		Arguments map[string]any `json:"arguments"`
-	}{name, arguments}, true)
+	handle := c.guidanceID(ctx)
+	raw, err := c.request(ctx, http.MethodPost, "/api/external/v1/call", struct {
+		Name              string         `json:"name"`
+		Arguments         map[string]any `json:"arguments"`
+		GuidanceSessionID string         `json:"guidance_session_id,omitempty"`
+	}{name, arguments, handle}, true)
+	if err == nil {
+		c.rememberGuidance(raw, handle)
+	}
+	return raw, err
 }
 
 // BrainSecretSet sets one of Brain's own secrets over the person's own sign-in. It is not a tool, so an agent cannot reach it

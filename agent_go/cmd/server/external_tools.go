@@ -441,6 +441,17 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 			allowed = append(allowed, knowledgebaseToolForClaims(GetUserFromContext(r.Context()), tool))
 		}
 	}
+	if names := r.URL.Query()["names"]; len(names) > 0 {
+		result := externalMCPAPISpec(map[string]any{"names": names}, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed, func(value map[string]any, names []string) {
+			api.externalPrepareGuidance(r, value, r.URL.Query().Get("guidance_session_id"))
+		})
+		if result.IsError {
+			externalError(w, 400, "invalid_arguments", "Requested schemas are not available to this connection.")
+			return
+		}
+		externalJSON(w, result.StructuredContent)
+		return
+	}
 	externalJSON(w, map[string]any{"tools": externalListedTools(GetUserFromContext(r.Context()), allowed)})
 }
 func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Request) {
@@ -450,8 +461,9 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<20)
 	var call struct {
-		Name      string         `json:"name"`
-		Arguments map[string]any `json:"arguments"`
+		Name              string         `json:"name"`
+		Arguments         map[string]any `json:"arguments"`
+		GuidanceSessionID string         `json:"guidance_session_id,omitempty"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -505,6 +517,18 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if isExternalKnowledgebaseTool(tool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), tool.Name, call.Arguments) {
 		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Brain action.")
 		return
+	}
+	handle := call.GuidanceSessionID
+	if handle == "" {
+		handle, _ = r.Context().Value(externalGuidanceHandleKey{}).(string)
+	}
+	if len(handle) > 256 {
+		handle = ""
+	} // malformed receipt is missing, not authorization
+	if len(externalToolGuidance(tool.Name)) > 0 || tool.Name == "get_guidance_topic" || tool.Name == "get_guidance_skills" {
+		decorated, finish := api.externalGuidanceResponse(w, r, tool.Name, handle)
+		w = decorated
+		defer finish()
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())

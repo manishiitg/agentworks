@@ -58,6 +58,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 			break
 		}
 	}
+	instructions += " Dashboard preparation: fetch help action=skills topics=[\"dashboard-authoring\"] before building. Retain its guidance_session_id per conversation, pass it as an optional common argument on later tools, and omit known_versions to reload after context loss. Advisory receipts record delivery, not reading; current permissions still apply."
 	opts := []server.ServerOption{server.WithToolCapabilities(false), server.WithElicitation(), server.WithInstructions(instructions)}
 	s := server.NewMCPServer("AgentWorks", "1.0.0", append(opts, extra...)...)
 	available := make(map[string]bool, len(definitions))
@@ -66,7 +67,18 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 	}
 	for _, definition := range definitions {
 		name := definition.Name
-		s.AddTool(mcp.NewToolWithRawSchema(name, definition.Description, definition.InputSchema), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		schema := definition.InputSchema
+		var common map[string]any
+		if json.Unmarshal(schema, &common) == nil {
+			properties, _ := common["properties"].(map[string]any)
+			if properties == nil {
+				properties = map[string]any{}
+				common["properties"] = properties
+			}
+			properties["guidance_session_id"] = map[string]any{"type": "string", "maxLength": 256, "description": "Optional guidance receipt for this conversation, returned by help action=skills. Reload skills after context loss."}
+			schema, _ = json.Marshal(common)
+		}
+		s.AddTool(mcp.NewToolWithRawSchema(name, definition.Description, schema), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			arguments := request.GetArguments()
 			// Preserve integers from the wire instead of round-tripping through
 			// float64 (for example numeric external IDs greater than 2^53).
@@ -77,6 +89,10 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 					return mcp.NewToolResultError("tool arguments must be a JSON object"), nil
 				}
 			}
+			if id, ok := arguments["guidance_session_id"].(string); ok {
+				ctx = WithGuidanceSession(ctx, id)
+			}
+			delete(arguments, "guidance_session_id")
 			return callMCPBridgeTool(ctx, client, name, arguments, available, request), nil
 		})
 	}

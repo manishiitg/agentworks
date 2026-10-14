@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"maps"
@@ -392,6 +393,9 @@ type StreamingAPI struct {
 
 	playwrightLive      playwrightLiveRegistry
 	accessTokenSessions accessTokenSessionRegistry
+	guidanceStoreMu     sync.Mutex
+	guidanceStore       *guidancesessions.Store
+	guidanceStorePath   string
 	uiControlOnce       sync.Once
 	uiControl           *uiControlBroker
 	config              ServerConfig
@@ -2313,6 +2317,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		stoppedSessions:                     make(map[string]bool),
 		interruptedTurns:                    make(map[string]bool),
 	}
+	defer api.closeGuidanceSessions()
 	// Pulse Goal Work reaches other workflows and Crews through the external API.
 	pulsePlatformAPI = api
 	runningServerAPI = api

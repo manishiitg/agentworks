@@ -167,13 +167,16 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if crewResponse.Code != 200 || !strings.Contains(crewResponse.Body.String(), "Shared Crew") {
 		t.Fatalf("Crew reader: %d %s", crewResponse.Code, crewResponse.Body.String())
 	}
-	// Relay editing reuses relays:write, including a project editor.
+	// Relay authoring reuses relays:write and requires its current Builder owner.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["agentworks","work","relays","code"]},{"id":"reader","username":"reader","role":"editor","products":["agentworks","work","relays","code"]}]}`)
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"],"readers":["reader"]}}`)
 	owner.AccessToken.Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}
 	// Changed consent changes the catalog and requires a fresh MCP session.
 	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
+	// Old editor grants confer Run access, never Relay Builder ownership.
+	requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "create_dashboard", "arguments": map[string]any{"workflow_id": "invoices", "dashboard_id": "editor-denied", "title": "Denied", "files": map[string]any{"index.html": "<html><body>Denied</body></html>"}}}), "legacy Relay editor cannot build", "forbidden")
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["owner"],"readers":["reader"]}}`)
 	relayDraft := call("create_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "relay-view", "title": "Relay view", "files": map[string]any{"index.html": "<html><title>Relay</title><body>Relay</body></html>"}})
 	relayRev := relayDraft["dashboard"].(map[string]any)["revision"].(string)
 	call("publish_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "relay-view", "expected_revision": relayRev})

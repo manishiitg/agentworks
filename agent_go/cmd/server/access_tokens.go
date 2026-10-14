@@ -25,45 +25,55 @@ import (
 )
 
 func openAccessTokens() (*accesstokens.Store, error) {
-	root, err := workflowCLIStateRoot()
+	path, err := privateAuthorityStatePath(".sqlite")
 	if err != nil {
 		return nil, err
+	}
+	return accesstokens.Open(path)
+}
+
+// Shared private server state stays outside product documents. Preserve the
+// access-token path; guidance uses its own database under the same authority.
+func privateAuthorityStatePath(suffix string) (string, error) {
+	root, err := workflowCLIStateRoot()
+	if err != nil {
+		return "", err
 	}
 	docs, err := filepath.Abs(fsutil.WorkspaceDocsRoot())
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	rel, err := filepath.Rel(docs, root)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return nil, errors.New("access token state must be outside workspace documents")
+		return "", errors.New("access token state must be outside workspace documents")
 	}
 	if err := os.MkdirAll(root, 0700); err != nil {
-		return nil, err
+		return "", err
 	}
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if actualDocs, e := filepath.EvalSymlinks(docs); e == nil {
 		docs = actualDocs
 	}
 	rel, err = filepath.Rel(docs, resolved)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return nil, errors.New("access token state must be outside workspace documents")
+		return "", errors.New("access token state must be outside workspace documents")
 	}
 	if err := ValidateConfiguredAuthSecret(); err != nil {
-		return nil, err
+		return "", err
 	}
 	// Bind storage to this server authority even if two local instances use
 	// the same default state root. Secret rotation invalidates previous PATs.
 	authority := sha256.Sum256(GetAuthSecret())
-	return accesstokens.Open(filepath.Join(resolved, "auth", hex.EncodeToString(authority[:16])+".sqlite"))
+	return filepath.Join(resolved, "auth", hex.EncodeToString(authority[:16])+suffix), nil
 }
 
 // PAT identities are resolved against the current directory, not saved account

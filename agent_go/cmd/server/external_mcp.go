@@ -56,6 +56,7 @@ var externalMCPToolSchemas = map[string]map[string]any{
 	externalMCPToolSpec: {
 		"type": "object",
 		"properties": map[string]any{
+			"guidance_session_id": map[string]any{"type": "string", "maxLength": 256, "description": "Opaque guidance receipt for this conversation; omit for a new conversation."},
 			"names": map[string]any{
 				"description": "Tool name or names to get JSON schemas for. Omit to list every available tool with a one-line description.",
 			},
@@ -74,6 +75,7 @@ var externalMCPToolSchemas = map[string]map[string]any{
 	externalMCPToolCall: {
 		"type": "object",
 		"properties": map[string]any{
+			"guidance_session_id": map[string]any{"type": "string", "maxLength": 256, "description": "Return the guidance_session_id from preparation for this conversation."},
 			"name": map[string]any{
 				"type":        "string",
 				"description": "Tool name from get_api_spec.",
@@ -91,7 +93,7 @@ var externalMCPToolSchemas = map[string]map[string]any{
 }
 
 var externalMCPToolDescriptions = map[string]string{
-	externalMCPToolSpec:   "Discover AgentWorks tools. Call with no arguments to list every available tool name with a one-line description; call with names (a string or an array of strings) to get full JSON schemas for those tools. Only tools this connection may use are listed. Then execute with call_tool.",
+	externalMCPToolSpec:   "Discover AgentWorks tools. Call with no arguments to list every available tool name with a one-line description; call with names (a string or an array of strings) to get full JSON schemas for those tools. Only tools this connection may use are listed. Selected dashboard schemas also return canonical guidance and a guidance_session_id. Retain it per conversation and pass it to later schema/call_tool requests; after context loss reload with help action=skills. Then execute with call_tool.",
 	externalMCPToolSearch: "Find AgentWorks tools by intent or name (for example \"dashboard\" or \"vault\"). Returns tool names with one-line descriptions, ten per page (use next_offset for more), not schemas. Then call get_api_spec with the names and run them with call_tool. Only tools this connection may use are found; searching grants nothing.",
 	externalMCPToolCall:   "Execute one AgentWorks tool by name. Get its schema first with get_api_spec. Arguments must match the tool's schema; workflow tools need the workflow_id from list_workflows.",
 }
@@ -233,8 +235,14 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 		return externalMCPSearchTools(args, externalListedTools(GetUserFromContext(r.Context()), allowed))
 	}
 	if name == externalMCPToolSpec {
-		return externalMCPAPISpec(args, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed)
+		return externalMCPAPISpec(args, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed, func(value map[string]any, names []string) {
+			handle, _ := args["guidance_session_id"].(string)
+			api.externalPrepareGuidance(r, value, handle)
+		})
 	}
+	handle, _ := args["guidance_session_id"].(string)
+	r = externalWithGuidanceHandle(r.WithContext(ctx), handle)
+	ctx = r.Context()
 	target, _ := args["name"].(string)
 	target = knowledgebase.CanonicalToolName(strings.TrimSpace(target))
 	if target == "" {
@@ -321,7 +329,7 @@ func externalMCPDispatchResult(rec *externalMCPRecorder) *mcp.CallToolResult {
 // name/description list, names returns full schemas for those tools.
 // listed is what the connection is shown; allowed adds hidden aliases, whose
 // schemas can still be read by name.
-func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool) *mcp.CallToolResult {
+func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool, prepare ...func(map[string]any, []string)) *mcp.CallToolResult {
 	byName := make(map[string]externalTool, len(allowed))
 	for _, tool := range allowed {
 		byName[tool.Name] = tool
@@ -363,7 +371,11 @@ func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool) *mc
 		}
 		schemas[tool.Name] = map[string]any{"description": tool.Description, "inputSchema": tool.InputSchema}
 	}
-	result, err := mcp.NewToolResultJSON(map[string]any{"schemas": schemas})
+	value := map[string]any{"schemas": schemas}
+	for _, decorate := range prepare {
+		decorate(value, names)
+	}
+	result, err := mcp.NewToolResultJSON(value)
 	if err != nil {
 		return mcp.NewToolResultError("failed to encode tool schemas: " + err.Error())
 	}

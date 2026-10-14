@@ -228,7 +228,13 @@ func TestMCPSchemaParityAndDispatch(t *testing.T) {
 	_ = json.Unmarshal(encoded, &description)
 	var expected any
 	_ = json.Unmarshal(schema, &expected)
-	if !reflect.DeepEqual(description["inputSchema"], expected) {
+	actual := description["inputSchema"].(map[string]any)
+	common := actual["properties"].(map[string]any)
+	if common["guidance_session_id"] == nil {
+		t.Fatal("stdio lacks common guidance envelope")
+	}
+	delete(common, "guidance_session_id")
+	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("schema changed: %s", encoded)
 	}
 	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "update_scripted_step", Arguments: map[string]any{"workflow_id": "wf-1", "patch": "x"}}}

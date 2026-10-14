@@ -26,6 +26,9 @@ import (
 
 type options struct {
 	serverURL, configPath string
+	guidanceSessionID     string
+	guidanceChecked       bool
+	guidanceCachePath     string
 	// switchPath is the person's chosen login for an attach that moves the chat.
 	switchPath string
 	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
@@ -114,6 +117,7 @@ func newCommand(o *options) *cobra.Command {
 	root.SetErr(o.stderr)
 	root.PersistentFlags().StringVar(&o.serverURL, "server", "", "Hosted AgentWorks HTTPS URL (or AGENTWORKS_SERVER)")
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
+	root.PersistentFlags().StringVar(&o.guidanceSessionID, "guidance-session", "", "Guidance receipt for this conversation (omit for explicit fresh preparation)")
 	root.PersistentFlags().BoolVar(&o.jsonOutput, "json", false, "Emit compact JSON results and structured errors")
 	root.AddCommand(loginCommand(o), loginsCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), watchCommand(o), debugCommand(o), serveShareCommand(o), pluginCommand(o), bridgeCommand(o), attachPluginCommand(o), claudeLauncherCommand(o), detachAgentCommand(o), agentsCommand(o), usageCommand(o), shareCommand(o, false), shareCommand(o, true), groupsCommand(o, false), groupsCommand(o, true))
 	toolsCmd := &cobra.Command{Use: "tools", Short: "Discover and call the server's current tools"}
@@ -127,6 +131,17 @@ func newCommand(o *options) *cobra.Command {
 			return err
 		}
 		return o.output(map[string]any{"tools": tools})
+	}})
+	toolsCmd.AddCommand(&cobra.Command{Use: "spec NAME...", Args: cobra.MinimumNArgs(1), Short: "Prepare selected schemas and their current guidance", RunE: func(cmd *cobra.Command, names []string) error {
+		client, err := o.client()
+		if err != nil {
+			return err
+		}
+		raw, err := client.Schemas(cmd.Context(), names)
+		if err != nil {
+			return err
+		}
+		return o.output(raw)
 	}})
 	call := &cobra.Command{Use: "call NAME", Args: cobra.MaximumNArgs(1), Short: "Call any server tool; --input accepts a JSON object file or stdin"}
 	addOperationFlags(call, "")
@@ -295,6 +310,7 @@ func (o *options) client() (*agentworksclient.Client, error) {
 	if cfg.RefreshToken != "" {
 		client.WithTokenProvider(agentworksclient.ConfigTokenProvider(cfg.Server, path))
 	}
+	o.configureGuidanceSession(client, cfg.Server, path)
 	return client, nil
 }
 

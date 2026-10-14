@@ -40,13 +40,12 @@ func (api *StreamingAPI) externalGuidanceSkills(w http.ResponseWriter, r *http.R
 			if known[topic.Name] == version {
 				item["unchanged"] = true
 			} else {
-				_, body, err := externalGuidanceContentForProducts(topic.Name, builderProductSelection(claims))
+				content, err := externalGuidanceSkillContent(claims, topic)
 				if err != nil {
 					externalError(w, 500, "guidance_unavailable", "Guidance could not be rendered.")
 					return
 				}
-				description, _ := json.Marshal(topic.Description)
-				file["content"] = fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n", topic.Name, description) + externalTopicNoteFor(claims, topic) + "\n\n" + body
+				file["content"] = content
 				if topic.Name == productguide.SkillName {
 					selection := builderProductSelection(claims)
 					file["content"] = productguide.Skill(selection)
@@ -60,4 +59,14 @@ func (api *StreamingAPI) externalGuidanceSkills(w http.ResponseWriter, r *http.R
 		skills = append(skills, item)
 	}
 	externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(claims), "skills": skills, "refresh": "Save topic versions. Pass topics and known_versions to fetch only selected changed SKILL.md files; do not install every topic for every task."})
+}
+
+// Render the same canonical SKILL.md for explicit skill fetch and schema preparation.
+func externalGuidanceSkillContent(claims *UserClaims, topic externalGuidanceTopic) (string, error) {
+	_, body, err := externalGuidanceContentForProducts(topic.Name, builderProductSelection(claims))
+	if err != nil {
+		return "", err
+	}
+	description, _ := json.Marshal(topic.Description)
+	return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n", topic.Name, description) + externalTopicNoteFor(claims, topic) + "\n\n" + body, nil
 }

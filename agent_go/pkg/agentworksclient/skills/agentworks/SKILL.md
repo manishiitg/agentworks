@@ -2,7 +2,7 @@
 name: agentworks
 description: Use AgentWorks workflows, Crews, Relays, dashboards, Brain and Vault through the tools and guidance allowed by the current MCP connection.
 metadata:
-  version: 1.0.1
+  version: 1.0.2
 ---
 
 # AgentWorks
@@ -14,6 +14,8 @@ Use this as an entry pointer. The server owns the current procedures and permiss
 3. Call `help action=topics` or `help action=skills` for names, descriptions and per-topic versions. Load only relevant topics with `help action=topic`, passing `topic` and your saved `known_version`. An unchanged response has no body. Preserve the returned `external_note` alongside content: it maps internal reference operations to this connection's actual tools.
 4. To install selected reference skills, use `help action=skills` with `topics` and `known_versions`. Write returned changed `files` under your client skill folder as `<topic>/<path>`. Never replace a customized skill silently. The default catalog contains paths and versions, not every topic's text.
 5. Discover projects through `workflow action=list` and `crew action=list`; IDs are not filesystem paths. Load `crew-authoring` for Crew work, `relay-builder`/`relay-dashboard` for Relay work, and the listed Builder reference topics for workflow work. Topic lists are filtered by current connection access.
+
+Dashboard preparation: remote `get_api_spec names=["dashboard"]` or CLI `agentworks tools spec dashboard` returns the canonical dashboard skill and a `guidance_session_id`. For stdio, fetch `help action=skills topics=["dashboard-authoring"]`. Read the returned skill before building. Retain the handle per conversation and return it on schema and tool calls (remote common envelope; stdio common argument; CLI `--guidance-session`). A verified native CLI conversation retains its own handle automatically; generic clients must carry it explicitly. Independent conversations need separate handles, even with the same login. Dashboard authoring replies carry a compact topic@version status; current means its version was delivered to this client, not that it was read. Stale/missing status includes a fetch hint. Ordinary list/get/link replies omit guidance. `delivered_to_client` records delivery, not proof of reading or retention. After context loss fetch the full skill again, omitting `known_versions`. A handle grants no access, expires after 30 days without guidance activity and never blocks an otherwise authorized operation. No-handle authoring operations stay usable and return compact reminders. If the connection is renewed or a browser token rotates, its binding may change: prepare a new handle; only deduplication is lost.
 
 Messages use `messages action=send/read` and `inbox_id`; receiving agents decide whether to reply. Declared functions use `functions action=list/call/status/read/reply`, with `call_id` and a stable `submission_id` for identical retries. `functions action=calls` lists Crew calls; owner status/read replies can contain `commands_run`. Read the current schemas and topic before using these details. Everyone except the Crew's owner uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. The owner's own chat is Builder mode, with full access. Only the owner changes a Crew.
 

@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-14 — Generic guidance receipts start with advisory dashboards (PLAT-856)
+
+Selected dashboard schemas and explicit full skill fetches deliver canonical,
+versioned instructions. Optional opaque guidance_session_id receipts are bound
+to caller and connection, persisted outside project files, bounded, and expire
+after 30 days without guidance activity. Authoring replies carry compact
+status/reminders; list/get/link replies omit guidance. Missing, stale or invalid
+guidance never blocks an otherwise authorized operation.
+Metadata and client known-version claims do not establish delivery. Separate
+external conversations carry separate handles; verified native CLI chats may
+retain theirs. After context loss, explicitly fetch the full skill again.
+A receipt proves neither reading nor model retention and grants no permissions.
+
+Why: related tools should reuse one delivered skill without inventing chat
+identity from a shared login or repeating full instructions on every call.
+
+Ticket: [PLAT-856](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/integrations/mcp/plat-856.md), issue 856-84.
+
 ## 2026-10-14 — Task rules belong in the user task; procedures are opened when needed (PLAT-861)
 
 The description carries the task, task-specific Rules and named Resources.
