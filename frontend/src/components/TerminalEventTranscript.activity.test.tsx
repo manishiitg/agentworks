@@ -35,7 +35,9 @@ async function mount(props: Partial<TerminalEventTranscriptProps>) {
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   return { host, render }
 }
-function indicators(host: HTMLElement) { return host.querySelectorAll('[data-testid="agent-runtime-activity"]') }
+// The live-activity indicator: the shared working line while the agent runs (its star is the motion, no separate spinner),
+// the small status dot for other states such as waiting for input.
+function indicators(host: HTMLElement) { return host.querySelectorAll('[data-testid="agent-runtime-activity"], [data-testid="working-status"]') }
 function footer(host: HTMLElement) { return host.querySelector('[data-testid="transcript-activity-footer"]') as HTMLElement }
 function headers(host: HTMLElement) { return host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]') }
 
@@ -157,7 +159,8 @@ describe('activity belongs to the current agent turn', () => {
     const { host } = await mount({ events, runtimeActivity: running })
     expect(headers(host)).toHaveLength(1)
     expect(indicators(host)).toHaveLength(1)
-    expect(footer(host).querySelector('.animate-spin')).not.toBeNull()
+    expect(footer(host).querySelector('[data-testid="working-glyph"]')).not.toBeNull()
+    expect(footer(host).querySelector('.animate-spin')).toBeNull()
     expect(footer(host).textContent).toContain('Working…')
     expect(headers(host)[0].querySelector('[role="status"]')).toBeNull()
   })
