@@ -1,5 +1,13 @@
 # Decisions and open issues
 
+## 2026-10-14 — The CLI updates itself by default; breaking releases are announced, not installed (PLAT-861)
+
+The local helper checks the default login's server a few minutes after it starts and then every few hours, and installs the offered CLI build when no chat is being delivered to. Turn it off with `agentworks update --auto off` or `AGENTWORKS_AUTO_UPDATE=0`. Releases carry a compatibility epoch (`deploy/cli-release.json`, built into the CLI too): a CLI installs automatically only a release of its own epoch. Bumping the epoch, with a one-line reason, is the act of marking a release breaking; the chat then tells the person why, at most once a day, and the manual update command. Later releases keep the new epoch, so clients on it update by themselves again with nothing to reset. A failed install or helper restart rolls back to the kept previous program and that build is not tried again until another is offered. An offer that has not changed since the last check is not installed again, so manual updates are not undone. Other servers only produce a notice. Windows only notifies until its bridge has run for real users. There is no minimum-compatible version: builds are commit hashes with no order, so compatibility is an epoch id, not a number comparison.
+
+Why: people ran old CLIs against newer servers and lost delivery; updating is the default fix, with a hard stop for changes that older clients cannot handle. Owner confirmed default-on with opt-out (2026-10-13).
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-190.
+
 ## 2026-10-13 — Workflow steps use a small core and on-demand procedural skills (PLAT-861)
 
 Every step keeps the general execution tool baseline. DB, knowledgebase and browser procedures live in skills opened when needed, with the same model for API providers and coding CLIs. The core retains actual grants/paths, task/output contracts and bounded goal, plan-position and parent-call context. No new workflow upgrade or Builder tool-selection pass is needed.

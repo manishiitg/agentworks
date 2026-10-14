@@ -72,7 +72,8 @@ By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no long
    host has, a missing, changed or unlisted file, or an agent that cannot load its libraries all **refuse** the deploy before
    anything is touched. Then it copies the files into the product's own `releases/<id>/` (binaries renamed `<product>-agent`,
    `-workspace`, `-gateway`; runtime-config, brand, MCP catalog and `downloads/version.json` are product-specific and made at
-   this step) and runs the **same activation as before**: state dirs, standard runtime profile env, units and drop-ins, drain
+   this step; `version.json` carries `compat_epoch`/`breaking_reason` from `deploy/cli-release.json`; change the epoch, with a one-line
+   reason, only for a CLI change older CLIs cannot work with: those CLIs are not auto-updated across it) and runs the **same activation as before**: state dirs, standard runtime profile env, units and drop-ins, drain
    (`DEPLOY_DRAIN_SECONDS`), restart, `deployment_checks`, managed Chrome, profile report, release pruning.
 3. RTS: `./deploy.sh rts` gets a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) onto RTS, checks it
    against the manifest hash read from the build host, and runs the unchanged server A activation without compiling. Server A downloads the copy

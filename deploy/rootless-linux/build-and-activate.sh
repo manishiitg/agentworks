@@ -125,6 +125,30 @@ cleanup_build() {
 trap cleanup_build EXIT
 
 # slotctl/slottmux helpers (slots_build in the build path, slots_install_shim at activation).
+# version.json: which CLI build this server offers and its compatibility epoch (downloads/cli-release.json, from
+# deploy/cli-release.json). The CLI installs a release automatically only when the epoch equals the one it was built with;
+# bumping the epoch is how a release is marked breaking, and the person is told why.
+write_cli_version_json() {
+  python3 - "$BUILD_DIR/downloads" "$builder_revision" "$cli_build" "$RELEASE_ID" <<'PY'
+import json, os, sys
+downloads, version, build, release = sys.argv[1:5]
+out = {"version": version, "cli_build": build, "release": release}
+path = os.path.join(downloads, "cli-release.json")
+if os.path.exists(path):
+    rel = json.load(open(path))
+    epoch, reason = rel.get("compat_epoch", ""), rel.get("breaking_reason", "")
+    if not isinstance(epoch, str) or not isinstance(reason, str) or len(epoch) >= 64 or len(reason) > 200 or any(ord(c) < 32 for c in epoch + reason):
+        sys.exit("deploy/cli-release.json: compat_epoch (under 64 chars) and breaking_reason (under 200) must be single-line strings")
+    if epoch and not reason.strip():
+        sys.exit("deploy/cli-release.json: a compat_epoch needs a breaking_reason the person can read")
+    if epoch:
+        out["compat_epoch"], out["breaking_reason"] = epoch, reason.strip()
+        out["breaking"] = True  # for CLIs older than the epoch (they read only this flag and then stop auto-installing); newer CLIs ignore it
+with open(os.path.join(downloads, "version.json"), "w") as f:
+    f.write(json.dumps(out) + "\n")
+PY
+}
+
 source "$REPO_ROOT/deploy/common/slots.sh"
 source "$REPO_ROOT/deploy/common/vault.sh"
 if [[ -n "$PREBUILT" ]]; then
@@ -138,7 +162,7 @@ cp -R "$PREBUILT/source/." "$BUILD_DIR/source/"
 prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" "$PRODUCT" "agent workspace gateway" "browser update-coding-clis"
 cp -R "$PREBUILT/downloads/." "$BUILD_DIR/downloads/"
 cli_build="$(cat "$BUILD_DIR/downloads/cli-build.txt" 2>/dev/null || true)"
-printf '{"version":"%s","cli_build":"%s","release":"%s"}\n' "$builder_revision" "$cli_build" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
+write_cli_version_json
 cp -R "$PREBUILT/frontend/." "$BUILD_DIR/frontend/"
 else
 # Build exactly the requested checkout while resolving the shared sibling
@@ -188,17 +212,22 @@ echo "==> [$RELEASE_ID] Building AgentWorks CLI downloads"
 mkdir -p "$BUILD_DIR/downloads"
 source "$REPO_ROOT/deploy/common/cli-build-id.sh"
 cli_build="$(cli_build_id "$REPO_ROOT" "$WORKSPACE_ROOT" "$DEPLOY_GOWORK")"
+cli_epoch="$(python3 -c 'import json, re, sys
+e = json.load(open(sys.argv[1])).get("compat_epoch", "")
+if not isinstance(e, str) or not re.fullmatch(r"[A-Za-z0-9._-]{0,63}", e): sys.exit("deploy/cli-release.json: compat_epoch must be letters, digits, . _ - and under 64 characters")
+print(e)' "$REPO_ROOT/deploy/cli-release.json")"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   os="${target%-*}"
   arch="${target#*-}"
   name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision -X main.cliBuild=$cli_build" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
+  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
   [[ "$os" == windows ]] || chmod +x "$BUILD_DIR/downloads/$name"
   (cd "$BUILD_DIR/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
 done
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$BUILD_DIR/downloads/install-agentworks.sh"
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$BUILD_DIR/downloads/install-agentworks.ps1"
-printf '{"version":"%s","cli_build":"%s","release":"%s"}\n' "$builder_revision" "$cli_build" "$RELEASE_ID" > "$BUILD_DIR/downloads/version.json"
+install -m 0644 "$REPO_ROOT/deploy/cli-release.json" "$BUILD_DIR/downloads/cli-release.json"
+write_cli_version_json
 bash -n "$BUILD_DIR/downloads/install-agentworks.sh"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac

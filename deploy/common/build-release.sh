@@ -221,10 +221,14 @@ step "Building AgentWorks CLI downloads"
 # shellcheck source=deploy/common/cli-build-id.sh
 source "$REPO_ROOT/deploy/common/cli-build-id.sh"
 cli_build="$(cli_build_id "$REPO_ROOT" "$WORKSPACE_ROOT" "$DEPLOY_GOWORK")"
+cli_epoch="$(python3 -c 'import json, re, sys
+e = json.load(open(sys.argv[1])).get("compat_epoch", "")
+if not isinstance(e, str) or not re.fullmatch(r"[A-Za-z0-9._-]{0,63}", e): sys.exit("deploy/cli-release.json: compat_epoch must be letters, digits, . _ - and under 64 characters")
+print(e)' "$REPO_ROOT/deploy/cli-release.json")"
 mkdir -p "$OUT/downloads"; printf '%s' "$cli_build" > "$OUT/downloads/cli-build.txt"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   os="${target%-*}"; arch="${target#*-}"; name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=${REV[mcp-agent-builder-go]} -X main.cliBuild=$cli_build" -o "$OUT/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
+  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=${REV[mcp-agent-builder-go]} -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch" -o "$OUT/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
   [[ "$os" == windows ]] || chmod +x "$OUT/downloads/$name"
   (cd "$OUT/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
   case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac
@@ -233,6 +237,8 @@ for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 wi
 done
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$OUT/downloads/install-agentworks.sh"
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$OUT/downloads/install-agentworks.ps1"
+# The CLI compatibility epoch (deploy/cli-release.json); the deploy turns it into version.json.
+install -m 0644 "$REPO_ROOT/deploy/cli-release.json" "$OUT/downloads/cli-release.json"
 bash -n "$OUT/downloads/install-agentworks.sh"
 
 step "Building frontend"

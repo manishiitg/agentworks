@@ -46,7 +46,11 @@ func newAutoUpdateFixture(t *testing.T) *autoUpdateFixture {
 	downloads := &atomic.Int32{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/downloads/cli/version.json", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"version":%q,"cli_build":"build-new","breaking":%v,"breaking_reason":%q}`, newSHA, breaking.Load(), reason.Load().(string))
+		epoch := ""
+		if breaking.Load() {
+			epoch = "epoch-2"
+		}
+		fmt.Fprintf(w, `{"version":%q,"cli_build":"build-new","compat_epoch":%q,"breaking_reason":%q}`, newSHA, epoch, reason.Load().(string))
 	})
 	mux.HandleFunc("/api/downloads/cli/"+asset, func(w http.ResponseWriter, r *http.Request) {
 		downloads.Add(1)
@@ -215,5 +219,20 @@ func TestAutoUpdateDoesNotRedoAnOfferItAlreadyActedOn(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(filepath.Join(stateRoot(t), "bridge.log")); !strings.Contains(string(raw), "[UPDATE] skip: the offer has not changed") {
 		t.Fatalf("no [UPDATE] line for the skip: %q", raw)
+	}
+}
+
+// Marking a release breaking bumps the epoch once; a client already on that epoch keeps updating by itself.
+func TestAutoUpdateInstallsWhenTheClientIsOnTheOfferedEpoch(t *testing.T) {
+	f := newAutoUpdateFixture(t)
+	f.set(true, "the message format changed")
+	old := cliCompatEpoch
+	cliCompatEpoch = "epoch-2"
+	t.Cleanup(func() { cliCompatEpoch = old })
+	if err := runAutoUpdate(f.o); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.installed(t), "0123456789abcdef") {
+		t.Fatal("a client on the offered epoch was not updated")
 	}
 }

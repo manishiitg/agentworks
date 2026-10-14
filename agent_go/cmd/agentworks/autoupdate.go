@@ -18,7 +18,7 @@ import (
 )
 
 // Automatic updates (PLAT-861). The local helper asks `agentworks update --auto-run` for a check every few hours; it
-// installs the build the person's default login server offers, unless the release is marked breaking, the person turned
+// installs the build the person's default login server offers, unless the release is of another compatibility epoch (marked breaking), the person turned
 // this off, or a chat is being delivered to. Anything that needs the person is said once a day on a prompt.
 
 // autoUpdateInstallsOnWindows stays off until the Windows bridge has run for real users for a while: until then a Windows
@@ -237,8 +237,8 @@ func runAutoUpdate(o *options) error {
 			st.clearNeed(server)
 			st.FailedBuild = ""
 			st.LastOffered[server] = offeredID(release)
-		case release.Breaking:
-			updateLog(root, "skip: breaking release")
+		case release.CompatEpoch != cliCompatEpoch:
+			updateLog(root, "skip: the offered release is a different compatibility epoch (%q, this CLI %q)", release.CompatEpoch, cliCompatEpoch)
 			reason := strings.TrimSpace(release.BreakingReason)
 			if reason == "" {
 				reason = "this release is not compatible with older versions"
@@ -292,7 +292,7 @@ func runAutoUpdate(o *options) error {
 				switch {
 				case !ok, cliIsCurrent(cliVersion, cliBuild, release.Version, release.CLIBuild):
 					st.clearNeed(other)
-				case release.Breaking:
+				case release.CompatEpoch != cliCompatEpoch:
 					reason := firstNonEmpty(strings.TrimSpace(release.BreakingReason), "this release is not compatible with older versions")
 					st.setNeed(other, "AgentWorks at "+shortHost(other)+" needs a different CLI: "+reason+". Run agentworks update --server "+other+" when ready (it also changes the CLI for other servers).")
 				default:
