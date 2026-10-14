@@ -290,6 +290,9 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
 				item["attachment_handle"] = attachmentHandle(a.ID, a.Attachment.ID)
+				if agentUpdateNeeded(a) {
+					item["update_needed"] = true
+				}
 			}
 			agents = append(agents, item)
 		}

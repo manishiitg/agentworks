@@ -144,6 +144,9 @@ if os.path.exists(path):
     if epoch:
         out["compat_epoch"], out["breaking_reason"] = epoch, reason.strip()
         out["breaking"] = True  # for CLIs older than the epoch (they read only this flag and then stop auto-installing); newer CLIs ignore it
+built = os.path.join(downloads, "cli-built-at.txt")
+if os.path.exists(built) and open(built).read().strip().isdigit():
+    out["built_at"] = int(open(built).read().strip())  # when the CLI was built: only a hint that a newer CLI is not moved back
 with open(os.path.join(downloads, "version.json"), "w") as f:
     f.write(json.dumps(out) + "\n")
 PY
@@ -216,11 +219,12 @@ cli_epoch="$(python3 -c 'import json, re, sys
 e = json.load(open(sys.argv[1])).get("compat_epoch", "")
 if not isinstance(e, str) or not re.fullmatch(r"[A-Za-z0-9._-]{0,63}", e): sys.exit("deploy/cli-release.json: compat_epoch must be letters, digits, . _ - and under 64 characters")
 print(e)' "$REPO_ROOT/deploy/cli-release.json")"
+cli_built_at="$(date +%s)"; mkdir -p "$BUILD_DIR/downloads"; printf '%s' "$cli_built_at" > "$BUILD_DIR/downloads/cli-built-at.txt"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   os="${target%-*}"
   arch="${target#*-}"
   name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
+  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch -X main.cliBuiltAt=$cli_built_at" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
   [[ "$os" == windows ]] || chmod +x "$BUILD_DIR/downloads/$name"
   (cd "$BUILD_DIR/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
 done

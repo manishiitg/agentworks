@@ -23,6 +23,7 @@ type autoUpdateFixture struct {
 	target    string
 	downloads *atomic.Int32
 	set       func(breaking bool, reason string)
+	builtAt   *atomic.Int64 // the offered release's built_at
 }
 
 // newAutoUpdateFixture serves a release (newer than the installed fake CLI) and isolates every folder the updater uses.
@@ -44,13 +45,14 @@ func newAutoUpdateFixture(t *testing.T) *autoUpdateFixture {
 	var reason atomic.Value
 	reason.Store("")
 	downloads := &atomic.Int32{}
+	builtAt := &atomic.Int64{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/downloads/cli/version.json", func(w http.ResponseWriter, r *http.Request) {
 		epoch := ""
 		if breaking.Load() {
 			epoch = "epoch-2"
 		}
-		fmt.Fprintf(w, `{"version":%q,"cli_build":"build-new","compat_epoch":%q,"breaking_reason":%q}`, newSHA, epoch, reason.Load().(string))
+		fmt.Fprintf(w, `{"version":%q,"cli_build":"build-new","compat_epoch":%q,"breaking_reason":%q,"built_at":%d}`, newSHA, epoch, reason.Load().(string), builtAt.Load())
 	})
 	mux.HandleFunc("/api/downloads/cli/"+asset, func(w http.ResponseWriter, r *http.Request) {
 		downloads.Add(1)
@@ -78,7 +80,7 @@ func newAutoUpdateFixture(t *testing.T) *autoUpdateFixture {
 	root := filepath.Join(home, "bridge")
 	t.Setenv("HOME", home)
 	o := &options{serverURL: server.URL, getenv: func(string) string { return "" }, stdout: io.Discard, stderr: io.Discard}
-	return &autoUpdateFixture{o: o, root: root, target: target, downloads: downloads, set: func(b bool, r string) { breaking.Store(b); reason.Store(r) }}
+	return &autoUpdateFixture{o: o, root: root, target: target, downloads: downloads, builtAt: builtAt, set: func(b bool, r string) { breaking.Store(b); reason.Store(r) }}
 }
 
 func (f *autoUpdateFixture) installed(t *testing.T) string {
@@ -234,5 +236,25 @@ func TestAutoUpdateInstallsWhenTheClientIsOnTheOfferedEpoch(t *testing.T) {
 	}
 	if !strings.Contains(f.installed(t), "0123456789abcdef") {
 		t.Fatal("a client on the offered epoch was not updated")
+	}
+}
+
+// The first check on a machine does not move a CLI that was built after the offered one back to it (installed by hand
+// from another server); an older CLI is updated as usual.
+func TestAutoUpdateFirstCheckKeepsACliBuiltAfterTheOffer(t *testing.T) {
+	f := newAutoUpdateFixture(t)
+	f.builtAt.Store(1_000)
+	old := cliBuiltAt
+	t.Cleanup(func() { cliBuiltAt = old })
+	cliBuiltAt = "2000"
+	if err := runAutoUpdate(f.o); err != nil {
+		t.Fatal(err)
+	}
+	if f.downloads.Load() != 0 || strings.Contains(f.installed(t), "0123456789abcdef") {
+		t.Fatal("a CLI built after the offered release was replaced by it")
+	}
+	st := loadAutoUpdateState(stateRoot(t))
+	if len(st.LastOffered) != 1 {
+		t.Fatalf("the offer was not remembered: %+v", st.LastOffered)
 	}
 }

@@ -194,6 +194,8 @@ type LocalBridgeOptions struct {
 	// Version is the build that runs the bridge. A newer CLI replaces a bridge
 	// that reports another version, so hooks never talk to an older helper.
 	Version string
+	// ClientBuild is this CLI's source build id; it is sent with every attach.
+	ClientBuild string
 }
 
 func DefaultLocalBridgeRoot() (string, error) {
@@ -960,7 +962,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			if err != nil {
 				return fail(err)
 			}
-			options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID}
+			options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, ClientBuild: b.options.ClientBuild}
 			a, err := client.AttachAgent(callCtx, options)
 			var apiErr *APIError
 			if err != nil && !res.newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {

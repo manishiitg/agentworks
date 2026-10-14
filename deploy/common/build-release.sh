@@ -225,10 +225,11 @@ cli_epoch="$(python3 -c 'import json, re, sys
 e = json.load(open(sys.argv[1])).get("compat_epoch", "")
 if not isinstance(e, str) or not re.fullmatch(r"[A-Za-z0-9._-]{0,63}", e): sys.exit("deploy/cli-release.json: compat_epoch must be letters, digits, . _ - and under 64 characters")
 print(e)' "$REPO_ROOT/deploy/cli-release.json")"
-mkdir -p "$OUT/downloads"; printf '%s' "$cli_build" > "$OUT/downloads/cli-build.txt"
+cli_built_at="$(date +%s)"
+mkdir -p "$OUT/downloads"; printf '%s' "$cli_build" > "$OUT/downloads/cli-build.txt"; printf '%s' "$cli_built_at" > "$OUT/downloads/cli-built-at.txt"
 for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
   os="${target%-*}"; arch="${target#*-}"; name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=${REV[mcp-agent-builder-go]} -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch" -o "$OUT/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
+  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=${REV[mcp-agent-builder-go]} -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch -X main.cliBuiltAt=$cli_built_at" -o "$OUT/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
   [[ "$os" == windows ]] || chmod +x "$OUT/downloads/$name"
   (cd "$OUT/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
   case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac

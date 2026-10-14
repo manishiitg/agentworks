@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -196,6 +197,12 @@ func updateLog(root, format string, args ...any) {
 	fmt.Fprintf(f, "%s [UPDATE] %s\n", time.Now().Format("2006/01/02 15:04:05"), fmt.Sprintf(format, args...))
 }
 
+// builtNotOlderThan reports whether this CLI was built at or after the given time (unix seconds); unknown on either side is no.
+func builtNotOlderThan(offered int64) bool {
+	mine, err := strconv.ParseInt(cliBuiltAt, 10, 64)
+	return err == nil && offered > 0 && mine >= offered
+}
+
 func offeredID(r cliRelease) string { return firstNonEmpty(r.CLIBuild, r.Version) }
 
 func shortHost(server string) string {
@@ -253,6 +260,10 @@ func runAutoUpdate(o *options) error {
 		case offeredID(release) == st.FailedBuild:
 			updateLog(root, "skip: this build was rolled back before")
 			st.setNeed(server, "AgentWorks could not install the offered update automatically (it was rolled back): ask the person to run agentworks update.")
+		case st.LastOffered[server] == "" && builtNotOlderThan(release.BuiltAt):
+			// First check on this machine: a CLI built after the offered one (installed by hand from elsewhere) is not moved back.
+			updateLog(root, "skip: this CLI was built at or after the offered one")
+			st.LastOffered[server] = offeredID(release)
 		case st.LastOffered[server] == offeredID(release):
 			// The offer is the one already acted on, yet this build differs: the person updated by hand or the server went
 			// back. Leave it alone.

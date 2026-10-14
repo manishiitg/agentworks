@@ -49,6 +49,8 @@ type AgentAttachmentOptions struct {
 	Purpose        string `json:"purpose"`
 	Provider       string `json:"provider"`
 	SessionID      string `json:"native_session_id"`
+	// ClientBuild is the CLI build that makes the attachment, so the server can tell which agents run an older one.
+	ClientBuild string `json:"client_build,omitempty"`
 }
 
 // AttachAgent is deliberately outside the MCP tool catalog. Its arguments

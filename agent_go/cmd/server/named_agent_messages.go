@@ -146,12 +146,16 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			items = append(items, map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
+			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
 				return ""
-			}()})
+			}()}
+			if agentUpdateNeeded(a) {
+				item["update_needed"] = true
+			}
+			items = append(items, item)
 		}
 	}
 	if withUsage {

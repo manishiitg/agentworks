@@ -31,6 +31,9 @@ var cliBuild = "dev"
 // cliCompatEpoch is the compatibility epoch this CLI was built with (-X main.cliCompatEpoch=..., from deploy/cli-release.json).
 var cliCompatEpoch = ""
 
+// cliBuiltAt is when this CLI was built, unix seconds as text (-X main.cliBuiltAt=...); empty for development builds.
+var cliBuiltAt = ""
+
 // cliIsCurrent reports whether a CLI (version, build) is the one the server offers: by build when both sides have one, else by the
 // whole-repository revision.
 func cliIsCurrent(version, build, latestVersion, latestBuild string) bool {
@@ -62,7 +65,9 @@ type cliRelease struct {
 	// CompatEpoch names the generation of releases that work with each other. A client installs automatically only a
 	// release of its own epoch; bumping it at release time is the act of marking a release breaking, and later releases keep
 	// it, so clients on the new one update by themselves again. BreakingReason is the one line shown to the person.
-	CompatEpoch    string `json:"compat_epoch,omitempty"`
+	CompatEpoch string `json:"compat_epoch,omitempty"`
+	// BuiltAt is when the server's CLI was built (unix seconds); only used to avoid moving a newer CLI back.
+	BuiltAt        int64  `json:"built_at,omitempty"`
 	BreakingReason string `json:"breaking_reason,omitempty"`
 }
 

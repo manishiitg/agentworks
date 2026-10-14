@@ -21,6 +21,7 @@ type namedAgentAttachment struct {
 	Provider         string `json:"provider"`
 	SessionID        string `json:"native_session_id"`
 	ConnectionID     string `json:"connection_id"`
+	ClientBuild      string `json:"client_build,omitempty"` // the CLI build that attached, when it said
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.
@@ -127,7 +128,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if purpose != "" {
 			a.Purpose = purpose
 		}
-		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID}
+		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
