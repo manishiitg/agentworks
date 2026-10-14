@@ -6,7 +6,7 @@ Reuse the product scheduler to run saved Python checks in the owning product's s
 
 Ticket: PLAT-861, issue 861-194.
 
-Checks use a network-enabled strict sandbox with read/write access only to their scratch folder, selected credentials in a fresh child environment, and no model/MCP bridge. The service is single-host; workspace writes replace JSON through a same-directory temp file plus atomic rename. Polls and dispatches are independently serialized per caller. Full queues defer checks; only real failures count toward an automatic pause. Retain bounded recent event history and dedupe markers; scripts must advance their cursor and avoid rediscovering old items.
+Checks use a network-enabled strict sandbox with read/write access only to their scratch folder, selected credentials in a fresh child environment, and no model/MCP bridge. The service is single-host; workspace writes replace JSON through a same-directory temp file plus atomic rename. Polls and dispatches are independently serialized per caller. Pausing holds queued events and accepted messages. An undispatched event may wait out any pause length; an uncertain dispatch paused beyond the six-day retry horizon needs reconciliation on resume. Full queues defer checks; only real failures count toward an automatic pause. Retain bounded recent event history and dedupe markers; scripts must advance their cursor and avoid rediscovering old items.
 
 ## 2026-10-14 — Ask is always open; the Crew Agent messaging switch is removed (PLAT-750)
 
