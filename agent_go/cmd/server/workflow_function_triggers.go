@@ -236,10 +236,22 @@ func workflowFunctionCallerAllowed(spec *WorkflowFunctionSpec, caller triggerCal
 // narrows plain function callers (a workflow, a Crew or a user without access).
 // Draft tests never use it.
 func relayFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSpec, caller triggerCaller) bool {
+	if live != nil && live.Kind != "relay" {
+		return workflowFunctionCallerAllowed(spec, caller)
+	}
+	return sharedFunctionCallerAllowed(live, spec, caller)
+}
+
+// sharedFunctionCallerAllowed: anyone a workflow, Relay or Crew is shared with
+// may run its published functions (owner decision 2026-10-14: sharing a product
+// is sharing what it publishes). The per-function allow-list keeps narrowing
+// callers that are not people (a workflow, a Crew); a person entry in it no
+// longer restricts. Access is rechecked on every call.
+func sharedFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSpec, caller triggerCaller) bool {
 	if workflowFunctionCallerAllowed(spec, caller) {
 		return true
 	}
-	return live != nil && live.Kind == "relay" && strings.EqualFold(caller.Type, triggerCallerUser) && caller.ID != "" &&
+	return live != nil && strings.EqualFold(caller.Type, triggerCallerUser) && caller.ID != "" &&
 		workflowAccessForManifest(principalClaims(caller.ID), live) != WorkflowAccessNone
 }
 
@@ -406,7 +418,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, err
 	}
-	if manifest.Kind != "relay" && !workflowFunctionCallerAllowed(sched.Function, call.Caller) {
+	if manifest.Kind != "relay" && !sharedFunctionCallerAllowed(manifest, sched.Function, call.Caller) {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, sched.Function.Name)
 	}
 	argumentSchedule := *sched

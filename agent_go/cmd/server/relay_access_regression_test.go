@@ -334,3 +334,22 @@ func TestRelayFunctionCallerAllowedForProductMembers(t *testing.T) {
 		t.Error("a Crew that is not on the allow-list was allowed")
 	}
 }
+
+// People a workflow is shared with may run its published functions whatever the
+// per-function list says; the list still narrows callers that are not people.
+func TestWorkflowFunctionCallerAllowedForSharedPeople(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"member","username":"member"},{"id":"stranger","username":"stranger"}]}`)
+	m := NewWorkflowManifest("Shared tests")
+	m.CreatedBy = "owner"
+	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"member"}}
+	spec := &WorkflowFunctionSpec{Name: "run_suite", AllowedCallers: []triggerCaller{{Type: triggerCallerUser, ID: "owner"}}}
+	for id, want := range map[string]bool{"owner": true, "member": true, "stranger": false} {
+		if got := sharedFunctionCallerAllowed(m, spec, triggerCaller{Type: triggerCallerUser, ID: id}); got != want {
+			t.Errorf("user %s allowed=%v, want %v", id, got, want)
+		}
+	}
+	if sharedFunctionCallerAllowed(m, spec, triggerCaller{Type: triggerCallerCrew, ID: "other", ProfileID: "work"}) {
+		t.Error("a Crew that is not on the allow-list was allowed")
+	}
+}

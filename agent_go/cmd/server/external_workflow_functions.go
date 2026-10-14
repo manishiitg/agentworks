@@ -34,7 +34,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			canCall := true
 			if manifest.Kind != "relay" {
 				schedule, err := findWorkflowFunctionTrigger(manifest, fn.Name)
-				canCall = err == nil && workflowFunctionCallerAllowed(schedule.Function, externalCrewCaller(claims).Stamp)
+				canCall = err == nil && sharedFunctionCallerAllowed(manifest, schedule.Function, externalCrewCaller(claims).Stamp)
 			}
 			listed = append(listed, map[string]any{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema, "can_call": canCall})
 		}
@@ -75,7 +75,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		}
 		if manifest.Kind != "relay" {
 			schedule, err := findWorkflowFunctionTrigger(manifest, fn.Name)
-			if err != nil || !workflowFunctionCallerAllowed(schedule.Function, externalCrewCaller(claims).Stamp) {
+			if err != nil || !sharedFunctionCallerAllowed(manifest, schedule.Function, externalCrewCaller(claims).Stamp) {
 				externalError(w, 403, "forbidden", "This function does not allow you to call it.")
 				return
 			}
