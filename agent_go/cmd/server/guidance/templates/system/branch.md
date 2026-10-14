@@ -2,7 +2,7 @@
 name: "branch"
 description: "Branch step design: a small in-flow next-step decision versus routing, human input or an agent step; convergence and anti-patterns."
 external: true
-external_note: "External mapping: plan and step edits go through builder action=chat when it is available; otherwise describe the change in your reply. Paths like references/<name>.md point at Builder reference files: read the topic of the same name with help action=topic when it is listed."
+external_note: "External mapping: use plan action=list for the current native plan and step schemas. Read get_plan for expected_revision, then pass a stable request_id and the listed native arguments. Internal plan operation names are plan action values, not standalone external tools. Fetch referenced guidance with help action=topic and its listed topic name. Builder action=chat is an optional delegation path when listed; it is not required for native plan edits."
 ---
 **Plan-editing tool arguments:** Before a plan mutation, read `builder-reference/references/plan-editing-tools.md`. Step fields described below belong inside `add_step.step` or `update_step.changes`; route/group/maintenance fields belong inside `parameters`. Use the live type/action-specific schema; these field descriptions do not authorize flat arguments or extra fields.
 

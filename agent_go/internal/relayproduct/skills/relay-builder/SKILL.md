@@ -5,10 +5,12 @@ external: true
 external_tools: ["*relay*"]
 external_description: "The Python Relay contract the Relay Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Relay."
 external_scopes: ["relays:write"]
-external_note: "External mapping: files action=read/write accepts a Relay workflow_id for relay.py, memory, local skills and helper source, with existing authoring consent, current owner/editor access, revisions and file guards. Relays have no workflow plan; use guarded source writes and typed Relay actions directly. External model-mediated Builder turns retain their managed editing policy: the external caller must run relay action=test and action=get_run after those edits. builder action=chat can delegate broader changes when listed; relay action=test|publish|run|get_run|releases tests drafts, publishes versions and inspects executions. The Relay Python runtime and its internal bridge environment described here belong to server-side Relay execution; do not copy its internal URLs, environment or authentication into external client commands."
+external_note: "External mapping: files action=read/write accepts a Relay workflow_id for relay.py, memory, local skills and helper source, with existing authoring consent, current owner access, revisions and file guards. Relays have no workflow plan; use guarded source writes and typed Relay actions directly. External model-mediated Builder turns retain their managed editing policy: the external caller must run relay action=test and action=get_run after those edits. builder action=chat can delegate broader changes when listed; relay action=test|publish|run|get_run|releases tests drafts, publishes versions and inspects executions. The Relay Python runtime and its internal bridge environment described here belong to server-side Relay execution; do not copy its internal URLs, environment or authentication into external client commands."
 ---
 
 # Python Relay contract
+
+A Relay has one owner, who builds and changes it. Share its dashboard to let other people use published work in Run mode.
 
 Read relay.py, workflow.json and variables/variables.json before editing. New Relays
 have kind: relay, relay_runtime: python and relay_durability: dbos. Author native

@@ -9,8 +9,7 @@ external_scopes: ["crews:write"]
 
 A Crew is a persistent, shareable agent: standing instructions (`purpose`), skills, typed
 **functions** other people and agents can call, schedules, and a project folder of files.
-Think of it as a shareable MCP with structure: callers use its declared functions; only the owner
-edits it.
+A Crew has one owner, who builds and edits it. Give others use by sharing its dashboard, where they can Ask and run published functions.
 
 ## Create and edit
 
@@ -59,8 +58,7 @@ operation, timing and outcome, with commands, values and payloads withheld.
   Create/update take `name`, `description`, `prompt` and optional `icon`;
   delete takes `name`. Custom commands appear in the Crew's slash menu.
   Product-defined commands remain immutable. Listing needs `crews:read`;
-  changes need `crews:write` and current Crew ownership. Read-only accounts
-  cannot change them, even if they own the Crew.
+  changes need `crews:write` and current Crew ownership. Accounts without editing access cannot change them, even if they own the Crew.
 
 ## Functions
 
@@ -86,13 +84,15 @@ type, properties, required, items, enum).
 - Everyone except the Crew's owner uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. The owner's own chat is Builder mode, with full access. Only the owner changes a Crew. Expose a function for everything others may make the Crew do.
 - Conversational contact is separate from functions: `messages`/`ask_crew` send a message to the Crew,
   it may reply or not, and replies are read from the inbox. Ask is always open to everyone the Crew
-  is shared with; there is no switch to turn it off, so control access by sharing. Read replies with `messages` action=read, `inbox_id`, `after` (a
+  is shared with; there is no switch to turn it off, so give people use by sharing the Crew's dashboard. Read replies with `messages` action=read, `inbox_id`, `after` (a
   cursor) and `wait_seconds` (up to 25). Inside a Crew, an agent can also set one timed wakeup in its own
   conversation with `schedule_message_wakeup`; it does not fire while the scheduler is paused.
 - Runs have no earlier conversation. Anything a later run must know belongs in `MEMORY.md` at the
   Crew's root or in the Crew's files; say so in `purpose` and in function `instructions`.
 
 ## Files
+
+People using the shared Crew on the website see chat and its dashboard. File-tool access follows the current MCP schema and server guards; this guide does not add access.
 
 - `files` with `crew_id`: anyone with access reads; the owner writes anywhere except protected paths
   (manifests, `functions.json`, `builder/`, `db/`); other callers who can run the Crew write under
@@ -187,10 +187,9 @@ message runs and external MCP callers. Pass a catalog name or `name` plus an
 HTTPS `url`; reuse a saved custom connection by its exact name. Existing roles,
 product authoring consent and project bounds still apply. Setup reuses the
 website's URL validation and public-only auth probing; private-network endpoints
-and arbitrary local process configuration remain refused. Enter credentials
-and OAuth app setup in Integrations, never in tool arguments.
+and arbitrary local process configuration remain refused. Complete MCP connection sign-in and OAuth app setup in Integrations. Project secret values supplied by the person use the designated settings or Vault secret tools, then are referenced by name only.
 
-## Read-only diagnostics
+## Diagnostics
 
 `crew_diagnostics` uses existing `crews:read` consent and current Crew access.
 Use `action=browser` for configured mode, live capability status and the Crew's
@@ -204,8 +203,8 @@ account scoped and is returned only to the Crew owner.
 
 Use `action=connections` to list attached MCP connection status. Pass an exact
 attached `name` for cached tool names/descriptions, plus `include_tools=true`
-for parameter metadata (Crew owner only; readers receive 403 for this option).
-Readers can inspect attached names/status and cached tool names/descriptions,
+for parameter metadata (Crew owner only; Run callers receive 403 for this option).
+Run callers can inspect attached names/status and cached tool names/descriptions,
 as in the Crew settings connection inventory. `limit`/`offset` page sessions, connection summaries or
 the named connection's tools. Cached metadata does not prove live reachability;
 refresh through `crew_mcp action=discover`. Credentials, endpoint configuration,

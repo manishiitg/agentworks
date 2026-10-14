@@ -9,6 +9,8 @@ external_tools: ["*dashboard*", "get_report_link"]
 Follow the user’s design and motion preferences. These instructions describe
 platform operations and data access.
 
+Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Code, Crew and Relays have one owner; workflows retain their existing owners and editors. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
+
 For external MCP, call `get_api_spec` to discover tool schemas, then `call_tool`
 with the chosen name and arguments. App Builder tools are bound to their project;
 external operations use the authorized `workspace` returned by discovery.
@@ -30,7 +32,7 @@ external operations use the authorized `workspace` returned by discovery.
    and returns state, errors and screenshot paths/authenticated URLs. Rendering
    requires a configured browser. Fix observed errors before publishing.
 6. `publish_dashboard` validates the expected revision, then switches the live
-   pointer atomically. Drafts remain hidden from readers, and shared URLs keep
+   pointer atomically. Drafts remain hidden in Run mode, and shared URLs keep
    displaying the published bundle. `restore_dashboard` republishes a previously
    published revision with the current draft revision as expected_revision.
 7. `get_dashboard_link` returns a live authenticated URL. For existing Goals<!-- product:relays --> or
@@ -43,9 +45,9 @@ Drafts and publication use existing product authoring consent: `builder:chat` fo
 workflows,<!-- product:relays --> `relays:write` or Builder consent for Relays,<!-- /product --> `crews:write` for Crews,
 <!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Relay<!-- /product --> authoring retains its
 companion read/run scopes and Builder enablement. Current account and project
-owner/editor roles, product access, connection bounds and folder grants apply.
+owner permissions (and workflow editor permissions), product access, connection bounds and folder grants apply.
 Preview additionally requires `runs:execute` and project edit access because live
-scripts can execute. Read-only connections stay read-only. Retired dashboard-write
+scripts can execute. Connections without authoring consent cannot edit or publish. Retired dashboard-write
 consent adds no authority; reconnect for existing product authoring consent.
 Connections gain no new scopes automatically; expiry and revocation remain enforced.
 
@@ -106,7 +108,7 @@ composer never sits below the fold.
 Preview has no conversation: `chat.available` is false. Code has no native
 project Ask adapter yet; leave its chat widgets unavailable. Check availability
 before calling widget controls. These widgets require the managed dashboard
-viewer; loose HTML documents do not acquire native chat through markup alone.
+host; loose HTML documents do not acquire native chat through markup alone.
 
 ## Function buttons
 

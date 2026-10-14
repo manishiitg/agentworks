@@ -24,6 +24,10 @@ All paths below are relative to the workspace root (prepend the absolute root wh
 | variables/variables.json | Runtime variables and groups |
 | soul/soul.md | Stable workflow intent only: objective, success criteria, and optional explicit user-approved constraints. Never store notification preferences, architecture, implementation choices, or agent-inferred assumptions here; notifications belong in `workflow.json`. |
 
+### Step file access
+
+A workflow step can read throughout its workflow folder, including other runs, saved code and shared helpers. Writes belong in the current run and the shared `db/assets`, reports and `tool_output_folder` areas. Past runs, planning, workflow/settings files, variables, functions and soul remain protected. `code/` changes belong to Builder and Pulse: a Builder-started execution may repair unlocked code when allowed; MCP, scheduled, webhook, function, Watcher and Run executions do not gain code-write access. Knowledge base, learnings and database writes keep the step's own access setting. Product-disabled paths, raw database files and private chat paths keep their existing guards. These rules describe the step runtime; external file tools still enforce the current caller's connection and path permissions.
+
 ### Execution Outputs (per run, per group)
 | Path | Contents |
 |------|----------|
@@ -94,7 +98,7 @@ Use this order when debugging latency:
 | builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json | Current user's previous builder chat sessions. Its `conversation_history` holds the latest messages (`history_tail: true`, `history_total` = all); the full history is `session-{id}-conversation.history.jsonl` beside it, one JSON message per line |
 | db/db.sqlite | Workflow state and results — one SQLite database, one table per entity (agentic steps use managed DB tools; saved scripts retain direct compatibility; upsert on the primary key) |
 | db/README.md | Per-table schema contract (DDL, primary key, upsert rule, indexes, writers, consumers) |
-| db/assets/* | Durable output media/files referenced by db rows, reports, or later steps. Source belongs in the manifest-selected script directory, not here. Version 1 unlocked steps also have workflow code-tree write access; other writes remain subject to the current Folder Guard grants. |
+| db/assets/* | Durable output media/files referenced by db rows, reports, or later steps. Source belongs in the manifest-selected script directory, not here. Code-tree writes require a permitted Builder-started execution and unlocked code; other writes keep their current folder grants. |
 | db/reports/*.html | Workflow-owned live report documents; index.html is default, each owns its internal layout and reads db/db.sqlite through window.report |
 | code/reports/*.py | Report data scripts called by Dashboards through `window.report.run` (live outside data; read-only, one JSON value on stdout; see reporting-policy) |
 | .report-cache/ | Platform-managed, the only folder report scripts may write (`$REPORT_CACHE_DIR`); disposable, shared by all viewers |

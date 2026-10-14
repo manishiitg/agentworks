@@ -1,6 +1,6 @@
-Choose a product by the work you want to accomplish. This guide describes the products; the current server configuration, connection consent and your roles decide which operations you can actually use. Discover those operations before acting.
+Choose a product by the work you want to accomplish. Discover its current tools before acting: the products enabled on this server and your access decide what you can use.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Secret values and personal provider accounts and logins remain private. Personal chats and Code projects are private until shared.
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Code, Crew and Relays have one owner; other people use published work through the product's shared dashboard. Workflows retain their current owners and editors.
 
 | Product | Choose it for |
 |---|---|
@@ -31,7 +31,7 @@ Use a Crew for a specialist you want to call repeatedly from your agent, another
 
 - **Abilities:** persistent purpose and instructions, project files, memory, selected skills and integrations; admitted shell, browser and database tools; typed functions with input/result schemas; ask and message entry points; schedules and caller-specific conversations.
 - **MCP route:** discover with `crew action=list`, inspect the selected Crew, load `crew-authoring`, and discover exposed functions with `functions action=list`. Call functions or ask only through the entry points currently admitted for that Crew and caller.
-- **Access:** setup edits and execution are different permissions. The current Crew role, account restrictions, connection bounds and owner-controlled entry-point settings apply. Only the owner changes setup directly. Published functions run with the owner's authority and may change the Crew; callers act through those published functions rather than gaining setup access.
+- **Access:** a Crew has one owner, who changes its setup. Share its dashboard to let others use it in Run mode through Ask and published functions. Functions run with the owner's authority and may change the Crew; callers do not gain setup access. Current account, connection and project checks still apply.
 - **Example:** a document specialist exposes a function that accepts a file and returns a structured summary.
 
 <!-- /product --><!-- product:relays -->### Relays
@@ -40,7 +40,7 @@ Use a Relay when a repeatable code workflow should have an explicit release and 
 
 - **Abilities:** edit source, test drafts, inspect test results, publish immutable versions and execute or inspect production runs; configure the workflow's supported triggers and integrations.
 - **MCP route:** load `relay-builder`; inspect the current source and schemas; edit through admitted source tools, test the draft, then publish with the current revision. A test is not a production publication.
-- **Access:** changes require current project editing authority and Relay authoring consent. People with access to the Relay can inspect its runs, results and execution logs.
+- **Access:** a Relay has one owner, who edits, tests and publishes it. Share its dashboard so others can use published work in Run mode and inspect runs, results and execution logs. Current connection and project checks still apply.
 - **Example:** validate incoming records and deliver the accepted records to a connected system.
 
 <!-- /product --><!-- product:knowledgebase -->### Brain
@@ -58,7 +58,7 @@ Use Vault when integrations or secrets need shared, centrally controlled access 
 
 - **Abilities:** manage shared MCP connections, groups, allowed tools, resource conditions and secret access; discover permitted upstream tools and inspect authorized audit evidence.
 - **MCP route:** inspect the live Vault schemas and current groups, then use only permitted connections and tools. Connecting an upstream service and granting access are separate concerns; read the returned access state.
-- **Access:** administrator/group/owner checks apply to setup; current grants and argument conditions apply on every upstream invocation. Credentials belong in the supported secure setup flow.
+- **Access:** administrator/group/owner checks apply to setup; current grants and argument conditions apply on every upstream invocation. A person may give a secret value in chat; a Vault administrator stores it with the secret tool and then refers to it by name only.
 - **Example:** let a team query approved support-system resources through one managed integration.
 
 <!-- /product --><!-- product:code -->### Code
@@ -67,7 +67,7 @@ Use Code for repository development: implementing changes, investigating failure
 
 - **Abilities:** private code projects and chats, repository/file work, coding-agent execution, permitted integrations and review/audit views.
 - **MCP route:** use only the Code operations actually returned by this connection. A product's full app/CLI ability is not a promise that every action exists as a direct MCP tool.
-- **Access:** personal project ownership, explicit sharing and current Code review/account permissions govern visibility and actions.
+- **Access:** a Code project belongs to one person. Others use what it publishes through its shared dashboard and the entry points the current tools expose. Repository and chat work remain with the owner; current review/account checks still apply.
 - **Example:** implement a bounded bug fix and inspect its changes and verification results.
 
 <!-- /product --><!-- product:bullpen -->### Bullpen
@@ -96,7 +96,7 @@ Use **Goals** to pursue and reassess an outcome over time. Use **Relays** to exe
 
 <!-- /product --><!-- /product --><!-- product:knowledgebase --><!-- product:mcp-gateway -->### Should I put this in Brain or Vault?
 
-Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Vault** for shared access to integrations and secrets. Store credentials through the supported secure setup flow, never in a guide or ordinary shared note.
+Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Vault** for shared access to integrations and secrets. A person may give a secret value in chat; store it with the secret tools and refer to it by name only. Keep values out of guides and shared notes.
 
 <!-- /product --><!-- /product --><!-- product:code --><!-- product:work -->### Should I use Code or a Crew?
 
@@ -116,8 +116,4 @@ It may be disabled on this installation, outside this connection's consent or ou
 
 ## Versions and local copies
 
-The guide has a semantic source version. Its content fingerprint identifies the exact rendered copy, including the installation's enabled products. MCP guidance also returns a per-topic version for `known_version`/`known_versions` refresh. <!-- product:knowledgebase -->Brain returns its own opaque entry versions for concurrency checks; use those as `expected_version`, never the guide's semantic version.<!-- /product -->
-
-<!-- product:knowledgebase -->Brain starter notes and skills are created when missing. New source releases and product availability changes refresh only untouched platform-created copies, using the current Brain revision. Pre-existing user notes, customized skill packages and deliberately deleted copies are preserved. <!-- /product -->CLI installation still needs explicit force to replace an existing client skill. Fetch current server guidance to compare with a saved copy.
-
-CLI and hosted packages describe the installation's enabled products; live MCP topics additionally use the current caller's product selection. Both render the same canonical source. <!-- product:knowledgebase -->Bootstrap changes are attributed in Brain history to the active administrator used for installation; no additional account or role is created.<!-- /product -->
+The guide and MCP skill have source versions; package fingerprints identify the exact copy. Fetch current server guidance when a saved topic changes. <!-- product:knowledgebase -->Brain entry versions are separate: use the returned entry version as `expected_version` when updating a note. Starter notes and skills refresh only untouched platform-created copies; existing notes, customized packages and deliberately deleted copies are preserved. <!-- /product -->Local skill installation also preserves existing copies unless replacement is explicitly requested.

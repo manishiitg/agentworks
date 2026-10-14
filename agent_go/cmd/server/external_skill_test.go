@@ -122,7 +122,6 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 		"https://skills.test",
 		"help", "action=context",
 		"help action=skills", "known_versions", "external_note", "guidance_version",
-		"functions action=calls", "commands_run", "builder action=chat",
 		"current MCP connection",
 	} {
 		if !strings.Contains(markdown, want) {

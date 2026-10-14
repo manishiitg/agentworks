@@ -1,9 +1,7 @@
 ---
 name: "webhook-triggers"
 description: "Inbound route webhooks: authentication, payload mappings, testing and how a step reads its trigger input, including Crew and Code function calls."
-external: true
-external_tools: ["manage_triggers", "*workflow_function*"]
-external_note: "External mapping: manage_triggers with workflow_id or crew_id inspects and configures webhooks and reads deliveries; changes use current project roles and existing consent. Its test action checks configuration with a dry run; firing a webhook is execution and must use the authenticated delivery path. Functions action=list|call|status|read|reply handles declared internal function triggers. Internal tool names in this reference are not interchangeable with external actions."
+external: false
 ---
 ## Inbound workflow webhook triggers
 

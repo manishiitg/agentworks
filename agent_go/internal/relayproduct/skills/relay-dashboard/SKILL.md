@@ -64,7 +64,7 @@ This skill describes platform usage. Inspect existing documents before editing.
 - Explicit user actions may call `window.report.sendChatMessage(message, { requestId })`
   with a stable item/action identity. A queued receipt confirms chat delivery,
   not completion. `updateField`/`updateFields` provide schema-checked row edits.
-- For MP4 explainers, inspect available Video Studio/HyperFrames capabilities
+- For MP4 explainers, inspect available video-rendering tools
   before offering export. Snapshot source data and timestamps once and render
   deterministically. Save an approved MP4 under `db/assets/` and play it using
   `await window.report.mediaUrl('db/assets/explainer.mp4')`. Exported video is a
@@ -145,8 +145,8 @@ External MCP clients use `get_api_spec` then `call_tool`. Request explicit
 `builder:chat` for workflows, `relays:write` or Builder consent for Relays,
 `crews:write` for Crews, and `code:run` for owned Code projects. Workflow/Relay
 consent retains its companion read/run scopes and Builder enablement. Current
-account/product and project owner/editor roles, ID bounds and folder caps still
-apply. Read-only and retired dashboard-write grants gain no authoring rights;
+account/product and project owner permissions (and workflow editor permissions), ID bounds and folder caps still
+apply. Connections without existing authoring consent gain no editing rights;
 connections receive no replacement scopes automatically.
 Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.

@@ -8,13 +8,13 @@ Secrets are credentials (API keys, tokens, passwords). Keep project-specific cre
 ### Tools
 
 - **`list_secrets`** — lists current project secret names<!-- product:mcp-gateway --> and permitted Vault names in the `global` bucket<!-- /product -->. Values are never exposed. Call before set/delete/attach.
-- **`set_workflow_secret(name, value)`** — create or update a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
+- **`set_workflow_secret(name, value)`** — create or update a workflow-scoped value in a workflow Builder chat. Over MCP, use `settings action=get/update` with `secrets.set` and the returned settings version; project owners can store and select values for a workflow, Crew or Relay. Values are not returned.
 - **`delete_workflow_secret(name)`** — delete a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
 
 ### When a user says "store / save / set this key"
 
 1. Call `list_secrets` first to check if the name already exists and which bucket owns it.
-2. In a workflow builder/workshop chat, prefer `set_workflow_secret(name, value)` for workflow-only credentials.<!-- product:mcp-gateway --> For credentials shared across workflows, point the user to Vault.<!-- /product -->
+2. In a workflow builder/workshop chat, prefer `set_workflow_secret(name, value)` for workflow-only credentials.<!-- product:mcp-gateway --> For credentials shared across projects, a Vault administrator can store the provided value with `manage_vault_secret_access operation=set_value`, using `values: {NAME: value}`. Discover the current schema first.<!-- /product -->
 3. In a workflow-builder session, `set_workflow_secret` automatically attaches and injects a newly stored value. For an already-stored secret, attach it with the workflow config tool (for example `update_workflow_config(add_secrets=["NAME"])`). The attached value becomes immediately available to the builder shell and workflow steps as `$SECRET_<NAME>` without revealing plaintext to the model.
 4. Confirm success. Do NOT echo the plaintext value back to the user — acknowledge by name only.
 
@@ -24,7 +24,7 @@ A person may give you a secret value in chat, in this app or over MCP from any c
 
 ### Safety rules
 
-Secret values must never be printed, echoed, logged, or passed to unrelated tools. The designated `set_workflow_secret` tool may receive a user-provided value for the requested save; that exception does not authorize plaintext files, shell commands, or disclosure to other tools. If a user pastes a secret in chat, treat it as sensitive: store it, then acknowledge only by name.
+Secret values must never be printed, echoed, logged, or passed to unrelated tools. The designated project or Vault secret tool may receive a user-provided value for the requested save; this does not authorize plaintext files, shell commands, or disclosure to unrelated tools. If a user pastes a secret in chat, treat it as sensitive: store it, then acknowledge only by name.
 
 Do not tell the user to rotate the secret after a normal requested save. Recommend rotation only for a concrete exposure event such as logs, files, commits, or the wrong channel.
 
@@ -46,9 +46,7 @@ secret into Vault is done in Vault, by a Vault administrator: the
 **Share to Vault** button in the project's secrets, Vault's chat, or Vault's
 `manage_vault_secret_access(operation=share)` over MCP. The copy is made inside
 the backend (the value never passes through a model), the project copy stays,
-and the chosen groups get access. Copies rotate independently. From a Builder
-chat, tell the user where to do it; to share a project secret, never fetch, print or pass its value yourself. Ordinary owners and readers cannot manage Vault values or
-grants. There is no per-user secret bucket: project secrets and Vault secrets
+and the chosen groups get access. Copies rotate independently. Use an available secret-sharing tool or show the person the Share to Vault action. Never fetch or print a stored value to make the copy. Project ownership alone does not grant Vault administration. There is no per-user secret bucket: project secrets and Vault secrets
 are the platform model.
 
 Use the current attached canonical references and admitted tools. Legacy
