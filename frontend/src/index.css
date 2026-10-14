@@ -105,6 +105,20 @@
   .force-light .text-sky-300 { color: hsl(var(--primary)) !important; }
   .force-light .text-cyan-400 { color: hsl(var(--primary)) !important; }
 
+  /* The working line's star and word (WorkingStatus). One token; to try green instead of orange change the
+     --working-accent line below to var(--working-accent-green). */
+  :root {
+    --working-accent-orange: 22 88% 44%;
+    --working-accent-green: 142 62% 30%;
+  }
+  .dark {
+    --working-accent-orange: 22 92% 62%;
+    --working-accent-green: 142 55% 52%;
+  }
+  :root, .dark {
+    --working-accent: var(--working-accent-orange);
+  }
+
   .dark {
     color-scheme: dark;
     /* Deep dark app palette */

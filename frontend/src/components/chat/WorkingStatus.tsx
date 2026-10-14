@@ -17,7 +17,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 // The twinkling star (text glyphs only; see workingWords). Its own component so the quick frame changes re-render only
-// the glyph. It keeps the line's muted grey; reduced motion shows a single still star.
+// the glyph. It takes the working accent colour; reduced motion shows a single still star.
 function WorkingGlyph({ reduced }: { reduced: boolean }) {
   const [frame, setFrame] = useState(0)
   useEffect(() => {
@@ -56,8 +56,10 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
     <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>
       <span aria-hidden="true" className="truncate">
-        <WorkingGlyph reduced={reduced} />{' '}
-        <span data-testid="working-word">{text}</span>
+        <span className="text-[hsl(var(--working-accent))]">
+          <WorkingGlyph reduced={reduced} />{' '}
+          <span data-testid="working-word">{text}</span>
+        </span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
       </span>
       <Suspense fallback={null}><WorkingTip turnKey={startedAt} /></Suspense>
