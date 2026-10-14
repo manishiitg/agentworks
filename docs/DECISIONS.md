@@ -1,5 +1,19 @@
 # Decisions and open issues
 
+## 2026-10-14 — Dashboard Ask uses the project's existing Builder or Run conversation (PLAT-750)
+
+Crew, workflow and Relay managed dashboards, including shared links, offer Ask
+when the server's current dashboard capability permits it. The dashboard adds no
+owner-only restriction: the native project chat enforces Builder/Run permissions
+on every turn. Questions retain the captured publication and selected content;
+follow-ups use the same project conversation and history. Code dashboard Ask
+remains unavailable until Code has a native conversation adapter.
+
+Why: opening a custom dashboard must not remove Ask access someone already has
+in the product's Run chat or built-in Relay dashboard.
+
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md), issues 750-12/18/20.
+
 ## 2026-10-14 — A Run-mode ask checks the Crew's functions before answering from files (PLAT-856)
 
 A non-owner's free-text ask (the app chat, also opened from a dashboard, an MCP ask,

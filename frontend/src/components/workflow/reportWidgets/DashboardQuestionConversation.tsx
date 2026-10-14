@@ -23,9 +23,9 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const panel = useRef<HTMLDivElement>(null)
   const accepted = useRef(new Map<string, string>())
   const opening = useRef<Promise<string> | null>(null)
-  // Workflow readers and Relays need shared Ask parity and published-result
-  // checks before this entry point can expose their conversation here.
-  const canAsk = Boolean(viewer && capability.can_ask && (product === 'crew' || (product === 'workflow' || product === 'relay') && capability.mode === 'owner'))
+  // Native project chat enforces Builder/Run permissions on every request.
+  // Code has no project Ask adapter yet.
+  const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'workflow', 'relay'].includes(product))
   useEffect(() => {
     generation.current++
     setBound(null); setOpen(false); setError(null)
@@ -76,7 +76,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       {!canAsk && <p className="mt-2 text-xs text-muted-foreground">{capability.reason === 'ask_disabled' ? 'This Crew has questions turned off.' : 'Ask is unavailable for this dashboard.'}</p>}
       {error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
       {open && canAsk && bound && bound.viewer === viewer && bound.resourceId === resourceId && <section aria-label="Project Ask conversation" className="mt-3">
-        <p className="mb-2 text-xs text-muted-foreground">Your existing project conversation. Questions use your account and the project’s normal Ask permissions.</p>
+        <p className="mb-2 text-xs text-muted-foreground">{capability.mode === 'owner' ? 'Your Builder conversation.' : 'Your Run conversation.'} Questions use your account and the project’s normal Ask permissions.</p>
         <div className="h-[min(65vh,40rem)] min-h-80"><Suspense fallback={<p>Opening project Ask…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} composerPlaceholder="Ask a follow-up…" /></Suspense></div>
       </section>}
     </div>

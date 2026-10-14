@@ -19,14 +19,14 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi
 const revision = 'a'.repeat(64)
 const view = { project_id: 'project-1', product: 'workflow', capability: { can_view: true, can_ask: true, mode: 'owner' } }
 
-async function mount(product = 'workflow') {
+async function mount(product = 'workflow', mode = 'owner', canAsk = true) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
   const render = async (publication = revision) => {
     const data = { workspacePath: 'Workflow/demo', sendChatMessage: vi.fn() } as unknown as ReportDataApi
     await act(async () => root.render(<ReportEmbedProvider value={{ data }}>
-      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: true, mode: 'owner' }} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
+      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: canAsk, mode }} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
     </ReportEmbedProvider>))
   }
   await render()
@@ -47,6 +47,7 @@ it('opens a managed Relay dashboard in the Builder’s existing normal conversat
   await act(async () => click('Open project Ask'))
   expect(openAsk).toHaveBeenCalledWith({ product: 'relay', projectId: 'project-1', workspacePath: 'Workflow/demo' })
   expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-builder-chat')
+  expect(current.host.textContent).toContain('Your Builder conversation.')
   expect(send).not.toHaveBeenCalled()
 })
 async function editQuestion(frame: HTMLIFrameElement) {
@@ -58,6 +59,26 @@ async function editQuestion(frame: HTMLIFrameElement) {
 async function submit() {
   await act(async () => document.querySelector('dialog form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
 }
+
+it.each(['crew', 'workflow', 'relay'])('lets an authorized %s Run user ask about a selected value in their native conversation', async product => {
+  get.mockResolvedValue({ data: { ...view, product, capability: { can_view: true, can_ask: true, mode: 'question_only' } } })
+  openAsk.mockResolvedValue('existing-run-chat'); send.mockResolvedValue({ tabId: 'existing-run-chat' })
+  const current = await mount(product, 'question_only')
+  await editQuestion(current.frame); await submit()
+  expect(openAsk).toHaveBeenCalledWith({ product, projectId: 'project-1', workspacePath: 'Workflow/demo' })
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'existing-run-chat', message: expect.stringContaining('"text": "42"') }))
+  expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('existing-run-chat')
+  expect(current.host.textContent).toContain('Existing project history and replies')
+  expect(current.host.textContent).toContain('Your Run conversation.')
+})
+
+it.each([['crew', false], ['workflow', false], ['relay', false], ['code', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
+  const current = await mount(product, 'question_only', canAsk)
+  const button = [...current.host.querySelectorAll('button')].find(item => item.textContent?.includes('Open project Ask'))!
+  expect(button.disabled).toBe(true)
+  await act(async () => button.click())
+  expect(get).not.toHaveBeenCalled(); expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
+})
 
 it('uses the existing Ask tab and preserves the clicked publication across refresh and retry', async () => {
   get.mockResolvedValue({ data: view }); openAsk.mockResolvedValue('existing-project-chat')
