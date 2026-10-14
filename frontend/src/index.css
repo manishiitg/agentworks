@@ -68,6 +68,28 @@
   /* ===== DARK THEME ===== */
   .force-light { color-scheme: light; }
 
+  /* A light chat (a dashboard asked for it) inside the app's dark mode. The
+     transcript and markdown use fixed light-grey text for a dark surface; map
+     those few classes to the theme's own colours so they stay readable. */
+  .force-light .text-neutral-100,
+  .force-light .text-neutral-200,
+  .force-light .text-stone-300 { color: hsl(var(--foreground)) !important; }
+  .force-light .text-neutral-300,
+  .force-light .text-neutral-400 { color: hsl(var(--foreground) / 0.8) !important; }
+  .force-light .text-neutral-500,
+  .force-light .text-stone-600 { color: hsl(var(--muted-foreground)) !important; }
+  .force-light .border-neutral-800,
+  .force-light .border-neutral-800\/80,
+  .force-light .border-neutral-700 { border-color: hsl(var(--border)) !important; }
+  .force-light .bg-neutral-900\/45,
+  .force-light .bg-neutral-900\/60,
+  .force-light .bg-black\/40,
+  .force-light .bg-black\/50 { background-color: hsl(var(--muted)) !important; }
+  .force-light .text-amber-200,
+  .force-light .text-emerald-300,
+  .force-light .text-sky-300 { color: hsl(var(--primary)) !important; }
+  .force-light .text-cyan-400 { color: hsl(var(--primary)) !important; }
+
   .dark {
     color-scheme: dark;
     /* Deep dark app palette */

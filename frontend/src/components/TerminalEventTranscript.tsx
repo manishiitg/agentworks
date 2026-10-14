@@ -1110,7 +1110,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     return (
       <div
         data-testid="terminal-clear-view-empty"
-        className={`flex min-w-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8 ${surfaceClassName ?? 'bg-[#0b0d0c]'}`}
+        className={`flex min-w-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8 ${surfaceClassName ?? 'bg-background dark:bg-[#0b0d0c]'}`}
       >
         <div className="flex max-w-md items-start gap-3 text-left">
           <Icon
@@ -1145,7 +1145,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   return (
     <div
       data-testid="terminal-clear-view"
-      className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-[#0d100f]'}`}
+      className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-background dark:bg-[#0d100f]'}`}
       onClickCapture={scroll.preserveDisclosure}
     >
       {error && (
