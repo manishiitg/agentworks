@@ -1,4 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { WorkingStatus } from './chat/WorkingStatus'
+import { currentTurnStartedAt } from '../utils/turnStart'
 import { Activity, AlertCircle, Bell, Check, Loader2, Sparkles, Wrench } from 'lucide-react'
 import type { PollingEvent } from '../services/api-types'
 import { buildCleanConversationItems, buildProductionActivityTurns } from '../utils/cleanConversation'
@@ -297,9 +299,8 @@ export function CleanConversationSurface({
         {trailingActivity ? <ProductionActivityDetails items={trailingActivity.items} /> : null}
 
         {showWorkingIndicator && !streamingText.trim() ? (
-          <div className="flex items-center gap-2 text-xs text-slate-400" role="status" aria-live="polite" data-testid="clean-working-indicator">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
-            <span>Working…</span>
+          <div className="flex items-center gap-2 text-xs text-slate-400" data-testid="clean-working-indicator">
+            <WorkingStatus startedAt={currentTurnStartedAt(events)} />
           </div>
         ) : null}
 

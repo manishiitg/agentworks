@@ -1,4 +1,6 @@
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
+import { WorkingStatus } from './chat/WorkingStatus'
+import { currentTurnStartedAt } from '../utils/turnStart'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
@@ -64,6 +66,7 @@ type TranscriptHistoryContext = {
   onLoadOlder: () => void
   activity?: ChatRuntimeActivity
   usage?: LiveUsageSummary
+  turnStartedAt?: number
 }
 
 // Keep history navigation inside the virtual scroller. A fixed sibling header
@@ -96,7 +99,9 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
   return <div data-testid="transcript-activity-footer" className="flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
     {working && <>
       <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
-      <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
+      {activity.label === 'running'
+        ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} />
+        : <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>}
       {activity.label === 'running' && <React.Suspense fallback={null}><WorkingTip /></React.Suspense>}
     </>}
     {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
@@ -1086,13 +1091,15 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // a new object and would otherwise re-render the footer for nothing.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const usage = useMemo(() => liveUsageSummary(statusMeta), [usageKey])
+  const turnStartedAt = useMemo(() => currentTurnStartedAt(events), [events])
   const historyContext = useMemo<TranscriptHistoryContext>(() => ({
     hasOlder: Boolean(hasOlder && onLoadOlder),
     loadingOlder,
     onLoadOlder: handleEarlierMessages,
     activity: runtimeActivity,
     usage,
-  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage])
+    turnStartedAt,
+  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt])
 
   if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()
