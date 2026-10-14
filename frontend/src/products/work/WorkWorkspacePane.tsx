@@ -441,6 +441,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
+            dashboardConversation={product.profileId === 'work'}
             emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
             emptyDescription="Bring tasks, plans, notes, research and progress into one dashboard. Ask AI to build it in your preferred style, with interactive charts, animation or a video explainer."
             emptyAction={<AskAIButton

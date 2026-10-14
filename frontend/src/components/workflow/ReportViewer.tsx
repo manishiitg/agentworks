@@ -340,7 +340,7 @@ export function ReportViewer({ workspacePath, isOpen, onClose }: ReportViewerPro
     <ModalPortal>
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-2 py-3 backdrop-blur-sm sm:px-4 sm:py-6" onClick={onClose}>
         <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:max-h-[90vh] sm:rounded-2xl" onClick={event => event.stopPropagation()}>
-          <ReportView workspacePath={workspacePath} onClose={onClose} />
+          <ReportView workspacePath={workspacePath} onClose={onClose} dashboardConversation />
         </div>
       </div>
     </ModalPortal>

@@ -114,6 +114,7 @@ function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null
     <div className="h-full min-h-0 relative">
       {workspacePath && <ReportView
         workspacePath={workspacePath}
+        dashboardConversation
         defaultRelayDashboard={relayMode}
         focusTier={reportFocusTier}
         headerAction={<AskAIButton workspacePath={workspacePath} message={getWorkspaceAskAIMessage('report')} iconOnly />}
