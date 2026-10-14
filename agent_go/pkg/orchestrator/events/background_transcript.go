@@ -130,6 +130,7 @@ func (t *BackgroundAgentTranscript) Marshal() (string, error) {
 	}
 	// Never mutate the provider's/live caller's event while saving diagnostics.
 	copy := *t
+	copy.NativeChildren = append([]NativeChildExecution(nil), t.NativeChildren...)
 	copy.Events = make([]BackgroundAgentTranscriptEvent, len(t.Events))
 	copyEvents := t.Events
 	for index := range copyEvents {

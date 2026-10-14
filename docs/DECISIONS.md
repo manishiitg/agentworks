@@ -11,6 +11,10 @@ subagent conversations save as linked children in the existing execution
 transcript store. Knowledgebase edits use the declared native editor or bridge
 patch tool and keep the existing index bookkeeping.
 
+Verification covers the Linux Landlock path; the macOS Seatbelt path has not
+been exercised by this change. Muse records nested native agents as direct
+children of the step in the inspector.
+
 Why: steps should use the CLI's available file and delegation tools without a
 terminal transport or another permission/storage model.
 

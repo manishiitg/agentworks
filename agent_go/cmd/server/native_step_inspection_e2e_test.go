@@ -114,7 +114,7 @@ emit('turn.completed',usage={'input_tokens':1,'output_tokens':1,'total_tokens':2
 		Model: codexcli.NewCodexCLIAdapter("", "gpt-5.5", nil), MCPConfigPath: config,
 		Generation: mcpagent.GenerationRuntimeConfig{Provider: llm.Provider("codex-cli"), MaxTurns: 1},
 		Coding:     mcpagent.CodingRuntimeConfig{AgentToolsMode: "full", Transport: llm.CodingAgentTransportStructured, CLISecurityPolicy: &policy},
-		Workspace:  mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: output, OutputDir: output}, MCP: mcpagent.MCPRuntimeConfig{SessionID: "native-runtime"},
+		Workspace:  mcpagent.WorkspaceRuntimeConfig{IsolatedSession: true, CodingAgentWorkingDir: output, OutputDir: output}, MCP: mcpagent.MCPRuntimeConfig{SessionID: "native-runtime"},
 		Observability: mcpagent.ObservabilityRuntimeConfig{Logger: loggerv2.NewNoop(), Streaming: true, Observers: []mcpagent.AgentEventListener{bridge}},
 	})
 	if err != nil {

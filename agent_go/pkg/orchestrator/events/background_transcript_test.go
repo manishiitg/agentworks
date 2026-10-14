@@ -45,6 +45,8 @@ func TestBackgroundAgentTranscriptRoundTripsThroughMarshalAndParse(t *testing.T)
 		ToolCall:  &events.ToolCallRecord{ToolCallID: "tc-1", ToolName: "read_file", Arguments: `{"path":"a.txt"}`, Status: "running"},
 	})
 
+	childName := "API_TOKEN=fixture-native-child"
+	transcript.NativeChildren = []NativeChildExecution{{AgentID: "native-child", Name: childName}}
 	completed := started.Add(5 * time.Second)
 	transcript.MarkTerminal("failed", "provider timeout", completed)
 
@@ -59,6 +61,12 @@ func TestBackgroundAgentTranscriptRoundTripsThroughMarshalAndParse(t *testing.T)
 	}
 	if parsed == nil {
 		t.Fatal("parsed transcript is nil")
+	}
+	if transcript.NativeChildren[0].Name != childName {
+		t.Fatal("Marshal mutated the live native child name")
+	}
+	if len(parsed.NativeChildren) != 1 || strings.Contains(parsed.NativeChildren[0].Name, "fixture-native-child") {
+		t.Fatal("native child credential was not redacted")
 	}
 	if parsed.Status != "failed" {
 		t.Fatalf("status = %q, want failed", parsed.Status)
