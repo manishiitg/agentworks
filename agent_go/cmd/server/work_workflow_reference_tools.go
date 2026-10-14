@@ -91,7 +91,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 		}
 		seen[candidate] = true
 		// Another owner's Crew is listed only while it is shared with others (not made private, sharing on).
-		if access != "owner" && !crewSharedWithOthers(strings.TrimSuffix(candidate, "/product.json")) {
+		if access != "owner" && !crewSharedWith(strings.TrimSuffix(candidate, "/product.json"), userID) {
 			continue
 		}
 		raw, found, readErr := store.read(ctx, candidate)

@@ -54,6 +54,9 @@ type projectOwnerRecord struct {
 	// Private is the owner's restriction of a Crew to themselves; a Crew is shared with every user of the Crew product
 	// otherwise (crewSharedWithOthers).
 	Private bool `json:"private,omitempty"`
+	// RunPeople are the accounts a private Crew is shared with by name (dashboard sharing, PLAT-750). They use it as
+	// Run people do; everyone else is kept out as for any private Crew.
+	RunPeople []string `json:"run_people,omitempty"`
 }
 
 type projectOwnerFile struct {
@@ -252,6 +255,20 @@ func (r *projectOwnerRegistry) SetPrivate(product, folder string, private bool) 
 			return false, nil
 		}
 		current.Private = private
+		projects[key] = current
+		return true, nil
+	})
+}
+
+// SetRunPeople records the accounts a Crew is shared with by name; an empty list clears it.
+func (r *projectOwnerRegistry) SetRunPeople(product, folder string, people []string) error {
+	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		current.RunPeople = append([]string(nil), people...)
 		projects[key] = current
 		return true, nil
 	})

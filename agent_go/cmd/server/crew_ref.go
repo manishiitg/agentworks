@@ -134,7 +134,7 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 	}
 	// Another user's Crew is read while it is shared (the default, DECISIONS 2026-10-08); when sharing is off or the
 	// owner made the Crew private, nobody else sees even that the Crew exists or is working.
-	if userAllowedProduct(claims, "work") && crewSharedWithOthers(ref.Root) {
+	if userAllowedProduct(claims, "work") && crewSharedWith(ref.Root, claims.UserID) {
 		return crewAccessReader
 	}
 	return crewAccessNone

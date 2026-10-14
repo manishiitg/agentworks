@@ -30,3 +30,23 @@ func crewSharedWithOthers(root string) bool {
 	rec, found := defaultProjectOwners().Lookup("work", id.Folder)
 	return !found || !rec.Private
 }
+
+// crewSharedWith says whether this account may use the Crew at root as a Run person: the Crew is shared with
+// everyone (crewSharedWithOthers) or the owner named the account (run people on a private Crew).
+func crewSharedWith(root, userID string) bool {
+	if crewSharedWithOthers(root) {
+		return true
+	}
+	if !projectSharingEnabled() || strings.TrimSpace(userID) == "" {
+		return false
+	}
+	id, ok := projectIdentityOf(root)
+	if !ok || id.Product != "work" {
+		return false
+	}
+	rec, found := defaultProjectOwners().Lookup("work", id.Folder)
+	if !found {
+		return false
+	}
+	return containsID(rec.RunPeople, userID)
+}

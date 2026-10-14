@@ -323,7 +323,7 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		// root and as a top-level item, yielding the same manifest twice.
 		seenManifests[candidate] = true
 		projectRoot := strings.TrimSuffix(candidate, "/product.json")
-		if sharedOnly && !crewSharedWithOthers(projectRoot) {
+		if sharedOnly && !crewSharedWith(projectRoot, claims.UserID) {
 			continue
 		}
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)

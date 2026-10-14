@@ -112,6 +112,12 @@ func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, t
 	case "crew":
 		if crewSharedWithOthers(target.Root) {
 			state.Mode = runShareEveryone
+		} else if id, ok := projectIdentityOf(target.Root); ok && id.Product == "work" {
+			if rec, found := defaultProjectOwners().Lookup("work", id.Folder); found && len(rec.RunPeople) > 0 {
+				state.Mode = runSharePeople
+				dir, _ := readUserDirectoryFile()
+				state.People = peopleForIDs(dir, rec.RunPeople)
+			}
 		}
 	case "workflow", "relay":
 		manifest, found, err := ReadWorkflowManifest(ctx, target.Root)
@@ -151,9 +157,6 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (runShareState, error) {
 	switch target.Kind {
 	case "crew":
-		if mode == runSharePeople {
-			return runShareState{}, dashboardFailure(400, "Sharing a Crew with specific people is not available yet. Share it with everyone or keep it private.")
-		}
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		if !ok {
 			return runShareState{}, dashboardFailure(404, "project unavailable")
@@ -162,10 +165,30 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 		if !ok || id.Product != "work" {
 			return runShareState{}, dashboardFailure(404, "project unavailable")
 		}
-		if err := defaultProjectOwners().SetPrivate(id.Product, id.Folder, mode == runSharePrivate); err != nil {
+		var ids []string
+		var unknown []string
+		if mode == runSharePeople {
+			dir, _ := readUserDirectoryFile()
+			people, missing := resolveShareEmails(dir, emails)
+			unknown = missing
+			if len(people) == 0 {
+				return runShareState{Mode: runSharePeople, Unknown: unknown}, dashboardFailure(400, "none of those emails match an active account"+unknownSuffix(unknown))
+			}
+			for _, person := range people {
+				ids = append(ids, person.ID)
+			}
+		}
+		registry := defaultProjectOwners()
+		if err := registry.SetPrivate(id.Product, id.Folder, mode != runShareEveryone); err != nil {
+			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
+		}
+		if err := registry.SetRunPeople(id.Product, id.Folder, ids); err != nil {
 			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
 		}
 		log.Printf("[RUN_SHARE] %s set Crew %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)
+		state, err := api.readRunShare(ctx, claims, target)
+		state.Unknown = unknown
+		return state, err
 	case "workflow", "relay":
 		manifest, found, err := ReadWorkflowManifest(ctx, target.Root)
 		if err != nil || !found || manifest == nil || manifest.Access == nil {

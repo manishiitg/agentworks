@@ -46,3 +46,27 @@ func TestResolveShareEmailsReportsUnknownEmails(t *testing.T) {
 		t.Fatalf("a disabled or missing account must be reported back: %v", unknown)
 	}
 }
+
+// A private Crew shared with named people opens for them and for nobody else.
+func TestPrivateCrewSharedWithNamedPeopleOpensOnlyForThem(t *testing.T) {
+	registry := newTestRegistry(t)
+	prev := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
+	root := "Crew/demo-12345678"
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "demo-12345678", OwnerID: "owner", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetPrivate("work", "demo-12345678", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetRunPeople("work", "demo-12345678", []string{"ann"}); err != nil {
+		t.Fatal(err)
+	}
+	if !crewSharedWith(root, "ann") {
+		t.Fatal("a named person must open a private Crew shared with them")
+	}
+	if crewSharedWith(root, "bob") {
+		t.Fatal("anyone not named must stay out of a private Crew")
+	}
+}

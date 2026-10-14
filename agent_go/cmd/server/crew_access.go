@@ -205,7 +205,7 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	// A Crew its owner made private resolves for nobody else.
 	reader := func(ownerID string, binding productConversationBinding) (crewProjectBinding, error) {
-		if !crewSharedWithOthers(binding.WorkspacePath) {
+		if !crewSharedWith(binding.WorkspacePath, callerID) {
 			return denied()
 		}
 		return readerCrewProjectBinding(ownerID, binding), nil
