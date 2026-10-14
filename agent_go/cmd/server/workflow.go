@@ -511,6 +511,12 @@ func readProgressForFolder(ctx context.Context, stepsFilePath string) (*StepProg
 	return &progress, nil
 }
 
+// isHiddenRunSubfolder reports a dot-prefixed folder inside a run folder (.sandbox-cache, .tmp, .relay_dbos, .relay_ipc): the
+// run's own working files, never a run group. A step that writes more of the run folder must not turn the run into its subfolders.
+func isHiddenRunSubfolder(name string) bool {
+	return strings.HasPrefix(name[strings.LastIndex(name, "/")+1:], ".")
+}
+
 // extractIterationFoldersFromTypedChildren extracts iteration folder names from typed WorkspaceFolderItem array
 // Supports both top-level (iteration-X) and nested (iteration-X/group-Y) folders
 func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string, flatRuns ...bool) []string {
@@ -571,7 +577,7 @@ func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceF
 								}
 								// Check if this is a group subfolder (nested under iteration-X)
 								// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-								if groupName != "" && strings.HasPrefix(groupName, name+"/") {
+								if groupName != "" && !isHiddenRunSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
 									// Any nested folder under iteration-X is considered a group folder
 									hasGroups = true
 									groupFolders = append(groupFolders, groupName)
@@ -683,7 +689,7 @@ func extractIterationFoldersFromChildren(children []interface{}, existingFolders
 										}
 										// Check if this is a group subfolder (nested under iteration-X)
 										// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-										if groupName != "" && strings.HasPrefix(groupName, name+"/") {
+										if groupName != "" && !isHiddenRunSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
 											// Any nested folder under iteration-X is considered a group folder
 											hasGroups = true
 											groupFolders = append(groupFolders, groupName)

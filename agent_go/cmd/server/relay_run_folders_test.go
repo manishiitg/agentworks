@@ -21,7 +21,19 @@ func TestRelayRunFolderListingIsFlat(t *testing.T) {
 	if got, want := extractIterationFoldersFromTypedChildren(children, []string{}, true), []string{"iteration-22-hook"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("relay listing = %v, want %v", got, want)
 	}
-	if got := extractIterationFoldersFromTypedChildren(children, []string{}); len(got) != 2 || got[0] == "iteration-22-hook" {
-		t.Fatalf("a workflow with groups lists the groups instead of the parent; got %v", got)
+	// A normal workflow run with hidden working folders next to its group folders: only the groups are listed.
+	grouped := virtualtools.WorkspaceFolderItem{
+		Type: "folder", FilePath: "Workflow/wf-a/runs/iteration-3",
+		Children: []virtualtools.WorkspaceFolderItem{
+			{Type: "folder", FilePath: "Workflow/wf-a/runs/iteration-3/group-1"},
+			{Type: "folder", FilePath: "Workflow/wf-a/runs/iteration-3/.tmp"},
+		},
+	}
+	if got, want := extractIterationFoldersFromTypedChildren([]virtualtools.WorkspaceFolderItem{grouped}, []string{}), []string{"iteration-3/group-1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("hidden folders counted as groups: %v, want %v", got, want)
+	}
+	// Only hidden subfolders: no groups, so the run itself is listed.
+	if got, want := extractIterationFoldersFromTypedChildren(children, []string{}), []string{"iteration-22-hook"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("a run with only hidden subfolders = %v, want %v", got, want)
 	}
 }

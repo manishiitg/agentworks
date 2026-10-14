@@ -255,7 +255,7 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		}
 	}
 
-	log.Printf("[RUN_FOLDERS] workspace=%s relay=%t listed=%d", workspacePath, flatRuns, len(existingFolders))
+	logRunFoldersWhenChanged(workspacePath, flatRuns, existingFolders)
 	// Build folder info list
 	folderInfos := make([]RunFolderInfo, 0, len(existingFolders))
 	for _, folderName := range existingFolders {
@@ -819,4 +819,22 @@ func (api *StreamingAPI) listRunFolderNames(ctx context.Context, workspacePath s
 	}
 
 	return existingFolders, nil
+}
+
+// lastRunFolderListing remembers the last listing per workspace so [RUN_FOLDERS] is written when the set changes, not on every
+// poll of the workspace state.
+var (
+	lastRunFolderListingMu sync.Mutex
+	lastRunFolderListing   = map[string]string{}
+)
+
+func logRunFoldersWhenChanged(workspacePath string, relay bool, folders []string) {
+	listing := strings.Join(folders, ",")
+	lastRunFolderListingMu.Lock()
+	changed := lastRunFolderListing[workspacePath] != listing
+	lastRunFolderListing[workspacePath] = listing
+	lastRunFolderListingMu.Unlock()
+	if changed {
+		log.Printf("[RUN_FOLDERS] workspace=%s relay=%t listed=%d folders=%s", workspacePath, relay, len(folders), listing)
+	}
 }
