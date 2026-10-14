@@ -38,7 +38,7 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
           <button
             type="button"
             onClick={() => handleStopRun(job)}
-            className="inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
           >
             <Square className="h-3 w-3" />
             Stop
@@ -49,11 +49,7 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
             onClick={() => handleTrigger(job)}
             disabled={triggering === job.id}
             title={isMissedJob ? 'Start one run now. Missed times are not replayed individually.' : 'Start this schedule now'}
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${
-              isMissedJob
-                ? 'border-warning/30 bg-warning/10 text-warning hover:bg-warning/20'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-success'
-            }`}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
           >
             <Play className="h-3 w-3" />
             Run now
@@ -63,7 +59,7 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
         <button
           type="button"
           onClick={() => handleToggle(job)}
-          className="inline-flex items-center gap-1 rounded-md border border-success/30 bg-success/10 px-2 py-1 text-xs font-medium text-success transition-colors hover:bg-success/20"
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
         >
           <Play className="h-3 w-3" />
           Resume

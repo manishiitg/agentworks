@@ -1,8 +1,4 @@
 import React from 'react'
-import {
-  Clock, CheckCircle, XCircle, Minus, Loader,
-  AlertTriangle, Square
-} from 'lucide-react'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { describeCron } from './cron'
 import {
@@ -26,6 +22,7 @@ import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 import { ScheduleAfterRunControls } from './ScheduleAfterRunControls'
+import type { ScheduledJob } from '../../../services/api-types'
 
 type ScheduleListViewProps = {
   panel: Pick<ScheduleRunsPanelState,
@@ -35,7 +32,27 @@ type ScheduleListViewProps = {
     | 'openActionMenuJobId' | 'setOpenActionMenuJobId' | 'handleDelete'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'deletingRunSessionIds'
     | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
-  >
+  > & { isSchedulerPaused?: boolean }
+}
+
+// One quiet word per schedule, like the Watchers, Functions and Webhooks tabs.
+// While schedules are paused nothing is "missed": the banner above already says
+// why, so every row simply reads Paused.
+function statusWord(job: ScheduledJob, paused: boolean, missed: boolean): string {
+  if (paused || !job.enabled) return 'Paused'
+  if (job.last_status === 'running') return 'Running'
+  if (isScheduleWaitingStatus(job.last_status)) return job.last_status === 'waiting_for_capacity' ? 'Waiting for capacity' : 'Queued'
+  if (job.last_status === 'error') return 'Needs attention'
+  if (missed) return 'Missed'
+  return 'Scheduled'
+}
+
+// The server's raw error text stays in the tooltip; the row says it plainly.
+function lastRunNote(job: ScheduledJob): { text: string; tone: 'error' | 'muted' } | null {
+  if (job.last_status === 'error') return { text: 'The last run did not finish.', tone: 'error' }
+  if (isSchedulePartialStatus(job.last_status)) return { text: 'The last run finished with some problems.', tone: 'muted' }
+  if (job.last_status === 'stopped') return { text: 'The last run was stopped.', tone: 'muted' }
+  return null
 }
 
 export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => {
@@ -60,225 +77,41 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
     toggleRunHistory,
     openScheduledRun,
     deleteScheduledRunSession,
+    isSchedulerPaused = false,
   } = panel
 
-  const missedCount = filteredJobs.filter(job => isMissedSchedule(job)).length
-  const runningCount = filteredJobs.filter(job => job.last_status === 'running').length
-  const scheduledCount = filteredJobs.length - missedCount - runningCount
-
   return (
-    <div className="divide-y divide-border">
-      {filteredJobs.map((job, index, jobsList) => {
+    <div className="space-y-3 p-4" data-testid="schedule-list">
+      {filteredJobs.map((job, _index, jobsList) => {
         const preset = presetMap.get(job.preset_query_id ?? '')
         const cronDesc = job.kind === 'gmail' ? 'Gmail trigger · on email' : job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
         const localizedJobName = getLocalizedJobName(job)
         const workflowDisplayLabel = preset?.label || job.workflow_label || job.name
         const executionScope = getScheduleExecutionScope(job)
         const dependencyNames = getScheduleDependencyIds(job).map(id => jobsList.find(candidate => candidate.id === id)?.name ?? id)
-        const previousJob = index > 0 ? jobsList[index - 1] : null
         const isRunningJob = job.last_status === 'running'
         const isWaitingJob = isScheduleWaitingStatus(job.last_status)
-        const isMissedJob = isMissedSchedule(job)
+        const isMissedJob = !isSchedulerPaused && isMissedSchedule(job)
         const missedDelayMs = getMissedScheduleDelayMs(job)
-        const missedReason = isMissedJob ? formatMissedScheduleReason(job) : ''
-        const showRunningHeader = isRunningJob && (!previousJob || previousJob.last_status !== 'running')
-        const previousJobWasMissed = previousJob ? isMissedSchedule(previousJob) : false
-        const showMissedHeader = isMissedJob && (!previousJob || previousJob.last_status === 'running' || !previousJobWasMissed)
-        const showScheduledHeader = !isRunningJob && !isMissedJob && (!previousJob || previousJob.last_status === 'running' || previousJobWasMissed)
+        const note = lastRunNote(job)
+        const quiet = !job.enabled || isSchedulerPaused
 
         return (
-          <React.Fragment key={job.id}>
-            {showRunningHeader && (
-              <div className="px-5 py-3 bg-warning/5 border-b border-warning/10">
-                <div className="text-sm font-semibold text-warning">Running schedules <span className="font-normal text-muted-foreground">· {runningCount}</span></div>
-              </div>
-            )}
-
-            {showScheduledHeader && (
-              <div className="px-5 py-3 bg-muted/30 border-b border-border">
-                <div className="text-sm font-semibold text-foreground">Automation schedules <span className="font-normal text-muted-foreground">· {scheduledCount}</span></div>
-              </div>
-            )}
-
-            {showMissedHeader && (
-              <div className="px-5 py-3 bg-warning/5 border-b border-warning/10">
-                <div className="text-sm font-semibold text-warning">Missed schedules <span className="font-normal text-muted-foreground">· {missedCount}</span></div>
-              </div>
-            )}
-
-            <div className={`px-5 py-4 ${!job.enabled ? 'opacity-60' : ''}`}>
-            {/* Row top */}
-            <div className="relative flex items-start gap-3">
-              {/* Status dot */}
-              <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                job.last_status === 'running' ? 'bg-warning animate-pulse' :
-                isWaitingJob ? 'bg-info animate-pulse' :
-                isMissedJob ? 'bg-warning' :
-                job.enabled ? 'bg-success' : 'bg-muted-foreground/50'
-              }`} />
-
-              {/* Main content */}
-              <div className="flex-1 min-w-0">
+          <section key={job.id} className={`min-w-0 space-y-2 rounded-lg border border-border p-3 ${quiet ? 'opacity-70' : ''}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 {showWorkflowIdentityInScheduleRows && (
-                  <div className="min-w-0 pr-28">
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      Automation
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-foreground truncate" title={workflowDisplayLabel}>
-                        {workflowDisplayLabel}
-                      </span>
-                    </div>
-                  </div>
+                  <p className="truncate text-xs text-muted-foreground" title={workflowDisplayLabel}>
+                    {workflowDisplayLabel} · {job.kind === 'gmail' ? 'Gmail' : job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
+                  </p>
                 )}
-
-                <div className={`${showWorkflowIdentityInScheduleRows ? 'mt-1' : ''} flex items-center gap-2 flex-wrap pr-28`}>
-                  {showWorkflowIdentityInScheduleRows && (
-                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {job.kind === 'gmail' ? 'Gmail' : job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
-                    </span>
-                  )}
-                  <span className={`${showWorkflowIdentityInScheduleRows ? 'text-xs font-medium' : 'text-sm font-semibold'} text-foreground truncate`} title={job.name}>
-                    {localizedJobName}
-                  </span>
-                  {isMissedJob && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-warning/15 text-warning">
-                      Missed
-                    </span>
-                  )}
-                  {isWaitingJob && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-info/15 text-info">
-                      {job.last_status === 'waiting_for_capacity'
-                        ? 'Waiting for capacity'
-                        : `Queued${job.queued_occurrences && job.queued_occurrences > 1 ? ` · ${job.queued_occurrences} combined` : ''}`}
-                    </span>
-                  )}
-                  {!job.enabled && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                      Paused
-                    </span>
-                  )}
-                  {executionScope && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium" title={executionScope.title}>
-                      {executionScope.label}
-                    </span>
-                  )}
-                </div>
-
-                {/* Cron + groups */}
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 pr-28 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {cronDesc}
-                  </span>
-                  {job.group_names && job.group_names.length > 1 && (
-                    <span title={job.group_names.join(', ')}>Groups: {job.group_names.join(', ')}</span>
-                  )}
-                  {job.entity_type === 'product' && (
-                    <label className="inline-flex items-center gap-1.5">
-                      <span>Runs in</span>
-                      <select
-                        aria-label={`Run destination for ${job.name}`}
-                        value={job.run_destination || 'crew_chat'}
-                        disabled={isReadOnlyUser || job.last_status === 'running'}
-                        onChange={event => void handleRunDestination(job, event.target.value as 'crew_chat' | 'isolated')}
-                        className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
-                      >
-                        <option value="crew_chat">Main chat</option>
-                        <option value="isolated">Own conversation</option>
-                      </select>
-                    </label>
-                  )}
-                  <ScheduleAfterRunControls job={job} disabled={isReadOnlyUser} onChange={handleAfterRun} />
-                </div>
-                {dependencyNames.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pr-28 text-xs text-info">
-                    {dependencyNames.length > 0 && <span>Waits for: {dependencyNames.join(', ')}</span>}
-                  </div>
-                )}
-                {job.mode === 'workshop' && job.messages && job.messages.length > 0 && (
-                  <div className="mt-1 pr-28">
-                    <div className="space-y-0.5">
-                      {job.messages.map((m, i) => (
-                        <div key={i} className="flex items-start gap-1 text-xs text-muted-foreground">
-                          <span className="shrink-0 text-muted-foreground">{i + 1}.</span>
-                          <span>{m}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} address={job.gmail?.address} />}
-
-                {/* Run stats */}
-                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1" title={formatExactDateTime(job.last_run_at)}>
-                    {job.last_status === 'running' ? (
-                      <Loader className="w-3 h-3 text-warning animate-spin" />
-                    ) : isWaitingJob ? (
-                      <Clock className="w-3 h-3 text-info" />
-                    ) : job.last_status === 'success' ? (
-                      <CheckCircle className="w-3 h-3 text-success" />
-                    ) : job.last_status === 'error' ? (
-                      <XCircle className="w-3 h-3 text-destructive" />
-                    ) : isSchedulePartialStatus(job.last_status) ? (
-                      <AlertTriangle className="w-3 h-3 text-warning" />
-                    ) : job.last_status === 'stopped' ? (
-                      <Square className="w-3 h-3 text-muted-foreground" />
-                    ) : (
-                      <Minus className="w-3 h-3" />
-                    )}
-                    {isWaitingJob
-                      ? job.waiting_until
-                        ? `Waiting until ${formatLocalScheduleTime(job.waiting_until)}`
-                        : 'Waiting to start'
-                      : job.last_status === 'running'
-                      ? job.last_run_at
-                        ? `Running since ${formatLocalScheduleTime(job.last_run_at)} (${timeAgo(job.last_run_at)})`
-                        : 'Running...'
-                      : job.last_run_at
-                      ? `Last ran: ${formatLastRunLabel(job.last_run_at)}`
-                      : 'Not run yet'}
-                  </span>
-                  <span>
-                    {job.enabled
-                      ? isMissedJob && missedDelayMs != null
-                        ? job.missed_run_count && job.missed_run_count > 1
-                          ? `${job.missed_run_count} missed · latest ${formatOverdueDuration(missedDelayMs)} ago`
-                          : `Missed by ${formatOverdueDuration(missedDelayMs)}`
-                        : `Next: ${formatLocalScheduleTime(job.next_run_at)}`
-                      : 'paused'}
-                  </span>
-                  {isMissedJob && (
-                    <span className="text-warning" title={missedReason}>
-                      {missedReason}
-                    </span>
-                  )}
-                  <span>{job.run_count} run{job.run_count !== 1 ? 's' : ''}</span>
-                  {job.last_duration_ms != null && job.last_status !== 'running' && (
-                    <span title="Last duration">{formatDuration(job.last_duration_ms)}</span>
-                  )}
-                </div>
-
-                {/* Error message */}
-                {(isScheduleIssueStatus(job.last_status) || job.last_status === 'stopped') && job.last_error && (
-                  <div className={`mt-1 text-xs truncate max-w-lg ${job.last_status === 'error' ? 'text-destructive' : isSchedulePartialStatus(job.last_status) ? 'text-warning' : 'text-muted-foreground'}`} title={job.last_error}>
-                    ✗ {job.last_error}
-                  </div>
-                )}
-                {isWaitingJob && job.waiting_reason && (
-                  <div className="mt-1 text-xs truncate max-w-lg text-info" title={job.waiting_reason}>
-                    {job.waiting_reason}
-                  </div>
-                )}
+                <h3 className="truncate text-sm font-medium" title={job.name}>{localizedJobName}</h3>
               </div>
-
-              {/* Keep the immediate operational action visible; secondary actions live in one menu. */}
-              <div className="absolute right-0 top-0 flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs text-muted-foreground">{statusWord(job, isSchedulerPaused, isMissedJob)}</span>
                 <ScheduleRowActions
                   job={job}
-                  isRunning={job.last_status === 'running'}
+                  isRunning={isRunningJob}
                   isMissedJob={isMissedJob}
                   isReadOnlyUser={isReadOnlyUser}
                   triggering={triggering}
@@ -288,23 +121,81 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                   handleTrigger={handleTrigger}
                   handleToggle={handleToggle}
                   handleDelete={handleDelete}
-                  menuButtonClassName="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  menuButtonClassName="rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                 />
               </div>
             </div>
-            {(job.run_count || 0) > 0 && <ScheduleExecutionHistoryList
-                job={job}
-                runs={runsByJob[job.id] || []}
-                historyOpen={expandedRunHistoryJobIds.has(job.id)}
-                historyLoading={runsLoadingJobIds.has(job.id)}
-                recordedRunCount={job.run_count || 0}
-                onToggle={() => { void toggleRunHistory(job) }}
-                onOpen={run => { void openScheduledRun(run, job) }}
-                onDelete={job.entity_type === 'product' ? undefined : run => { void deleteScheduledRunSession(run) }}
-                deletingRunIds={deletingRunSessionIds}
-            />}
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>{cronDesc}</span>
+              {executionScope && <span title={executionScope.title}>{executionScope.label}</span>}
+              {job.group_names && job.group_names.length > 1 && (
+                <span title={job.group_names.join(', ')}>Groups: {job.group_names.join(', ')}</span>
+              )}
+              {job.entity_type === 'product' && (
+                <label className="inline-flex items-center gap-1.5">
+                  <span>Runs in</span>
+                  <select
+                    aria-label={`Run destination for ${job.name}`}
+                    value={job.run_destination || 'crew_chat'}
+                    disabled={isReadOnlyUser || isRunningJob}
+                    onChange={event => void handleRunDestination(job, event.target.value as 'crew_chat' | 'isolated')}
+                    className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
+                  >
+                    <option value="crew_chat">Main chat</option>
+                    <option value="isolated">Own conversation</option>
+                  </select>
+                </label>
+              )}
+              <ScheduleAfterRunControls job={job} disabled={isReadOnlyUser} onChange={handleAfterRun} />
             </div>
-          </React.Fragment>
+
+            {dependencyNames.length > 0 && <p className="text-xs text-muted-foreground">Waits for: {dependencyNames.join(', ')}</p>}
+            {job.mode === 'workshop' && job.messages && job.messages.length > 0 && (
+              <ol className="space-y-0.5 text-xs text-muted-foreground">
+                {job.messages.map((m, i) => <li key={i} className="flex items-start gap-1"><span className="shrink-0">{i + 1}.</span><span>{m}</span></li>)}
+              </ol>
+            )}
+
+            {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} address={job.gmail?.address} />}
+
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span title={formatExactDateTime(job.last_run_at)}>
+                {isWaitingJob
+                  ? job.waiting_until ? `Waiting until ${formatLocalScheduleTime(job.waiting_until)}` : 'Waiting to start'
+                  : isRunningJob
+                    ? job.last_run_at ? `Running since ${formatLocalScheduleTime(job.last_run_at)} (${timeAgo(job.last_run_at)})` : 'Running...'
+                    : job.last_run_at ? `Last ran: ${formatLastRunLabel(job.last_run_at)}` : 'Not run yet'}
+              </span>
+              {job.enabled && !isSchedulerPaused && (
+                isMissedJob && missedDelayMs != null
+                  ? <span title={formatMissedScheduleReason(job)}>
+                      {job.missed_run_count && job.missed_run_count > 1
+                        ? `${job.missed_run_count} missed · latest ${formatOverdueDuration(missedDelayMs)} ago`
+                        : `Missed by ${formatOverdueDuration(missedDelayMs)}`}
+                    </span>
+                  : <span>Next: {formatLocalScheduleTime(job.next_run_at)}</span>
+              )}
+              <span>{job.run_count} run{job.run_count !== 1 ? 's' : ''}</span>
+              {job.last_duration_ms != null && !isRunningJob && <span title="Last duration">{formatDuration(job.last_duration_ms)}</span>}
+            </div>
+
+            {note && (isScheduleIssueStatus(job.last_status) || job.last_status === 'stopped') && !isSchedulerPaused && (
+              <p className={`text-xs ${note.tone === 'error' ? 'text-destructive' : 'text-muted-foreground'}`} title={job.last_error || undefined}>{note.text}</p>
+            )}
+
+            {(job.run_count || 0) > 0 && <ScheduleExecutionHistoryList
+              job={job}
+              runs={runsByJob[job.id] || []}
+              historyOpen={expandedRunHistoryJobIds.has(job.id)}
+              historyLoading={runsLoadingJobIds.has(job.id)}
+              recordedRunCount={job.run_count || 0}
+              onToggle={() => { void toggleRunHistory(job) }}
+              onOpen={run => { void openScheduledRun(run, job) }}
+              onDelete={job.entity_type === 'product' ? undefined : run => { void deleteScheduledRunSession(run) }}
+              deletingRunIds={deletingRunSessionIds}
+            />}
+          </section>
         )
       })}
     </div>

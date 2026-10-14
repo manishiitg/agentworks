@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-import { readFileSync } from 'node:fs'
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
@@ -223,15 +222,5 @@ describe('schedule panel views', () => {
       expect(host.querySelector('[data-testid="bots"]')).not.toBeNull()
       expect(host.querySelector('[aria-label="Walkthrough: Automation · Bots"]')).not.toBeNull()
     } finally { await act(async () => root.unmount()); host.remove() }
-  })
-})
-
-describe('schedule group headers', () => {
-  it('use card-title style instead of kickers', () => {
-    const list = readFileSync('src/components/scheduler/scheduleRuns/ScheduleListView.tsx', 'utf8')
-    expect(list).toContain('text-sm font-semibold text-foreground">Automation schedules')
-    expect(list).toContain('text-sm font-semibold text-warning">Missed schedules')
-    expect(list).not.toContain('uppercase tracking-wide text-warning')
-    expect(list).not.toContain('uppercase tracking-wide text-muted-foreground">Automation schedules')
   })
 })

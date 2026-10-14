@@ -175,10 +175,10 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
           {isSchedulerPaused && !isLoading && !error && (
-            <div role="status" aria-label={isGloballyPaused ? 'All schedules paused' : `${pauseProductLabel} schedules paused`} className="border-b border-warning/30 bg-warning/10 px-5 py-2.5">
+            <div role="status" aria-label={isGloballyPaused ? 'All schedules paused' : `${pauseProductLabel} schedules paused`} className="border-b border-border bg-muted/30 px-4 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                  <span className="inline-flex items-center gap-1.5 font-medium text-warning">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                     <Pause className="h-3.5 w-3.5 shrink-0" />
                     {isGloballyPaused ? 'All schedules are paused.' : `${pauseProductLabel} schedules are paused.`}
                   </span>
@@ -194,17 +194,17 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             </div>
           )}
           {!isWorkflowScoped && panelJobs.length > 0 && !isLoading && !error && (
-            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-5 py-2 text-xs" aria-label="Schedule health summary">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-xs" aria-label="Schedule health summary">
               <span className="mr-1 font-medium text-foreground">Needs attention</span>
-              {summary.missed > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('missed'); setActiveView('schedules') }} className="rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-warning hover:bg-warning/20">{summary.missed} with missed runs</button>}
-              {summary.issues > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('issues'); setActiveView('schedules') }} className="rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 text-destructive hover:bg-destructive/20">{summary.issues} with run issues</button>}
-              {summary.waiting > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('waiting'); setActiveView('schedules') }} className="rounded-full border border-info/30 bg-info/10 px-2.5 py-1 text-info hover:bg-info/20">{summary.waiting} queued or waiting</button>}
-              {summary.overlap > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('overlap'); setActiveView('schedules') }} className="rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-warning hover:bg-warning/20">{summary.overlap} at overlap risk</button>}
+              {summary.missed > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('missed'); setActiveView('schedules') }} className="rounded-md border border-border px-2 py-1 text-muted-foreground hover:bg-muted">{summary.missed} with missed runs</button>}
+              {summary.issues > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('issues'); setActiveView('schedules') }} className="rounded-md border border-border px-2 py-1 text-destructive hover:bg-muted">{summary.issues} with run issues</button>}
+              {summary.waiting > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('waiting'); setActiveView('schedules') }} className="rounded-md border border-border px-2 py-1 text-muted-foreground hover:bg-muted">{summary.waiting} queued or waiting</button>}
+              {summary.overlap > 0 && <button type="button" onClick={() => { setSelectedWorkflowFilter('all'); setSearchQuery(''); setActiveFilter('overlap'); setActiveView('schedules') }} className="rounded-md border border-border px-2 py-1 text-muted-foreground hover:bg-muted">{summary.overlap} at overlap risk</button>}
               {summary.missed === 0 && summary.issues === 0 && summary.waiting === 0 && summary.overlap === 0 && <span className="text-muted-foreground">No current issues reported</span>}
             </div>
           )}
           {(!compact || hideHeader) && panelJobs.length > 0 && (
-            <div className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur px-5 py-3">
+            <div className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur px-4 py-2">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   {/* The view switcher and search earn their place only across
@@ -243,7 +243,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                       <div className="flex items-center gap-2">
                         <select aria-label="Filter schedules by state" value={activeFilter}
                           onChange={event => setActiveFilter(event.target.value as typeof activeFilter)}
-                          className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50">
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50">
                           {filterPills.map(pill => <option key={pill.key} value={pill.key}>{pill.key === 'all' ? 'All states' : pill.label} ({pill.count})</option>)}
                         </select>
                       </div>
