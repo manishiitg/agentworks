@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, Mail, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -304,17 +304,23 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   const [resetPassword, setResetPassword] = useState('')
   const [deleteFor, setDeleteFor] = useState<AdminUser | null>(null)
 
+  // Only the latest load may change the screen, so an overlapping or slow earlier load can never leave the spinner on.
+  const loadSeq = useRef(0)
   const refresh = useCallback(async () => {
+    const seq = ++loadSeq.current
     setLoading(true)
     setError(null)
     try {
       const resp = await authApi.listAdminUsers()
+      if (seq !== loadSeq.current) return
       setUsers(resp.users || [])
       setProducts(selectableProducts(resp.products || [], enabledProductSurfaces()))
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (seq !== loadSeq.current) return
+      const message = err instanceof Error ? err.message : String(err)
+      setError(/timeout/i.test(message) ? 'Loading the accounts took longer than 15 seconds. Check your connection and try again.' : message)
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }, [])
 
@@ -384,7 +390,8 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
+            <span className="flex-1">{error}</span>
+            <Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
           </div>
         )}
         {loading ? (

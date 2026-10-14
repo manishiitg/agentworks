@@ -73,4 +73,15 @@ describe('Shared user roles and product access', () => {
     }
     expect(api.updateAdminUser).not.toHaveBeenCalled()
   })
+  it('ends a load that times out in an error with Retry instead of an endless spinner, and Retry loads again', async () => {
+    api.listAdminUsers.mockRejectedValueOnce(new Error('timeout of 15000ms exceeded'))
+    await render()
+    expect(host.textContent).toContain('took longer than 15 seconds')
+    expect(host.textContent).not.toContain('Loading accounts')
+    const retry = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Retry')!
+    await act(async () => retry.click())
+    expect(api.listAdminUsers).toHaveBeenCalledTimes(2)
+    expect(host.textContent).not.toContain('took longer than 15 seconds')
+    expect(host.textContent).toContain('creator@example.com')
+  })
 })

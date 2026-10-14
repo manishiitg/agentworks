@@ -3092,7 +3092,8 @@ export const authApi = {
 
   // --- account management (config/users.json; admins only) ---
   listAdminUsers: async (): Promise<{ users: AdminUser[]; products: string[] }> => {
-    const response = await api.get('/api/admin/users')
+    // A load that never answers must end in an error with a Retry, not an endless spinner.
+    const response = await api.get('/api/admin/users', { timeout: 15000 })
     return response.data
   },
   updateAdminUser: async (id: string, patch: AdminUserWrite): Promise<AdminUser> => {
