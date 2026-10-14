@@ -157,8 +157,15 @@ func TestAutoUpdateOffInstallsNothingAndOnlyTells(t *testing.T) {
 	if f.downloads.Load() != 0 || strings.Contains(f.installed(t), "0123456789abcdef") {
 		t.Fatal("an update was installed while automatic updates were off")
 	}
+	// The pending notice is visible without a chat (agentworks version shows it) and saying it in a chat is logged.
+	if notice := pendingUpdateNotice(stateRoot(t)); !strings.Contains(notice, "automatic updates are off") {
+		t.Fatalf("version would show no notice while off: %q", notice)
+	}
 	if line := autoUpdateHookLine(stateRoot(t), time.Now()); !strings.Contains(line, "automatic updates are off") {
 		t.Fatalf("no notice while off: %q", line)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(stateRoot(t), "bridge.log")); !strings.Contains(string(raw), "[UPDATE] told the chat: AgentWorks update available (automatic updates are off)") {
+		t.Fatalf("telling the chat was not logged: %s", raw)
 	}
 	if err := autoUpdateSetting(f.o, "on"); err != nil || !autoUpdateOn() {
 		t.Fatalf("could not turn updates back on: %v", err)

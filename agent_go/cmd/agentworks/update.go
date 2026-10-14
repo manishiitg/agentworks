@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +54,15 @@ func versionCommand(o *options) *cobra.Command {
 		Short: "Print the CLI version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return o.output(map[string]any{"version": cliVersion, "os": runtime.GOOS, "arch": runtime.GOARCH})
+			out := map[string]any{"version": cliVersion, "os": runtime.GOOS, "arch": runtime.GOARCH}
+			// What the background update check left for the person (an update that needs them, or one that only
+			// notifies, as on Windows) shows here too, not only in a chat: not everyone has a chat open.
+			if root, err := agentworksclient.DefaultLocalBridgeRoot(); err == nil {
+				if notice := pendingUpdateNotice(root); notice != "" {
+					out["update_notice"] = notice
+				}
+			}
+			return o.output(out)
 		},
 	}
 }

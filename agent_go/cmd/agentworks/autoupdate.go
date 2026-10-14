@@ -173,11 +173,13 @@ func autoUpdateHookLine(root string, now time.Time) string {
 	changed := false
 	if st.UpdatedNote != "" {
 		lines = append(lines, st.UpdatedNote)
+		updateLog(root, "told the chat: %s", boundedUpdateLine(st.UpdatedNote))
 		st.UpdatedNote, changed = "", true
 	}
 	for i := range st.Needs {
 		if st.Needs[i].Said != today {
 			lines = append(lines, st.Needs[i].Text)
+			updateLog(root, "told the chat: %s", boundedUpdateLine(st.Needs[i].Text))
 			st.Needs[i].Said, changed = today, true
 		}
 	}
@@ -185,6 +187,26 @@ func autoUpdateHookLine(root string, now time.Time) string {
 		saveAutoUpdateState(root, st)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// pendingUpdateNotice is what the update check left for the person, without marking it as said.
+func pendingUpdateNotice(root string) string {
+	st := loadAutoUpdateState(root)
+	var lines []string
+	for _, n := range st.Needs {
+		if strings.TrimSpace(n.Text) != "" {
+			lines = append(lines, n.Text)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func boundedUpdateLine(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > 160 {
+		text = text[:160] + "..."
+	}
+	return text
 }
 
 // updateLog writes one [UPDATE] line to the helper's log (the check runs in its own process).
