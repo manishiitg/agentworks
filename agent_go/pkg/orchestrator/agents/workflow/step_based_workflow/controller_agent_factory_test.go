@@ -783,15 +783,9 @@ func TestSetupExecutionFolderGuardHonorsLearningsAndKBNone(t *testing.T) {
 		nil,
 	)
 
-	forbiddenReads := []string{
-		"Workflow/testing/learnings/_global",
-		"Workflow/testing/knowledgebase",
-		"Workflow/testing",
-	}
-	for _, forbidden := range forbiddenReads {
-		if slices.Contains(readPaths, forbidden) {
-			t.Fatalf("expected read paths not to include %q, got %v", forbidden, readPaths)
-		}
+	// A step reads its whole workflow folder (owner decision, 2026-10-14); only WRITES follow the per-step settings.
+	if !guardCovers(readPaths, "Workflow/testing/knowledgebase") || !guardCovers(readPaths, "Workflow/testing/learnings/_global") {
+		t.Fatalf("expected the workflow folder to be readable, got %v", readPaths)
 	}
 	forbiddenWrites := []string{
 		"Workflow/testing/learnings/_global",
@@ -1286,7 +1280,7 @@ func TestExecutionFolderGuardGrantsPlanningReadNeverWrite(t *testing.T) {
 		nil,
 	)
 	planningPath := "Workflow/testing/planning"
-	if !slices.Contains(readPaths, planningPath) {
+	if !guardCovers(readPaths, planningPath) {
 		t.Fatalf("step must be able to read %q, got %v", planningPath, readPaths)
 	}
 	for _, w := range writePaths {
@@ -1324,19 +1318,11 @@ func TestExecutionFolderGuardGrantsTheRunFolderNotOnlyItsExecutionChild(t *testi
 	)
 
 	runPath := "Workflow/testing/runs/iteration-0/default"
-	if !slices.Contains(readPaths, runPath) {
-		t.Fatalf("step cannot list its own run folder %q; got %v", runPath, readPaths)
+	if !guardCovers(readPaths, runPath) || !guardCovers(readPaths, runPath+"/run_metadata.json") {
+		t.Fatalf("step cannot read its own run folder %q; got %v", runPath, readPaths)
 	}
-	// The narrower grant must remain — widening to the run folder should not have
-	// replaced the execution grant that sibling-step results depend on.
-	execPath := runPath + "/execution"
-	if !slices.Contains(readPaths, execPath) {
+	if !guardCovers(readPaths, runPath+"/execution") {
 		t.Fatalf("execution read grant was lost, got %v", readPaths)
-	}
-	// Read must not reach the workflow root: that was denied before and should
-	// stay denied — this fix widens by exactly one level, not to everything.
-	if slices.Contains(readPaths, "Workflow/testing") {
-		t.Fatalf("read scope widened to the workflow root, got %v", readPaths)
 	}
 }
 
@@ -1368,11 +1354,8 @@ func TestExecutionFolderGuardGrantsToolOutputFolderRead(t *testing.T) {
 	)
 
 	toolOutputPath := "Workflow/testing/tool_output_folder"
-	if !slices.Contains(readPaths, toolOutputPath) {
+	if !guardCovers(readPaths, toolOutputPath) {
 		t.Fatalf("step must be able to read its own spilled tool output at %q, got %v", toolOutputPath, readPaths)
-	}
-	if slices.Contains(readPaths, "Workflow/testing") {
-		t.Fatalf("granting tool_output_folder read must not widen to the bare workflow root, got %v", readPaths)
 	}
 }
 
@@ -1463,5 +1446,98 @@ func TestSharedKnowledgebaseStepToolsFollowAccess(t *testing.T) {
 	_, executors := hcpo.prepareCustomTools(&AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite})
 	if len(executors) != 0 {
 		t.Fatal("disabled workflow admitted KB tools")
+	}
+}
+
+// guardCovers reports whether a folder-guard path list reaches target: an entry equal to it or one of its parents.
+func guardCovers(paths []string, target string) bool {
+	for _, path := range paths {
+		if path == target || strings.HasPrefix(target, strings.TrimRight(path, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// The owner's rule for step file access (2026-10-14): a step READS everything in its workflow folder and WRITES its
+// current run plus db/assets, reports and tool_output_folder; never past runs, the plan or settings, soul or code (code
+// only for a run the Builder started). Linux Landlock and Mac Seatbelt are built from these same lists, so this one
+// test pins what both enforce for execution, agent and orchestrator steps.
+func TestStepFileAccessFollowsTheOwnersRule(t *testing.T) {
+	base, err := orchestrator.NewBaseOrchestrator(
+		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0,
+		"", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.SetWorkspacePath("Workflow/testing")
+	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0/default"}
+	hcpo.codeLayoutVersion.Store(1)
+	builders := map[string]func() ([]string, []string){
+		"execution": func() ([]string, []string) {
+			return hcpo.setupExecutionFolderGuard("step-1", "s", KBAccessNone, LearningsAccessNone, DBAccessReadWrite, nil)
+		},
+		"agent": func() ([]string, []string) { return hcpo.setupAgentFolderGuard("step-1", "s", nil, AgentWriteAccess{}) },
+		"orchestrator": func() ([]string, []string) {
+			return hcpo.setupOrchestratorFolderGuard(&AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: "s"}}, "step-1")
+		},
+	}
+	const wf = "Workflow/testing/"
+	for name, build := range builders {
+		t.Run(name, func(t *testing.T) {
+			reads, writes := build()
+			for _, ok := range []string{"runs/iteration-0/default/run_metadata.json", "runs/iteration-0/other-run/execution/x/out.json", "planning/plan.json", "code/shared/helper.py", "knowledgebase/notes/a.md", "variables/variables.json"} {
+				if !guardCovers(reads, wf+ok) {
+					t.Errorf("read of %s refused: %v", ok, reads)
+				}
+			}
+			for _, ok := range []string{"runs/iteration-0/default/logs/x/log.txt", "runs/iteration-0/default/execution/other-step/out.json", "db/assets/chart.png", "reports/r.html", "tool_output_folder/spill.txt"} {
+				if !guardCovers(writes, wf+ok) {
+					t.Errorf("write of %s refused: %v", ok, writes)
+				}
+			}
+			for _, refused := range []string{"planning/plan.json", "workflow.json", "config/x.json", "variables/variables.json", "functions/x", "soul/soul.md", "runs/iteration-0/other-run/execution/x/out.json", "runs/iteration-1/default/x", "code/shared/helper.py"} {
+				if guardCovers(writes, wf+refused) {
+					t.Errorf("write of %s allowed: %v", refused, writes)
+				}
+			}
+		})
+	}
+	// code/ belongs to the Builder: writable only for a run it started.
+	hcpo.codeWritableByRun.Store(true)
+	if _, writes := builders["execution"](); !guardCovers(writes, wf+"code/shared/helper.py") {
+		t.Errorf("a Builder-started run lost code/ writes: %v", writes)
+	}
+}
+
+// Read grants are made entry by entry so the raw database is closed by omission (no namespace needed to hide it).
+func TestWorkflowReadGrantsListEntriesAndOmitTheRawDatabase(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	wf := filepath.Join(docs, "Workflow", "demo")
+	for _, dir := range []string{"runs/iteration-0/default", "planning", "code/shared", "db/assets", "knowledgebase/notes"} {
+		if err := os.MkdirAll(filepath.Join(wf, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, file := range []string{"workflow.json", "db/README.md", "db/db.sqlite", "db/db.sqlite-wal", "db/db.sqlite-shm"} {
+		if err := os.WriteFile(filepath.Join(wf, file), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(docs, filepath.Join(wf, "outside")); err != nil {
+		t.Fatal(err)
+	}
+	grants := workflowReadGrants("Workflow/demo")
+	for _, want := range []string{"Workflow/demo/runs", "Workflow/demo/planning", "Workflow/demo/code", "Workflow/demo/workflow.json", "Workflow/demo/knowledgebase", "Workflow/demo/db/README.md", "Workflow/demo/db/assets"} {
+		if !slices.Contains(grants, want) {
+			t.Errorf("missing read grant %s in %v", want, grants)
+		}
+	}
+	for _, refused := range []string{"Workflow/demo", "Workflow/demo/db", "Workflow/demo/db/db.sqlite", "Workflow/demo/db/db.sqlite-wal", "Workflow/demo/db/db.sqlite-shm", "Workflow/demo/outside"} {
+		if slices.Contains(grants, refused) {
+			t.Errorf("read grant %s must not be listed: %v", refused, grants)
+		}
 	}
 }

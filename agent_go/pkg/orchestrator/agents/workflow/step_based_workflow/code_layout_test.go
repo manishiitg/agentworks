@@ -103,6 +103,8 @@ func TestCodeLayoutVersionOneNeverFallsBackToLegacyScript(t *testing.T) {
 
 func TestCodeLayoutGrantsRespectLock(t *testing.T) {
 	c := codeLayoutController(t, 1)
+	// code/ is writable only for a run the Builder started; lock_code is an extra lock on top.
+	c.codeWritableByRun.Store(true)
 	for _, locked := range []bool{false, true} {
 		reads, writes := c.setupExecutionFolderGuard("step", "out", KBAccessNone, LearningsAccessNone, resolveDBAccess(nil), &AgentConfigs{LockCode: &locked})
 		if !slices.Contains(reads, "Workflow/testing/code") {

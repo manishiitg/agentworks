@@ -62,9 +62,13 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 type StepBasedWorkflowOrchestrator struct {
 	codeLayoutVersion      atomic.Int32
 	platformStoresDisabled atomic.Bool
-	relayExecution         atomic.Bool
-	stepHasGoal            atomic.Bool
-	stepPulseEnabled       atomic.Bool
+	// codeWritableByRun is true only for a run started by the Builder (execute_step with script repair allowed): code/
+	// stays with the Builder and Pulse, so every other run (schedules, webhooks, functions, Watchers, Run mode, MCP)
+	// reads it and never writes it. Unset means not the Builder.
+	codeWritableByRun atomic.Bool
+	relayExecution    atomic.Bool
+	stepHasGoal       atomic.Bool
+	stepPulseEnabled  atomic.Bool
 	// Base orchestrator for common functionality
 	*orchestrator.BaseOrchestrator
 	// NEW: Store planning conversation for iterative refinement

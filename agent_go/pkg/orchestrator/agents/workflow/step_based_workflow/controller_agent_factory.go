@@ -494,15 +494,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 		writeRootPath = filepath.Join(executionWorkspacePath, parentRoot)
 	}
 	downloadsPath := fmt.Sprintf("%s/Downloads", executionWorkspacePath)
-	soulPath := fmt.Sprintf("%s/soul", baseWorkspacePath)
-	// planning/ is READ-ONLY here and deliberately so. A step previously could not
-	// see the plan at all: it got its own description plus resolved dependencies and
-	// had no way to tell whether it was the first of nine or the last, or what
-	// consumed its output. Read access lets a step judge its own scope. Writes stay
-	// impossible — planning/ is absent from writePaths below, is excluded from
-	// WorkflowWritableSubfolders, and isProtectedPlanningPath is the runtime backstop;
-	// plan.json/step_config.json are only ever mutated through the typed plan-mod tools.
-	planningPath := fmt.Sprintf("%s/%s", baseWorkspacePath, PlanningFolderName)
+	// planning/ stays read-only: it is absent from writePaths below and isProtectedPlanningPath is the runtime backstop;
+	// plan.json and step_config.json change only through the typed plan tools.
 	// runWorkspacePath, not just its execution/ child. A step is told its outputs
 	// live at runs/<run>/execution/<step>/, and confirming that path means walking
 	// down to it — but only the leaf was readable, so `ls runs/iteration-0/default`
@@ -518,14 +511,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	// spilled tool output back hits "outside every workspace root" and has no
 	// legal way to comply (PLAT-073 cluster F, dd9ede3c).
 	toolOutputPath := fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath)
-	readPaths = []string{runWorkspacePath, executionWorkspacePath, soulPath, planningPath, toolOutputPath}
-	// Generic agents are also used as read-only Pulse specialists. Their review
-	// contracts span plan, eval, report, cost, config, store, and run evidence,
-	// so give them workflow-wide read access while retaining the narrow write
-	// scope established below.
-	if isGenericAgentStep(stepID, stepPath) {
-		readPaths = []string{baseWorkspacePath}
-	}
+	// Owner decision (2026-10-14, "limiting this access is causing more problems than helping"): a step may READ
+	// everything in its workflow folder: every run, the code, the knowledge base, learnings, db files, notes and
+	// reports. It reads its own run's state and the shared helpers it imports without a per-step patch. Writes stay
+	// narrow (below), blocked paths (the raw database, stores a product switched off) still win, and the knowledge
+	// base, learnings and database keep their own per-step write settings.
+	readPaths = append(workflowReadGrants(baseWorkspacePath), toolOutputPath)
+	genericStep := isGenericAgentStep(stepID, stepPath)
 	if learningsAccess != LearningsAccessNone {
 		readPaths = appendLearningReadPaths(readPaths, baseWorkspacePath, stepID)
 	}
@@ -534,6 +526,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	// agents and scripts under the same parent to exchange artifacts without
 	// granting write access to another top-level step.
 	writePaths = []string{writeRootPath, downloadsPath}
+	// A step may write anywhere in THIS run (any step's outputs, run logs) and the shared areas db/assets, reports and
+	// tool_output_folder; never past runs or other iterations, planning/, workflow.json, config, variables,
+	// functions or soul (Builder and Pulse only, through their tools). Generic review agents stay on their narrow
+	// write scope. With no selected run there is no run folder to grant (it would be the whole workflow).
+	if !genericStep {
+		if hcpo.selectedRunFolder != "" {
+			writePaths = append(writePaths, runWorkspacePath)
+		}
+		writePaths = append(writePaths, baseWorkspacePath+"/reports", toolOutputPath)
+		if hcpo.platformStoresEnabled() {
+			writePaths = append(writePaths, getDBPath(baseWorkspacePath)+"/assets")
+		}
+	}
 
 	// db/ is available only when the product permits platform stores. Ordinary workflow execution resolves dbAccess
 	// to read-write uniformly, so db/ is also writable for those steps. The read branch
@@ -588,7 +593,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	if hcpo.usesCodeTree() {
 		codePath := baseWorkspacePath + "/code"
 		readPaths = append(readPaths, codePath)
-		if stepConfig == nil || stepConfig.LockCode == nil || !*stepConfig.LockCode {
+		if hcpo.codeWritableByRun.Load() && (stepConfig == nil || stepConfig.LockCode == nil || !*stepConfig.LockCode) {
 			writePaths = append(writePaths, codePath)
 		}
 	}

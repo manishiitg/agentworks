@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +34,7 @@ func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command s
 			// service account) and leaves the rest of the host as the service account sees it: an agent's shell with
 			// a blocked db.sqlite in its project read the platform's .env and wrote the service account's home
 			// (server B 2026-10-03). A policy Landlock cannot carry is refused.
+			logSandboxUnavailableOnce(policyErr)
 			return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: this Folder Guard policy cannot be enforced: %w", policyErr)
 		}
 		return iso.landlockCommand(ctx, policy, command, args)
@@ -394,4 +396,15 @@ func slotRunRootToHide(slot string) string {
 		return ""
 	}
 	return root
+}
+
+var sandboxUnavailableLogged sync.Map
+
+// logSandboxUnavailableOnce writes one clear line per distinct reason when a folder policy cannot be enforced, so a
+// server without the launcher's user namespaces is obvious in the logs instead of showing only as refused shell commands.
+func logSandboxUnavailableOnce(reason error) {
+	if _, seen := sandboxUnavailableLogged.LoadOrStore(reason.Error(), true); seen {
+		return
+	}
+	log.Printf("[SANDBOX] SANDBOX_UNAVAILABLE: %v. Shell commands whose folder policy needs this are refused on this host until the launcher's user namespaces work (check unprivileged user namespaces and newuidmap/newgidmap); logged once per reason.", reason)
 }

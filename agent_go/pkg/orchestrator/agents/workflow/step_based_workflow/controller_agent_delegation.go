@@ -41,16 +41,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	// READ: current group's execution folder + DB documentation/assets, plus KB/learnings only when
 	// the step config grants those stores. WRITE: current group's execution
 	// folder + DB assets, plus KB notes only for direct KB writes.
-	// Do not grant the workflow root here. That would expose workflow.json, variables/,
-	// planning/, and sibling groups to a nested todo_task orchestrator whose job is
-	// to coordinate work inside the current run, not inspect global workflow state.
 	parentRoot := filepath.Join(executionWorkspacePath, parentAgentArtifactRoot(step.GetID(), stepPath))
 	sharedPath := filepath.Join(parentRoot, "shared")
 	downloadsPath := filepath.Join(executionWorkspacePath, "Downloads")
-	readPaths = []string{executionWorkspacePath, parentRoot, sharedPath, downloadsPath, filepath.Join(baseWorkspacePath, "soul", "soul.md")}
-	// The bridge writes oversized tool results here; agents need read access to retrieve them.
-	readPaths = append(readPaths, filepath.Join(baseWorkspacePath, "tool_output_folder"))
+	// Owner decision (2026-10-14): a step reads everything in its workflow folder; it writes its current run and the shared
+	// areas only (see setupExecutionFolderGuard). The bridge also spills oversized tool results into tool_output_folder.
+	readPaths = append(workflowReadGrants(baseWorkspacePath), parentRoot, sharedPath, downloadsPath, filepath.Join(baseWorkspacePath, "tool_output_folder"))
 	writePaths = []string{parentRoot, sharedPath, downloadsPath}
+	if hcpo.selectedRunFolder != "" {
+		writePaths = append(writePaths, filepath.Join(baseWorkspacePath, "runs", hcpo.selectedRunFolder))
+	}
+	writePaths = append(writePaths, filepath.Join(baseWorkspacePath, "reports"), filepath.Join(baseWorkspacePath, "tool_output_folder"))
+	if hcpo.platformStoresEnabled() {
+		writePaths = append(writePaths, getDBPath(baseWorkspacePath)+"/assets")
+	}
 	if hcpo.platformStoresEnabled() {
 		readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, writePaths)
 	}

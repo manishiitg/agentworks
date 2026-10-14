@@ -243,6 +243,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 		}
 	}
 
+	hcpo.codeWritableByRun.Store(setup.Context.AllowScriptRepair)
+
 	start := setup.StartFromStep
 	if setup.Context.RunSingleStepOnly {
 		start = setup.Context.SingleStepTarget

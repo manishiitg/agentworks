@@ -1634,22 +1634,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 	}
 	downloadsPath := fmt.Sprintf("%s/Downloads", executionWorkspacePath)
 
-	readPaths = []string{
-		executionWorkspacePath,
-		fmt.Sprintf("%s/soul", baseWorkspacePath),
-		// tool_output_folder is where any bridge tool result past its inline size
-		// cap is spilled (MCP_TOOL_OUTPUT_DIR) -- most often a large agent_browser
-		// snapshot. setupExecutionFolderGuard has granted this since PLAT-073
-		// cluster F; this parallel agent builder never did, so a
-		// agent step told "full output saved to <path>" had no legal
-		// way to read it back. Confirmed live 2026-08-17 (customer-login
-		// step-5-execute-browser-and-capture-apis): its read paths carried no
-		// tool_output_folder, and a spilled agent_browser result came back as
-		// "access denied ... outside every workspace root" with no recoverable
-		// path. Read-only: the spill is written by the bridge process, never by
-		// the step.
-		fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath),
-	}
+	// Owner decision (2026-10-14): a step may READ everything in its workflow folder (every run, code, knowledge base,
+	// learnings, db files, notes, reports), so reading its own run's run_metadata.json or the shared helpers it imports
+	// needs no per-step patch. Blocked paths (the raw database, stores a product switched off) still win. This includes
+	// tool_output_folder, where any bridge tool result past its inline cap is spilled (MCP_TOOL_OUTPUT_DIR).
+	readPaths = append(workflowReadGrants(baseWorkspacePath), fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath))
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 	learningsAccess := hcpo.resolveLearningsAccess(stepConfig)
 	if hcpo.platformStoresEnabled() {
@@ -1662,6 +1651,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 		readPaths = appendLearningReadPaths(readPaths, baseWorkspacePath, stepID)
 	}
 	writePaths = append(writePaths, writeRootPath, downloadsPath)
+	// Writes: anywhere in THIS run (any step's outputs, run logs) plus the shared areas db/assets, reports and
+	// tool_output_folder. Never past runs or other iterations, planning/, workflow.json, config, variables, functions,
+	// soul or code/ (Builder and Pulse only, through their tools). Knowledge base, learnings and database writes keep
+	// the step's own settings below. With no selected run there is no run folder to grant.
+	if hcpo.selectedRunFolder != "" {
+		writePaths = append(writePaths, runWorkspacePath)
+	}
+	writePaths = append(writePaths, baseWorkspacePath+"/reports", fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath))
+	if hcpo.platformStoresEnabled() {
+		writePaths = append(writePaths, getDBPath(baseWorkspacePath)+"/assets")
+	}
 	if itemWriteAccess.Knowledgebase && kbAccessAllowsWrite(kbAccess) {
 		writePaths = append(writePaths, filepath.Join(getKnowledgebasePath(baseWorkspacePath), "notes"))
 		// A "write" knowledgebase_source grants the same notes/-only write,

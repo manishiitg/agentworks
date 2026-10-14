@@ -27,6 +27,33 @@ func TestManagedStepDBFileAccessP0(t *testing.T) {
 			hcpo.BaseOrchestrator.SetWorkspacePath(workflow)
 			hcpo.selectedRunFolder = "iteration-0/default"
 			config := &AgentConfigs{KnowledgebaseAccess: KBAccessNone, LearningsAccess: LearningsAccessNone}
+			// The fixture tree exists before the guard is built: read grants are made from what the workflow folder holds.
+			soul := filepath.Join(workflow, "soul", "soul.md")
+			if err := os.MkdirAll(filepath.Dir(soul), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(soul, []byte("fixture"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			toolOutput := filepath.Join(workflow, "tool_output_folder", "result.txt")
+			builderArtifact := filepath.Join(workflow, "builder", "conversation.txt")
+			for _, path := range []string{toolOutput, builderArtifact} {
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			db := filepath.Join(workflow, "db")
+			if err := os.MkdirAll(filepath.Join(db, "assets"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"README.md", "strategy_framework.md", "db.sqlite", "db.sqlite-wal", "db.sqlite-shm"} {
+				if err := os.WriteFile(filepath.Join(db, name), []byte("fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			var reads, writes []string
 			if kind == "agent" {
 				reads, writes = hcpo.setupAgentFolderGuard("step-1", "test-step", config, AgentWriteAccess{})
@@ -47,30 +74,9 @@ func TestManagedStepDBFileAccessP0(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			soul := filepath.Join(workflow, "soul", "soul.md")
-			if err := os.MkdirAll(filepath.Dir(soul), 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(soul, []byte("fixture"), 0600); err != nil {
-				t.Fatal(err)
-			}
 			download := filepath.Join(hcpo.getOrchestratorExecutionWorkspacePath(), "Downloads", "download.txt")
-			toolOutput := filepath.Join(workflow, "tool_output_folder", "result.txt")
-			builderArtifact := filepath.Join(workflow, "builder", "conversation.txt")
-			for _, path := range []string{toolOutput, builderArtifact} {
-				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			db := filepath.Join(workflow, "db")
-			for _, name := range []string{"README.md", "strategy_framework.md", "db.sqlite", "db.sqlite-wal", "db.sqlite-shm"} {
-				if err := os.WriteFile(filepath.Join(db, name), []byte("fixture"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
+			// The raw database stays closed by omission: the read grants list db/ entry by entry without it, so Landlock or
+			// Seatbelt alone enforce it and no namespace is needed.
 			isolator := &security.Isolator{ReadPaths: reads, WritePaths: writes, BaseDir: root, WorkDir: filepath.Join(db, "assets")}
 			cases := []struct {
 				name, command string
@@ -80,12 +86,13 @@ func TestManagedStepDBFileAccessP0(t *testing.T) {
 				{"read soul", "cat '" + soul + "'", true},
 				{"write soul", "printf changed > '" + soul + "'", false},
 				{"read spilled tool output", "cat '" + toolOutput + "'", true},
-				{"write spilled tool output", "printf changed > '" + toolOutput + "'", false},
-				{"read builder artifact", "cat '" + builderArtifact + "'", false},
+				// Owner decision (2026-10-14): a step reads its whole workflow folder and writes the shared areas.
+				{"write spilled tool output", "printf changed > '" + toolOutput + "' && cat '" + toolOutput + "'", true},
+				{"read builder artifact", "cat '" + builderArtifact + "'", true},
 				{"Downloads read and write", "printf fixture > '" + download + "' && cat '" + download + "'", true},
 				{"write README", "printf changed > ../README.md", false},
 				{"assets read and write", "printf asset > artifact.txt && cat artifact.txt", true},
-				{"read sibling document", "cat ../strategy_framework.md", false},
+				{"read sibling document", "cat ../strategy_framework.md", true},
 				{"read raw database", "cat ../db.sqlite", false},
 				{"write raw database", "printf changed > ../db.sqlite", false},
 				{"read WAL", "cat ../db.sqlite-wal", false},
@@ -110,6 +117,9 @@ func TestManagedStepDBFileAccessP0(t *testing.T) {
 						want := "fixture"
 						if tc.name == "assets read and write" {
 							want = "asset"
+						}
+						if tc.name == "write spilled tool output" {
+							want = "changed"
 						}
 						if strings.TrimSpace(string(output)) != want {
 							t.Fatalf("read returned %q, want %q", output, want)
