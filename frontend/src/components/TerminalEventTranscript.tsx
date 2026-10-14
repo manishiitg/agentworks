@@ -98,10 +98,13 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
   const usage = context?.usage
   return <div data-testid="transcript-activity-footer" className="flex h-7 min-w-0 items-center gap-2 px-3 text-xs text-muted-foreground">
     {working && <>
-      <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
       {activity.label === 'running'
+        // The twinkling star is the motion here, so no separate spinner.
         ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} />
-        : <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>}
+        : <>
+          <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
+          <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
+        </>}
       {activity.label === 'running' && <React.Suspense fallback={null}><WorkingTip /></React.Suspense>}
     </>}
     {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">

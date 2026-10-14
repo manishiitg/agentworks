@@ -93,7 +93,6 @@ const DelegationStreamingCard: React.FC<{ delegationId: string }> = ({ delegatio
   return (
     <div className="mt-2 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded p-2">
       <div className="flex items-center gap-1.5 mb-1">
-        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
         <WorkingStatus className="text-[10px] text-blue-600 dark:text-blue-400 font-medium" />
       </div>
       <div className="text-xs max-h-60 overflow-y-auto custom-scrollbar overscroll-y-contain">

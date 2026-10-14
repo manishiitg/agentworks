@@ -1,12 +1,34 @@
 // Our own plain, friendly words for "the agent is busy" (display only). The server's real status always wins over them.
 export const WORKING_WORDS = [
-  'Thinking', 'Pondering', 'Brewing', 'Sketching', 'Tinkering', 'Weaving', 'Gathering', 'Polishing', 'Mulling',
-  'Stitching', 'Shaping', 'Exploring', 'Untangling', 'Assembling', 'Crafting', 'Sorting', 'Piecing together',
-  'Connecting dots', 'Warming up', 'Digging in', 'Mapping it out', 'Fine-tuning', 'Lining things up', 'Checking in',
-  'Cooking up ideas', 'Working it out', 'Putting it together', 'Taking a look', 'Getting there', 'Making progress',
+  'Thinking', 'Pondering', 'Brewing', 'Sketching', 'Tinkering', 'Weaving', 'Gathering', 'Polishing',
+  'Mulling', 'Stitching', 'Shaping', 'Exploring', 'Untangling', 'Assembling', 'Crafting', 'Sorting',
+  'Piecing together', 'Connecting dots', 'Warming up', 'Digging in', 'Mapping it out', 'Fine-tuning', 'Lining things up', 'Checking in',
+  'Cooking up ideas', 'Working it out', 'Putting it together', 'Taking a look', 'Getting there', 'Making progress', 'Daydreaming', 'Doodling',
+  'Noodling', 'Simmering', 'Stirring', 'Kneading', 'Whittling', 'Sanding', 'Painting', 'Planting',
+  'Watering', 'Sprouting', 'Blooming', 'Harvesting', 'Gardening', 'Baking', 'Toasting', 'Seasoning',
+  'Tasting', 'Plating', 'Folding', 'Threading', 'Knitting', 'Braiding', 'Tuning', 'Balancing',
+  'Measuring', 'Weighing', 'Comparing', 'Matching', 'Sifting', 'Panning for gold', 'Following leads', 'Connecting threads',
+  'Peeking around', 'Looking closer', 'Reading carefully', 'Taking notes', 'Making a list', 'Checking twice', 'Rolling up sleeves', 'Clearing the desk',
+  'Opening drawers', 'Flipping pages', 'Browsing shelves', 'Counting things', 'Lining up ducks', 'Drawing a map', 'Plotting a course', 'Finding a way',
+  'Making sense of it', 'Sleeping on it', 'Chewing it over', 'Turning it over', 'Trying a few ideas', 'Almost there', 'Hang tight',
 ] as const
 
 export const WORKING_WORD_INTERVAL_MS = 3500
+export const WORKING_TONE_COUNT = 5
+const RECENT_WORDS_TO_AVOID = 8
+
+// A random word that is not one of the last few shown. Pure (the random source is passed in) so it can be tested.
+export function nextWorkingWordIndex(recent: readonly number[], random: () => number = Math.random): number {
+  const avoid = new Set(recent.slice(-RECENT_WORDS_TO_AVOID))
+  const choices: number[] = []
+  for (let index = 0; index < WORKING_WORDS.length; index += 1) if (!avoid.has(index)) choices.push(index)
+  return choices[Math.floor(random() * choices.length)]
+}
+
+// The glyph twinkles through these shapes and back (about 130 ms a frame); reduced motion shows the last one, still.
+export const WORKING_GLYPH_FRAMES = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'] as const
+export const WORKING_GLYPH_STATIC = '✽'
+export const WORKING_GLYPH_INTERVAL_MS = 130
 export const WORKING_ACCESSIBLE_LABEL = 'Working…'
 
 // Statuses that only say "busy" carry no information, so a playful word replaces them.

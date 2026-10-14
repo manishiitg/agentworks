@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { currentTurnStartedAt } from '../../utils/turnStart'
-import { WORKING_WORDS, formatElapsed, resolveWorkingLabel } from './workingWords'
+import { WORKING_WORDS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
 
 describe('working status', () => {
   it('shows the real status from the server instead of a playful word', () => {
@@ -9,7 +9,10 @@ describe('working status', () => {
     // A bare "busy" carries no information, so the friendly word is used.
     expect(resolveWorkingLabel('Working…', 'Pondering')).toEqual({ text: 'Pondering…', real: false })
     expect(resolveWorkingLabel(undefined, 'Pondering').real).toBe(false)
-    expect(new Set(WORKING_WORDS).size).toBeGreaterThanOrEqual(30)
+    expect(new Set(WORKING_WORDS).size).toBeGreaterThanOrEqual(80)
+    // A new word is never one of the last few shown.
+    const recent = [0, 1, 2, 3, 4, 5, 6, 7]
+    for (let n = 0; n < 50; n += 1) expect(recent).not.toContain(nextWorkingWordIndex(recent))
   })
 
   it('formats seconds, then minutes, from the server turn start', () => {
@@ -23,5 +26,10 @@ describe('working status', () => {
     ]
     expect(currentTurnStartedAt(events)).toBe(Date.parse('2026-10-14T10:05:00Z'))
     expect(currentTurnStartedAt([{ type: 'tool_call_start', timestamp: '2026-10-14T10:05:02Z' }])).toBeUndefined()
+    // No proof of where the turn began (the previous turn's end is not loaded): show no time, not a wrong one.
+    expect(currentTurnStartedAt([
+      { type: 'user_message', timestamp: '2026-10-14T09:00:00Z' },
+      { type: 'tool_call_start', timestamp: '2026-10-14T09:00:02Z' },
+    ])).toBeUndefined()
   })
 })

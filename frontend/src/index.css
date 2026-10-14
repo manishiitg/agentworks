@@ -22,6 +22,13 @@
   /* ===== DEFAULT THEME (VS Code Light) ===== */
   :root,
   .force-light {
+    /* Working-line palette (warm to fresh): the star and the shimmer move through these, one per new word.
+       Light variants keep at least 4.5:1 against the light backgrounds. */
+    --working-tone-0: 21 90% 40%;   /* orange */
+    --working-tone-1: 36 92% 34%;   /* amber */
+    --working-tone-2: 142 64% 28%;  /* green */
+    --working-tone-3: 172 70% 26%;  /* teal */
+    --working-tone-4: 12 76% 42%;   /* coral */
     --runloop-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
     /* VS Code Light Theme Colors */
@@ -107,6 +114,11 @@
 
   .dark {
     color-scheme: dark;
+    --working-tone-0: 24 95% 62%;
+    --working-tone-1: 42 96% 60%;
+    --working-tone-2: 142 60% 55%;
+    --working-tone-3: 172 66% 52%;
+    --working-tone-4: 14 88% 66%;
     /* Deep dark app palette */
     --background: 220 13% 6%;             /* #0d0f12 - app background */
     --foreground: 220 16% 91%;            /* #e4e7ec - primary text */
@@ -1750,6 +1762,23 @@
 
 @keyframes ansi-blink {
   to { opacity: 0.35; }
+}
+
+/* The working line's word: a gentle colour sweep across the text, taken from the working-tone theme tokens. */
+.working-shimmer {
+  background-image: linear-gradient(90deg, hsl(var(--working-tone)) 0%, hsl(var(--working-tone) / 0.55) 45%, hsl(var(--working-tone)) 90%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: working-shimmer 2s linear infinite;
+}
+@keyframes working-shimmer {
+  from { background-position: 110% 0; }
+  to { background-position: -110% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-shimmer { animation: none; background-image: none; background-clip: border-box; -webkit-background-clip: border-box; color: hsl(var(--working-tone)); }
 }
 
 /* Discrete low/medium/high reasoning-effort slider (ReasoningEffortControl). */
