@@ -106,7 +106,7 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
 	}
 	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Models: account_allowed_models is each shared account's own model list (null = all models); each person's allowed_models has, per shared account that limits their models, models (their effective list; null = all models) and source (account = the account's list, person = their own override); an account not listed there allows them every model. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
-	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it; -1 is unlimited for this person even when the account has a default). With account and no person: the account's default per-person limit for everyone. Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap.")}))
+	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it; -1 is unlimited for this person even when the account has a default). With account and no person: the account's default per-person limit for everyone. With account, model and no person: that one model's default per-person limit on the account, counted on top of the account's (a person at it is moved to another allowed model, else refused; 0 or null removes the model's limit). Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap."), "model": externalString("With account and no person: set the limit of this one model (a model ID from the provider's list) instead of the account's.")}))
 	add("set_allowed_models", "Set which models may run on a shared server account (provider, e.g. codex-cli). With account and no person: the account's list for everyone (models null or [] = all models). With account and a person (user_id or email): that person's override (a list replaces the account's list for them; null or [] clears it back to the account's; [\"*\"] or all_models true = every model for this person). A turn whose model is not allowed runs on the first allowed one; it never fails. Model ids are checked against the provider's model catalog when the server has one. Returns the new lists. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{
 		"account":    account("The shared account (provider) whose models to set."),
 		"models":     map[string]any{"type": []any{"array", "null"}, "maxItems": maxAllowedModels, "items": map[string]any{"type": "string", "maxLength": maxAllowedModelIDSize}, "description": "Model ids (from the provider's model list). null or [] = all models for an account; for a person, clears the override."},
@@ -133,6 +133,9 @@ type tokenLimitPersonUsage struct {
 	WeeklyViaBot int64 `json:"weekly_via_bot,omitempty"`
 	// Accounts is each shared account's own figures, keyed by provider.
 	Accounts map[string]*accountTokenUsage `json:"accounts,omitempty"`
+	// ModelUsage is, when one account is asked for, the person's tokens on
+	// each model of it that has its own limit, against that limit.
+	ModelUsage map[string]*modelTokenUsage `json:"model_usage,omitempty"`
 	// AllowedModels is, per shared account that limits this person's models,
 	// their effective list (PLAT-714).
 	AllowedModels map[string]personAllowedModels `json:"allowed_models,omitempty"`
@@ -204,7 +207,7 @@ func (api *StreamingAPI) tokenLimitUsageOf(rec *UserRecord, account string) toke
 		accounts = map[string]*accountTokenUsage{account: one}
 	}
 	settings, _ := loadProviderAccountSettings(context.Background())
-	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, DailyViaBot: u.DailyViaBot, WeeklyViaBot: u.WeeklyViaBot, Accounts: accounts, AllowedModels: personAllowedModelsOf(rec, settings, account)}
+	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, DailyViaBot: u.DailyViaBot, WeeklyViaBot: u.WeeklyViaBot, Accounts: accounts, AllowedModels: personAllowedModelsOf(rec, settings, account), ModelUsage: api.personModelUsage(rec, settings, account)}
 }
 
 func stringsToAny(values []string) []any {
@@ -269,6 +272,14 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 	}
 	if name == "set_token_limits" && !named && account == "" {
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass user_id or email, or account for an account default.")
+		return
+	}
+	if name == "set_token_limits" && strings.TrimSpace(externalArg(args, "model")) != "" {
+		if named || account == "" {
+			externalError(w, http.StatusBadRequest, "invalid_arguments", "A model limit is set on an account's default for everyone: pass account and model, without user_id or email.")
+			return
+		}
+		api.externalSetModelDefaultLimits(w, r, account, strings.TrimSpace(externalArg(args, "model")), args)
 		return
 	}
 	if name == "set_token_limits" && !named {
@@ -341,6 +352,7 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 		"timezone": tokenLimitTimezone, "accounts": "shared server accounts (account IDs " + serverAccountIDPrefix + "*)",
 		"account_defaults":       defaults,
 		"account_allowed_models": accountAllowedModelsView(settings, account),
+		"account_model_limits":   accountModelLimitsView(settings, account),
 		"day_start":              dayStart.Format(time.RFC3339), "day_resets_at": dayEnd.Format(time.RFC3339),
 		"week_start": weekStart.Format(time.RFC3339), "week_resets_at": weekEnd.Format(time.RFC3339),
 		"people": out,
@@ -524,6 +536,48 @@ func (api *StreamingAPI) externalSetAccountDefaultLimits(w http.ResponseWriter, 
 		return
 	}
 	externalJSON(w, map[string]any{"account": account, "label": sharedAccountLabel(account), "default_limits": UserTokenLimits{Daily: max(daily, 0), Weekly: max(weekly, 0)}})
+}
+
+// externalSetModelDefaultLimits sets one model's default per-person limit on
+// a shared account (set_token_limits with account and model, no person).
+func (api *StreamingAPI) externalSetModelDefaultLimits(w http.ResponseWriter, r *http.Request, account, model string, args map[string]any) {
+	if err := checkKnownModels(account, []string{model}); err != nil {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
+		return
+	}
+	settings, _ := loadProviderAccountSettings(r.Context())
+	current := UserTokenLimits{}
+	if limits := settings.ModelTokenLimits[account][strings.ToLower(model)]; limits != nil {
+		current = *limits
+	}
+	daily, setDaily := tokenLimitArg(args, "daily", current.Daily)
+	weekly, setWeekly := tokenLimitArg(args, "weekly", current.Weekly)
+	if !setDaily && !setWeekly {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass daily and/or weekly.")
+		return
+	}
+	if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "set_token_limits", "", "", "account="+account+" model="+model+" default daily="+strconv.FormatInt(daily, 10)+" weekly="+strconv.FormatInt(weekly, 10)); err != nil {
+		externalError(w, http.StatusServiceUnavailable, "audit_unavailable", "The Code review audit log is unavailable.")
+		return
+	}
+	limits := UserTokenLimits{Daily: max(daily, 0), Weekly: max(weekly, 0)}
+	body, _ := json.Marshal(map[string]any{"model_token_limits": map[string]*UserTokenLimits{model: &limits}})
+	sub := r.Clone(r.Context())
+	sub.Method = http.MethodPatch
+	sub.Body = io.NopCloser(bytes.NewReader(body))
+	sub.URL = &url.URL{Path: "/api/provider-connections/" + url.PathEscape(serverAccountIDPrefix+account)}
+	sub = mux.SetURLVars(sub, map[string]string{"connectionID": serverAccountIDPrefix + account})
+	result := &externalMCPRecorder{header: http.Header{}}
+	api.handleProviderConnection(result, sub)
+	if result.status != 0 && result.status != http.StatusNoContent && result.status != http.StatusOK {
+		msg := strings.TrimSpace(result.body.String())
+		if msg == "" {
+			msg = http.StatusText(result.status)
+		}
+		externalError(w, result.status, "upstream_error", msg)
+		return
+	}
+	externalJSON(w, map[string]any{"account": account, "label": sharedAccountLabel(account), "model": strings.ToLower(model), "default_limits": limits})
 }
 
 // allowedModelsArg reads set_allowed_models' models / all_models: the list

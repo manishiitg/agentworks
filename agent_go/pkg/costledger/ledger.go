@@ -477,6 +477,7 @@ type sqliteStore interface {
 	migrateLegacyJSONL(path string) (MigrationReport, error)
 	repriceUnpriced(estimate UnpricedEstimator) (int, error)
 	accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error)
+	accountModelTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]map[string]AccountTokenUsage, error)
 	close() error
 }
 
@@ -516,6 +517,15 @@ func (l *Ledger) AccountTokensByAccount(userID, accountPrefix string, dayStart, 
 		return map[string]AccountTokenUsage{}, nil
 	}
 	return l.db.accountTokens(strings.TrimSpace(userID), accountPrefix, dayStart, weekStart)
+}
+
+// AccountModelTokens is AccountTokensByAccount split by the model that ran
+// each call (lower-cased model ID), for per-model limits.
+func (l *Ledger) AccountModelTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]map[string]AccountTokenUsage, error) {
+	if l == nil || l.db == nil || strings.TrimSpace(userID) == "" || accountPrefix == "" {
+		return map[string]map[string]AccountTokenUsage{}, nil
+	}
+	return l.db.accountModelTokens(strings.TrimSpace(userID), accountPrefix, dayStart, weekStart)
 }
 
 // UnpricedEstimator prices one recorded LLM call that had no cost, from its

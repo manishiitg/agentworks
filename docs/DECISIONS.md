@@ -19,6 +19,17 @@ a separate security follow-up.
 
 Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md), issues 750-23 and 750-24.
 
+## 2026-10-14 — Per-model token limits on a shared account (PLAT-856)
+
+A shared server account can give one model its own default per-person daily and
+weekly token limit (for example a costlier model lower than the cheaper one),
+set with `account action=set_limits account=<provider> model=<id>`. Only tokens on
+that model count toward it; they still count toward the account's and the
+person's overall limits. A person at a model's limit is moved to the next
+allowed model that is not at its own, exactly like a model the account does not
+allow; if every allowed model is used up the turn is refused. No per-person
+override of a model limit and no group access by model yet.
+
 ## 2026-10-14 — Steps and full workflows always perform real work (PLAT-861)
 
 Remove the separate simulated execution mode, copied databases, test-only grants,

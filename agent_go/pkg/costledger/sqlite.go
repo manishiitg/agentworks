@@ -572,45 +572,77 @@ INSERT OR IGNORE INTO cost_events (
 // billing_user_id existed count to user_id, as they always did.
 func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error) {
 	usage := map[string]AccountTokenUsage{}
+	err := s.scanAccountTokens(userID, accountPrefix, dayStart, weekStart, func(accountID, _ string, tokens int64, viaBot, today bool) {
+		usage[accountID] = addAccountTokens(usage[accountID], tokens, viaBot, today)
+	})
+	return usage, err
+}
+
+// accountModelTokens is accountTokens split by the model that ran each call
+// (the effective model, else the requested one; lower-cased), keyed by
+// account ID and then model.
+func (s *sqliteLedger) accountModelTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]map[string]AccountTokenUsage, error) {
+	usage := map[string]map[string]AccountTokenUsage{}
+	err := s.scanAccountTokens(userID, accountPrefix, dayStart, weekStart, func(accountID, model string, tokens int64, viaBot, today bool) {
+		if usage[accountID] == nil {
+			usage[accountID] = map[string]AccountTokenUsage{}
+		}
+		usage[accountID][model] = addAccountTokens(usage[accountID][model], tokens, viaBot, today)
+	})
+	return usage, err
+}
+
+func addAccountTokens(account AccountTokenUsage, tokens int64, viaBot, today bool) AccountTokenUsage {
+	account.Week += tokens
+	if viaBot {
+		account.ViaBotWeek += tokens
+	}
+	if today {
+		account.Day += tokens
+		if viaBot {
+			account.ViaBotDay += tokens
+		}
+	}
+	return account
+}
+
+func (s *sqliteLedger) scanAccountTokens(userID, accountPrefix string, dayStart, weekStart time.Time, visit func(accountID, model string, tokens int64, viaBot, today bool)) error {
 	rows, err := s.db.Query(`
 SELECT account_id, occurred_at, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
-       requested_provider, effective_provider, operation_metadata_json, billing_user_id != ''
+       requested_provider, effective_provider, operation_metadata_json, billing_user_id != '',
+       effective_model_id, requested_model_id
 FROM cost_events
 WHERE (billing_user_id = ? OR (billing_user_id = '' AND user_id = ?)) AND substr(account_id, 1, ?) = ? AND occurred_at >= ?`,
 		// No zone suffix: a prefix of every stored RFC3339Nano time in that
 		// second, so an event at 00:00:00.5Z is not sorted before the bound.
 		userID, userID, len(accountPrefix), accountPrefix, weekStart.UTC().Format("2006-01-02T15:04:05"))
 	if err != nil {
-		return usage, fmt.Errorf("costledger: query account tokens: %w", err)
+		return fmt.Errorf("costledger: query account tokens: %w", err)
 	}
 	defer rows.Close()
 	day := dayStart.UTC()
 	for rows.Next() {
 		var e Entry
-		var accountID, occurredAt, metadataJSON string
+		var accountID, occurredAt, metadataJSON, effectiveModel, requestedModel string
 		var viaBot bool
 		if err := rows.Scan(&accountID, &occurredAt, &e.PromptTokens, &e.CompletionTokens, &e.CacheReadTokens, &e.CacheWriteTokens,
-			&e.Provider, &e.EffectiveProvider, &metadataJSON, &viaBot); err != nil {
-			return usage, fmt.Errorf("costledger: scan account tokens: %w", err)
+			&e.Provider, &e.EffectiveProvider, &metadataJSON, &viaBot, &effectiveModel, &requestedModel); err != nil {
+			return fmt.Errorf("costledger: scan account tokens: %w", err)
 		}
 		if strings.Contains(metadataJSON, "prompt_tokens_include_cache") {
 			_ = json.Unmarshal([]byte(metadataJSON), &e.OperationMetadata)
 		}
-		tokens := int64(entryInputTokens(e) + e.CompletionTokens)
-		account := usage[accountID]
-		account.Week += tokens
-		if viaBot {
-			account.ViaBotWeek += tokens
+		model := strings.ToLower(strings.TrimSpace(effectiveModel))
+		if model == "" {
+			model = strings.ToLower(strings.TrimSpace(requestedModel))
 		}
+		today := false
 		if at, err := time.Parse(time.RFC3339Nano, occurredAt); err == nil && !at.Before(day) {
-			account.Day += tokens
-			if viaBot {
-				account.ViaBotDay += tokens
-			}
+			today = true
 		}
-		usage[accountID] = account
+		visit(accountID, model, int64(entryInputTokens(e)+e.CompletionTokens), viaBot, today)
 	}
-	return usage, rows.Err()
+	return rows.Err()
 }
 
 func (s *sqliteLedger) close() error {

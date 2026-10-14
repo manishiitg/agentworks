@@ -253,6 +253,10 @@ type providerConnectionRequest struct {
 	// TokenLimits is a server account's default per-person daily and weekly
 	// limit (admin only); zeros clear it. Absent leaves it alone.
 	TokenLimits *UserTokenLimits `json:"token_limits"`
+	// ModelTokenLimits sets the default per-person limit on single models of
+	// a server account, by model ID; a limit of zeros removes that model's.
+	// Models not named keep theirs. Absent leaves all alone.
+	ModelTokenLimits map[string]*UserTokenLimits `json:"model_token_limits"`
 }
 
 func validProviderAccountName(name *string) (string, error) {
@@ -509,12 +513,12 @@ func (api *StreamingAPI) updateServerAccount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var request providerConnectionRequest
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&request) != nil || (len(request.AvailableTo) == 0 && request.AllowedModels == nil && request.TokenLimits == nil) {
-		http.Error(w, "available_to, allowed_models or token_limits is required", http.StatusBadRequest)
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&request) != nil || (len(request.AvailableTo) == 0 && request.AllowedModels == nil && request.TokenLimits == nil && len(request.ModelTokenLimits) == 0) {
+		http.Error(w, "available_to, allowed_models, token_limits or model_token_limits is required", http.StatusBadRequest)
 		return
 	}
 	if len(request.AvailableTo) == 0 {
-		api.updateServerAccountSettings(w, r, provider, request.AllowedModels, request.TokenLimits)
+		api.updateServerAccountSettings(w, r, provider, request.AllowedModels, request.TokenLimits, request.ModelTokenLimits)
 		return
 	}
 	current, err := effectiveServerAccountAvailability(r.Context(), provider)
@@ -609,10 +613,33 @@ func setServerAccountTokenLimits(settings *providerAccountSettings, provider str
 	settings.TokenLimits[provider] = limits
 }
 
+// setServerAccountModelTokenLimits sets the default per-person token limit
+// on one model of the provider's server account; no limit removes it.
+func setServerAccountModelTokenLimits(settings *providerAccountSettings, provider, model string, limits *UserTokenLimits) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return
+	}
+	if limits = limits.normalized(); limits == nil {
+		delete(settings.ModelTokenLimits[provider], model)
+		if len(settings.ModelTokenLimits[provider]) == 0 {
+			delete(settings.ModelTokenLimits, provider)
+		}
+		return
+	}
+	if settings.ModelTokenLimits == nil {
+		settings.ModelTokenLimits = map[string]map[string]*UserTokenLimits{}
+	}
+	if settings.ModelTokenLimits[provider] == nil {
+		settings.ModelTokenLimits[provider] = map[string]*UserTokenLimits{}
+	}
+	settings.ModelTokenLimits[provider][model] = limits
+}
+
 // updateServerAccountSettings sets which models the provider's server
 // account allows (empty means every model) and/or its default per-person
 // token limits (admin only; the caller checked). Nil leaves one alone.
-func (api *StreamingAPI) updateServerAccountSettings(w http.ResponseWriter, r *http.Request, provider string, requested *[]string, limits *UserTokenLimits) {
+func (api *StreamingAPI) updateServerAccountSettings(w http.ResponseWriter, r *http.Request, provider string, requested *[]string, limits *UserTokenLimits, modelLimits map[string]*UserTokenLimits) {
 	var models []string
 	if requested != nil {
 		var err error
@@ -634,9 +661,17 @@ func (api *StreamingAPI) updateServerAccountSettings(w http.ResponseWriter, r *h
 	if limits != nil {
 		setServerAccountTokenLimits(&settings, provider, limits)
 	}
+	if len(modelLimits) > 0 {
+		for model, modelLimit := range modelLimits {
+			setServerAccountModelTokenLimits(&settings, provider, model, modelLimit)
+		}
+	}
 	if err := saveProviderAccountSettings(r.Context(), settings); err != nil {
 		http.Error(w, "cannot save provider settings", http.StatusInternalServerError)
 		return
+	}
+	if len(modelLimits) > 0 {
+		log.Printf("[PROVIDER_ACCOUNT] %s set per-model token limits on the %s server account: %d model(s)", GetUserIDFromContext(r.Context()), provider, len(modelLimits))
 	}
 	if requested != nil {
 		log.Printf("[PROVIDER_ACCOUNT] %s set the allowed models of the %s server account: %d", GetUserIDFromContext(r.Context()), provider, len(models))

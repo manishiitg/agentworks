@@ -335,6 +335,11 @@ type providerAccountSettings struct {
 	// TokenLimits is, per provider, the default per-person daily and weekly
 	// token limit on that server account (PLAT-693); absent is unlimited.
 	TokenLimits map[string]*UserTokenLimits `json:"token_limits,omitempty"`
+	// ModelTokenLimits is, per provider and then lower-cased model ID, the
+	// default per-person daily and weekly token limit on that one model of
+	// the server account; absent is no limit beyond the account's. A person
+	// at one is moved to another allowed model (resolveAccountModel).
+	ModelTokenLimits map[string]map[string]*UserTokenLimits `json:"model_token_limits,omitempty"`
 }
 
 // The settings are cached in memory like the account registry: loaded once
@@ -376,6 +381,18 @@ func cloneProviderAccountSettings(in providerAccountSettings) providerAccountSet
 			if value != nil {
 				copied := *value
 				out.TokenLimits[key] = &copied
+			}
+		}
+	}
+	if in.ModelTokenLimits != nil {
+		out.ModelTokenLimits = make(map[string]map[string]*UserTokenLimits, len(in.ModelTokenLimits))
+		for provider, models := range in.ModelTokenLimits {
+			out.ModelTokenLimits[provider] = make(map[string]*UserTokenLimits, len(models))
+			for model, value := range models {
+				if value != nil {
+					copied := *value
+					out.ModelTokenLimits[provider][model] = &copied
+				}
 			}
 		}
 	}

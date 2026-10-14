@@ -221,6 +221,20 @@ func checkAccountModel(ctx context.Context, provider, connectionID, model string
 // reports a substitution. A model that names nothing resolves to the first
 // allowed model when the account has a list.
 func resolveAccountModel(ctx context.Context, provider, connectionID, model string) (resolved string, changed bool, err error) {
+	resolved, changed, err = resolveAllowedModel(ctx, provider, connectionID, model)
+	if err != nil {
+		return resolved, changed, err
+	}
+	// A model whose own token limit the person has used up is replaced like a disallowed one.
+	allowed, _, _ := accountAllowedModels(ctx, provider, connectionID)
+	capped, cappedChanged, err := applyModelTokenLimit(ctx, provider, connectionID, resolved, allowed)
+	if err != nil {
+		return resolved, changed, err
+	}
+	return capped, changed || cappedChanged, nil
+}
+
+func resolveAllowedModel(ctx context.Context, provider, connectionID, model string) (resolved string, changed bool, err error) {
 	model = strings.TrimSpace(model)
 	allowed, name, err := accountAllowedModels(ctx, provider, connectionID)
 	if err != nil {
