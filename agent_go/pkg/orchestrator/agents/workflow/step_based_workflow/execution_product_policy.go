@@ -78,22 +78,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) canReadLearnings(cfg *AgentConfigs, s
 	return hcpo.platformStoresEnabled() && canReadLearnings(cfg, step)
 }
 
-// A test run (PLAT-562) never writes learnings: they would teach the step from
-// a run whose external actions did not happen.
 func (hcpo *StepBasedWorkflowOrchestrator) canWriteLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.platformStoresEnabled() && hcpo.activeTestRun() == nil && canWriteLearnings(cfg, step)
+	return hcpo.platformStoresEnabled() && canWriteLearnings(cfg, step)
 }
 func (hcpo *StepBasedWorkflowOrchestrator) shouldDirectWriteLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.platformStoresEnabled() && hcpo.activeTestRun() == nil && shouldDirectWriteLearnings(cfg, step)
+	return hcpo.platformStoresEnabled() && shouldDirectWriteLearnings(cfg, step)
 }
 func (hcpo *StepBasedWorkflowOrchestrator) resolveExecutionLearningsAccess(cfg *AgentConfigs, step PlanStepInterface) string {
 	if !hcpo.platformStoresEnabled() {
 		return LearningsAccessNone
 	}
 	access := resolveExecutionLearningsAccess(cfg, step)
-	if hcpo.activeTestRun() != nil && access != LearningsAccessNone {
-		return LearningsAccessRead
-	}
 	return access
 }
 

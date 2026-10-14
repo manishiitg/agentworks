@@ -2,16 +2,14 @@ package step_based_workflow
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-func TestAgentFunctionToolsScopeAndTestModeBoundary(t *testing.T) {
+func TestAgentFunctionToolsKeepExecutionScope(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -40,16 +38,11 @@ func TestAgentFunctionToolsScopeAndTestModeBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.testRun.Store(&testmode.Run{ID: "test-run"})
 	for _, name := range []string{"call_function", "reply_function_call", "get_function_call"} {
 		called = false
 		_, err := executors[name].(func(context.Context, map[string]interface{}) (string, error))(context.Background(), nil)
-		if name == "get_function_call" {
-			if err != nil || !called {
-				t.Fatal("test mode blocked a status read")
-			}
-		} else if err == nil || called || !strings.Contains(err.Error(), "test mode") {
-			t.Fatalf("test mode allowed an external function effect: %s %v", name, err)
+		if err != nil || !called {
+			t.Fatalf("function executor did not run in its normal scope: %s %v", name, err)
 		}
 	}
 }

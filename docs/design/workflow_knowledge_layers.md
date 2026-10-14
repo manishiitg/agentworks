@@ -121,7 +121,7 @@ may apply a consolidation itself when:
 - the new tool `check_plan_no_loss` passes: every rule-bearing token of the old description and items
   (identifiers, numbers, thresholds, file paths, VAR_ names, quoted literals) appears in the new
   description, items, or a file the new text names in Inputs/Guides;
-- it then runs the step once (`execute_step`, test mode where available) and validation passes.
+- it then runs the step once with `execute_step` when current authorization permits its real effects, and validation passes.
 If the run fails, it restores the previous step from the changelog `before_ref` and files the result.
 Anything beyond moving text (changing behaviour, rules, outputs, topology) stays a proposal for the owner.
 

@@ -57,14 +57,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendAgentFunctionTools(ctx context.
 		if !ok {
 			return nil, nil, fmt.Errorf("function tool %q has no executor", name)
 		}
-		// A function can act in another project. Test mode cannot contain it,
-		// just as for native crew steps. Keep discovery/status reads available.
-		executors[name] = func(callCtx context.Context, args map[string]interface{}) (string, error) {
-			if run := hcpo.activeTestRun(); run != nil && (name == "call_function" || name == "reply_function_call") {
-				return "", fmt.Errorf("%s is not run in test mode (%s): a function acts outside this workflow", name, run.ID)
-			}
-			return execute(callCtx, args)
-		}
+		executors[name] = execute
 		tools = append(tools, tool)
 	}
 	return tools, executors, nil

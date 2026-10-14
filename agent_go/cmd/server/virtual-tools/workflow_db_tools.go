@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -494,14 +493,6 @@ func ResolveWorkflowWorkspaceFolder(ctx context.Context, fallbackSessionID strin
 func resolveWorkflowDBPathFromConfig(sessionID string, cfg *common.SessionShellConfig) (string, error) {
 	if cfg != nil && strings.TrimSpace(cfg.Env[workflowDBAccessEnv]) == "none" {
 		return "", fmt.Errorf("workflow database access is disabled for session %q", sessionID)
-	}
-	// A test-mode session (PLAT-562) reads and writes its run's copy of the
-	// database, never the workflow's own. No copy means no database access.
-	if run := testmode.ForSession(sessionID); run != nil {
-		if strings.TrimSpace(run.DBPath) == "" {
-			return "", fmt.Errorf("workflow database is unavailable in test run %s: the workflow has no database to copy", run.ID)
-		}
-		return run.DBPath, nil
 	}
 	folder, err := resolveWorkflowWorkspaceFolder(sessionID, cfg)
 	if err != nil {

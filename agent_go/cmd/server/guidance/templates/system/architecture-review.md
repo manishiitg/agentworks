@@ -75,9 +75,7 @@ apply a **pure text-moving consolidation** yourself, one step at a time:
    `dropped_history` only when it described history.
 3. Apply with `update_agent_step` (reason: what moved where and why).
    Note the changelog `change_id` and the step's latest validation before the edit.
-4. Run the step once (`execute_step`, test mode where available) and read its
-   validation. Passed: keep it. Failed: `restore_step_from_changelog(change_id,
-   reason)` at once and turn the rewrite into an owner proposal.
+4. Run the step once with `execute_step` only when the existing Pulse autonomy and owner authorization permit its real effects, then read its validation. Otherwise leave verification as an owner proposal. Passed: keep it. Failed: `restore_step_from_changelog(change_id, reason)` at once and turn the rewrite into an owner proposal.
 5. Record each attempt in `record_pulse_result(..., consolidations=[{step_id,
    focus_key, change_id, chars_before, chars_after, validation_before,
    validation_after, restored}])` with `result="changed"`.

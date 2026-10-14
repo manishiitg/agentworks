@@ -216,5 +216,4 @@ Workflow targets execute their function triggers. Relay targets use the existing
 published-release dispatcher, which checks live caller permissions before using
 the immutable release. Native `crew` plan steps continue to invoke their bound
 triggers. No new plan shape or workflow contract migration is required to add
-these runtime tools. Test mode refuses function calls and replies because those
-operations act outside the workflow's test folder.
+these runtime tools. Function calls and replies use the same normal caller authorization as other real step actions.

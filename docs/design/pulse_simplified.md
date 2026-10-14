@@ -46,7 +46,7 @@ There is no LLM gate turn. A role that finds nothing records "nothing to do" in 
 Every role applies its own fixes. Each fix:
 1. is recorded in the plan changelog with its evidence in `reason`;
 2. passes the no-loss check when it moves text (`check_plan_no_loss`);
-3. is verified by one real run of the affected step in test mode (decision below), and
+3. is verified by one ordinary run when Pulse autonomy permits its real effects, or is proposed for owner-run verification, and
 4. is restored automatically (`restore_step_from_changelog`) when that run fails.
 
 **Owner-only changes** (the role writes a decision and does not apply): business rules and limits
@@ -69,10 +69,7 @@ Inputs, Output, Rules, Done when, Guides. Procedures move into skill references 
 
 ## Also: what else would make Pulse better
 
-1. **A test mode for steps with external effects.** Verifying a fix needs a real run, but steps like
-   Upwork `bid-pick-job` claim real jobs and `bid-submit` spends Connects. Add a test mode in which
-   external writes and spending are stubbed or redirected (dry run) while reads stay real, so every
-   fix can be verified without side effects. Without it the safety net only works for harmless steps.
+1. **Verification runs do real work.** Use ordinary execution under current Pulse autonomy and owner authorization. When the step's effects are not authorized, propose verification to the owner instead of running it.
 2. **A weekly digest for the owner per workflow:** what Pulse changed, what improved (metric before/after),
    what was reverted, and the few owner decisions waiting. One message instead of a dashboard to visit.
 3. **Measure Pulse itself:** cost and time per pass, fixes applied vs reverted, problems that come back
@@ -87,7 +84,7 @@ Inputs, Output, Rules, Done when, Guides. Procedures move into skill references 
 A sample of Upwork's Pulse issues (PLAT-559) shows only about one in five is a bug in the plan as written:
 ~32% are changes not carried through to dependents, ~20% platform bugs, ~28% notes or strategy filed as issues.
 So: (1) plan edits list and update their dependents in the same change; (2) platform problems become one
-platform ticket and fix, never per-workflow patches; (3) the builder runs a changed step once in test mode
+platform ticket and fix, never per-workflow patches; (3) the builder runs a changed step normally when the owner requests it
 before the change counts as done. The measure is workflow-caused issues found by QA per week; the target is
 close to zero, leaving QA with the outside world changing.
 
@@ -99,7 +96,7 @@ close to zero, leaving QA with the outside world changing.
    passes on local workflows; then remove the gate turn.
 3. Merge Technical + fixer into QA, Architecture + Drift judgment into Engineer; rename Strategic to Product.
 4. Rewrite guidance to the per-role budget.
-5. Add test mode before turning on automatic verification for steps with external effects.
+5. Keep automatic verification within existing autonomy; propose owner-run verification when real effects are not authorized.
 6. Retire the unused tools and tables.
 
 ## Decisions needed
@@ -108,4 +105,4 @@ close to zero, leaving QA with the outside world changing.
 2. The owner-only list.
 3. Replace the gate turn with code due rules.
 4. One work-item record replacing the current record types.
-5. Test mode for external-effect steps as a prerequisite for automatic fixes there.
+5. Owner authorization and Pulse autonomy for real verification runs.

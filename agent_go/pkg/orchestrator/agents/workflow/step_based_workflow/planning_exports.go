@@ -1730,7 +1730,7 @@ func RegisterRunFullWorkflowTool(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"run_full_workflow",
-		"Execute the complete workflow: load the plan, resolve variables, and run all steps for a single variable group. Interactive Builder runs use iteration-0; a saved schedule or webhook uses its server-bound immutable run folder. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
+		"Execute the complete workflow for real with its normal permissions, live database and actual tool actions. A person's request to run or test authorizes this execution; do not ask again for the same request. Load the plan, resolve variables, and run all steps for a single variable group. Interactive Builder runs use iteration-0; a saved schedule or webhook uses its server-bound immutable run folder. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1763,6 +1763,10 @@ func RegisterRunFullWorkflowTool(
 			"required": []string{"group_name"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
+			if err := validateRealExecutionArguments(args); err != nil {
+				return err.Error(), nil
+			}
+
 			cfg := session.config
 			if cfg == nil {
 				return "session config not available — cannot create workflow controller", nil

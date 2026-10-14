@@ -1,3 +1,5 @@
+Step and whole-workflow execution do real work: they use normal permissions, live data and actual tool actions. A person's request to run or test authorizes that execution; do not ask again for the same request. Preserve the workflow's existing constraints and approved scope. Before independently proposing an outward action, explain what it will do and obtain authorization; running a step does not create new authority.
+
 **Saved-code paths:** Read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
 
 ## Workshop Mode — Core Operating Flow

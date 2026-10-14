@@ -111,7 +111,7 @@ it('opens an absolute disk path under workspace-docs as a workspace file', async
   try {
     await act(async () => root.render(
       <MarkdownRenderer
-        content="[View test receipt](/Users/me/ai-work/mcp-agent-builder-go/workspace-docs/Workflow/upwork/runs/test-1/test_mode.json)"
+        content="[View run details](/Users/me/ai-work/mcp-agent-builder-go/workspace-docs/Workflow/example/runs/iteration-1/run_metadata.json)"
         onWorkspaceLinkResolve={resolve}
         onWorkspaceLinkClick={open}
       />,
@@ -121,7 +121,7 @@ it('opens an absolute disk path under workspace-docs as a workspace file', async
     expect(anchor).not.toBeNull()
     await act(async () => anchor?.click())
     expect(open).toHaveBeenCalledWith(
-      'Workflow/upwork/runs/test-1/test_mode.json',
+      'Workflow/example/runs/iteration-1/run_metadata.json',
       expect.any(String),
     )
   } finally {

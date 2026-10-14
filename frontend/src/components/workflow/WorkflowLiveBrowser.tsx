@@ -716,7 +716,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
                   : (
                     <div className="flex flex-col items-center gap-1">
                       <span>{allowTeaching ? 'Start a browser to visit a website or show your helper a task.' : 'Start a browser to visit a website.'}</span>
-                      {!minimal && scopeNoun === 'workflow' && <span className="text-xs text-muted-foreground/80">Test runs appear here automatically.</span>}
+                      {!minimal && scopeNoun === 'workflow' && <span className="text-xs text-muted-foreground/80">Workflow browser sessions appear here automatically.</span>}
                     </div>
                   )
   }

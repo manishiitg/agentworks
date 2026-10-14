@@ -175,9 +175,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	if attachedFolders := workflowFolderAccessPrompt(hcpo.GetWorkspacePath()) + "\n" + sharedKBPrompt; strings.TrimSpace(attachedFolders) != "" {
 		supplements = append(supplements, attachedFolders)
 	}
-	if section := testModePromptSection(hcpo.activeTestRun()); section != "" {
-		supplements = append(supplements, section)
-	}
 	return identitySkills, supplements
 }
 

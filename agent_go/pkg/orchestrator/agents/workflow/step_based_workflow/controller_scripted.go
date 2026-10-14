@@ -14,7 +14,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/testmode"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -984,7 +983,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// fails with "DB_PATH unset and no root found". Set it here to the same absolute
 	// path the agent path uses. Set AFTER the workspace-env merge so it always wins.
 	if dbAccess != DBAccessNone {
-		extraEnv["DB_PATH"] = hcpo.testModeDBAbsPath(filepath.Join(docsRoot, hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite"))
+		extraEnv["DB_PATH"] = filepath.Join(docsRoot, hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 	}
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
 
@@ -1038,11 +1037,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	grantScriptBridgeSessionDB(extraEnv["MCP_SESSION_ID"], hcpo.GetWorkspacePath(), dbAccess)
 	// A test run's script (PLAT-562): its bridge calls are guarded, its DB is
 	// the copy and it cannot write outside the test run folder.
-	if run := hcpo.activeTestRun(); run != nil {
-		hcpo.registerTestSession(extraEnv["MCP_SESSION_ID"])
-		extraEnv[testmode.EnvFlag] = "1"
-		guard.BlockedWritePaths = common.DeduplicateStrings(run.BlockedWrites(guard.WritePaths, guard.BlockedWritePaths))
-	}
 
 	// Long-running scripted steps can legitimately exceed a fixed shell timeout.
 	timeout := 0
@@ -1393,8 +1387,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedScriptToLearnings(
 	stepExecutionAbsPath string,
 ) {
 	// Canonical code was repaired in place. Never copy stale execution code back.
-	// A test run (PLAT-562) never saves its script into learnings.
-	if hcpo.usesCodeTree() || hcpo.activeTestRun() != nil {
+	if hcpo.usesCodeTree() {
 		return
 	}
 	stepID := step.GetID()
@@ -1603,9 +1596,6 @@ func generateSimpleDiff(fileName, oldContent, newContent string) string {
 // isLocked indicates whether the step's lock_code was true at run time — when true, the run is
 // also reflected in LockCodeStats so the builder can spot a frozen-but-broken script quickly.
 func (hcpo *StepBasedWorkflowOrchestrator) updateScriptedRunStats(ctx context.Context, stepID string, record RunRecord, isLocked bool) {
-	if hcpo.activeTestRun() != nil {
-		return // a test run is not evidence about the script (PLAT-562)
-	}
 	meta := hcpo.readScriptedMetadataAPI(ctx, stepID)
 	if meta == nil {
 		if !hcpo.usesCodeTree() {

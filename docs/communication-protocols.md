@@ -467,8 +467,8 @@ applicable. Default retry identity includes run, step, group, target, function a
 arguments. Repeating an identical call in that scope reuses the original call;
 another run or group is distinct. Use a distinct explicit `submission_id` for
 deliberately repeated work. Status and replies cannot reach another execution
-scope. Execution agents poll and cannot request `notify=true`; test mode refuses
-cross-project function calls and replies. Adding these runtime tools needs no new
+scope. Execution agents poll and cannot request `notify=true`. Function calls and
+replies execute normally under the current caller authorization. Adding these runtime tools needs no new
 saved-plan shape or workflow contract migration.
 
 ## Relay API and execution

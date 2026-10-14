@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-14 — Steps and full workflows always perform real work (PLAT-861)
+
+Remove the separate simulated execution mode, copied databases, test-only grants,
+stubbed tool successes and mode-specific guidance. Builder single-step and full
+workflow calls use the ordinary pipeline, live data and actual effects. A person's
+request to run or test is authorization for that execution, with no extra
+confirmation; existing permissions, constraints and approved scope still apply.
+Pulse verification remains within its configured autonomy and authorization;
+otherwise it proposes owner-run verification. Old saved mode fields are ignored,
+while obsolete explicit invocation arguments return a removal error before work
+starts. Historical simulated receipts are retained but do not count as real
+execution evidence.
+
+Why: the hidden mode changed what steps actually did and made verification differ
+from real work; its displayed grants also contradicted enforced file access.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md).
+
 ## 2026-10-14 — Generic guidance receipts start with advisory dashboards (PLAT-856)
 
 Selected dashboard schemas and explicit full skill fetches deliver canonical,
@@ -1558,7 +1576,7 @@ through a server-owned function factory. Reuse the existing function backend;
 internal calls retain the source workflow identity, while external MCP calls
 retain user identity and connection consent/bounds. Runtime calls poll rather
 than resume Builder chat, and durable retry/result access is scoped to the run,
-step and group. Test mode refuses cross-project calls and replies. Existing Crew
+step and group. Function calls and replies use normal caller authorization. Existing Crew
 steps and published Relay dispatch remain compatible. No saved-plan rewrite is
 needed because this adds runtime tools without changing the plan shape.
 Why: agents need the same typed delegation available in Builder and MCP.
@@ -3166,14 +3184,8 @@ a product the user has left. Preserve saved workflow/project choices for return.
 Why: sidebar Code selection bounced back to Goals while existing-tab Ctrl+K
 navigation worked. Ticket: PLAT-563.
 
-### 2026-10-06 — Step test mode fails closed: only what is known to be read-only runs
-- `execute_step(test_mode=true)` runs a step with reads real and external effects stubbed and recorded: an MCP tool runs
-  only when its server marks it `readOnlyHint` (and not destructive); the browser only navigates and reads (`eval` is
-  stubbed); platform tools run only from a short read-only/redirected list; anything else, including any new tool, is
-  stubbed. The DB is a copy, writes stay in `runs/test-<id>/`, learnings and KB are not written, Crew steps are refused.
-  Why: Builder and Pulse must verify fixes on steps that bid, spend or send without doing so. Shell outbound network is
-  NOT contained (documented). Design: `design/step_test_mode.md`; ticket
-  PLAT-562.
+### 2026-10-06 — Separate step simulation (superseded 2026-10-14)
+Retired by owner decision: steps and whole workflows now execute normally with real effects. Historical receipts are retained as history. See the 2026-10-14 decision above.
 
 ### 2026-10-06 — Edits list their dependents; broken references are reported, never gated
 
@@ -3196,8 +3208,7 @@ changes not carried through to dependent steps, evals and notes, a fifth were pl
 were notes or strategy filed as issues. Architecture's proposals never reached a workflow because finding
 and fixing were split.
 Being built: an edit-time reference map (every plan, KB, soul, eval and learnings change reports broken
-references and stale dependents to whoever made it) and a step test mode (external effects stubbed,
-fail closed) so a changed step is run once before the change counts as done. The structural part (three
+references and stale dependents to whoever made it) and ordinary step verification under existing authorization before a change counts as done. The structural part (three
 roles, code due rules instead of the gate turn, one work-item record) is a proposal awaiting the owner's
 decisions. Tickets: PLAT-559; design `design/pulse_simplified.md`.
 
