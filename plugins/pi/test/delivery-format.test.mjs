@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatDelivery } from '../delivery.mjs';
+import { formatDelivery, heldLine, waitingLine } from '../delivery.mjs';
 
 const message = over => ({ message_id: 'id', inbox_id: 'inbox', sender: 'sender', message: 'body', ...over });
 const render = over => formatDelivery(message(over), 'lease');
@@ -29,4 +29,22 @@ test('forged fence lines inside the body are escaped', () => {
   assert.equal(bareEnds, 1);
   assert.ok(out.includes('\\<<<END forge-id>>>'));
   assert.ok(out.includes('\\<<<BEGIN forge-id>>>'));
+});
+
+// A server status line is plain information with no ack or reply line and is not counted as a waiting message;
+// held messages are named by reason class and their text is never shown.
+test('status lines are plain, uncounted; held messages are named by class', () => {
+  const now = Date.parse('2026-10-14T12:00:00Z');
+  const status = render({ kind: 'status', sender: 'AgentWorks', message: 'x has not read your message' });
+  assert.ok(status.includes('no reply needed'));
+  assert.ok(!status.includes('ack:') && !status.includes('<<<BEGIN'));
+  const messages = [
+    message({ sender: 'agent-a', sent_at: '2026-10-14T11:48:00Z' }),
+    message({ sender: 'agent-b', sent_at: '2026-10-14T11:58:00Z' }),
+    message({ kind: 'status', sender: 'AgentWorks' }),
+  ];
+  assert.equal(waitingLine(messages, now), 'AgentWorks: 2 messages waiting from agent-a, agent-b (oldest 12 min ago).');
+  const held = heldLine({ held: 2, held_reasons: { sender_authorization_failed: 2 } });
+  assert.ok(held.includes('2 messages') && held.includes('check on the sender') && held.includes('admin'));
+  assert.equal(heldLine({}), '');
 });
