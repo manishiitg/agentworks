@@ -42,6 +42,8 @@ type runShareState struct {
 	Unknown []string         `json:"unknown_emails,omitempty"`
 	// Previous is who had access before this change, so the owner or agent sees exactly who was removed.
 	Previous *runShareState `json:"previous,omitempty"`
+	// CanShare tells the screen whether to offer sharing: only the project's owner can.
+	CanShare bool `json:"can_share"`
 }
 
 func dashboardShareAction(action string) bool { return action == "share" || action == "share_status" }
@@ -261,6 +263,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		dashboardError(w, err)
 		return
 	}
+	state.CanShare = target.Kind != "code" && api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)
 }

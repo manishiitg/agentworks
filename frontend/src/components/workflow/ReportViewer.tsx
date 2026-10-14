@@ -27,6 +27,7 @@ import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { useSelectedReportDocument } from './reportDocuments'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
+import { ShareDashboardButton } from './ShareDashboardButton'
 import { panelGuideAskFromNode } from './workspacePanelGuideAsk'
 
 function debugReportView(event: string, detail?: Record<string, unknown>) {
@@ -281,6 +282,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
         {!hideToolbar && <div className="absolute right-3 top-3 z-20 flex gap-1">
           {guideAsk ? null : headerAction}
+          <ShareDashboardButton workspacePath={workspacePath} />
           <WorkspacePanelGuideButton topic="Dashboard" ask={guideAsk} />
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
             <RefreshCw className="h-3.5 w-3.5" />
