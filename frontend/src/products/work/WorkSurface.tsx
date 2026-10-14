@@ -34,6 +34,7 @@ import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, updateWorkSessionLocalFiles, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
+import { useSharedCrewHasDashboard } from './useSharedCrewDashboard'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { clearPendingLocalLink, peekPendingLocalLink, registerLocalFilesPersister, setProjectLocalFiles, setProjectMode, useCodeFilesPreference } from './codeLocalFiles'
@@ -92,13 +93,10 @@ function workPresentationView(view: WorkWorkspaceView, localCodeSession = false)
 
 const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRESENTATION_VIEWS))
 
-// Crew Run mode: someone else's Crew opens read-only. Memory and files are
-// the inspect surface (both served through the mediated shared endpoints);
-// identity, integrations, automation, database, browser, costs, and the
-// dashboard stay owner-only because they edit state or read owner-private
-// data (transcripts, run databases, usage) the proxy will not serve
-// cross-user.
-export const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
+// Someone else's Crew (owner decision 2026-10-14): a person who uses it sees the chat and, when the Crew has one,
+// its dashboard. No Files, Memory, Terminal or setup: those belong to the Crew's owner. With no dashboard the
+// right pane stays closed and only the chat shows.
+export const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['dashboard'])
 
 export function normalizeWorkWorkspaceView(saved: unknown): WorkWorkspaceView | null {
   if (saved === 'history') return 'schedules'
@@ -1100,13 +1098,18 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const isShared = Boolean(selected?.shared)
   // A Code has no Memory: someone else's Code offers only its files.
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
+  // Someone else's Crew: the right pane exists only when it has a dashboard to show; otherwise the chat is alone.
+  const sharedCrewHasDashboard = useSharedCrewHasDashboard(isShared ? selected?.workspacePath : undefined)
+  useEffect(() => {
+    if (isShared && sharedCrewHasDashboard !== null) setPanelOpen(sharedCrewHasDashboard)
+  }, [isShared, sharedCrewHasDashboard])
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels, localCodeSession)) return
     if (localCodeSession && !['files', 'costs', 'llm'].includes(view)) return
-    if (selected?.shared && !sharedPanels.has(panel) && !(panel === 'shell' && showShell)) return
+    if (selected?.shared && !sharedPanels.has(panel)) return
     if (panel === 'schedules') {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
@@ -1239,7 +1242,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     // The captured link view is spent once applied (and is keyed to its
     // project), so switching projects never reapplies an old ?view.
     if (initialRouteView.current?.id === selected?.id) initialRouteView.current = null
-    setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? (product.profileId === 'code' && selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
+    setWorkspaceView(selected?.shared ? 'dashboard' : savedView ?? (product.profileId === 'code' && selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
@@ -1278,7 +1281,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (selected?.shared) {
       // Identity is always "enabled", so shared Crews need their own
       // fallback: a stale saved view must land on the inspect surface.
-      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files', false)
+      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView)) selectWorkspaceView('dashboard', false)
       return
     }
     // Keep a route-supplied view only while it is enabled for this product
@@ -1499,7 +1502,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               splitRef={splitLayoutRef}
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={shownSplitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
-              onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
+              onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => { if (!(isShared && sharedCrewHasDashboard === false)) setPanelOpen(true) }}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !selected.shared} /> : <div className="min-w-0 flex-1" />}
               toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}

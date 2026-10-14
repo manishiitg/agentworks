@@ -1,5 +1,17 @@
 # Decisions and open issues
 
+## 2026-10-14 — A shared Crew shows its chat and dashboard only (PLAT-750)
+
+A person who uses someone else's Crew sees the Crew's chat and, when it has one, its
+dashboard. Files, Memory and the terminal are not offered; the right pane stays closed
+when there is no dashboard, so only the chat shows. The Crew's owner keeps every view.
+This is a screen rule: file reads through the API or MCP are a separate decision and are
+unchanged. Code and Cowork projects are private to their owner (sharing was removed), so
+the rule applies to Crews.
+
+Why: people use a Crew through its chat and dashboards; its files and memory are the
+owner's working material.
+
 ## 2026-10-14 — One-time Watchers complete after accepted delivery (PLAT-861)
 
 Set `once: true` to wait for the first new matching event in detector order. Persist that selection with the event ledger, stop further detector calls, and retry the same submission until target acceptance. Persist completion with the receipt, then disable the schedule. Other matches in that batch stay visible as not sent. The exact accepted agent message may enter its turn after automatic completion; current source and target access checks still apply. A manual pause before acceptance holds delivery. Completion survives restart and does not automatically rearm on Enable or edit; another one-time wait gets a new watcher. Existing watchers remain recurring by default. Code agent destinations default to the creating chat in the current project.
