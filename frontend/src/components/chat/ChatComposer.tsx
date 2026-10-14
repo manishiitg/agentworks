@@ -29,7 +29,7 @@ export function ChatComposerCard({ product = false, className, ...props }: HTMLA
   return <div
     className={cn(product
       ? PRODUCT_COMPOSER_CARD_CLASS
-      : 'space-y-1 rounded-xl border border-slate-700/80 bg-[#101513] p-1.5 shadow-sm transition focus-within:border-slate-500', className)}
+      : 'space-y-1 rounded-xl border border-border bg-card p-1.5 shadow-sm transition focus-within:border-ring dark:border-slate-700/80 dark:bg-[#101513] dark:focus-within:border-slate-500', className)}
     {...props}
   />
 }
