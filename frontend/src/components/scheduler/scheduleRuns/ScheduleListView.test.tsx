@@ -71,7 +71,7 @@ describe('ScheduleListView declutter', () => {
 
   it('shows quiet rows with no coloured group headers', async () => {
     const { host, unmount } = await renderList([
-      job({ id: 'a', name: 'Solo', run_count: 0 }),
+      job({ id: 'a', name: 'Solo', run_count: 0, status_word: 'Scheduled' }),
     ])
     try {
       expect(host.textContent).not.toContain('Automation schedules')
@@ -95,22 +95,21 @@ describe('ScheduleListView declutter', () => {
     }
   })
 
-  it('reads every row as Paused, never Missed, while schedules are paused, and keeps raw errors out of sight', async () => {
-    const jobs = [
-      job({ id: 'a', name: 'Late', missed_run_count: 3, last_status: 'error', last_error: 'workshop turn 1/1 (schedule-message-1) produced no response: message_sequence' }),
-    ]
-    const paused = stubPanel(jobs)
-    const host = document.createElement('div'); document.body.append(host)
-    const root = createRoot(host)
+  it('shows the status word and last-run sentence the server wrote, with the raw error only as a tooltip', async () => {
+    const raw = 'workshop turn 1/1 (schedule-message-1) produced no response: message_sequence'
+    const { host, unmount } = await renderList([
+      job({ id: 'a', name: 'Late', status_word: 'Needs attention', last_status: 'error', last_error: raw, last_result: 'The last run did not finish.' }),
+      job({ id: 'b', name: 'Held', status_word: 'Paused', missed_run_count: 3 }),
+    ])
     try {
-      await act(async () => root.render(<ScheduleListView panel={{ ...paused, isSchedulerPaused: true }} />))
-      expect(host.textContent).toContain('Paused')
-      expect(host.textContent).not.toContain('Missed')
-      await act(async () => root.render(<ScheduleListView panel={paused} />))
+      expect(host.textContent).toContain('Needs attention')
       expect(host.textContent).toContain('The last run did not finish.')
       expect(host.textContent).not.toContain('message_sequence')
+      expect(host.querySelector(`[title="${raw}"]`)).not.toBeNull()
+      expect(host.textContent).toContain('Paused')
+      expect(host.textContent).not.toContain('Missed')
     } finally {
-      await act(async () => root.unmount()); host.remove()
+      await unmount()
     }
   })
 

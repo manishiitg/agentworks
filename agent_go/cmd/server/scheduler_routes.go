@@ -80,9 +80,15 @@ type ScheduledJobResponse struct {
 	MissedRunCount           int        `json:"missed_run_count,omitempty"`
 	LatestMissedRunAt        *time.Time `json:"latest_missed_run_at,omitempty"`
 	MissedRunReason          string     `json:"missed_run_reason,omitempty"`
-	PulseReviewOnly          bool       `json:"pulse_review_only,omitempty"`
-	PulseMode                string     `json:"pulse_mode,omitempty"`
-	PulseModeReason          string     `json:"pulse_mode_reason,omitempty"`
+	// StatusWord and LastResult are plain text for the Schedules list (see
+	// scheduler_status_text.go); last_error stays as the raw detail.
+	StatusWord string `json:"status_word,omitempty"`
+	LastResult string `json:"last_result,omitempty"`
+	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
+	pauseProduct    string
+	PulseReviewOnly bool   `json:"pulse_review_only,omitempty"`
+	PulseMode       string `json:"pulse_mode,omitempty"`
+	PulseModeReason string `json:"pulse_mode_reason,omitempty"`
 	// AfterRun is the schedule's effective after-run options (PLAT-697 phase 0).
 	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
 	CreatedAt      string            `json:"created_at,omitempty"`
@@ -174,7 +180,12 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		collisionPolicy = ""
 		concurrencyMode = ""
 	}
+	pauseProduct := "agentworks"
+	if manifest != nil && manifest.Kind == "relay" {
+		pauseProduct = "relays"
+	}
 	return ScheduledJobResponse{
+		pauseProduct:             pauseProduct,
 		Kind:                     normalizeTriggerKind(sched.Kind),
 		Gmail:                    sched.Gmail,
 		StepID:                   workflowWebhookDTO(sched).StepID,
@@ -633,6 +644,10 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 		}
 		total := len(allJobs)
+		// Plain status text comes from the server. A config read failure leaves the words
+		// computed without a pause rather than failing the list.
+		config, _ := LoadSchedulerConfig(r.Context())
+		applyScheduleStatusText(allJobs, config)
 
 		// Pagination
 		if offset >= total {

@@ -12,9 +12,6 @@ import {
   getMissedScheduleDelayMs,
   getScheduleDependencyIds,
   getScheduleExecutionScope,
-  isMissedSchedule,
-  isScheduleIssueStatus,
-  isSchedulePartialStatus,
   isScheduleWaitingStatus,
   timeAgo,
 } from './helpers'
@@ -22,7 +19,6 @@ import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 import { ScheduleAfterRunControls } from './ScheduleAfterRunControls'
-import type { ScheduledJob } from '../../../services/api-types'
 
 type ScheduleListViewProps = {
   panel: Pick<ScheduleRunsPanelState,
@@ -32,27 +28,7 @@ type ScheduleListViewProps = {
     | 'openActionMenuJobId' | 'setOpenActionMenuJobId' | 'handleDelete'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'deletingRunSessionIds'
     | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
-  > & { isSchedulerPaused?: boolean }
-}
-
-// One quiet word per schedule, like the Watchers, Functions and Webhooks tabs.
-// While schedules are paused nothing is "missed": the banner above already says
-// why, so every row simply reads Paused.
-function statusWord(job: ScheduledJob, paused: boolean, missed: boolean): string {
-  if (paused || !job.enabled) return 'Paused'
-  if (job.last_status === 'running') return 'Running'
-  if (isScheduleWaitingStatus(job.last_status)) return job.last_status === 'waiting_for_capacity' ? 'Waiting for capacity' : 'Queued'
-  if (job.last_status === 'error') return 'Needs attention'
-  if (missed) return 'Missed'
-  return 'Scheduled'
-}
-
-// The server's raw error text stays in the tooltip; the row says it plainly.
-function lastRunNote(job: ScheduledJob): { text: string; tone: 'error' | 'muted' } | null {
-  if (job.last_status === 'error') return { text: 'The last run did not finish.', tone: 'error' }
-  if (isSchedulePartialStatus(job.last_status)) return { text: 'The last run finished with some problems.', tone: 'muted' }
-  if (job.last_status === 'stopped') return { text: 'The last run was stopped.', tone: 'muted' }
-  return null
+  >
 }
 
 export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => {
@@ -77,7 +53,6 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
     toggleRunHistory,
     openScheduledRun,
     deleteScheduledRunSession,
-    isSchedulerPaused = false,
   } = panel
 
   return (
@@ -91,10 +66,11 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
         const dependencyNames = getScheduleDependencyIds(job).map(id => jobsList.find(candidate => candidate.id === id)?.name ?? id)
         const isRunningJob = job.last_status === 'running'
         const isWaitingJob = isScheduleWaitingStatus(job.last_status)
-        const isMissedJob = !isSchedulerPaused && isMissedSchedule(job)
+        // The server writes the status word and the last-run sentence; while the product's schedules are paused every row says Paused.
+        const statusWord = job.status_word ?? ''
+        const isMissedJob = statusWord === 'Missed'
         const missedDelayMs = getMissedScheduleDelayMs(job)
-        const note = lastRunNote(job)
-        const quiet = !job.enabled || isSchedulerPaused
+        const quiet = statusWord === 'Paused' || !job.enabled
 
         return (
           <section key={job.id} className={`min-w-0 space-y-2 rounded-lg border border-border p-3 ${quiet ? 'opacity-70' : ''}`}>
@@ -108,7 +84,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                 <h3 className="truncate text-sm font-medium" title={job.name}>{localizedJobName}</h3>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-muted-foreground">{statusWord(job, isSchedulerPaused, isMissedJob)}</span>
+                <span className="text-xs text-muted-foreground">{statusWord}</span>
                 <ScheduleRowActions
                   job={job}
                   isRunning={isRunningJob}
@@ -167,7 +143,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                     ? job.last_run_at ? `Running since ${formatLocalScheduleTime(job.last_run_at)} (${timeAgo(job.last_run_at)})` : 'Running...'
                     : job.last_run_at ? `Last ran: ${formatLastRunLabel(job.last_run_at)}` : 'Not run yet'}
               </span>
-              {job.enabled && !isSchedulerPaused && (
+              {!quiet && (
                 isMissedJob && missedDelayMs != null
                   ? <span title={formatMissedScheduleReason(job)}>
                       {job.missed_run_count && job.missed_run_count > 1
@@ -180,8 +156,8 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
               {job.last_duration_ms != null && !isRunningJob && <span title="Last duration">{formatDuration(job.last_duration_ms)}</span>}
             </div>
 
-            {note && (isScheduleIssueStatus(job.last_status) || job.last_status === 'stopped') && !isSchedulerPaused && (
-              <p className={`text-xs ${note.tone === 'error' ? 'text-destructive' : 'text-muted-foreground'}`} title={job.last_error || undefined}>{note.text}</p>
+            {job.last_result && (
+              <p className={`text-xs ${job.last_status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`} title={job.last_error || undefined}>{job.last_result}</p>
             )}
 
             {(job.run_count || 0) > 0 && <ScheduleExecutionHistoryList
