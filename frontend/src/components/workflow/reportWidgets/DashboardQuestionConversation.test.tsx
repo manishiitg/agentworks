@@ -132,6 +132,6 @@ it('renders native chat in a designer-selected slot in the host document without
   expect(current.frame.contentDocument!.querySelector('[data-native-tab]')).toBeNull()
   expect(current.host.querySelector<HTMLElement>('[aria-label="Dashboard chat widget"]')?.style.left).toBe('200px')
   expect(current.host.querySelector<HTMLElement>('[aria-label="Dashboard chat widget"]')?.style.width).toBe('360px')
-  expect(current.host.textContent).toContain('Your Builder conversation.')
+  expect(current.host.textContent).toContain('Existing project history and replies')
   expect(send).not.toHaveBeenCalled()
 })
