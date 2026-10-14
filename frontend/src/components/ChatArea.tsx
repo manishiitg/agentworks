@@ -1006,7 +1006,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Computed values
   const isRequiredFolderSelected = useMemo(() => {
     if (selectedModeCategory !== 'workflow') return true; // No validation needed for other modes
-    if (activeTab?.metadata?.isOrganizationAssistant) return true
 
     // Workflow mode requires Workflow/ folder from preset
     if (selectedModeCategory === 'workflow') {
@@ -1015,7 +1014,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     }
 
     return true;
-  }, [selectedModeCategory, activeWorkflowPreset, activeTab?.metadata?.isOrganizationAssistant])
+  }, [selectedModeCategory, activeWorkflowPreset])
 
   // Use currentPresetServers from props (passed from App.tsx when preset is selected)
 

@@ -363,7 +363,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     }
 
     const chatItems: ChatTabItem[] = Object.values(agentWorksTabs)
-      .filter(tab => tab.metadata?.mode === 'multi-agent' && !tab.metadata?.isOrganizationAssistant)
+      .filter(tab => tab.metadata?.mode === 'multi-agent')
       .sort((a, b) => a.createdAt - b.createdAt)
       .map(tab => {
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined

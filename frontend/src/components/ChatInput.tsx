@@ -490,7 +490,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const addToast = useChatStore(state => state.addToast)
   // Get active tab and its config. Embedded workflow panes pass tabId so this
   // remains scoped to the visible pane instead of the global active chat.
-  const isOrganizationAssistant = !!activeTab?.metadata?.isOrganizationAssistant
   const agentProfileWorkspace = activeTab?.metadata?.agentProfileWorkspace
   const agentProfileId = activeTab?.metadata?.agentProfileId
   const codeFilePreference = useCodeFilesPreference(activeTab?.sessionId || '')
@@ -1654,7 +1653,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const latestQueryToSubmitRef = useRef(queryToSubmit)
   latestQueryToSubmitRef.current = queryToSubmit
 
-  const canBootstrapMultiAgentTab = isMultiAgentMode && !showWorkflowsOverview && !isOrganizationAssistant
+  const canBootstrapMultiAgentTab = isMultiAgentMode && !showWorkflowsOverview
   // Workflow builder tabs are intentionally created before their backend session.
   // ChatArea assigns the session id on first submit, so the input must not block
   // empty builder tabs just because reports/session rehydration are still loading.
@@ -1771,8 +1770,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const currentActiveTab = chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : null
     if (
       currentActiveTab?.metadata?.mode === 'multi-agent' &&
-      !!currentActiveTab.metadata?.agentProfileId &&
-      currentActiveTab.metadata?.isOrganizationAssistant !== true
+      !!currentActiveTab.metadata?.agentProfileId
     ) {
       return true
     }

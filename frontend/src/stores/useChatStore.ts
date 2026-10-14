@@ -449,7 +449,6 @@ export interface ChatTab {
     workshopMode?: 'workshop' | 'run' // Prompt/tool policy pinned to this workflow chat
     mode?: 'workflow' | 'multi-agent'  // Which mode this tab belongs to
     presetQueryId?: string  // For workflow mode: preset query ID (workflow identifier)
-    isOrganizationAssistant?: boolean // True when tab is reserved for Organization panel
     isRestored?: boolean  // True when restored from history (inline history panel or page refresh)
     isRestoringSession?: boolean  // True while session events are being loaded from backend
     isViewOnly?: boolean // True when tab is in view-only mode (e.g. shared session or bot connector)
@@ -2365,7 +2364,6 @@ export const useChatStore = create<ChatState>()(
           mode === 'multi-agent' &&
           metadata &&
           !metadata.agentProfileBuilder &&
-          !metadata?.isOrganizationAssistant &&
           !metadata?.isViewOnly &&
           !metadata?.isScheduledRun &&
           !metadata?.isBotRun
@@ -2377,7 +2375,6 @@ export const useChatStore = create<ChatState>()(
             // here would merge agentProfileBuilder:false into the Builder and
             // unpin it, then restoration would create a duplicate chat tab.
             t.metadata?.agentProfileBuilder !== true &&
-            !t.metadata?.isOrganizationAssistant &&
             t.metadata?.isViewOnly !== true &&
             t.metadata?.isScheduledRun !== true &&
             t.metadata?.isBotRun !== true &&
