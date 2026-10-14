@@ -213,8 +213,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		writePaths = common.DeduplicateStrings(append(writePaths, stepPath+"/code"))
 	}
 	result.ReadPaths, result.WritePaths = readPaths, writePaths
-	vars["FolderGuardReadPaths"] = strings.Join(toAbsPaths(GetPromptDocsRoot(), readPaths), ", ")
-	vars["FolderGuardWritePaths"] = strings.Join(toAbsPaths(GetPromptDocsRoot(), writePaths), ", ")
+	vars["FolderGuardReadPaths"] = folderGuardPromptText(hcpo.GetWorkspacePath(), readPaths, false)
+	vars["FolderGuardWritePaths"] = folderGuardPromptText(hcpo.GetWorkspacePath(), writePaths, true)
 	if _, agentStep := step.(*AgentPlanStep); !agentStep {
 		vars["IsCodeExecutionMode"] = fmt.Sprint(config.UseCodeExecutionMode)
 	}

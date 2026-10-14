@@ -1415,13 +1415,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			}
 			return filepath.Join(docsRoot, path)
 		}
-		toAbsPathSlice := func(paths []string) []string {
-			result := make([]string, len(paths))
-			for i, p := range paths {
-				result[i] = toAbsPath(p)
-			}
-			return result
-		}
 
 		stepTitleForPrompt := ResolveVariables(step.GetTitle(), hcpo.variableValues)
 		stepDescriptionForPrompt := ResolveVariables(step.GetDescription(), hcpo.variableValues)
@@ -1493,8 +1486,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			"IsCodeExecutionMode":       fmt.Sprintf("%v", isCodeExecutionMode),                                                                               // Code execution mode flag (step-specific or preset)
 			"StepNumber":                stepPath,                                                                                                             // Step identifier (e.g., "step-8" or "step-3-sub-fetch")
 			"StepExecutionPath":         toAbsPath(stepExecutionPath),                                                                                         // Absolute step execution folder path
-			"FolderGuardReadPaths":      strings.Join(toAbsPathSlice(folderGuardReadPaths), ", "),                                                             // Absolute folder guard read paths
-			"FolderGuardWritePaths":     strings.Join(toAbsPathSlice(folderGuardWritePaths), ", "),                                                            // Absolute folder guard write paths
+			"FolderGuardReadPaths":      folderGuardPromptText(hcpo.GetWorkspacePath(), folderGuardReadPaths, false),                                          // Absolute folder guard read paths
+			"FolderGuardWritePaths":     folderGuardPromptText(hcpo.GetWorkspacePath(), folderGuardWritePaths, true),                                          // Absolute folder guard write paths
 			"WorkflowRoot":              toAbsPath(workflowRoot),                                                                                              // Absolute workflow root path (e.g., "/app/workspace-docs/Workflow/HRMS")
 			"IsScriptedMode":            fmt.Sprintf("%v", isScriptedMode),
 			"ScriptedWorkingDir":        toAbsPath(hcpo.scriptedWorkingDir(step.GetID(), stepExecutionPath)),

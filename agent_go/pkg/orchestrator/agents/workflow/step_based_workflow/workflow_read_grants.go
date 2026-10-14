@@ -3,6 +3,10 @@ package step_based_workflow
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 // rawDatabaseFiles are never readable by a step: the managed helper is the only way into the workflow database.
@@ -46,4 +50,62 @@ func workflowReadGrants(baseWorkspacePath string) []string {
 		}
 	}
 	return grants
+}
+
+// folderGuardPromptText is what the step prompt says about the folder guard. The sandbox gets the full per-entry list;
+// the model gets a short summary in relative names (about 90 absolute paths on every step was noise). Paths outside the
+// workflow folder, such as Downloads or skill folders, stay listed because they are informative.
+func folderGuardPromptText(baseWorkspacePath string, paths []string, write bool) string {
+	docsRoot := GetPromptDocsRoot()
+	base := strings.TrimRight(baseWorkspacePath, "/")
+	inside := func(p string) (string, bool) {
+		p = strings.TrimRight(p, "/")
+		if rel, ok := strings.CutPrefix(p, base+"/"); ok && base != "" {
+			return rel, true
+		}
+		return "", p == base && base != ""
+	}
+	covered := func(list []string, p string) bool {
+		for _, other := range list {
+			if other != p && strings.HasPrefix(p, strings.TrimRight(other, "/")+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	var relative, outside []string
+	wide := false
+	for _, p := range common.DeduplicateStrings(paths) {
+		if p == "" || covered(paths, p) {
+			continue
+		}
+		if rel, ok := inside(p); ok {
+			if rel == "" || rel == "runs" {
+				wide = true
+			}
+			relative = append(relative, rel+"/")
+		} else if !strings.HasPrefix(p, base+"/") {
+			outside = append(outside, toAbsPaths(docsRoot, []string{p})[0])
+		}
+	}
+	var parts []string
+	switch {
+	case write:
+		parts = append(parts, strings.Join(relative, ", ")+" (relative to the workflow folder)")
+	case wide:
+		parts = append(parts, "everything in this workflow folder except the raw database files (use the database tools)")
+	default:
+		parts = append(parts, strings.Join(relative, ", ")+" (relative to the workflow folder)")
+	}
+	if len(outside) > 0 {
+		parts = append(parts, strings.Join(outside, ", "))
+	}
+	text := strings.Join(parts, "; plus ")
+	if write {
+		text += ". Not writable: the plan, step settings, past runs"
+		if !slices.Contains(relative, "code/") {
+			text += ", code/ (Builder only)"
+		}
+	}
+	return text
 }

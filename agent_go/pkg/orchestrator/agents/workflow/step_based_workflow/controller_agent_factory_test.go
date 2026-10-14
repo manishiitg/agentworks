@@ -1541,3 +1541,17 @@ func TestWorkflowReadGrantsListEntriesAndOmitTheRawDatabase(t *testing.T) {
 		}
 	}
 }
+
+// The prompt shows a short relative summary of the folder guard, not the sandbox's per-entry list.
+func TestFolderGuardPromptTextIsShortAndRelative(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", "/docs")
+	reads := []string{"Workflow/demo/runs", "Workflow/demo/planning", "Workflow/demo/after_click.png", "Workflow/demo/db/README.md", "Workflow/demo/learnings", "Workflow/demo/learnings/_global", "Workflow/demo/Downloads", "skills/x"}
+	read := folderGuardPromptText("Workflow/demo", reads, false)
+	if !strings.Contains(read, "everything in this workflow folder except the raw database files") || !strings.Contains(read, "/docs/skills/x") || strings.Contains(read, "after_click") || strings.Contains(read, "/docs/Workflow") {
+		t.Fatalf("read summary wrong: %s", read)
+	}
+	write := folderGuardPromptText("Workflow/demo", []string{"Workflow/demo/runs/iteration-0/default", "Workflow/demo/runs/iteration-0/default/execution/s1", "Workflow/demo/reports", "Workflow/demo/db/assets"}, true)
+	if strings.Contains(write, "/docs/") || !strings.Contains(write, "runs/iteration-0/default/") || strings.Contains(write, "execution/s1") || !strings.Contains(write, "code/ (Builder only)") {
+		t.Fatalf("write summary wrong: %s", write)
+	}
+}

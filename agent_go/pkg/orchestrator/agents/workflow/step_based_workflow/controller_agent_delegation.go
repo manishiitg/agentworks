@@ -464,8 +464,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		"KnowledgebaseContribution": kbContributionForPrompt(stepConfig),
 		"KBGuidanceBlock":           sharedStepKBGuidance(baseWorkspacePath, kbAccess, kbContributionForPrompt(stepConfig), filepath.Join(docsRoot, fgKnowledgebasePath, KBNotesFolderName)),
 		// Workspace paths and folder guard (consistent with execution agent)
-		"FolderGuardReadPaths":  strings.Join(toAbsPaths(docsRoot, fgReadPaths), ", "),
-		"FolderGuardWritePaths": strings.Join(toAbsPaths(docsRoot, fgWritePaths), ", "),
+		"FolderGuardReadPaths":  folderGuardPromptText(baseWorkspacePath, fgReadPaths, false),
+		"FolderGuardWritePaths": folderGuardPromptText(baseWorkspacePath, fgWritePaths, true),
 		"KnowledgebasePath":     filepath.Join(docsRoot, fgKnowledgebasePath),
 		"DBPath":                filepath.Join(docsRoot, fgDBPath),
 		"DBAccess":              dbAccessForGuard,
