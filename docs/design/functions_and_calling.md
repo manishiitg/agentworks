@@ -1,6 +1,7 @@
 # Calling Crews and workflows: one model, one set of tools
 
-Status: design, 2026-09-25. Not built. Builds on
+Status: design, 2026-09-25. Not built. The overall product model is now in
+[Build, Share, Use](build_share_use.md). Builds on
 [crew-calls.md](../crew-calls.md), which covers functions, `ask`, callers and
 timeouts as they exist today.
 

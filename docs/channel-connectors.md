@@ -27,3 +27,5 @@ To add Discord or Telegram:
 5. Test actual transport behavior and authorization. The capability tests exercise Discord, Telegram, and an arbitrary channel name using mock transports; they do not constitute live connectors.
 
 `ChannelHistory` advertises an optional `ChannelHistoryReader` interface. The caller authorizes the source channel; the adapter enforces a bounded time/message/byte budget. Slack supports it. WhatsApp currently does not. History attachment JSON stays opaque to the shared interface.
+
+A channel is a Share adapter: it reaches the product's `ask` or its functions through the same server path as every other channel, and only formats and delivers. See [Build, Share, Use](design/build_share_use.md).

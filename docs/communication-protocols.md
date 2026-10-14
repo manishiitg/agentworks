@@ -4,6 +4,10 @@ This is the starting point for communication between AgentWorks products and
 external agents. It describes the implementation on main; availability on a
 running server depends on its deployed revision, enabled tools and permissions.
 
+The product model behind these contracts (Build, Share, Use; `ask` as open
+text and functions/routes/triggers as structured communication) is in
+[design/build_share_use.md](design/build_share_use.md).
+
 The platform has two communication contracts: **direct messages** for conversation
 and **structured functions** for work with checked inputs and a tracked outcome.
 MCP, CLI and HTTP are ways to reach those contracts. Workflow steps and Relay
