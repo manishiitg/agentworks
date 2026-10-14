@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "../stores/useAuthStore";
 import { Login } from "../pages/Login";
 import { AuthCallback } from "../pages/AuthCallback";
@@ -7,6 +7,7 @@ import { CLIOAuthConsent } from "../pages/CLIOAuthConsent";
 import { SharedFile } from "../pages/SharedFile";
 import { SharedFolder } from "../pages/SharedFolder";
 import { ReportPage } from "../pages/ReportPage";
+import { DashboardShortLink } from "./DashboardShortLink";
 import { Loader2 } from "lucide-react";
 import { WorkspaceConnectionSwitcher } from "./WorkspaceConnectionSwitcher";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
@@ -54,6 +55,12 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   const [sharedFilePath, setSharedFilePath] = useState<string | null>(null);
   const [sharedFolderPath, setSharedFolderPath] = useState<string | null>(null);
   const [reportWorkspacePath, setReportWorkspacePath] = useState<string | null>(null);
+  const [dashboardCode, setDashboardCode] = useState<string | null>(null);
+  const openDashboardLink = useCallback((root: string, documentPath: string) => {
+    const params = new URLSearchParams({ document: documentPath, path: encodeBase64Utf8(root) });
+    window.history.replaceState({}, "", `/report?${params.toString()}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, []);
   const [sharedUid, setSharedUid] = useState<string | null>(null);
   const [isAuthCallback, setIsAuthCallback] = useState(false);
   const [isMcpConsent, setIsMcpConsent] = useState(false);
@@ -66,6 +73,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
       setSharedFilePath(null);
       setSharedFolderPath(null);
       setReportWorkspacePath(null);
+      setDashboardCode(null);
       setIsAuthCallback(false);
       setIsMcpConsent(false);
       setIsCliConsent(false);
@@ -87,6 +95,13 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
           return null;
         }
       };
+
+      // Short dashboard link: /d/<code> (resolved after sign-in).
+      const shortLink = /^\/d\/([2-9a-hj-km-np-z]{10})$/.exec(path);
+      if (shortLink) {
+        setDashboardCode(shortLink[1]);
+        return;
+      }
 
       // Check for shared file: /file?path=BASE64 or legacy /file/BASE64
       const filePath = encodedPathFor("file");
@@ -222,6 +237,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     if (isDesktopAppOnlyMode() && !window.electronAPI) {
       return <DesktopAppOnlyGate />;
     }
+    if (dashboardCode) return <DashboardShortLink code={dashboardCode} onResolved={openDashboardLink} />;
     if (reportWorkspacePath) {
       return (
         <ReportPage
@@ -253,6 +269,8 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if (isDesktopAppOnlyMode() && !window.electronAPI) {
     return <DesktopAppOnlyGate />;
   }
+
+  if (dashboardCode) return <DashboardShortLink code={dashboardCode} onResolved={openDashboardLink} />;
 
   if (reportWorkspacePath) {
     return (

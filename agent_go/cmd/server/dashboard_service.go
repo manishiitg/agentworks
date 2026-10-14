@@ -373,10 +373,12 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		resource := map[string]any{}
 		addDashboardQuestionResource(r.Context(), target, *result.Dashboard, resource)
 		id, _ := resource["resource_id"].(string)
+		shortPath, _ := resource["short_path"].(string)
 		externalJSON(w, struct {
 			dashboards.Result
 			ResourceID string `json:"resource_id,omitempty"`
-		}{result, id})
+			ShortPath  string `json:"short_path,omitempty"`
+		}{result, id, shortPath})
 		return
 	}
 	externalJSON(w, result)

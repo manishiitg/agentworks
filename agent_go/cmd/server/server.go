@@ -3120,6 +3120,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
 	api.registerDashboardFunctionRoutes(apiRouter)
+	api.registerDashboardShortLinkRoutes(apiRouter)
 	// Headless report preview data (preview_report tool). The only API paths a
 	// report-preview scoped token can reach; see report_preview_routes.go.
 	apiRouter.HandleFunc("/workflow/report-preview/query", api.handleReportPreviewQuery).Methods("POST")
