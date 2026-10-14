@@ -4321,6 +4321,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if retainedWorkflowCompatible {
 		r = r.WithContext(contextWithSessionMode(r.Context(), agentSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, currentUserIsReadOnly)))
 	}
+	if retainedWorkflowCompatible {
+		// The turn this input starts is paid by the chat's owner; its usage rows name who sent it.
+		costobserver.SetRetainedInputSource(sessionID, req.TriggeredBy, req.TriggeredByLabel)
+	}
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
 		return
 	}
@@ -10743,6 +10747,7 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 		if age >= sessionRetention {
 			delete(api.activeSessions, sessionID)
 			sessionsToEvictRuntime = append(sessionsToEvictRuntime, sessionID)
+			costobserver.SetRetainedInputSource(sessionID, "", "")
 			if api.terminalStore != nil {
 				api.terminalStore.RemoveSession(sessionID)
 			}

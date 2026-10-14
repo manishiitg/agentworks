@@ -227,11 +227,15 @@ func TestObserverRecordsEachReportedRunOfLiveInputTurnsForTheSamePerson(t *testi
 		}
 		return &unifiedevents.AgentEvent{Type: unifiedevents.LLMGenerationEnd, Timestamp: now.Add(offset), SessionID: "code:project:demo", Data: data}
 	}
-	for _, event := range []*unifiedevents.AgentEvent{
+	for i, event := range []*unifiedevents.AgentEvent{
 		end(0, 27299, 475, 27*time.Second),
 		end(16*time.Minute, 27913, 924, 0),
 		end(19*time.Minute, 33938, 847, 0),
 	} {
+		if i == 2 { // the last follow-up was sent by another person's agent
+			SetRetainedInputSource("code:project:demo", "agent_message", "From another agent")
+			defer SetRetainedInputSource("code:project:demo", "", "")
+		}
 		if err := obs.HandleEvent(context.Background(), event); err != nil {
 			t.Fatal(err)
 		}
@@ -255,5 +259,12 @@ func TestObserverRecordsEachReportedRunOfLiveInputTurnsForTheSamePerson(t *testi
 	}
 	if traced != 2 {
 		t.Fatalf("the two follow-up rows must name the CLI run they came from, %d did", traced)
+	}
+	var sent int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cost_events WHERE json_extract(operation_metadata_json, '$.triggered_by') = 'agent_message' AND source_label = 'From another agent' AND user_id = 'alice'`).Scan(&sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent != 1 {
+		t.Fatalf("the follow-up another agent sent must name its sender and stay on the chat owner, %d rows did", sent)
 	}
 }

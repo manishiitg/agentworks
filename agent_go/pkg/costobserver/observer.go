@@ -420,6 +420,15 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 			entry.OperationMetadata = map[string]interface{}{}
 		}
 		entry.OperationMetadata["usage_source"], entry.OperationMetadata["usage_source_id"] = source, id
+		// The chat's owner pays; say when another agent's message started the turn.
+		if source == "retained" {
+			if by, label := retainedInputSource(o.sessionID); by != "" {
+				entry.OperationMetadata["triggered_by"], entry.OperationMetadata["triggered_by_label"] = by, label
+				if entry.SourceLabel == "" {
+					entry.SourceLabel = label
+				}
+			}
+		}
 	}
 	entry.TotalCostUSD = totalCostUSD
 	entry.BillingBasis = billingBasis
