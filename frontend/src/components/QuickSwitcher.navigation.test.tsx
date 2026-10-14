@@ -31,6 +31,7 @@ import { useAppStore } from '../stores/useAppStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { openQuickNavigation, quickNavigationItems } from '../utils/quickNavigation'
+import { WORKFLOW_PANEL_SECTIONS, workPanelSections } from '../products/productPanels'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
@@ -383,4 +384,21 @@ it.each(['mcp-gateway', 'code'])('rejects a stale %s shortcut after local opt-in
   Object.assign(window.__APP_RUNTIME_CONFIG__!, { localServerProducts: false })
   expect(openQuickNavigation(shortcut)).toBe(false)
   expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
+})
+
+
+it('finds the Code Watchers tab and opens Automation on that section', async () => {
+  expect(workPanelSections('schedules', false).some(section => section.id === 'conditions')).toBe(false)
+  expect(WORKFLOW_PANEL_SECTIONS.workshop?.some(section => section.id === 'conditions')).toBe(false)
+  const open = vi.fn()
+  const { host, onClose } = await renderNavigation('watchers', ['code'], false, () => {
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+    usePanelSwitcherStore.getState().register('code', { panels: [
+      { id: 'schedules', label: 'Automation', sections: workPanelSections('schedules', true) },
+    ], open })
+  })
+  expect(host.querySelector('[data-navigation-id="panel:schedules:conditions"]')?.textContent).toContain('Watchers')
+  await act(async () => host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(open).toHaveBeenCalledWith('schedules', 'conditions')
+  expect(onClose).toHaveBeenCalledOnce()
 })

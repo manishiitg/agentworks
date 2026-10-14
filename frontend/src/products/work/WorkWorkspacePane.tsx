@@ -6,7 +6,7 @@ import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspaceP
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
-import { WORK_PANELS, WORK_PANEL_SECTIONS } from '../productPanels'
+import { WORK_PANELS, workPanelSections } from '../productPanels'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
@@ -126,7 +126,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
   // A Code hides the "Use in AI apps" integration tab (CODE_HIDDEN_INTEGRATION_TABS).
-  const sectionsFor = (id: string) => (WORK_PANEL_SECTIONS[id] ?? []).filter(section => !(isCode && id === 'mcp' && section.id === 'cli') && !(!isCode && id === 'identity' && section.id === 'location'))
+  const sectionsFor = (id: string) => workPanelSections(id, isCode)
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
     ...visibleViews.map(item => ({ id: item.id, label: item.label, group: 'Views', sections: sectionsFor(item.id) })),
     ...visibleOps.map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: sectionsFor(item.id) })),
