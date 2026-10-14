@@ -24,10 +24,15 @@ function parseDefaults(raw: string | null): Record<string, unknown> | undefined 
 export function installDashboardActionButtons(frame: HTMLIFrameElement, options: Options) {
   const doc = frame.contentDocument!
   const disabled = new Map<HTMLButtonElement, boolean>()
+  // Functions the server says this person may not call (its can_call is false):
+  // the button stays visible, disabled, with a plain reason. The server decides.
+  let blocked = new Set<string>()
   const mark = () => {
     for (const button of doc.querySelectorAll<HTMLButtonElement>(`button[${ACTION_BUTTON_ATTR}]`)) {
       if (!disabled.has(button)) disabled.set(button, button.disabled)
-      if (!options.available) button.disabled = true
+      const limited = blocked.has((button.getAttribute(ACTION_BUTTON_ATTR) || '').trim())
+      if (!options.available || limited) button.disabled = true
+      if (limited) button.title = 'This function is limited to certain people.'
     }
   }
   const click = (event: Event) => {
@@ -43,6 +48,7 @@ export function installDashboardActionButtons(frame: HTMLIFrameElement, options:
   doc.addEventListener('click', click)
   mark()
   return {
+    setBlocked: (names: string[]) => { blocked = new Set(names); mark() },
     dispose: () => {
       mutation.disconnect()
       doc.removeEventListener('click', click)

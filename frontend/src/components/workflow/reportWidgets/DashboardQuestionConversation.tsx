@@ -105,6 +105,14 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       changed: (next, hasWidgets) => { setSlots(next); setAuthored(hasWidgets) }, popup: setPopup, error: setError, themeChanged: setTheme,
     })
     const buttons = installDashboardActionButtons(frame, { available: canUseFunctions, open: setAction })
+    if (canUseFunctions) {
+      void (async () => {
+        try {
+          const { data: listed } = await api.get<{ functions?: { name: string; can_call?: boolean }[] }>(`/api/dashboards/${encodeURIComponent(resourceId)}/functions`)
+          buttons.setBlocked((listed?.functions ?? []).filter(fn => fn.can_call === false).map(fn => fn.name))
+        } catch { /* the form still says so if a function is refused */ }
+      })()
+    }
     widgetApi.current = binding.api
     revealWidgets.current = binding.reveal
     return { api: binding.api, dispose: () => { binding.dispose(); buttons.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
