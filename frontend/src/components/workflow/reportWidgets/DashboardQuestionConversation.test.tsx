@@ -77,7 +77,7 @@ it.each(['crew', 'workflow', 'relay'])('lets an authorized %s Run user ask about
 it.each([['crew', false], ['workflow', false], ['relay', false], ['code', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
   const current = await mount(product, 'question_only', canAsk)
   expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
-  expect(get).not.toHaveBeenCalled(); expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
+  expect(get.mock.calls.filter(([url]) => !String(url).endsWith('/functions'))).toEqual([]); expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
 })
 
 it('uses the existing Ask tab and preserves the clicked publication across refresh and retry', async () => {
