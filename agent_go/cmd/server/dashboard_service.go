@@ -74,7 +74,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if dashboardMutation(action) && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share") && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -83,7 +83,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if dashboardMutation(action) && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share") && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
 	if action == "preview" && !claims.AccessToken.Allows("runs:execute") {
@@ -245,6 +245,8 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		Width     string            `json:"width"`
 		Limit     int               `json:"limit"`
 		Offset    int               `json:"offset"`
+		Mode      string            `json:"mode"`
+		Emails    []string          `json:"emails"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
 	decoder.DisallowUnknownFields()
@@ -265,6 +267,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	target, err := api.dashboardTarget(r.Context(), claims, args.Workspace)
 	if err != nil {
 		dashboardError(w, err)
+		return
+	}
+	if dashboardShareAction(args.Action) {
+		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails)
 		return
 	}
 	if (dashboardMutation(args.Action) || args.Action == "preview") && !target.Edit {

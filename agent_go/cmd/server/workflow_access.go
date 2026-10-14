@@ -42,6 +42,9 @@ type WorkflowAccess struct {
 	// enough to read another workflow's KB, but a mutating grant needs this
 	// workflow's own owner to explicitly name the consumer workflow.
 	AllowedKBWriters []string `json:"allowed_kb_writers,omitempty"`
+	// RunEveryone: the owner shared this workflow or Relay with every account that may use the product
+	// (dashboard sharing, PLAT-750). Those accounts run it like readers; the named Readers stay as they are.
+	RunEveryone bool `json:"run_everyone,omitempty"`
 }
 
 // WorkflowAccessNone is "may not see this workflow at all".
@@ -204,7 +207,7 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 			}
 			return WorkflowAccessOwner
 		}
-		if containsID(m.effectiveOwners(), claims.UserID) || containsID(m.effectiveEditors(), claims.UserID) || containsID(m.effectiveReaders(), claims.UserID) {
+		if containsID(m.effectiveOwners(), claims.UserID) || containsID(m.effectiveEditors(), claims.UserID) || containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
 			return WorkflowAccessRead
 		}
 		return WorkflowAccessNone
@@ -221,7 +224,7 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 		}
 		return WorkflowAccessWrite
 	}
-	if containsID(m.effectiveReaders(), claims.UserID) {
+	if containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
 		return WorkflowAccessRead
 	}
 	return WorkflowAccessNone

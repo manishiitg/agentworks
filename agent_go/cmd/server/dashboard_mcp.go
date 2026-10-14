@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link"}
+var dashboardActions = map[string]string{"list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -73,6 +73,19 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		add(name, descriptions[action], dashboardMutation(action), false, props, required...)
 	}
+	shareProps := map[string]any{
+		"workflow_id": externalString("Workflow or Relay ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+		"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
+		"workspace":   externalString("Project root from the dashboard list."),
+	}
+	add("get_dashboard_share", "Who the project behind a dashboard is shared with: everyone, specific people (emails) or private. Anyone with access to the project may read it.", false, false, shareProps)
+	shareSet := map[string]any{}
+	for key, value := range shareProps {
+		shareSet[key] = value
+	}
+	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account that may use the product opens the dashboard, asks and runs its published functions. people: only the emails you list (workflows and Relays; an email with no account is reported back). private: only the owner."}
+	shareSet["emails"] = map[string]any{"type": "array", "maxItems": 200, "items": externalString("Email of an account to share with, for mode people."), "description": "Replaces the people list. Ignored for everyone and private."}
+	add("share_dashboard", "Share the project behind a dashboard (owner only, existing authoring consent). Sharing gives the Ask chat and the project's published functions, as a Run person has today, and nothing more. Nothing is shared until you call this.", true, false, shareSet, "mode")
 	// Replace the old Run-assistant proxy with a native read operation. Keep its call shape.
 	add("get_report_link", "Return a live dashboard URL directly, without starting a Run conversation. document_path defaults to db/reports/index.html; supports Goals and Relays. Requires dashboards:read consent.", false, true, map[string]any{"document_path": externalString("HTML document under db/reports/.")})
 }

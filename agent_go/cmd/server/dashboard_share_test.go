@@ -1,0 +1,45 @@
+package server
+
+import (
+	"testing"
+)
+
+// Sharing opens a product only when its owner says so: RunEveryone gives every
+// account that may use the product reader access, never owner or editor, and a
+// disabled account gets nothing. Without it a stranger has none (no change).
+func TestWorkflowRunEveryoneGivesReaderOnlyWhenTheOwnerSharedIt(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"stranger","username":"stranger"},{"id":"gone","username":"gone","disabled":true}]}`)
+	m := NewWorkflowManifest("Shared run")
+	m.CreatedBy = "owner"
+	m.Access = &WorkflowAccess{Owners: []string{"owner"}}
+	if got := workflowAccessForManifest(&UserClaims{UserID: "stranger"}, m); got != WorkflowAccessNone {
+		t.Fatalf("an unshared workflow must stay closed to a stranger, got %v", got)
+	}
+	m.Access.RunEveryone = true
+	if got := workflowAccessForManifest(&UserClaims{UserID: "stranger"}, m); got != WorkflowAccessRead {
+		t.Fatalf("a workflow shared with everyone is a reader for any account, got %v", got)
+	}
+	if got := workflowAccessForManifest(&UserClaims{UserID: "owner"}, m); got != WorkflowAccessOwner {
+		t.Fatalf("sharing must not demote the owner, got %v", got)
+	}
+	if got := workflowAccessForManifest(&UserClaims{UserID: "gone"}, m); got != WorkflowAccessNone {
+		t.Fatalf("a disabled account gets nothing, got %v", got)
+	}
+}
+
+// 'people' mode reports an email that matches no active account instead of dropping it.
+func TestResolveShareEmailsReportsUnknownEmails(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"u1","username":"ann","email":"ann@example.com"},{"id":"u2","username":"bob","email":"bob@example.com","disabled":true}]}`)
+	dir, err := readUserDirectoryFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	people, unknown := resolveShareEmails(dir, []string{" Ann@Example.com ", "ann@example.com", "bob@example.com", "new@example.com"})
+	if len(people) != 1 || people[0].ID != "u1" {
+		t.Fatalf("only the active account matches, once: %+v", people)
+	}
+	if len(unknown) != 2 || unknown[0] != "bob@example.com" || unknown[1] != "new@example.com" {
+		t.Fatalf("a disabled or missing account must be reported back: %v", unknown)
+	}
+}
