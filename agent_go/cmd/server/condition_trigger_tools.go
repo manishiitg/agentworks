@@ -22,18 +22,18 @@ var conditionConfigMu sync.Mutex
 
 func conditionToolSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-		"action":            map[string]interface{}{"type": "string", "enum": []interface{}{"list", "create", "update", "delete", "history", "check"}},
+		"action":            map[string]interface{}{"type": "string", "enum": []interface{}{"list", "create", "update", "delete", "history", "read_script", "check"}},
 		"id":                map[string]interface{}{"type": "string", "description": "Exact watcher id from list."},
 		"request_id":        map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Create: stable request id, reuse after uncertain transport to recover the same trigger."},
 		"expected_revision": map[string]interface{}{"type": "string", "description": "Update: revision returned by list; stale edits are refused."},
-		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, once (true = first matching event only, then automatically disable after target acceptance; false/default = keep watching), cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message and optional chat_id for this Code agent (omit or main = the main chat; the id of an existing side chat; new = a new chat tab for each event), name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
+		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, script_content (Crew/workflow/Relay: Python source saved in your own watcher folder; Code uses an existing script path), once (true = first matching event only, then automatically disable after target acceptance; false/default = keep watching), cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message and optional chat_id for this Code agent (omit or main = the main chat; the id of an existing side chat; new = a new chat tab for each event), name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
 	}}
 }
 
-const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Code is the first source product. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. Save the script under code/triggers: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
+const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Sources: current Code project, Crew, workflow or Relay. Code agents default to the creating chat; Crew callers use a published function, workflows a saved route/internal trigger, and Relay callers a published Relay function with event payload as INPUT. Non-Code detectors are saved at a server-chosen path in the creator's private watcher folder with script_content, use only creator-selected Vault credentials, and never read target internals or secrets. read_script reads only your own detector for edits. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. For Code save under code/triggers; other products supply script_content: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
 
 func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID, sessionID string) error {
-	if profileID != "code" {
+	if profileID != "code" && profileID != "work" && profileID != "agentworks" && profileID != "relays" {
 		return nil
 	}
 	return reg.RegisterCustomTool("manage_condition_triggers", conditionToolDescription, conditionToolSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -51,7 +51,7 @@ func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, use
 
 func (c *conditionService) source(ctx context.Context, owner, profile, project string) (productScheduleJob, error) {
 	if profile != "code" {
-		return productScheduleJob{}, errors.New("watchers are currently available in Code")
+		return c.productSource(ctx, owner, profile, project)
 	}
 	p, b, m, err := c.s.projectManifest(ctx, owner, profile, project)
 	if err != nil {
@@ -93,7 +93,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		out := []interface{}{}
 		for _, j := range jobs {
-			if j.Profile.ID == profile && j.ProjectID == project && j.Schedule.Condition != nil {
+			if j.Profile.ID == base.Profile.ID && j.ProjectID == base.ProjectID && j.Schedule.Condition != nil {
 				v := conditionView(j.Schedule)
 				v["enabled"] = j.Effective().Enabled
 				if j.Schedule.Condition.Once {
@@ -118,20 +118,48 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 				out = append(out, v)
 			}
 		}
-		return map[string]interface{}{"triggers": out}, nil
+		result := map[string]interface{}{"triggers": out}
+		if base.Profile.ID == "code" {
+			binding, err := resolveProductConversationBinding(ctx, owner, base.Profile, base.ProjectID)
+			if err != nil {
+				return nil, err
+			}
+			chats, err := c.s.api.externalCodeRunChats(ctx, owner, base.ProjectID, binding)
+			if err != nil {
+				return nil, err
+			}
+			names := []map[string]string{}
+			for _, chat := range chats {
+				names = append(names, map[string]string{"id": chat.ID, "name": chat.Name})
+			}
+			result["chats"] = names
+		}
+		if base.WatcherSource != nil {
+			callers, err := c.callersForProduct(ctx, base)
+			if err != nil {
+				return nil, err
+			}
+			result["callers"] = callers
+		}
+		return result, nil
 	}
 	job := base
 	if action != "create" {
 		if id == "" {
 			return nil, errors.New("id is required; list watchers first")
 		}
-		job, err = c.s.Job(ctx, owner, projectScheduleJobID(profile, project, id))
+		job, err = c.s.Job(ctx, owner, projectScheduleJobID(base.Profile.ID, base.ProjectID, id))
 		if err != nil || job.Schedule.Condition == nil {
 			return nil, errors.New("watcher not found")
 		}
 	}
 	switch action {
+	case "read_script":
+		return c.readCallerScript(ctx, job)
 	case "delete":
+		if job.WatcherSource != nil {
+			return map[string]interface{}{"deleted": true}, c.deleteCaller(ctx, job)
+		}
 		if err := c.s.DeleteProjectSchedule(ctx, owner, job.ID()); err != nil {
 			return nil, err
 		}
@@ -185,7 +213,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		for k, v := range trigger {
 			switch k {
-			case "name", "enabled", "once", "cron_expression", "timezone", "script", "secrets", "target":
+			case "name", "enabled", "once", "cron_expression", "timezone", "script", "secrets", "target", "script_content":
 				doc[k] = v
 			default:
 				return nil, fmt.Errorf("unknown watcher setting %q", k)
@@ -203,6 +231,44 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			return nil, err
 		}
 		cfg := fields.Config
+		if action == "create" {
+			requestID, _ := args["request_id"].(string)
+			if strings.TrimSpace(requestID) == "" || len(requestID) > 128 {
+				return nil, errors.New("create needs a stable request_id (1–128 bytes)")
+			}
+			job.Schedule.ID = "cond-" + conditiontrigger.Hash(owner + "\x00" + base.Profile.ID + "\x00" + base.ProjectID + "\x00" + requestID)[:32]
+		}
+		if base.WatcherSource != nil {
+			if cfg.Target.Name == "" {
+				cfg.Target.Name = base.WatcherSource.Path
+			}
+			if cfg.Target.Kind == "" {
+				if base.Profile.ID == "work" || base.Profile.ID == "relays" {
+					cfg.Target.Kind = "function"
+				} else {
+					cfg.Target.Kind = "route"
+				}
+			}
+			if cfg.Target.Kind == "function" && cfg.Target.Function == "" {
+				target, err := c.resolveTarget(ctx, base, cfg.Target.Name)
+				if err != nil {
+					return nil, err
+				}
+				functions, err := callableFunctions(ctx, target)
+				if err != nil {
+					return nil, err
+				}
+				var published []crewFunction
+				for _, fn := range functions {
+					if !isBuiltinConversationalFunction(target, fn) {
+						published = append(published, fn)
+					}
+				}
+				if len(published) == 1 {
+					cfg.Target.Function = published[0].Name
+				}
+			}
+		}
 		// The tool context supplies the originating chat; it cannot select
 		// another project's conversation. An explicit destination always wins.
 		if action == "create" && cfg.Target.Kind == "agent" && cfg.Target.ChatID == "" {
@@ -212,14 +278,17 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 				}
 			}
 		}
-		// Pin saved source before validation. A caller cannot choose a hash to run
-		// content that was never read under the source's ownership check.
+		// Only Code reads its private project's detector. Other adapters
+		// save the caller's supplied Python at a server-chosen path.
+		if base.WatcherSource != nil {
+			cfg.Script = "code/triggers/" + job.Schedule.ID + ".py"
+		}
 		if !strings.HasPrefix(cfg.Script, "code/triggers/") || path.Clean(cfg.Script) != cfg.Script {
 			return nil, errors.New("script must be under code/triggers")
 		}
-		source, found, err := c.s.readFile(ctx, path.Join(base.WorkspacePath, cfg.Script))
-		if err != nil || !found {
-			return nil, errors.New("save the Python script before creating the watcher")
+		source, err := c.callerScript(ctx, job, &cfg, trigger)
+		if err != nil {
+			return nil, err
 		}
 		cfg.SHA256 = conditiontrigger.Hash(source)
 		if err := c.authorize(ctx, base, cfg); err != nil {
@@ -254,7 +323,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			if strings.TrimSpace(requestID) == "" || len(requestID) > 128 {
 				return nil, errors.New("create needs a stable request_id (1–128 bytes)")
 			}
-			schedule.ID = "cond-" + conditiontrigger.Hash(owner + "\x00" + profile + "\x00" + project + "\x00" + requestID)[:32]
+			schedule.ID = "cond-" + conditiontrigger.Hash(owner + "\x00" + base.Profile.ID + "\x00" + base.ProjectID + "\x00" + requestID)[:32]
 		} else {
 			schedule.ID = job.Schedule.ID
 			schedule.CreatedAt = job.Schedule.CreatedAt
@@ -276,7 +345,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			at = next
 		}
 		if action == "create" {
-			if prior, lookupErr := c.s.Job(ctx, owner, projectScheduleJobID(profile, project, schedule.ID)); lookupErr == nil {
+			if prior, lookupErr := c.s.Job(ctx, owner, projectScheduleJobID(base.Profile.ID, base.ProjectID, schedule.ID)); lookupErr == nil {
 				if prior.Schedule.Condition == nil || prior.Schedule.Condition.Revision() != cfg.Revision() || prior.Schedule.Name != schedule.Name || prior.Schedule.CronExpression != schedule.CronExpression || prior.Schedule.Timezone != schedule.Timezone || prior.Schedule.Enabled != schedule.Enabled {
 					return nil, errors.New("request_id already belongs to a different watcher")
 				}
@@ -284,9 +353,23 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			} else if !strings.HasPrefix(lookupErr.Error(), "product schedule ") || !strings.HasSuffix(lookupErr.Error(), "not found for this user") {
 				return nil, lookupErr
 			}
-			job, err = c.s.CreateProjectSchedule(ctx, owner, profile, project, schedule)
+			if base.WatcherSource != nil {
+				if err = c.s.writeFile(ctx, path.Join(job.WorkspacePath, cfg.Script), source); err != nil {
+					return nil, err
+				}
+				job, err = c.saveCaller(ctx, base, schedule)
+			} else {
+				job, err = c.s.CreateProjectSchedule(ctx, owner, profile, project, schedule)
+			}
 		} else {
-			job, err = c.s.UpdateProjectSchedule(ctx, owner, job.ID(), func(s *productschedule.Schedule) { *s = schedule })
+			if job.WatcherSource != nil {
+				if err = c.s.writeFile(ctx, path.Join(job.WorkspacePath, cfg.Script), source); err != nil {
+					return nil, err
+				}
+				job, err = c.saveCaller(ctx, job, schedule)
+			} else {
+				job, err = c.s.UpdateProjectSchedule(ctx, owner, job.ID(), func(s *productschedule.Schedule) { *s = schedule })
+			}
 			if err == nil {
 				err = c.s.updateStateByKey(ctx, owner, scheduleStateKey(job), func(st *productScheduleUserState) { st.Enabled = nil; st.ConsecutiveFailures = 0 })
 			}
@@ -296,7 +379,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		return conditionView(job.Schedule), nil
 	default:
-		return nil, errors.New("action must be list, create, update, delete, history or check")
+		return nil, errors.New("action must be list, create, update, delete, history, read_script or check")
 	}
 }
 
@@ -325,7 +408,14 @@ func (s *ProductScheduleService) conditionHTTP(w http.ResponseWriter, r *http.Re
 			args["action"], args["id"] = "history", id
 		}
 	}
-	out, err := s.conditionService().manage(ctx, claims.UserID, "code", project, args)
+	profile := r.URL.Query().Get("profile_id")
+	if v, ok := args["profile_id"].(string); ok {
+		profile = v
+	}
+	if profile == "" {
+		profile = "code"
+	}
+	out, err := s.conditionService().manage(ctx, claims.UserID, profile, project, args)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return

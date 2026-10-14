@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
+import type { ProductTriggerScope } from './productWebhooks'
 
 export interface ConditionTrigger {
   id: string
@@ -19,6 +20,8 @@ export interface ConditionTrigger {
   last_error?: string
   last_run_at?: string
 }
+export type WatcherScope = ProductTriggerScope
+export type WatcherCaller = { owner_id: string; id: string; name: string; target: ConditionTrigger['target']; enabled: boolean; last_status?: string; last_run_at?: string; last_dispatch_at?: string }
 export interface ConditionHistory {
   pending: number
   events: { event: { id: string; payload: Record<string, unknown> }; status: string; receipt?: string; error?: string; seen_at: string }[]
@@ -29,7 +32,7 @@ function config() {
   return { baseURL: getApiBaseUrl(), headers: token ? { Authorization: `Bearer ${token}` } : {} }
 }
 export const conditionTriggersApi = {
-  list: (projectId: string) => axios.get<{ triggers: ConditionTrigger[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId } }).then(r => r.data),
-  manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string) => axios.post('/api/condition-triggers', { project_id: projectId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
-  history: (projectId: string, id: string) => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId } }).then(r => r.data),
+  list: (projectId: string, profileId = 'code') => axios.get<{ triggers: ConditionTrigger[]; callers?: WatcherCaller[]; chats?: { id: string; name: string }[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
+  manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string, profileId = 'code') => axios.post('/api/condition-triggers', { project_id: projectId, profile_id: profileId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
+  history: (projectId: string, id: string, profileId = 'code') => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
 }

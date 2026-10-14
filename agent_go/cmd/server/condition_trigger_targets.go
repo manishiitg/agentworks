@@ -33,7 +33,7 @@ func (c *conditionService) resolveTarget(ctx context.Context, job productSchedul
 	}
 	needle := strings.ToLower(strings.TrimPrefix(query, "workflow:"))
 	var matches []triggerTarget
-	for _, w := range workflows {
+	for _, w := range filterWorkflowManifestsForUser(&UserClaims{UserID: job.UserID}, workflows) {
 		if w.MyAccess == "" || w.MyAccess == WorkflowAccessNone {
 			continue
 		}
@@ -57,6 +57,18 @@ func (c *conditionService) resolveTarget(ctx context.Context, job productSchedul
 var conditionChatIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func (c *conditionService) validateTarget(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
+	if job.WatcherSource != nil {
+		switch job.Profile.ID {
+		case "work", "relays":
+			if cfg.Target.Kind != "function" {
+				return errors.New("Crew and Relay watchers call a published function")
+			}
+		case "agentworks":
+			if cfg.Target.Kind != "route" && cfg.Target.Kind != "trigger" {
+				return errors.New("workflow watchers attach to a saved route or internal trigger")
+			}
+		}
+	}
 	if cfg.Target.Kind == "agent" {
 		if cfg.Target.Name != "" {
 			return errors.New("Code agent targets stay in this project; use chat_id for its side chats")
@@ -69,6 +81,9 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 	t, err := c.resolveTarget(ctx, job, cfg.Target.Name)
 	if err != nil {
 		return err
+	}
+	if job.WatcherSource != nil && job.Profile.ID == "relays" && (t.Manifest == nil || t.Manifest.Kind != "relay") {
+		return errors.New("a Relay watcher must call a Relay")
 	}
 	switch cfg.Target.Kind {
 	case "function":
@@ -120,8 +135,12 @@ func (c *conditionService) dispatchTarget(ctx context.Context, job productSchedu
 			return "", errors.New("watcher function was removed")
 		}
 		args := map[string]interface{}{}
-		for k, v := range ev.Payload {
-			args[k] = v
+		if job.WatcherSource != nil && job.Profile.ID == "relays" {
+			args["INPUT"] = ev.Payload
+		} else {
+			for k, v := range ev.Payload {
+				args[k] = v
+			}
 		}
 		for k, v := range cfg.Target.Arguments {
 			args[k] = v
@@ -172,7 +191,11 @@ func (c *conditionService) dispatchTarget(ctx context.Context, job productSchedu
 }
 
 func conditionRouteSchedule(job productScheduleJob, cfg conditiontrigger.Config) WorkflowSchedule {
-	return WorkflowSchedule{ID: "condition-" + conditiontrigger.Hash(conditionKey(job)), Name: job.Schedule.Name, Enabled: true, ScheduleType: "webhook", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, GroupNames: cfg.Target.Groups, RouteSelections: cfg.Target.Routes, Webhook: &WorkflowWebhookConfig{InputMode: "raw"}, PulseMode: "off"}
+	stamp := triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}
+	if job.WatcherSource != nil {
+		stamp = triggerCaller{Type: triggerCallerUser, ID: job.UserID}
+	}
+	return WorkflowSchedule{ID: "condition-" + conditiontrigger.Hash(conditionKey(job)), Name: job.Schedule.Name, Enabled: true, ScheduleType: "webhook", Kind: triggerKindInternal, Caller: &stamp, GroupNames: cfg.Target.Groups, RouteSelections: cfg.Target.Routes, Webhook: &WorkflowWebhookConfig{InputMode: "raw"}, PulseMode: "off"}
 }
 
 func (s *SchedulerService) conditionRoute(ctx context.Context, workspacePath, id string, input *WorkflowWebhookDelivery) (*WorkflowSchedule, error) {

@@ -71,3 +71,13 @@ Python Relays have no workflow step targets or route selections. Do not claim pl
 success from source inspection or direct Python execution in a shell. To publish when asked, inspect get_relay_releases then use publish_relay;
 report the returned immutable version/hash. API calls default to the active published
 version or an explicitly selected version while Builder edits remain a draft.
+
+## Watchers
+
+Chat setup and editing stay in Builder mode. Existing Run views stay unchanged; caller attribution follows product access. Configuring a Watcher never edits the shared product.
+
+Use manage_condition_triggers for deterministic Python checks that call a published function of a Relay, defaulting to this Relay. They appear in Automation → Watchers and Ctrl/Cmd+K. Set once=true for a specific condition/event wait: no-match checks continue, the first new event is selected in detector order, its stable submission retries until accepted, then the watcher disables and shows Completed. Omit once for recurring monitoring. Completed waits do not rearm on Enable/edit; create another watcher for a new wait.
+
+The Watcher belongs to its creator. Pass script_content on create/update; the server saves and pins it in that person's own watcher folder. Use read_script before edits. Select only that caller's own/Vault credentials (SECRET_<NAME> in Python), never the target's credentials or files. The script reads prior state JSON from stdin and prints exactly {"events":[{"id":"stable-source-id","payload":{}}],"state":{}}; events=[] means no match. The first event dispatches; other matches in that batch are recorded as not sent for once=true. Use a stable request_id on create, list first and expected_revision on update. Configure five-field cron at least five minutes apart plus timezone. Current access is rechecked; target entry points keep their own execution rules and credentials. A receipt proves accepted delivery, not final success.
+
+A Relay Watcher calls only a published Relay entry (event payload is INPUT). Discover real published functions and choose one if there are several; with one, the tool selects it. Polling is caller work, separate from Relay execution. Do not create a workflow plan or timed Relay run.

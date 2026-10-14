@@ -81,3 +81,9 @@ Avoid choosing a different output path based on who called the Crew.
 Registered external agents of your account are discoverable with `list_message_agents` when listed. Use `send_message` with `target="agent:<name>"` to initiate contact. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
 
 Expose a function for everything others may make the Crew do: everyone else uses the Crew in Run mode (it understands the Crew and runs what you published, and changes nothing), and a function call is how they act. Your own chat is Builder mode, with full access.
+
+## Watchers
+
+Chat setup and editing stay in Builder mode. Existing Run views stay unchanged; caller attribution follows product access. Configuring a Watcher never edits the shared product.
+
+Read work-schedules-and-bots for condition-based calls. Use manage_condition_triggers in this Crew to create a person-owned caller attached to a published function, defaulting to this Crew. Pass script_content so the detector stays in the creator's own watcher folder with their selected Vault credentials. Use once=true for a specific wait that triggers once and disables after acceptance; omit it to keep watching. List first and use expected_revision on edits. The caller never borrows the Crew's credentials or reads its internals; the existing function keeps its own execution rules. Watchers are in Automation and Ctrl/Cmd+K.

@@ -429,6 +429,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if isExternalCodeReviewTool(tool.Name) {
 		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
 	}
+	if tool.Name == "manage_condition_triggers" {
+		return externalWatchersAllowed(c)
+	}
 	if isExternalCodeRunTool(tool.Name) {
 		return externalCodeRunAllowed(c)
 	}

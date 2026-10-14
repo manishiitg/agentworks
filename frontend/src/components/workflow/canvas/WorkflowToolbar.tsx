@@ -37,7 +37,7 @@ import { RELAY_INTEGRATION_SECTION_IDS, WORKFLOW_PANEL_SECTIONS } from '../../..
 function withPanelSections(panels: PanelSwitcherPanel[], relayMode: boolean): PanelSwitcherPanel[] {
   return panels.map(panel => {
     const sections = (WORKFLOW_PANEL_SECTIONS[panel.id] ?? []).filter(section =>
-      !relayMode || (panel.id === 'mcp' ? RELAY_INTEGRATION_SECTION_IDS.has(section.id) : panel.id === 'identity' ? section.id !== 'upgrades' : true))
+      !relayMode || (panel.id === 'mcp' ? RELAY_INTEGRATION_SECTION_IDS.has(section.id) : panel.id === 'identity' ? section.id !== 'upgrades' : panel.id === 'workshop' ? ['triggers', 'conditions', 'chats'].includes(section.id) : true))
     return sections.length ? { ...panel, sections } : panel
   })
 }

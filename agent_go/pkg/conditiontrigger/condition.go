@@ -117,14 +117,15 @@ type Output struct {
 	State  json.RawMessage `json:"state"`
 }
 type Row struct {
-	Event       Event     `json:"event"`
-	Revision    string    `json:"revision"`
-	Status      string    `json:"status"`
-	Receipt     string    `json:"receipt,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	SeenAt      time.Time `json:"seen_at"`
-	AttemptAt   time.Time `json:"attempt_at,omitempty"`
-	NextAttempt time.Time `json:"next_attempt,omitempty"`
+	Event        Event     `json:"event"`
+	Revision     string    `json:"revision"`
+	Status       string    `json:"status"`
+	Receipt      string    `json:"receipt,omitempty"`
+	DispatchedAt time.Time `json:"dispatched_at,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	SeenAt       time.Time `json:"seen_at"`
+	AttemptAt    time.Time `json:"attempt_at,omitempty"`
+	NextAttempt  time.Time `json:"next_attempt,omitempty"`
 }
 type Ledger struct {
 	OnceEventID     string          `json:"once_event_id,omitempty"`
@@ -353,6 +354,7 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 				if dispatchErr == nil {
 					l.Rows[j].Status = "dispatched"
 					l.Rows[j].Receipt = receipt
+					l.Rows[j].DispatchedAt = now
 					l.Rows[j].Error = ""
 					if c.Once {
 						l.OnceCompletedAt = now

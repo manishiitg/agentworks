@@ -34,6 +34,7 @@ chat:
       - publish_relay
       - manage_custom_commands
       - get_llm_config
+      - manage_condition_triggers
       - manage_workflow_webhook
       - call_mcp_tool
       - list_mcp_servers

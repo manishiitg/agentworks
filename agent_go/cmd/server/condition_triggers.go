@@ -67,6 +67,9 @@ func conditionContext(ctx context.Context, job productScheduleJob) context.Conte
 // Source adapters are explicit. Additional product surfaces can reuse Engine;
 // merely writing a condition field never grants an unsupported product access.
 func (c *conditionService) authorize(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
+	if job.WatcherSource != nil {
+		return c.authorizeProductSource(ctx, job, cfg)
+	}
 	if c.s.api == nil || job.Profile.ID != codeproduct.ProfileID || job.ProjectID == "" {
 		return errors.New("watchers are currently available in Code")
 	}
@@ -352,6 +355,9 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 
 func (c *conditionService) caller(job productScheduleJob) triggerLinkCaller {
 	// Code uses the platform's existing project/Crew caller stamp convention.
+	if job.WatcherSource != nil {
+		return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerUser, ID: job.UserID}, Path: job.WorkspacePath, Label: "Watcher: " + job.Schedule.Name}
+	}
 	return triggerLinkCaller{ConditionJob: job.ID(), Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: job.Profile.ID}, Path: job.WorkspacePath, Label: "Condition: " + job.Schedule.Name}
 }
 

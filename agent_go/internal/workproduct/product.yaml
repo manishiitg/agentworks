@@ -43,6 +43,7 @@ profile:
     - models
     - id: schedules
       options: {mode: message_only}
+    - condition-triggers
     - id: triggers
       options: {mode: message_only}
     - id: bots

@@ -674,6 +674,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_condition_triggers" {
+		api.externalWatcherCall(w, r, call.Arguments)
+		return
+	}
 	if isExternalCodeRunTool(tool.Name) {
 		api.externalCodeRunCall(w, r, tool.Name, call.Arguments)
 		return

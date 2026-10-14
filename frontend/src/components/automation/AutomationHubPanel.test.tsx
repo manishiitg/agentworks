@@ -32,7 +32,7 @@ vi.mock('../workflow/WorkflowFunctionsView', () => ({ default: (props: Record<st
   triggersPanelProps.current = props
   return <div data-testid="relay-triggers">Relay API triggers</div>
 } }))
-vi.mock('./ConditionTriggersView', () => ({ default: () => <div data-testid="conditions">Watchers</div> }))
+vi.mock('./ConditionTriggersView', () => ({ default: ({ scope }: { scope: { profileId: string; projectId: string } }) => <div data-testid="conditions" data-source={scope.profileId} data-project={scope.projectId}>Watchers</div> }))
 vi.mock('./CrewFunctionsView', () => ({ default: () => <div data-testid="functions">Function content</div> }))
 vi.mock('./TriggerDeliveryHistoryPanel', () => ({ TriggerDeliveryHistoryPanel: () => <div data-testid="delivery-history" /> }))
 const { askAIProps } = vi.hoisted(() => ({ askAIProps: { current: null as null | Record<string, unknown> } }))
@@ -111,19 +111,19 @@ describe('AutomationHubPanel', () => {
       expect(panel?.className).toContain('flex-1')
       expect(panel?.className).toContain('min-w-0')
       const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Automation center"] [role="tab"]'))
-      expect(tabs.map(tab => tab.textContent)).toEqual(['Schedules', 'Webhooks', 'Functions', 'Bots', 'Chats'])
+      expect(tabs.map(tab => tab.textContent)).toEqual(['Schedules', 'Webhooks', 'Watchers', 'Functions', 'Bots', 'Chats'])
       expect(host.querySelector('[data-testid="schedules"]')?.getAttribute('data-hide-header')).toBe('true')
 
-      await act(async () => { tabs[4]!.click(); await Promise.resolve() })
+      await act(async () => { tabs.find(tab => tab.textContent === 'Chats')!.click(); await Promise.resolve() })
       expect(host.querySelector('[data-testid="chats"]')).not.toBeNull()
-      await act(async () => { tabs[0]!.click(); await Promise.resolve() })
+      await act(async () => { tabs.find(tab => tab.textContent === 'Schedules')!.click(); await Promise.resolve() })
       expect(host.querySelector('[data-testid="schedules"]')?.getAttribute('data-hide-header')).toBe('true')
-      await act(async () => { tabs[1]!.click(); await Promise.resolve() })
+      await act(async () => { tabs.find(tab => tab.textContent === 'Webhooks')!.click(); await Promise.resolve() })
       expect(host.querySelector('[data-testid="triggers"]')).not.toBeNull()
-      await act(async () => { tabs[2]!.click(); await Promise.resolve() })
+      await act(async () => { tabs.find(tab => tab.textContent === 'Functions')!.click(); await Promise.resolve() })
       expect(host.querySelector('[data-testid="functions"]')).not.toBeNull()
       expect(openWorkspaceView).toHaveBeenLastCalledWith('workshop', 'functions')
-      await act(async () => { tabs[3]!.click(); await Promise.resolve() })
+      await act(async () => { tabs.find(tab => tab.textContent === 'Bots')!.click(); await Promise.resolve() })
       expect(host.querySelector('[data-testid="bots"]')).not.toBeNull()
       expect(openWorkspaceView).toHaveBeenLastCalledWith('workshop', 'bots')
     } finally {
@@ -133,12 +133,23 @@ describe('AutomationHubPanel', () => {
   })
 })
 
-describe('Code Watchers section', () => {
-  it('opens Watchers beside the existing automation tabs', async () => {
+describe('Watchers source routing', () => {
+  it('opens the Watchers tab in each product with its own source scope', async () => {
     const host = document.createElement('div'); const root = createRoot(host)
-    await act(async () => root.render(<AutomationHubPanel entityType="product" workspacePath="Chats/Code/projects/app" productTriggerScope={{ profileId: 'code', projectId: 'app' }} initialSection="conditions" />))
-    try { expect(host.querySelector('[data-testid="conditions"]')).not.toBeNull(); expect(host.querySelector('[aria-label="Automation center"]')?.textContent).toContain('Watchers') }
-    finally { await act(async () => root.unmount()) }
+    const cases = [
+      { entityType: 'product' as const, productTriggerScope: { profileId: 'code', projectId: 'app' }, expected: 'code' },
+      { entityType: 'product' as const, productTriggerScope: { profileId: 'work', projectId: 'app' }, expected: 'work' },
+      { entityType: 'workflow' as const, workflowScope: { workflowId: 'app' }, expected: 'agentworks' },
+      { entityType: 'workflow' as const, workflowScope: { workflowId: 'app' }, relayMode: true, expected: 'relays' },
+    ]
+    try {
+      for (const { expected, ...props } of cases) {
+        await act(async () => root.render(<AutomationHubPanel {...props} workspacePath="Workflow/app" initialSection="conditions" />))
+        expect(host.querySelector('[data-testid="conditions"]')?.getAttribute('data-source')).toBe(expected)
+        expect(host.querySelector('[data-testid="conditions"]')?.getAttribute('data-project')).toBe('app')
+        expect(host.querySelector('[aria-label="Automation center"]')?.textContent).toContain('Watchers')
+      }
+    } finally { await act(async () => root.unmount()) }
   })
 })
 
@@ -170,7 +181,7 @@ describe('AutomationHubPanel Ask AI', () => {
     const { host, unmount } = await mountHub({ entityType: 'workflow', relayMode: true, canManage: false, initialSection: 'schedules', chatContent: <div>Chats</div>, workflowScope: { workspacePath: 'Workflow/one' } })
     try {
       const tabs = Array.from(host.querySelectorAll('[aria-label="Automation center"] [role="tab"]'))
-      expect(tabs.map(tab => tab.textContent)).toEqual(['Triggers', 'Chats'])
+      expect(tabs.map(tab => tab.textContent)).toEqual(['Triggers', 'Watchers', 'Chats'])
       expect(host.querySelector('[data-testid="relay-triggers"]')).not.toBeNull()
       expect(host.querySelector('[data-testid="schedules"]')).toBeNull()
       expect(host.querySelector('button[aria-label="Refresh schedules"]')).toBeNull()

@@ -65,6 +65,7 @@ func isolatedForRunDestination(value string) (bool, error) {
 
 // productScheduleUserState is one user's bookkeeping for one schedule.
 type productScheduleUserState struct {
+	Watcher *conditionCallerDefinition `json:"watcher,omitempty"`
 	// Enabled overrides the product's default when set.
 	Enabled *bool `json:"enabled,omitempty"`
 	// CadenceHours overrides a cadence schedule's interval for this person (for example Organize Brain every 72h
@@ -90,6 +91,7 @@ type productScheduleUserState struct {
 
 // productScheduleJob is one (profile, schedule, user) triple.
 type productScheduleJob struct {
+	WatcherSource     *conditionSource
 	UserID            string
 	GuestCallerID     string // a non-owner's call: the turn runs as their guest
 	RunAsOwner        bool   // a typed function: the turn keeps the owner's authority although another person called
@@ -489,6 +491,14 @@ func (s *ProductScheduleService) JobsForUser(ctx context.Context, userID string)
 		}
 		jobs = append(jobs, projectJobs...)
 	}
+	if states == nil {
+		var err error
+		states, err = s.loadState(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	jobs = append(jobs, conditionCallerJobs(userID, states)...)
 	return jobs, nil
 }
 
@@ -856,6 +866,9 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 	}
 
 	users := map[string]struct{}{}
+	for _, owner := range conditionCallerOwners() {
+		users[owner] = struct{}{}
+	}
 	profiles := append(s.profilesWithSchedules(), s.profilesWithProjectSchedules()...)
 	for _, profile := range profiles {
 		for _, userID := range s.users(productAccessName(profile)) {

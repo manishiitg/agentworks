@@ -12,6 +12,14 @@ the rule applies to Crews.
 Why: people use a Crew through its chat and dashboards; its files and memory are the
 owner's working material.
 
+## 2026-10-14 — Watchers across products keep detectors with their creator (PLAT-861)
+
+Crew, workflow and Relay adapters reuse the same condition engine and per-person product schedule state. Defaults attach to the current product; Code agent messages return to the creating chat. Crew callers select a published function, workflows a saved route/internal trigger, and Relay callers a published Relay entry with event payload as INPUT. Non-Code detector code is supplied as script_content and saved/pinned at a server-chosen path in the creator's own watcher folder. The caller selects their own/Vault credentials and never executes detection in a target workspace or borrows target secrets. Existing entry points enforce current access and execution rules and attribute costs to the caller. Product Automation shows caller attribution without exposing another person's detector or cursor. Chat setup/editing stays in Builder mode by owner decision; Run users can inspect attribution. Website and MCP share management; once=true and recurring use the same durable lifecycle.
+
+Why: each product can be watched through its existing shared entry points while polling remains person-owned work.
+
+Ticket: [PLAT-861](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/goals/workflow/plat-861.md), issue 861-210.
+
 ## 2026-10-14 — One-time Watchers complete after accepted delivery (PLAT-861)
 
 Set `once: true` to wait for the first new matching event in detector order. Persist that selection with the event ledger, stop further detector calls, and retry the same submission until target acceptance. Persist completion with the receipt, then disable the schedule. Other matches in that batch stay visible as not sent. The exact accepted agent message may enter its turn after automatic completion; current source and target access checks still apply. A manual pause before acceptance holds delivery. Completion survives restart and does not automatically rearm on Enable or edit; another one-time wait gets a new watcher. Existing watchers remain recurring by default. Code agent destinations default to the creating chat in the current project.

@@ -98,9 +98,9 @@ product's files or internals directly.
   published Relay functions; Slack and WhatsApp connectors; dashboard Ask for
   Crew, workflow and Relay dashboards and shared links; the Run-mode ask
   checking functions first; agent-to-agent messages.
-- Available in Code: Watchers, person-owned Python checks that start a Code
-  agent or call an authorized function, workflow route or internal trigger
-  without a model turn for the check. Crew and workflow sources follow.
+- Available in Code, Crew, workflows and Relays: Watchers, person-owned Python
+  checks that call the current product's existing entry point without a model
+  turn for detection. One time disables after acceptance; Keep watching continues.
 - Planned: Gmail as a channel, with every shared agent getting its own inbox;
   Ask on Code dashboards; per-product schedules, webhooks and Slack wiring
   converging on the shared entry points.
@@ -108,3 +108,5 @@ product's files or internals directly.
 Related: [functions and calling](functions_and_calling.md),
 [communication protocols](../communication-protocols.md),
 [channel connectors](../channel-connectors.md).
+
+Watchers support One time (wait for a first matching event, dispatch and automatically disable after acceptance) and Keep watching. Attach them to the current product by default: Code creating chat, Crew published function, workflow saved route/trigger, Relay published entry. Non-Code detector source and selected credentials belong to the caller, with creator-owned storage and current Vault grants. Website and MCP use manage_condition_triggers; shared product Automation lists caller attribution.

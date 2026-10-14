@@ -388,8 +388,8 @@ it.each(['mcp-gateway', 'code'])('rejects a stale %s shortcut after local opt-in
 
 
 it('finds the Code Watchers tab and opens Automation on that section', async () => {
-  expect(workPanelSections('schedules', false).some(section => section.id === 'conditions')).toBe(false)
-  expect(WORKFLOW_PANEL_SECTIONS.workshop?.some(section => section.id === 'conditions')).toBe(false)
+  expect(workPanelSections('schedules', false).some(section => section.id === 'conditions')).toBe(true)
+  expect(WORKFLOW_PANEL_SECTIONS.workshop?.some(section => section.id === 'conditions')).toBe(true)
   const open = vi.fn()
   const { host, onClose } = await renderNavigation('watchers', ['code'], false, () => {
     useProductSurfaceStore.setState({ productSurface: 'code' })

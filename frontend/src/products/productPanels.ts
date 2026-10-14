@@ -88,14 +88,11 @@ export const WORK_IDENTITY_SECTIONS: PanelSection[] = [
 export const AUTOMATION_SECTIONS: PanelSection[] = [
   { id: 'schedules', label: 'Schedules', keywords: 'cron schedule timer' },
   { id: 'triggers', label: 'Webhooks', keywords: 'webhook trigger' },
+  { id: 'conditions', label: 'Watchers', keywords: 'watch watcher monitor python script condition ticket event once' },
   { id: 'functions', label: 'Functions', keywords: 'function api' },
   { id: 'bots', label: 'Bots', keywords: 'slack whatsapp bot' },
   { id: 'chats', label: 'Chats', keywords: 'chat conversation' },
 ]
-/** Watchers currently have a Code source; other products keep their existing tabs. */
-export const CODE_AUTOMATION_SECTIONS: PanelSection[] = AUTOMATION_SECTIONS.flatMap(section => section.id === 'triggers'
-  ? [section, { id: 'conditions', label: 'Watchers', keywords: 'watch watcher monitor python script condition triggers notion gmail' }]
-  : [section])
 export const KNOWLEDGE_SECTIONS: PanelSection[] = [
   { id: 'learnings', label: 'Learnings', keywords: 'skills learnings' },
   { id: 'knowledgebase', label: 'Knowledgebase', keywords: 'notes kb' },
@@ -127,6 +124,6 @@ export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { p
 
 /** The same admitted tabs are registered by the toolbar and searched by Ctrl+K. */
 export function workPanelSections(panelId: string, isCode: boolean): PanelSection[] {
-  const sections = isCode && panelId === 'schedules' ? CODE_AUTOMATION_SECTIONS : WORK_PANEL_SECTIONS[panelId] ?? []
+  const sections = WORK_PANEL_SECTIONS[panelId] ?? []
   return sections.filter(section => !(isCode && panelId === 'mcp' && section.id === 'cli') && !(!isCode && panelId === 'identity' && section.id === 'location'))
 }

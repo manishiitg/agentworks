@@ -22,15 +22,14 @@ import (
 // person's own device (Local mode) is refused: its turns belong to that device. Every ask is logged.
 
 var externalCodeRunTools = map[string]bool{
-	"manage_condition_triggers": true,
-	"list_my_code_projects":     true,
-	"list_my_code_chats":        true,
-	"ask_my_code":               true,
-	"get_my_code_state":         true,
-	"open_my_code_chat":         true,
-	"close_my_code_chat":        true,
-	"stop_my_code_chat":         true,
-	"rename_my_code_chat":       true,
+	"list_my_code_projects": true,
+	"list_my_code_chats":    true,
+	"ask_my_code":           true,
+	"get_my_code_state":     true,
+	"open_my_code_chat":     true,
+	"close_my_code_chat":    true,
+	"stop_my_code_chat":     true,
+	"rename_my_code_chat":   true,
 }
 
 func isExternalCodeRunTool(name string) bool { return externalCodeRunTools[name] }
@@ -44,9 +43,7 @@ func externalCodeRunAllowed(c *UserClaims) bool {
 }
 
 func externalCodeRunDefinitions(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
-	props := conditionToolSchema()["properties"].(map[string]interface{})
-	props["project_id"] = externalString("Your own Code project id; Code is the first condition-trigger source.")
-	add("manage_condition_triggers", conditionToolDescription, true, false, props, "project_id", "action")
+	externalWatcherDefinitions(add)
 	const suffix = " Your own Code projects only. Requires code:run."
 	project := map[string]any{"project_id": externalString("Code project ID from code action=projects.")}
 	add("list_my_code_projects", "List your own Code projects: id, title, last update."+suffix, false, false, nil)
@@ -154,19 +151,6 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 	binding, projectID, ok := api.externalCodeRunOwnProject(ctx, claims.UserID, str("project_id"))
 	if !ok {
 		externalError(w, http.StatusNotFound, "not_found", "No Code project of yours with that project_id; see code action=projects.")
-		return
-	}
-	if name == "manage_condition_triggers" {
-		if api.productSchedules == nil {
-			externalError(w, 503, "conditions_unavailable", "Watchers unavailable")
-			return
-		}
-		out, err := api.productSchedules.conditionService().manage(internalBotRequestContext(ctx, claims.UserID), claims.UserID, "code", projectID, args)
-		if err != nil {
-			externalError(w, 400, "condition_rejected", err.Error())
-			return
-		}
-		externalJSON(w, out)
 		return
 	}
 	chats, err := api.externalCodeRunChats(ctx, claims.UserID, projectID, binding)

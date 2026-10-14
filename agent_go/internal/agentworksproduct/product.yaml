@@ -353,6 +353,7 @@ chat:
       - list_provider_models
       - list_published_llms
       - manage_crew_attachment
+      - manage_condition_triggers
       - manage_crew_trigger
       - merge_pulse_issues
       - mutate_workflow_db

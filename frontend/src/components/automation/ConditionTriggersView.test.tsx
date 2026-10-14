@@ -18,9 +18,9 @@ describe('ConditionTriggersView', () => {
       expect(host.textContent).toContain('Tagged tickets'); expect(host.textContent).toContain('process_ticket')
       const find = (label: string) => Array.from(host.querySelectorAll('button')).find(b => b.textContent === label)!
       await act(async () => { find('History').click(); await Promise.resolve() })
-      expect(api.history).toHaveBeenCalledWith('project-a', 'c1'); expect(host.textContent).toContain('ticket-123'); expect(host.textContent).toContain('fn-123')
+      expect(api.history).toHaveBeenCalledWith('project-a', 'c1', 'code'); expect(host.textContent).toContain('ticket-123'); expect(host.textContent).toContain('fn-123')
       await act(async () => { find('Check now').click(); await Promise.resolve() })
-      expect(api.manage).toHaveBeenCalledWith('project-a', 'check', 'c1', undefined, undefined)
+      expect(api.manage).toHaveBeenCalledWith('project-a', 'check', 'c1', undefined, undefined, 'code')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
@@ -47,9 +47,9 @@ describe('ConditionTriggersView', () => {
       expect(select.value).toBe('373a2ae1')
       expect(Array.from(select.options).map(option => option.value)).toEqual(['main', '373a2ae1', 'new'])
       await act(async () => { select.value = 'new'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
-      expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: 'new' } }, 'r1')
+      expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: 'new' } }, 'r1', 'code')
       await act(async () => { select.value = 'main'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
-      expect(api.manage).toHaveBeenLastCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: '' } }, 'r1')
+      expect(api.manage).toHaveBeenLastCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: '' } }, 'r1', 'code')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('saves One time with the current revision and shows completed waits without Enable', async () => {
@@ -61,9 +61,36 @@ describe('ConditionTriggersView', () => {
     try {
       const select = host.querySelector('select[aria-label="Mode for One ticket"]') as HTMLSelectElement
       await act(async () => { select.value = 'once'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
-      expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { once: true }, 'r1')
+      expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { once: true }, 'r1', 'code')
       expect(host.textContent).toContain('Completed')
       expect(Array.from(host.querySelectorAll('button')).some(b => b.textContent === 'Enable')).toBe(false)
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
+  it('uses the Relay source for listing and creation guidance', async () => {
+    api.list.mockResolvedValue({ triggers: [], callers: [{ owner_id: 'person', id: 'w1', name: 'Ticket ready', enabled: true, target: { kind: 'function', name: 'Relay', function: 'process' }, last_dispatch_at: '2026-10-14T00:00:00Z' }] })
+    const onAsk = vi.fn().mockResolvedValue(undefined)
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'relays', projectId: 'relay-a' }} onAsk={onAsk} />))
+    try {
+      expect(api.list).toHaveBeenCalledWith('relay-a', 'relays')
+      expect(host.textContent).toContain('Watchers calling this product')
+      expect(host.textContent).toContain('person')
+      await act(async () => { Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Add in chat')!.click(); await Promise.resolve() })
+      expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('defaulting to this Relay'))
+      expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('script_content'))
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
+  it('shows a saved destination tab name even when the tab is not open', async () => {
+    api.list.mockResolvedValue({ triggers: [{ id: 'c1', name: 'One ticket', enabled: false, script: 'code/triggers/check.py', cron_expression: '*/5 * * * *', timezone: 'UTC', target: { kind: 'agent', chat_id: 'ticket-chat' } }], chats: [{ id: 'ticket-chat', name: 'Ticket review' }] })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
+    try {
+      expect(host.textContent).toContain('Code agent · Ticket review')
+      const select = host.querySelector('select[aria-label="Chat for One ticket"]') as HTMLSelectElement
+      expect(select.selectedOptions[0]?.textContent).toBe('Ticket review')
+      expect(select.value).toBe('ticket-chat')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 

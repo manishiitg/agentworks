@@ -35,7 +35,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return fmt.Errorf("invalid project manifest")
 	}
 	projectID := manifest.ID
-	if !readOnly && profileID == "code" {
+	if !readOnly && (profileID == "code" || profileID == "work") {
 		if err := api.registerConditionTools(registrar, userID, profileID, projectID, sessionID); err != nil {
 			return err
 		}
