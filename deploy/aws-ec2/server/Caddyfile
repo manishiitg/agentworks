@@ -7,6 +7,19 @@
     servers {
         protocols h1 h2
     }
+
+    # The browser puts its sign-in token in the URL of event-stream and
+    # websocket requests; keep it out of the logs.
+    log {
+        format filter {
+            wrap console
+            fields {
+                request>uri query {
+                    replace token REDACTED
+                }
+            }
+        }
+    }
 }
 
 __DOMAIN__ {

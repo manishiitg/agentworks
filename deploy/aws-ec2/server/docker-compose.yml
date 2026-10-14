@@ -4,6 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile.caddy
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "50m", max-file: "3"}
     ports: ["80:8080", "443:8443"]
     user: "10001:10001"
     extra_hosts: ["host.docker.internal:host-gateway"]
