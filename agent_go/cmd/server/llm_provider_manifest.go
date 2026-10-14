@@ -293,6 +293,30 @@ func providerModelIDs(provider string) []string {
 	return ids
 }
 
+// fallbackProviderModelIDs lists a coding-agent provider's own models when
+// the metadata registry has none: Claude Code's capability list first, then
+// the distinct tier-default model ids every coding provider publishes.
+func fallbackProviderModelIDs(provider string) []string {
+	if provider == "claude-code" {
+		if ids := claudeCodeCapabilityModels(); len(ids) > 0 {
+			return ids
+		}
+	}
+	defaults, ok := llm.GetCodingAgentDefaultTierModels(llm.Provider(provider))
+	if !ok {
+		return nil
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, ref := range []llm.CodingAgentTierModelRef{defaults.Builder, defaults.High, defaults.Medium, defaults.Low, defaults.Pulse} {
+		if id := strings.TrimSpace(ref.ModelID); id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func claudeCodeCapabilityModels() []string {
 	ids := providerModelIDs("claude-code")
 	if len(ids) == 0 {
@@ -462,11 +486,11 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 	// Fixed tier / API — return from metadata registry plus coding-agent model metadata.
 	allMetadata := allProviderModelMetadata()
 	models := make([]dynamicModelEntry, 0)
+	defaultModel := llm.GetDefaultModel(llm.Provider(provider))
 	for _, m := range allMetadata {
 		if m == nil || m.Provider != provider {
 			continue
 		}
-		defaultModel := llm.GetDefaultModel(llm.Provider(provider))
 		models = append(models, dynamicModelEntry{
 			ModelID:       m.ModelID,
 			ModelName:     m.ModelName,
@@ -475,6 +499,14 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 			CostInput:     m.InputCostPer1MTokens,
 			CostOutput:    m.OutputCostPer1MTokens,
 		})
+	}
+	if len(models) == 0 {
+		// A local CLI provider whose metadata registry has no rows would
+		// otherwise offer an empty Models list; fall back to the models the
+		// CLI itself runs (capability list, then tier defaults).
+		for _, id := range fallbackProviderModelIDs(provider) {
+			models = append(models, dynamicModelEntry{ModelID: id, ModelName: id, IsDefault: id == defaultModel})
+		}
 	}
 
 	resp := &dynamicModelsResponse{

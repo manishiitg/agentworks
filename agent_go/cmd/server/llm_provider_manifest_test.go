@@ -419,3 +419,22 @@ func TestDynamicModelGroupsPreservesFirstSeenOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestFallbackProviderModelIDsOffersLocalCLIModels(t *testing.T) {
+	ids := fallbackProviderModelIDs("claude-code")
+	if len(ids) == 0 {
+		t.Fatal("claude-code fallback models are empty")
+	}
+	found := false
+	for _, id := range ids {
+		if id == "claude-sonnet-5-5" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("claude-code fallback models = %v, want claude-sonnet-5-5 among them", ids)
+	}
+	if got := fallbackProviderModelIDs("no-such-provider"); len(got) != 0 {
+		t.Fatalf("unknown provider fallback = %v, want empty", got)
+	}
+}
