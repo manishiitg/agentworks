@@ -1,5 +1,18 @@
 # Decisions and open issues
 
+## 2026-10-14 — People a workflow is shared with may run its published functions (PLAT-750)
+
+Anyone a workflow is shared with (owner, editor or Run person) may run its published functions, from a
+dashboard button, MCP or the API, as the signed-in person. This is the rule Relays already used. A function's
+`allowed_callers` list keeps narrowing callers that are not people (another workflow, a Crew); a person entry in
+it no longer restricts. The function list reports `can_call` from the server, and the call is rechecked when it
+runs.
+
+Why: sharing a product is sharing what it publishes. A per-function list of people meant a dashboard shown to
+someone showed buttons that failed, and each owner had to keep two lists in step.
+
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/dashboards/plat-750.md).
+
 ## 2026-10-14 — A retained (live-input) coding-CLI turn ends its stream when it completes (PLAT-856-96)
 
 A turn typed into a running coding-CLI terminal streamed its progress but only emitted a completion, so its stream was

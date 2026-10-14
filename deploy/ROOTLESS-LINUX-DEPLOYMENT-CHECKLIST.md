@@ -225,6 +225,35 @@ curl -sS -H "Accept-Encoding: gzip" -D - -o /dev/null \
 Applies to this doc's rootless pattern only — the legacy Docker-Caddy
 deployment configures compression separately in its own Caddyfile.
 
+
+### 5b. Caddy keeps the sign-in token out of its logs
+
+The browser puts its sign-in token in the URL of event-stream and websocket
+requests (`...?token=<JWT>`, valid 7 days). Caddy writes request URLs into its
+error and access logs, so a default setup stores live tokens. In the global
+options block at the top of the Caddyfile:
+
+```
+{
+    log {
+        format filter {
+            wrap console
+            fields {
+                request>uri query {
+                    replace token REDACTED
+                }
+            }
+        }
+    }
+}
+```
+
+If Caddy runs in Docker, also cap its log (`logging: {driver: json-file,
+options: {max-size: "50m", max-file: "3"}}`). With `caddy run --resume`, apply
+the change with `caddy reload`; a restart alone keeps the saved config. Check:
+request `/x?token=eyJtest`, then confirm the log shows `token=REDACTED` and no
+`eyJtest`.
+
 ### 6. The mount-namespace Landlock fallback actually works
 
 Landlock's rule model is purely additive (no allow-with-carve-out), so it
