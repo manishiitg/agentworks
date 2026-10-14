@@ -227,6 +227,53 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 // against the scope-filtered catalog, call_tool runs through the REST
 // external dispatcher so results can never drift from the REST surface.
 func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, name string, allowed []externalTool, request mcp.CallToolRequest) *mcp.CallToolResult {
+	result := api.externalMCPDispatch(ctx, r, name, allowed, request)
+	logfWithContext(api.httpRequestLogContext(r), "%s", externalMCPCallLogLine(name, request.GetArguments(), result))
+	return result
+}
+
+// externalMCPCallLogLine is the one log line of an outside MCP tool call: the
+// tool, the outcome and, when it failed, the error code and message. Never the
+// arguments or any value in them (a refused secret write must not leave the
+// secret in the log); only the top-level action name of a merged tool.
+func externalMCPCallLogLine(name string, args map[string]any, result *mcp.CallToolResult) string {
+	target := name
+	action := ""
+	if name == externalMCPToolCall {
+		target, _ = args["name"].(string)
+		if inner, ok := args["arguments"].(map[string]any); ok {
+			action, _ = inner["action"].(string)
+		}
+	}
+	clip := func(value string, limit int) string {
+		value = strings.Join(strings.Fields(value), " ")
+		if len(value) > limit {
+			value = value[:limit] + "…"
+		}
+		return value
+	}
+	line := fmt.Sprintf("[EXTERNAL_MCP] call=%s tool=%s", name, clip(target, 80))
+	if action != "" {
+		line += " action=" + clip(action, 40)
+	}
+	if result == nil || !result.IsError {
+		return line + " outcome=ok"
+	}
+	text := ""
+	for _, content := range result.Content {
+		if part, ok := content.(mcp.TextContent); ok {
+			text = part.Text
+			break
+		}
+	}
+	code, message := "error", text
+	if i := strings.Index(text, ": "); i > 0 && i <= 40 && !strings.ContainsAny(text[:i], " \t") {
+		code, message = text[:i], text[i+2:]
+	}
+	return fmt.Sprintf("%s outcome=refused code=%s error=%q", line, clip(code, 40), clip(message, 240))
+}
+
+func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Request, name string, allowed []externalTool, request mcp.CallToolRequest) *mcp.CallToolResult {
 	args := request.GetArguments()
 	if args == nil {
 		args = map[string]any{}

@@ -380,3 +380,25 @@ func TestExternalMCPSearchToolsFindsByKeywordAndPages(t *testing.T) {
 		t.Fatal("a limit above 20 must be refused")
 	}
 }
+
+// One log line per outside tool call: tool, outcome, error code and message,
+// never the arguments (a refused secret write must not leave its value in the log).
+func TestExternalMCPCallLogLineNamesToolAndOutcomeButNoArguments(t *testing.T) {
+	args := map[string]any{"name": "settings", "arguments": map[string]any{"action": "update", "secrets": map[string]any{"set": map[string]any{"API_KEY": "s3cr3t-value-123"}}}}
+	refused := mcp.NewToolResultError("forbidden: Only an owner can set or remove secret values.")
+	line := externalMCPCallLogLine("call_tool", args, refused)
+	for _, want := range []string{"[EXTERNAL_MCP]", "call=call_tool", "tool=settings", "action=update", "outcome=refused", "code=forbidden", "Only an owner can set or remove secret values."} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("log line %q misses %q", line, want)
+		}
+	}
+	if strings.Contains(line, "s3cr3t-value-123") || strings.Contains(line, "API_KEY") {
+		t.Fatalf("log line carries argument values: %q", line)
+	}
+	if ok := externalMCPCallLogLine("call_tool", args, mcp.NewToolResultText("done")); !strings.Contains(ok, "outcome=ok") || strings.Contains(ok, "error=") {
+		t.Fatalf("success line = %q", ok)
+	}
+	if spec := externalMCPCallLogLine("get_api_spec", map[string]any{}, mcp.NewToolResultText("x")); !strings.Contains(spec, "call=get_api_spec tool=get_api_spec") {
+		t.Fatalf("spec line = %q", spec)
+	}
+}
