@@ -36,7 +36,7 @@ export function installDashboardActionButtons(frame: HTMLIFrameElement, options:
     const name = (button.getAttribute(ACTION_BUTTON_ATTR) || '').trim()
     if (!name || name.length > 128) return
     event.preventDefault()
-    options.open({ name, label: (button.textContent || name).trim().slice(0, 120) || name, defaults: parseDefaults(button.getAttribute(ACTION_DEFAULTS_ATTR)) })
+    options.open({ name, label: (button.getAttribute('aria-label') || button.getAttribute('data-report-action-label') || button.firstChild?.textContent || button.textContent || name).trim().slice(0, 120) || name, defaults: parseDefaults(button.getAttribute(ACTION_DEFAULTS_ATTR)) })
   }
   const mutation = new MutationObserver(mark)
   mutation.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: [ACTION_BUTTON_ATTR] })

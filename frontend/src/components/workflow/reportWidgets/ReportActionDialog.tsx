@@ -6,7 +6,7 @@ import ModalPortal from '../../ui/ModalPortal'
 import { actionArgs, buildActionFields, type ActionField } from './reportActionForm'
 import type { ActionRequest } from './reportActionButtons'
 
-type FunctionInfo = { name: string; description?: string; input_schema?: unknown }
+type FunctionInfo = { name: string; description?: string; input_schema?: unknown; can_call?: boolean }
 type CallState = { status?: string; call_id?: string; answer?: unknown; result?: unknown; error?: unknown; pending_inputs?: unknown[] }
 
 const text = (value: unknown): string => typeof value === 'string' ? value : value === undefined || value === null ? '' : JSON.stringify(value, null, 2)
@@ -83,7 +83,8 @@ export function ReportActionDialog({ resourceId, request, theme, onClose }: { re
       </header>
       {loadError ? <p role="alert" className="text-sm text-destructive">{loadError}</p> : !info ? <p role="status" className="text-sm">Loading…</p> : <>
         {info.description && <p className="mb-3 whitespace-pre-wrap text-sm text-muted-foreground">{info.description}</p>}
-        {!call && <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit() }}>
+        {info.can_call === false && <><p role="alert" className="text-sm text-destructive">You are not on this function's list of people who can run it. Ask the owner of this project to add you.</p><div className="mt-3 flex justify-end"><button type="button" className="rounded-md border border-border px-3 py-1 text-sm" onClick={onClose}>Close</button></div></>}
+        {info.can_call !== false && !call && <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit() }}>
           {fields.map(field => <label key={field.name} className="block text-sm">
             <span className="font-medium">{field.label}{field.required && <span aria-hidden="true"> *</span>}</span>
             {field.description && <span className="block text-xs text-muted-foreground">{field.description}</span>}
@@ -104,7 +105,7 @@ export function ReportActionDialog({ resourceId, request, theme, onClose }: { re
             <button type="submit" disabled={running} className="rounded-md bg-primary px-3 py-1 text-sm text-primary-foreground disabled:opacity-60">Run</button>
           </div>
         </form>}
-        {call && <div className="space-y-2 text-sm" data-testid="report-action-result">
+        {info.can_call !== false && call && <div className="space-y-2 text-sm" data-testid="report-action-result">
           <p role="status" className="text-xs text-muted-foreground">{statusLine}{call.call_id ? ` · call ${call.call_id}` : ''}</p>
           {text(call.error) && <p role="alert" className="whitespace-pre-wrap text-destructive">{text(call.error)}</p>}
           {shown && <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border p-2 text-xs">{shown}</pre>}

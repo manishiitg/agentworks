@@ -29,7 +29,14 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		functions := workflowFunctions(manifest)
 		listed := make([]map[string]any, 0, len(functions))
 		for _, fn := range functions {
-			listed = append(listed, map[string]any{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema})
+			// can_call lets a screen say "not on this function's list" before a
+			// run is tried; call_workflow_function still decides.
+			canCall := true
+			if manifest.Kind != "relay" {
+				schedule, err := findWorkflowFunctionTrigger(manifest, fn.Name)
+				canCall = err == nil && workflowFunctionCallerAllowed(schedule.Function, externalCrewCaller(claims).Stamp)
+			}
+			listed = append(listed, map[string]any{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema, "can_call": canCall})
 		}
 		externalJSON(w, map[string]any{"workflow_id": manifest.ID, "functions": listed})
 	case "get_workflow_function_call", "reply_workflow_function_call":
