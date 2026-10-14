@@ -136,3 +136,33 @@ func TestStructuredCompletionPreservesLegitimateRepeatedRepliesAcrossTurns(t *te
 		t.Fatalf("legitimate repeated reply was collapsed: %+v", persisted.ConversationHistory)
 	}
 }
+
+// A Code or Work project chat keeps its transcript inside the project and the server does not know its workspace
+// folder (a restart empties every in-memory map); the reply to a live input must still be saved, found through the
+// chat's active session.
+func TestStructuredCompletionFindsProjectTranscriptWithoutWorkspace(t *testing.T) {
+	const (
+		userID    = "alice"
+		sessionID = "code:project:abc"
+		project   = "_users/alice/Chats/Code/projects/demo-abc"
+	)
+	conversation := project + "/builder/conversation/2026-10-14/" + chatHistoryConversationFileName(sessionID)
+	raw, _ := json.Marshal(map[string]interface{}{
+		"session_id": sessionID, "user_id": userID,
+		"conversation_history": []map[string]interface{}{{"Role": "human", "Parts": []map[string]string{{"Text": "hi"}}}},
+	})
+	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{}}
+	event := retainedCompletionEvent(sessionID, "turn-1", "completion-1", "the reply")
+	if api.appendStructuredAssistantReply(userID, sessionID, "", "turn-1", "the reply", event) {
+		t.Fatal("saved without any way to find the transcript")
+	}
+	api.activeSessions[sessionID] = &ActiveSessionInfo{SessionID: sessionID, UserID: userID, WorkspacePath: project}
+	if !api.appendStructuredAssistantReply(userID, sessionID, "", "turn-1", "the reply", event) {
+		t.Fatal("reply not saved into the project transcript")
+	}
+}

@@ -1107,6 +1107,32 @@ func (api *StreamingAPI) rememberedRestoredConversationPersistTarget(currentSess
 	return &target, true
 }
 
+// liveConversationPath finds the stored transcript a live reply or live input is appended to. A Code or Work
+// project chat keeps its transcript inside the project, where the central chat_history scan never looks, and
+// sessionWorkspaceFolders only knows workflow chats; the project is whatever the chat's active session (set by the
+// Run, rebuilt after a restart by the next send) says. Nothing is cached.
+func (api *StreamingAPI) liveConversationPath(userID, sessionID, workspacePath string) (string, bool, error) {
+	workspacePath = strings.TrimSpace(workspacePath)
+	if workspacePath == "" && api != nil {
+		api.activeSessionsMux.RLock()
+		if active := api.activeSessions[sessionID]; active != nil {
+			workspacePath = strings.TrimSpace(active.WorkspacePath)
+		}
+		api.activeSessionsMux.RUnlock()
+		if canonical := canonicalChatHistoryWorkspacePath(userID, workspacePath); isProjectWorkspacePath(canonical) {
+			// Project transcripts are stored under the user's physical path (see workProjectChatHistoryConversationPath).
+			workspacePath = workspaceref.PhysicalPath(userID, canonical)
+		} else {
+			workspacePath = ""
+		}
+	}
+	conversationPath, ok, err := FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath)
+	if workspacePath != "" && (err != nil || !ok || strings.TrimSpace(conversationPath) == "") {
+		conversationPath, ok, err = findWorkflowBuilderConversationPathForSession(context.Background(), userID, sessionID, workspacePath)
+	}
+	return conversationPath, ok, err
+}
+
 func (api *StreamingAPI) forgetRestoredConversationPersistTarget(currentSessionID string) {
 	currentSessionID = strings.TrimSpace(currentSessionID)
 	if api == nil || currentSessionID == "" {
@@ -4094,10 +4120,7 @@ func (api *StreamingAPI) appendLiveInputToPersistedChatHistory(userID, sessionID
 	}
 	logCtx := newServerLogContext("", "", "", userID, "", sessionID)
 
-	conversationPath, ok, err := FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath)
-	if strings.TrimSpace(workspacePath) != "" && (err != nil || !ok || strings.TrimSpace(conversationPath) == "") {
-		conversationPath, ok, err = findWorkflowBuilderConversationPathForSession(context.Background(), userID, sessionID, workspacePath)
-	}
+	conversationPath, ok, err := api.liveConversationPath(userID, sessionID, workspacePath)
 	if err != nil || !ok || strings.TrimSpace(conversationPath) == "" {
 		return
 	}

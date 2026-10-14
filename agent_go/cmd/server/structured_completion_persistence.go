@@ -104,10 +104,7 @@ func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, works
 	if api == nil || strings.TrimSpace(userID) == "" || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(turnID) == "" || strings.TrimSpace(final) == "" {
 		return false
 	}
-	conversationPath, ok, err := FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath)
-	if strings.TrimSpace(workspacePath) != "" && (err != nil || !ok || strings.TrimSpace(conversationPath) == "") {
-		conversationPath, ok, err = findWorkflowBuilderConversationPathForSession(context.Background(), userID, sessionID, workspacePath)
-	}
+	conversationPath, ok, err := api.liveConversationPath(userID, sessionID, workspacePath)
 	if err != nil || !ok || strings.TrimSpace(conversationPath) == "" {
 		return false
 	}
