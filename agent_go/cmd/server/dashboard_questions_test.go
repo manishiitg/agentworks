@@ -20,7 +20,7 @@ import (
 )
 
 func TestDashboardQuestionCapabilityMatrix(t *testing.T) {
-	allowed := dashboardQuestionPolicy{Authenticated: true, Active: true, Product: true, View: true, Published: true, AskEnabled: true, AskScope: true}
+	allowed := dashboardQuestionPolicy{Authenticated: true, Active: true, Product: true, View: true, Published: true, AskScope: true}
 	for _, tc := range []struct {
 		name   string
 		change func(*dashboardQuestionPolicy)
@@ -37,8 +37,6 @@ func TestDashboardQuestionCapabilityMatrix(t *testing.T) {
 		{"product", func(p *dashboardQuestionPolicy) { p.Product = false }, false, false, "product_unavailable", ""},
 		{"private", func(p *dashboardQuestionPolicy) { p.View = false }, false, false, "dashboard_unavailable", ""},
 		{"draft", func(p *dashboardQuestionPolicy) { p.Published = false }, false, false, "not_published", ""},
-		{"programs_only", func(p *dashboardQuestionPolicy) { p.AskEnabled = false }, true, false, "ask_disabled", ""},
-		{"owner_ask_off", func(p *dashboardQuestionPolicy) { p.Owner, p.AskEnabled = true, false }, true, false, "ask_disabled", ""},
 		{"read_consent", func(p *dashboardQuestionPolicy) { p.AskScope = false }, true, false, "ask_consent_required", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -331,7 +329,8 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	if err != nil || !resolved.Capability.CanView || resolved.Capability.CanAsk {
 		t.Fatalf("read-only connection gained asks: %+v %v", resolved.Capability, err)
 	}
-	// The Crew's current runtime switch overrides older product settings.
+	// A saved legacy free_text_ask=false no longer turns Ask off: Ask is open to
+	// everyone the Crew is shared with (sharing is the only access control).
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]},{"id":"reader","username":"reader","products":["agentworks","work"]}]}`)
 	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, map[string]string{})
 	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team","capabilities":{"free_text_ask":true}}`)
@@ -343,12 +342,9 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	crewBase := "/api/dashboards/" + crewID
 	for _, user := range []string{"owner", "reader"} {
 		capability := call(user, http.MethodGet, crewBase, nil, 200)["capability"].(map[string]any)
-		if capability["can_view"] != true || capability["can_ask"] != false || capability["reason"] != "ask_disabled" {
-			t.Fatalf("Crew ask switch: %v", capability)
+		if capability["can_view"] != true || capability["can_ask"] != true || capability["reason"] != nil {
+			t.Fatalf("legacy Crew ask switch still applied: %v", capability)
 		}
-		bad = args
-		bad.Revision = crewRevision
-		call(user, http.MethodPost, crewBase+"/questions", bad, 403)
 	}
 	t.Run("registry_failure_preserves_dashboard_reads", func(t *testing.T) {
 		// A real unreadable registry must disable Ask without taking down the

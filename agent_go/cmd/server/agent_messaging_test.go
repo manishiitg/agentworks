@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -138,30 +137,20 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	}
 }
 
-func TestAgentMessagingOffBlocksRepliesAndWakeupsStayExplicit(t *testing.T) {
+func TestAgentMessageWakeupsStayExplicit(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	ctx := internalBotRequestContext(context.Background(), "owner")
-	env.mock.mu.Lock()
-	env.mock.files[linkBetaPath+"/product.json"] = `{"schema_version":1,"product":"work","id":"beta","title":"Beta","capabilities":{"free_text_ask":false}}`
-	env.mock.mu.Unlock()
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}, Label: "Alpha", Path: linkAlphaPath, Chat: &codeChat{Key: "session:alpha", SessionID: "alpha"}}
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")
 	if err != nil {
 		t.Fatal(err)
 	}
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}, Label: "Alpha", Path: linkAlphaPath, Chat: &codeChat{Key: "session:alpha", SessionID: "alpha"}}
-	if _, err = env.api.sendAgentMessage(ctx, "owner", caller, target, "Hello", "", ""); err == nil || !strings.Contains(err.Error(), "disabled") {
-		t.Fatalf("disabled recipient admitted: %v", err)
-	}
-	// The same gate applies to a reply in an already-known address.
 	c := agentConversation{ID: "inbox-existing", Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("owner", caller), targetMessageEndpoint("owner", target)}}
 	agentMessageMu.Lock()
 	err = saveAgentMessageStore(ctx, agentMessageStore{Conversations: []agentConversation{c}})
 	agentMessageMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err = env.api.sendAgentMessage(ctx, "owner", caller, triggerTarget{}, "A later reply", c.ID, ""); err == nil {
-		t.Fatal("existing inbox bypassed messaging off")
 	}
 	wake, err := env.api.scheduleAgentMessageWakeup(ctx, "owner", caller, "schedule", "", "Read inbox and decide whether to follow up", 600)
 	if err != nil {

@@ -45,7 +45,7 @@ import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspa
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workChatTabShortcut, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
-import { productMode, updateProductProjectFreeTextAsk, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
+import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
@@ -328,15 +328,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     return updated
   }, [product, sessions, updateSessions])
 
-  const updateFreeTextAsk = useCallback(async (projectId: string, enabled: boolean) => {
-    const project = sessions.find(item => item.id === projectId)
-    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
-    if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
-    const updated = await updateProductProjectFreeTextAsk(project, enabled, `${enabled ? 'Turn on' : 'Turn off'} agent messaging for ${product.noun} project ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
-    return updated
-  }, [product, sessions, updateSessions])
-
   const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
@@ -372,7 +363,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     remove,
     updateLLMConfig,
     updateNativeAgentTools,
-    updateFreeTextAsk,
     updateSelections,
     updateIdentity,
     updateLocalFiles,
@@ -965,7 +955,7 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
-  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateFreeTextAsk, updateSelections, updateIdentity, updateLocalFiles, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
+  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, updateLocalFiles, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
@@ -1202,9 +1192,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     await updateNativeAgentTools(workspaceProjectId!, enabled)
     markWorkProjectRuntimeDirty(workspaceProjectId!)
   }, [workspaceProjectId, updateNativeAgentTools])
-  const changeFreeTextAsk = useCallback(async (enabled: boolean) => {
-    await updateFreeTextAsk(workspaceProjectId!, enabled)
-  }, [workspaceProjectId, updateFreeTextAsk])
   const changeSelectedServers = useCallback((servers: string[]) => updateSelections(workspaceProjectId!, { selectedServers: servers }), [workspaceProjectId, updateSelections])
   const changeSelectedSkills = useCallback((skills: string[]) => updateSelections(workspaceProjectId!, { selectedSkills: skills }), [workspaceProjectId, updateSelections])
   const changeSelectedSecrets = useCallback((secrets: string[]) => updateSelections(workspaceProjectId!, { selectedSecrets: secrets }), [workspaceProjectId, updateSelections])
@@ -1627,8 +1614,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         onRuntimeChange={changeWorkRuntime}
                         nativeAgentTools={!!selected.nativeAgentTools}
                         onNativeAgentToolsChange={changeNativeAgentTools}
-                        freeTextAsk={selected.freeTextAsk !== false}
-                        onFreeTextAskChange={changeFreeTextAsk}
                         onSelectedServersChange={changeSelectedServers}
                         onSelectedSkillsChange={changeSelectedSkills}
                         onSelectedSecretsChange={changeSelectedSecrets}

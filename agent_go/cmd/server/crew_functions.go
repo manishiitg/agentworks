@@ -218,29 +218,6 @@ func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	return functions, nil
 }
 
-// crewFreeTextAskOff reports whether the Crew's owner turned off the built-in free-text ask. A Crew whose manifest
-// cannot be read keeps it, as before.
-func crewFreeTextAskOff(ctx context.Context, target triggerTarget) bool {
-	if target.Kind != triggerCallerCrew {
-		return false
-	}
-	// The setting lives in the Crew's runtime manifest (workflow.json), the file its settings panels and the
-	// settings tool write; an older Crew keeps it in product.json, which the read falls back to.
-	raw, found, err := readProjectRuntimeManifest(ctx, "work", crewFunctionRoot(ctx, target))
-	if err != nil || !found {
-		return false
-	}
-	var manifest struct {
-		Capabilities struct {
-			FreeTextAsk *bool `json:"free_text_ask"`
-		} `json:"capabilities"`
-	}
-	if json.Unmarshal([]byte(raw), &manifest) != nil {
-		return false
-	}
-	return manifest.Capabilities.FreeTextAsk != nil && !*manifest.Capabilities.FreeTextAsk
-}
-
 // offeredCrewFunctions contains only owner-declared functions. Conversational
 // messaging is a separate capability, so toggling it never hides functions.
 func offeredCrewFunctions(_ context.Context, _ triggerTarget, functions []crewFunction) []crewFunction {

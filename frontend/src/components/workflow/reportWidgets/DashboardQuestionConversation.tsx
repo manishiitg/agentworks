@@ -73,7 +73,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       <button type="button" disabled={!canAsk} onClick={() => void openAsk().catch(() => {})} className="flex items-center gap-2 text-sm font-medium disabled:opacity-50">
         <MessageCircle className="h-4 w-4" /> Open project Ask
       </button>
-      {!canAsk && <p className="mt-2 text-xs text-muted-foreground">{capability.reason === 'ask_disabled' ? 'This Crew has questions turned off.' : 'Ask is unavailable for this dashboard.'}</p>}
+      {!canAsk && <p className="mt-2 text-xs text-muted-foreground">Ask is unavailable for this dashboard.</p>}
       {error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
       {open && canAsk && bound && bound.viewer === viewer && bound.resourceId === resourceId && <section aria-label="Project Ask conversation" className="mt-3">
         <p className="mb-2 text-xs text-muted-foreground">{capability.mode === 'owner' ? 'Your Builder conversation.' : 'Your Run conversation.'} Questions use your account and the project’s normal Ask permissions.</p>

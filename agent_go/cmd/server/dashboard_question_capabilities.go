@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
@@ -15,7 +14,7 @@ type dashboardQuestionCapability struct {
 }
 
 type dashboardQuestionPolicy struct {
-	Authenticated, Active, Product, View, Published, AskEnabled, AskScope, Owner bool
+	Authenticated, Active, Product, View, Published, AskScope, Owner bool
 }
 
 func dashboardQuestionCapabilities(p dashboardQuestionPolicy) dashboardQuestionCapability {
@@ -34,8 +33,6 @@ func dashboardQuestionCapabilities(p dashboardQuestionPolicy) dashboardQuestionC
 	default:
 		capability.CanView = true
 		switch {
-		case !p.AskEnabled:
-			capability.Reason = "ask_disabled"
 		case !p.AskScope:
 			capability.Reason = "ask_consent_required"
 		default:
@@ -113,7 +110,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 	}
 	out.Document = *result.Dashboard
 	out.Snapshot = result.Snapshot
-	askEnabled, owner := true, false
+	owner := false
 	switch target.Kind {
 	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
@@ -121,21 +118,6 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 			return out, dashboardFailure(404, "dashboard unavailable")
 		}
 		owner = crewAccessFor(claims, crew) == crewAccessOwner
-		// Same persisted free_text_ask switch as Crew messaging; unlike its
-		// legacy helper, a failed manifest read fails closed here.
-		raw, found, err := readProjectRuntimeManifest(ctx, "work", target.Root)
-		if err != nil || !found {
-			return out, dashboardFailure(503, "Crew question settings unavailable")
-		}
-		var manifest struct {
-			Capabilities struct {
-				FreeTextAsk *bool `json:"free_text_ask"`
-			} `json:"capabilities"`
-		}
-		if json.Unmarshal([]byte(raw), &manifest) != nil {
-			return out, dashboardFailure(503, "Crew question settings unavailable")
-		}
-		askEnabled = manifest.Capabilities.FreeTextAsk == nil || *manifest.Capabilities.FreeTextAsk
 	case "workflow", "relay":
 		access, _ := workflowAccessForWorkspacePath(ctx, claims, target.Root)
 		owner = access == WorkflowAccessOwner
@@ -157,6 +139,6 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 			askScope = externalCodeRunAllowed(claims)
 		}
 	}
-	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskEnabled: askEnabled, AskScope: askScope, Owner: owner})
+	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskScope: askScope, Owner: owner})
 	return out, nil
 }

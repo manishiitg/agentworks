@@ -410,7 +410,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, freeTextAsk, onFreeTextAskChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -434,9 +434,6 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   nativeAgentTools?: boolean
   /** Omitted for readers: only the Crew owner can change it. */
   onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>
-  freeTextAsk?: boolean
-  /** Omitted for readers: only the Crew owner can change it. */
-  onFreeTextAskChange?: (enabled: boolean) => Promise<unknown>
   onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>
   onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
@@ -502,43 +499,9 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
             hideHeader
           />
           {!modelsOnly && product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
-          {!modelsOnly && product.hasFreeTextAskSetting && <FreeTextAskSetting enabled={freeTextAsk !== false} onChange={onFreeTextAskChange} />}
         </div>}
       </div>
     </div>
-  )
-}
-
-/**
- * Crew "Agent messaging" switch (workflow.json capabilities.free_text_ask). Off: programs (MCP, CLI, other Crews,
- * workflows) can call only the Crew's functions; people chatting here are not affected.
- */
-function FreeTextAskSetting({ enabled, onChange }: { enabled: boolean; onChange?: (enabled: boolean) => Promise<unknown> }) {
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  return (
-    <SettingsCard title="Calls from programs" ariaLabel="Agent messaging">
-      <ToggleRow
-        label="Agent messaging"
-        description="Let agents send this Crew conversational messages. Off: all incoming agent messages, including replies, are refused; declared functions remain available. Human chat here is unaffected."
-        checked={enabled}
-        disabled={!onChange || saving}
-        disabledTitle={onChange ? 'Saving…' : 'Only the owner can change this.'}
-        onCheckedChange={async checked => {
-          if (!onChange) return
-          setSaving(true)
-          setError('')
-          try {
-            await onChange(checked)
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Could not save this setting.')
-          } finally {
-            setSaving(false)
-          }
-        }}
-      />
-      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
-    </SettingsCard>
   )
 }
 

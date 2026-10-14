@@ -284,10 +284,6 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 	if e.External {
 		return nil
 	}
-	t := endpointTarget(e)
-	if e.Kind == triggerCallerCrew && e.Profile != codeproduct.ProfileID && crewFreeTextAskOff(ctx, t) {
-		return fmt.Errorf("agent messaging is disabled for this Crew; use a declared function")
-	}
 	if e.Profile == codeproduct.ProfileID && e.Session == "" {
 		return fmt.Errorf("Code messages require an authorized chat of your own Code")
 	}

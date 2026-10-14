@@ -296,9 +296,9 @@ func TestExternalCrewListIsEmptyWithoutTheCrewProduct(t *testing.T) {
 	}
 }
 
-// Turning off programmatic agent messaging preserves the declared function
-// catalog, including a function named ask, and refuses conversational sends.
-func TestCrewOwnerCanTurnOffFreeTextAsk(t *testing.T) {
+// Ask is always open: a saved legacy free_text_ask=false neither hides declared
+// functions (including one named ask) nor refuses a conversational send.
+func TestLegacyFreeTextAskOffNoLongerClosesAsk(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	owner := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}}
@@ -318,11 +318,11 @@ func TestCrewOwnerCanTurnOffFreeTextAsk(t *testing.T) {
 	env.mock.files[linkBetaPath+"/workflow.json"] = `{"schema_version":1,"capabilities":{"free_text_ask":false}}`
 	env.mock.mu.Unlock()
 	if got := names(); len(got) != 1 || got[0] != "ask" {
-		t.Fatalf("turning messaging off hid a declared function: %v", got)
+		t.Fatalf("a legacy ask-off value hid a declared function: %v", got)
 	}
-	code, out := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hello"})
+	_, out := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hello"})
 	errBody, _ := out["error"].(map[string]any)
-	if message, _ := errBody["message"].(string); code != 400 || !strings.Contains(message, "agent messaging is disabled") {
-		t.Fatalf("ask_crew on a Crew with ask off = %d %v", code, out)
+	if message, _ := errBody["message"].(string); strings.Contains(message, "disabled") {
+		t.Fatalf("ask_crew refused by the removed ask switch: %v", out)
 	}
 }

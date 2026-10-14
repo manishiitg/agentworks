@@ -29,8 +29,6 @@ export type ProjectProductConfig = {
   listsSharedProjects: boolean
   /** The "Native agent tools" (hybrid) switch. */
   hasNativeAgentToolsSetting: boolean
-  /** The Crew owner's switch for the agent messaging. */
-  hasFreeTextAskSetting: boolean
   /** View a project opens on before the user picks one. */
   defaultView: WorkWorkspaceView
   /** localStorage key namespace for per-project UI preferences. */
@@ -50,7 +48,6 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   listsSharedProjects: true,
   // No switch (owner decision 2026-09-29): native agent tools are always on.
   hasNativeAgentToolsSetting: false,
-  hasFreeTextAskSetting: true,
   defaultView: 'identity',
   preferenceNamespace: 'work',
 }
@@ -69,7 +66,6 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   // Native agent tools are always on in a Code (owner decision 2026-09-29):
   // no switch, and the server ignores a stored "off".
   hasNativeAgentToolsSetting: false,
-  hasFreeTextAskSetting: false,
   defaultView: 'files',
   preferenceNamespace: 'code',
 }

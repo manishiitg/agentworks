@@ -55,13 +55,11 @@ continue. Reuse the returned `inbox_id` on continuation and the same
 `submission_id` after an uncertain delivery. `ask_crew` and workflow `chat` are
 conversational send aliases, without `call_id` or automatic final-answer capture.
 
-### Crew messaging switch
+### Ask is always open
 
-The Crew's **Agent messaging** setting remains stored as `capabilities.free_text_ask`.
-It is enabled unless explicitly false. Disabled means all incoming programmatic
-conversational messages are refused, including replies and messages in existing
-conversations. Agents can still invoke declared functions under their permissions.
-Human app chat remains available. This switch does not change execution authority.
+There is no Crew messaging switch any more (removed 2026-10-14). Ask is open to
+everyone the Crew is shared with, on every channel; sharing is the only access
+control. A saved `capabilities.free_text_ask` value is ignored.
 
 ## Functions are internal triggers
 

@@ -1,5 +1,23 @@
 # Decisions and open issues
 
+## 2026-10-14 — Ask is always open; the Crew Agent messaging switch is removed (PLAT-750)
+
+The Crew's `free_text_ask` ("Agent messaging") switch is removed from the app,
+the settings tool, agent messaging and the dashboard Ask capability. Ask is open
+to everyone the Crew is shared with, on every channel (app chat, dashboards and
+shared links, Slack, WhatsApp, MCP, other products); sharing is the only access
+control. A saved `capabilities.free_text_ask` value is ignored, and passing
+`free_text_ask` to the settings tool returns an explanatory error. A person's
+own connection scopes (`crews:run`, `runs:execute`) and Run-mode limits still
+apply.
+
+Why: the switch applied to programs and dashboards but not to app chat, so the
+same person could ask in one place and not another. With Ask as the shared
+conversational entry point that checks published functions first, a second
+wall inside sharing only caused failures (an MCP ask refused as "agent
+messaging is disabled").
+
+Ticket: [PLAT-750](https://github.com/runloop-workflows/deployments/blob/main/tickets/pulse_platform/app/reports/plat-750.md).
 ## 2026-10-14 — Workflow Run Ask can call its published functions (PLAT-750)
 
 Workflow Run conversations list, call, poll and answer pending inputs for their

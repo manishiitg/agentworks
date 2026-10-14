@@ -84,9 +84,8 @@ type, properties, required, items, enum).
 
 - Everyone except the Crew's owner uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. The owner's own chat is Builder mode, with full access. Only the owner changes a Crew. Expose a function for everything others may make the Crew do.
 - Conversational contact is separate from functions: `messages`/`ask_crew` send a message to the Crew,
-  it may reply or not, and replies are read from the inbox. The Crew's **Agent messaging** setting
-  (`free_text_ask` in settings) turns incoming programmatic messages off; declared functions and people
-  chatting in the app keep working. Read replies with `messages` action=read, `inbox_id`, `after` (a
+  it may reply or not, and replies are read from the inbox. Ask is always open to everyone the Crew
+  is shared with; there is no switch to turn it off, so control access by sharing. Read replies with `messages` action=read, `inbox_id`, `after` (a
   cursor) and `wait_seconds` (up to 25). Inside a Crew, an agent can also set one timed wakeup in its own
   conversation with `schedule_message_wakeup`; it does not fire while the scheduler is paused.
 - Runs have no earlier conversation. Anything a later run must know belongs in `MEMORY.md` at the
@@ -155,7 +154,7 @@ connection's Crew bounds apply. These calls execute directly without a model tur
 - A schedule sends an instruction (`message` or `messages`) on a cron or cadence, with a timezone; a
   schedule whose name already exists counts as added. Scheduler pauses hold timed runs.
 - `settings` (with `crew_id`): models, MCP servers and tools, skills, secrets (owner, write-only),
-  browser mode, free_text_ask.
+  browser mode.
 
 ## Checking your work
 
