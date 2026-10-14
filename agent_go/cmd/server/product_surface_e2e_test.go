@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -59,7 +60,20 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer session.Close()
-		api := newCrewFunctionEnv(t).api
+		env := newCrewFunctionEnv(t)
+		api := env.api
+		// A workflow Builder has a saved manifest. Seed the actual fixture
+		// server (newCrewFunctionEnv installs it) so conditional Watcher
+		// registration participates in the full declared surface check.
+		fixtureManifest := NewWorkflowManifest("Surface fixture")
+		fixtureManifest.CreatedBy = "test-user"
+		fixtureRaw, err := json.Marshal(fixtureManifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env.mock.mu.Lock()
+		env.mock.files[manifestPath("Workflow/surface-e2e")] = string(fixtureRaw)
+		env.mock.mu.Unlock()
 		api.logger = logger
 		api.workshopChatSessions.Store("surface-e2e", session)
 		api.workshopChatSessions.Store("eval-surface-e2e", session)
@@ -99,14 +113,14 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		def := manifest.Chat[mode]
-		// This fixture has no Brain bindings, Vault admin, workflow model write
-		// grant or product scheduler (Watchers), and does not install the
-		// separate workflow-reference reader. Those conditional implementations
-		// have their own integration tests; all other declarations must match
-		// the real registration pools.
+		// This fixture has no Brain bindings, Vault admin or workflow model
+		// write grant, and does not install the separate workflow-reference
+		// reader. Those conditional implementations have their own integration
+		// tests; all other declarations, including Watchers with the saved
+		// fixture manifest, must match the real registration pools.
 		expectedTools := []string{}
 		for _, name := range def.Tools {
-			if !knowledgebase.IsMCPTool(name) && name != "manage_vault_access" && name != "set_workflow_llm_config" && name != "list_accessible_workflows" && name != "manage_condition_triggers" {
+			if !knowledgebase.IsMCPTool(name) && name != "manage_vault_access" && name != "set_workflow_llm_config" && name != "list_accessible_workflows" {
 				expectedTools = append(expectedTools, name)
 			}
 		}

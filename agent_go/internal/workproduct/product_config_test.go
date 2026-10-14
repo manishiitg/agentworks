@@ -141,6 +141,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"ask_function_update":                    false,
 		"report_function_progress":               false,
 		"return_function_result":                 false,
+		"manage_condition_triggers":              false, // Builder-owned Watcher callers.
 		"list_project_schedules":                 false,
 		"create_project_schedule":                false,
 		"update_project_schedule":                false,
