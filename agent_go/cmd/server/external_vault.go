@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -112,6 +113,15 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 	path, method := "/api/admin/groups", http.MethodGet
 	var payload any
 	query := url.Values{}
+	if name == "manage_vault_tools" && op == "approve_all" {
+		connector := externalArg(args, "connector_id")
+		if !externalVaultID.MatchString(connector) {
+			fail("approve_all needs the connector_id of one connection (from list); it never approves across connections.")
+			return
+		}
+		api.vaultApproveAllTools(w, r, connector)
+		return
+	}
 	if name == "manage_vault_tools" {
 		publicName := externalArg(args, "public_name")
 		if op != "list" && (publicName == "" || strings.ContainsAny(publicName, "/?#") || strings.Contains(publicName, "..")) {
@@ -311,6 +321,73 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		req.Body, req.ContentLength = io.NopCloser(bytes.NewReader(data)), int64(len(data))
 	}
 	api.handleCapLayerAdmin(w, req)
+}
+
+// vaultAdminDo runs one gateway administration request through the same handler the UI uses.
+func (api *StreamingAPI) vaultAdminDo(r *http.Request, method, path string, payload any) (int, []byte) {
+	req := r.Clone(r.Context())
+	req.URL = &url.URL{Path: "/api/caplayer" + path}
+	req.Method, req.Body, req.ContentLength = method, http.NoBody, 0
+	if payload != nil {
+		data, _ := json.Marshal(payload)
+		req.Body, req.ContentLength = io.NopCloser(bytes.NewReader(data)), int64(len(data))
+	}
+	resp := &accessToolResponse{header: make(http.Header)}
+	api.handleCapLayerAdmin(resp, req)
+	if resp.status == 0 {
+		resp.status = 200
+	}
+	return resp.status, resp.Bytes()
+}
+
+// vaultApproveAllTools approves every quarantined tool (new or changed since the last review) at its
+// current definition, of one connection (never across connections, so a changed tool of an unrelated
+// connection cannot ride along). Each approval is the same call as approving one
+// tool, so the audit trail and the "a later change quarantines it again" rule are unchanged. The
+// reply lists names only.
+func (api *StreamingAPI) vaultApproveAllTools(w http.ResponseWriter, r *http.Request, connector string) {
+	status, body := api.vaultAdminDo(r, http.MethodGet, "/api/admin/tools", nil)
+	if status >= 300 {
+		externalError(w, 502, "vault_operation_failed", "Could not list the tools to approve.")
+		return
+	}
+	var listed struct {
+		Tools []struct {
+			PublicName  string `json:"PublicName"`
+			Fingerprint string `json:"Fingerprint"`
+			Version     int    `json:"Version"`
+			Status      string `json:"Status"`
+			ConnectorID string `json:"ConnectorID"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(body, &listed); err != nil {
+		externalError(w, 502, "vault_operation_failed", "Could not read the tool list.")
+		return
+	}
+	approved, failed := []string{}, map[string]string{}
+	for _, t := range listed.Tools {
+		if t.Status != "quarantined" || (connector != "" && t.ConnectorID != connector) {
+			continue
+		}
+		code, reply := api.vaultAdminDo(r, http.MethodPost, "/api/admin/tools/"+url.PathEscape(t.PublicName)+"/approve", map[string]any{"fingerprint": t.Fingerprint, "version": t.Version})
+		if code >= 300 {
+			failed[t.PublicName] = fmt.Sprintf("%d %.120s", code, reply)
+			continue
+		}
+		approved = append(approved, t.PublicName)
+	}
+	label := connector
+	if code, reply := api.vaultAdminDo(r, http.MethodGet, "/api/admin/connectors/"+url.PathEscape(connector), nil); code < 300 {
+		var c struct {
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+		}
+		if json.Unmarshal(reply, &c) == nil {
+			label = firstNonEmptyString(c.DisplayName, c.Name, connector)
+		}
+	}
+	log.Printf("[VAULT_TOOLS] approve_all connector=%q approved=%d failed=%d", connector, len(approved), len(failed))
+	externalJSON(w, map[string]any{"summary": fmt.Sprintf("Approved %d %s tools", len(approved), label), "approved": approved, "count": len(approved), "failed": failed})
 }
 
 // vaultShareProjectSecret copies a workflow's or Crew's secret into Vault on

@@ -135,6 +135,13 @@ func TestExternalVaultGroupsReuseIdentityBindingAndRejectPaths(t *testing.T) {
 	if w = call("read_vault_audit", map[string]any{"operation": "events", "tool": "crm_search", "limit": 5}); w.Code != 200 || paths[3] != "GET /api/admin/audit?limit=5&tool=crm_search" {
 		t.Fatalf("audit: %d %s %v", w.Code, w.Body, paths)
 	}
+	// approve_all is per connection and approves nothing when none is quarantined.
+	if w = call("manage_vault_tools", map[string]any{"operation": "approve_all"}); w.Code != 400 {
+		t.Fatalf("approve_all without a connection: %d %s", w.Code, w.Body)
+	}
+	if w = call("manage_vault_tools", map[string]any{"operation": "approve_all", "connector_id": "c-1"}); w.Code != 200 || paths[len(paths)-2] != "GET /api/admin/tools" || !strings.Contains(w.Body.String(), `"count":0`) {
+		t.Fatalf("approve_all: %d %s %v", w.Code, w.Body, paths)
+	}
 }
 
 func TestExternalVaultLocalAndOAuthScope(t *testing.T) {
