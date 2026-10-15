@@ -15,7 +15,7 @@ export async function flushWorkspaceState() {
   if (writing) return
   const current = useWorkspaceReturnStore.getState()
   if (!pending || !current.ready || !current.record || !current.account) return
-  if (pending.account !== current.account || pending.workspace !== current.workspace) { pending = null; return }
+  if (pending.account !== current.account || pending.workspace !== current.workspace || (current.workspace !== undefined && current.workspace !== useWorkspaceConnectionStore.getState().activeWorkspaceId)) { pending = null; return }
   const destination = pending.destination; pending = null; writing = true
   const account = current.account
   const workspace = current.workspace
@@ -28,6 +28,7 @@ export async function flushWorkspaceState() {
       const record = await workspaceStateApi.get().catch(() => null)
       if (record && useWorkspaceReturnStore.getState().account === account && useWorkspaceReturnStore.getState().workspace === workspace) useWorkspaceReturnStore.setState({ record })
     }
+    if (useWorkspaceReturnStore.getState().account !== account || useWorkspaceReturnStore.getState().workspace !== workspace) return
     useWorkspaceReturnStore.setState({ saveError: 'Your latest workspace could not be saved. It will retry when you continue working.' })
   } finally { writing = false; if (pending) void flushWorkspaceState() }
 }
@@ -56,8 +57,15 @@ export function useWorkspaceReturn(
   const applyRef = useRef(applyLayout); applyRef.current = applyLayout
   useEffect(() => {
     if (restore?.surface !== surface || restore.id !== id) return
-    if (restore.layout) applyRef.current(restore.layout)
-    useWorkspaceReturnStore.setState({ restore: null })
+    let cancelled = false
+    // Apply after the surface's own mount effects so default pane activation
+    // cannot overwrite the person's restored visibility in the same commit.
+    queueMicrotask(() => {
+      if (cancelled || useWorkspaceReturnStore.getState().restore !== restore) return
+      if (restore.layout) applyRef.current(restore.layout)
+      useWorkspaceReturnStore.setState({ restore: null })
+    })
+    return () => { cancelled = true }
   }, [restore, surface, id])
   useEffect(() => {
     if (restore || !ready || !id || useProductSurfaceStore.getState().productSurface !== surface) return
@@ -69,14 +77,14 @@ export function useWorkspaceReturn(
     queueWorkspaceState({ surface, id, view, layout: { ...layout, navigation_mode: navigationMode },
       ...(belongs && tab?.sessionId ? { session_id: tab.sessionId, chat: { name: tab.name, read_only: tab.metadata?.isViewOnly === true, conversation_key: tab.metadata?.agentProfileConversationKey, execution_run: tab.metadata?.isExecutionRun, scheduled_run: tab.metadata?.isScheduledRun, scheduled_job_name: tab.metadata?.scheduledJobName, bot_platform: tab.metadata?.botPlatform, view_mode: tab.viewMode, workshop_mode: tab.metadata?.workshopMode } } : {}),
     })
-  }, [surface, id, view, layout.chat_open, layout.panel_open, layout.split_ratio, layout.navigation_mode, navigationMode, session, name, viewMode, ready, restore, account])
+  }, [surface, id, view, layout.chat_open, layout.panel_open, layout.split_ratio, layout.navigation_mode, layout.preview_device, layout.focused_pane, layout.mobile_pane_width, navigationMode, session, name, viewMode, ready, restore, account])
 }
 
 export function installWorkspaceStateFlush() {
   const onHide = () => { if (document.visibilityState === 'hidden') void flushWorkspaceState() }
   const onExit = () => {
     const state = useWorkspaceReturnStore.getState()
-    if (!writing && pending?.account === state.account && pending?.workspace === state.workspace && state.record) {
+    if (!writing && pending?.account === state.account && pending?.workspace === state.workspace && (state.workspace === undefined || state.workspace === useWorkspaceConnectionStore.getState().activeWorkspaceId) && state.record) {
       const destination = pending.destination; pending = null; clearTimeout(timer)
       void saveWorkspaceStateOnExit({ ...state.record, last: destination })
     }
