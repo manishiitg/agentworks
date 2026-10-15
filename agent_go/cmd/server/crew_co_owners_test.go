@@ -56,6 +56,11 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 		t.Fatal("the workspace proxy gate ignores co-owners")
 	}
 
+	// The main owner's own Builder conversations on disk stay theirs: hidden from a co-owner, shown to the owner.
+	if !crewBuilderDiskHiddenFromUser("co", root) || crewBuilderDiskHiddenFromUser("owner", root) {
+		t.Fatal("a co-owner can read the main owner's Builder conversation transcripts")
+	}
+
 	// The creator can never be removed, a co-owner can; both by email, by an owner.
 	crew := crewProjectBinding{OwnerID: "owner", OwnedByCaller: true}
 	crew.Binding.WorkspacePath = root
