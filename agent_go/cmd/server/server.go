@@ -2322,6 +2322,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	pulsePlatformAPI = api
 	runningServerAPI = api
 	events.SetTurnDiagnostics(api.turnDiagnostics)
+	mcpagent.SetAccountPhraseResolver(api.accountPhraseForSession)
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
 	// own project secrets (Setup > Secrets).
 	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
