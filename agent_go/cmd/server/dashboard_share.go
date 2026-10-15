@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 // Sharing a dashboard (PLAT-750, share = dashboard). There is one access source
@@ -148,6 +150,10 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	if !api.dashboardShareOwner(ctx, claims, target) {
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
+	// Sharing is sharing the dashboard: there must be one published to share. Making it private needs none.
+	if mode != runSharePrivate && !hasPublishedDashboard(ctx, target.Root) {
+		return runShareState{}, dashboardFailure(409, "this project has no published dashboard yet; build and publish one (or open the project once so its default dashboard appears), then share it")
+	}
 	before, _ := api.readRunShare(ctx, claims, target)
 	state, err := api.applyRunShareChange(ctx, claims, target, mode, emails)
 	if err == nil {
@@ -230,6 +236,19 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 	default:
 		return runShareState{}, dashboardFailure(404, "sharing is not available for this kind of project")
 	}
+}
+
+func hasPublishedDashboard(ctx context.Context, root string) bool {
+	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list"})
+	if err != nil {
+		return false
+	}
+	for _, d := range listed.Dashboards {
+		if d.Managed && d.Published != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func unknownSuffix(unknown []string) string {
