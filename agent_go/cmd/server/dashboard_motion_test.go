@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +63,12 @@ func TestDashboardMotionExportBindsCallerAndGrants(t *testing.T) {
 		<-allowFinish
 		defer close(finished)
 		var args map[string]string
-		if err := json.Unmarshal([]byte(command.ExtraEnv["DASHBOARD_MOTION_ARGS"]), &args); err != nil {
+		parts := strings.Fields(command.Command)
+		config, err := base64.StdEncoding.DecodeString(strings.Trim(parts[len(parts)-1], "'"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(config, &args); err != nil {
 			t.Fatal(err)
 		}
 		if args["caller"] != "owner" || !strings.HasPrefix(args["output_path"], "db/assets/motion/") || args["renderer_version"] != "0.8.99" || command.Timeout == nil || *command.Timeout != 600 {

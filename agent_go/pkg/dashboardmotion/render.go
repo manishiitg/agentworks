@@ -2,7 +2,11 @@
 // It has no dependency on a product or on the dashboard's live data bridge.
 package dashboardmotion
 
-import _ "embed"
+import (
+	_ "embed"
+	"encoding/base64"
+	"strings"
+)
 
 // RendererVersion changes only with a code revision and a real rendering check.
 const RendererVersion = "0.8.99"
@@ -11,3 +15,9 @@ const RendererVersion = "0.8.99"
 //
 //go:embed render.py
 var Runner string
+
+// Command carries non-secret render configuration as data, independently of
+// the workspace shell's intentionally restricted environment-key list.
+func Command(config []byte) string {
+	return "python3 -c '" + strings.ReplaceAll(Runner, "'", "'\\''") + "' '" + base64.StdEncoding.EncodeToString(config) + "'"
+}

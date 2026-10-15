@@ -85,7 +85,7 @@ try {
   await writeFile(path.join(source,'index.html'),`<!doctype html><html><head><meta charset="utf-8"><script src="gsap.js"></script><style>body{margin:0;background:white;color:black}#root{width:320px;height:180px;display:grid;place-items:center}#value{font:40px sans-serif}</style></head><body><div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="1"><div id="value">20</div></div><script>window.__timelines=window.__timelines||{};const timeline=gsap.timeline({paused:true});timeline.fromTo('#value',{opacity:0},{opacity:1,duration:1});window.__timelines.main=timeline;</script></body></html>`)
   const runner=path.resolve('../agent_go/pkg/dashboardmotion/render.py')
   const config={composition_path:'code/motion/check',output_path:'db/assets/motion/check',cache_path:'.sandbox-cache/dashboard-motion',caller:'test-author',renderer_version:'0.8.99'}
-  const rendered=spawnSync('python3',[runner],{cwd:root,env:{...process.env,PATH:path.join(root,'tools/bin')+path.delimiter+process.env.PATH,AGENT_BROWSER_EXECUTABLE_PATH:chromium.executablePath(),DASHBOARD_MOTION_ARGS:JSON.stringify(config)},encoding:'utf8',timeout:600000,maxBuffer:8*1024*1024})
+  const rendered=spawnSync('python3',[runner,Buffer.from(JSON.stringify(config)).toString('base64')],{cwd:root,env:{...process.env,PATH:path.join(root,'tools/bin')+path.delimiter+process.env.PATH,AGENT_BROWSER_EXECUTABLE_PATH:chromium.executablePath()},encoding:'utf8',timeout:600000,maxBuffer:8*1024*1024})
   process.stdout.write(rendered.stderr||'')
   assert.equal(rendered.status,0,rendered.stdout)
   const result=JSON.parse(rendered.stdout.trim())

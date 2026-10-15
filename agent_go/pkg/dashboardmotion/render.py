@@ -1,5 +1,6 @@
 """Core dashboard MP4 export, run only through the authenticated workspace shell."""
 import hashlib
+import base64
 import json
 import os
 from pathlib import Path
@@ -21,12 +22,12 @@ def run(args, cwd, env, timeout=480):
     # Command output is diagnostic evidence, never mixed with the JSON result.
     print(result.stdout[-16000:], file=sys.stderr)
     if result.returncode:
-        raise RuntimeError("Command failed: " + " ".join(args[:4]))
+        raise RuntimeError("The video export could not finish. Ask the Builder to check the export log and try again.")
     return result.stdout
 
 
 def export():
-    config = json.loads(os.environ["DASHBOARD_MOTION_ARGS"])
+    config = json.loads(base64.b64decode(sys.argv[1], validate=True))
     missing_tools = [name for name in ["npm", "npx", "node", "ffmpeg", "ffprobe"] if not shutil.which(name)]
     if missing_tools:
         raise RuntimeError("Video export is not available on this server yet. Missing tools: " + ", ".join(missing_tools))
@@ -104,5 +105,10 @@ if __name__ == "__main__":
     try:
         export()
     except Exception as error:
-        print(json.dumps({"success": False, "error": str(error)}))
+        detail = type(error).__name__ + ": " + str(error)
+        print("Dashboard video export: " + detail, file=sys.stderr)
+        message = str(error)
+        if not isinstance(error, (ValueError, RuntimeError)):
+            message = "The video export could not start. Try again, or ask the Builder to check its setup."
+        print(json.dumps({"success": False, "error": message}))
         sys.exit(1)

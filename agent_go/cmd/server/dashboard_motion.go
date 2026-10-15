@@ -96,12 +96,11 @@ func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims
 			}
 		}
 	}()
-	// Pass code as a quoted, fixed Python program; all authored paths are data.
-	command := "python3 -c '" + strings.ReplaceAll(dashboardmotion.Runner, "'", "'\\''") + "'"
+	command := dashboardmotion.Command(args)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(claims.UserID))
 	result, execErr := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{
 		Command: command, WorkingDirectory: target.Root, Timeout: &seconds,
-		ExtraEnv: map[string]string{"DASHBOARD_MOTION_ARGS": string(args)}, FolderGuard: guard,
+		FolderGuard: guard,
 	})
 	if execErr != nil {
 		return nil, fmt.Errorf("animation export: %w", execErr)
@@ -110,6 +109,11 @@ func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims
 		return nil, fmt.Errorf("The animation could not be exported. Check that the server has HyperFrames, Chrome and FFmpeg available.")
 	}
 	if result.ExitCode != 0 || rendered["success"] != true {
+		diagnostic := result.Stderr
+		if len(diagnostic) > 4000 {
+			diagnostic = diagnostic[len(diagnostic)-4000:]
+		}
+		log.Printf("[DASHBOARD_MOTION_EXPORT_ERROR] export=%s error=%v stderr=%s", id, rendered["error"], diagnostic)
 		return rendered, fmt.Errorf("%v", rendered["error"])
 	}
 	status = "completed"
