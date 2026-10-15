@@ -1032,6 +1032,8 @@ func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
 		_ = exec.CommandContext(ctx, "osascript", "-e", "display notification "+string(quoted)+" with title \"AgentWorks\"").Run()
 	} else if runtime.GOOS == "linux" {
 		_ = exec.CommandContext(ctx, "notify-send", "AgentWorks", text).Run()
+	} else if runtime.GOOS == "windows" {
+		_ = notifyWithIcon(text)
 	}
 }
 

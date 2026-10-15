@@ -1,3 +1,7 @@
+//go:build !windows
+
+// Uses cliTestServer from main_test.go, which does not build on Windows.
+
 package main
 
 import (
