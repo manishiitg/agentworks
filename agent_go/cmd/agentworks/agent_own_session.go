@@ -35,7 +35,7 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 			return liveAgentSession{}, true, err
 		}
 		if process.Kind != "cli" {
-			return liveAgentSession{}, true, errors.New("Cursor desktop own attachment requires a per-conversation fence; use its verified person hook")
+			return liveAgentSession{}, true, errCursorDesktop
 		}
 		return own, true, nil
 	}
@@ -55,7 +55,7 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 		return liveAgentSession{}, provider != "", err
 	}
 	if provider == "cursor" {
-		return liveAgentSession{}, true, errors.New("Cursor own attachment needs its native CLI conversation context; desktop own attachment is unavailable")
+		return liveAgentSession{}, true, errCursorDesktop
 	}
 	host, err := providerPIDHostKey(provider, pid)
 	if err != nil {

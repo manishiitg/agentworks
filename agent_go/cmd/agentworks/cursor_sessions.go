@@ -29,6 +29,12 @@ func cursorUUID(value string) (string, error) {
 	return id.String(), nil
 }
 
+// Person-facing refusals: plain words and one next step.
+var (
+	errCursorDesktop = errors.New("Cursor desktop chats cannot connect to AgentWorks yet. For now, connect a Claude or Codex chat instead: ask it to run agentworks attach.")
+	errCursorNoHooks = errors.New("Cursor has not told AgentWorks about any chat yet. Run the AgentWorks setup for this project (plugins/cursor/scripts/setup_project.py), restart the Cursor CLI, send one message in this chat, then attach again.")
+)
+
 func cursorObservationDirectory(root string) string {
 	return filepath.Join(filepath.Dir(root), "cursor-sessions")
 }
@@ -65,7 +71,7 @@ func observeCursor(root string, process cursorProcess, input pluginHookInput) er
 func cursorLiveObservations(root string) ([]cursorObservation, error) {
 	dir, err := openMuseObservationDirectory(cursorObservationDirectory(root), false)
 	if err != nil {
-		return nil, errors.New("Cursor has no verified native hook observation")
+		return nil, errCursorNoHooks
 	}
 	defer dir.Close()
 	var live []cursorObservation
@@ -158,6 +164,9 @@ func cursorCallingContext() (liveAgentSession, error) {
 	process, err := cursorAncestor()
 	if err != nil {
 		return liveAgentSession{}, err
+	}
+	if process.Kind == "desktop" {
+		return liveAgentSession{}, errCursorDesktop
 	}
 	session, err := cursorUUID(os.Getenv("CURSOR_CONVERSATION_ID"))
 	if err != nil {
