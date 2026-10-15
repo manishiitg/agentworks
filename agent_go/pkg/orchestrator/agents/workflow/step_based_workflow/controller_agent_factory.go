@@ -884,16 +884,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 			hcpo.GetLogger().Info("🔧 Auto-including workspace_advanced:*")
 		}
 	}
-	for _, required := range []string{
-		"human_tools:human_feedback",
-		"human_tools:create_human_input_request",
-		"human_tools:send_email",
-		"human_tools:send_slack_message",
-	} {
-		if !slices.Contains(enabledTools, required) {
-			enabledTools = append(enabledTools, required)
-		}
-	}
+	// Human tools are not part of the baseline (owner, 2026-10-15): a step is
+	// unattended work, so it gets no blocking human_feedback, and email, Slack and
+	// decision requests only when the step's tool list names them.
 
 	// DB and cost access come from capabilities, not from whether an explicit
 	// tool list was supplied. Filtering against the actual workspace pool below
@@ -1465,7 +1458,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 
 	// 5. Prepare custom tools (filtered by step config)
-	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(stepConfig)
+	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(stepConfigWithDescribedHumanTools(stepConfig, planStep))
 	if dbAccess == DBAccessRead {
 		filtered := toolsToRegister[:0]
 		for _, tool := range toolsToRegister {

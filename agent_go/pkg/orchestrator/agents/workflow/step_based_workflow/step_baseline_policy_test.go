@@ -70,9 +70,15 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 					t.Fatalf("ordinary agent retained %s", name)
 				}
 			}
-			for _, name := range []string{"execute_shell_command", "human_feedback", "create_human_input_request", "send_email", "send_slack_message"} {
+			for _, name := range []string{"execute_shell_command", "human_feedback", "create_human_input_request"} {
 				if !slices.Contains(got, name) || executors[name] != name || !slices.Contains(registeredToolNames(managerTools), name) || managerExecutors[name] != name {
 					t.Fatalf("baseline lost %s", name)
+				}
+			}
+			// Email and Slack are not baseline tools: only a step that names them gets them.
+			for _, name := range []string{"send_email", "send_slack_message"} {
+				if slices.Contains(got, name) || executors[name] != nil {
+					t.Fatalf("baseline includes %s", name)
 				}
 			}
 			if slices.Contains(got, "get_goal_metrics") != test.goal || slices.Contains(got, "record_goal_observations") != test.goal || slices.Contains(got, "ask_pulse") != test.pulse || slices.Contains(got, "ask_goal_lead") != test.pulse {

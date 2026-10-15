@@ -115,7 +115,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	if !config.UseCodeExecutionMode && stepConfig != nil && stepConfig.UseCodeExecutionMode != nil {
 		config.UseCodeExecutionMode = *stepConfig.UseCodeExecutionMode
 	}
-	tools, _ := hcpo.prepareCustomTools(stepConfig)
+	tools, _ := hcpo.prepareCustomTools(stepConfigWithDescribedHumanTools(stepConfig, step))
 	result.Tools = registeredToolNames(tools)
 	sort.Strings(result.Tools)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())

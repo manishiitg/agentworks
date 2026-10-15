@@ -232,6 +232,13 @@ When a real user decision needs a choice between options, call the available req
 		Build:   func(promptContext) string { return nativeShellOffGuidance },
 	},
 	{
+		// With the built-in shell on, the CLI runs on a server other people use
+		// too (owner, 2026-10-15): keep to your own processes and files.
+		Name:    "native-shell-on",
+		Applies: func(c promptContext) bool { return c.NativeCodingTools && nativeshell.Enabled() },
+		Build:   func(promptContext) string { return nativeShellOnGuidance },
+	},
+	{
 		// Full CLI has its own subagents for parallel work. There is no separate
 		// background-agent tool: reviews are done by the agent itself.
 		Name:    "native-subagents",
@@ -242,6 +249,9 @@ When a real user decision needs a choice between options, call the available req
 
 const nativeShellOffGuidance = `## Shell
 Your own built-in shell tool is turned off in this chat. Your file read and edit tools, skills and subagents still work. Run every shell command (scripts, git, tests, installs, platform API calls) with ` + "`execute_shell_command`" + `: it runs as your user with your files and credentials. Do not conclude you have no shell; use that tool.`
+
+const nativeShellOnGuidance = `## Shared server
+You share this server with other people: only stop processes you started, and never touch other accounts' files or the CLI's sign-in files.`
 
 const nativeSubagentsGuidance = `## Subagents
 Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly yourself in this chat, one after another or together, and read their results. There is no separate background-agent tool.

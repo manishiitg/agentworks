@@ -4715,7 +4715,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"enabled_custom_tools": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Workflow-level optional workspace/custom tools (stored in execution_defaults, applies to EVERY step unless a step sets its own enabled_custom_tools). Execution agents already receive workspace_advanced plus human_feedback, create_human_input_request, send_email and send_slack_message. Add only capabilities nearly every step needs and name additional human tools explicitly. Legacy human_tools:* is normalized to the same baseline. Prefer per-step tuning otherwise. Pass an empty array to clear the workflow-level additions.",
+					"description": "Workflow-level optional workspace/custom tools (stored in execution_defaults, applies to EVERY step unless a step sets its own enabled_custom_tools). Execution agents already receive workspace_advanced. Human tools are not baseline: name send_email, send_slack_message or create_human_input_request when steps need them. Add only capabilities nearly every step needs. Legacy human_tools:* grants nothing. Prefer per-step tuning otherwise. Pass an empty array to clear the workflow-level additions.",
 				},
 				"advisor_specialization_approval_input_id": map[string]interface{}{
 					"type":        "string",

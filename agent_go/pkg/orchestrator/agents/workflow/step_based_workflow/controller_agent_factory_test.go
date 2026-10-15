@@ -363,16 +363,24 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 				names = append(names, definition.Function.Name)
 			}
 		}
-		for _, required := range []string{"human_feedback", "create_human_input_request", "send_email", "send_slack_message"} {
-			if !slices.Contains(names, required) || executors[required] == nil {
-				t.Fatalf("required human tool %q missing: tools=%v", required, names)
-			}
-		}
-		for _, excluded := range []string{"get_notification_history", "slack", "google_workspace_cli", "get_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"} {
+		// Human tools are not baseline: none unless the step names them or its text asks.
+		for _, excluded := range []string{"human_feedback", "create_human_input_request", "send_email", "send_slack_message", "get_notification_history", "slack", "google_workspace_cli", "get_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request"} {
 			if slices.Contains(names, excluded) || executors[excluded] != nil {
 				t.Fatalf("default step tools unexpectedly include human tool %q: tools=%v", excluded, names)
 			}
 		}
+	}
+
+	described := stepConfigWithDescribedHumanTools(nil, &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "s", Description: "Send an email summary and post it to Slack"}})
+	dtools, _ := hcpo.prepareCustomTools(described)
+	var dnames []string
+	for _, definition := range dtools {
+		if definition.Function != nil {
+			dnames = append(dnames, definition.Function.Name)
+		}
+	}
+	if !slices.Contains(dnames, "send_email") || !slices.Contains(dnames, "send_slack_message") || slices.Contains(dnames, "human_feedback") {
+		t.Fatalf("a step whose text asks for email and Slack gets exactly those human tools: %v", dnames)
 	}
 
 	tools, _ := hcpo.prepareCustomTools(&AgentConfigs{EnabledCustomTools: []string{"human_tools:get_notification_history"}})
